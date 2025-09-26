@@ -146,7 +146,7 @@ function mapDorToPropertyType(dorCode) {
     "03": "MultiFamilyMoreThan10",
     "04": "Condominium",
     "05": "Cooperative",
-    "06": "RetirementHome",
+    "06": "Retirement",
     "07": "MiscellaneousResidential",
     "08": "MultiFamilyLessThan10",
     "09": "CommonElementsArea",
@@ -399,17 +399,29 @@ function extractLandFrontDepth($) {
   const tr = table.find("tr").eq(1);
   const tds = tr.find("td");
   if (tds.length < 6) return { front: null, depth: null };
+
   const frontTxt = tds.eq(4).text().trim();
   const depthTxt = tds.eq(5).text().trim();
-  const front = frontTxt
-    ? Math.round(parseFloat(frontTxt.replace(/,/g, "")))
-    : null;
-  const depth = depthTxt
-    ? Math.round(parseFloat(depthTxt.replace(/,/g, "")))
-    : null;
+
+  let front = null;
+  if (frontTxt) {
+    const parsedFront = parseFloat(frontTxt.replace(/,/g, ""));
+    if (Number.isFinite(parsedFront) && parsedFront >= 1) { // Check if >= 1
+      front = Math.round(parsedFront);
+    }
+  }
+
+  let depth = null;
+  if (depthTxt) {
+    const parsedDepth = parseFloat(depthTxt.replace(/,/g, ""));
+    if (Number.isFinite(parsedDepth) && parsedDepth >= 1) { // Check if >= 1
+      depth = Math.round(parsedDepth);
+    }
+  }
+
   return {
-    front: Number.isFinite(front) ? front : null,
-    depth: Number.isFinite(depth) ? depth : null,
+    front: front,
+    depth: depth,
   };
 }
 
@@ -606,6 +618,14 @@ function main() {
       address.section = m[1];
       address.township = m[2];
       address.range = m[3];
+    }
+  }
+  if (address.city_name !== null) { // Only check if it's not already null
+    const trimmedCityName = address.city_name.trim();
+    if (trimmedCityName === "") {
+      address.city_name = null;
+    } else {
+      address.city_name = trimmedCityName; // Ensure it's trimmed if not empty
     }
   }
   writeJson(path.join("data", "address.json"), address);
