@@ -10,20 +10,19 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const BUILDING_SECTION_TITLE = "Buildings";
+
 function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
-  let parcelId = null;
-  $("table.tabular-data-two-column tbody tr").each((_, tr) => {
-    const th = textTrim($(tr).find("th,strong").first().text());
-    if (/Parcel ID/i.test(th)) {
-      const tdText = textTrim($(tr).find("td span").first().text());
-      if (tdText) parcelId = tdText;
-    }
-  });
-  return parcelId;
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
 }
 
 function collectBuildings($) {
@@ -32,7 +31,7 @@ function collectBuildings($) {
     .filter(
       (_, s) =>
         textTrim($(s).find(".module-header .title").first().text()) ===
-        "Buildings",
+        BUILDING_SECTION_TITLE,
     )
     .first();
   if (!section.length) return buildings;
@@ -50,6 +49,25 @@ function collectBuildings($) {
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) buildings.push(map);
+    });
+  let buildingCount = 0;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) {
+        const combined_map = {...buildings[buildingCount], ...map};
+        buildings[buildingCount++] = combined_map;
+      };
     });
   return buildings;
 }

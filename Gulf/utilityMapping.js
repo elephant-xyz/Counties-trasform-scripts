@@ -1,113 +1,164 @@
-// Utility extractor script
-// Reads input.html, parses building/HVAC hints with cheerio, and writes owners/utilities_data.json following the utility schema.
+// Utility mapping script
+// Reads input.html, parses building hints for HVAC, and writes owners/utilities_data.json
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function readHtml(filePath) {
-  const html = fs.readFileSync(filePath, "utf8");
+function readHtml(filepath) {
+  const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-function textNorm(s) {
-  if (!s) return "";
-  return s
-    .replace(/\s+/g, " ")
-    .replace(/\u00A0/g, " ")
-    .trim();
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const BUILDING_SECTION_TITLE = "Building Information";
+
+function textTrim(s) {
+  return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
-  const section = $("#ctlBodyPane_ctl01_mSection");
-  let parcelId = null;
-  section.find("table.tabular-data-two-column tbody tr").each((i, el) => {
-    const label = textNorm($(el).find("th strong").text());
-    const value = textNorm($(el).find("td span").text());
-    if (label.toLowerCase() === "parcel id") parcelId = value;
-  });
-  return parcelId || "UNKNOWN_ID";
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
 }
 
-function collectUtilityHints($) {
-  const hints = {};
-  const section = $("#ctlBodyPane_ctl04_mSection");
-  section.find("table.tabular-data-two-column tbody tr").each((i, el) => {
-    const label = textNorm($(el).find("th strong").text());
-    const value = textNorm($(el).find("td").text());
-    if (label && value && !(label in hints)) hints[label] = value;
-  });
-  return hints;
+function collectBuildings($) {
+  const buildings = [];
+  const section = $("section")
+    .filter(
+      (_, s) =>
+        textTrim($(s).find(".module-header .title").first().text()) ===
+        BUILDING_SECTION_TITLE,
+    )
+    .first();
+  if (!section.length) return buildings;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) buildings.push(map);
+    });
+  let buildingCount = 0;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) {
+        const combined_map = {...buildings[buildingCount], ...map};
+        buildings[buildingCount++] = combined_map;
+      };
+    });
+  return buildings;
 }
 
-function buildUtilityObject(hints) {
-  // From Building Information: Heat: AIR DUCTED; Air Conditioning: CENTRAL
-  let heating_system_type = null;
+function inferHVAC(buildings) {
   let cooling_system_type = null;
-  const heatRaw = hints["Heat"] || "";
-  const acRaw = hints["Air Conditioning"] || "";
-  if (/AIR DUCTED/i.test(heatRaw)) heating_system_type = "Central";
-  if (/CENTRAL/i.test(acRaw)) cooling_system_type = "CentralAir";
+  let heating_system_type = null;
 
-  const obj = {
-    cooling_system_type: cooling_system_type,
+  buildings.forEach((b) => {
+    const ac = (b["Air Conditioning"] || "").toUpperCase();
+    const heat = (b["Heat"] || "").toUpperCase();
+    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
+    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
+      heating_system_type = "Central";
+  });
+
+  if (cooling_system_type === "CentralAir") {
+    hvac_system_configuration = "SplitSystem";
+    hvac_equipment_component = "CondenserAndAirHandler";
+    hvac_condensing_unit_present = "Yes";
+  }
+
+  return {
+    cooling_system_type,
+    heating_system_type
+  };
+}
+
+function buildUtilityRecord($, buildings) {
+  const hvac = inferHVAC(buildings);
+  const rec = {
+    cooling_system_type: hvac.cooling_system_type,
+    heating_system_type: hvac.heating_system_type,
+    public_utility_type: null,
+    sewer_type: null,
+    water_source_type: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
     electrical_panel_capacity: null,
+    electrical_wiring_type: null,
+    hvac_condensing_unit_present: null,
+    electrical_wiring_type_other_description: null,
+    solar_panel_present: false,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    hvac_unit_condition: null,
+    solar_inverter_visible: false,
+    hvac_unit_issues: null,
     electrical_panel_installation_date: null,
     electrical_rewire_date: null,
-    electrical_wiring_type: null,
-    electrical_wiring_type_other_description: null,
-    heating_system_type: heating_system_type,
     hvac_capacity_kw: null,
     hvac_capacity_tons: null,
-    hvac_condensing_unit_present: null,
     hvac_equipment_component: null,
     hvac_equipment_manufacturer: null,
     hvac_equipment_model: null,
     hvac_installation_date: null,
     hvac_seer_rating: null,
     hvac_system_configuration: null,
-    hvac_unit_condition: null,
-    hvac_unit_issues: null,
     plumbing_system_installation_date: null,
-    plumbing_system_type: null,
-    plumbing_system_type_other_description: null,
-    public_utility_type: null,
     sewer_connection_date: null,
-    sewer_type: null,
-    smart_home_features: null,
-    smart_home_features_other_description: null,
     solar_installation_date: null,
     solar_inverter_installation_date: null,
     solar_inverter_manufacturer: null,
     solar_inverter_model: null,
-    solar_inverter_visible: false,
-    solar_panel_present: false,
-    solar_panel_type: null,
-    solar_panel_type_other_description: null,
     water_connection_date: null,
     water_heater_installation_date: null,
     water_heater_manufacturer: null,
     water_heater_model: null,
-    water_source_type: null,
     well_installation_date: null,
   };
-  return obj;
+
+  return rec;
 }
 
 function main() {
-  const inputPath = path.join(process.cwd(), "input.html");
+  const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  const hints = collectUtilityHints($);
-  const utilities = buildUtilityObject(hints);
+  if (!parcelId) throw new Error("Parcel ID not found");
+  const buildings = collectBuildings($);
+  const utilitiesRecord = buildUtilityRecord($, buildings);
 
-  const outDir = path.join(process.cwd(), "owners");
-  fs.mkdirSync(outDir, { recursive: true });
+  const outDir = path.resolve("owners");
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
-  const payload = {};
-  payload[`property_${parcelId}`] = utilities;
-  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
-  console.log(`Wrote utilities data for ${parcelId} -> ${outPath}`);
+  const outObj = {};
+  outObj[`property_${parcelId}`] = utilitiesRecord;
+  fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
+  console.log(`Wrote ${outPath}`);
 }
 
 if (require.main === module) {

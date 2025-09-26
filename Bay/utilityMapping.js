@@ -10,20 +10,19 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const BUILDING_SECTION_TITLE = "Buildings";
+
 function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
-  let parcelId = null;
-  $("table.tabular-data-two-column tbody tr").each((_, tr) => {
-    const th = textTrim($(tr).find("th,strong").first().text());
-    if (/Parcel ID/i.test(th)) {
-      const tdText = textTrim($(tr).find("td span").first().text());
-      if (tdText) parcelId = tdText;
-    }
-  });
-  return parcelId;
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
 }
 
 function collectBuildings($) {
@@ -32,7 +31,7 @@ function collectBuildings($) {
     .filter(
       (_, s) =>
         textTrim($(s).find(".module-header .title").first().text()) ===
-        "Buildings",
+        BUILDING_SECTION_TITLE,
     )
     .first();
   if (!section.length) return buildings;
@@ -51,17 +50,31 @@ function collectBuildings($) {
         });
       if (Object.keys(map).length) buildings.push(map);
     });
+  let buildingCount = 0;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) {
+        const combined_map = {...buildings[buildingCount], ...map};
+        buildings[buildingCount++] = combined_map;
+      };
+    });
   return buildings;
 }
 
 function inferHVAC(buildings) {
   let cooling_system_type = null;
   let heating_system_type = null;
-  let hvac_system_configuration = null;
-  let hvac_equipment_component = null;
-  let hvac_unit_condition = null;
-  let hvac_unit_issues = null;
-  let hvac_condensing_unit_present = null;
 
   buildings.forEach((b) => {
     const ac = (b["Air Conditioning"] || "").toUpperCase();
@@ -79,12 +92,7 @@ function inferHVAC(buildings) {
 
   return {
     cooling_system_type,
-    heating_system_type,
-    hvac_system_configuration,
-    hvac_equipment_component,
-    hvac_unit_condition,
-    hvac_unit_issues,
-    hvac_condensing_unit_present,
+    heating_system_type
   };
 }
 
@@ -100,26 +108,26 @@ function buildUtilityRecord($, buildings) {
     plumbing_system_type_other_description: null,
     electrical_panel_capacity: null,
     electrical_wiring_type: null,
-    hvac_condensing_unit_present: hvac.hvac_condensing_unit_present,
+    hvac_condensing_unit_present: null,
     electrical_wiring_type_other_description: null,
     solar_panel_present: false,
     solar_panel_type: null,
     solar_panel_type_other_description: null,
     smart_home_features: null,
     smart_home_features_other_description: null,
-    hvac_unit_condition: hvac.hvac_unit_condition,
+    hvac_unit_condition: null,
     solar_inverter_visible: false,
-    hvac_unit_issues: hvac.hvac_unit_issues,
+    hvac_unit_issues: null,
     electrical_panel_installation_date: null,
     electrical_rewire_date: null,
     hvac_capacity_kw: null,
     hvac_capacity_tons: null,
-    hvac_equipment_component: hvac.hvac_equipment_component,
+    hvac_equipment_component: null,
     hvac_equipment_manufacturer: null,
     hvac_equipment_model: null,
     hvac_installation_date: null,
     hvac_seer_rating: null,
-    hvac_system_configuration: hvac.hvac_system_configuration,
+    hvac_system_configuration: null,
     plumbing_system_installation_date: null,
     sewer_connection_date: null,
     solar_installation_date: null,

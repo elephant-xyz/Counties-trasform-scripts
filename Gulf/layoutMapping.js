@@ -1,56 +1,87 @@
-// Layout extractor script
-// Reads input.html, parses unit counts and creates representative layout entries per the layout schema.
+// Layout mapping script
+// Reads input.html, parses buildings bedroom/bath counts and generates layout entries per room type
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function readHtml(filePath) {
-  const html = fs.readFileSync(filePath, "utf8");
+function readHtml(filepath) {
+  const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-function textNorm(s) {
-  if (!s) return "";
-  return s
-    .replace(/\s+/g, " ")
-    .replace(/\u00A0/g, " ")
-    .trim();
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const BUILDING_SECTION_TITLE = "Building Information";
+
+function textTrim(s) {
+  return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
-  const section = $("#ctlBodyPane_ctl01_mSection");
-  let parcelId = null;
-  section.find("table.tabular-data-two-column tbody tr").each((i, el) => {
-    const label = textNorm($(el).find("th strong").text());
-    const value = textNorm($(el).find("td span").text());
-    if (label.toLowerCase() === "parcel id") parcelId = value;
-  });
-  return parcelId || "UNKNOWN_ID";
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
 }
 
-function collectUnitSummaries($) {
-  // From Building Information we have several repeated blocks; take the first occurrence for unit mix.
-  const units = [];
-  $("#ctlBodyPane_ctl04_mSection")
-    .find("div.two-column-blocks")
-    .each((i, blk) => {
-      const facts = {};
-      $(blk)
-        .find("table.tabular-data-two-column tbody tr")
-        .each((j, row) => {
-          const label = textNorm($(row).find("th strong").text());
-          const value = textNorm($(row).find("td").text());
-          if (label && value && !(label in facts)) facts[label] = value;
+function collectBuildings($) {
+  const buildings = [];
+  const section = $("section")
+    .filter(
+      (_, s) =>
+        textTrim($(s).find(".module-header .title").first().text()) ===
+        BUILDING_SECTION_TITLE,
+    )
+    .first();
+  if (!section.length) return buildings;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
         });
-      if (facts["Bedrooms"] || facts["Bathrooms"] || facts["Total Area"]) {
-        units.push(facts);
-      }
+      if (Object.keys(map).length) buildings.push(map);
     });
-  return units;
+  let buildingCount = 0;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) {
+        const combined_map = {...buildings[buildingCount], ...map};
+        buildings[buildingCount++] = combined_map;
+      };
+    });
+  return buildings;
 }
 
-function makeDefaultLayout(space_type, idx) {
+function toInt(val) {
+  const n = Number(
+    String(val || "")
+      .replace(/[,]/g, "")
+      .trim(),
+  );
+  return Number.isFinite(n) ? n : 0;
+}
+
+function defaultLayout(space_type, idx) {
   return {
     space_type,
     space_index: idx,
@@ -90,46 +121,41 @@ function makeDefaultLayout(space_type, idx) {
   };
 }
 
-function buildLayouts(units) {
-  const layouts = [];
-  let idx = 1;
-  // Create a layout per bedroom and per bathroom indicated by counts across all unit blocks.
+function buildLayoutsFromBuildings(buildings) {
+  // Sum across all buildings
   let totalBeds = 0;
   let totalBaths = 0;
-  units.forEach((u) => {
-    const beds = parseInt((u["Bedrooms"] || "0").replace(/[^0-9]/g, "")) || 0;
-    const baths = parseInt((u["Bathrooms"] || "0").replace(/[^0-9]/g, "")) || 0;
-    totalBeds += beds;
-    totalBaths += baths;
+  buildings.forEach((b) => {
+    totalBeds += toInt(b["Bedrooms"]);
+    totalBaths += toInt(b["Bathrooms"]);
   });
-  // Create minimal bedroom layouts
+
+  const layouts = [];
+  let idx = 1;
   for (let i = 0; i < totalBeds; i++) {
-    const l = makeDefaultLayout("Bedroom", idx++);
-    layouts.push(l);
+    layouts.push(defaultLayout("Bedroom", idx++));
   }
   for (let i = 0; i < totalBaths; i++) {
-    const l = makeDefaultLayout("Full Bathroom", idx++);
-    layouts.push(l);
+    layouts.push(defaultLayout("Full Bathroom", idx++));
   }
   return layouts;
 }
 
 function main() {
-  const inputPath = path.join(process.cwd(), "input.html");
+  const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  const units = collectUnitSummaries($);
-  const layouts = buildLayouts(units);
+  if (!parcelId) throw new Error("Parcel ID not found");
+  const buildings = collectBuildings($);
+  const layouts = buildLayoutsFromBuildings(buildings);
 
-  const outDir = path.join(process.cwd(), "owners");
-  fs.mkdirSync(outDir, { recursive: true });
+  const outDir = path.resolve("owners");
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "layout_data.json");
-  const payload = {};
-  payload[`property_${parcelId}`] = { layouts };
-  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
-  console.log(
-    `Wrote layout data for ${parcelId} -> ${outPath}, layouts: ${layouts.length}`,
-  );
+  const outObj = {};
+  outObj[`property_${parcelId}`] = { layouts };
+  fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
+  console.log(`Wrote ${outPath}`);
 }
 
 if (require.main === module) {

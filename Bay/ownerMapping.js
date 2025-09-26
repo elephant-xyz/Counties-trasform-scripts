@@ -7,6 +7,10 @@ const htmlPath = path.join(process.cwd(), "input.html");
 const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl01_mSection .sdw1-owners-container";
+const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales_grdFlat tbody tr";
+
 // Utility helpers
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
 const normalizeName = (s) => txt(s).toLowerCase();
@@ -86,6 +90,7 @@ const COMPANY_KEYWORDS = [
   "authority",
 ];
 
+
 function isCompanyName(name) {
   const n = name.toLowerCase();
   return COMPANY_KEYWORDS.some((kw) =>
@@ -150,34 +155,25 @@ function dedupeOwners(owners) {
   return out;
 }
 
-function extractPropertyId($) {
-  let id = null;
-  $("th strong").each((i, el) => {
-    const label = txt($(el).text());
-    if (/parcel\s*id/i.test(label)) {
-      const td = $(el).closest("tr").find("td").first();
-      const v = txt(td.text());
-      if (v) id = v;
-    }
-  });
-  if (!id) {
-    const title = txt($("title").text());
-    const m = title.match(/Report:\s*([A-Za-z0-9\-]+)/i);
-    if (m) id = m[1];
+function getParcelId($) {
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
   }
-  if (!id) {
-    const bodyText = txt($("body").text());
-    const m = bodyText.match(/\b\d{3,}-\d{3}-\d{3}\b/);
-    if (m) id = m[0];
-  }
-  return id ? id : "unknown_id";
+  return null;
 }
 
 function extractCurrentOwners($) {
   const owners = [];
-  $("#ctlBodyPane_ctl01_mSection .sdw1-owners-container a").each((i, el) => {
-    const t = txt($(el).text());
-    if (t) owners.push(t);
+  $(CURRENT_OWNER_SELECTOR).each((i, el) => {
+    const owner_text_split = $(el).text().split('\n');
+    for (const owner of owner_text_split) {
+      if (owner.trim()) {
+        const t = txt(owner.trim());
+        owners.push(t);
+        break;
+      }
+    }
   });
   return owners;
 }
@@ -185,7 +181,7 @@ function extractCurrentOwners($) {
 function extractSalesOwnersByDate($) {
   const map = {};
   const priorOwners = [];
-  const rows = $("#ctlBodyPane_ctl07_ctl01_grdSales_grdFlat tbody tr");
+  const rows = $(SALES_TABLE_SELECTOR);
   rows.each((i, tr) => {
     const $tr = $(tr);
     const th = $tr.find("th").first();
@@ -232,7 +228,7 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
   return dedupeOwners(owners);
 }
 
-const propertyId = extractPropertyId($);
+const parcelId = getParcelId($);
 const currentOwnerRaw = extractCurrentOwners($);
 const { map: salesMap, priorOwners } = extractSalesOwnersByDate($);
 
@@ -321,7 +317,7 @@ if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
   orderedOwnersByDate["current"] = owners_by_date["current"];
 }
 
-const propKey = `property_${propertyId || "unknown_id"}`;
+const propKey = `property_${parcelId || "unknown_id"}`;
 const output = {};
 output[propKey] = { owners_by_date: orderedOwnersByDate };
 

@@ -14,12 +14,23 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_divSummary table tbody tr";
+const BUILDING_SECTION_TITLE = "Buildings";
+const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales_grdFlat tbody tr";
+const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl03_ctl01_grdValuation_grdYearData";
+
+
 function readJSON(p) {
   try {
     return JSON.parse(fs.readFileSync(p, "utf8"));
   } catch (e) {
     return null;
   }
+}
+
+function textTrim(s) {
+  return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function writeJSON(p, obj) {
@@ -60,23 +71,18 @@ function loadHTML() {
   return cheerio.load(html);
 }
 
-function extractParcelId($) {
-  let parcel = null;
-  $(
-    "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_divSummary table tbody tr",
-  ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    if ((th || "").toLowerCase().includes("parcel id")) {
-      parcel = textOf($(tr).find("td span"));
-    }
-  });
-  return parcel || null;
+function getParcelId($) {
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
 }
 
 function extractLegalDescription($) {
   let desc = null;
   $(
-    "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_divSummary table tbody tr",
+    OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
     const th = textOf($(tr).find("th strong"));
     if ((th || "").toLowerCase().includes("legal description")) {
@@ -89,7 +95,7 @@ function extractLegalDescription($) {
 function extractUseCode($) {
   let code = null;
   $(
-    "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_divSummary table tbody tr",
+    OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
     const th = textOf($(tr).find("th strong"));
     if ((th || "").toLowerCase().includes("property use code")) {
@@ -102,32 +108,89 @@ function extractUseCode($) {
 function mapPropertyTypeFromUseCode(code) {
   if (!code) return null;
   const u = code.toUpperCase();
-  if (u.includes("MULTI-FAMILY 10+")) return "MultiFamilyMoreThan10";
+  if (u.includes("MULTI")) {
+    if (u.includes("10+") || u.includes("MORE")) {
+      return "MultiFamilyMoreThan10";
+    }
+    if (u.includes("LESS")) {
+      return "MultiFamilyLessThan10";
+    }
+    return "MultipleFamily";
+  }
+  if (u.includes("SINGLE")) return "SingleFamily";
+  if (u.includes("CONDO")) return "Condominium";
   if (u.includes("DUPLEX")) return "Duplex";
   if (u.includes("TOWNHOUSE")) return "Townhouse";
   if (u.includes("APARTMENT")) return "Apartment";
+  if (u.includes("MOBILE")) return "MobileHome";
+  if (u.includes("PUD")) return "Pud";
+  if (u.includes("RETIREMENT")) return "Retirement";
   return null;
 }
 
+function collectBuildings($) {
+  const buildings = [];
+  const section = $("section")
+    .filter(
+      (_, s) =>
+        textTrim($(s).find(".module-header .title").first().text()) ===
+        BUILDING_SECTION_TITLE,
+    )
+    .first();
+  if (!section.length) return buildings;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) buildings.push(map);
+    });
+  let buildingCount = 0;
+  $(section)
+    .find(
+      '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+    )
+    .each((_, div) => {
+      const map = {};
+      $(div)
+        .find("table tbody tr")
+        .each((__, tr) => {
+          const label = textTrim($(tr).find("th strong").first().text());
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) {
+        const combined_map = {...buildings[buildingCount], ...map};
+        buildings[buildingCount++] = combined_map;
+      };
+    });
+  return buildings;
+}
+
+function toInt(val) {
+  const n = Number(
+    String(val || "")
+      .replace(/[,]/g, "")
+      .trim(),
+  );
+  return Number.isFinite(n) ? n : 0;
+}
+
 function extractBuildingYears($) {
+  const buildings = collectBuildings($);
   const yearsActual = [];
   const yearsEffective = [];
-  $('[id^="ctlBodyPane_ctl04_ctl01_lstBuildings_"]').each((i, block) => {
-    const $block = $(block);
-    const rows = $block.find("table.tabular-data-two-column tbody tr");
-    rows.each((j, tr) => {
-      const th = textOf($(tr).find("th strong"));
-      const val = textOf($(tr).find("td span"));
-      if (!th || !val) return;
-      if (th.toLowerCase().includes("actual year built")) {
-        const yr = parseInt(val, 10);
-        if (!isNaN(yr)) yearsActual.push(yr);
-      }
-      if (th.toLowerCase().includes("effective year built")) {
-        const yr = parseInt(val, 10);
-        if (!isNaN(yr)) yearsEffective.push(yr);
-      }
-    });
+   buildings.forEach((b) => {
+    yearsActual.push(toInt(b["Actual Year Built"]));
+    yearsEffective.push(toInt(b["Effective Year Built"]));
   });
   return {
     actual: yearsActual.length ? Math.min(...yearsActual) : null,
@@ -136,25 +199,16 @@ function extractBuildingYears($) {
 }
 
 function extractAreas($) {
-  const firstBlock = $(
-    "#ctlBodyPane_ctl04_ctl01_lstBuildings_ctl00_dynamicBuildingDataLeftColumn_divSummary",
-  );
-  if (firstBlock.length === 0) return { total: null, heated: null };
-  let total = null;
-  let heated = null;
-  const rows = firstBlock.find("table.tabular-data-two-column tbody tr");
-  rows.each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    const val = textOf($(tr).find("td span"));
-    if (!th || !val) return;
-    if (th.toLowerCase().includes("total area")) total = val;
-    if (th.toLowerCase().includes("heated area")) heated = val;
+  let total = 0;
+  const buildings = collectBuildings($);
+   buildings.forEach((b) => {
+    total += toInt(b["Total Area"]);
   });
-  return { total, heated };
+  return total;
 }
 
 function extractSales($) {
-  const rows = $("#ctlBodyPane_ctl07_ctl01_grdSales_grdFlat tbody tr");
+  const rows = $(SALES_TABLE_SELECTOR);
   const out = [];
   rows.each((i, tr) => {
     const tds = $(tr).find("th, td");
@@ -182,15 +236,19 @@ function mapInstrumentToDeedType(instr) {
   if (!instr) return null;
   const u = instr.trim().toUpperCase();
   if (u === "WD") return "Warranty Deed";
-  throw {
-    type: "error",
-    message: `Unknown enum value ${instr}.`,
-    path: "deed.deed_type",
-  };
+  if (u == "TD") return "Tax Deed";
+  if (u == "QC") return "Quitclaim Deed";
+  if (u == "SW") return "Special Warranty Deed";
+  return null;
+  // throw {
+  //   type: "error",
+  //   message: `Unknown enum value ${instr}.`,
+  //   path: "deed.deed_type",
+  // };
 }
 
 function extractValuation($) {
-  const table = $("#ctlBodyPane_ctl03_ctl01_grdValuation_grdYearData");
+  const table = $(VALUATION_TABLE_SELECTOR);
   if (table.length === 0) return [];
   const years = [];
   const headerThs = table.find("thead tr th").toArray().slice(1);
@@ -239,7 +297,7 @@ function writeProperty($, parcelId) {
     };
   }
   const years = extractBuildingYears($);
-  const areas = extractAreas($);
+  const totalArea = extractAreas($);
 
   const property = {
     parcel_identifier: parcelId || "",
@@ -247,10 +305,10 @@ function writeProperty($, parcelId) {
     property_structure_built_year: years.actual || null,
     property_effective_built_year: years.effective || null,
     property_type: propertyType,
-    livable_floor_area: areas.heated || null,
-    total_area: areas.total || null,
+    livable_floor_area: null,
+    total_area: String(totalArea),
     number_of_units_type: null,
-    area_under_air: areas.heated || null,
+    area_under_air: null,
     number_of_units: null,
     subdivision: null,
     zoning: null,
@@ -282,10 +340,7 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
-      document_type:
-        deedType === "Warranty Deed"
-          ? "ConveyanceDeedWarrantyDeed"
-          : "ConveyanceDeed",
+      document_type: null,
       file_format: null,
       ipfs_url: null,
       name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
@@ -520,7 +575,7 @@ function writeUtility(parcelId) {
     hvac_condensing_unit_present: u.hvac_condensing_unit_present ?? null,
     electrical_wiring_type_other_description:
       u.electrical_wiring_type_other_description ?? null,
-    solar_panel_present: u.solar_panel_present ?? null,
+    solar_panel_present: false,
     solar_panel_type: u.solar_panel_type ?? null,
     solar_panel_type_other_description:
       u.solar_panel_type_other_description ?? null,
@@ -528,7 +583,7 @@ function writeUtility(parcelId) {
     smart_home_features_other_description:
       u.smart_home_features_other_description ?? null,
     hvac_unit_condition: u.hvac_unit_condition ?? null,
-    solar_inverter_visible: u.solar_inverter_visible ?? null,
+    solar_inverter_visible: false,
     hvac_unit_issues: u.hvac_unit_issues ?? null,
     electrical_panel_installation_date:
       u.electrical_panel_installation_date ?? null,
@@ -558,10 +613,55 @@ function writeUtility(parcelId) {
   writeJSON(path.join("data", "utility.json"), utility);
 }
 
+function writeLayout(parcelId) {
+  const layouts = readJSON(path.join("owners", "layout_data.json"));
+  if (!layouts) return;
+  const key = `property_${parcelId}`;
+  const record = (layouts[key] && layouts[key].layouts) ? layouts[key].layouts : [];
+  record.forEach((l, idx) => {
+    const out = {
+      space_type: l.space_type ?? null,
+      space_index: l.space_index ?? null,
+      flooring_material_type: l.flooring_material_type ?? null,
+      size_square_feet: l.size_square_feet ?? null,
+      floor_level: l.floor_level ?? null,
+      has_windows: l.has_windows ?? null,
+      window_design_type: l.window_design_type ?? null,
+      window_material_type: l.window_material_type ?? null,
+      window_treatment_type: l.window_treatment_type ?? null,
+      is_finished: l.is_finished ?? null,
+      furnished: l.furnished ?? null,
+      paint_condition: l.paint_condition ?? null,
+      flooring_wear: l.flooring_wear ?? null,
+      clutter_level: l.clutter_level ?? null,
+      visible_damage: l.visible_damage ?? null,
+      countertop_material: l.countertop_material ?? null,
+      cabinet_style: l.cabinet_style ?? null,
+      fixture_finish_quality: l.fixture_finish_quality ?? null,
+      design_style: l.design_style ?? null,
+      natural_light_quality: l.natural_light_quality ?? null,
+      decor_elements: l.decor_elements ?? null,
+      pool_type: l.pool_type ?? null,
+      pool_equipment: l.pool_equipment ?? null,
+      spa_type: l.spa_type ?? null,
+      safety_features: l.safety_features ?? null,
+      view_type: l.view_type ?? null,
+      lighting_features: l.lighting_features ?? null,
+      condition_issues: l.condition_issues ?? null,
+      is_exterior: l.is_exterior ?? false,
+      pool_condition: l.pool_condition ?? null,
+      pool_surface_type: l.pool_surface_type ?? null,
+      pool_water_quality: l.pool_water_quality ?? null,
+      request_identifier: parcelId,
+    };
+    writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
+  });
+}
+
 function extractSecTwpRng($) {
   let value = null;
   $(
-    "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_divSummary table tbody tr",
+    OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
     const th = textOf($(tr).find("th strong"));
     if ((th || "").toLowerCase().includes("sec/twp/rng")) {
@@ -574,30 +674,159 @@ function extractSecTwpRng($) {
   return { section: m[1], township: m[2], range: m[3] };
 }
 
+function normalizeSuffix(s) {
+  if (!s) return null;
+  const map = {
+    ALY: "Aly",
+    AVE: "Ave",
+    AV: "Ave",
+    BLVD: "Blvd",
+    BND: "Bnd",
+    CIR: "Cir",
+    CIRS: "Cirs",
+    CRK: "Crk",
+    CT: "Ct",
+    CTR: "Ctr",
+    CTRS: "Ctrs",
+    CV: "Cv",
+    CYN: "Cyn",
+    DR: "Dr",
+    DRS: "Drs",
+    EXPY: "Expy",
+    FWY: "Fwy",
+    GRN: "Grn",
+    GRNS: "Grns",
+    GRV: "Grv",
+    GRVS: "Grvs",
+    HWY: "Hwy",
+    HL: "Hl",
+    HLS: "Hls",
+    HOLW: "Holw",
+    JCT: "Jct",
+    JCTS: "Jcts",
+    LN: "Ln",
+    LOOP: "Loop",
+    MALL: "Mall",
+    MDW: "Mdw",
+    MDWS: "Mdws",
+    MEWS: "Mews",
+    ML: "Ml",
+    MNRS: "Mnrs",
+    MT: "Mt",
+    MTN: "Mtn",
+    MTNS: "Mtns",
+    OPAS: "Opas",
+    ORCH: "Orch",
+    OVAL: "Oval",
+    PARK: "Park",
+    PASS: "Pass",
+    PATH: "Path",
+    PIKE: "Pike",
+    PL: "Pl",
+    PLN: "Pln",
+    PLNS: "Plns",
+    PLZ: "Plz",
+    PT: "Pt",
+    PTS: "Pts",
+    PNE: "Pne",
+    PNES: "Pnes",
+    RADL: "Radl",
+    RD: "Rd",
+    RDG: "Rdg",
+    RDGS: "Rdgs",
+    RIV: "Riv",
+    ROW: "Row",
+    RTE: "Rte",
+    RUN: "Run",
+    SHL: "Shl",
+    SHLS: "Shls",
+    SHR: "Shr",
+    SHRS: "Shrs",
+    SMT: "Smt",
+    SQ: "Sq",
+    SQS: "Sqs",
+    ST: "St",
+    STA: "Sta",
+    STRA: "Stra",
+    STRM: "Strm",
+    TER: "Ter",
+    TPKE: "Tpke",
+    TRL: "Trl",
+    TRCE: "Trce",
+    UN: "Un",
+    VIS: "Vis",
+    VLY: "Vly",
+    VLYS: "Vlys",
+    VIA: "Via",
+    VL: "Vl",
+    VLGS: "Vlgs",
+    VWS: "Vws",
+    WALK: "Walk",
+    WALL: "Wall",
+    WAY: "Way",
+  };
+  const key = s.toUpperCase().trim();
+  if (map[key]) return map[key];
+  return null;
+}
+
+function isNumeric(value) {
+    return /^-?\d+$/.test(value);
+}
+
 function attemptWriteAddress(unnorm, secTwpRng) {
   const full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
   if (!full) return;
-  const m = full.match(
-    /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
-  );
-  if (!m) return;
-  const [, streetNumber, streetRest, city, state, zip, plus4] = m;
-
-  let street_name = streetRest.trim();
-  let route_number = null;
-  let street_suffix_type = null;
-  const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
-  if (m2) {
-    street_name = m2[1].toUpperCase();
-    route_number = m2[2];
-    if (street_name === "HWY" || street_name === "HIGHWAY")
-      street_suffix_type = "Hwy";
+  let city = null;
+  let zip = null;
+  const fullAddressParts = (full || "").split(",");
+  if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
+    state_and_pin = fullAddressParts[2].split(/\s+/);
+    if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
+      zip = state_and_pin[state_and_pin.length - 1].trim();
+      city = fullAddressParts[1].trim();
+    }
   }
-  const city_name = city.toUpperCase();
-  const state_code = state.toUpperCase();
+  const parts = (fullAddressParts[0] || "").split(/\s+/);
+  let street_number = null;
+  if (parts && parts.length > 1) {
+    street_number_candidate = parts[0];
+    if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
+      street_number = parts.shift() || null;
+    }
+  }
+  let suffix = null;
+  if (parts && parts.length > 1) {
+    suffix_candidate = parts[parts.length - 1];
+    if (normalizeSuffix(suffix_candidate)) {
+      suffix = parts.pop() || null;
+    }
+  }
+  let street_name = parts.join(" ") || null;
+  if (street_name) {
+    street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
+  }
+  // const m = full.match(
+  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
+  // );
+  // if (!m) return;
+  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
+
+  // let street_name = streetRest.trim();
+  // let route_number = null;
+  // let street_suffix_type = null;
+  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
+  // if (m2) {
+  //   street_name = m2[1].toUpperCase();
+  //   route_number = m2[2];
+  //   if (street_name === "HWY" || street_name === "HIGHWAY")
+  //     street_suffix_type = "Hwy";
+  // }
+  const city_name = city ? city.toUpperCase() : null;
+  // const state_code = state.toUpperCase();
   const postal_code = zip;
-  const plus_four_postal_code = plus4 || null;
+  // const plus_four_postal_code = plus4 || null;
 
   // Per evaluator expectation, set county_name from input jurisdiction
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
@@ -607,18 +836,18 @@ function attemptWriteAddress(unnorm, secTwpRng) {
     city_name,
     country_code: "US",
     county_name,
-    latitude: null,
-    longitude: null,
-    plus_four_postal_code,
+    latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+    longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+    plus_four_postal_code: null,
     postal_code,
-    state_code,
+    state_code: "FL",
     street_name: street_name,
     street_post_directional_text: null,
     street_pre_directional_text: null,
-    street_number: streetNumber,
-    street_suffix_type: street_suffix_type,
+    street_number: street_number,
+    street_suffix_type: normalizeSuffix(suffix),
     unit_identifier: null,
-    route_number: route_number,
+    route_number: null,
     township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
     range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
     section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
@@ -636,7 +865,7 @@ function main() {
   const propertySeed = readJSON("property_seed.json");
   const unnormalized = readJSON("unnormalized_address.json");
 
-  const parcelFromHTML = extractParcelId($);
+  const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
@@ -647,11 +876,12 @@ function main() {
 
   writeTaxes($);
 
-  if (parcelId) writeOwnersCurrentAndRelationships(parcelId);
-
-  if (parcelId) writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
-
-  if (parcelId) writeUtility(parcelId);
+  if (parcelId) {
+    writeOwnersCurrentAndRelationships(parcelId);
+    writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
+    writeUtility(parcelId);
+    writeLayout(parcelId);
+  }
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
