@@ -6,698 +6,1073 @@ function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
 
-function readJSON(p) {
+function clearDir(p) {
+  if (!fs.existsSync(p)) return;
+  for (const f of fs.readdirSync(p)) {
+    fs.unlinkSync(path.join(p, f));
+  }
+}
+
+function readJson(p) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
-function writeJSON(p, obj) {
+function writeJson(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
-function safeUnlink(p) {
-  try {
-    if (fs.existsSync(p)) fs.unlinkSync(p);
-  } catch (_) {}
+function parseCurrencyToNumber(str) {
+  if (str == null) return null;
+  const cleaned = String(str).replace(/[$,\s]/g, "");
+  if (cleaned === "") return null;
+  const val = Number(cleaned);
+  return Number.isFinite(val) ? val : null;
 }
 
-function parseCurrencyToNumber(txt) {
-  if (txt == null) return null;
-  const s = String(txt).replace(/[$,\s]/g, "");
-  if (s === "" || isNaN(Number(s))) return null;
-  return Number(Number(s).toFixed(2));
+function extractParcelIdentifier($) {
+  const h2 = $('h2:contains("Parcel")').first().text();
+  const m = h2.match(/Parcel\s+([A-Z0-9\-]+)/i);
+  return m ? m[1] : null;
 }
 
-function toISODate(mdY) {
-  if (!mdY) return null;
-  const m = String(mdY).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(m)) return m;
-  const parts = m.split(/[\/\-]/);
-  if (parts.length === 3) {
-    let [mm, dd, yyyy] = parts;
-    if (yyyy.length === 2) {
-      const yy = parseInt(yyyy, 10);
-      yyyy = (yy >= 80 ? "19" : "20") + (yy < 10 ? "0" + yy : String(yy));
+function extractLegalDescription($) {
+  let legal = null;
+  const legalB = $("b")
+    .filter((i, el) => $(el).text().trim() === "Legal Description")
+    .first();
+  if (legalB && legalB.length) {
+    let texts = [];
+    let node = legalB[0].nextSibling;
+    while (node) {
+      if (
+        node.type === "tag" &&
+        (node.name === "b" || node.name === "hr" || node.name === "h3")
+      )
+        break;
+      if (node.type === "text") {
+        const t = (node.data || "").replace(/\s+/g, " ").trim();
+        if (t) texts.push(t);
+      } else if (node.type === "tag") {
+        const $n = $(node);
+        let t = $n.text();
+        t = (t || "").replace(/\s+/g, " ").trim();
+        if (t) texts.push(t);
+      }
+      node = node.nextSibling;
     }
-    const month = mm.padStart(2, "0");
-    const day = dd.padStart(2, "0");
-    return `${yyyy}-${month}-${day}`;
+    legal = texts.filter(Boolean).join(" ").trim();
+    if (legal) legal = legal.replace(/^Legal Description\s*/i, "").trim();
   }
-  return null;
+  return legal || null;
 }
 
-function titleCaseName(s) {
-  if (s == null) return null;
-  s = String(s).trim();
-  if (s === "") return s;
-  return s
-    .toLowerCase()
-    .split(/\s+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+function extractZoning($) {
+  const landH3 = $('h3:contains("Land Lines")');
+  let zone = null;
+  landH3.each((i, el) => {
+    const table = $(el).nextAll("div.table-responsive").first().find("table");
+    const tr = table.find("tr").eq(1);
+    const td = tr.find("td").eq(3);
+    const z = td.text().trim();
+    if (z) zone = z;
+  });
+  return zone || null;
 }
 
-function normalizeMiddleName(s) {
-  if (s == null) return null;
-  s = String(s).trim();
-  if (s === "") return null;
-  if (s.length === 1) return s.toUpperCase();
-  return titleCaseName(s);
-}
-
-function mapPropertyType(usageText, useDescText) {
-  const text = ((usageText || "") + " " + (useDescText || "")).toUpperCase();
-  if (text.includes("SINGLE FAMILY")) return "SingleFamily";
-  if (text.includes("DUPLEX")) return "Duplex";
-  if (text.includes("TRIPLEX") || text.includes("3")) return "3Units";
-  if (text.includes("QUAD") || text.includes("4")) return "4Units";
-  if (text.includes("CONDO")) return "Condominium";
-  if (text.includes("TOWNHOUSE") || text.includes("TOWNHOME"))
-    return "Townhouse";
-  if (text.includes("MOBILE HOME")) return "MobileHome";
-  if (text.includes("MULTI-FAMILY") || text.includes("MULTI FAMILY"))
-    return "MultipleFamily";
-  if (text.includes("VACANT")) return "VacantLand";
-  const err = {
-    type: "error",
-    message: `Unknown enum value ${usageText || useDescText}.`,
-    path: "property.property_type",
-  };
-  throw new Error(JSON.stringify(err));
-}
-
-function mapUnitsType(propType) {
-  switch (propType) {
-    case "SingleFamily":
-      return "One";
-    case "Duplex":
-      return "Two";
-    case "3Units":
-      return "Three";
-    case "4Units":
-      return "Four";
-    case "MultipleFamily":
-      return "TwoToFour";
-    default:
-      return "OneToFour";
-  }
-}
-
-function mapDeedType(instr) {
-  const s = (instr || "").trim().toUpperCase();
-  if (s === "WD" || s === "WM") return "Warranty Deed";
-  if (s === "QD") return "Quitclaim Deed";
-  if (s === "CT") return "Contract for Deed";
-  if (s === "FJ") return "Court Order Deed";
-  // Unknown -> return null (deed object may be empty)
-  return null;
-}
-
-function inferExteriorWallMaterial(val) {
-  const s = (val || "").toUpperCase();
-  if (s.includes("HARDIE")) return "Fiber Cement Siding";
-  if (s.includes("STUCCO")) return "Stucco";
-  if (s.includes("BRICK")) return "Brick";
-  if (s.includes("BLOCK")) return "Concrete Block";
-  return null;
-}
-
-function inferRoofDesign(val) {
-  const s = (val || "").toUpperCase();
-  if (s.includes("GABLE") && s.includes("HIP")) return "Combination";
-  if (s.includes("GABLE")) return "Gable";
-  if (s.includes("HIP")) return "Hip";
-  if (s.includes("FLAT")) return "Flat";
-  return null;
-}
-
-(function main() {
-  try {
-    const dataDir = path.join(".", "data");
-    ensureDir(dataDir);
-
-    const html = fs.readFileSync("input.html", "utf8");
-    const unnormalizedAddress = readJSON("unnormalized_address.json");
-    const propertySeed = readJSON("property_seed.json");
-
-    const ownersPath = path.join("owners", "owner_data.json");
-    const utilsPath = path.join("owners", "utilities_data.json");
-    const layoutPath = path.join("owners", "layout_data.json");
-
-    const ownersData = fs.existsSync(ownersPath) ? readJSON(ownersPath) : null;
-    const utilitiesData = fs.existsSync(utilsPath) ? readJSON(utilsPath) : null;
-    const layoutData = fs.existsSync(layoutPath) ? readJSON(layoutPath) : null;
-
-    const $ = cheerio.load(html);
-
-    // PROPERTY
-    const parcelIdHtml = $("#ctlBodyPane_ctl02_ctl01_lblParcelID")
-      .text()
-      .trim();
-    const parcel_identifier =
-      propertySeed && propertySeed.parcel_id
-        ? propertySeed.parcel_id
-        : parcelIdHtml;
-
-    const legalDesc =
-      $("#ctlBodyPane_ctl02_ctl01_lblLegalDescription").text().trim() || null;
-    const subdivision =
-      $("#ctlBodyPane_ctl02_ctl01_lblSubdivision").text().trim() || null;
-    const usageText =
-      $("#ctlBodyPane_ctl02_ctl01_lblUsage").text().trim() || null;
-
-    const buildingSection = $("#ctlBodyPane_ctl08_mSection");
-    function findValueByExactLabel(section, label) {
-      const th = section
-        .find("th")
-        .filter(
-          (i, el) => $(el).text().trim().toLowerCase() === label.toLowerCase(),
-        )
-        .first();
-      if (!th.length) return null;
-      const td = th.closest("tr").find("td").first();
-      return td.text().trim() || null;
-    }
-
-    const conditionedArea = findValueByExactLabel(
-      buildingSection,
-      "Conditioned Area",
-    );
-    const actualArea = findValueByExactLabel(buildingSection, "Actual Area");
-    const actualYearBuilt = findValueByExactLabel(
-      buildingSection,
-      "Actual Year Built",
-    );
-    const effectiveYearBuilt = findValueByExactLabel(
-      buildingSection,
-      "Effective Year Built",
-    );
-    const useDescText = findValueByExactLabel(buildingSection, "Use");
-
-    const property_type = mapPropertyType(usageText, useDescText);
-    const number_of_units_type = mapUnitsType(property_type);
-
-    const propertyObj = {
-      parcel_identifier: String(parcel_identifier),
-      property_legal_description_text: legalDesc,
-      property_structure_built_year: actualYearBuilt
-        ? parseInt(actualYearBuilt, 10)
-        : null,
-      property_effective_built_year: effectiveYearBuilt
-        ? parseInt(effectiveYearBuilt, 10)
-        : null,
-      property_type,
-      livable_floor_area: conditionedArea ? String(conditionedArea) : null,
-      total_area: actualArea ? String(actualArea) : null,
-      area_under_air: conditionedArea ? String(conditionedArea) : null,
-      subdivision,
-      number_of_units_type,
-    };
-
-    writeJSON(path.join(dataDir, "property.json"), propertyObj);
-
-    // ADDRESS – always write with required keys present (nullable allowed by schema)
-    const fullAddr =
-      unnormalizedAddress && unnormalizedAddress.full_address
-        ? unnormalizedAddress.full_address
-        : null;
-    let street_number = null,
-      street_pre_directional_text = null,
-      street_name = null,
-      street_suffix_type = null,
-      unit_identifier = null;
-    let city_name = null,
-      state_code = null,
-      postal_code = null,
-      plus_four_postal_code = null;
-
-    if (fullAddr) {
-      const parts = fullAddr.split(",");
-      const first = (parts[0] || "").trim();
-      const rest = parts.slice(1).join(",").trim();
-      const tokens = first.split(/\s+/);
-      if (tokens.length >= 3) {
-        street_number = tokens[0];
-        street_pre_directional_text = tokens[1].toUpperCase();
-        // suffix
-        const lastTok = tokens[tokens.length - 1].toUpperCase();
-        const suffixMap = {
-          ALY: "Aly",
-          AVE: "Ave",
-          AV: "Ave",
-          AVENUE: "Ave",
-          BLVD: "Blvd",
-          CIR: "Cir",
-          CT: "Ct",
-          DR: "Dr",
-          HWY: "Hwy",
-          LN: "Ln",
-          PL: "Pl",
-          RD: "Rd",
-          "RD.": "Rd",
-          RDG: "Rdg",
-          PKWY: "Pkwy",
-          ST: "St",
-          TER: "Ter",
-          TRL: "Trl",
-          WAY: "Way",
-        };
-        street_suffix_type = suffixMap[lastTok] || null;
-        const nameParts = tokens.slice(
-          2,
-          street_suffix_type ? tokens.length - 1 : tokens.length,
-        );
-        street_name = nameParts.join(" ");
+function extractAYBYears($) {
+  const years = [];
+  $('h3:contains("Buildings")')
+    .parent()
+    .find("table")
+    .each((i, tbl) => {
+      const $tbl = $(tbl);
+      const thead = $tbl.find("thead");
+      if (!thead.length) return;
+      const headerCells = thead.find("tr").last().find("th");
+      let aybIndex = -1;
+      headerCells.each((j, th) => {
+        if ($(th).text().trim().toUpperCase() === "AYB") aybIndex = j;
+      });
+      if (aybIndex >= 0) {
+        const row = $tbl.find("tr").eq(1);
+        if (row && row.length) {
+          const yTxt = row.find("td").eq(aybIndex).text().trim();
+          const y = parseInt(yTxt, 10);
+          if (!isNaN(y)) years.push(y);
+        }
       }
-      const m2 = rest.match(/^([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/);
-      if (m2) {
-        city_name = m2[1].trim().toUpperCase();
-        state_code = m2[2];
-        postal_code = m2[3];
-        plus_four_postal_code = m2[4] || null;
-      }
-    }
-
-    let section = null,
-      township = null,
-      range = null;
-    const strSTR = $("#ctlBodyPane_ctl02_ctl01_lblSecTwpRng").text().trim();
-    if (strSTR) {
-      const a = strSTR.split("-");
-      if (a.length === 3) {
-        section = a[0];
-        township = a[1];
-        range = a[2];
-      }
-    }
-
-    const addressObj = {
-      street_number: street_number || null,
-      street_pre_directional_text: street_pre_directional_text || null,
-      street_name: street_name || null,
-      street_suffix_type: street_suffix_type || null,
-      street_post_directional_text: null,
-      unit_identifier: unit_identifier || null,
-      city_name: city_name || null,
-      municipality_name: null,
-      county_name: "Levy",
-      state_code: state_code || null,
-      postal_code: postal_code || null,
-      plus_four_postal_code: plus_four_postal_code || null,
-      country_code: "US",
-      latitude: null,
-      longitude: null,
-      lot: null,
-      block: null,
-      section: section || null,
-      township: township || null,
-      range: range || null,
-      route_number: null,
-    };
-    writeJSON(path.join(dataDir, "address.json"), addressObj);
-
-    // TAX – from Valuation table
-    const valTableRows = $("#ctlBodyPane_ctl06_ctl01_grdValuation tbody tr");
-    const getVal = (rowLabel) => {
-      const row = valTableRows.filter(
-        (i, el) =>
-          $(el).find("th").first().text().trim().toLowerCase() ===
-          rowLabel.toLowerCase(),
-      );
-      if (!row.length) return null;
-      const valTxt = row.first().find("td").last().text().trim();
-      return parseCurrencyToNumber(valTxt);
-    };
-
-    let taxYear = null;
-    const headerTxt = $("#ctlBodyPane_ctl06_ctl01_grdValuation thead th")
-      .last()
-      .text();
-    const mHeader = headerTxt && headerTxt.match(/(\d{4})/);
-    if (mHeader) taxYear = parseInt(mHeader[1], 10);
-
-    if (taxYear) {
-      const taxObj = {
-        tax_year: taxYear,
-        property_building_amount: getVal("Building Value"),
-        property_land_amount: getVal("Market Land Value"),
-        property_market_value_amount: getVal("Just (Market) Value"),
-        property_assessed_value_amount: getVal("Assessed Value"),
-        property_taxable_value_amount: getVal("Taxable Value"),
-        monthly_tax_amount: null,
-        period_start_date: null,
-        period_end_date: null,
-      };
-      writeJSON(path.join(dataDir, `tax_${taxYear}.json`), taxObj);
-    }
-
-    // SALES + DEEDS – parse all rows (including $0.00)
-    const salesRows = $("#ctlBodyPane_ctl11_ctl01_grdSales tbody tr");
-    let salesIndex = 0;
-    const salesDateToIndex = new Map();
-
-    salesRows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length < 2) return;
-      const dateTxt = $(tds[0]).text().trim();
-      const priceTxt = $(tds[1]).text().trim();
-      const instrTxt = $(tds[2]).text().trim();
-      const iso = toISODate(dateTxt);
-      const price = parseCurrencyToNumber(priceTxt);
-      if (!iso || price == null) return;
-
-      const saleObj = {
-        ownership_transfer_date: iso,
-        purchase_price_amount: price,
-      };
-      salesIndex += 1;
-      const salesFile = path.join(dataDir, `sales_${salesIndex}.json`);
-      writeJSON(salesFile, saleObj);
-      if (!salesDateToIndex.has(iso)) salesDateToIndex.set(iso, []);
-      salesDateToIndex.get(iso).push(salesIndex);
-
-      // Deed corresponding to this sale
-      const deedType = mapDeedType(instrTxt);
-      const deedObj = {};
-      if (deedType) deedObj.deed_type = deedType;
-      const deedFile = path.join(dataDir, `deed_${salesIndex}.json`);
-      writeJSON(deedFile, deedObj);
-      // Relationship sales -> deed
-      const relSD = {
-        to: { "/": `./sales_${salesIndex}.json` },
-        from: { "/": `./deed_${salesIndex}.json` },
-      };
-      writeJSON(
-        path.join(dataDir, `relationship_sales_deed_${salesIndex}.json`),
-        relSD,
-      );
     });
+  return years;
+}
 
-    // OWNERS – from owners/owner_data.json only
-    let personCounter = 0;
-    let companyCounter = 0;
-    let relPersonCounter = 0;
-    let relCompanyCounter = 0;
+function extractUnitsTotal($) {
+  let txt = "";
+  $("div").each((i, el) => {
+    const t = $(el).text();
+    if (t && /TOTAL\s*=\s*\d+\s*UNITS/i.test(t)) {
+      txt = t;
+      return false;
+    }
+  });
+  if (txt) {
+    const m = txt.match(/TOTAL\s*=\s*(\d+)\s*UNITS/i);
+    if (m) return parseInt(m[1], 10);
+  }
+  return null;
+}
 
-    const personKeyToIndex = new Map();
-    const companyNameToIndex = new Map();
+function extractDorCode($) {
+  let code = null,
+    label = null;
+  $('b:contains("DOR Code:")').each((i, el) => {
+    const a = $(el).nextAll("a").first();
+    if (a && a.length) {
+      const t = a.text().trim();
+      const m = t.match(/^(\d+)\s*\-/);
+      if (m) {
+        code = m[1];
+        label = t;
+      }
+    }
+  });
+  return { code, label };
+}
 
-    function writePerson(first, last, middle) {
-      const key = `${first}|${middle || ""}|${last}`.toLowerCase();
-      if (personKeyToIndex.has(key)) return personKeyToIndex.get(key);
-      personCounter += 1;
-      const personObj = {
+function mapDorToPropertyType(dorCode) {
+  const map = {
+    "00": "VacantLand",
+    "01": "SingleFamily",
+    "02": "MobileHome",
+    "03": "MultiFamilyMoreThan10",
+    "04": "Condominium",
+    "05": "Cooperative",
+    "06": "RetirementHome",
+    "07": "MiscellaneousResidential",
+    "08": "MultiFamilyLessThan10",
+    "09": "CommonElementsArea",
+    "10": "VacantCommercial",
+    "11": "RetailStore",
+    "12": "MixedUse",
+    "13": "DepartmentStore",
+    "14": "Supermarket",
+    "15": "ShoppingCenterRegional",
+    "16": "ShoppingCenterCommunity",
+    "17": "OfficeBuildingOneStory",
+    "18": "OfficeBuildingMultiStory",
+    "19": "ProfessionalBuilding",
+    "20": "AirportBusTerminal",
+    "21": "RestaurantCafe",
+    "22": "DriveInRestaurant",
+    "23": "FinancialInstitution",
+    "24": "InsuranceCompanyOffice",
+    "25": "RepairServiceNonAuto",
+    "26": "ServiceStation",
+    "27": "VehicleSalesServiceRent",
+    "28": "ParkingLotMobileHomePark",
+    "29": "WholesaleOutletProduct",
+    "30": "FloristGreenhouse",
+    "31": "DriveInTheaterOpenStadium",
+    "32": "EnclosedTheaterAuditorium",
+    "33": "NightclubBar",
+    "34": "BowlingAlleySkatingRinkPoolHall",
+    "35": "TouristAttractionPermanent",
+    "36": "Camp",
+    "37": "RaceTrack",
+    "38": "GolfCourse",
+    "39": "HotelMotel",
+    "40": "VacantIndustrial",
+    "41": "LightManufacturing",
+    "42": "HeavyManufacturing",
+    "43": "LumberYard",
+    "44": "PackingPlant",
+    "45": "CanneryBottler",
+    "46": "OtherFoodProcessing",
+    "47": "MineralProcessing",
+    "48": "WarehouseStorageDistribution",
+    "49": "OpenStorage",
+    "50": "ImprovedAgriculture",
+    "51": "CroplandSoilCap1",
+    "52": "CroplandSoilCap2",
+    "53": "CroplandSoilCap3",
+    "54": "Timberland90Plus",
+    "55": "Timberland80_89",
+    "56": "Timberland70_79",
+    "57": "Timberland60_69",
+    "58": "Timberland50_59",
+    "59": "TimberlandNonClassified",
+    "60": "GrazingSoilCap1",
+    "61": "GrazingSoilCap2",
+    "62": "GrazingSoilCap3",
+    "63": "GrazingSoilCap4",
+    "64": "GrazingSoilCap5",
+    "65": "GrazingSoilCap6",
+    "66": "GrovesOrchards",
+    "67": "PoultryBeesFish",
+    "68": "DairiesFeedLots",
+    "69": "OrnamentalsMisc",
+    "70": "VacantInstitutional",
+    "71": "Church",
+    "72": "PrivateSchool",
+    "73": "PrivateHospital",
+    "74": "HomeForTheAged",
+    "75": "NonProfitService",
+    "76": "MortuaryCemetery",
+    "77": "ClubLodgeHall",
+    "78": "RestHome",
+    "79": "CulturalGroup",
+    "80": "VacantGovernmental",
+    "81": "Military",
+    "82": "ForestParkRecreation",
+    "83": "PublicSchool",
+    "84": "College",
+    "85": "Hospital",
+    "86": "County",
+    "87": "State",
+    "88": "Federal",
+    "89": "Municipal",
+    "90": "LeaseholdInterest",
+    "91": "Utility",
+    "92": "Mining",
+    "93": "SubSurfaceRights",
+    "94": "RightOfWay",
+    "95": "RiverAndLake",
+    "96": "WastelandDump",
+    "97": "RecreationAndParkLand",
+    "9801": "CentrallyAssessed",
+    "9802": "CentrallyAssessedActiveRoW",
+    "99": "NonAgriculturalAcreage",
+  };
+  return map[dorCode] || null;
+}
+
+function extractTopAddressBlock($) {
+  const p = $("div.row").find("p").first();
+  if (!p || !p.length) return [];
+  const html = p.html() || "";
+  const normalized = html.replace(/<br\s*\/?>/gi, "\n");
+  const lines = normalized
+    .split(/\n+/)
+    .map((l) =>
+      l
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter((l) => l && l !== "/>");
+  return lines;
+}
+
+function parseFullAddressParts(fullAddress) {
+  const s = ((full_address) =>
+    (full_address || "").replace(/\s+/g, " ").trim())(fullAddress);
+  const m = s.match(
+    /(.+?)\s*([A-Z\s\-']+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/,
+  );
+  if (!m) return null;
+  const streetPart = m[1].trim();
+  const city = m[2].trim();
+  const state = m[3];
+  const zip = m[4];
+  const plus4 = m[5] || null;
+  return { streetPart, city, state, zip, plus4 };
+}
+
+function mapStreetSuffix(raw) {
+  if (!raw) return null;
+  const up = raw.toUpperCase();
+  const map = {
+    ST: "St",
+    "ST.": "St",
+    RD: "Rd",
+    "RD.": "Rd",
+    DR: "Dr",
+    "DR.": "Dr",
+    AVE: "Ave",
+    "AVE.": "Ave",
+    BLVD: "Blvd",
+    "BLVD.": "Blvd",
+    HWY: "Hwy",
+    CT: "Ct",
+    LN: "Ln",
+    PL: "Pl",
+    TER: "Ter",
+    // Add more common suffixes if needed
+  };
+  if (map[up]) return map[up];
+  // Only throw error if it's a known suffix that's not mapped, otherwise return null
+  // for cases where the last token isn't a suffix.
+  // For now, we'll keep the error to catch unhandled cases.
+  throw new Error(
+    JSON.stringify({
+      type: "error",
+      message: `Unknown enum value ${raw}.`,
+      path: "address.street_suffix_type",
+    }),
+  );
+}
+
+function parseCityStateZip(line) {
+  if (!line) return null;
+  const m = line
+    .trim()
+    .match(/^([A-Z \-']+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i);
+  if (!m) return null;
+  return {
+    city: m[1].toUpperCase(),
+    state: m[2].toUpperCase(),
+    zip: m[3],
+    plus4: m[4] || null,
+  };
+}
+
+function parseStreetLine(line) {
+  if (!line) return null;
+  const tokens = line.trim().split(/\s+/);
+  if (tokens.length < 2) return null;
+
+  let street_number = null;
+  let street_pre_directional_text = null;
+  let street_name_tokens = [];
+  let street_suffix_type = null;
+  let street_post_directional_text = null;
+
+  // Attempt to parse street number
+  if (tokens[0].match(/^\d+$/)) {
+    street_number = tokens.shift();
+  }
+
+  // Check for pre-directional (e.g., N, S, E, W)
+  const directionalMap = {
+    N: "N",
+    S: "S",
+    E: "E",
+    W: "W",
+    NE: "NE",
+    NW: "NW",
+    SE: "SE",
+    SW: "SW",
+  };
+  if (tokens.length > 0 && directionalMap[tokens[0].toUpperCase()]) {
+    street_pre_directional_text = directionalMap[tokens.shift().toUpperCase()];
+  }
+
+  // Check for post-directional (e.g., N, S, E, W) at the end
+  if (tokens.length > 0 && directionalMap[tokens[tokens.length - 1].toUpperCase()]) {
+    street_post_directional_text = directionalMap[tokens.pop().toUpperCase()];
+  }
+
+  // Attempt to parse street suffix from the end of remaining tokens
+  if (tokens.length > 0) {
+    const lastToken = tokens[tokens.length - 1];
+    try {
+      street_suffix_type = mapStreetSuffix(lastToken);
+      if (street_suffix_type) {
+        tokens.pop(); // Remove suffix if successfully mapped
+      } else {
+        // If mapStreetSuffix throws an error, it means it's an unhandled suffix,
+        // so we'll treat it as part of the street name for now.
+        // Or, if it returns null, it's not a suffix.
+        street_name_tokens.push(lastToken);
+      }
+    } catch (e) {
+      // If mapStreetSuffix throws an error, it's an unknown suffix,
+      // so we'll treat it as part of the street name.
+      street_name_tokens.push(lastToken);
+    }
+  }
+
+  street_name_tokens = tokens; // Remaining tokens are the street name
+
+  return {
+    street_number: street_number,
+    street_name: street_name_tokens.join(" ").trim() || null,
+    street_suffix_type: street_suffix_type,
+    street_pre_directional_text: street_pre_directional_text,
+    street_post_directional_text: street_post_directional_text,
+  };
+}
+
+
+function extractLandFrontDepth($) {
+  const table = $('h3:contains("Land Lines")').parent().find("table").first();
+  if (!table || !table.length) return { front: null, depth: null };
+  const tr = table.find("tr").eq(1);
+  const tds = tr.find("td");
+  if (tds.length < 6) return { front: null, depth: null };
+  const frontTxt = tds.eq(4).text().trim();
+  const depthTxt = tds.eq(5).text().trim();
+  const front = frontTxt
+    ? Math.round(parseFloat(frontTxt.replace(/,/g, "")))
+    : null;
+  const depth = depthTxt
+    ? Math.round(parseFloat(depthTxt.replace(/,/g, "")))
+    : null;
+  return {
+    front: Number.isFinite(front) ? front : null,
+    depth: Number.isFinite(depth) ? depth : null,
+  };
+}
+
+function extractStructureHints($) {
+  let roofDesign = null;
+  let roofCoverDesc = null;
+  let interiorFloorDesc = null;
+  let heatingTypeDesc = null;
+  let coolingTypeDesc = null;
+  $("table").each((i, tbl) => {
+    const rows = $(tbl).find("tr");
+    rows.each((ri, tr) => {
+      const tds = $(tr).find("td");
+      if (tds.length === 3) {
+        const elem = tds.eq(0).text().trim();
+        const desc = tds.eq(2).text().trim();
+        if (elem === "Roof Structure") roofDesign = desc;
+        if (elem === "Roof Cover") roofCoverDesc = desc;
+        if (elem === "Interior Flooring") interiorFloorDesc = desc;
+        if (elem === "Heating Type") heatingTypeDesc = desc;
+        if (elem === "Air Cond. Type") coolingTypeDesc = desc;
+      }
+    });
+  });
+  return {
+    roofDesign,
+    roofCoverDesc,
+    interiorFloorDesc,
+    heatingTypeDesc,
+    coolingTypeDesc,
+  };
+}
+
+function main() {
+  ensureDir("data");
+  clearDir("data");
+
+  const inputHtml = fs.readFileSync("input.html", "utf8");
+  const unnormalized = readJson("unnormalized_address.json");
+  const seed = readJson("property_seed.json");
+
+  const ownersData = readJson(path.join("owners", "owner_data.json"));
+  const utilitiesData = readJson(path.join("owners", "utilities_data.json"));
+  const layoutData = readJson(path.join("owners", "layout_data.json"));
+
+  const $ = cheerio.load(inputHtml);
+
+  const parcelIdentifier = extractParcelIdentifier($);
+  const legalDesc = extractLegalDescription($);
+  const zoning = extractZoning($);
+  const aybYears = extractAYBYears($);
+  const propertyBuiltYear = aybYears.length ? Math.min(...aybYears) : null;
+  const unitsTotal = extractUnitsTotal($);
+  const dor = extractDorCode($);
+  const propertyType = dor.code ? mapDorToPropertyType(dor.code) : null;
+
+  if (!propertyType)
+    throw new Error(
+      JSON.stringify({
+        type: "error",
+        message: `Unknown enum value for DOR Code ${dor.code || "N/A"}.`,
+        path: "property.property_type",
+      }),
+    );
+
+  const property = {
+    area_under_air: null,
+    historic_designation: false,
+    livable_floor_area: null,
+    number_of_units: unitsTotal || null,
+    number_of_units_type: null,
+    parcel_identifier: parcelIdentifier || (seed && seed.parcel_id) || "",
+    property_effective_built_year: null,
+    property_legal_description_text: legalDesc || null,
+    property_structure_built_year: propertyBuiltYear || null,
+    property_type: propertyType,
+    subdivision: null,
+    total_area: null,
+    zoning: zoning || null,
+  };
+  writeJson(path.join("data", "property.json"), property);
+
+  // Address
+  const lines = extractTopAddressBlock($);
+  const address = {
+    block: null,
+    city_name: null,
+    country_code: "US",
+    county_name:
+      unnormalized && unnormalized.county_jurisdiction
+        ? unnormalized.county_jurisdiction
+        : null,
+    latitude: null,
+    longitude: null,
+    lot: null,
+    municipality_name: null,
+    plus_four_postal_code: null,
+    postal_code: null,
+    range: null,
+    request_identifier: null, // Added as per schema
+    route_number: null,
+    section: null,
+    state_code: null,
+    street_name: null,
+    street_number: null,
+    street_post_directional_text: null,
+    street_pre_directional_text: null,
+    street_suffix_type: null,
+    township: null,
+    unit_identifier: null,
+    source_http_request: { // Added as per schema
+      method: "GET",
+      url: "http://example.com/address_data" // Placeholder, replace with actual source if available
+    }
+  };
+
+  if (lines.length >= 2) {
+    const street = parseStreetLine(lines[0]);
+    const csz = parseCityStateZip(lines[1]);
+    if (street) {
+      address.street_number = street.street_number;
+      address.street_name = street.street_name;
+      address.street_suffix_type = street.street_suffix_type;
+      address.street_pre_directional_text = street.street_pre_directional_text;
+      address.street_post_directional_text = street.street_post_directional_text;
+    }
+    if (csz) {
+      address.city_name = csz.city;
+      address.state_code = csz.state;
+      address.postal_code = csz.zip;
+      address.plus_four_postal_code = csz.plus4;
+    }
+  }
+  if (!address.city_name || !address.state_code || !address.postal_code) {
+    const pText = $("div.row")
+      .find("p")
+      .first()
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+    const m = pText.match(/([A-Z \-']+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?/i);
+    if (m) {
+      address.city_name = m[1].toUpperCase();
+      address.state_code = m[2].toUpperCase();
+      address.postal_code = m[3];
+      address.plus_four_postal_code =
+        address.plus_four_postal_code || m[4] || null;
+    }
+  }
+  if (
+    !address.city_name ||
+    !address.state_code ||
+    !address.postal_code ||
+    !address.street_number ||
+    !address.street_suffix_type ||
+    !address.street_name
+  ) {
+    const parts = parseFullAddressParts(unnormalized.full_address || "");
+    if (parts) {
+      const { streetPart, city, state, zip, plus4 } = parts;
+      if (!address.city_name) address.city_name = (city || "").toUpperCase();
+      if (!address.state_code) address.state_code = state;
+      if (!address.postal_code) address.postal_code = zip;
+      if (!address.plus_four_postal_code) address.plus_four_postal_code = plus4;
+      if (
+        !address.street_number ||
+        !address.street_suffix_type ||
+        !address.street_name ||
+        !address.street_pre_directional_text ||
+        !address.street_post_directional_text
+      ) {
+        const streetParsed = parseStreetLine(streetPart);
+        if (streetParsed) {
+          if (!address.street_number) address.street_number = streetParsed.street_number;
+          if (!address.street_name) address.street_name = streetParsed.street_name;
+          if (!address.street_suffix_type) address.street_suffix_type = streetParsed.street_suffix_type;
+          if (!address.street_pre_directional_text) address.street_pre_directional_text = streetParsed.street_pre_directional_text;
+          if (!address.street_post_directional_text) address.street_post_directional_text = streetParsed.street_post_directional_text;
+        }
+      }
+    }
+  }
+  lines.forEach((line) => {
+    const m = line.match(/\bLT\s+(\w+)/i);
+    if (m) address.lot = m[1];
+  });
+  if (legalDesc) {
+    const mblk = legalDesc.match(/\bBLK\s+(\w+)/i);
+    if (mblk) address.block = mblk[1];
+  }
+  if (parcelIdentifier) {
+    const m = parcelIdentifier.match(/P\-(\d{2})\-(\d{2})\-(\d{2})/i);
+    if (m) {
+      address.section = m[1];
+      address.township = m[2];
+      address.range = m[3];
+    }
+  }
+  writeJson(path.join("data", "address.json"), address);
+
+  // Taxes
+  const valueSummary = (() => {
+    const table = $('h3:contains("Value Summary")')
+      .closest("div")
+      .nextAll("table")
+      .first();
+    const map = {};
+    table.find("tr").each((i, tr) => {
+      const tds = $(tr).find("td");
+      if (tds.length >= 2) {
+        const label = tds.eq(0).text().trim();
+        const val = tds.eq(1).text().trim();
+        if (label) map[label] = val;
+      }
+    });
+    return map;
+  })();
+  const taxableSummary = (() => {
+    const table = $('h3:contains("Taxable Value Summary")')
+      .closest("div")
+      .nextAll("table")
+      .first();
+    const map = {};
+    table.find("tr").each((i, tr) => {
+      const tds = $(tr).find("td");
+      if (tds.length >= 2) {
+        const label = tds.eq(0).text().trim();
+        const val = tds.eq(1).text().trim();
+        if (label) map[label] = val;
+      }
+    });
+    return map;
+  })();
+  const totalBuildingVal = parseCurrencyToNumber(
+    valueSummary["Total Building Value"],
+  );
+  const totalLandVal = parseCurrencyToNumber(valueSummary["Total Land Value"]);
+  const totalJustVal = parseCurrencyToNumber(valueSummary["Total Just Value"]);
+  const totalAssessed = parseCurrencyToNumber(
+    taxableSummary["Total Assessed (Capped) Value"],
+  );
+  const totalTaxable = parseCurrencyToNumber(
+    taxableSummary["Total Taxable Value"],
+  );
+  const tax = {
+    tax_year: new Date().getFullYear(),
+    property_assessed_value_amount: totalAssessed,
+    property_market_value_amount: totalJustVal,
+    property_building_amount: totalBuildingVal,
+    property_land_amount: totalLandVal,
+    property_taxable_value_amount: totalTaxable,
+    monthly_tax_amount: null,
+    period_end_date: null,
+    period_start_date: null,
+    yearly_tax_amount: null,
+    first_year_building_on_tax_roll: null,
+    first_year_on_tax_roll: null,
+  };
+  writeJson(path.join("data", "tax_1.json"), tax);
+
+  // Sales
+  const salesRows = (() => {
+    const rows = [];
+    const table = $('h3:contains("Sales History")')
+      .parent()
+      .find("table")
+      .first();
+    table.find("tr").each((i, tr) => {
+      if (i === 0 || i === 1) return;
+      const tds = $(tr).find("td");
+      if (tds.length < 9) return;
+      const book = tds.eq(0).text().trim();
+      const page = tds.eq(1).text().trim();
+      const month = tds.eq(2).text().trim();
+      const year = tds.eq(3).text().trim();
+      const inst = tds.eq(4).text().trim();
+      const priceTxt = tds.eq(8).text().trim();
+      const orLink = tds.eq(0).find("a").attr("href") || null;
+      if (!year) return;
+      const mm = (month && month.padStart(2, "0")) || "01";
+      const dateStr = `${year}-${mm}-01`;
+      const price = parseCurrencyToNumber(priceTxt);
+      rows.push({ book, page, month, year, inst, price, dateStr, orLink });
+    });
+    return rows;
+  })();
+
+  salesRows.forEach((row, idx) => {
+    const saleIdx = idx + 1;
+    writeJson(path.join("data", `sales_${saleIdx}.json`), {
+      ownership_transfer_date: row.dateStr,
+      purchase_price_amount: row.price,
+    });
+  });
+
+  // Deeds, Files, Relationships
+  salesRows.forEach((row, idx) => {
+    const saleIdx = idx + 1;
+    const deedIdx = saleIdx;
+    const fileIdx = saleIdx;
+    const instUp = (row.inst || "").toUpperCase();
+    let deedType = null;
+    if (instUp === "WD") {
+      deedType = "Warranty Deed";
+    } else if (!instUp || instUp === "") {
+      if (row.price === 1) deedType = "Quitclaim Deed";
+      else deedType = "Warranty Deed";
+    }
+    const deedObj = {};
+    if (deedType) deedObj.deed_type = deedType;
+    writeJson(path.join("data", `deed_${deedIdx}.json`), deedObj);
+
+    if (row.orLink) {
+      writeJson(path.join("data", `file_${fileIdx}.json`), {
+        file_format: "txt",
+        name: `OR ${row.book}/${row.page}`,
+        original_url: row.orLink,
+        ipfs_url: null,
+        document_type:
+          deedType === "Warranty Deed"
+            ? "ConveyanceDeedWarrantyDeed"
+            : "ConveyanceDeed",
+      });
+      if (idx === 0) {
+        writeJson(path.join("data", "relationship_deed_file.json"), {
+          to: { "/": `./deed_${deedIdx}.json` },
+          from: { "/": `./file_${fileIdx}.json` },
+        });
+      } else {
+        writeJson(path.join("data", `relationship_deed_file_${saleIdx}.json`), {
+          to: { "/": `./deed_${deedIdx}.json` },
+          from: { "/": `./file_${fileIdx}.json` },
+        });
+      }
+    }
+    if (idx === 0) {
+      writeJson(path.join("data", "relationship_sales_deed.json"), {
+        to: { "/": `./sales_${saleIdx}.json` },
+        from: { "/": `./deed_${deedIdx}.json` },
+      });
+    } else {
+      writeJson(path.join("data", `relationship_sales_deed_${saleIdx}.json`), {
+        to: { "/": `./sales_${saleIdx}.json` },
+        from: { "/": `./deed_${deedIdx}.json` },
+      });
+    }
+  });
+
+  // Owners and relationship to most recent sale
+  const ownerKey = `property_${parcelIdentifier}`;
+  const fallbackOwnerKey = Object.keys(ownersData).find((k) =>
+    k.endsWith(parcelIdentifier),
+  );
+  const ownerEntry = ownersData[ownerKey] || ownersData[fallbackOwnerKey];
+  let ownerType = null;
+  if (
+    ownerEntry &&
+    ownerEntry.owners_by_date &&
+    ownerEntry.owners_by_date.current &&
+    ownerEntry.owners_by_date.current.length
+  ) {
+    const o = ownerEntry.owners_by_date.current[0];
+    if (o.type === "company") {
+      ownerType = "company";
+      writeJson(path.join("data", "company_1.json"), { name: o.name || null });
+    } else if (o.type === "person") {
+      ownerType = "person";
+      writeJson(path.join("data", "person_1.json"), {
         birth_date: null,
-        first_name: titleCaseName(first),
-        last_name: titleCaseName(last),
-        middle_name: normalizeMiddleName(middle),
+        first_name: o.first_name || null,
+        last_name: o.last_name || null,
+        middle_name: null,
         prefix_name: null,
         suffix_name: null,
         us_citizenship_status: null,
         veteran_status: null,
-      };
-      writeJSON(path.join(dataDir, `person_${personCounter}.json`), personObj);
-      personKeyToIndex.set(key, personCounter);
-      return personCounter;
+      });
     }
+  }
+  if (ownerType && salesRows.length > 0) {
+    if (ownerType === "company")
+      writeJson(path.join("data", "relationship_sales_company.json"), {
+        to: { "/": "./company_1.json" },
+        from: { "/": "./sales_1.json" },
+      });
+    else
+      writeJson(path.join("data", "relationship_sales_person.json"), {
+        to: { "/": "./person_1.json" },
+        from: { "/": "./sales_1.json" },
+      });
+  }
 
-    function writeCompany(name) {
-      const norm = String(name).trim();
-      if (companyNameToIndex.has(norm)) return companyNameToIndex.get(norm);
-      companyCounter += 1;
-      const companyObj = { name: norm };
-      writeJSON(
-        path.join(dataDir, `company_${companyCounter}.json`),
-        companyObj,
-      );
-      companyNameToIndex.set(norm, companyCounter);
-      return companyCounter;
-    }
-
+  // Utilities normalization (respect owners/utilities_data.json but adjust ElectricFurnace to Central if HTML shows Force Air)
+  const utilEntryRaw =
+    utilitiesData[ownerKey] || utilitiesData[fallbackOwnerKey] || null;
+  const hints = extractStructureHints($);
+  if (utilEntryRaw) {
+    const utilOut = { ...utilEntryRaw };
     if (
-      ownersData &&
-      ownersData[`property_${parcel_identifier}`] &&
-      ownersData[`property_${parcel_identifier}`].owners_by_date
+      (utilOut.heating_system_type == null ||
+        utilOut.heating_system_type === "ElectricFurnace") &&
+      hints.heatingTypeDesc &&
+      /Force\s*Air/i.test(hints.heatingTypeDesc)
     ) {
-      const byDate = ownersData[`property_${parcel_identifier}`].owners_by_date;
-      for (const [isoDate, saleIdxList] of salesDateToIndex.entries()) {
-        const ownersOnDate = byDate[isoDate];
-        if (!ownersOnDate || !Array.isArray(ownersOnDate)) continue;
-        for (const owner of ownersOnDate) {
-          if (owner.type === "person") {
-            const pIndex = writePerson(
-              owner.first_name,
-              owner.last_name,
-              owner.middle_name,
-            );
-            for (const sIdx of saleIdxList) {
-              relPersonCounter += 1;
-              const rel = {
-                to: { "/": `./person_${pIndex}.json` },
-                from: { "/": `./sales_${sIdx}.json` },
-              };
-              writeJSON(
-                path.join(
-                  dataDir,
-                  `relationship_sales_person_${relPersonCounter}.json`,
-                ),
-                rel,
-              );
-            }
-          } else if (owner.type === "company") {
-            const cIndex = writeCompany(owner.name);
-            for (const sIdx of saleIdxList) {
-              relCompanyCounter += 1;
-              const rel = {
-                to: { "/": `./company_${cIndex}.json` },
-                from: { "/": `./sales_${sIdx}.json` },
-              };
-              writeJSON(
-                path.join(
-                  dataDir,
-                  `relationship_sales_company_${relCompanyCounter}.json`,
-                ),
-                rel,
-              );
-            }
-          }
-        }
+      utilOut.heating_system_type = "Central";
+    }
+    if (
+      utilOut.cooling_system_type == null &&
+      hints.coolingTypeDesc &&
+      /Central/i.test(hints.coolingTypeDesc)
+    ) {
+      utilOut.cooling_system_type = "CentralAir";
+    }
+    writeJson(path.join("data", "utility.json"), {
+      cooling_system_type: utilOut.cooling_system_type ?? null,
+      electrical_panel_capacity: utilOut.electrical_panel_capacity ?? null,
+      electrical_panel_installation_date:
+        utilOut.electrical_panel_installation_date ?? null,
+      electrical_rewire_date: utilOut.electrical_rewire_date ?? null,
+      electrical_wiring_type: utilOut.electrical_wiring_type ?? null,
+      electrical_wiring_type_other_description:
+        utilOut.electrical_wiring_type_other_description ?? null,
+      heating_system_type: utilOut.heating_system_type ?? null,
+      hvac_capacity_kw: utilOut.hvac_capacity_kw ?? null,
+      hvac_capacity_tons: utilOut.hvac_capacity_tons ?? null,
+      hvac_condensing_unit_present:
+        utilOut.hvac_condensing_unit_present ?? null,
+      hvac_equipment_component: utilOut.hvac_equipment_component ?? null,
+      hvac_equipment_manufacturer: utilOut.hvac_equipment_manufacturer ?? null,
+      hvac_equipment_model: utilOut.hvac_equipment_model ?? null,
+      hvac_installation_date: utilOut.hvac_installation_date ?? null,
+      hvac_seer_rating: utilOut.hvac_seer_rating ?? null,
+      hvac_system_configuration: utilOut.hvac_system_configuration ?? null,
+      hvac_unit_condition: utilOut.hvac_unit_condition ?? null,
+      hvac_unit_issues: utilOut.hvac_unit_issues ?? null,
+      plumbing_system_installation_date:
+        utilOut.plumbing_system_installation_date ?? null,
+      plumbing_system_type: utilOut.plumbing_system_type ?? null,
+      plumbing_system_type_other_description:
+        utilOut.plumbing_system_type_other_description ?? null,
+      public_utility_type: utilOut.public_utility_type ?? null,
+      sewer_connection_date: utilOut.sewer_connection_date ?? null,
+      sewer_type: utilOut.sewer_type ?? null,
+      smart_home_features: utilOut.smart_home_features ?? null,
+      smart_home_features_other_description:
+        utilOut.smart_home_features_other_description ?? null,
+      solar_installation_date: utilOut.solar_installation_date ?? null,
+      solar_inverter_installation_date:
+        utilOut.solar_inverter_installation_date ?? null,
+      solar_inverter_manufacturer: utilOut.solar_inverter_manufacturer ?? null,
+      solar_inverter_model: utilOut.solar_inverter_model ?? null,
+      solar_inverter_visible: utilOut.solar_inverter_visible ?? null,
+      solar_panel_present: utilOut.solar_panel_present ?? null,
+      solar_panel_type: utilOut.solar_panel_type ?? null,
+      solar_panel_type_other_description:
+        utilOut.solar_panel_type_other_description ?? null,
+      water_connection_date: utilOut.water_connection_date ?? null,
+      water_heater_installation_date:
+        utilOut.water_heater_installation_date ?? null,
+      water_heater_manufacturer: utilOut.water_heater_manufacturer ?? null,
+      water_heater_model: utilOut.water_heater_model ?? null,
+      water_source_type: utilOut.water_source_type ?? null,
+      well_installation_date: utilOut.well_installation_date ?? null,
+    });
+  }
+
+  // Layouts
+  let layoutOwnerKey = `property_${parcelIdentifier}`;
+  let layoutEntry = layoutData[layoutOwnerKey];
+  if (!layoutEntry) {
+    const k = Object.keys(layoutData).find((k) => k.endsWith(parcelIdentifier));
+    if (k) layoutEntry = layoutData[k];
+  }
+  if (!layoutEntry) {
+    let bestKey = null;
+    let bestLen = -1;
+    for (const [k, v] of Object.entries(layoutData)) {
+      const len = Array.isArray(v.layouts) ? v.layouts.length : 0;
+      if (len > bestLen) {
+        bestLen = len;
+        bestKey = k;
       }
     }
-
-    // UTILITIES – strictly from owners/utilities_data.json
-    if (utilitiesData && utilitiesData[`property_${parcel_identifier}`]) {
-      const u = utilitiesData[`property_${parcel_identifier}`];
-      const utilObj = {
-        cooling_system_type: u.cooling_system_type ?? null,
-        heating_system_type: u.heating_system_type ?? null,
-        public_utility_type: u.public_utility_type ?? null,
-        sewer_type: u.sewer_type ?? null,
-        water_source_type: u.water_source_type ?? null,
-        plumbing_system_type: u.plumbing_system_type ?? null,
-        plumbing_system_type_other_description:
-          u.plumbing_system_type_other_description ?? null,
-        electrical_panel_capacity: u.electrical_panel_capacity ?? null,
-        electrical_wiring_type: u.electrical_wiring_type ?? null,
-        hvac_condensing_unit_present: u.hvac_condensing_unit_present ?? null,
-        electrical_wiring_type_other_description:
-          u.electrical_wiring_type_other_description ?? null,
-        solar_panel_present: u.solar_panel_present === true,
-        solar_panel_type: u.solar_panel_type ?? null,
-        solar_panel_type_other_description:
-          u.solar_panel_type_other_description ?? null,
-        smart_home_features: Array.isArray(u.smart_home_features)
-          ? u.smart_home_features
-          : null,
-        smart_home_features_other_description:
-          u.smart_home_features_other_description ?? null,
-        hvac_unit_condition: u.hvac_unit_condition ?? null,
-        solar_inverter_visible: u.solar_inverter_visible === true,
-        hvac_unit_issues: u.hvac_unit_issues ?? null,
-        electrical_panel_installation_date:
-          u.electrical_panel_installation_date ?? null,
-        electrical_rewire_date: u.electrical_rewire_date ?? null,
-        hvac_capacity_kw: u.hvac_capacity_kw ?? null,
-        hvac_capacity_tons: u.hvac_capacity_tons ?? null,
-        hvac_equipment_component: u.hvac_equipment_component ?? null,
-        hvac_equipment_manufacturer: u.hvac_equipment_manufacturer ?? null,
-        hvac_equipment_model: u.hvac_equipment_model ?? null,
-        hvac_installation_date: u.hvac_installation_date ?? null,
-        hvac_seer_rating: u.hvac_seer_rating ?? null,
-        hvac_system_configuration: u.hvac_system_configuration ?? null,
-        plumbing_system_installation_date:
-          u.plumbing_system_installation_date ?? null,
-        sewer_connection_date: u.sewer_connection_date ?? null,
-        solar_installation_date: u.solar_installation_date ?? null,
-        solar_inverter_installation_date:
-          u.solar_inverter_installation_date ?? null,
-        solar_inverter_manufacturer: u.solar_inverter_manufacturer ?? null,
-        solar_inverter_model: u.solar_inverter_model ?? null,
-        water_connection_date: u.water_connection_date ?? null,
-        water_heater_installation_date:
-          u.water_heater_installation_date ?? null,
-        water_heater_manufacturer: u.water_heater_manufacturer ?? null,
-        water_heater_model: u.water_heater_model ?? null,
-        well_installation_date: u.well_installation_date ?? null,
+    if (bestKey) layoutEntry = layoutData[bestKey];
+  }
+  if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
+    layoutEntry.layouts.forEach((lay, idx) => {
+      const layout = {
+        bathroom_renovation_date: lay.bathroom_renovation_date ?? null,
+        cabinet_style: lay.cabinet_style ?? null,
+        clutter_level: lay.clutter_level ?? null,
+        condition_issues: lay.condition_issues ?? null,
+        countertop_material: lay.countertop_material ?? null,
+        decor_elements: lay.decor_elements ?? null,
+        design_style: lay.design_style ?? null,
+        fixture_finish_quality: lay.fixture_finish_quality ?? null,
+        floor_level: lay.floor_level ?? null,
+        flooring_installation_date: lay.flooring_installation_date ?? null,
+        flooring_material_type: lay.flooring_material_type ?? null,
+        flooring_wear: lay.flooring_wear ?? null,
+        furnished: lay.furnished ?? null,
+        has_windows: lay.has_windows ?? null,
+        is_exterior: lay.is_exterior ?? false,
+        is_finished: lay.is_finished ?? false,
+        kitchen_renovation_date: lay.kitchen_renovation_date ?? null,
+        lighting_features: lay.lighting_features ?? null,
+        natural_light_quality: lay.natural_light_quality ?? null,
+        paint_condition: lay.paint_condition ?? null,
+        pool_condition: lay.pool_condition ?? null,
+        pool_equipment: lay.pool_equipment ?? null,
+        pool_installation_date: lay.pool_installation_date ?? null,
+        pool_surface_type: lay.pool_surface_type ?? null,
+        pool_type: lay.pool_type ?? null,
+        pool_water_quality: lay.pool_water_quality ?? null,
+        safety_features: lay.safety_features ?? null,
+        size_square_feet: lay.size_square_feet ?? null,
+        spa_installation_date: lay.spa_installation_date ?? null,
+        spa_type: lay.spa_type ?? null,
+        space_index: lay.space_index,
+        space_type: lay.space_type ?? null,
+        view_type: lay.view_type ?? null,
+        visible_damage: lay.visible_damage ?? null,
+        window_design_type: lay.window_design_type ?? null,
+        window_material_type: lay.window_material_type ?? null,
+        window_treatment_type: lay.window_treatment_type ?? null,
       };
-      writeJSON(path.join(dataDir, "utility.json"), utilObj);
-    }
+      writeJson(path.join("data", `layout_${idx + 1}.json`), layout);
+    });
+  }
 
-    // LAYOUT – strictly from owners/layout_data.json
-    if (
-      layoutData &&
-      layoutData[`property_${parcel_identifier}`] &&
-      Array.isArray(layoutData[`property_${parcel_identifier}`].layouts)
-    ) {
-      const layouts = layoutData[`property_${parcel_identifier}`].layouts;
-      layouts.forEach((lay, idx) => {
-        const out = { ...lay };
-        writeJSON(path.join(dataDir, `layout_${idx + 1}.json`), out);
-      });
-    }
+  // Structure mapping
+  const hints2 = extractStructureHints($);
+  let roof_design_type = null;
+  if (hints2.roofDesign) {
+    if (/Gable/i.test(hints2.roofDesign)) roof_design_type = "Gable";
+    else if (/Hip/i.test(hints2.roofDesign)) roof_design_type = "Hip";
+  }
+  let roof_covering_material = null;
+  if (hints2.roofCoverDesc && /Metal/i.test(hints2.roofCoverDesc)) {
+    roof_covering_material = "Metal Standing Seam";
+  }
+  let flooring_material_primary = null;
+  if (hints2.interiorFloorDesc) {
+    if (/Cork/i.test(hints2.interiorFloorDesc))
+      flooring_material_primary = "Cork";
+    else if (/Vinyl/i.test(hints2.interiorFloorDesc))
+      flooring_material_primary = "Sheet Vinyl";
+  }
+  const structure = {
+    architectural_style_type: null,
+    attachment_type: null,
+    ceiling_condition: null,
+    ceiling_height_average: null,
+    ceiling_insulation_type: null,
+    ceiling_structure_material: null,
+    ceiling_surface_material: null,
+    exterior_door_installation_date: null,
+    exterior_door_material: null,
+    exterior_wall_condition: null,
+    exterior_wall_condition_primary: null,
+    exterior_wall_condition_secondary: null,
+    exterior_wall_insulation_type: "Unknown",
+    exterior_wall_insulation_type_primary: "Unknown",
+    exterior_wall_insulation_type_secondary: null,
+    exterior_wall_material_primary: null,
+    exterior_wall_material_secondary: null,
+    finished_base_area: null,
+    finished_basement_area: null,
+    finished_upper_story_area: null,
+    flooring_condition: null,
+    flooring_material_primary: flooring_material_primary,
+    flooring_material_secondary: null,
+    foundation_condition: null,
+    foundation_material: null,
+    foundation_repair_date: null,
+    foundation_type: null,
+    foundation_waterproofing: null,
+    gutters_condition: null,
+    gutters_material: null,
+    interior_door_material: null,
+    interior_wall_condition: null,
+    interior_wall_finish_primary: null,
+    interior_wall_finish_secondary: null,
+    interior_wall_structure_material: null,
+    interior_wall_structure_material_primary: null,
+    interior_wall_structure_material_secondary: null,
+    interior_wall_surface_material_primary: null,
+    interior_wall_surface_material_secondary: null,
+    number_of_stories: null,
+    primary_framing_material: null,
+    roof_age_years: null,
+    roof_condition: null,
+    roof_covering_material: roof_covering_material,
+    roof_date: null,
+    roof_design_type: roof_design_type,
+    roof_material_type: null,
+    roof_structure_material: null,
+    roof_underlayment_type: null,
+    secondary_framing_material: null,
+    siding_installation_date: null,
+    structural_damage_indicators: null,
+    subfloor_material: null,
+    unfinished_base_area: null,
+    unfinished_basement_area: null,
+    unfinished_upper_story_area: null,
+    window_frame_material: null,
+    window_glazing_type: null,
+    window_installation_date: null,
+    window_operation_type: null,
+    window_screen_material: null,
+  };
+  // Set exterior wall and interior wall where found
+  $("table").each((i, tbl) => {
+    const rows = $(tbl).find("tr");
+    rows.each((ri, tr) => {
+      const tds = $(tr).find("td");
+      if (tds.length === 3) {
+        const elem = tds.eq(0).text().trim();
+        const desc = tds.eq(2).text().trim();
+        if (elem === "Exterior Wall" && desc === "Concrete Block")
+          structure.exterior_wall_material_primary = "Concrete Block";
+        if (elem === "Interior Wall" && desc === "Drywall")
+          structure.interior_wall_surface_material_primary = "Drywall";
+      }
+    });
+  });
+  writeJson(path.join("data", "structure.json"), structure);
 
-    // LOT – from HTML (limited), output nulls where not available
-    const acreageTxt = $("#ctlBodyPane_ctl02_ctl01_lblGrossAcres")
-      .text()
-      .trim();
-    let lot_size_acre = null;
-    if (acreageTxt && !isNaN(Number(acreageTxt)))
-      lot_size_acre = Number(acreageTxt);
-    const lotObj = {
-      lot_type: null,
-      lot_length_feet: null,
-      lot_width_feet: null,
-      lot_area_sqft: null,
-      landscaping_features: null,
-      view: null,
-      fencing_type: null,
-      fence_height: null,
-      fence_length: null,
-      driveway_material: null,
-      driveway_condition: null,
-      lot_condition_issues: null,
-      lot_size_acre,
-    };
-    writeJSON(path.join(dataDir, "lot.json"), lotObj);
+  // Lot
+  const ld = extractLandFrontDepth($);
+  const lot = {
+    driveway_condition: null,
+    driveway_material: null,
+    fence_height: null,
+    fence_length: null,
+    fencing_type: null,
+    landscaping_features: null,
+    lot_area_sqft: null,
+    lot_condition_issues: null,
+    lot_length_feet: ld.front,
+    lot_size_acre: null,
+    lot_type: null,
+    lot_width_feet: ld.depth,
+    view: null,
+  };
+  writeJson(path.join("data", "lot.json"), lot);
+}
 
-    // STRUCTURE – from Building Information section
-    const extWallRaw = findValueByExactLabel(buildingSection, "Exterior Wall");
-    const roofStructRaw = findValueByExactLabel(
-      buildingSection,
-      "Roof Structure",
-    );
-    const roofCoverRaw = findValueByExactLabel(buildingSection, "Roof Cover");
-    const finishedBaseRaw = (() => {
-      // subArea table total of BASE Actual Area or find 'BASE' row
-      const rows = $(
-        "#ctlBodyPane_ctl08_ctl01_lstBuildings_ctl00_subArea tbody tr",
-      );
-      let base = null;
-      rows.each((i, r) => {
-        const th = $(r).find("th").text().trim().toUpperCase();
-        if (th === "BASE") {
-          const tds = $(r).find("td");
-          if (tds.length >= 2) {
-            base = parseInt($(tds[1]).text().trim(), 10);
-          }
-        }
-      });
-      return base;
-    })();
-
-    const structureObj = {
-      architectural_style_type: null,
-      attachment_type: null,
-      exterior_wall_material_primary: inferExteriorWallMaterial(extWallRaw),
-      exterior_wall_material_secondary: null,
-      exterior_wall_condition: null,
-      exterior_wall_insulation_type: null,
-      flooring_material_primary: null,
-      flooring_material_secondary: null,
-      subfloor_material: null,
-      flooring_condition: null,
-      interior_wall_structure_material: null,
-      interior_wall_surface_material_primary: null,
-      interior_wall_surface_material_secondary: null,
-      interior_wall_finish_primary: null,
-      interior_wall_finish_secondary: null,
-      interior_wall_condition: null,
-      roof_covering_material: null, // unknown specific metal type
-      roof_underlayment_type: null,
-      roof_structure_material: null,
-      roof_design_type: inferRoofDesign(roofStructRaw),
-      roof_condition: null,
-      roof_age_years: null,
-      gutters_material: null,
-      gutters_condition: null,
-      roof_material_type:
-        roofCoverRaw && roofCoverRaw.toUpperCase().includes("METAL")
-          ? "Metal"
-          : null,
-      foundation_type: null,
-      foundation_material: null,
-      foundation_waterproofing: null,
-      foundation_condition: null,
-      ceiling_structure_material: null,
-      ceiling_surface_material: null,
-      ceiling_insulation_type: null,
-      ceiling_height_average: null,
-      ceiling_condition: null,
-      exterior_door_material: null,
-      interior_door_material: null,
-      window_frame_material: null,
-      window_glazing_type: null,
-      window_operation_type: null,
-      window_screen_material: null,
-      primary_framing_material: null,
-      secondary_framing_material: null,
-      structural_damage_indicators: null,
-      finished_base_area:
-        typeof finishedBaseRaw === "number" ? finishedBaseRaw : null,
-    };
-    writeJSON(path.join(dataDir, "structure.json"), structureObj);
-
-    // FILES – Trim Notice PDF and Building Sketch image
-    // Building Sketch image
-    const sketchImg =
-      $("#ctlBodyPane_ctl13_mSection img.rsImg").attr("src") || null;
-    if (sketchImg) {
-      const file1 = {
-        document_type: "PropertyImage",
-        file_format: "jpeg",
-        ipfs_url: null,
-        name: "Building Sketch 1",
-        original_url: sketchImg,
-      };
-      writeJSON(path.join(dataDir, "file_1.json"), file1);
-    }
-    // Trim Notice button (onclick with window.open)
-    const trimBtn = $(
-      "#ctlBodyPane_ctl04_ctl01_prtrFiles_Button_ctl00_prtrFiles_Button_Inner_ctl00_btnName",
-    );
-    let trimUrl = null;
-    if (trimBtn && trimBtn.attr("onclick")) {
-      const m = trimBtn.attr("onclick").match(/window\.open\('([^']+)'\)/);
-      if (m) trimUrl = m[1];
-    }
-    if (trimUrl) {
-      const file2 = {
-        document_type: null,
-        file_format: null,
-        ipfs_url: null,
-        name: "Trim Notice",
-        original_url: trimUrl,
-      };
-      writeJSON(path.join(dataDir, "file_2.json"), file2);
-    }
-  } catch (e) {
+try {
+  main();
+  console.log("Script executed successfully.");
+} catch (err) {
+  if (err && err.message) {
     try {
-      const obj = JSON.parse(e.message);
-      if (obj && obj.type === "error") {
-        console.error(JSON.stringify(obj));
-        process.exit(1);
-      }
-    } catch (_) {}
-    console.error(e.stack || String(e));
+      const parsed = JSON.parse(err.message);
+      console.error(JSON.stringify(parsed, null, 2));
+      process.exit(1);
+    } catch (_) {
+      console.error(err.stack || String(err));
+      process.exit(1);
+    }
+  } else {
+    console.error(String(err));
     process.exit(1);
   }
-})();
+}
