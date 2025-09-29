@@ -1,97 +1,72 @@
 // Utility mapping script
-// Reads input.html, parses with cheerio, and writes owners/utilities_data.json per schema
+// Reads input.html, extracts utility details using cheerio, and writes owners/utilities_data.json
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function extractParcelId($) {
-  let parcelHeader = null;
-  $("h2").each((i, el) => {
-    const txt = $(el).text().trim();
-    if (/^Parcel\s+/i.test(txt)) parcelHeader = txt;
-  });
-  let id = null;
-  if (parcelHeader) id = parcelHeader.replace(/^.*Parcel\s+/i, "").trim();
-  if (!id) {
-    const scriptText = $("script")
-      .map((i, el) => $(el).html() || "")
-      .get()
-      .join("\n");
-    const m = scriptText.match(/GLOBAL_Strap\s*=\s*'([^']+)'/);
-    if (m) id = m[1];
-  }
-  return id || "UNKNOWN_ID";
+function textOf($, el) {
+  return ($(el).text() || "").trim();
 }
 
-function run() {
+function findValueByLabel($, sectionSelector, labelText) {
+  let val = null;
+  $(`${sectionSelector} table`).each((_, tbl) => {
+    $(tbl)
+      .find("tr")
+      .each((__, tr) => {
+        const th = $(tr).find("th").first();
+        const strongTxt = (th.find("strong").text() || "").trim().toUpperCase();
+        const thTxt = (th.text() || "").trim().toUpperCase();
+        const matchTxt = (labelText || "").toUpperCase();
+        if (strongTxt === matchTxt || thTxt === matchTxt) {
+          const td = $(tr).find("td").first();
+          val = (td.text() || "").trim();
+        }
+      });
+  });
+  return val;
+}
+
+function main() {
   const inputPath = path.join(process.cwd(), "input.html");
-  const html = fs.readFileSync(inputPath, "utf-8");
+  if (!fs.existsSync(inputPath)) {
+    console.error("input.html not found");
+    process.exit(1);
+  }
+  const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
 
-  const parcelId = extractParcelId($);
+  const parcelId =
+    textOf($, $("#ctlBodyPane_ctl02_ctl01_lblParcelID")) || "unknown";
+  const propertyKey = `property_${parcelId}`;
 
-  // Inspect Buildings -> Element table for HVAC hints
-  let heatingFuel = null;
-  let heatingType = null;
-  let acType = null;
+  const buildingSection = "#ctlBodyPane_ctl08_mSection";
+  const heatingRaw = findValueByLabel($, buildingSection, "Heating Type") || "";
+  const coolingRaw =
+    findValueByLabel($, buildingSection, "Air Conditioning") || "";
 
-  const elementTables = $("h3")
-    .filter((i, el) => /Buildings/i.test($(el).text()))
-    .first()
-    .parent()
-    .find("table")
-    .filter((i, el) =>
-      /Element\s*Code\s*Description/i.test($(el).find("thead").text()),
-    );
+  // Map to schema enums
+  let heating_system_type = null;
+  const h = heatingRaw.toUpperCase();
+  if (h.includes("FORCED")) heating_system_type = "Central";
 
-  if (elementTables.length > 0) {
-    const tbl = elementTables.first();
-    tbl.find("tr").each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 3) {
-        const label = $(tds[0]).text().trim();
-        const desc = $(tds[2]).text().trim();
-        if (/^Heating Fuel$/i.test(label)) heatingFuel = desc || heatingFuel;
-        if (/^Heating Type$/i.test(label)) heatingType = desc || heatingType;
-        if (/^Air Cond\. Type$/i.test(label)) acType = desc || acType;
-      }
-    });
-  }
+  let cooling_system_type = null;
+  const c = coolingRaw.toUpperCase();
+  if (c.includes("CENTRAL")) cooling_system_type = "CentralAir";
 
-  function mapCooling(acType) {
-    if (!acType) return null;
-    const d = acType.toLowerCase();
-    if (d.includes("central")) return "CentralAir";
-    if (d.includes("window")) return "WindowAirConditioner";
-    if (d.includes("ductless") || d.includes("mini")) return "Ductless";
-    return null;
-  }
-
-  function mapHeating(heatType, fuel) {
-    const ht = (heatType || "").toLowerCase();
-    const f = (fuel || "").toLowerCase();
-    if (ht.includes("force air") || ht.includes("duct")) {
-      if (f.includes("gas")) return "GasFurnace";
-      if (f.includes("electric")) return "ElectricFurnace";
-      return "Central";
-    }
-    if (f.includes("electric")) return "Electric";
-    if (f.includes("gas")) return "Gas";
-    return null;
-  }
-
-  const utilities = {
-    cooling_system_type: mapCooling(acType),
+  // Public utilities likely available in this area; cannot confirm specifics from document
+  const utility = {
+    cooling_system_type: cooling_system_type,
     electrical_panel_capacity: null,
     electrical_panel_installation_date: null,
     electrical_rewire_date: null,
     electrical_wiring_type: null,
     electrical_wiring_type_other_description: null,
-    heating_system_type: mapHeating(heatingType, heatingFuel),
+    heating_system_type: heating_system_type,
     hvac_capacity_kw: null,
     hvac_capacity_tons: null,
-    hvac_condensing_unit_present: acType ? "Yes" : null,
+    hvac_condensing_unit_present: null,
     hvac_equipment_component: null,
     hvac_equipment_manufacturer: null,
     hvac_equipment_model: null,
@@ -127,15 +102,12 @@ function run() {
   const outDir = path.join(process.cwd(), "owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
-  const wrapped = {};
-  wrapped[`property_${parcelId}`] = utilities;
-  fs.writeFileSync(outPath, JSON.stringify(wrapped, null, 2), "utf-8");
+  const out = {};
+  out[propertyKey] = utility;
+  fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
 
-try {
-  run();
-} catch (e) {
-  console.error(e);
-  process.exit(1);
+if (require.main === module) {
+  main();
 }
