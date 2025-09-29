@@ -7,7 +7,7 @@ const htmlPath = path.join(process.cwd(), "input.html");
 const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
 const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl02_mSection .sdw1-owners-container";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl06_ctl01_grdSales tbody tr";
 
@@ -58,6 +58,27 @@ function cleanRawName(raw) {
     s = m[1].trim();
   }
   return s;
+}
+
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
+
+function cleanInvalidCharsFromName(raw) {
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
 }
 
 const COMPANY_KEYWORDS = [
@@ -120,13 +141,14 @@ function classifyOwner(raw) {
   if (tokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
-  const first = tokens[0];
-  const last = tokens[tokens.length - 1];
+  const first = cleanInvalidCharsFromName(tokens[0]);
+  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
   const middleTokens = tokens.slice(1, -1);
-  if (/^[A-Za-z]$/.test(last)) {
-    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  }
-  const middle = middleTokens.join(" ").trim();
+  // if (/^[A-Za-z]$/.test(last)) {
+  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
+  // }
+  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
+  if (first && last) {
   const person = {
     type: "person",
     first_name: first,
@@ -134,6 +156,8 @@ function classifyOwner(raw) {
     middle_name: middle ? middle : null,
   };
   return { valid: true, owner: person };
+  }
+  return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
 
 function dedupeOwners(owners) {

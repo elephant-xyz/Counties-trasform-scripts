@@ -60,6 +60,27 @@ function cleanRawName(raw) {
   return s;
 }
 
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
+
+function cleanInvalidCharsFromName(raw) {
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
+}
+
 const COMPANY_KEYWORDS = [
   "inc",
   "llc",
@@ -116,24 +137,27 @@ function classifyOwner(raw) {
   if (isCompanyName(cleaned)) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  const tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
   if (tokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
-  const first = tokens[0];
-  const last = tokens[tokens.length - 1];
+  const first = cleanInvalidCharsFromName(tokens[0]);
+  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
   const middleTokens = tokens.slice(1, -1);
-  if (/^[A-Za-z]$/.test(last)) {
-    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
+  // if (/^[A-Za-z]$/.test(last)) {
+  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
+  // }
+  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
+  if (first && last) {
+    const person = {
+      type: "person",
+      first_name: first,
+      last_name: last,
+      middle_name: middle ? middle : null,
+    };
+    return { valid: true, owner: person };
   }
-  const middle = middleTokens.join(" ").trim();
-  const person = {
-    type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middle ? middle : null,
-  };
-  return { valid: true, owner: person };
+  return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
 
 function dedupeOwners(owners) {

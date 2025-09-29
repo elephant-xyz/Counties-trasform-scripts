@@ -118,12 +118,14 @@ function mapPropertyTypeFromUseCode(code) {
   }
   if (u.includes("SINGLE")) return "SingleFamily";
   if (u.includes("CONDO")) return "Condominium";
+  if (u.includes("VACANT")) return "VacantLand";
   if (u.includes("DUPLEX")) return "Duplex";
   if (u.includes("TOWNHOUSE")) return "Townhouse";
   if (u.includes("APARTMENT")) return "Apartment";
   if (u.includes("MOBILE")) return "MobileHome";
   if (u.includes("PUD")) return "Pud";
   if (u.includes("RETIREMENT")) return "Retirement";
+  if (u.includes("COOPERATIVE")) return "Cooperative";
   return null;
 }
 
@@ -372,6 +374,134 @@ function writeSalesDeedsFilesAndRelationships($) {
     );
   });
 }
+let people = [];
+let companies = [];
+
+function findPersonIndexByName(first, last) {
+  const tf = titleCaseName(first);
+  const tl = titleCaseName(last);
+  for (let i = 0; i < people.length; i++) {
+    if (people[i].first_name === tf && people[i].last_name === tl)
+      return i + 1;
+  }
+  return null;
+}
+
+function findCompanyIndexByName(name) {
+  const tn = (name || "").trim();
+  for (let i = 0; i < companies.length; i++) {
+    if ((companies[i].name || "").trim() === tn) return i + 1;
+  }
+  return null;
+}
+
+function titleCaseName(s) {
+  if (!s) return s;
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function writePersonCompaniesSalesRelationships(parcelId, sales) {
+  const owners = readJSON(path.join("owners", "owner_data.json"));
+  if (!owners) return;
+  const key = `property_${parcelId}`;
+  const record = owners[key];
+  if (!record || !record.owners_by_date) return;
+  const ownersByDate = record.owners_by_date;
+  const personMap = new Map();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "person") {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!personMap.has(k))
+          personMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+          });
+        else {
+          const existing = personMap.get(k);
+          if (!existing.middle_name && o.middle_name)
+            existing.middle_name = o.middle_name;
+        }
+      }
+    });
+  });
+  people = Array.from(personMap.values()).map((p) => ({
+    first_name: p.first_name ? titleCaseName(p.first_name) : null,
+    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+    last_name: p.last_name ? titleCaseName(p.last_name) : null,
+    birth_date: null,
+    prefix_name: null,
+    suffix_name: null,
+    us_citizenship_status: null,
+    veteran_status: null,
+    request_identifier: parcelId,
+  }));
+  people.forEach((p, idx) => {
+    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
+  });
+  const companyNames = new Set();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim())
+        companyNames.add((o.name || "").trim());
+    });
+  });
+  companies = Array.from(companyNames).map((n) => ({ 
+    name: n,
+    request_identifier: parcelId,
+  }));
+  companies.forEach((c, idx) => {
+    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
+  });
+  // Relationships: link sale to owners present on that date (both persons and companies)
+  let relPersonCounter = 0;
+  let relCompanyCounter = 0;
+  sales.forEach((rec, idx) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+        if (pIdx) {
+          relPersonCounter++;
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_sales_person_${relPersonCounter}.json`,
+            ),
+            {
+              to: { "/": `./person_${pIdx}.json` },
+              from: { "/": `./sales_${idx + 1}.json` },
+            },
+          );
+        }
+      });
+    ownersOnDate
+      .filter((o) => o.type === "company")
+      .forEach((o) => {
+        const cIdx = findCompanyIndexByName(o.name);
+        if (cIdx) {
+          relCompanyCounter++;
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_sales_company_${relCompanyCounter}.json`,
+            ),
+            {
+              to: { "/": `./company_${cIdx}.json` },
+              from: { "/": `./sales_${idx + 1}.json` },
+            },
+          );
+        }
+      });
+  });
+}
 
 function writeTaxes($) {
   const vals = extractValuation($);
@@ -388,175 +518,6 @@ function writeTaxes($) {
       period_start_date: null,
     };
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
-  });
-}
-
-function writeOwnersCurrentAndRelationships(parcelId) {
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (!owners) return;
-  const key = `property_${parcelId}`;
-  const record = owners[key];
-  if (!record || !record.owners_by_date) return;
-
-  const current = record.owners_by_date["current"] || [];
-  if (current.length === 0) return;
-  const first = current[0];
-
-  if (first.type === "company") {
-    current.forEach((c, idx) => {
-      const company = { name: titleCaseCompany(c.name || null) };
-      writeJSON(path.join("data", `company_${idx + 1}.json`), company);
-    });
-    if (fs.existsSync(path.join("data", "sales_1.json"))) {
-      const rel = {
-        to: { "/": "./company_1.json" },
-        from: { "/": "./sales_1.json" },
-      };
-      writeJSON(path.join("data", "relationship_sales_company.json"), rel);
-    }
-  } else if (first.type === "person") {
-    current.forEach((p, idx) => {
-      const person = {
-        birth_date: null,
-        first_name: titleCaseName(p.first_name || null),
-        last_name: titleCaseName(p.last_name || null),
-        middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-        prefix_name: null,
-        suffix_name: null,
-        us_citizenship_status: null,
-        veteran_status: null,
-      };
-      writeJSON(path.join("data", `person_${idx + 1}.json`), person);
-    });
-    if (fs.existsSync(path.join("data", "sales_1.json"))) {
-      const rel = {
-        to: { "/": "./person_1.json" },
-        from: { "/": "./sales_1.json" },
-      };
-      writeJSON(path.join("data", "relationship_sales_person.json"), rel);
-    }
-  }
-}
-
-function titleCaseName(s) {
-  if (!s) return null;
-  const lower = String(s).toLowerCase();
-  return lower.replace(/(^|\s|[-'])[a-z]/g, (c) => c.toUpperCase());
-}
-function titleCaseCompany(s) {
-  if (!s) return null;
-  const parts = String(s).split(/\s+/);
-  return parts
-    .map((p) => (p === p.toUpperCase() ? p : titleCaseName(p)))
-    .join(" ");
-}
-
-function cleanPersonFiles() {
-  try {
-    fs.readdirSync("data").forEach((f) => {
-      if (
-        /^person_\d+\.json$/.test(f) ||
-        /^relationship_sales_person_.*\.json$/.test(f)
-      ) {
-        fs.unlinkSync(path.join("data", f));
-      }
-    });
-  } catch (e) {}
-}
-
-function writeHistoricalBuyerPersonsAndRelationships(parcelId, sales) {
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (!owners) return;
-  const key = `property_${parcelId}`;
-  const record = owners[key];
-  if (!record || !record.owners_by_date) return;
-
-  // Clean previous person and relationship files to avoid stale/duplicate links
-  cleanPersonFiles();
-
-  const ownersByDate = record.owners_by_date;
-  const createdSet = new Set();
-
-  sales.forEach((s, i) => {
-    const idx = i + 1;
-    const saleISO = parseDateToISO(s.saleDate);
-    if (!saleISO) return;
-
-    let persons = [];
-    const entrants = ownersByDate[saleISO];
-    if (Array.isArray(entrants)) {
-      entrants
-        .filter((x) => x.type === "person")
-        .forEach((p) => {
-          const first = titleCaseName(p.first_name || "");
-          const last = titleCaseName(p.last_name || "");
-          const middle = p.middle_name ? titleCaseName(p.middle_name) : null;
-          const keyp = `${first}|${middle || ""}|${last}`;
-          if (!createdSet.has(keyp)) {
-            persons.push({
-              first_name: first,
-              last_name: last,
-              middle_name: middle,
-            });
-            createdSet.add(keyp);
-          }
-        });
-    }
-
-    // Only add invalid_owners for the known 2002-08-01 sale
-    if (saleISO === "2002-08-01") {
-      const invalids = owners.invalid_owners || [];
-      invalids.forEach((inv) => {
-        const raw = (inv.raw || "").trim();
-        if (!raw) return;
-        const parts = raw.split(/\s+/);
-        if (parts.length >= 1) {
-          const first = titleCaseName(parts[0]);
-          const last = parts.length >= 2 ? titleCaseName(parts[1]) : null;
-          const keyp = `${first}|${""}|${last || ""}`;
-          if (!createdSet.has(keyp)) {
-            persons.push({
-              first_name: first,
-              last_name: last,
-              middle_name: null,
-            });
-            createdSet.add(keyp);
-          }
-        }
-      });
-    }
-
-    if (persons.length > 0) {
-      let nextIdx = 1;
-      const personFiles = [];
-      persons.forEach((p) => {
-        const person = {
-          birth_date: null,
-          first_name: p.first_name || null,
-          last_name: p.last_name || null,
-          middle_name: p.middle_name ?? null,
-          prefix_name: null,
-          suffix_name: null,
-          us_citizenship_status: null,
-          veteran_status: null,
-        };
-        const filename = `person_${nextIdx}.json`;
-        writeJSON(path.join("data", filename), person);
-        personFiles.push(filename);
-        nextIdx += 1;
-      });
-
-      personFiles.forEach((pf, j) => {
-        const rel = {
-          to: { "/": `./${pf}` },
-          from: { "/": `./sales_${idx}.json` },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_person_${idx}_${j + 1}.json`),
-          rel,
-        );
-      });
-    }
   });
 }
 
@@ -882,8 +843,9 @@ function main() {
   writeTaxes($);
 
   if (parcelId) {
-    writeOwnersCurrentAndRelationships(parcelId);
-    writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
+    writePersonCompaniesSalesRelationships(parcelId, sales);
+    // writeOwnersCurrentAndRelationships(parcelId);
+    // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     writeUtility(parcelId);
     writeLayout(parcelId);
   }
