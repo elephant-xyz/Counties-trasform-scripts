@@ -1,39 +1,70 @@
 // Utility mapping script
-// Reads input.html, extracts utility attributes using cheerio, writes owners/utilities_data.json
+// Reads input.html, parses with cheerio, and writes owners/utilities_data.json per schema
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function readHtml(filePath) {
-  return fs.readFileSync(filePath, "utf8");
+function getAltKey($) {
+  let altkey = $("input#altkey").val();
+  if (!altkey) {
+    $("div.col-sm-5").each((i, el) => {
+      const t = $(el).text().trim();
+      if (/Alternate Key/i.test(t)) {
+        const v = $(el).next().text().trim();
+        if (v) altkey = v.replace(/[^0-9]/g, "");
+      }
+    });
+  }
+  return altkey;
 }
 
-function getTextAfterStrong($, label) {
-  const el = $("strong").filter((i, e) => $(e).text().trim() === label);
-  if (el.length) {
-    const val = el.first().parent().next().text().trim();
-    return val.replace(/\s+/g, " ").trim() || null;
-  }
-  return null;
+function findValueByLabel($, label) {
+  let val = null;
+  $("div.row.parcel-content").each((i, row) => {
+    const strongs = $(row).find("strong");
+    strongs.each((j, s) => {
+      const t = $(s).text().trim().replace(/:$/, "");
+      if (t.toLowerCase() === label.toLowerCase()) {
+        const v = $(s).parent().next().text().trim();
+        if (v && !val) val = v;
+      }
+    });
+  });
+  return val;
 }
 
 function main() {
-  const inputPath = "input.html";
-  const html = readHtml(inputPath);
+  const inputPath = path.join(process.cwd(), "input.html");
+  const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
 
-  const altkey = ($("#altkey").attr("value") || "").trim();
-  const propertyId = `property_${altkey || "unknown"}`;
+  const altkey = getAltKey($);
+  if (!altkey) throw new Error("Alternate Key not found");
 
-  const data = {
-    cooling_system_type: null,
+  const hvac = findValueByLabel($, "HVAC") || "";
+  const heatMethod = findValueByLabel($, "Heat Method") || "";
+  const heatSource = findValueByLabel($, "Heat Source") || "";
+
+  // Cooling mapping
+  let cooling_system_type = null;
+  if (/AIR\s*CONDITIONING/i.test(hvac)) cooling_system_type = "CentralAir";
+
+  // Heating mapping
+  let heating_system_type = null;
+  if (/ELECTRIC/i.test(heatSource)) {
+    // Ducted + electric -> central electric heat (generic)
+    heating_system_type = "Electric";
+  }
+
+  const utilities = {
+    cooling_system_type: cooling_system_type,
     electrical_panel_capacity: null,
     electrical_panel_installation_date: null,
     electrical_rewire_date: null,
     electrical_wiring_type: null,
     electrical_wiring_type_other_description: null,
-    heating_system_type: null,
+    heating_system_type: heating_system_type,
     hvac_capacity_kw: null,
     hvac_capacity_tons: null,
     hvac_condensing_unit_present: null,
@@ -69,48 +100,15 @@ function main() {
     well_installation_date: null,
   };
 
-  // HVAC present and types
-  const hvac = getTextAfterStrong($, "HVAC:");
-  if (hvac && /AIR CONDITIONING/i.test(hvac)) {
-    data.cooling_system_type = "CentralAir";
-    data.hvac_condensing_unit_present = "Yes";
-  } else {
-    data.hvac_condensing_unit_present = "No";
-  }
-
-  const heatMethod = getTextAfterStrong($, "Heat Method:");
-  const heatSource = getTextAfterStrong($, "Heat Source:");
-  if (heatSource && /ELECTRIC/i.test(heatSource)) {
-    data.heating_system_type = "Electric";
-  }
-
-  // Utilities: not explicitly specified; infer public services available in urban area -> set enums minimally
-  // Sewer and water unknown in page; set nulls to satisfy schema with null allowed; but required fields must exist (can be null per schema)
-
-  // Plumbing type not given
-  data.plumbing_system_type = null;
-
-  // Electrical wiring type not given
-  data.electrical_wiring_type = null;
-
-  // Public utility type not given
-  data.public_utility_type = null;
-
-  // Sewer and water unknown
-  data.sewer_type = null;
-  data.water_source_type = null;
-
-  // smart_home_features array per schema; set null as allowed
-  data.smart_home_features = null;
-
-  const output = {};
-  output[propertyId] = data;
-
-  const outDir = path.join("owners");
-  fs.mkdirSync(outDir, { recursive: true });
+  const outDir = path.join(process.cwd(), "owners");
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const payload = {};
+  payload[`property_${altkey}`] = utilities;
   const outPath = path.join(outDir, "utilities_data.json");
-  fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
-  console.log(`Utilities data written to ${outPath} for ${propertyId}`);
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
+  console.log(`Wrote ${outPath}`);
 }
 
-main();
+if (require.main === module) {
+  main();
+}

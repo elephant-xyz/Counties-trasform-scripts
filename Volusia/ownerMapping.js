@@ -3,254 +3,433 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Load HTML
-const htmlPath = path.join(process.cwd(), "input.html");
-const html = fs.readFileSync(htmlPath, "utf8");
+const html = fs.readFileSync("input.html", "utf8");
 const $ = cheerio.load(html);
 
 // Helpers
-const toTitleCase = (s) => {
-  if (!s) return s;
-  return s
-    .toLowerCase()
-    .split(/([\s'-]+)/) // keep delimiters like space, hyphen, apostrophe
-    .map((part) => {
-      if (/^[\s'-]+$/.test(part)) return part;
-      return part.charAt(0).toUpperCase() + part.slice(1);
-    })
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
-};
+const toTitle = (s) =>
+  s.toLowerCase().replace(/(^|\s|[-'])\p{L}/gu, (m) => m.toUpperCase());
+const cleanWhitespace = (s) => s.replace(/\s+/g, " ").trim();
+const normalizeName = (s) => cleanWhitespace(s).toLowerCase();
 
-const normalizeName = (s) => (s || "").replace(/\s+/g, " ").trim();
+// Property ID extraction (prefer "Parcel ID", fallback to hidden #altkey, then "Alternate Key")
+function extractPropertyId($) {
+  let id = null;
+  $("strong").each((i, el) => {
+    const txt = $(el).text().trim().toLowerCase();
+    if (!id && txt.includes("parcel id")) {
+      const val = $(el).parent().next().text();
+      const v = cleanWhitespace(val);
+      if (v) id = v;
+    }
+  });
+  if (!id) {
+    const alt = $("input#altkey").attr("value");
+    if (alt) id = cleanWhitespace(alt);
+  }
+  if (!id) {
+    $("strong").each((i, el) => {
+      const txt = $(el).text().trim().toLowerCase();
+      if (!id && txt.includes("alternate key")) {
+        const val = $(el).parent().next().text();
+        const v = cleanWhitespace(val);
+        if (v) id = v;
+      }
+    });
+  }
+  if (!id) id = "unknown_id";
+  return id;
+}
 
-const isCompany = (name) => {
-  const kw = [
+// Detect company by tokens
+function isCompany(name) {
+  const tokens = [
     "inc",
     "llc",
+    "l.l.c",
     "ltd",
     "foundation",
     "alliance",
     "solutions",
     "corp",
+    "corporation",
     "co",
     "company",
     "services",
     "trust",
-    " tr ",
-    " tr$",
-    "associates",
+    "tr",
+    "pllc",
+    "pc",
+    "lp",
+    "llp",
     "partners",
-    "holdings",
+    "bank",
+    "na",
+    "associates",
   ];
-  const lower = ` ${name.toLowerCase()} `; // pad to catch boundaries
-  return kw.some((k) => {
-    if (k.endsWith("$")) return new RegExp(k, "i").test(lower.trim());
-    return lower.indexOf(k) !== -1;
+  const n = name.toLowerCase();
+  return tokens.some((t) => new RegExp(`(^|\\b)${t}(\\b|\.$)`, "i").test(n));
+}
+
+// Basic address-like line filter
+function looksLikeAddress(line) {
+  const l = line.toUpperCase();
+  if (
+    /\d{3,}/.test(l) &&
+    /( ST | AVE | BLVD | RD | DR | LN | CT | HWY | PKWY | WAY | TER | CIR )/.test(
+      " " + l + " ",
+    )
+  )
+    return true;
+  if (/(\b[A-Z]{2}\b)\s*\d{5}(-\d{4})?$/.test(l)) return true; // state + zip
+  return false;
+}
+
+// Extract owner text blocks from areas labeled like Owner(s)
+function extractOwnerBlocks($) {
+  const blocks = [];
+  $("strong").each((i, el) => {
+    const label = $(el).text().trim().toLowerCase();
+    if (label.includes("owner")) {
+      const holder = $(el).parent().next();
+      if (holder && holder.length) {
+        const html = holder.html() || holder.text();
+        if (html) blocks.push(html);
+      }
+    }
   });
-};
+  return blocks;
+}
 
-const makeCompany = (name) => ({ type: "company", name: normalizeName(name) });
-
-const makePersonFromTokens = (tokens) => {
-  const tks = tokens.filter(Boolean);
-  if (tks.length < 2) return null;
-  // Heuristic: many appraiser sites format as LAST FIRST MIDDLE
-  // If comma present, prefer "LAST, FIRST M" parsing
-  const joined = tks.join(" ");
-  if (joined.includes(",")) {
-    const [lastPart, firstPart] = joined
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
-    if (!firstPart || !lastPart) return null;
-    const fTokens = firstPart.split(/\s+/).filter(Boolean);
-    const first = fTokens[0];
-    const middle = fTokens.slice(1).join(" ") || null;
-    return {
-      type: "person",
-      first_name: toTitleCase(first),
-      last_name: toTitleCase(lastPart),
-      middle_name: middle ? toTitleCase(middle) : null,
-    };
-  }
-  // Assume LAST FIRST M...
-  const last = tks[0];
-  const first = tks[1];
-  const middle = tks.slice(2).join(" ") || null;
-  return {
-    type: "person",
-    first_name: toTitleCase(first),
-    last_name: toTitleCase(last),
-    middle_name: middle ? toTitleCase(middle) : null,
-  };
-};
-
-const splitAmpersandNames = (raw) => {
-  // Attempt to parse patterns like "JOHN & JANE DOE" => two persons JOHN DOE and JANE DOE
-  const str = normalizeName(raw);
-  const parts = str
-    .split("&")
-    .map((p) => p.trim())
+// Parse individual owner lines from blocks
+function parseOwnerCandidates(blockHtml) {
+  const text = blockHtml
+    .replace(/<br\s*\/?>(\s*)/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  const lines = text
+    .split("\n")
+    .map((s) => cleanWhitespace(s))
     .filter(Boolean);
-  if (parts.length !== 2) return [str];
-  const rightTokens = parts[1].split(/\s+/).filter(Boolean);
-  if (rightTokens.length === 1) {
-    // e.g., "JOHN & JANE DOE" where parts[1] is "JANE DOE" (2 tokens), not 1; if 1, we can't infer
-    return [str];
+  const results = [];
+  for (let line of lines) {
+    // Keep only text before first hyphen separator
+    const base = cleanWhitespace(line.split(/\s+-\s+/)[0]);
+    if (!base) continue;
+    if (base.length < 2) continue;
+    if (looksLikeAddress(base)) continue;
+    if (/^(no\b|apply for homestead)/i.test(base)) continue;
+    // remove stray trailing % or roles words
+    const cleaned = base
+      .replace(/\s*\d+%$/i, "")
+      .replace(/\s+life estate$/i, "")
+      .replace(/\s+le$/i, "");
+    if (cleaned) results.push(cleaned);
   }
-  const lastName = rightTokens[rightTokens.length - 1];
-  const leftSide = parts[0];
-  const leftTokens = leftSide.split(/\s+/).filter(Boolean);
-  const leftFirsts = leftTokens; // likely first/middle only
-  const rightFirsts = rightTokens.slice(0, -1); // first/middle on right
-  const leftName = `${lastName} ${leftFirsts.join(" ")}`
-    .replace(/\s+/g, " ")
-    .trim(); // LAST FIRST [M]
-  const rightName = `${lastName} ${rightFirsts.join(" ")}`
-    .replace(/\s+/g, " ")
-    .trim();
-  return [leftName, rightName];
-};
-
-// Extract property id (prefer Alternate Key hidden input)
-let propId = null;
-const altkeyInput = $("input#altkey");
-if (altkeyInput.length) {
-  propId = normalizeName(altkeyInput.attr("value")) || null;
+  return results;
 }
-if (!propId) {
-  // Fallback: try to find a breadcrumb or label with the number
-  const bc = $(".breadcrumb-item.active").text().trim();
-  const m = bc.match(/(\d{6,})/);
-  if (m) propId = m[1];
+
+// Heuristic: split multi-person name with & into separate persons using rightmost last name
+function splitAmpersandPersons(raw) {
+  const parts = raw
+    .split("&")
+    .map((s) => cleanWhitespace(s))
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  const allTokens = cleanWhitespace(raw.replace(/&/g, " ")).split(" ");
+  const lastName =
+    allTokens.length >= 2 ? allTokens[allTokens.length - 1] : null;
+  if (!lastName) return null;
+  const people = [];
+  for (const p of parts) {
+    const toks = p.split(" ").filter(Boolean);
+    if (toks.length === 0) continue;
+    const first = toks[0];
+    const middle = toks.slice(1).join(" ") || null;
+    people.push({
+      type: "person",
+      first_name: toTitle(first),
+      last_name: toTitle(lastName),
+      middle_name: middle ? toTitle(middle) : null,
+    });
+  }
+  return people.length ? people : null;
 }
-if (!propId) propId = "unknown_id";
 
-// Extract owner strings from likely locations
-const ownerStrings = [];
+// Decide if name is likely LAST FIRST (all caps two tokens)
+function isLikelyLastFirstTwoTokens(name) {
+  const toks = name.split(" ").filter(Boolean);
+  if (toks.length !== 2) return false;
+  const bothCaps = toks.every((t) => /[^a-z]/.test(t) && t === t.toUpperCase());
+  if (bothCaps) return true;
+  // If second token is common first name, assume LAST FIRST
+  const second = toks[1].toLowerCase();
+  const commonFirst = new Set([
+    "john",
+    "michael",
+    "william",
+    "david",
+    "james",
+    "robert",
+    "mary",
+    "patricia",
+    "jennifer",
+    "linda",
+    "barbara",
+    "elizabeth",
+    "maria",
+    "susan",
+    "margaret",
+    "dorothy",
+    "lisa",
+    "nancy",
+    "karen",
+    "betty",
+    "helen",
+    "sandra",
+    "donna",
+    "carol",
+    "ruth",
+    "sharon",
+    "michelle",
+    "laura",
+    "sarah",
+    "kim",
+    "jessica",
+    "daniel",
+    "paul",
+    "mark",
+    "donald",
+    "george",
+    "kenneth",
+    "steven",
+    "edward",
+    "brian",
+    "ronald",
+    "anthony",
+    "kevin",
+    "jason",
+    "matthew",
+    "gary",
+    "timothy",
+    "jose",
+    "larry",
+    "jeffrey",
+    "frank",
+    "scott",
+    "eric",
+    "andrew",
+    "stephen",
+    "raymond",
+    "gregory",
+    "joshua",
+    "jerry",
+    "dennis",
+    "walter",
+    "patrick",
+    "peter",
+    "harold",
+    "douglas",
+    "henry",
+    "carl",
+    "arthur",
+    "ryan",
+    "roger",
+    "joe",
+    "juan",
+    "jack",
+    "albert",
+    "jonathan",
+    "justin",
+    "terry",
+    "gerald",
+    "keith",
+    "samuel",
+    "willie",
+    "ralph",
+    "lawrence",
+    "nicholas",
+    "roy",
+    "benjamin",
+    "bruce",
+    "brandon",
+    "adam",
+    "harry",
+    "fred",
+    "wayne",
+    "billy",
+    "steve",
+    "louis",
+    "jeremy",
+    "aaron",
+    "randy",
+    "howard",
+    "eugene",
+    "carlos",
+    "russell",
+    "bobby",
+    "victor",
+    "martin",
+    "ernest",
+    "philip",
+    "todd",
+    "jesse",
+    "craig",
+    "alan",
+    "shawn",
+    "clarence",
+    "sean",
+    "phillip",
+    "chris",
+    "johnny",
+    "earl",
+    "jimmy",
+    "antonio",
+    "danny",
+    "bryan",
+    "tony",
+    "luis",
+    "mike",
+    "stanley",
+    "leonard",
+    "nathan",
+    "dale",
+    "manuel",
+    "rodney",
+    "curtis",
+    "norman",
+    "allen",
+    "marvin",
+    "vincent",
+    "glenn",
+    "travis",
+    "jeffery",
+    "ira",
+  ]);
+  if (commonFirst.has(second)) return true;
+  return false;
+}
 
-// 1) Strong label Owner/Owner(s) with sibling holding values (common pattern)
-$("strong").each((i, el) => {
-  const label = $(el).text().trim().toLowerCase();
-  if (label.includes("owner")) {
-    const container = $(el).closest("div");
-    const sibling = container.next();
-    if (sibling && sibling.length) {
-      const htmlFrag = sibling.html() || "";
-      const lines = htmlFrag
-        .replace(/<br\s*\/?>(\s*\n)?/gi, "\n")
-        .replace(/<[^>]*>/g, "")
-        .split(/\n+/)
-        .map((s) => s.trim())
-        .filter((s) => s);
-      lines.forEach((ln) => ownerStrings.push(ln));
+// Build owner object(s) from a raw candidate
+function buildOwnersFromRaw(raw, invalidOut) {
+  const owners = [];
+  const name = cleanWhitespace(raw);
+  if (!name) return owners;
+
+  if (isCompany(name)) {
+    owners.push({ type: "company", name: cleanWhitespace(name) });
+    return owners;
+  }
+
+  if (name.includes("&")) {
+    const split = splitAmpersandPersons(name);
+    if (split && split.length) return split;
+    invalidOut.push({ raw: name, reason: "ambiguous_ampersand_format" });
+    return owners;
+  }
+
+  // Remove commas
+  const plain = name.replace(/,/g, " ");
+  const toks = plain.split(/\s+/).filter(Boolean);
+  if (toks.length < 2) {
+    invalidOut.push({ raw: name, reason: "insufficient_name_parts" });
+    return owners;
+  }
+
+  let first = toks[0];
+  let middle = null;
+  let last = toks[toks.length - 1];
+
+  if (toks.length === 2 && isLikelyLastFirstTwoTokens(name)) {
+    // Swap
+    first = toks[1];
+    last = toks[0];
+  } else if (toks.length >= 3) {
+    // Heuristic: if all caps and looks like LAST FIRST MIDDLE
+    const allCaps = toks.every((t) => t === t.toUpperCase());
+    if (allCaps) {
+      // Assume first token is last name, second is first name, remaining middle
+      last = toks[0];
+      first = toks[1];
+      middle = toks.slice(2).join(" ");
+    } else {
+      middle = toks.slice(1, -1).join(" ") || null;
     }
   }
-});
 
-// 2) Elements whose id/class suggests owners
-$('[id*="owner" i], [class*="owner" i]').each((i, el) => {
-  const txt = $(el).text().trim();
-  if (txt && txt.length > 0) ownerStrings.push(txt);
-});
+  owners.push({
+    type: "person",
+    first_name: toTitle(first),
+    last_name: toTitle(last),
+    middle_name: middle ? toTitle(middle) : null,
+  });
+  return owners;
+}
 
-// Normalize and isolate name parts on each line (before dashes and extra annotations)
-const rawCandidates = [];
-ownerStrings.forEach((s) => {
-  const clean = s.split(" - ")[0].split(" — ")[0].split("|")[0];
-  const cleaned = normalizeName(clean).replace(/\s{2,}/g, " ");
-  if (cleaned) rawCandidates.push(cleaned);
-});
+// Deduplicate owners by normalized identification key
+function dedupeOwners(list) {
+  const seen = new Set();
+  const out = [];
+  for (const o of list) {
+    let key;
+    if (o.type === "company") key = "company:" + normalizeName(o.name);
+    else
+      key =
+        "person:" +
+        normalizeName(
+          [o.first_name, o.middle_name || "", o.last_name]
+            .filter(Boolean)
+            .join(" "),
+        );
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      out.push(o);
+    }
+  }
+  return out;
+}
 
-// Deduplicate raw candidates by normalized text
-const seenRaw = new Set();
-const uniqueRaw = rawCandidates.filter((r) => {
-  const key = r.toLowerCase();
-  if (seenRaw.has(key)) return false;
-  seenRaw.add(key);
+// Main assembly
+const propertyId = extractPropertyId($);
+const ownerBlocks = extractOwnerBlocks($);
+let rawCandidates = [];
+for (const b of ownerBlocks) {
+  rawCandidates = rawCandidates.concat(parseOwnerCandidates(b));
+}
+
+// Unique raw names
+const rawSeen = new Set();
+rawCandidates = rawCandidates.filter((n) => {
+  const k = normalizeName(n);
+  if (!k || rawSeen.has(k)) return false;
+  rawSeen.add(k);
   return true;
 });
 
-// Classify owners
-const validOwners = [];
 const invalidOwners = [];
+let ownerObjects = [];
+for (const rc of rawCandidates) {
+  ownerObjects = ownerObjects.concat(buildOwnersFromRaw(rc, invalidOwners));
+}
+ownerObjects = dedupeOwners(ownerObjects).filter(Boolean);
 
-const addPerson = (p, raw) => {
-  if (!p || !p.first_name || !p.last_name) {
-    invalidOwners.push({ raw, reason: "could_not_parse_person_name" });
-    return;
-  }
-  validOwners.push(p);
-};
-
-const addCompany = (name) => {
-  const nm = normalizeName(name);
-  if (!nm) return;
-  validOwners.push(makeCompany(nm));
-};
-
-uniqueRaw.forEach((raw) => {
-  if (!raw || raw.length === 0) return;
-  // If contains ampersand and not a company, try to expand into two people
-  if (raw.includes("&") && !isCompany(raw)) {
-    const expanded = splitAmpersandNames(raw);
-    expanded.forEach((nm) => {
-      if (!nm) return;
-      const tokens = nm.split(/\s+/).filter(Boolean);
-      const person = makePersonFromTokens(tokens);
-      if (person) addPerson(person, nm);
-      else invalidOwners.push({ raw: nm, reason: "ampersand_name_unparsable" });
-    });
-    return;
-  }
-
-  // Company detection
-  if (isCompany(raw)) {
-    addCompany(raw);
-    return;
-  }
-
-  // Person heuristic
-  const tokens = raw.split(/\s+/).filter(Boolean);
-  const person = makePersonFromTokens(tokens);
-  if (person) addPerson(person, raw);
-  else invalidOwners.push({ raw, reason: "unrecognized_owner_format" });
-});
-
-// Deduplicate valid owners by normalized representation
-const ownerKey = (o) => {
-  if (!o) return null;
-  if (o.type === "company") return `company:${o.name.toLowerCase().trim()}`;
-  const mid = o.middle_name ? ` ${o.middle_name.toLowerCase().trim()}` : "";
-  return `person:${(o.first_name || "").toLowerCase().trim()} ${(o.last_name || "").toLowerCase().trim()}${mid}`;
-};
-
-const seenOwners = new Set();
-const dedupedOwners = [];
-validOwners.forEach((o) => {
-  const k = ownerKey(o);
-  if (!k) return;
-  if (seenOwners.has(k)) return;
-  seenOwners.add(k);
-  dedupedOwners.push(o);
-});
-
-// Build owners_by_date mapping; only current owners are reliable here
+// Group by date: only current known from this page structure
 const ownersByDate = {};
-ownersByDate["current"] = dedupedOwners;
+ownersByDate["current"] = ownerObjects;
 
-const output = {};
-output[`property_${propId}`] = {
+const result = {};
+result[`property_${propertyId}`] = {
   owners_by_date: ownersByDate,
   invalid_owners: invalidOwners,
 };
 
-// Ensure directory and write file
-const outDir = path.join(process.cwd(), "owners");
+// Ensure output directory and save
+const outDir = path.join("owners");
 fs.mkdirSync(outDir, { recursive: true });
-const outPath = path.join(outDir, "owner_data.json");
-fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
+fs.writeFileSync(
+  path.join(outDir, "owner_data.json"),
+  JSON.stringify(result, null, 2),
+  "utf8",
+);
 
-// Console output (only JSON)
-console.log(JSON.stringify(output));
+// Print JSON
+console.log(JSON.stringify(result, null, 2));
