@@ -44,7 +44,10 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
+          let label = textTrim($(tr).find("td strong").first().text());
+          if (!label || !label.trim()) {
+            label = textTrim($(tr).find("th strong").first().text());
+          }
           const value = textTrim($(tr).find("td span").first().text());
           if (label) map[label] = value;
         });
@@ -60,7 +63,10 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
+          let label = textTrim($(tr).find("td strong").first().text());
+          if (!label || !label.trim()) {
+            label = textTrim($(tr).find("th strong").first().text());
+          }
           const value = textTrim($(tr).find("td span").first().text());
           if (label) map[label] = value;
         });
@@ -129,7 +135,6 @@ function buildLayoutsFromBuildings(buildings) {
     totalBeds += toInt(b["Bedrooms"]);
     totalBaths += toInt(b["Bathrooms"]);
   });
-
   const layouts = [];
   let idx = 1;
   for (let i = 0; i < totalBeds; i++) {
