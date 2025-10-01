@@ -54,11 +54,12 @@ function mapDeedType(src) {
   if (t === "WARRANTY DEED" || t === "LIMITED WARRANTY DEED") return "Warranty Deed";
   if (t === "TRUSTEE DEED") return "Trustee's Deed";
   if (t === "PROBATE RECORDS") return "Personal Representative Deed";
-  if (t === "TAX DEED" || t === "PROBATE RECORDS") return "Tax Deed";
+  if (t === "TAX DEED" || t === "PROBATE RECORDS" || t === "FINAL JUDGEMENT") return "Tax Deed";
   if (t === "BARGAIN AND SALE DEED") return "Bargain and Sale Deed";
   if (t === "COMMUNITY PROPERTY DEED") return "Community Property Deed";
   if (t === "CONTRACT FOR DEED") return "Contract for Deed";
   if (t === "COURT ORDER DEED") return "Court Order Deed";
+  if (t === "SHERIFF DEED") return "Sheriff's Deed";
   if (t === "ARTICLES OF AGREEMENT") return null;
   if (t === "ADMINISTRATIVE DEED") return null;
   if (t === "CERTIFICATE OF TITLE") return null;
