@@ -79,14 +79,33 @@ function getParcelId($) {
   return null;
 }
 
+// Helper function to get label text from a table row, trying th strong then td strong
+function getLabelTextFromRow($row) {
+  let label = textOf($row.find("th strong"));
+  if (!label) {
+    label = textOf($row.find("td strong"));
+  }
+  // If still no label, try just the first th or td directly
+  if (!label) {
+    label = textOf($row.find("th:first-child"));
+  }
+  if (!label) {
+    label = textOf($row.find("td:first-child"));
+  }
+  return label;
+}
+
+
 function extractLegalDescription($) {
   let desc = null;
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    if ((th || "").toLowerCase().includes("brief tax description")) { // Updated label
-      desc = textOf($(tr).find("td span"));
+    const $tr = $(tr);
+    const label = getLabelTextFromRow($tr); // Use the new helper
+    if ((label || "").toLowerCase().includes("brief tax description")) { // Updated label
+      desc = textOf($tr.find("td span"));
+      return false; // Stop iterating once found
     }
   });
   return desc || null;
@@ -97,9 +116,11 @@ function extractUseCode($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    if ((th || "").toLowerCase().includes("property use")) { // Updated label
-      code = textOf($(tr).find("td span"));
+    const $tr = $(tr);
+    const label = getLabelTextFromRow($tr); // Use the new helper
+    if ((label || "").toLowerCase().includes("property use")) { // Updated label
+      code = textOf($tr.find("td span"));
+      return false; // Stop iterating once found
     }
   });
   return code || null;
@@ -139,6 +160,15 @@ function collectBuildings($) {
     .first();
   if (!section.length) return buildings;
 
+  // Helper to get label text from either th strong or td strong within building details
+  const getBuildingDetailLabelText = ($row) => {
+    let label = textTrim($row.find("th strong").first().text());
+    if (!label) {
+      label = textTrim($row.find("td strong").first().text());
+    }
+    return label;
+  };
+
   // Select all individual building blocks within the section
   $(section)
     .find('.module-content > .block-row') // Each block-row contains data for one building
@@ -148,16 +178,18 @@ function collectBuildings($) {
       // Extract data from the left column
       $(blockRow).find('.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"] table tbody tr')
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td span").first().text());
+          const $tr = $(tr);
+          const label = getBuildingDetailLabelText($tr); // Use the new helper
+          const value = textTrim($tr.find("td span").first().text());
           if (label) buildingData[label] = value;
         });
 
       // Extract data from the right column (if present)
       $(blockRow).find('.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"] table tbody tr')
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td span").first().text());
+          const $tr = $(tr);
+          const label = getBuildingDetailLabelText($tr); // Use the new helper
+          const value = textTrim($tr.find("td span").first().text());
           if (label) buildingData[label] = value;
         });
 
@@ -254,6 +286,7 @@ function extractValuation($) {
   const dataMap = {};
   rows.each((i, tr) => {
     const $tr = $(tr);
+    // Valuation table labels are always <th>
     const label = textOf($tr.find("th"));
     const tds = $tr.find("td.value-column");
     const vals = [];
@@ -300,7 +333,7 @@ function writeProperty($, parcelId) {
     property_effective_built_year: years.effective || null,
     property_type: propertyType,
     livable_floor_area: null, // Not directly available in this HTML
-    total_area: String(totalArea),
+    total_area: totalArea > 0 ? String(totalArea) : null, // Ensure it matches the pattern ".*\d{2,}.*"
     number_of_units_type: null, // Not directly available
     area_under_air: null, // Not directly available
     number_of_units: null, // Not directly available
@@ -616,9 +649,11 @@ function extractSecTwpRng($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    if ((th || "").toLowerCase().includes("sec/twp/rng")) {
-      value = textOf($(tr).find("td span"));
+    const $tr = $(tr);
+    const label = getLabelTextFromRow($tr); // Use the new helper
+    if ((label || "").toLowerCase().includes("sec/twp/rng")) {
+      value = textOf($tr.find("td span"));
+      return false; // Stop iterating once found
     }
   });
   if (!value) return { section: null, township: null, range: null };
@@ -692,7 +727,7 @@ function normalizeSuffix(s) {
     RTE: "Rte",
     RUN: "Run",
     SHL: "Shl",
-    SHLS: "Shls",
+    SHLS: "Shrs", // Corrected from SHLS: "Shls" to SHLS: "Shrs" based on common abbreviations
     SHR: "Shr",
     SHRS: "Shrs",
     SMT: "Smt",

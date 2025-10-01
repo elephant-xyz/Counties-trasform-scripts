@@ -51,17 +51,17 @@ function mapDeedType(src) {
   if (t === "QUIT CLAIM DEED") return "Quitclaim Deed";
   if (t === "CORRECTIVE DEED") return "Correction Deed";
   if (t === "SPECIAL WARRANTY DEED") return "Special Warranty Deed";
-  if (t === "WARRANTY DEED") return "Warranty Deed";
+  if (t === "WARRANTY DEED" || t === "LIMITED WARRANTY DEED") return "Warranty Deed";
   if (t === "TRUSTEE DEED") return "Trustee's Deed";
   if (t === "PROBATE RECORDS") return "Personal Representative Deed";
-  if (t === "TAX DEED") return "Tax Deed";
+  if (t === "TAX DEED" || t === "PROBATE RECORDS") return "Tax Deed";
   if (t === "BARGAIN AND SALE DEED") return "Bargain and Sale Deed";
   if (t === "COMMUNITY PROPERTY DEED") return "Community Property Deed";
   if (t === "CONTRACT FOR DEED") return "Contract for Deed";
   if (t === "COURT ORDER DEED") return "Court Order Deed";
-
+  if (t === "ARTICLES OF AGREEMENT") return null;
   if (t === "ADMINISTRATIVE DEED") return null;
-  if (t === "CERTIFICATE FOR TITLE") return null;
+  if (t === "CERTIFICATE OF TITLE") return null;
 
   const err = {
     type: "error",
