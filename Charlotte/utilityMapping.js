@@ -1,42 +1,29 @@
-// Utility data extractor using cheerio
-// Reads input.html, writes owners/utilities_data.json
+// Utility mapping script
+// Reads input.html, parses with cheerio, and writes owners/utilities_data.json per schema
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function loadHtml(filepath) {
-  const html = fs.readFileSync(filepath, "utf8");
-  return cheerio.load(html);
+function extractPropertyId($) {
+  const h1Text = $("h1").first().text() || "";
+  const match = h1Text.match(/Property Record Information for\s*(\d+)/i);
+  return match ? match[1] : "unknown";
 }
 
-function getPropertyId($) {
-  const h1 = $("h1").first().text().trim();
-  const m = h1.match(/(\d{6,})/);
-  return m ? m[1] : "unknown";
-}
-
-function findTableByCaption($, captionText) {
-  const cap = $("caption.blockcaption")
-    .filter((i, el) => $(el).text().trim().includes(captionText))
-    .first();
-  if (!cap.length) return null;
-  return cap.closest("table");
-}
-
-function extractUtilities($) {
-  // Very limited explicit utility info in this record card. We'll infer minimal allowed fields and set nulls where appropriate.
-  const result = {
-    cooling_system_type: "CentralAir",
-    heating_system_type: "Central",
-    public_utility_type: "ElectricityAvailable",
-    sewer_type: "Public",
-    water_source_type: "Public",
-    plumbing_system_type: "Copper",
+function buildUtilityObject() {
+  // No explicit utility information is present in the provided HTML.
+  return {
+    cooling_system_type: null,
+    heating_system_type: null,
+    public_utility_type: null,
+    sewer_type: null,
+    water_source_type: null,
+    plumbing_system_type: null,
     plumbing_system_type_other_description: null,
-    electrical_panel_capacity: "200 Amp",
-    electrical_wiring_type: "Copper",
-    hvac_condensing_unit_present: "Yes",
+    electrical_panel_capacity: null,
+    electrical_wiring_type: null,
+    hvac_condensing_unit_present: null,
     electrical_wiring_type_other_description: null,
     solar_panel_present: false,
     solar_panel_type: null,
@@ -47,42 +34,22 @@ function extractUtilities($) {
     solar_inverter_visible: false,
     hvac_unit_issues: null,
   };
-
-  // Building Component Information indicates Heating/Cooling present: "Warmed & Cooled Air" -> central air/heat
-  const compTable = findTableByCaption($, "Building Component Information");
-  if (compTable && compTable.length) {
-    const hasHVAC = compTable
-      .find("td")
-      .toArray()
-      .some((td) => /Warmed\s*&\s*Cooled\s*Air/i.test($(td).text()));
-    if (!hasHVAC) {
-      result.cooling_system_type = null;
-      result.heating_system_type = null;
-      result.hvac_condensing_unit_present = "No";
-    }
-  }
-
-  return result;
 }
 
 (function main() {
-  try {
-    const inputPath = path.resolve("input.html");
-    const $ = loadHtml(inputPath);
-    const propId = getPropertyId($);
+  const inputPath = path.resolve("input.html");
+  const html = fs.readFileSync(inputPath, "utf8");
+  const $ = cheerio.load(html);
+  const propertyId = extractPropertyId($);
+  const utility = buildUtilityObject($);
 
-    const utilities = extractUtilities($);
+  const outDir = path.resolve("owners");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "utilities_data.json");
 
-    const outObj = {};
-    outObj[`property_${propId}`] = utilities;
+  const payload = {};
+  payload[`property_${propertyId}`] = utility;
 
-    const outDir = path.resolve("owners");
-    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-    const outPath = path.join(outDir, "utilities_data.json");
-    fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2));
-    console.log("Wrote", outPath);
-  } catch (e) {
-    console.error("Error:", e.message);
-    process.exit(1);
-  }
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
+  console.log(`Wrote ${outPath} for property_${propertyId}`);
 })();
