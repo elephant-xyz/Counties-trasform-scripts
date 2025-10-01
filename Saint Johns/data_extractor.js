@@ -15,7 +15,7 @@ function ensureDir(dir) {
 }
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl08_ctl01_lblParcelID";
-const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl08_mSection > div > div > table.tabular-data-two-column";
+const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl08_mSection > div > div > table.tabular-data-two-column tbody tr";
 const BUILDING_SECTION_TITLE = "Building Information";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl18_ctl01_grdSales tbody tr";
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl12_ctl01_grdValuation_grdYearData";
@@ -84,7 +84,10 @@ function extractLegalDescription($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th"));
+    let th = textOf($(tr).find("th"));
+    if(!th || !th.trim()) {
+      th = textOf($(tr).find("td").first());
+    }
     if ((th || "").toLowerCase().includes("description")) {
       desc = textOf($(tr).find("td span"));
     }
@@ -97,7 +100,10 @@ function extractUseCode($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th"));
+    let th = textOf($(tr).find("th"));
+    if(!th || !th.trim()) {
+      th = textOf($(tr).find("td").first());
+    }
     if ((th || "").toLowerCase().includes("property use code")) {
       code = textOf($(tr).find("td span"));
     }
@@ -149,7 +155,10 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
+          let label = textTrim($(tr).find("td strong").first().text());
+          if (!label || !label.trim()) {
+            label = textTrim($(tr).find("th strong").first().text());
+          }
           const value = textTrim($(tr).find("td span").first().text());
           if (label) map[label] = value;
         });
@@ -165,7 +174,10 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
+          let label = textTrim($(tr).find("td strong").first().text());
+          if (!label || !label.trim()) {
+            label = textTrim($(tr).find("th strong").first().text());
+          }
           const value = textTrim($(tr).find("td span").first().text());
           if (label) map[label] = value;
         });
@@ -317,7 +329,7 @@ function writeProperty($, parcelId) {
     property_effective_built_year: null,
     property_type: propertyType,
     livable_floor_area: null,
-    total_area: String(totalArea),
+    total_area: totalArea >= 10 ? String(totalArea) : null,
     number_of_units_type: null,
     area_under_air: null,
     number_of_units: null,
@@ -706,7 +718,10 @@ function extractSecTwpRng($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th"));
+    let th = textOf($(tr).find("th"));
+    if(!th || !th.trim()) {
+      th = textOf($(tr).find("td").first());
+    }
     if ((th || "").toLowerCase().includes("sec/twp/rng")) {
       value = textOf($(tr).find("td span"));
     }
