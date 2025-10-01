@@ -88,26 +88,42 @@ function inferHVAC(buildings) {
 
   buildings.forEach((b) => {
     const ac = (b["Air Conditioning"] || "").toUpperCase();
-    const heat = (b["Heating Type"] || "").toUpperCase(); // Changed from "Heat" to "Heating Type"
+    const heat = (b["Heating Type"] || "").toUpperCase();
 
+    // Map Air Conditioning
     if (ac.includes("CENTRAL")) {
       cooling_system_type = "CentralAir";
-      hvac_condensing_unit_present = "Yes"; // Assuming central air implies a condensing unit
+      hvac_condensing_unit_present = "Yes";
+    } else if (ac.includes("WINDOW/WALL UNIT")) {
+      cooling_system_type = "WindowAirConditioner"; // Changed to match schema
+      hvac_condensing_unit_present = "No"; // Window units are self-contained
     }
+    // Add other AC types as needed
 
-    if (heat.includes("FORCED AIR DUCTED")) { // Based on sample HTML
-      heating_system_type = "Central";
+    // Map Heating Type
+    if (heat.includes("CONVECTION")) {
+      // No direct match in schema, leaving as null or inferring if possible
+      // For now, let's assume it might be a form of electric or gas heating without a specific schema type
+    } else if (heat.includes("FORCED AIR DUCTED")) {
+      heating_system_type = "Central"; // Assuming forced air ducted implies central heating
+    } else if (heat.includes("ELECTRIC")) { // Added to catch explicit electric heating
+      heating_system_type = "Electric";
+    } else if (heat.includes("GAS")) { // Added to catch explicit gas heating
+      heating_system_type = "Gas";
     }
-    // Add other heating types if they appear in the data
+    // Add other heating types as needed
   });
 
+  // Infer system configuration and components based on mapped types
   if (cooling_system_type === "CentralAir" && heating_system_type === "Central") {
-    hvac_system_configuration = "SplitSystem"; // Common configuration for central air and forced air heat
+    hvac_system_configuration = "SplitSystem";
     hvac_equipment_component = "CondenserAndAirHandler";
   } else if (cooling_system_type === "CentralAir") {
-    hvac_equipment_component = "CondenserAndAirHandler"; // Still likely a split system for just AC
+    // If only central AC, still likely a split system with condenser and air handler
+    hvac_equipment_component = "CondenserAndAirHandler";
   }
-
+  // For window units and convection heating, these fields might remain null,
+  // as they don't typically fit the "split system" or "condenser/air handler" model.
 
   return {
     cooling_system_type,
@@ -123,16 +139,16 @@ function buildUtilityRecord($, buildings) {
   const rec = {
     cooling_system_type: hvac.cooling_system_type,
     heating_system_type: hvac.heating_system_type,
-    public_utility_type: null,
-    sewer_type: null,
-    water_source_type: null,
+    public_utility_type: null, // No information to infer from the provided HTML
+    sewer_type: null, // No information to infer from the provided HTML
+    water_source_type: null, // No information to infer from the provided HTML
     plumbing_system_type: null,
     plumbing_system_type_other_description: null,
     electrical_panel_capacity: null,
     electrical_wiring_type: null,
     hvac_condensing_unit_present: hvac.hvac_condensing_unit_present,
     electrical_wiring_type_other_description: null,
-    solar_panel_present: false,
+    solar_panel_present: false, // No information to infer from the provided HTML
     solar_panel_type: null,
     solar_panel_type_other_description: null,
     smart_home_features: null,

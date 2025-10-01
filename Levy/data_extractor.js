@@ -80,14 +80,25 @@ function getParcelId($) {
   return null;
 }
 
+// Helper function to get label text, trying th then td
+function getLabelText($row) {
+  let label = textOf($row.find("th:first-child"));
+  if (!label) {
+    label = textOf($row.find("td:first-child"));
+  }
+  return label;
+}
+
 function extractLegalDescription($) {
   let desc = null;
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th")); // Changed from "th strong" to "th"
-    if ((th || "").toLowerCase().includes("legal description")) {
-      desc = textOf($(tr).find("td span"));
+    const $tr = $(tr);
+    const label = getLabelText($tr);
+    if ((label || "").toLowerCase().includes("legal description")) {
+      desc = textOf($tr.find("td:last-child span"));
+      return false; // Stop iterating once found
     }
   });
   return desc || null;
@@ -98,9 +109,11 @@ function extractUseCode($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th")); // Changed from "th strong" to "th"
-    if ((th || "").toLowerCase().includes("property use code")) {
-      code = textOf($(tr).find("td span"));
+    const $tr = $(tr);
+    const label = getLabelText($tr);
+    if ((label || "").toLowerCase().includes("property use code")) {
+      code = textOf($tr.find("td:last-child span"));
+      return false; // Stop iterating once found
     }
   });
   return code || null;
@@ -142,6 +155,15 @@ function collectBuildings($) {
     .first();
   if (!section.length) return buildings;
 
+  // Helper to get label text from either th or td strong
+  const getBuildingLabelText = ($row) => {
+    let label = textTrim($row.find("th strong").first().text());
+    if (!label) {
+      label = textTrim($row.find("td strong").first().text());
+    }
+    return label;
+  };
+
   // Collect data from the left column
   const leftColumnData = [];
   $(section)
@@ -153,8 +175,9 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
+          const $tr = $(tr);
+          const label = getBuildingLabelText($tr);
+          const value = textTrim($tr.find("td div span").first().text());
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) leftColumnData.push(map);
@@ -171,8 +194,9 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
+          const $tr = $(tr);
+          const label = getBuildingLabelText($tr);
+          const value = textTrim($tr.find("td div span").first().text());
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) {
@@ -251,6 +275,9 @@ function mapInstrumentToDeedType(instr) {
   if (u == "TD") return "Tax Deed";
   if (u == "QC") return "Quitclaim Deed";
   if (u == "SW") return "Special Warranty Deed";
+  if (u == "WM") return "Warranty Deed"; // Added for the provided HTML example
+  if (u == "QM") return "Quitclaim Deed"; // Added for the provided HTML example
+  if (u == "QD") return "Quitclaim Deed"; // Added for the provided HTML example
   return null;
   // throw {
   //   type: "error",
@@ -275,6 +302,7 @@ function extractValuation($) {
   const dataMap = {};
   rows.each((i, tr) => {
     const $tr = $(tr);
+    // Valuation table labels are always <th>
     const label = textOf($tr.find("th"));
     const tds = $tr.find("td.value-column");
     const vals = [];
@@ -323,7 +351,7 @@ function writeProperty($, parcelId) {
     property_effective_built_year: years.effective || null,
     property_type: propertyType,
     livable_floor_area: null, // Not directly available in the sample HTML
-    total_area: String(totalArea),
+    total_area: totalArea > 0 ? String(totalArea) : null, // Ensure it matches the pattern ".*\d{2,}.*"
     number_of_units_type: null,
     area_under_air: null, // Not directly available in the sample HTML
     number_of_units: null, // Not directly available in the sample HTML
@@ -461,7 +489,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         companyNames.add((o.name || "").trim());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({ 
+  companies = Array.from(companyNames).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
@@ -639,12 +667,15 @@ function extractSecTwpRng($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th")); // Changed from "th strong" to "th"
-    if ((th || "").toLowerCase().includes("sec/twp/rng")) {
-      value = textOf($(tr).find("td span"));
+    const $tr = $(tr);
+    const label = getLabelText($tr);
+    if ((label || "").toLowerCase().includes("sec/twp/rng")) {
+      value = textOf($tr.find("td:last-child span"));
+      return false; // Stop iterating once found
     }
   });
   if (!value) return { section: null, township: null, range: null };
+  // Updated regex to be more flexible for township and range (can be alphanumeric)
   const m = value.trim().match(/^(\d+)-(\w+)-(\w+)$/);
   if (!m) return { section: null, township: null, range: null };
   return { section: m[1], township: m[2], range: m[3] };

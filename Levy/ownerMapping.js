@@ -8,7 +8,8 @@ const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl02_ctl01_lblParcelID";
-const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl03_ctl01_lstPrimaryOwner span[id^='ctlBodyPane_ctl03_ctl01_lstPrimaryOwner'][id$='_lblPrimaryOwnerName_lnkUpmSearchLinkSuppressed_lblSearch']";
+// UPDATED: More direct selector for the current owner's name span
+const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl03_ctl01_lstPrimaryOwner_ctl00_lblPrimaryOwnerName_lnkUpmSearchLinkSuppressed_lblSearch";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl11_ctl01_grdSales tbody tr";
 
 // Utility helpers
@@ -189,12 +190,11 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).each((i, el) => {
-    const owner_text = $(el).text().trim();
-    if (owner_text) {
-      owners.push(owner_text);
-    }
-  });
+  // The selector now directly targets the span containing the owner's name
+  const owner_text = $(CURRENT_OWNER_SELECTOR).text().trim();
+  if (owner_text) {
+    owners.push(owner_text);
+  }
   return owners;
 }
 

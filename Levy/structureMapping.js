@@ -13,6 +13,8 @@ function readHtml(filepath) {
 // Updated selectors based on the provided HTML
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl02_ctl01_lblParcelID";
 const BUILDING_SECTION_TITLE = "Building Information"; // Corrected title from HTML
+// frameTokens is not used in the current HTML structure for direct extraction,
+// but kept for potential future use or if other HTML structures include it.
 const frameTokens = [];
 
 
@@ -87,7 +89,7 @@ function mapExteriorMaterials(tokens) {
     const t = tok.toUpperCase().trim();
     if (!t) return;
     if (t.includes("BRK") || t.includes("BRICK")) out.push("Brick");
-    if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Siding");
+    if (t.includes("CEDAR") || t.includes("WOOD") || t.includes("T-111")) out.push("Wood Siding"); // Added T-111
     if (t.includes("STUC")) out.push("Stucco");
     if (t.includes("VINYL")) out.push("Vinyl Siding");
     if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
@@ -195,27 +197,25 @@ function buildStructureRecord($, buildings) {
 
   // Aggregate from buildings
   const extTokens = [];
-  const intWallTokens = [];
-  const floorTokens = [];
-  const roofCoverTokens = []; // Changed from roofTokens to roofCoverTokens for clarity
-  const roofStructureTokens = []; // Added for Roof Structure
-  const stories = [];
+  const intWallTokens = []; // Will likely remain empty based on sample HTML
+  const floorTokens = []; // Will likely remain empty based on sample HTML
+  const roofCoverTokens = [];
+  const roofStructureTokens = [];
+  const stories = []; // Will likely remain empty based on sample HTML
 
   buildings.forEach((b) => {
-    if (b["Exterior Wall"]) // Changed from "Exterior Walls" to "Exterior Wall"
+    if (b["Exterior Wall"])
       extTokens.push(...b["Exterior Wall"].split(";").map((s) => s.trim()));
-    // No direct "Interior Walls" in the sample HTML, so this will remain empty
+    // No direct "Interior Walls" in the sample HTML
     // if (b["Interior Walls"])
     //   intWallTokens.push(
     //     ...b["Interior Walls"].split(";").map((s) => s.trim()),
     //   );
-    // No direct "Floor Cover" in the sample HTML, so this will remain empty
+    // No direct "Floor Cover" in the sample HTML
     // if (b["Floor Cover"])
     //   floorTokens.push(...b["Floor Cover"].split(";").map((s) => s.trim()));
-    if (b["Roof Cover"]) roofCoverTokens.push(b["Roof Cover"]); // Changed to roofCoverTokens
-    if (b["Roof Structure"]) roofStructureTokens.push(b["Roof Structure"]); // Added for Roof Structure
-    // No direct "Frame Type" in the sample HTML, so this will remain empty
-    // if (b["Frame Type"]) frameTokens.push(b["Frame Type"]);
+    if (b["Roof Cover"]) roofCoverTokens.push(b["Roof Cover"]);
+    if (b["Roof Structure"]) roofStructureTokens.push(b["Roof Structure"]);
 
     // Stories can be inferred from "Finished Upper Story" in the sub-area table if needed,
     // but not directly available in the main building summary.
@@ -226,6 +226,8 @@ function buildStructureRecord($, buildings) {
   const ext = mapExteriorMaterials(extTokens);
   if (ext.length) {
     rec.exterior_wall_material_primary = ext[0] || null;
+    // If there's a secondary material, you could assign it here
+    // if (ext.length > 1) rec.exterior_wall_material_secondary = ext[1] || null;
   }
 
   // Interior wall surface (will likely be null based on sample HTML)
@@ -243,7 +245,7 @@ function buildStructureRecord($, buildings) {
   // Roof covering mapping
   if (roofCoverTokens.length) {
     const u = roofCoverTokens.join(" ").toUpperCase();
-    if (u.includes("METAL")) { // Based on sample HTML
+    if (u.includes("METAL")) {
       rec.roof_covering_material = "Metal";
     }
     // Add other roof covering types if they appear in the data
@@ -256,16 +258,16 @@ function buildStructureRecord($, buildings) {
     // }
   }
 
-  // Roof structure material
+  // Roof structure material and design type
   if (roofStructureTokens.length) {
     const u = roofStructureTokens.join(" ").toUpperCase();
-    if (u.includes("GABLE OR HIP")) { // Based on sample HTML
-      rec.roof_design_type = "Gable/Hip"; // Assuming this maps to design type
-      rec.roof_structure_material = "Wood Frame"; // Common for gable/hip
+    if (u.includes("GABLE OR HIP")) {
+      rec.roof_design_type = "Gable/Hip";
+      rec.roof_structure_material = "Wood Frame"; // Common assumption
     }
   }
 
-  // Framing (will likely be null based on sample HTML)
+  // Framing (will likely be null based on sample HTML, as no direct field)
   if (frameTokens.length > 0 && frameTokens.join(" ").toUpperCase().includes("WOOD")) {
     rec.primary_framing_material = "Wood Frame";
   }
