@@ -125,7 +125,8 @@ function parsePersonName(raw) {
           : null;
     const last = titleCasePhrase(lastPart);
     const first = titleCasePhrase(firstName);
-    const middle = middleName ? titleCasePhrase(middleName) : null;
+    // Exclude middle name if it contains "/" symbol (e.g., "H/E" is not a valid middle name)
+    const middle = middleName && !middleName.includes("/") ? titleCasePhrase(middleName) : null;
     if (!first || !last) return null;
     return {
       type: "person",
@@ -141,8 +142,10 @@ function parsePersonName(raw) {
   const first = titleCasePhrase(tokens[0]);
   const last = titleCasePhrase(tokens[tokens.length - 1]);
   const middleTokens = tokens.slice(1, -1);
-  const middle = middleTokens.length
-    ? titleCasePhrase(middleTokens.join(" "))
+  const middleStr = middleTokens.length ? middleTokens.join(" ") : null;
+  // Exclude middle name if it contains "/" symbol (e.g., "H/E" is not a valid middle name)
+  const middle = middleStr && !middleStr.includes("/")
+    ? titleCasePhrase(middleStr)
     : null;
   if (!first || !last) return null;
   return {
