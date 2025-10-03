@@ -277,8 +277,6 @@ function parseAddressParts(situsAddress1) {
   property.property_structure_built_year = isFinite(builtYear)
     ? builtYear
     : null;
-  if (property.property_structure_built_year == null)
-    errorOut("Missing built year.", "property.property_structure_built_year");
 
   const propertyType = mapPropertyType(parcelInfo.useCode);
   property.property_type = propertyType;
