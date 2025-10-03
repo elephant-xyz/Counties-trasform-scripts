@@ -29,9 +29,51 @@ function extractFromInput(inputObj) {
   const bathsStr = parcel.baths || "0";
   const baths = parseFloat(bathsStr);
 
+  // Extract square footage data
+  const bldgSqFT = coerceNumber(parcel.bldgSqFT);
+  const bldgUnderAirFootage = coerceNumber(parcel.bldgUnderAirFootage);
+
   // Build layouts for bedrooms and bathrooms as required
   const layouts = [];
   let spaceIndex = 1;
+
+  // ALWAYS add Living Area layout first with square footage data
+  layouts.push({
+    space_type: "Living Area",
+    space_index: spaceIndex++,
+    livable_area_sq_ft: bldgSqFT,
+    area_under_air_sq_ft: bldgUnderAirFootage,
+    flooring_material_type: null,
+    size_square_feet: null,
+    floor_level: null,
+    has_windows: null,
+    window_design_type: null,
+    window_material_type: null,
+    window_treatment_type: null,
+    is_finished: true,
+    furnished: null,
+    paint_condition: null,
+    flooring_wear: null,
+    clutter_level: null,
+    visible_damage: null,
+    countertop_material: null,
+    cabinet_style: null,
+    fixture_finish_quality: null,
+    design_style: null,
+    natural_light_quality: null,
+    decor_elements: null,
+    pool_type: null,
+    pool_equipment: null,
+    spa_type: null,
+    safety_features: null,
+    view_type: null,
+    lighting_features: null,
+    condition_issues: null,
+    is_exterior: false,
+    pool_condition: null,
+    pool_surface_type: null,
+    pool_water_quality: null,
+  });
 
   for (let i = 0; i < beds; i++) {
     layouts.push({

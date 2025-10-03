@@ -91,12 +91,20 @@ const categories = [
  
 // Function to map a given useCode to category
 function mapPropertyType(useCode) {
+  if (!useCode || useCode.trim() === '') {
+    console.error(`ERROR: useCode is missing or empty. Cannot determine property type.`);
+    throw new Error(`Property type cannot be determined without useCode`);
+  }
+
   for (const { key, patterns } of categories) {
     if (patterns.some(p => p.test(useCode))) {
       return key;
     }
   }
-  return "null";
+
+  // If no mapping found, log error and throw exception
+  console.error(`ERROR: Unable to map useCode "${useCode}" to a property type. Please add this mapping to the property type configuration.`);
+  throw new Error(`Unsupported property useCode: ${useCode}`);
 }
 
 function mapDeedType(s) {
@@ -250,8 +258,7 @@ function parseAddressParts(situsAddress1) {
     parcelInfo.bldgUnderAirFootage != null
       ? String(parcelInfo.bldgUnderAirFootage).trim()
       : null;
-  if (livable == null || livable === "")
-    errorOut("Missing livable floor area.", "property.livable_floor_area");
+
   property.livable_floor_area = livable;
   property.parcel_identifier =
     parcelId ||
