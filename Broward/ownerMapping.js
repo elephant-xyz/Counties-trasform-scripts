@@ -268,10 +268,29 @@ if (ownerCandidates.length === 0) {
   });
 }
 
-// Deduplicate raw owner strings by normalized name string
+// Check if any owner candidate contains company markers
+// If so, treat all candidates as a single multi-line company name (unless there's "&")
+const hasCompanyMarker = ownerCandidates.some(raw => isCompany(raw));
+const combinedOwnerText = ownerCandidates.join(" ").replace(/\s+/g, " ").trim();
+
+// If there's a company marker and "&" separator, split by "&"
+// Otherwise, if there's a company marker, treat the whole thing as one entity
+let processedOwners = [];
+if (hasCompanyMarker && combinedOwnerText.includes("&")) {
+  // Split by & to handle multiple companies/persons
+  processedOwners = combinedOwnerText.split("&").map(s => s.trim()).filter(Boolean);
+} else if (hasCompanyMarker) {
+  // Single company (possibly multi-line)
+  processedOwners = [combinedOwnerText];
+} else {
+  // No company markers, process individually (likely persons)
+  processedOwners = ownerCandidates.map(s => s.trim()).filter(Boolean);
+}
+
+// Deduplicate processed owner strings by normalized name string
 const seenRaw = new Set();
 const uniqueRawOwners = [];
-for (const raw of ownerCandidates) {
+for (const raw of processedOwners) {
   const norm = normalizeName(raw);
   if (!norm) continue;
   if (seenRaw.has(norm)) continue;
@@ -285,7 +304,7 @@ for (const raw of uniqueRawOwners) {
   const trimmed = raw.trim();
   if (!trimmed) continue;
 
-  // Handle joint names with '&'
+  // Handle joint names with '&' (only if not a company)
   if (trimmed.includes("&") && !isCompany(trimmed)) {
     const splitOwners = splitAmpersandOwners(trimmed);
     if (splitOwners && splitOwners.length) {
