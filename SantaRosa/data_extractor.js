@@ -424,6 +424,8 @@ function main() {
   const address = {
     street_number: situsParts.street_number || null,
     street_name: situsParts.street_name || null,
+    latitude: unnormalized && unnormalized.latitude ? unnormalized.latitude : null,
+    longitude: unnormalized && unnormalized.longitude ? unnormalized.longitude : null,
     street_suffix_type: normalizeSuffix(situsParts.street_suffix),
     street_pre_directional_text: null,
     street_post_directional_text: null,
@@ -438,8 +440,6 @@ function main() {
     plus_four_postal_code: null,
     country_code: null,
     county_name: "Santa Rosa",
-    latitude: null,
-    longitude: null,
     unit_identifier: null,
     route_number: null,
     township: township || null,

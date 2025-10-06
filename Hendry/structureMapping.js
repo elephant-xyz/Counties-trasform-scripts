@@ -10,8 +10,8 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
-const BUILDING_SECTION_TITLE = "Buildings";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lblParcelID";
+const BUILDING_SECTION_TITLE = "Building Information";
 
 function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();

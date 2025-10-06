@@ -14,12 +14,11 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
-const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_divSummary table tbody tr";
-const BUILDING_SECTION_TITLE = "Buildings";
-const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales_grdFlat tbody tr";
-const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl03_ctl01_grdValuation_grdYearData";
-
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lblParcelID";
+const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl00_mSection > div > table tbody tr";
+const BUILDING_SECTION_TITLE = "Building Information";
+const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl11_ctl01_grdSales tbody tr";
+const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl03_ctl01_grdValuation";
 
 function readJSON(p) {
   try {
@@ -84,8 +83,11 @@ function extractLegalDescription($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
-    if ((th || "").toLowerCase().includes("legal description")) {
+    let th = textOf($(tr).find("th"));
+    if(!th || !th.trim()) {
+      th = textOf($(tr).find("td").first());
+    }
+    if ((th || "").toLowerCase().includes("description")) {
       desc = textOf($(tr).find("td span"));
     }
   });
@@ -97,7 +99,10 @@ function extractUseCode($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th"));
+    if(!th || !th.trim()) {
+      th = textOf($(tr).find("td").first());
+    }
     if ((th || "").toLowerCase().includes("property use code")) {
       code = textOf($(tr).find("td span"));
     }
@@ -224,9 +229,9 @@ function extractSales($) {
     const salePrice = textOf($(tds[1]));
     const instrument = textOf($(tds[2]));
     const bookPage = textOf($(tds[3]));
-    const link = $(tds[4]).find("a").attr("href") || null;
-    const grantor = textOf($(tds[7]));
-    const grantee = textOf($(tds[8]));
+    const link = $(tds[3]).find("a").last().attr("href") || null;
+    const grantor = textOf($(tds[6]));
+    const grantee = textOf($(tds[7]));
     out.push({
       saleDate,
       salePrice,
@@ -259,11 +264,16 @@ function extractValuation($) {
   const table = $(VALUATION_TABLE_SELECTOR);
   if (table.length === 0) return [];
   const years = [];
-  const headerThs = table.find("thead tr th").toArray().slice(1);
+  const headerThs = table.find("thead tr th").toArray();
   headerThs.forEach((th, idx) => {
     const txt = $(th).text().trim();
-    const y = parseInt(txt, 10);
-    if (!isNaN(y)) years.push({ year: y, idx });
+    const m = txt.match(/(\d{4})/);
+    if (m && m.length > 1) {
+      let y = parseInt(m[1], 10);
+      if (!isNaN(y)) {
+        years.push({ year: y, idx });
+      }
+    }
   });
   const rows = table.find("tbody tr");
   const dataMap = {};
@@ -286,9 +296,9 @@ function extractValuation($) {
       year,
       building: get("Building Value"),
       land: get("Land Value"),
-      market: get("Just (Market) Value"),
-      assessed: get("Assessed Value"),
-      taxable: get("Taxable Value"),
+      market: get("Just Market Value"),
+      assessed: get("School Assessed Value"),
+      taxable: get("School Taxable Value"),
     };
   });
 }
@@ -334,7 +344,6 @@ function writeSalesDeedsFilesAndRelationships($) {
       }
     });
   } catch (e) {}
-
   sales.forEach((s, i) => {
     const idx = i + 1;
     const saleObj = {
@@ -347,11 +356,12 @@ function writeSalesDeedsFilesAndRelationships($) {
     const deed = { deed_type: deedType };
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
+    let fileName = s.bookPage ? s.bookPage.split("\n")[0] : null;
     const file = {
       document_type: null,
       file_format: null,
       ipfs_url: null,
-      name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
+      name: fileName ? `Deed ${fileName}` : "Deed Document",
       original_url: s.link || null,
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
@@ -630,7 +640,10 @@ function extractSecTwpRng($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th"));
+    if(!th || !th.trim()) {
+      th = textOf($(tr).find("td").first());
+    }
     if ((th || "").toLowerCase().includes("sec/twp/rng")) {
       value = textOf($(tr).find("td span"));
     }

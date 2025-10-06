@@ -83,7 +83,7 @@ function extractLegalDescription($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th strong"));
     if(!th || !th.trim()) {
       th = textOf($(tr).find("td").first());
     }
@@ -99,7 +99,7 @@ function extractUseCode($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th strong"));
     if(!th || !th.trim()) {
       th = textOf($(tr).find("td").first());
     }
@@ -641,7 +641,7 @@ function extractSecTwpRng($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th strong"));
     if(!th || !th.trim()) {
       th = textOf($(tr).find("td").first());
     }
