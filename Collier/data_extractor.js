@@ -65,16 +65,44 @@ function extractPropertyType(useCodeText) {
   return val;
 }
 
+
 function splitStreet(streetPart) {
-  const dirs = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW"]);
+  const dirs = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW", "NORTH", "SOUTH", "EAST", "WEST"]);
   let tokens = streetPart
     .split(/\s+/)
     .map((t) => t.trim())
     .filter(Boolean);
+
+  let preDir = null;
   let postDir = null;
-  if (tokens.length > 1 && dirs.has(tokens[tokens.length - 1].toUpperCase())) {
-    postDir = tokens.pop().toUpperCase();
+
+  // Check for pre-directional (first token)
+  if (tokens.length > 1 && dirs.has(tokens[0].toUpperCase())) {
+    const dirUpper = tokens[0].toUpperCase();
+    // Normalize to single letter
+    const dirMap = {
+      "NORTH": "N",
+      "SOUTH": "S",
+      "EAST": "E",
+      "WEST": "W",
+    };
+    preDir = dirMap[dirUpper] || dirUpper;
+    tokens = tokens.slice(1); // remove pre-directional from tokens
   }
+
+  // Check for post-directional (last token)
+  if (tokens.length > 1 && dirs.has(tokens[tokens.length - 1].toUpperCase())) {
+    const dirUpper = tokens[tokens.length - 1].toUpperCase();
+    const dirMap = {
+      "NORTH": "N",
+      "SOUTH": "S",
+      "EAST": "E",
+      "WEST": "W",
+    };
+    postDir = dirMap[dirUpper] || dirUpper;
+    tokens.pop(); // remove post-directional
+  }
+
   // Now determine suffix type from last token
   const suffixMap = {
     AVE: "Ave",
@@ -116,7 +144,7 @@ function splitStreet(streetPart) {
     }
   }
   const streetName = tokens.join(" ").toUpperCase();
-  return { streetName, postDir, suffix };
+  return { streetName, preDir, postDir, suffix };
 }
 
 function parseAddress(
@@ -127,7 +155,7 @@ function parseAddress(
   range,
   countyNameFromSeed,
 ) {
-  // Example fullAddress: 11532 LONGSHORE WAY W, NAPLES, FL 34119 or 11532 LONGSHORE WAY W, NAPLES 34119
+  // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
   let streetNumber = null,
     streetName = null,
     postDir = null,
@@ -135,12 +163,23 @@ function parseAddress(
     suffixType = null,
     city = null,
     state = null,
-    zip = null;
+    zip = null,
+    unitId = null;
 
   if (fullAddress) {
     const addr = fullAddress.replace(/\s+,/g, ",").trim();
+
+    // First, extract unit identifier if present (# 2306, APT 2306, UNIT 2306, etc.)
+    let streetPartRaw = addr;
+    const unitMatch = addr.match(/(#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i);
+    if (unitMatch) {
+      unitId = unitMatch[2];
+      // Remove unit from address for further parsing
+      streetPartRaw = addr.replace(/(#|APT|UNIT|STE|SUITE)\s*[A-Z0-9-]+/i, "").trim();
+    }
+
     // Prefer pattern: <num> <street words> [<postDir>], <CITY>, <STATE> <ZIP>
-    let m = addr.match(
+    let m = streetPartRaw.match(
       /^(\d+)\s+([^,]+),\s*([A-Z\s]+),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/,
     );
     if (m) {
@@ -151,11 +190,12 @@ function parseAddress(
       zip = m[5];
       const parsed = splitStreet(streetPart);
       streetName = parsed.streetName;
+      preDir = parsed.preDir;
       postDir = parsed.postDir;
       suffixType = parsed.suffix;
     } else {
       // Fallback pattern without explicit state: <num> <street words> [<postDir>], <CITY> <ZIP>
-      m = addr.match(/^(\d+)\s+([^,]+),\s*([A-Z\s]+)\s*(\d{5})(?:-\d{4})?$/);
+      m = streetPartRaw.match(/^(\d+)\s+([^,]+),\s*([A-Z\s]+)\s*(\d{5})(?:-\d{4})?$/);
       if (m) {
         streetNumber = m[1];
         const streetPart = m[2].trim();
@@ -163,6 +203,7 @@ function parseAddress(
         zip = m[4];
         const parsed = splitStreet(streetPart);
         streetName = parsed.streetName;
+        preDir = parsed.preDir;
         postDir = parsed.postDir;
         suffixType = parsed.suffix;
       }
@@ -200,7 +241,7 @@ function parseAddress(
     street_pre_directional_text: preDir || null,
     street_suffix_type: suffixType || null,
     township: township || null,
-    unit_identifier: null,
+    unit_identifier: unitId || null,
   };
 }
 
@@ -266,39 +307,86 @@ function main() {
   }
 
   // Year built and areas from Building/Extra Features
-  let yearBuilt = null,
-    baseArea = null,
-    adjArea = null;
-  $("#BuildingAdditional tr").each((i, el) => {
-    const desc =
-      $(el)
-        .find("#BLDGCLASS" + (i + 1))
-        .text()
-        .trim() || $(el).find("span[id^=BLDGCLASS]").text().trim();
-    const yr = $(el).find("span[id^=YRBUILT]").text().trim();
-    const base = $(el).find("span[id^=BASEAREA]").text().trim();
-    const adj = $(el).find("span[id^=TYADJAREA]").text().trim();
-    if (/SINGLE\s+FAMILY\s+RESIDENCE/i.test(desc)) {
-      if (yr) yearBuilt = parseInt(yr, 10);
-      if (base) baseArea = base;
-      if (adj) adjArea = adj;
+  // Positive list: These ARE residential structures that should be included
+  const residentialTypes = [
+    /SINGLE\s+FAMILY\s+RESIDENCE/i,
+    /SINGLE\s+FAMILY/i,
+    /CONDO/i,
+    /CONDOMINIUM/i,
+    /HOMEOWNERS/i,
+    /MULTI[-\s]*FAMILY/i,
+    /MOBILE\s+HOME/i,
+    /MANUFACTURED\s+HOME/i,
+    /DUPLEX/i,
+    /TRIPLEX/i,
+    /FOURPLEX/i,
+    /TOWNHOUSE/i,
+    /TOWNHOME/i,
+    /APARTMENT/i,
+    /RESIDENTIAL\s+STYLE\s+BUILDING/i,
+    /RESIDENTIAL\s+BUILDING/i,
+  ];
+
+  let yearBuilt = null;
+  let totalBaseArea = 0;
+  let totalAdjArea = 0;
+  let hasAnyResidentialBuildings = false;
+
+  // Find all BLDGCLASS spans and process each building
+  $("span[id^=BLDGCLASS]").each((i, el) => {
+    const $span = $(el);
+    const buildingClass = $span.text().trim();
+    const spanId = $span.attr("id");
+
+    if (!buildingClass) return;
+
+    // Extract building number from span ID (e.g., "BLDGCLASS1" -> "1")
+    const buildingNumMatch = spanId.match(/BLDGCLASS(\d+)/);
+    if (!buildingNumMatch) return;
+    const buildingNum = buildingNumMatch[1];
+
+    // Check if this matches any residential pattern
+    const isResidential = residentialTypes.some(pattern => pattern.test(buildingClass));
+
+    if (isResidential) {
+      hasAnyResidentialBuildings = true;
+
+      // Get year built from first residential building
+      if (!yearBuilt) {
+        const yrSpan = $(`#YRBUILT${buildingNum}`);
+        const yr = yrSpan.text().trim();
+        if (yr) yearBuilt = parseInt(yr, 10);
+      }
+
+      // Sum base area
+      const baseAreaSpan = $(`#BASEAREA${buildingNum}`);
+      const baseAreaText = baseAreaSpan.text().trim();
+      if (baseAreaText) {
+        const num = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
+        if (!isNaN(num) && num > 0) {
+          totalBaseArea += num;
+        }
+      }
+
+      // Sum adjusted area
+      const adjAreaSpan = $(`#TYADJAREA${buildingNum}`);
+      const adjAreaText = adjAreaSpan.text().trim();
+      if (adjAreaText) {
+        const num = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
+        if (!isNaN(num) && num > 0) {
+          totalAdjArea += num;
+        }
+      }
     }
   });
-  if (!yearBuilt) {
-    const yr = $("#BuildingAdditional tr")
-      .first()
-      .find("span[id^=YRBUILT]")
-      .text()
-      .trim();
-    if (yr) yearBuilt = parseInt(yr, 10);
-  }
+
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
-  if (baseArea) {
-    property.livable_floor_area = String(baseArea);
-    property.area_under_air = String(baseArea);
+  if (hasAnyResidentialBuildings && totalBaseArea > 0) {
+    property.livable_floor_area = String(totalBaseArea);
+    property.area_under_air = String(totalBaseArea);
   }
-  if (adjArea) {
-    property.total_area = String(adjArea);
+  if (hasAnyResidentialBuildings && totalAdjArea > 0) {
+    property.total_area = String(totalAdjArea);
   }
 
   // Write property.json
@@ -372,15 +460,15 @@ function main() {
     );
   });
 
-  // Create sales files only for positive amounts
-  const positiveSales = saleRows.filter(
-    (r) => r.amount != null && r.amount > 0 && r.iso,
+  // Create sales files for all valid sales (including $0 amounts)
+  const validSales = saleRows.filter(
+    (r) => r.amount != null && r.iso,
   );
-  positiveSales.sort((a, b) => a.iso.localeCompare(b.iso));
-  positiveSales.forEach((s, idx) => {
+  validSales.sort((a, b) => a.iso.localeCompare(b.iso));
+  validSales.forEach((s, idx) => {
     const saleObj = {
       ownership_transfer_date: s.iso,
-      purchase_price_amount: s.amount,
+      purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
     };
     fs.writeFileSync(
       path.join(dataDir, `sales_${idx + 1}.json`),
@@ -388,8 +476,8 @@ function main() {
     );
   });
 
-  // Relationship: sales -> deed for rows with positive sales (map to original row index)
-  positiveSales.forEach((s, idx) => {
+  // Relationship: sales -> deed for all valid sales (map to original row index)
+  validSales.forEach((s, idx) => {
     const orig = saleRows.findIndex(
       (r) => r.iso === s.iso && r.amount === s.amount,
     );
@@ -435,9 +523,9 @@ function main() {
             JSON.stringify(comp, null, 2),
           );
         });
-        // Link each current owner to each positive sale event (one link per sale per owner)
-        if (positiveSales.length > 0) {
-          positiveSales.forEach((s, si) => {
+        // Link each current owner to each valid sale event (one link per sale per owner)
+        if (validSales.length > 0) {
+          validSales.forEach((s, si) => {
             curr.forEach((c, oi) => {
               const rel = {
                 to: { "/": `./company_${oi + 1}.json` },
@@ -470,8 +558,8 @@ function main() {
             JSON.stringify(person, null, 2),
           );
         });
-        if (positiveSales.length > 0) {
-          positiveSales.forEach((s, si) => {
+        if (validSales.length > 0) {
+          validSales.forEach((s, si) => {
             curr.forEach((c, oi) => {
               const rel = {
                 to: { "/": `./person_${oi + 1}.json` },

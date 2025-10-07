@@ -15,6 +15,12 @@ function norm(str) {
     .trim();
 }
 
+// Title case for names: first letter uppercase, rest lowercase
+function titleCase(str) {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
 // Determine if text looks like an address or non-name noise
 function isLikelyAddress(text) {
   const t = norm(text).toUpperCase();
@@ -111,6 +117,35 @@ function looksLikeCompany(name) {
   });
 }
 
+// Known suffix values
+const knownSuffixes = new Set([
+  "JR", "JR.", "JUNIOR",
+  "SR", "SR.", "SENIOR",
+  "II", "III", "IV", "V",
+  "ESQ", "ESQ.",
+  "CFA", "CPA", "DDS", "DVM", "MBA", "MD", "PE", "PHD", "PMP", "RN", "LLM",
+  "EMERITUS",
+  "RET", "RET.",
+]);
+
+// Normalize suffix to standard format
+function normalizeSuffix(suffix) {
+  const upper = suffix.toUpperCase().replace(/\./g, "");
+  const map = {
+    "JR": "Jr.",
+    "JUNIOR": "Jr.",
+    "SR": "Sr.",
+    "SENIOR": "Sr.",
+    "II": "II",
+    "III": "III",
+    "IV": "IV",
+    "V": "V",
+    "ESQ": "Esq.",
+    "RET": "Ret.",
+  };
+  return map[upper] || suffix;
+}
+
 // Classify a raw owner name string into schema owner or invalid
 function classifyOwner(raw) {
   const original = norm(raw);
@@ -121,50 +156,87 @@ function classifyOwner(raw) {
   if (isLikelyAddress(text))
     return { valid: false, reason: "address_or_noise" };
 
-  // Company check first
+  // Check if it looks like a company using keywords - THIS IS THE ONLY WAY TO DETECT COMPANIES
   if (looksLikeCompany(text)) {
     return { valid: true, owner: { type: "company", name: text } };
   }
 
-  // Ampersand handling (e.g., John & Jane Smith)
-  if (text.includes("&")) {
-    const cleaned = norm(text.replace(/&/g, " "));
-    const tokens = cleaned.split(" ").filter(Boolean);
-    if (tokens.length < 2)
-      return {
-        valid: false,
-        reason: "insufficient_name_parts_with_ampersand",
-        raw: text,
-      };
-    const lastName = tokens[tokens.length - 1];
-    const firstName = tokens.slice(0, -1).join(" ");
-    return {
-      valid: true,
-      owner: {
-        type: "person",
-        first_name: firstName,
-        last_name: lastName,
-        middle_name: null,
-      },
+  // At this point, it's a person (not a company)
+  // Two formats are possible:
+  // 1. "LAST SUFFIX, FIRST MIDDLE" (e.g., "CARLUCCI JR, CARL PETER")
+  // 2. "FIRST MIDDLE LAST" (e.g., "PATRICIA S CARLUCCI")
+
+  if (text.includes(",")) {
+    // Format: "LAST SUFFIX, FIRST MIDDLE"
+    const parts = text.split(",").map(s => s.trim());
+    if (parts.length < 2) {
+      return { valid: false, reason: "comma_but_insufficient_parts", raw: text };
+    }
+
+    // Parse left side (last name + optional suffix)
+    const leftTokens = parts[0].split(/\s+/).filter(Boolean);
+    if (leftTokens.length === 0) {
+      return { valid: false, reason: "no_last_name", raw: text };
+    }
+
+    let lastName = null;
+    let suffixName = null;
+
+    // Check if last token is a suffix
+    if (leftTokens.length > 1 && knownSuffixes.has(leftTokens[leftTokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+      suffixName = normalizeSuffix(leftTokens.pop());
+    }
+
+    lastName = leftTokens.map(titleCase).join(" ");
+
+    // Parse right side (first + middle names)
+    const firstMiddle = parts[1].trim();
+    const firstMiddleTokens = firstMiddle.split(/\s+/).filter(Boolean);
+
+    if (firstMiddleTokens.length === 0) {
+      return { valid: false, reason: "no_first_name", raw: text };
+    }
+
+    const firstName = titleCase(firstMiddleTokens[0]);
+    const middleName = firstMiddleTokens.length > 1
+      ? firstMiddleTokens.slice(1).map(titleCase).join(" ")
+      : null;
+
+    const person = {
+      type: "person",
+      first_name: firstName,
+      last_name: lastName,
+      middle_name: middleName,
+      suffix_name: suffixName,
     };
+    return { valid: true, owner: person };
+  } else {
+    // Format: "FIRST MIDDLE LAST" (no comma)
+    const tokens = text.split(/\s+/).filter(Boolean);
+    if (tokens.length < 2) {
+      return { valid: false, reason: "insufficient_name_parts", raw: text };
+    }
+
+    // Last token is the last name
+    const lastName = titleCase(tokens[tokens.length - 1]);
+
+    // First token is the first name
+    const firstName = titleCase(tokens[0]);
+
+    // Everything in between is middle name
+    const middleName = tokens.length > 2
+      ? tokens.slice(1, -1).map(titleCase).join(" ")
+      : null;
+
+    const person = {
+      type: "person",
+      first_name: firstName,
+      last_name: lastName,
+      middle_name: middleName,
+      suffix_name: null,
+    };
+    return { valid: true, owner: person };
   }
-
-  // Person heuristic: require at least two tokens and no excessive punctuation
-  const name = text.replace(/,/g, " ").replace(/\s+/g, " ").trim();
-  const parts = name.split(" ").filter(Boolean);
-  if (parts.length < 2)
-    return { valid: false, reason: "single_token_person", raw: text };
-
-  const firstName = parts[0];
-  const lastName = parts[parts.length - 1];
-  const middleParts = parts.slice(1, -1).join(" ");
-  const person = {
-    type: "person",
-    first_name: firstName,
-    last_name: lastName,
-    middle_name: middleParts ? middleParts : null,
-  };
-  return { valid: true, owner: person };
 }
 
 // Extract parcel/property id
@@ -203,62 +275,28 @@ function extractPropertyId($) {
 
 // Extract all plausible owner name strings from variable structures
 function extractOwnerNameStrings($) {
-  const results = new Set();
+  // Extract only from OwnerLine1, OwnerLine2, OwnerLine3, etc.
+  // The last OwnerLine is always the address, so we skip it
+  const ownerLines = [];
 
-  // 1) Any element whose id contains 'owner'
-  $("[id]").each((_, el) => {
-    const idAttr = el.attribs && el.attribs.id ? el.attribs.id : "";
-    if (/owner/i.test(idAttr)) {
-      const txt = norm($(el).text());
-      if (txt) results.add(txt);
+  // Find all OwnerLine spans
+  for (let i = 1; i <= 10; i++) {
+    const txt = norm($(`#OwnerLine${i}`).text());
+    if (txt) {
+      ownerLines.push(txt);
+    } else {
+      // Stop when we hit an empty line
+      break;
     }
-  });
-
-  // 2) Labels like 'Name / Address' with following sibling cell content
-  $("td, th").each((_, el) => {
-    const t = norm($(el).text());
-    if (/^name\s*\/\s*address$/i.test(t) || /^owner(\s*name)?$/i.test(t)) {
-      const row = $(el).closest("tr");
-      const nextCells = row.nextAll("tr");
-      const firstRowText = norm(row.find("span, div").not(el).first().text());
-      if (firstRowText) results.add(firstRowText);
-      nextCells.each((__, r) => {
-        $(r)
-          .find("span, div")
-          .each((i2, s) => {
-            const tx = norm($(s).text());
-            if (tx) results.add(tx);
-          });
-      });
-    }
-  });
-
-  // 3) Headings or spans commonly used
-  $("[class], span, div").each((_, el) => {
-    const cls = el.attribs && el.attribs.class ? el.attribs.class : "";
-    if (/owner/i.test(cls)) {
-      const tx = norm($(el).text());
-      if (tx) results.add(tx);
-    }
-  });
-
-  // Filter out noise/addressy entries aggressively; keep only likely names
-  const filtered = [];
-  for (const val of results) {
-    // Ignore empty and very short tokens
-    if (!val || val.length < 2) continue;
-    // Exclude obvious address/geo lines
-    if (isLikelyAddress(val)) continue;
-    filtered.push(val);
   }
 
-  // Additionally, try the canonical summary owner line if present (e.g., OwnerLine1)
-  const ownerLine1 = norm($("#OwnerLine1").text());
-  if (ownerLine1) {
-    if (!isLikelyAddress(ownerLine1)) filtered.push(ownerLine1);
+  // Remove the last line (it's always the address/city)
+  if (ownerLines.length > 0) {
+    ownerLines.pop();
   }
 
-  return filtered;
+  // Filter out any remaining address-like entries
+  return ownerLines.filter(line => !isLikelyAddress(line));
 }
 
 // Deduplicate owners by normalized key
