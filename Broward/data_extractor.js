@@ -56,15 +56,12 @@ function mapUnitsType(unitsStr) {
     case 4:
       return "Four";
     default:
-      errorOut(
-        `Unknown enum value ${unitsStr}.`,
-        "property.number_of_units_type",
-      );
+      return null;
   }
 }
 
 const categories = [
-  { key: "SingleFamily", patterns: [/Single Family/i, /Zero Lot Line/i] },
+  { key: "SingleFamily", patterns: [/Single Family/i, /Zero Lot Line/i, /House w\/guest house/i] },
   { key: "Condominium", patterns: [/Condominium/i] },
   { key: "Cooperative", patterns: [/Cooperatives?/i] },
   { key: "Modular", patterns: [/Modular/i] },
@@ -82,10 +79,10 @@ const categories = [
   { key: "Duplex", patterns: [/Duplex/i] },
   { key: "Townhouse", patterns: [/Townhouse|Townhome/i] },
   { key: "NonWarrantableCondo", patterns: [/Condominium.*not suitable/i] },
-  { key: "VacantLand", patterns: [/^Vacant/i] },
+  { key: "VacantLand", patterns: [/Vacant/i] },
   { key: "Retirement", patterns: [/Retirement/i] },
   { key: "MiscellaneousResidential", patterns: [/Miscellaneous residential/i] },
-  { key: "ResidentialCommonElementsAreas", patterns: [/Common Area/i] },
+  { key: "ResidentialCommonElementsAreas", patterns: [/Common (Area|Elements)/i] },
   { key: "MobileHome", patterns: [/Mobile Home/i] },
 ];
  
@@ -270,6 +267,14 @@ function parseAddressParts(situsAddress1) {
     }
   }
 
+  // Ensure livable_floor_area is null if value is 0 or non-positive (schema doesn't allow non-positive)
+  if (livable != null) {
+    const numVal = parseFloat(livable);
+    if (!isNaN(numVal) && numVal <= 0) {
+      livable = null;
+    }
+  }
+
   property.livable_floor_area = livable;
   property.parcel_identifier =
     parcelId ||
@@ -370,6 +375,10 @@ function parseAddressParts(situsAddress1) {
       .replace(/,/g, "")
       .match(/(\d{1,9})/);
     if (m) lotSqft = parseInt(m[1], 10);
+  }
+  // Ensure lot_area_sqft is null if value is 0 or non-positive
+  if (isFinite(lotSqft) && lotSqft <= 0) {
+    lotSqft = null;
   }
   const lotObj = {
     lot_type: null,
@@ -516,9 +525,17 @@ function parseAddressParts(situsAddress1) {
   }
   const urlList = Array.from(urls);
   const fileNames = [];
-  urlList.forEach((u, idx) => {
+  let fileIdx = 1;
+  urlList.forEach((u) => {
     const url = String(u);
-    const name = url.split("/").pop() || `image_${idx + 1}.jpg`;
+
+    // Skip relative URLs (only process full http/https URLs)
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      console.log(`Skipping relative URL: "${url}"`);
+      return;
+    }
+
+    const name = url.split("/").pop() || `image_${fileIdx}.jpg`;
     const ext = (name.split(".").pop() || "").toLowerCase();
     let file_format = null;
     if (ext === "jpg" || ext === "jpeg") file_format = "jpeg";
@@ -533,9 +550,10 @@ function parseAddressParts(situsAddress1) {
       original_url: encodeURI(url),
       ipfs_url: null,
     };
-    const f = `file_${idx + 1}.json`;
+    const f = `file_${fileIdx}.json`;
     writeJson(path.join(dataDir, f), fileObj);
     fileNames.push(f);
+    fileIdx++;
   });
 
   // RELATIONSHIPS: deed -> file (associate all files to first deed if exists)
