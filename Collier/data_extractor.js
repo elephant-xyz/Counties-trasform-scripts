@@ -29,6 +29,11 @@ function parseDateToISO(mdyy) {
   const m = mdyy.trim().match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
   if (!m) return null;
   let [_, mm, dd, yy] = m;
+
+  // Fix invalid month/day: convert 00 to 01
+  if (mm === "00") mm = "01";
+  if (dd === "00") dd = "01";
+
   let yyyy =
     yy.length === 2
       ? Number(yy) >= 70
