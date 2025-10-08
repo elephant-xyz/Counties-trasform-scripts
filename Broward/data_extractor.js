@@ -254,10 +254,21 @@ function parseAddressParts(situsAddress1) {
 
   // PROPERTY
   const property = {};
-  const livable =
-    parcelInfo.bldgUnderAirFootage != null
+
+  // For area_under_air: use bldgUnderAirFootage only (can be null/empty)
+  const underAir =
+    parcelInfo.bldgUnderAirFootage != null && String(parcelInfo.bldgUnderAirFootage).trim() !== ""
       ? String(parcelInfo.bldgUnderAirFootage).trim()
       : null;
+
+  // For livable_floor_area: prefer bldgUnderAirFootage, fall back to bldgSqFT
+  let livable = underAir;
+  if (!livable && parcelInfo.bldgSqFT != null) {
+    const sqft = String(parcelInfo.bldgSqFT).trim();
+    if (sqft && sqft !== "") {
+      livable = sqft;
+    }
+  }
 
   property.livable_floor_area = livable;
   property.parcel_identifier =
@@ -286,7 +297,7 @@ function parseAddressParts(situsAddress1) {
 
   const unitsN = parcelInfo.units ? parseInt(parcelInfo.units, 10) : null;
   property.number_of_units = isFinite(unitsN) ? unitsN : null;
-  property.area_under_air = livable;
+  property.area_under_air = underAir;
 
   const totRaw = parcelInfo.bldgTotSqFootage;
   let totalArea = null;
