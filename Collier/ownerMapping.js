@@ -167,7 +167,7 @@ function classifyOwner(raw) {
   // 2. "FIRST MIDDLE LAST" (e.g., "PATRICIA S CARLUCCI")
 
   if (text.includes(",")) {
-    // Format: "LAST SUFFIX, FIRST MIDDLE"
+    // Format: "LAST SUFFIX, FIRST MIDDLE" or "LAST, FIRST=& FIRST2" (multiple people with same last name)
     const parts = text.split(",").map(s => s.trim());
     if (parts.length < 2) {
       return { valid: false, reason: "comma_but_insufficient_parts", raw: text };
@@ -191,6 +191,34 @@ function classifyOwner(raw) {
 
     // Parse right side (first + middle names)
     const firstMiddle = parts[1].trim();
+
+    // Check if there's "=&" separator indicating multiple people with same last name
+    if (firstMiddle.includes("=&")) {
+      const names = firstMiddle.split("=&").map(s => s.trim()).filter(Boolean);
+      const persons = [];
+
+      for (const name of names) {
+        const tokens = name.split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) continue;
+
+        const firstName = titleCase(tokens[0]);
+        const middleName = tokens.length > 1
+          ? tokens.slice(1).map(titleCase).join(" ")
+          : null;
+
+        persons.push({
+          type: "person",
+          first_name: firstName,
+          last_name: lastName,
+          middle_name: middleName,
+          suffix_name: suffixName,
+        });
+      }
+
+      // Return multiple owners
+      return { valid: true, owners: persons };
+    }
+
     const firstMiddleTokens = firstMiddle.split(/\s+/).filter(Boolean);
 
     if (firstMiddleTokens.length === 0) {
@@ -335,7 +363,12 @@ function buildOwnersByDate(validOwners) {
   for (const raw of rawOwnerStrings) {
     const res = classifyOwner(raw);
     if (res.valid) {
-      validOwners.push(res.owner);
+      // Handle case where classifyOwner returns multiple owners (e.g., "LAST, FIRST=& FIRST2")
+      if (res.owners && Array.isArray(res.owners)) {
+        res.owners.forEach(owner => validOwners.push(owner));
+      } else if (res.owner) {
+        validOwners.push(res.owner);
+      }
     } else {
       invalidOwners.push({ raw: norm(raw), reason: res.reason || "unknown" });
     }
