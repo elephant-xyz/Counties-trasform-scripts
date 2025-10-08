@@ -128,6 +128,11 @@ function parsePersonName(raw) {
     // Exclude middle name if it contains "/" symbol (e.g., "H/E" is not a valid middle name)
     const middle = middleName && !middleName.includes("/") ? titleCasePhrase(middleName) : null;
     if (!first || !last) return null;
+    // Skip person if first_name or last_name is "H/E" (incomplete information)
+    if (first === "H/E" || last === "H/E" || first === "H/e" || last === "H/e") {
+      console.log(`Skipping person with H/E as name: first="${first}", last="${last}"`);
+      return null;
+    }
     return {
       type: "person",
       first_name: first,
@@ -148,6 +153,11 @@ function parsePersonName(raw) {
     ? titleCasePhrase(middleStr)
     : null;
   if (!first || !last) return null;
+  // Skip person if first_name or last_name is "H/E" (incomplete information)
+  if (first === "H/E" || last === "H/E" || first === "H/e" || last === "H/e") {
+    console.log(`Skipping person with H/E as name: first="${first}", last="${last}"`);
+    return null;
+  }
   return {
     type: "person",
     first_name: first,
