@@ -157,7 +157,11 @@ function normalizeSuffix(suffix) {
 // Classify a raw owner name string into schema owner or invalid
 function classifyOwner(raw) {
   const original = norm(raw);
-  const text = original.replace(/[\r\n]+/g, " ").trim();
+  let text = original.replace(/[\r\n]+/g, " ").trim();
+
+  // Strip leading special characters like %, #, etc. that are used as markers
+  text = text.replace(/^[%#@*]+\s*/, "");
+
   if (!text) return { valid: false, reason: "empty" };
 
   // Basic noise/address filtering
@@ -249,17 +253,23 @@ function classifyOwner(raw) {
     };
     return { valid: true, owner: person };
   } else {
-    // Format: "FIRST MIDDLE LAST" (no comma)
-    const tokens = text.split(/\s+/).filter(Boolean);
+    // Format: "FIRST MIDDLE LAST" or "FIRST MIDDLE LAST SUFFIX" (no comma)
+    let tokens = text.split(/\s+/).filter(Boolean);
     if (tokens.length < 2) {
       return { valid: false, reason: "insufficient_name_parts", raw: text };
     }
 
-    // Last token is the last name
-    const lastName = titleCase(tokens[tokens.length - 1]);
+    // Check if last token is a suffix (e.g., Jr., III, etc.)
+    let suffixName = null;
+    if (tokens.length > 2 && knownSuffixes.has(tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+      suffixName = normalizeSuffix(tokens.pop());
+    }
 
     // First token is the first name
     const firstName = titleCase(tokens[0]);
+
+    // Last token is the last name (after potentially removing suffix)
+    const lastName = titleCase(tokens[tokens.length - 1]);
 
     // Everything in between is middle name
     const middleName = tokens.length > 2
@@ -271,7 +281,7 @@ function classifyOwner(raw) {
       first_name: firstName,
       last_name: lastName,
       middle_name: middleName,
-      suffix_name: null,
+      suffix_name: suffixName,
     };
     return { valid: true, owner: person };
   }
