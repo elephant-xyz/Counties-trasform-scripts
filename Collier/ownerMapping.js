@@ -110,11 +110,19 @@ const companyKeywords = [
 
 function looksLikeCompany(name) {
   const t = norm(name).toUpperCase();
-  return companyKeywords.some((k) => {
+  console.log(`looksLikeCompany input: "${name}" -> normalized: "${t}"`);
+  const result = companyKeywords.some((k) => {
     const kw = k.toUpperCase();
-    const re = new RegExp(`(^|[^A-Z])${kw}([^A-Z]|$)`);
-    return re.test(t);
+    // Use word boundary regex that works with uppercase text
+    const re = new RegExp(`(^|\\s)${kw}(\\s|$)`);
+    const matches = re.test(t);
+    if (matches) {
+      console.log(`  ✓ Matched keyword: "${kw}"`);
+    }
+    return matches;
   });
+  console.log(`looksLikeCompany result: ${result}`);
+  return result;
 }
 
 // Known suffix values
@@ -157,7 +165,9 @@ function classifyOwner(raw) {
     return { valid: false, reason: "address_or_noise" };
 
   // Check if it looks like a company using keywords - THIS IS THE ONLY WAY TO DETECT COMPANIES
-  if (looksLikeCompany(text)) {
+  const isCompany = looksLikeCompany(text);
+  console.log(`Checking if company: "${text}" -> ${isCompany}`);
+  if (isCompany) {
     return { valid: true, owner: { type: "company", name: text } };
   }
 

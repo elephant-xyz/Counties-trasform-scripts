@@ -514,67 +514,76 @@ function main() {
         } catch (_) {}
       }
 
-      const first = curr[0];
-      if (first.type === "company") {
-        curr.forEach((c, i) => {
-          const comp = { name: c.name || null };
+      // Handle mixed owner types (persons and companies)
+      let personIdx = 1;
+      let companyIdx = 1;
+      const personFiles = [];
+      const companyFiles = [];
+
+      curr.forEach((owner) => {
+        if (owner.type === "company") {
+          const comp = { name: owner.name || null };
+          const filename = `company_${companyIdx}.json`;
           fs.writeFileSync(
-            path.join(dataDir, `company_${i + 1}.json`),
+            path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-        });
-        // Link each current owner to each valid sale event (one link per sale per owner)
-        if (validSales.length > 0) {
-          validSales.forEach((s, si) => {
-            curr.forEach((c, oi) => {
-              const rel = {
-                to: { "/": `./company_${oi + 1}.json` },
-                from: { "/": `./sales_${si + 1}.json` },
-              };
-              fs.writeFileSync(
-                path.join(
-                  dataDir,
-                  `relationship_sales_company_${oi + 1}_${si + 1}.json`,
-                ),
-                JSON.stringify(rel, null, 2),
-              );
-            });
-          });
-        }
-      } else if (first.type === "person") {
-        curr.forEach((p, i) => {
+          companyFiles.push(filename);
+          companyIdx++;
+        } else if (owner.type === "person") {
           const person = {
-            birth_date: p.birth_date || null,
-            first_name: p.first_name || "",
-            last_name: p.last_name || "",
-            middle_name: p.middle_name || null,
-            prefix_name: p.prefix_name || null,
-            suffix_name: p.suffix_name || null,
-            us_citizenship_status: p.us_citizenship_status || null,
-            veteran_status: p.veteran_status != null ? p.veteran_status : null,
+            birth_date: owner.birth_date || null,
+            first_name: owner.first_name || "",
+            last_name: owner.last_name || "",
+            middle_name: owner.middle_name || null,
+            prefix_name: owner.prefix_name || null,
+            suffix_name: owner.suffix_name || null,
+            us_citizenship_status: owner.us_citizenship_status || null,
+            veteran_status: owner.veteran_status != null ? owner.veteran_status : null,
           };
+          const filename = `person_${personIdx}.json`;
           fs.writeFileSync(
-            path.join(dataDir, `person_${i + 1}.json`),
+            path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-        });
-        if (validSales.length > 0) {
-          validSales.forEach((s, si) => {
-            curr.forEach((c, oi) => {
-              const rel = {
-                to: { "/": `./person_${oi + 1}.json` },
-                from: { "/": `./sales_${si + 1}.json` },
-              };
-              fs.writeFileSync(
-                path.join(
-                  dataDir,
-                  `relationship_sales_person_${oi + 1}_${si + 1}.json`,
-                ),
-                JSON.stringify(rel, null, 2),
-              );
-            });
-          });
+          personFiles.push(filename);
+          personIdx++;
         }
+      });
+
+      // Create relationships for valid sales
+      if (validSales.length > 0) {
+        validSales.forEach((s, si) => {
+          // Link to all person files
+          personFiles.forEach((personFile, pi) => {
+            const rel = {
+              to: { "/": `./${personFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
+            };
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+
+          // Link to all company files
+          companyFiles.forEach((companyFile, ci) => {
+            const rel = {
+              to: { "/": `./${companyFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
+            };
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+        });
       }
     }
   }
