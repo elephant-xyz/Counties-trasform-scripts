@@ -1,567 +1,327 @@
+#!/usr/bin/env node
+/*
+  Data extraction script per evaluator spec.
+  - Reads: input.html, unnormalized_address.json
+           owners/owner_data.json, owners/utilities_data.json, owners/layout_data.json
+  - Writes: data/*.json for available, schema-compliant objects.
+
+  Notes:
+  - Owners/Utilities/Layout are sourced strictly from the owners/*.json files.
+  - Sales/Tax/Property/Deed/File are sourced from input.html.
+  - Address is sourced from unnormalized_address.json and input.html.
+  - Emits error JSON for unknown enum values when mapping is required.
+*/
+
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+function readJSON(p) {
+  return JSON.parse(fs.readFileSync(p, "utf8"));
+}
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
-
-function readJSON(p) {
-  return JSON.parse(fs.readFileSync(p, "utf-8"));
+function writeJSON(relPath, obj) {
+  const outPath = path.join("data", relPath);
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, JSON.stringify(obj, null, 2));
+}
+function unlinkIfExists(relPath) {
+  const p = path.join("data", relPath);
+  if (fs.existsSync(p)) fs.unlinkSync(p);
 }
 
-function writeJSON(p, obj) {
-  fs.writeFileSync(p, JSON.stringify(obj, null, 2));
-}
-
-function parseCurrency(str) {
-  if (!str) return null;
-  const cleaned = String(str).replace(/[$,]/g, "").trim();
-  if (cleaned === "" || cleaned === "-") return null;
-  const num = Number(cleaned);
-  return Number.isFinite(num) ? Number(num.toFixed(2)) : null;
-}
-
-function parseIntSafe(str) {
+function cleanMoneyToNumber(str) {
   if (str == null) return null;
-  const n = parseInt(String(str).replace(/[^0-9-]/g, ""), 10);
-  return Number.isFinite(n) ? n : null;
+  const s = String(str).replace(/[$,\s]/g, "");
+  if (s === "" || s === "-") return null;
+  const n = Number(s);
+  if (Number.isNaN(n)) return null;
+  return Math.round(n * 100) / 100;
 }
-
-function parseFloatSafe(str) {
-  if (str == null) return null;
-  const n = parseFloat(String(str).replace(/[^0-9.+-]/g, ""));
-  return Number.isFinite(n) ? n : null;
+function toISODate(mdyyyy) {
+  if (!mdyyyy) return null;
+  const m = String(mdyyyy).trim();
+  const parts = m.split("/");
+  if (parts.length === 3) {
+    const [mm, dd, yyyy] = parts;
+    return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(m)) return m;
+  return null;
 }
-
-function parseDateToISO(mdy) {
-  if (!mdy) return null;
-  const m = mdy.trim();
-  const match = m.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!match) return null;
-  const [_, mm, dd, yyyy] = match;
-  const m2 = mm.padStart(2, "0");
-  const d2 = dd.padStart(2, "0");
-  return `${yyyy}-${m2}-${d2}`;
-}
-
-function extractFromHTML(html) {
-  const $ = cheerio.load(html);
-
-  // Property basics
-  const parcelIdentifier =
-    $("#ctl00_cphBody_lblRealEstateNumber").text().trim() || null;
-
-  const propertyUse = $("#ctl00_cphBody_lblPropertyUse").text().trim();
-  let propertyType = "SingleFamily";
-  if (!/Single\s*Family/i.test(propertyUse)) {
-    propertyType = "SingleFamily";
-  }
-
-  // Year built - take earliest across buildings
-  const yearBuiltSpans = $('[id$="_lblYearBuilt"]')
-    .toArray()
-    .map((el) => parseIntSafe($(el).text()))
-    .filter((v) => Number.isFinite(v));
-  const propertyStructureBuiltYear = yearBuiltSpans.length
-    ? Math.min(...yearBuiltSpans)
-    : null;
-
-  // Legal description text
-  let legalRows = [];
-  $("#ctl00_cphBody_gridLegal tr").each((i, tr) => {
-    if (i === 0) return; // header
-    const tds = $(tr).find("td");
-    if (tds.length >= 2) {
-      const txt = $(tds[1]).text().trim();
-      if (txt) legalRows.push(txt);
-    }
-  });
-  const propertyLegalDescription = legalRows.length
-    ? legalRows.join(" ")
-    : null;
-
-  // Livable floor area: sum heated area from all buildings' Total rows
-  let livableFloorArea = null;
-  const heatedTotals = [];
-  $('[id$="_gridBuildingArea"]').each((i, tbl) => {
-    $(tbl)
-      .find("tr")
-      .each((j, tr) => {
-        const tds = $(tr).find("td");
-        if (tds.length >= 4) {
-          const label = $(tds[0]).text().trim();
-          if (/^Total$/i.test(label)) {
-            const heated = parseIntSafe($(tds[2]).text().trim());
-            if (Number.isFinite(heated)) heatedTotals.push(heated);
-          }
-        }
-      });
-  });
-  if (heatedTotals.length)
-    livableFloorArea = String(heatedTotals.reduce((a, b) => a + b, 0));
-
-  const totalAreaStr = $("#ctl00_cphBody_lblTotalArea1").text().trim() || null;
-  const subdivision = $("#ctl00_cphBody_lblSubdivision").text().trim() || null;
-
-  // Zoning Assessment from first row of Land table
-  let zoning = null;
-  const landTableFirstRow = $("#ctl00_cphBody_gridLand tr").eq(1); // after header
-  if (landTableFirstRow && landTableFirstRow.length) {
-    const tds = landTableFirstRow.find("td");
-    if (tds.length >= 4) zoning = $(tds[3]).text().trim() || null;
-  }
-
-  // Land Units (acres)
-  let lot_size_acre = null;
-  if (landTableFirstRow && landTableFirstRow.length) {
-    const tds = landTableFirstRow.find("td");
-    if (tds.length >= 8) lot_size_acre = parseFloatSafe($(tds[7]).text());
-  }
-
-  // Address pieces for site address
-  const siteLine1 = $("#ctl00_cphBody_lblPrimarySiteAddressLine1")
-    .text()
-    .trim();
-  const siteLine2 = $("#ctl00_cphBody_lblPrimarySiteAddressLine2")
-    .text()
-    .trim();
-
-  // Sales history - take rows
-  const sales = [];
-  $("#ctl00_cphBody_gridSalesHistory tr").each((i, tr) => {
-    if (i === 0) return; // header
-    const tds = $(tr).find("td");
-    if (tds.length >= 3) {
-      const bookPageA = $(tds[0]).find("a");
-      const bookPageText = bookPageA.text().trim();
-      const link = bookPageA.attr("href") || null;
-      const dateText = $(tds[1]).text().trim();
-      const priceText = $(tds[2]).text().trim();
-      const deedInstr = tds.length >= 4 ? $(tds[3]).text().trim() : null;
-      sales.push({ bookPageText, link, dateText, priceText, deedInstr });
-    }
-  });
-
-  // Value Summary
-  const buildingValueCertified = parseCurrency(
-    $("#ctl00_cphBody_lblBuildingValueCertified").text(),
-  );
-  const buildingValueInProgress = parseCurrency(
-    $("#ctl00_cphBody_lblBuildingValueInProgress").text(),
-  );
-  const landValueMarketCertified = parseCurrency(
-    $("#ctl00_cphBody_lblLandValueMarketCertified").text(),
-  );
-  const landValueMarketInProgress = parseCurrency(
-    $("#ctl00_cphBody_lblLandValueMarketInProgress").text(),
-  );
-  const justMarketCertified = parseCurrency(
-    $("#ctl00_cphBody_lblJustMarketValueCertified").text(),
-  );
-  const justMarketInProgress = parseCurrency(
-    $("#ctl00_cphBody_lblJustMarketValueInProgress").text(),
-  );
-  const assessedCertified = parseCurrency(
-    $("#ctl00_cphBody_lblAssessedValueA10Certified").text(),
-  );
-  const assessedInProgress = parseCurrency(
-    $("#ctl00_cphBody_lblAssessedValueA10InProgress").text(),
-  );
-  const taxableCertified = parseCurrency(
-    $("#ctl00_cphBody_lblTaxableValueCertified").text(),
-  );
-  // TRIM - totals
-  const trimTotalsRow = $("#ctl00_cphBody_gridTaxDetails tr.trimTotals");
-  let lastYearTotal = null; // yearly for 2024
-  let proposedTotal = null; // proposed for 2025
-  if (trimTotalsRow && trimTotalsRow.length) {
-    const tds = trimTotalsRow.find("td");
-    if (tds.length >= 6) {
-      lastYearTotal = parseCurrency($(tds[4]).text());
-      proposedTotal = parseCurrency($(tds[5]).text());
-    }
-  }
-  // Extended block
-  const taxLastYearJust = parseCurrency(
-    $("#ctl00_cphBody_lblTaxLastYearJustValue").text(),
-  );
-  const taxLastYearAssessed = parseCurrency(
-    $("#ctl00_cphBody_lblTaxLastYearAssessedValue").text(),
-  );
-  const taxLastYearExempt = parseCurrency(
-    $("#ctl00_cphBody_lblTaxLastYearExemptions").text(),
-  );
-  const taxLastYearTaxable = parseCurrency(
-    $("#ctl00_cphBody_lblTaxLastYearTaxableValue").text(),
-  );
-  const taxCurrentYearJust = parseCurrency(
-    $("#ctl00_cphBody_lblTaxCurrentYearJustValue").text(),
-  );
-  const taxCurrentYearAssessed = parseCurrency(
-    $("#ctl00_cphBody_lblTaxCurrentYearAssessedValue").text(),
-  );
-  const taxCurrentYearTaxable = parseCurrency(
-    $("#ctl00_cphBody_lblTaxCurrentYearTaxableValue").text(),
-  );
-
-  return {
-    parcelIdentifier,
-    propertyType,
-    propertyStructureBuiltYear,
-    propertyLegalDescription,
-    livableFloorArea,
-    totalAreaStr,
-    subdivision,
-    zoning,
-    lot_size_acre,
-    siteLine1,
-    siteLine2,
-    sales,
-    values: {
-      buildingValueCertified,
-      buildingValueInProgress,
-      landValueMarketCertified,
-      landValueMarketInProgress,
-      justMarketCertified,
-      justMarketInProgress,
-      assessedCertified,
-      assessedInProgress,
-      taxableCertified,
-      lastYearTotal,
-      proposedTotal,
-      taxLastYearJust,
-      taxLastYearAssessed,
-      taxLastYearExempt,
-      taxLastYearTaxable,
-      taxCurrentYearJust,
-      taxCurrentYearAssessed,
-      taxCurrentYearTaxable,
-    },
+function enumError(value, pathStr) {
+  const err = {
+    type: "error",
+    message: `Unknown enum value ${value}.`,
+    path: pathStr,
   };
+  console.error(JSON.stringify(err));
+  throw new Error(err.message + " at " + pathStr);
+}
+function safeParseNumber(value) {
+  if (value == null) return null;
+  const numeric = String(value).replace(/[^0-9.\-]/g, "");
+  if (!numeric) return null;
+  const n = Number(numeric);
+  return Number.isNaN(n) ? null : n;
+}
+function mapStructureForm(propertyUseText, buildingTypeText) {
+  const source = `${propertyUseText || ""} ${buildingTypeText || ""}`.toLowerCase();
+  if (!source.trim()) return null;
+  if (source.includes("townhouse") || source.includes("rowhouse") || source.includes("row house"))
+    return "TownhouseRowhouse";
+  if (source.includes("duplex")) return "Duplex";
+  if (source.includes("triplex")) return "Triplex";
+  if (source.includes("quad") || source.includes("fourplex") || source.includes("4-plex"))
+    return "Quadplex";
+  if (source.includes("loft")) return "Loft";
+  if (source.includes("apartment") || source.includes("condo")) return "ApartmentUnit";
+  if (source.includes("semi-det") || source.includes("semi detached"))
+    return "SingleFamilySemiDetached";
+  if (source.includes("manufactured") || source.includes("mobile"))
+    return "ManufacturedHomeOnLand";
+  if (source.includes("multi") && source.includes("10"))
+    return "MultiFamilyMoreThan10";
+  if (source.includes("multi") && source.includes("5"))
+    return "MultiFamily5Plus";
+  if (source.includes("multi")) return "MultiFamilyLessThan10";
+  if (source.includes("single family")) return "SingleFamilyDetached";
+  return null;
+}
+function mapPropertyUsageType(propertyUseText) {
+  if (!propertyUseText) return "Unknown";
+  const normalized = propertyUseText.toLowerCase();
+  if (/agric|farm|orchard|grove|timber|hay|grazing|poultry|crop/.test(normalized))
+    return "Agricultural";
+  if (/industrial|manufactur|warehouse/.test(normalized)) return "Industrial";
+  if (/office/.test(normalized)) return "OfficeBuilding";
+  if (/retail|store|commercial|shopping/.test(normalized)) return "RetailStore";
+  if (/church/.test(normalized)) return "Church";
+  if (/public school/.test(normalized)) return "PublicSchool";
+  if (/school/.test(normalized)) return "PrivateSchool";
+  if (/hospital/.test(normalized))
+    return normalized.includes("public") ? "PublicHospital" : "PrivateHospital";
+  if (/hotel|motel/.test(normalized)) return "Hotel";
+  if (/golf/.test(normalized)) return "GolfCourse";
+  if (/club|lodge/.test(normalized)) return "ClubsLodges";
+  if (/utility/.test(normalized)) return "Utility";
+  if (/residential|single family|townhouse|duplex|triplex|quad|multi|condo|apartment/.test(normalized))
+    return "Residential";
+  if (/vacant|transitional/.test(normalized)) return "TransitionalProperty";
+  return "Unknown";
+}
+function determinePropertyType(heatedAreaValue, propertyUseText, buildingTypeText) {
+  const area = safeParseNumber(heatedAreaValue);
+  if (area && area > 0) {
+    if (
+      /condo|apartment|unit/.test((propertyUseText || "").toLowerCase()) ||
+      /unit/.test((buildingTypeText || "").toLowerCase())
+    ) {
+      return "Unit";
+    }
+    return "Building";
+  }
+  const source = `${propertyUseText || ""} ${buildingTypeText || ""}`.toLowerCase();
+  if (/manufactured|mobile/.test(source)) return "ManufacturedHome";
+  if (/vacant|land|lot/.test(source)) return "LandParcel";
+  return "Building";
+}
+function mapUnitsType(unitsCount) {
+  const n = safeParseNumber(unitsCount);
+  if (n == null || n <= 0) return null;
+  const whole = Math.round(n);
+  if (!Number.isFinite(whole)) return null;
+  if (whole === 1) return "One";
+  if (whole === 2) return "Two";
+  if (whole === 3) return "Three";
+  if (whole === 4) return "Four";
+  if (whole >= 2 && whole <= 4) return "TwoToFour";
+  if (whole >= 1 && whole <= 4) return "OneToFour";
+  return null;
+}
+function textOrNull(t) {
+  if (!t) return null;
+  const s = String(t).trim();
+  return s === "" ? null : s;
 }
 
-function buildAddress(unnormalized, htmlData) {
-  const full =
-    unnormalized && unnormalized.full_address
-      ? unnormalized.full_address
-      : null;
-  let street_number = null,
-    street_name = null,
-    street_suffix_type = null,
-    city_name = null,
-    state_code = null,
-    postal_code = null;
-  if (full) {
-    const parts = full.split(",");
-    if (parts.length >= 3) {
-      const line1 = parts[0].trim();
-      const lineCity = parts[1].trim();
-      const lineStateZip = parts[2].trim();
-      const line1Parts = line1.split(/\s+/);
-      street_number = line1Parts.shift() || null;
-      const maybeSuffix = line1Parts.pop() || null; // RD
-      street_suffix_type = maybeSuffix ? maybeSuffix.toUpperCase() : null;
-      if (street_suffix_type) {
+function parseAddressPartsFromFull(fullAddr) {
+  if (!fullAddr) return {};
+  const out = {
+    street_number: null,
+    street_name: null,
+    street_suffix_type: null,
+    street_pre_directional_text: null,
+    street_post_directional_text: null,
+    unit_identifier: null,
+    city_name: null,
+    state_code: null,
+    postal_code: null,
+    plus_four_postal_code: null,
+  };
+  const partsComma = String(fullAddr).split(/\s*,\s*/);
+  let line1 = null,
+    city = null,
+    stateZip = null;
+  if (partsComma.length === 3) {
+    [line1, city, stateZip] = partsComma;
+  } else if (partsComma.length === 2) {
+    [line1, stateZip] = partsComma;
+  } else {
+    line1 = partsComma[0];
+    stateZip = partsComma.slice(1).join(",");
+  }
+  if (line1) {
+    const parts = line1.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      out.street_number = parts.shift();
+      let suffix = null;
+      if (parts.length >= 2) suffix = parts.pop();
+      const name = parts.join(" ");
+      out.street_name = name ? name.toUpperCase() : null;
+      if (suffix) {
+        const sfxUpper = suffix.toUpperCase();
         const map = {
-          RD: "Rd",
-          ROAD: "Rd",
           ST: "St",
           STREET: "St",
           AVE: "Ave",
           AVENUE: "Ave",
           BLVD: "Blvd",
-          LANE: "Ln",
-          LN: "Ln",
+          BOULEVARD: "Blvd",
+          RD: "Rd",
+          ROAD: "Rd",
           DR: "Dr",
+          DRIVE: "Dr",
+          LN: "Ln",
+          LANE: "Ln",
+          CT: "Ct",
+          COURT: "Ct",
+          CIR: "Cir",
+          CIRCLE: "Cir",
+          HWY: "Hwy",
+          HIGHWAY: "Hwy",
+          PL: "Pl",
+          PLACE: "Pl",
+          TER: "Ter",
+          TERRACE: "Ter",
+          WAY: "Way",
+          PKWY: "Pkwy",
+          RDG: "Rdg",
+          RIDGE: "Rdg",
+          RUN: "Run",
+          LOOP: "Loop",
         };
-        street_suffix_type =
-          map[street_suffix_type] ||
-          street_suffix_type[0] + street_suffix_type.slice(1).toLowerCase();
-      }
-      street_name = line1Parts.join(" ") || null;
-      city_name = lineCity.toUpperCase();
-      const sz = lineStateZip.split(/\s+/);
-      if (sz.length >= 2) {
-        state_code = sz[0];
-        postal_code = sz[1].replace(/[^0-9]/g, "").slice(0, 5) || null;
+        out.street_suffix_type = map[sfxUpper] || sfxUpper;
       }
     }
   }
-
-  let plus_four_postal_code = null;
-  if (htmlData && htmlData.siteLine2) {
-    const match = htmlData.siteLine2.match(/\b\d{5}-(\d{4})\b/);
-    if (match) plus_four_postal_code = match[1];
-  }
-
-  let township = null,
-    range = null,
-    section = null;
-  if (htmlData && htmlData.propertyLegalDescription) {
-    const m = htmlData.propertyLegalDescription.match(
-      /(\d{1,2})-(\d{1,2})S-(\d{1,2})E/,
-    );
+  if (city) out.city_name = city.trim().toUpperCase();
+  if (stateZip) {
+    const m = stateZip.match(/^([A-Z]{2})\s+(\d{5})(?:-(\d{4}))?$/i);
     if (m) {
-      section = m[1];
-      township = m[2] + "S";
-      range = m[3] + "E";
+      out.state_code = m[1].toUpperCase();
+      out.postal_code = m[2];
+      out.plus_four_postal_code = m[3] || null;
     }
-  }
-
-  return {
-    block: null,
-    city_name,
-    country_code: "US",
-    county_name: (unnormalized && unnormalized.county_jurisdiction) || "Duval",
-    latitude: null,
-    longitude: null,
-    lot: null,
-    municipality_name: null,
-    plus_four_postal_code,
-    postal_code,
-    range,
-    route_number: null,
-    section,
-    state_code,
-    street_name,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_number,
-    street_suffix_type,
-    unit_identifier: null,
-    township,
-  };
-}
-
-function buildProperty(htmlData) {
-  return {
-    area_under_air: null,
-    livable_floor_area: htmlData.livableFloorArea || "0",
-    number_of_units: null,
-    number_of_units_type: "One",
-    parcel_identifier: htmlData.parcelIdentifier || "",
-    property_effective_built_year: null,
-    property_legal_description_text: htmlData.propertyLegalDescription || null,
-    property_structure_built_year: htmlData.propertyStructureBuiltYear,
-    property_type: "SingleFamily",
-    subdivision: htmlData.subdivision || null,
-    total_area: htmlData.totalAreaStr || null,
-    zoning: htmlData.zoning || null,
-  };
-}
-
-function buildLot(htmlData) {
-  const lot_area_sqft = htmlData.totalAreaStr
-    ? parseIntSafe(htmlData.totalAreaStr)
-    : null;
-  const lot_size_acre =
-    htmlData.lot_size_acre == null ? null : htmlData.lot_size_acre;
-  let lot_type = null;
-  if (typeof lot_size_acre === "number") {
-    lot_type =
-      lot_size_acre > 0.25
-        ? "GreaterThanOneQuarterAcre"
-        : "LessThanOrEqualToOneQuarterAcre";
-  }
-  return {
-    driveway_condition: null,
-    driveway_material: null,
-    fence_height: null,
-    fence_length: null,
-    fencing_type: null,
-    landscaping_features: null,
-    lot_area_sqft,
-    lot_condition_issues: null,
-    lot_length_feet: null,
-    lot_size_acre,
-    lot_type,
-    lot_width_feet: null,
-    view: null,
-  };
-}
-
-function buildTaxFiles(htmlData) {
-  const out = [];
-  if (htmlData.values.justMarketCertified != null) {
-    out.push({
-      filename: "tax_2024.json",
-      data: {
-        first_year_building_on_tax_roll: null,
-        first_year_on_tax_roll: null,
-        monthly_tax_amount: null,
-        period_end_date: null,
-        period_start_date: null,
-        property_assessed_value_amount:
-          htmlData.values.assessedCertified ?? null,
-        property_building_amount:
-          htmlData.values.buildingValueCertified ?? null,
-        property_land_amount: htmlData.values.landValueMarketCertified ?? null,
-        property_market_value_amount:
-          htmlData.values.justMarketCertified ?? null,
-        property_taxable_value_amount: htmlData.values.taxableCertified ?? null,
-        tax_year: 2024,
-        yearly_tax_amount: htmlData.values.lastYearTotal ?? null,
-      },
-    });
-  }
-  if (htmlData.values.taxCurrentYearJust != null) {
-    out.push({
-      filename: "tax_2025.json",
-      data: {
-        first_year_building_on_tax_roll: null,
-        first_year_on_tax_roll: null,
-        monthly_tax_amount: null,
-        period_end_date: null,
-        period_start_date: null,
-        property_assessed_value_amount:
-          htmlData.values.taxCurrentYearAssessed ?? null,
-        property_building_amount:
-          htmlData.values.buildingValueInProgress ?? null,
-        property_land_amount: htmlData.values.landValueMarketInProgress ?? null,
-        property_market_value_amount:
-          htmlData.values.taxCurrentYearJust ?? null,
-        property_taxable_value_amount:
-          htmlData.values.taxCurrentYearTaxable ?? null,
-        tax_year: 2025,
-        yearly_tax_amount: null,
-      },
-    });
   }
   return out;
 }
-
-function buildSalesFiles(htmlData) {
-  const out = [];
-  htmlData.sales.forEach((s, idx) => {
-    const dateISO = parseDateToISO(s.dateText);
-    const price = parseCurrency(s.priceText);
-    if (dateISO && price != null) {
-      out.push({
-        filename: `sales_${idx + 1}.json`,
-        data: {
-          ownership_transfer_date: dateISO,
-          purchase_price_amount: price,
-          sale_type: undefined,
-        },
-        deedLink: s.link || null,
-        bookPageText: s.bookPageText || null,
-      });
-    }
-  });
-  return out;
-}
-
-function mapRoofDesign(detail) {
-  if (!detail) return null;
-  const d = detail.toLowerCase();
-  if (d.includes("gable or hip")) return "Combination";
-  if (d.includes("gable")) return "Gable";
-  if (d.includes("hip")) return "Hip";
-  if (d.includes("flat")) return "Flat";
-  return null;
-}
-
-function mapRoofCover(detail) {
-  if (!detail) return null;
-  const d = detail.toLowerCase();
-  if (d.includes("asph") || d.includes("comp shng") || d.includes("shng"))
-    return "3-Tab Asphalt Shingle";
-  if (d.includes("metal")) return "Metal Standing Seam";
-  if (d.includes("slate")) return "Natural Slate";
-  if (d.includes("tile")) return "Clay Tile";
-  return null;
-}
-
-function buildStructure(html) {
-  const $ = cheerio.load(html);
-  let number_of_stories = null;
-  const storiesRow = $(
-    "#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingAttributes tr",
-  ).eq(1);
-  if (storiesRow && storiesRow.length) {
-    const tds = storiesRow.find("td");
-    if (tds.length >= 2) {
-      const val = parseFloatSafe($(tds[1]).text());
-      if (Number.isFinite(val)) number_of_stories = Math.round(val);
-    }
-  }
-
-  const elTbl1 = $(
-    "#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingElements",
+function parseCityStateZipFromHtml($) {
+  const line2 = textOrNull(
+    $("#ctl00_cphBody_lblPrimarySiteAddressLine2").text(),
   );
-  let exterior_wall_material_primary = null;
-  let roof_design_type = null;
-  let roof_covering_material = null;
-  elTbl1.find("tr").each((i, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 3) {
-      const elem = $(tds[0]).text().trim();
-      const detail = $(tds[2]).text().trim();
-      if (/^Exterior Wall$/i.test(elem)) {
-        if (/Brick/i.test(detail)) exterior_wall_material_primary = "Brick";
-      } else if (/^Roof Struct$/i.test(elem)) {
-        roof_design_type = mapRoofDesign(detail) || roof_design_type;
-      } else if (/^Roofing Cover$/i.test(elem)) {
-        roof_covering_material = mapRoofCover(detail) || roof_covering_material;
-      }
-    }
-  });
-
-  let hasCarpet = false;
-  let hasSheetVinyl = false;
-  [
-    $("#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingElements"),
-    $("#ctl00_cphBody_repeaterBuilding_ctl01_gridBuildingElements"),
-  ].forEach((tbl) => {
-    tbl.find("tr").each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 3) {
-        const elem = $(tds[0]).text().trim();
-        const detail = $(tds[2]).text().trim();
-        if (/Int Flooring/i.test(elem)) {
-          if (/Carpet/i.test(detail)) hasCarpet = true;
-          if (/Sheet\s*Vinyl/i.test(detail)) hasSheetVinyl = true;
-        }
-      }
-    });
-  });
-  let flooring_material_primary = null;
-  let flooring_material_secondary = null;
-  if (hasCarpet && hasSheetVinyl) {
-    flooring_material_primary = "Sheet Vinyl";
-    flooring_material_secondary = "Carpet";
-  } else if (hasCarpet) {
-    flooring_material_primary = "Carpet";
-  } else if (hasSheetVinyl) {
-    flooring_material_primary = "Sheet Vinyl";
+  if (!line2)
+    return {
+      city_name: null,
+      state_code: null,
+      postal_code: null,
+      plus_four_postal_code: null,
+    };
+  const cleaned = line2.replace(/-+$/, "").trim();
+  const parts = cleaned.split(/\s+/);
+  if (parts.length >= 3) {
+    const city = parts.slice(0, parts.length - 2).join(" ");
+    const state = parts[parts.length - 2];
+    const zip = parts[parts.length - 1].slice(0, 5);
+    return {
+      city_name: city.toUpperCase(),
+      state_code: state.toUpperCase(),
+      postal_code: zip,
+      plus_four_postal_code: null,
+    };
   }
-
   return {
+    city_name: null,
+    state_code: null,
+    postal_code: null,
+    plus_four_postal_code: null,
+  };
+}
+function parsePLSTrsFromLegalRows(legalRows) {
+  for (const r of legalRows) {
+    const m = String(r).match(/(\d{1,2})-(\d+)([NS]?)-(\d+)([EW]?)/i);
+    if (m) {
+      const section = m[1];
+      const township = m[2] + (m[3] ? m[3].toUpperCase() : "");
+      const range = m[4] + (m[5] ? m[5].toUpperCase() : "");
+      return { section, township, range };
+    }
+  }
+  return { section: null, township: null, range: null };
+}
+function parseLotFromLegalRows(legalRows) {
+  for (const r of legalRows) {
+    const m = String(r).match(/\bLOT\s+(\S+)/i);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function mapDeedType(instr) {
+  if (!instr) return null;
+  const s = instr.toLowerCase();
+  if (s.includes("special warranty")) return "Special Warranty Deed";
+  if (s.includes("warranty") && !s.includes("special")) return "Warranty Deed";
+  if (s.includes("quit")) return "Quitclaim Deed";
+  return null;
+}
+function fileDocTypeForDeedType(deedType) {
+  if (deedType === "Warranty Deed") return "ConveyanceDeedWarrantyDeed";
+  if (deedType === "Special Warranty Deed") return "ConveyanceDeed";
+  if (deedType === "Quitclaim Deed") return "ConveyanceDeedQuitClaimDeed";
+  return "ConveyanceDeed";
+}
+
+function extractStructure($) {
+  const result = {
     architectural_style_type: null,
     attachment_type: null,
     ceiling_condition: null,
     ceiling_height_average: null,
-    ceiling_insulation_type: "Unknown",
+    ceiling_insulation_type: null,
     ceiling_structure_material: null,
     ceiling_surface_material: null,
+    exterior_door_installation_date: null,
     exterior_door_material: null,
     exterior_wall_condition: null,
     exterior_wall_condition_primary: null,
     exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type: "Unknown",
-    exterior_wall_insulation_type_primary: "Unknown",
-    exterior_wall_insulation_type_secondary: "Unknown",
-    exterior_wall_material_primary: exterior_wall_material_primary || null,
+    exterior_wall_insulation_type: null,
+    exterior_wall_insulation_type_primary: null,
+    exterior_wall_insulation_type_secondary: null,
+    exterior_wall_material_primary: null,
     exterior_wall_material_secondary: null,
     finished_base_area: null,
     finished_basement_area: null,
     finished_upper_story_area: null,
     flooring_condition: null,
-    flooring_material_primary: flooring_material_primary || null,
-    flooring_material_secondary: flooring_material_secondary || null,
+    flooring_material_primary: null,
+    flooring_material_secondary: null,
     foundation_condition: null,
     foundation_material: null,
+    foundation_repair_date: null,
     foundation_type: null,
     foundation_waterproofing: null,
     gutters_condition: null,
@@ -575,263 +335,477 @@ function buildStructure(html) {
     interior_wall_structure_material_secondary: null,
     interior_wall_surface_material_primary: null,
     interior_wall_surface_material_secondary: null,
-    number_of_stories: number_of_stories,
+    number_of_buildings: null,
+    number_of_stories: null,
     primary_framing_material: null,
-    secondary_framing_material: null,
     roof_age_years: null,
     roof_condition: null,
-    roof_covering_material: roof_covering_material || null,
+    roof_covering_material: null,
     roof_date: null,
-    roof_design_type: roof_design_type || null,
+    roof_design_type: null,
     roof_material_type: null,
     roof_structure_material: null,
-    roof_underlayment_type: "Unknown",
+    roof_underlayment_type: null,
+    secondary_framing_material: null,
+    siding_installation_date: null,
     structural_damage_indicators: null,
-    subfloor_material: "Unknown",
+    subfloor_material: null,
     unfinished_base_area: null,
     unfinished_basement_area: null,
     unfinished_upper_story_area: null,
     window_frame_material: null,
     window_glazing_type: null,
+    window_installation_date: null,
     window_operation_type: null,
     window_screen_material: null,
   };
+  const nob = textOrNull($("#ctl00_cphBody_lblNumberOfBuildings").text());
+  if (nob) result.number_of_buildings = Number(nob);
+  $("#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingAttributes tr").each(
+    (i, el) => {
+      if (i === 0) return;
+      const tds = $(el).find("td");
+      if (tds.length >= 3) {
+        const label = textOrNull($(tds[0]).text());
+        const code = textOrNull($(tds[1]).text());
+        if (label && /stories/i.test(label)) {
+          const n = Number(code);
+          if (!Number.isNaN(n)) result.number_of_stories = n;
+        }
+      }
+    },
+  );
+  $("#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingArea tr").each(
+    (i, el) => {
+      if (i === 0) return;
+      const tds = $(el).find("td");
+      if (tds.length >= 4) {
+        const type = textOrNull($(tds[0]).text());
+        const gross = textOrNull($(tds[1]).text());
+        if (type && /base area/i.test(type)) {
+          if (gross) result.finished_base_area = Number(gross);
+        }
+        if (type && /finished upper story/i.test(type)) {
+          if (gross) result.finished_upper_story_area = Number(gross);
+        }
+      }
+    },
+  );
+  let floorPrim = null,
+    floorSec = null;
+  $("#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingElements tr").each(
+    (i, el) => {
+      if (i === 0) return;
+      const tds = $(el).find("td");
+      if (tds.length >= 3) {
+        const element = textOrNull($(tds[0]).text());
+        const detail = textOrNull($(tds[2]).text());
+        if (!element || !detail) return;
+        if (/roof struct/i.test(element)) {
+          // If both words present, prefer Gable per reviewer guidance
+          if (/gable/i.test(detail) && /hip/i.test(detail))
+            result.roof_design_type = "Gable";
+          else if (/gable/i.test(detail)) result.roof_design_type = "Gable";
+          else if (/hip/i.test(detail)) result.roof_design_type = "Hip";
+        }
+        if (/roofing cover/i.test(element)) {
+          if (/asph|comp\s*shng/i.test(detail)) {
+            result.roof_material_type = "Composition";
+            result.roof_covering_material = "Architectural Asphalt Shingle";
+          }
+        }
+        if (/exterior wall/i.test(element)) {
+          if (/horizontal\s+lap/i.test(detail)) {
+            result.exterior_wall_material_primary =
+              result.exterior_wall_material_primary || "Fiber Cement Siding";
+          }
+          if (/vertical\s+sheet/i.test(detail)) {
+            if (result.exterior_wall_material_primary)
+              result.exterior_wall_material_secondary = "Wood Siding";
+            else result.exterior_wall_material_primary = "Wood Siding";
+          }
+        }
+        if (/interior wall/i.test(element)) {
+          if (/drywall/i.test(detail))
+            result.interior_wall_surface_material_primary = "Drywall";
+        }
+        if (/int flooring/i.test(element)) {
+          if (/carpet/i.test(detail)) {
+            if (!floorPrim) floorPrim = "Carpet";
+            else if (!floorSec) floorSec = "Carpet";
+          }
+          if (/cer\s*clay\s*tile|cer\s*tile|tile/i.test(detail)) {
+            if (!floorPrim) floorPrim = "Ceramic Tile";
+            else if (!floorSec) floorSec = "Ceramic Tile";
+          }
+        }
+      }
+    },
+  );
+  result.flooring_material_primary = floorPrim;
+  result.flooring_material_secondary = floorSec;
+  const bType = textOrNull(
+    $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingType").text(),
+  );
+  if (bType && /townhouse/i.test(bType)) result.attachment_type = "Attached";
+  return result;
 }
 
-function buildUtilities(utilitiesData, key) {
-  const u = utilitiesData[key] || {};
+function extractLot($, legalRows, totalAreaStr) {
+  let lot_area_sqft = null;
+  const ta = textOrNull(totalAreaStr);
+  if (ta && /^\d+$/.test(ta)) lot_area_sqft = Number(ta);
   return {
-    cooling_system_type: u.cooling_system_type ?? null,
-    heating_system_type: u.heating_system_type ?? null,
-    public_utility_type: u.public_utility_type ?? null,
-    sewer_type: u.sewer_type ?? null,
-    water_source_type: u.water_source_type ?? null,
-    plumbing_system_type: u.plumbing_system_type ?? null,
-    plumbing_system_type_other_description:
-      u.plumbing_system_type_other_description ?? null,
-    electrical_panel_capacity: u.electrical_panel_capacity ?? null,
-    electrical_wiring_type: u.electrical_wiring_type ?? null,
-    hvac_condensing_unit_present: u.hvac_condensing_unit_present ?? null,
-    electrical_wiring_type_other_description:
-      u.electrical_wiring_type_other_description ?? null,
-    solar_panel_present: u.solar_panel_present ?? null,
-    solar_panel_type: u.solar_panel_type ?? null,
-    solar_panel_type_other_description:
-      u.solar_panel_type_other_description ?? null,
-    smart_home_features: u.smart_home_features ?? null,
-    smart_home_features_other_description:
-      u.smart_home_features_other_description ?? null,
-    hvac_unit_condition: u.hvac_unit_condition ?? null,
-    solar_inverter_visible: u.solar_inverter_visible ?? null,
-    hvac_unit_issues: u.hvac_unit_issues ?? null,
-  };
-}
-
-function buildLayouts(layoutData, key) {
-  const out = [];
-  const entry = layoutData[key];
-  if (!entry || !Array.isArray(entry.layouts)) return out;
-  entry.layouts.forEach((l, i) => {
-    const data = {
-      space_type: l.space_type ?? null,
-      space_index: l.space_index,
-      flooring_material_type: l.flooring_material_type ?? null,
-      size_square_feet: l.size_square_feet ?? null,
-      floor_level: l.floor_level ?? null,
-      has_windows: l.has_windows ?? null,
-      window_design_type: l.window_design_type ?? null,
-      window_material_type: l.window_material_type ?? null,
-      window_treatment_type: l.window_treatment_type ?? null,
-      is_finished: l.is_finished,
-      furnished: l.furnished ?? null,
-      paint_condition: l.paint_condition ?? null,
-      flooring_wear: l.flooring_wear ?? null,
-      clutter_level: l.clutter_level ?? null,
-      visible_damage: l.visible_damage ?? null,
-      countertop_material: l.countertop_material ?? null,
-      cabinet_style: l.cabinet_style ?? null,
-      fixture_finish_quality: l.fixture_finish_quality ?? null,
-      design_style: l.design_style ?? null,
-      natural_light_quality: l.natural_light_quality ?? null,
-      decor_elements: l.decor_elements ?? null,
-      pool_type: l.pool_type ?? null,
-      pool_equipment: l.pool_equipment ?? null,
-      spa_type: l.spa_type ?? null,
-      safety_features: l.safety_features ?? null,
-      view_type: l.view_type ?? null,
-      lighting_features: l.lighting_features ?? null,
-      condition_issues: l.condition_issues ?? null,
-      is_exterior: l.is_exterior,
-      pool_condition: l.pool_condition ?? null,
-      pool_surface_type: l.pool_surface_type ?? null,
-      pool_water_quality: l.pool_water_quality ?? null,
-    };
-    out.push({ filename: `layout_${i + 1}.json`, data });
-  });
-  return out;
-}
-
-function splitSuffix(lastName) {
-  if (!lastName) return { base: lastName, suffix: null };
-  const parts = lastName.trim().split(/\s+/);
-  if (parts.length <= 1) return { base: lastName, suffix: null };
-  const lastToken = parts[parts.length - 1];
-  const map = {
-    SR: "Sr.",
-    "SR.": "Sr.",
-    JR: "Jr.",
-    "JR.": "Jr.",
-    II: "II",
-    III: "III",
-    IV: "IV",
-  };
-  const key = lastToken.toUpperCase();
-  if (map[key]) {
-    const base = parts.slice(0, -1).join(" ");
-    return { base, suffix: map[key] };
-  }
-  return { base: lastName, suffix: null };
-}
-
-function buildPersons(ownerData, key, saleDateISO) {
-  const out = [];
-  const ownersByDate = ownerData[key] && ownerData[key].owners_by_date;
-  if (!ownersByDate) return out;
-  const owners = ownersByDate[saleDateISO] || ownersByDate["current"] || [];
-  let idx = 1;
-  owners.forEach((o) => {
-    if (o.type === "person") {
-      const { base, suffix } = splitSuffix(o.last_name || "");
-      out.push({
-        filename: `person_${idx}.json`,
-        data: {
-          birth_date: null,
-          first_name: o.first_name || "",
-          last_name: base || "",
-          middle_name: o.middle_name ?? null,
-          prefix_name: null,
-          suffix_name: suffix ?? null,
-          us_citizenship_status: null,
-          veteran_status: null,
-        },
-      });
-      idx++;
-    }
-  });
-  return out;
-}
-
-function buildDeedAndFile(salesItem, index) {
-  const deed = {};
-  const file = {
-    document_type: null,
-    file_format: null,
-    ipfs_url: null,
-    name: salesItem.bookPageText
-      ? `Official Records ${salesItem.bookPageText}`
-      : null,
-    original_url: salesItem.deedLink || null,
-  };
-  return {
-    deedFilename: `deed_${index}.json`,
-    fileFilename: `file_${index}.json`,
-    deed,
-    file,
+    lot_type: null,
+    lot_length_feet: null,
+    lot_width_feet: null,
+    lot_area_sqft,
+    landscaping_features: null,
+    view: null,
+    fencing_type: null,
+    fence_height: null,
+    fence_length: null,
+    driveway_material: null,
+    driveway_condition: null,
+    lot_condition_issues: null,
   };
 }
 
 function main() {
-  const inputHtmlPath = path.join("input.html");
-  const unnormalizedPath = path.join("unnormalized_address.json");
-  const propertySeedPath = path.join("property_seed.json");
-  const ownerPath = path.join("owners", "owner_data.json");
+  const inputHtmlPath = "input.html";
+  const unnormalizedAddressPath = "unnormalized_address.json";
+  const ownersPath = path.join("owners", "owner_data.json");
   const utilitiesPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
 
-  const outDir = path.join("data");
-  ensureDir(outDir);
-
-  const html = fs.readFileSync(inputHtmlPath, "utf-8");
-  const htmlData = extractFromHTML(html);
-  const unnormalized = readJSON(unnormalizedPath);
-  const propertySeed = readJSON(propertySeedPath);
-  const ownerData = readJSON(ownerPath);
-  const utilitiesData = readJSON(utilitiesPath);
-  const layoutData = readJSON(layoutPath);
-
-  const ownersKey = `property_${(htmlData.parcelIdentifier || "").trim()}`;
-  const utilitiesKey = ownersKey;
-
-  const property = buildProperty(htmlData);
-  writeJSON(path.join(outDir, "property.json"), property);
-
-  const address = buildAddress(unnormalized, htmlData);
-  writeJSON(path.join(outDir, "address.json"), address);
-
-  const lot = buildLot(htmlData);
-  writeJSON(path.join(outDir, "lot.json"), lot);
-
-  const structure = buildStructure(html);
-  writeJSON(path.join(outDir, "structure.json"), structure);
-
-  const utility = buildUtilities(utilitiesData, utilitiesKey);
-  writeJSON(path.join(outDir, "utility.json"), utility);
-
-  const layouts = buildLayouts(layoutData, utilitiesKey);
-  layouts.forEach((l) => writeJSON(path.join(outDir, l.filename), l.data));
-
-  const taxFiles = buildTaxFiles(htmlData);
-  taxFiles.forEach((t) => writeJSON(path.join(outDir, t.filename), t.data));
-
-  const salesFiles = buildSalesFiles(htmlData);
-  salesFiles.forEach((s) => writeJSON(path.join(outDir, s.filename), s.data));
-
-  if (salesFiles.length > 0) {
-    const deedFile = buildDeedAndFile(salesFiles[0], 1);
-    writeJSON(path.join(outDir, deedFile.deedFilename), deedFile.deed);
-    writeJSON(path.join(outDir, deedFile.fileFilename), deedFile.file);
-
-    const relDeedFile = {
-      to: { "/": `./${deedFile.deedFilename}` },
-      from: { "/": `./${deedFile.fileFilename}` },
-    };
-    writeJSON(path.join(outDir, "relationship_deed_file.json"), relDeedFile);
-
-    const relSalesDeed = {
-      to: { "/": `./${salesFiles[0].filename}` },
-      from: { "/": `./${deedFile.deedFilename}` },
-    };
-    writeJSON(path.join(outDir, "relationship_sales_deed.json"), relSalesDeed);
+  let html;
+  try {
+    html = fs.readFileSync(inputHtmlPath, "utf8");
+  } catch (err) {
+    const altPath = "0020608295R.html";
+    if (fs.existsSync(altPath)) html = fs.readFileSync(altPath, "utf8");
+    else throw err;
   }
+  const $ = cheerio.load(html);
+  const unnormalizedAddress = fs.existsSync(unnormalizedAddressPath)
+    ? readJSON(unnormalizedAddressPath)
+    : null;
+  const ownersData = fs.existsSync(ownersPath) ? readJSON(ownersPath) : null;
+  const utilitiesData = fs.existsSync(utilitiesPath)
+    ? readJSON(utilitiesPath)
+    : null;
+  const layoutData = fs.existsSync(layoutPath) ? readJSON(layoutPath) : null;
 
-  let saleDateISO = null;
-  if (salesFiles.length > 0) {
-    const salesJson = readJSON(path.join(outDir, salesFiles[0].filename));
-    saleDateISO = salesJson.ownership_transfer_date;
-  }
-  const persons = buildPersons(ownerData, ownersKey, saleDateISO);
-  persons.forEach((p) => writeJSON(path.join(outDir, p.filename), p.data));
+  ensureDir("data");
+  // Clean up duplicates from older runs
+  unlinkIfExists("relationship_deed_file.json");
+  unlinkIfExists("relationship_sales_deed.json");
 
-  if (salesFiles.length > 0 && persons.length > 0) {
-    persons.forEach((p, i) => {
-      const rel = {
-        to: { "/": `./${p.filename}` },
-        from: { "/": `./${salesFiles[0].filename}` },
-      };
-      writeJSON(
-        path.join(outDir, `relationship_sales_person_${i + 1}.json`),
-        rel,
-      );
+  const parcelIdentifier = unnormalizedAddress.request_identifier;
+
+  const propertyUseText = textOrNull($("#ctl00_cphBody_lblPropertyUse").text());
+  const subdivision = textOrNull($("#ctl00_cphBody_lblSubdivision").text());
+  const totalArea = textOrNull($("#ctl00_cphBody_lblTotalArea1").text());
+
+  const legalRows = [];
+  $("#ctl00_cphBody_gridLegal tr").each((i, el) => {
+    if (i === 0) return;
+    const tds = $(el).find("td");
+    if (tds.length >= 2) {
+      const desc = textOrNull($(tds[1]).text());
+      if (desc) legalRows.push(desc);
+    }
+  });
+  const legalDescription = legalRows.length ? legalRows.join("; ") : null;
+
+  let zoning = null;
+  $("#ctl00_cphBody_gridLand tr").each((i, el) => {
+    if (i === 0) return;
+    const tds = $(el).find("td");
+    if (tds.length >= 10) {
+      const z = textOrNull($(tds[3]).text());
+      if (z) zoning = z;
+    }
+  });
+
+  const yearBuilt = textOrNull(
+    $("#ctl00_cphBody_repeaterBuilding_ctl00_lblYearBuilt").text(),
+  );
+  let heatedAreaTotal = null;
+  $("#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingArea tr").each(
+    (i, el) => {
+      if (i === 0) return;
+      const tds = $(el).find("td");
+      if (tds.length >= 4) {
+        const type = textOrNull($(tds[0]).text());
+        if (type && type.toLowerCase() === "total") {
+          const heatedStr = textOrNull($(tds[2]).text());
+          if (heatedStr) heatedAreaTotal = heatedStr;
+        }
+      }
+    },
+  );
+
+  let unitsCount = null;
+  $("#ctl00_cphBody_repeaterBuilding_ctl00_gridBuildingAttributes tr").each(
+    (i, el) => {
+      if (i === 0) return;
+      const tds = $(el).find("td");
+      if (tds.length >= 3) {
+        const label = textOrNull($(tds[0]).text());
+        const code = textOrNull($(tds[1]).text());
+        if (label && /rooms\s*\/\s*units/i.test(label)) {
+          const asNum = Number(code);
+          if (!Number.isNaN(asNum)) unitsCount = asNum;
+        }
+      }
+    },
+  );
+
+  const buildingTypeText = textOrNull(
+    $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingType").text(),
+  );
+  const structureForm = mapStructureForm(propertyUseText, buildingTypeText);
+  const propertyUsageType = mapPropertyUsageType(propertyUseText);
+  const propertyTypeCategory = determinePropertyType(
+    heatedAreaTotal,
+    propertyUseText,
+    buildingTypeText,
+  );
+  const numberOfUnitsType = mapUnitsType(unitsCount);
+
+  if (parcelIdentifier && legalDescription && yearBuilt && propertyTypeCategory) {
+    const heatedAreaNumber = safeParseNumber(heatedAreaTotal);
+    const heatedAreaString =
+      heatedAreaNumber != null ? String(Math.round(heatedAreaNumber)) : null;
+    writeJSON("property.json", {
+      parcel_identifier: parcelIdentifier,
+      property_type: propertyTypeCategory,
+      property_structure_built_year: Number(yearBuilt),
+      property_legal_description_text: legalDescription,
+      number_of_units_type: numberOfUnitsType,
+      number_of_units: unitsCount != null ? Number(unitsCount) : null,
+      structure_form: structureForm,
+      property_usage_type: propertyUsageType,
+      livable_floor_area: heatedAreaString,
+      area_under_air: heatedAreaString,
+      subdivision: subdivision || null,
+      total_area: totalArea || null,
+      zoning: zoning || null,
+      property_effective_built_year: null,
     });
   }
+
+  const addrPartsFull =
+    unnormalizedAddress && unnormalizedAddress.full_address
+      ? parseAddressPartsFromFull(unnormalizedAddress.full_address)
+      : {};
+  const cityStateZipFromHtml = parseCityStateZipFromHtml($);
+  const trs = parsePLSTrsFromLegalRows(legalRows);
+  const lotStr = parseLotFromLegalRows(legalRows);
+  writeJSON("address.json", {
+    street_number: addrPartsFull.street_number || null,
+    street_name: addrPartsFull.street_name || null,
+    street_suffix_type: addrPartsFull.street_suffix_type || null,
+    street_pre_directional_text: null,
+    street_post_directional_text: null,
+    unit_identifier: addrPartsFull.unit_identifier || null,
+    city_name:
+      addrPartsFull.city_name || cityStateZipFromHtml.city_name || null,
+    state_code:
+      addrPartsFull.state_code || cityStateZipFromHtml.state_code || null,
+    postal_code:
+      addrPartsFull.postal_code || cityStateZipFromHtml.postal_code || null,
+    plus_four_postal_code:
+      addrPartsFull.plus_four_postal_code ||
+      cityStateZipFromHtml.plus_four_postal_code ||
+      null,
+    county_name: "Duval",
+    country_code: "US",
+    latitude: null,
+    longitude: null,
+    lot: lotStr || null,
+    municipality_name: null,
+    range: trs.range,
+    route_number: null,
+    section: trs.section,
+    township: trs.township,
+    block: null,
+  });
+
+  const sales = [];
+  $("#ctl00_cphBody_gridSalesHistory tr").each((i, el) => {
+    if (i === 0) return;
+    const tds = $(el).find("td");
+    if (tds.length >= 6) {
+      const bookPageAnchor = $(tds[0]).find("a");
+      const bookPage = textOrNull($(tds[0]).text());
+      const bookHref = bookPageAnchor.attr("href")
+        ? String(bookPageAnchor.attr("href"))
+        : null;
+      const saleDate = toISODate(textOrNull($(tds[1]).text()));
+      const salePrice = cleanMoneyToNumber($(tds[2]).text());
+      const deedInstr = textOrNull($(tds[3]).text());
+      const deedType = mapDeedType(deedInstr);
+      if (saleDate && salePrice != null && salePrice > 0) {
+        sales.push({
+          bookPage,
+          bookHref,
+          ownership_transfer_date: saleDate,
+          purchase_price_amount: salePrice,
+          deedType,
+        });
+      }
+    }
+  });
+
+  sales.forEach((s, idx) => {
+    writeJSON(`sales_${idx + 1}.json`, {
+      ownership_transfer_date: s.ownership_transfer_date,
+      purchase_price_amount: s.purchase_price_amount,
+    });
+    if (s.deedType)
+      writeJSON(`deed_${idx + 1}.json`, { deed_type: s.deedType });
+    if (s.bookHref) {
+      writeJSON(`file_${idx + 1}.json`, {
+        document_type: fileDocTypeForDeedType(s.deedType || null),
+        file_format: "txt",
+        name: s.bookPage || `BookPage_${idx + 1}`,
+        original_url: s.bookHref.startsWith("http")
+          ? s.bookHref
+          : `http://oncore.duvalclerk.com${s.bookHref}`,
+        ipfs_url: null,
+      });
+      if (s.deedType) {
+        writeJSON(`relationship_deed_file_${idx + 1}.json`, {
+          to: { "/": `./deed_${idx + 1}.json` },
+          from: { "/": `./file_${idx + 1}.json` },
+        });
+        writeJSON(`relationship_sales_deed_${idx + 1}.json`, {
+          to: { "/": `./sales_${idx + 1}.json` },
+          from: { "/": `./deed_${idx + 1}.json` },
+        });
+      }
+    }
+  });
+
+  // Also capture property map image as a file record
+  const imgSrc = $("#ctl00_cphBody_imgGISImageFound").attr("src");
+  if (imgSrc) {
+    writeJSON("file_taxmap.json", {
+      document_type: "PropertyImage",
+      file_format: "png",
+      name: "Tax Map",
+      original_url: imgSrc.startsWith("http")
+        ? imgSrc
+        : `https://maps.coj.net${imgSrc}`,
+      ipfs_url: null,
+    });
+  }
+
+  function parseValueFromSpan(id) {
+    const txt = textOrNull($(id).text());
+    return cleanMoneyToNumber(txt);
+  }
+  const taxSets = [
+    {
+      year: 2024,
+      building: parseValueFromSpan("#ctl00_cphBody_lblBuildingValueCertified"),
+      land: parseValueFromSpan("#ctl00_cphBody_lblLandValueMarketCertified"),
+      market: parseValueFromSpan("#ctl00_cphBody_lblJustMarketValueCertified"),
+      assessed: parseValueFromSpan(
+        "#ctl00_cphBody_lblAssessedValueA10Certified",
+      ),
+      taxable: parseValueFromSpan("#ctl00_cphBody_lblTaxableValueCertified"),
+    },
+    {
+      year: 2025,
+      building: parseValueFromSpan("#ctl00_cphBody_lblBuildingValueInProgress"),
+      land: parseValueFromSpan("#ctl00_cphBody_lblLandValueMarketInProgress"),
+      market: parseValueFromSpan("#ctl00_cphBody_lblJustMarketValueInProgress"),
+      assessed: parseValueFromSpan(
+        "#ctl00_cphBody_lblAssessedValueA10InProgress",
+      ),
+      taxable: parseValueFromSpan("#ctl00_cphBody_lblTaxableValueInProgress"),
+    },
+  ];
+  let taxIndex = 0;
+  taxSets.forEach((ts) => {
+    if (ts.year && ts.market != null && ts.assessed != null) {
+      taxIndex += 1;
+      writeJSON(`tax_${taxIndex}.json`, {
+        tax_year: ts.year,
+        property_assessed_value_amount: ts.assessed,
+        property_market_value_amount: ts.market,
+        property_building_amount: ts.building != null ? ts.building : null,
+        property_land_amount: ts.land != null ? ts.land : null,
+        property_taxable_value_amount:
+          ts.taxable != null ? ts.taxable : ts.assessed,
+        monthly_tax_amount: null,
+        period_end_date: null,
+        period_start_date: null,
+        yearly_tax_amount: null,
+        first_year_building_on_tax_roll: null,
+        first_year_on_tax_roll: null,
+      });
+    }
+  });
+
+  if (ownersData && parcelIdentifier) {
+    const keyFromRe = `property_${parcelIdentifier}`;
+    const ownerRecord = ownersData[keyFromRe];
+    if (ownerRecord && ownerRecord.owners_by_date) {
+      const current = ownerRecord.owners_by_date.current || [];
+      const companies = current.filter((o) => o.type === "company");
+      if (companies.length > 0) {
+        writeJSON("company_1.json", { name: companies[0].name || null });
+      }
+      // Build relationships only for exact date matches found in owners_by_date keys (excluding 'current')
+      const dateKeys = Object.keys(ownerRecord.owners_by_date)
+        .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+        .sort();
+      let relIdx = 0;
+      dateKeys.forEach((d) => {
+        const ownersOnDate = ownerRecord.owners_by_date[d] || [];
+        const hasCompany = ownersOnDate.some((o) => o.type === "company");
+        if (hasCompany) {
+          sales.forEach((s, sIdx) => {
+            if (s.ownership_transfer_date === d) {
+              relIdx += 1;
+              writeJSON(
+                relIdx === 1
+                  ? "relationship_sales_company.json"
+                  : `relationship_sales_company_${relIdx}.json`,
+                {
+                  to: { "/": "./company_1.json" },
+                  from: { "/": `./sales_${sIdx + 1}.json` },
+                },
+              );
+            }
+          });
+        }
+      });
+    }
+  }
+
+  if (utilitiesData) {
+    const key = `property_${parcelIdentifier}`;
+    const util = utilitiesData[key];
+    if (util) writeJSON("utility.json", util);
+  }
+  if (layoutData) {
+    const key = `property_${parcelIdentifier}`;
+    const ld = layoutData[key];
+    if (ld && Array.isArray(ld.layouts))
+      ld.layouts.forEach((layout, idx) =>
+        writeJSON(`layout_${idx + 1}.json`, layout),
+      );
+  }
+
+  const structureObj = extractStructure($);
+  writeJSON("structure.json", structureObj);
+  const lotObj = extractLot($, legalRows, totalArea);
+  writeJSON("lot.json", lotObj);
 }
 
-if (require.main === module) {
-  try {
-    main();
-    console.log("Data extraction completed.");
-  } catch (e) {
-    console.error("Extraction failed:", e);
-    process.exit(1);
-  }
-}
+main();
