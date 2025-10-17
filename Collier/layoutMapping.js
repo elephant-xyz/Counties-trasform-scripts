@@ -79,9 +79,10 @@ function ensureDir(filePath) {
     }
   });
 
-  // Only set values if we found at least one building
-  const livableAreaSqFt = hasAnyBuildings ? totalLivableArea : null;
-  const areaUnderAirSqFt = hasAnyBuildings ? totalUnderAir : null;
+  // Only set values if we found at least one building and total >= 10 sq ft
+  // (values < 10 are unrealistic and fail validation)
+  const livableAreaSqFt = hasAnyBuildings && totalLivableArea >= 10 ? totalLivableArea : null;
+  const areaUnderAirSqFt = hasAnyBuildings && totalUnderAir >= 10 ? totalUnderAir : null;
 
   // Create layouts array with Living Area
   const layouts = [];

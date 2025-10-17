@@ -162,16 +162,28 @@ function classifyOwner(raw) {
   // Strip leading special characters like %, #, etc. that are used as markers
   text = text.replace(/^[%#@*]+\s*/, "");
 
+  // Strip trailing & symbols (indicates continuation on next line)
+  text = text.replace(/\s*&\s*$/, "").trim();
+
+  // Remove tokens containing "/" (like C/O, H/W, etc.)
+  text = text.split(/\s+/).filter(token => !token.includes("/")).join(" ").trim();
+
   if (!text) return { valid: false, reason: "empty" };
 
   // Basic noise/address filtering
   if (isLikelyAddress(text))
     return { valid: false, reason: "address_or_noise" };
 
-  // Check if it looks like a company using keywords - THIS IS THE ONLY WAY TO DETECT COMPANIES
+  // Check if it looks like a company using keywords
   const isCompany = looksLikeCompany(text);
   console.log(`Checking if company: "${text}" -> ${isCompany}`);
   if (isCompany) {
+    return { valid: true, owner: { type: "company", name: text } };
+  }
+
+  // If the text contains any digits, treat it as a company (person names don't have numbers)
+  if (/\d/.test(text)) {
+    console.log(`Treating as company (contains digits): "${text}"`);
     return { valid: true, owner: { type: "company", name: text } };
   }
 
@@ -254,11 +266,119 @@ function classifyOwner(raw) {
     return { valid: true, owner: person };
   } else {
     // Format: "FIRST MIDDLE LAST" or "FIRST MIDDLE LAST SUFFIX" (no comma)
+    // OR "FIRST MIDDLE & FIRST MIDDLE LAST" (multiple people with same last name)
+    // OR "FIRST=& FIRST LAST" (multiple people with same last name, compact format)
     let tokens = text.split(/\s+/).filter(Boolean);
     if (tokens.length < 2) {
       return { valid: false, reason: "insufficient_name_parts", raw: text };
     }
 
+    // Check if any token contains "=&" indicating multiple people with same last name
+    // e.g., "STEVEN=& MARILYN KINNIRY"
+    const equalsAmpIndex = tokens.findIndex(t => t.includes("=&"));
+    if (equalsAmpIndex >= 0) {
+      // Split the token containing "=&" to get the first person's first name
+      const parts = tokens[equalsAmpIndex].split("=&");
+      const firstName1 = parts[0]; // e.g., "STEVEN"
+      const afterEquals = parts[1] || ""; // Everything after "=&" in the same token (usually empty)
+
+      // Reconstruct tokens: first name before "=&", anything after "=&", and remaining tokens
+      const newTokens = [firstName1];
+      if (afterEquals) {
+        newTokens.push(afterEquals);
+      }
+      newTokens.push(...tokens.slice(equalsAmpIndex + 1));
+
+      tokens = newTokens;
+      // Now for "STEVEN=& MARILYN KINNIRY", tokens = ["STEVEN", "MARILYN", "KINNIRY"]
+
+      if (tokens.length < 2) {
+        return { valid: false, reason: "insufficient_name_parts_after_equals_amp", raw: text };
+      }
+
+      // Last token (after potentially removing suffix) is the shared last name
+      let suffixName = null;
+      if (knownSuffixes.has(tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+        suffixName = normalizeSuffix(tokens.pop());
+      }
+
+      const lastName = titleCase(tokens[tokens.length - 1]);
+      tokens.pop(); // Remove last name
+
+      // Now tokens contains all first names (and possibly middle names)
+      // For "STEVEN=& MARILYN KINNIRY", we now have ["STEVEN", "MARILYN"]
+      const persons = [];
+
+      for (const firstName of tokens) {
+        if (firstName && firstName.trim()) {
+          persons.push({
+            type: "person",
+            first_name: titleCase(firstName),
+            last_name: lastName,
+            middle_name: null,
+            suffix_name: suffixName,
+          });
+        }
+      }
+
+      if (persons.length > 0) {
+        return { valid: true, owners: persons };
+      }
+    }
+
+    // Check if contains "&" indicating multiple people with same last name
+    // e.g., "JOHN R & MARIE V GLOWACKI"
+    const ampersandIndex = tokens.findIndex(t => t === "&");
+    if (ampersandIndex > 0) {
+      // Last token (after potentially removing suffix) is the shared last name
+      let suffixName = null;
+      if (knownSuffixes.has(tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+        suffixName = normalizeSuffix(tokens.pop());
+      }
+
+      const lastName = titleCase(tokens[tokens.length - 1]);
+      tokens.pop(); // Remove last name
+
+      // Split by "&"
+      const beforeAmp = tokens.slice(0, ampersandIndex);
+      const afterAmp = tokens.slice(ampersandIndex + 1);
+
+      const persons = [];
+
+      // Parse first person (before &)
+      if (beforeAmp.length > 0) {
+        const firstName1 = titleCase(beforeAmp[0]);
+        const middleName1 = beforeAmp.length > 1
+          ? beforeAmp.slice(1).map(titleCase).join(" ")
+          : null;
+        persons.push({
+          type: "person",
+          first_name: firstName1,
+          last_name: lastName,
+          middle_name: middleName1,
+          suffix_name: suffixName,
+        });
+      }
+
+      // Parse second person (after &)
+      if (afterAmp.length > 0) {
+        const firstName2 = titleCase(afterAmp[0]);
+        const middleName2 = afterAmp.length > 1
+          ? afterAmp.slice(1).map(titleCase).join(" ")
+          : null;
+        persons.push({
+          type: "person",
+          first_name: firstName2,
+          last_name: lastName,
+          middle_name: middleName2,
+          suffix_name: suffixName,
+        });
+      }
+
+      return { valid: true, owners: persons };
+    }
+
+    // No "&", single person
     // Check if last token is a suffix (e.g., Jr., III, etc.)
     let suffixName = null;
     if (tokens.length > 2 && knownSuffixes.has(tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""))) {
