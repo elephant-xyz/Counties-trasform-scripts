@@ -96,10 +96,10 @@ function mapInteriorSurface(tokens) {
   const out = [];
   tokens.forEach((tok) => {
     const t = tok.toUpperCase().trim();
-    if (t.includes("BRK") || t.includes("BRICK")) out.push("Brick");
-    if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Frame");
-    if (t.includes("STEEL")) out.push("Steel Frame");
-    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
+    if (t.includes("BRK") || t.includes("BRICK")) out.push("Exposed Brick");
+    if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Paneling");
+    if (t.includes("STEEL")) out.push("Metal Panels");
+    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete");
   });
   return out;
 }
