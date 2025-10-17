@@ -124,9 +124,29 @@ function toPerson(name) {
   const noAmp = name.replace(/\s*&\s*/g, " ");
   const tokens = noAmp.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return null;
-  const first = tokens[0];
-  const last = tokens[tokens.length - 1];
-  const middle = tokens.slice(1, -1).join(" ") || null;
+  
+  let first = tokens[0];
+  let last = tokens[tokens.length - 1];
+  let middle = tokens.slice(1, -1).join(" ") || null;
+  
+  // Clean names: remove special characters except letters, spaces, hyphens, apostrophes
+  first = first.replace(/[^A-Za-z\-']/g, "").trim();
+  last = last.replace(/[^A-Za-z\-']/g, "").trim();
+  if (middle) {
+    middle = middle.replace(/[^A-Za-z\-']/g, "").trim();
+  }
+  
+  // Reject names that are empty, start with numbers, or contain only special characters
+  if (!first || !last || /^\d+$/.test(first) || /^\d+$/.test(last) || 
+      /^[^A-Za-z]+$/.test(first) || /^[^A-Za-z]+$/.test(last)) {
+    return null;
+  }
+  
+  // Reject if middle name is empty or only special characters
+  if (middle && (!middle || /^[^A-Za-z]+$/.test(middle))) {
+    middle = null;
+  }
+  
   return {
     type: "person",
     first_name: first,
@@ -136,8 +156,16 @@ function toPerson(name) {
 }
 
 function classifyOwner(rawName) {
-  const name = normWS(rawName).replace(/\s{2,}/g, " ");
+  let name = normWS(rawName).replace(/\s{2,}/g, " ");
   if (!name) return { owner: null, reason: "empty" };
+
+  // Remove content in parentheses but keep the rest of the name
+  name = name.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+
+  // Check for specific company patterns
+  if (name.includes("JEWISH OUTREACH") || name.includes("CHABAD") || name.includes("PROGRAM")) {
+    return { owner: { type: "company", name: name }, reason: null };
+  }
 
   if (isCompany(name)) {
     return { owner: { type: "company", name: name }, reason: null };
@@ -164,31 +192,6 @@ function normalizeOwnerKey(o) {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
-}
-
-// Extract date strings and normalize to YYYY-MM-DD
-function extractDates(text) {
-  const dates = new Set();
-
-  // ISO format
-  const isoRe = /(\d{4})-(\d{2})-(\d{2})/g;
-  let m;
-  while ((m = isoRe.exec(text)) !== null) {
-    dates.add(`${m[1]}-${m[2]}-${m[3]}`);
-  }
-
-  // US format mm/dd/yyyy or m/d/yyyy (also allow yy)
-  const usRe = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
-  while ((m = usRe.exec(text)) !== null) {
-    const mm = m[1].padStart(2, "0");
-    const dd = m[2].padStart(2, "0");
-    let yyyy = m[3];
-    if (yyyy.length === 2)
-      yyyy = (parseInt(yyyy, 10) > 50 ? "19" : "20") + yyyy;
-    dates.add(`${yyyy}-${mm}-${dd}`);
-  }
-
-  return Array.from(dates).sort();
 }
 
 // Build owners_by_date mapping

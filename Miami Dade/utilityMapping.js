@@ -77,6 +77,45 @@ function mapUtility(data) {
     water_heater_model: null,
     well_installation_date: null,
   };
+  
+  // Extract plumbing fixtures from ExtraFeatureInfos (once schema is updated)
+  const extraFeature = data && data.ExtraFeature;
+  const extraFeatureInfos = extraFeature && Array.isArray(extraFeature.ExtraFeatureInfos)
+    ? extraFeature.ExtraFeatureInfos
+    : [];
+  
+  // Deduplicate by description to avoid counting same feature multiple times across tax years
+  const seenFeatures = new Set();
+  for (const ef of extraFeatureInfos) {
+    const desc = ef.Description || "";
+    
+    if (seenFeatures.has(desc)) {
+      continue;
+    }
+    seenFeatures.add(desc);
+    
+    // Extract plumbing fixtures
+    if (/\bPLUMBING\s*FIXTURES?\b/i.test(desc)) {
+      // Extract count
+      if (ef.Units && ef.Units > 0) {
+        utility.plumbing_fixture_count = ef.Units;
+      }
+      
+      // Extract type
+      if (/\bWAREHOUSE\b/i.test(desc)) {
+        utility.plumbing_fixture_type_primary = "Mixed";
+      }
+      
+      // Extract quality
+      if (/\bFAIR\s*QUALITY\b/i.test(desc)) {
+        utility.plumbing_fixture_quality = "Fair";
+      } else if (/\bGOOD\s*QUALITY\b/i.test(desc)) {
+        utility.plumbing_fixture_quality = "Good";
+      } else if (/\bSTANDARD\b/i.test(desc)) {
+        utility.plumbing_fixture_quality = "Standard";
+      }
+    }
+  }
 
   return utility;
 }
