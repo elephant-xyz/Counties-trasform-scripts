@@ -55,187 +55,290 @@ function extractParcelIdFromH1($) {
   return m ? m[1] : null;
 }
 
-// Property type lookup generated from charlotte_property_types.txt (2025-10-17)
-const PROPERTY_TYPE_LOOKUP = {
-  "0100": "SingleFamily",
-  "0101": "SingleFamily",
-  "0102": "SingleFamily",
-  "0105": "SingleFamily",
-  "0106": "Modular",
-  "0108": "SingleFamily",
-  "0200": "MobileHome",
-  "0201": "MobileHome",
-  "0204": "MobileHome",
-  "0205": "ManufacturedHome",
-  "0300": "MultiFamilyMoreThan10",
-  "0400": "Condominium",
-  "0401": "Condominium",
-  "0403": "DetachedCondominium",
-  "0404": "Condominium",
-  "0405": "Condominium",
-  "0600": "Retirement",
-  "0601": "Retirement",
-  "0700": "MiscellaneousResidential",
-  "0701": "MiscellaneousResidential",
-  "0800": "Duplex",
-  "0801": "3Units",
-  "0802": "4Units",
-  "0803": "MultiFamilyLessThan10",
-  "0804": "MultiFamilyLessThan10",
-  "0805": "MultiFamilyLessThan10",
-  "0806": "MultiFamilyLessThan10",
-  "0807": "MultiFamilyLessThan10",
-  "0810": "MultiFamilyMoreThan10",
-  "0813": "Duplex",
-  "0814": "MultiFamilyLessThan10",
-  "0815": "MultiFamilyLessThan10",
-  "0902": "ResidentialCommonElementsAreas",
-  "0908": "ResidentialCommonElementsAreas",
-  "1100": "Building",
-  "1101": "Building",
-  "1102": "Building",
-  "1103": "Building",
-  "1104": "Condominium",
-  "1105": "Condominium",
-  "1110": "Building",
-  "1170": "Building",
-  "1178": "Building",
-  "1198": "Building",
-  "1199": "Building",
-  "1200": "Building",
-  "1201": "Building",
-  "1202": "Condominium",
-  "1203": "Condominium",
-  "1300": "Building",
-  "1301": "Building",
-  "1302": "Building",
-  "1400": "Building",
-  "1401": "Building",
-  "1402": "Building",
-  "1500": "Building",
-  "1600": "Building",
-  "1601": "Building",
-  "1602": "Building",
-  "1700": "Building",
-  "1701": "Building",
-  "1702": "Building",
-  "1800": "Building",
-  "1801": "Building",
-  "1802": "Building",
-  "1803": "Building",
-  "1900": "Building",
-  "1901": "Building",
-  "1902": "Building",
-  "1903": "Building",
-  "1904": "Building",
-  "1905": "Building",
-  "1906": "Condominium",
-  "1907": "Condominium",
-  "2000": "Building",
-  "2001": "Building",
-  "2002": "Building",
-  "2003": "Condominium",
-  "2100": "Building",
-  "2200": "Building",
-  "2300": "Building",
-  "2400": "Building",
-  "2500": "Building",
-  "2501": "Building",
-  "2600": "Building",
-  "2601": "Building",
-  "2700": "Building",
-  "2800": "LandParcel",
-  "2801": "LandParcel",
-  "2802": "Building",
-  "2803": "Building",
-  "2804": "Building",
-  "2805": "Building",
-  "2806": "Building",
-  "2807": "Building",
-  "2808": "Building",
-  "2900": "Building",
-  "3000": "Building",
-  "3100": "Building",
-  "3200": "Building",
-  "3300": "Building",
-  "3400": "Building",
-  "3409": "Modular",
-  "3410": "Modular",
-  "3500": "LandParcel",
-  "3501": "Building",
-  "3502": "Building",
-  "3503": "Building",
-  "3504": "Building",
-  "3505": "Building",
-  "3600": "LandParcel",
-  "3700": "LandParcel",
-  "3800": "LandParcel",
-  "3801": "Building",
-  "3802": "Building",
-  "3803": "Building",
-  "3804": "Building",
-  "3805": "Building",
-  "3900": "Building",
-  "3901": "Timeshare",
-  "4100": "Building",
-  "4200": "Building",
-  "4300": "LandParcel",
-  "4400": "Building",
-  "4500": "Building",
-  "4600": "Building",
-  "4700": "Building",
-  "4800": "LandParcel",
-  "4801": "Condominium",
-  "4802": "Condominium",
-  "4810": "Building",
-  "4900": "LandParcel",
-  "4901": "LandParcel",
-  "4902": "LandParcel",
-  "4903": "LandParcel",
-  "4904": "LandParcel",
-  "4905": "LandParcel",
-  "5000": "LandParcel",
-  "5001": "LandParcel",
-  "5002": "LandParcel",
-  "5003": "LandParcel",
-  "5004": "LandParcel",
-  "7100": "Building",
-  "7200": "Building",
-  "7300": "Building",
+const MANUFACTURED_HOME_CODES = new Set(["0200", "0201", "0204", "0205"]);
+const UNIT_CODES = new Set([
+  "0400",
+  "0401",
+  "0403",
+  "0404",
+  "0405",
+  "1104",
+  "1105",
+  "1202",
+  "1203",
+  "1906",
+  "1907",
+  "2003",
+  "4801",
+  "4802",
+]);
+const LAND_PARCEL_CODES = new Set([
+  "2800",
+  "2801",
+  "3500",
+  "3600",
+  "3700",
+  "3800",
+  "4800",
+  "4900",
+  "4901",
+  "4902",
+  "4903",
+  "4904",
+  "4905",
+  "5000",
+  "5001",
+  "5002",
+  "5003",
+  "5004",
+  "8200",
+]);
+const RESIDENTIAL_CODES = new Set([
+  "0100",
+  "0101",
+  "0102",
+  "0105",
+  "0106",
+  "0108",
+  "0300",
+  "0600",
+  "0601",
+  "0700",
+  "0701",
+  "0800",
+  "0801",
+  "0802",
+  "0803",
+  "0804",
+  "0805",
+  "0806",
+  "0807",
+  "0810",
+  "0813",
+  "0814",
+  "0815",
+  "3901",
+  "5000",
+  "5001",
+  "5002",
+  "5003",
+  "5004",
+]);
+const RESIDENTIAL_COMMON_ELEMENT_CODES = new Set(["0902", "0908"]);
+const CONDO_USAGE_CODES = new Set([
+  "0400",
+  "0401",
+  "0403",
+  "0404",
+  "0405",
+  "1104",
+  "1105",
+  "1202",
+  "1906",
+  "1907",
+  "2003",
+  "4801",
+  "4802",
+]);
+const COMMERCIAL_CODES = new Set([
+  "1100",
+  "1101",
+  "1102",
+  "1103",
+  "1110",
+  "1170",
+  "1178",
+  "1198",
+  "1199",
+  "1200",
+  "1201",
+  "1203",
+  "1300",
+  "1301",
+  "1302",
+  "1400",
+  "1401",
+  "1402",
+  "1500",
+  "1600",
+  "1601",
+  "1602",
+  "1700",
+  "1701",
+  "1702",
+  "1800",
+  "1801",
+  "1802",
+  "1803",
+  "1900",
+  "1901",
+  "1902",
+  "1903",
+  "1904",
+  "1905",
+  "2000",
+  "2001",
+  "2002",
+  "2100",
+  "2200",
+  "2300",
+  "2400",
+  "2500",
+  "2501",
+  "2600",
+  "2601",
+  "2700",
+  "2800",
+  "2801",
+  "2802",
+  "2803",
+  "2804",
+  "2805",
+  "2806",
+  "2807",
+  "2808",
+  "2900",
+  "3000",
+  "3100",
+  "3200",
+  "3300",
+  "3400",
+  "3409",
+  "3410",
+  "3500",
+  "3501",
+  "3502",
+  "3503",
+  "3504",
+  "3505",
+  "3600",
+  "3700",
+  "3800",
+  "3801",
+  "3802",
+  "3803",
+  "3804",
+  "3805",
+  "3900",
+  "4100",
+  "4200",
+  "4300",
+  "4400",
+  "4500",
+  "4600",
+  "4700",
+  "4800",
+  "4810",
+  "4900",
+  "4901",
+  "4902",
+  "4903",
+  "4904",
+  "4905",
+  "7100",
+  "7200",
+  "7300",
+  "7400",
+  "7500",
+  "7600",
+  "7601",
+  "7800",
+  "7900",
+  "8100",
+  "8200",
+  "8300",
+  "8301",
+  "8302",
+  "8305",
+  "8400",
+  "8405",
+  "8500",
+  "8600",
+  "8700",
+  "8800",
+  "8900",
+  "9100",
+]);
+const PROPERTY_USAGE_SPECIAL_BY_CODE = {
+  "7100": "Church",
+  "7200": "PrivateSchool",
+  "7300": "PrivateHospital",
   "7400": "Retirement",
-  "7500": "Building",
-  "7600": "Building",
-  "7601": "Building",
-  "7700": "Building",
-  "7800": "Retirement",
-  "7900": "Building",
-  "8100": "Building",
-  "8200": "LandParcel",
-  "8300": "Building",
-  "8301": "Building",
-  "8302": "Building",
-  "8305": "Building",
-  "8400": "Building",
-  "8405": "Building",
-  "8500": "Building",
-  "8600": "Building",
-  "8700": "Building",
-  "8800": "Building",
-  "8900": "Building",
-  "9100": "Building",
+  "7500": "NonProfitCharity",
+  "7600": "MortuaryCemetery",
+  "7601": "MortuaryCemetery",
+  "7800": "SanitariumConvalescentHome",
+  "7900": "CulturalOrganization",
+  "8100": "Military",
+  "8200": "ForestParkRecreation",
+  "8300": "PublicSchool",
+  "8301": "PublicSchool",
+  "8302": "PublicSchool",
+  "8305": "PublicSchool",
 };
 
 function mapPropertyTypeFromCode(code, contextForError) {
   if (!code) return null;
   const normalized = String(code).replace(/\D/g, "").padStart(4, "0").slice(0, 4);
-  const val = PROPERTY_TYPE_LOOKUP[normalized];
-  if (val) return val;
-  const err = {
-    type: "error",
-    message: `Unknown enum value ${code}.`,
-    path: `${contextForError}.property_type`,
-  };
-  throw new Error(JSON.stringify(err));
+  if (LAND_PARCEL_CODES.has(normalized)) return "LandParcel";
+  if (MANUFACTURED_HOME_CODES.has(normalized)) return "ManufacturedHome";
+  if (UNIT_CODES.has(normalized)) return "Unit";
+  return "Building";
+}
+
+function mapPropertyUsageType(buildingUseText, code) {
+  const normalizedCode = code
+    ? String(code).replace(/\D/g, "").padStart(4, "0").slice(0, 4)
+    : null;
+  const raw = (buildingUseText || "").toLowerCase();
+  if (normalizedCode) {
+    if (PROPERTY_USAGE_SPECIAL_BY_CODE[normalizedCode])
+      return PROPERTY_USAGE_SPECIAL_BY_CODE[normalizedCode];
+    if (RESIDENTIAL_COMMON_ELEMENT_CODES.has(normalizedCode))
+      return "ResidentialCommonElementsAreas";
+    if (
+      RESIDENTIAL_CODES.has(normalizedCode) ||
+      CONDO_USAGE_CODES.has(normalizedCode) ||
+      MANUFACTURED_HOME_CODES.has(normalizedCode)
+    )
+      return "Residential";
+    if (COMMERCIAL_CODES.has(normalizedCode)) return "Commercial";
+    if (LAND_PARCEL_CODES.has(normalizedCode)) return null;
+  }
+  if (!raw && normalizedCode) {
+    if (MANUFACTURED_HOME_CODES.has(normalizedCode)) return "Residential";
+    if (LAND_PARCEL_CODES.has(normalizedCode)) return null;
+  }
+  if (/common\s+element|common\s+area/.test(raw))
+    return "ResidentialCommonElementsAreas";
+  if (/(retire|assisted|senior|alcf|care)/.test(raw)) return "Retirement";
+  if (/(church|chapel|synagogue|temple)/.test(raw)) return "Church";
+  if (/(school)/.test(raw)) return /public/.test(raw) ? "PublicSchool" : "PrivateSchool";
+  if (/(hospital|clinic|medical)/.test(raw))
+    return /public/.test(raw) ? "PublicHospital" : "PrivateHospital";
+  if (/(cemetery|mortuary|funeral|mausoleum|crypt)/.test(raw))
+    return "MortuaryCemetery";
+  if (/(golf|park|recreation|recreational|forest)/.test(raw))
+    return "ForestParkRecreation";
+  if (/(bank|savings|credit union|financial)/.test(raw))
+    return "FinancialInstitution";
+  if (/(warehouse)/.test(raw)) return "Warehouse";
+  if (/(gas station|service station|fuel|petrol)/.test(raw))
+    return "ServiceStation";
+  if (
+    /(store|retail|commercial|shopping|office|restaurant|bar|lounge|hotel|motel|auto|garage|dealership|factory|plant|industrial|terminal)/.test(
+      raw,
+    )
+  )
+    return "Commercial";
+  if (
+    /(mobile home|manufactured|single family|residential|duplex|triplex|quad|multi|condo|townhouse|apartment|zero lot)/.test(
+      raw,
+    )
+  )
+    return "Residential";
+  if (MANUFACTURED_HOME_CODES.has(normalizedCode || "")) return "Residential";
+  return null;
 }
 
 function extractProperty($) {
@@ -264,7 +367,9 @@ function extractProperty($) {
     acArea = null,
     totalArea = null,
     propertyType = null,
-    floors = null;
+    floors = null,
+    buildingUseText = null,
+    buildingUseCode = null;
   const bldTable = $(
     "table.prctable caption.blockcaption:contains('Building Information')",
   ).closest("table");
@@ -272,9 +377,9 @@ function extractProperty($) {
     const firstRow = bldTable.find("tbody tr").eq(1);
     if (firstRow && firstRow.length) {
       const cells = firstRow.find("td");
-      const buildingUse = cleanText($(cells.get(3)).text());
-      const buildingUseCode = buildingUse
-        ? buildingUse.replace(/[^0-9]/g, "")
+      buildingUseText = cleanText($(cells.get(3)).text());
+      buildingUseCode = buildingUseText
+        ? buildingUseText.replace(/[^0-9]/g, "")
         : null;
       if (buildingUseCode)
         propertyType = mapPropertyTypeFromCode(buildingUseCode, "property");
@@ -303,8 +408,13 @@ function extractProperty($) {
     total_area: totalArea ? String(totalArea) : null,
     zoning: zoning || null,
     property_effective_built_year: effectiveYear || null,
-    build_status: null,
+    build_status: propertyType
+      ? propertyType === "LandParcel"
+        ? "VacantLand"
+        : "Improved"
+      : null,
     historic_designation: false,
+    property_usage_type: mapPropertyUsageType(buildingUseText, buildingUseCode),
   };
   return { property, floors, acArea, totalArea };
 }
@@ -353,7 +463,9 @@ function extractTax($) {
     property_assessed_value_amount: assessed,
     property_market_value_amount: market,
     property_taxable_value_amount: taxable,
-    property_land_value_amount: landAmount,
+    property_land_amount: landAmount,
+    property_building_amount:
+      market != null && landAmount != null ? Math.max(market - landAmount, 0) : null,
   };
 }
 
@@ -511,48 +623,127 @@ function extractStructure($, defaults) {
     "table.prctable caption.blockcaption:contains('Building Information')",
   ).closest("table");
   let floors = defaults && defaults.floors ? defaults.floors : null;
+  let baseArea = null;
   let acArea =
     defaults && defaults.acArea ? parseInt(defaults.acArea, 10) || null : null;
-  let totalArea =
-    defaults && defaults.totalArea ? parseInt(defaults.totalArea, 10) || null : null;
   let yearBuilt = null;
   let yearCond = null;
-  let buildingUse = null;
-  let buildingNumber = null;
-  let quality = null;
   if (bldTable && bldTable.length) {
     const row = bldTable.find("tbody tr").eq(1);
     if (row && row.length) {
       const tds = row.find("td");
-      buildingNumber = cleanText($(tds.get(0)).text());
-      buildingUse = cleanText($(tds.get(1)).text());
-      quality = cleanText($(tds.get(2)).text());
       yearBuilt = parseInt(cleanText($(tds.get(4)).text()), 10) || null;
       yearCond = parseInt(cleanText($(tds.get(5)).text()), 10) || null;
       floors =
         floors != null ? floors : parseFloat(cleanText($(tds.get(6)).text())) || null;
+      const baseText = cleanText($(tds.get(10)).text());
+      baseArea = baseText ? parseInt(baseText.replace(/[^0-9]/g, ""), 10) || null : null;
       if (acArea == null) {
         const acText = cleanText($(tds.get(11)).text());
         acArea = acText ? parseInt(acText.replace(/[^0-9]/g, ""), 10) || null : null;
       }
-      if (totalArea == null) {
-        const totText = cleanText($(tds.get(12)).text());
-        totalArea = totText
-          ? parseInt(totText.replace(/[^0-9]/g, ""), 10) || null
-          : null;
-      }
     }
   }
+  const propertyTypeFromDefaults =
+    defaults && defaults.propertyType ? defaults.propertyType : null;
   const structure = {
-    building_identifier: buildingNumber || null,
-    structure_quality_type: quality || null,
-    structure_use_description: buildingUse || null,
-    stories_count: floors != null ? Number(floors) : null,
-    area_under_air: acArea != null ? Number(acArea) : null,
-    total_area: totalArea != null ? Number(totalArea) : null,
-    construction_year: yearBuilt,
-    effective_year: yearCond,
+    architectural_style_type: null,
+    attachment_type:
+      propertyTypeFromDefaults === "Unit"
+        ? "Attached"
+        : propertyTypeFromDefaults === "LandParcel"
+          ? null
+          : "Detached",
+    exterior_door_material: null,
+    exterior_wall_condition: null,
+    exterior_wall_condition_primary: null,
+    exterior_wall_condition_secondary: null,
+    exterior_wall_insulation_type: null,
+    exterior_wall_insulation_type_primary: null,
+    exterior_wall_insulation_type_secondary: null,
+    exterior_wall_material_primary: null,
+    exterior_wall_material_secondary: null,
+    finished_base_area: baseArea != null ? Number(baseArea) : acArea != null ? Number(acArea) : null,
+    finished_basement_area: null,
+    finished_upper_story_area: null,
+    flooring_condition: null,
+    flooring_material_primary: null,
+    flooring_material_secondary: null,
+    foundation_condition: null,
+    foundation_material: null,
+    foundation_repair_date: null,
+    foundation_type: null,
+    foundation_waterproofing: null,
+    gutters_condition: null,
+    gutters_material: null,
+    interior_door_material: null,
+    interior_wall_condition: null,
+    interior_wall_finish_primary: null,
+    interior_wall_finish_secondary: null,
+    interior_wall_structure_material: null,
+    interior_wall_structure_material_primary: null,
+    interior_wall_structure_material_secondary: null,
+    interior_wall_surface_material_primary: null,
+    interior_wall_surface_material_secondary: null,
+    number_of_buildings: 1,
+    number_of_stories: floors != null ? Number(floors) : null,
+    primary_framing_material: null,
+    roof_age_years: null,
+    roof_condition: null,
+    roof_covering_material: null,
+    roof_date: null,
+    roof_design_type: null,
+    roof_material_type: null,
+    roof_structure_material: null,
+    roof_underlayment_type: null,
+    secondary_framing_material: null,
+    siding_installation_date: null,
+    structural_damage_indicators: null,
+    subfloor_material: null,
+    unfinished_base_area: null,
+    unfinished_basement_area: null,
+    unfinished_upper_story_area: null,
+    window_frame_material: null,
+    window_glazing_type: null,
+    window_installation_date: null,
+    window_operation_type: null,
+    window_screen_material: null,
   };
+  const componentTable = $(
+    "table.prctable caption.blockcaption:contains('Building Component Information')",
+  ).closest("table");
+  if (componentTable && componentTable.length) {
+    componentTable.find("tbody tr").each((_, tr) => {
+      const tds = $(tr).find("td");
+      if (tds.length < 3) return;
+      const desc = cleanText($(tds).eq(2).text()).toLowerCase();
+      if (!desc) return;
+      if (desc.includes("masonry") && desc.includes("stucco")) {
+        structure.exterior_wall_material_primary = "Stucco";
+        structure.primary_framing_material = "Concrete Block";
+      }
+      if (desc.includes("clay tile") || desc.includes("concrete tile")) {
+        structure.roof_covering_material = "Concrete Tile";
+        structure.roof_material_type = "Tile";
+      }
+      if (desc.includes("shingle")) {
+        structure.roof_covering_material =
+          structure.roof_covering_material || "Asphalt Shingle";
+        structure.roof_material_type = structure.roof_material_type || "Shingle";
+      }
+      if (desc.includes("slab on grade")) {
+        structure.foundation_type = "Slab on Grade";
+        structure.foundation_material = "Poured Concrete";
+        structure.subfloor_material = "Concrete Slab";
+      }
+      if (desc.includes("plaster interior")) {
+        structure.interior_wall_surface_material_primary = "Plaster";
+      }
+      if (desc.includes("impact window")) {
+        structure.window_glazing_type = "Impact Resistant";
+      }
+    });
+  }
   return structure;
 }
 
@@ -564,36 +755,80 @@ function extractLot($) {
   const row = tbl.find("tbody tr").eq(1);
   if (!row.length) return {};
   const tds = row.find("td");
-  const landUse = cleanText($(tds.get(0)).text());
-  const zoning = cleanText($(tds.get(1)).text());
   const landUnits = cleanText($(tds.get(2)).text());
-  const unitType = cleanText($(tds.get(3)).text());
+  const rawUnitType = cleanText($(tds.get(3)).text());
+  const unitType = rawUnitType ? rawUnitType.toUpperCase() : "";
   const depth = cleanText($(tds.get(4)).text());
   const frontage = cleanText($(tds.get(5)).text());
-  const value = parseCurrencyToNumber($(tds.get(6)).text());
+
+  const toNumber = (value) => {
+    if (!value) return null;
+    const num = parseFloat(value.replace(/[^0-9.]/g, ""));
+    return Number.isFinite(num) ? num : null;
+  };
+
+  const lotLengthFeet = toNumber(depth);
+  const lotWidthFeet = toNumber(frontage);
+  const lotUnitsNumeric = toNumber(landUnits);
+  let lotAreaSqft = null;
+  let lotSizeAcre = null;
+  if (lotUnitsNumeric != null) {
+    if (/ACR?E/.test(unitType) || /\bAC\b/.test(unitType)) {
+      lotSizeAcre = lotUnitsNumeric;
+    } else if (/SQ\s*FT|SQUARE\s+FEET|SQUARE\s+FOOT|SQFT/.test(unitType)) {
+      lotAreaSqft = lotUnitsNumeric;
+    }
+  }
+  let view = null;
+  $("div.w3-row .w3-cell.w3-half").each((_, el) => {
+    const strong = $(el).find("strong").first().text().trim();
+    if (/Waterfront:/i.test(strong)) {
+      const rowEl = $(el).closest(".w3-row");
+      const cells = rowEl.find(".w3-cell.w3-half");
+      if (cells.length >= 2) {
+        const value = cleanText($(cells[1]).text()).toUpperCase();
+        if (value.includes("YES")) view = "Waterfront";
+      }
+    }
+  });
+
   return {
-    land_use_description: landUse || null,
-    zoning: zoning || null,
-    lot_unit_type: unitType || null,
-    lot_unit_count: landUnits ? parseFloat(landUnits.replace(/[^0-9.]/g, "")) : null,
-    frontage_length: frontage ? parseFloat(frontage.replace(/[^0-9.]/g, "")) : null,
-    depth_length: depth ? parseFloat(depth.replace(/[^0-9.]/g, "")) : null,
-    land_value_amount: value,
+    lot_type: null,
+    lot_length_feet: lotLengthFeet,
+    lot_width_feet: lotWidthFeet,
+    lot_area_sqft: lotAreaSqft,
+    lot_size_acre: lotSizeAcre,
+    landscaping_features: null,
+    view,
+    fencing_type: null,
+    fence_height: null,
+    fence_length: null,
+    driveway_material: null,
+    driveway_condition: null,
+    lot_condition_issues: null,
   };
 }
 
-function buildUtilities(pathToOwnersUtilities, parcelId, dataDir) {
+function buildUtilities(
+  pathToOwnersUtilities,
+  parcelId,
+  dataDir,
+  sharedSourceHttpRequest,
+  sharedRequestIdentifier,
+) {
   try {
-    const utilities = readJSON(pathToOwnersUtilities);
-    if (!utilities) return;
-    if (utilities.electric_provider)
-      utilities.electric_provider = cleanText(utilities.electric_provider);
-    if (utilities.gas_provider)
-      utilities.gas_provider = cleanText(utilities.gas_provider);
-    if (utilities.water_provider)
-      utilities.water_provider = cleanText(utilities.water_provider);
-    if (utilities.sewer_provider)
-      utilities.sewer_provider = cleanText(utilities.sewer_provider);
+    const rawUtilities = readJSON(pathToOwnersUtilities);
+    if (!rawUtilities) return;
+    const key = parcelId ? `property_${parcelId}` : null;
+    const utilRecord =
+      (key && rawUtilities[key]) ||
+      (!Array.isArray(rawUtilities) && rawUtilities);
+    if (!utilRecord || typeof utilRecord !== "object") return;
+    const utilities = { ...utilRecord };
+    if (sharedSourceHttpRequest)
+      utilities.source_http_request = sharedSourceHttpRequest;
+    if (sharedRequestIdentifier)
+      utilities.request_identifier = sharedRequestIdentifier;
     writeJSON(path.join(dataDir, "utility.json"), utilities);
     if (parcelId) {
       const rel = {
@@ -755,22 +990,41 @@ function main() {
       ? parcelMeta.parcel_identifier
       : null;
   const parcelId = extractParcelIdFromH1($) || parcelIdFromParcel;
+  const sharedSourceHttpRequest =
+    parcelMeta && parcelMeta.source_http_request
+      ? parcelMeta.source_http_request
+      : null;
+  const sharedRequestIdentifier =
+    parcelMeta && parcelMeta.request_identifier
+      ? parcelMeta.request_identifier
+      : parcelId;
   try {
     buildAddressOutput("address.json", path.join(dataDir, "address.json"));
   } catch {}
   const { property, floors, acArea, totalArea } = extractProperty($);
   property.parcel_identifier = parcelId || property.parcel_identifier;
   if (!property.parcel_identifier) throw new Error("parcel_identifier missing");
+  if (sharedSourceHttpRequest) property.source_http_request = sharedSourceHttpRequest;
+  if (sharedRequestIdentifier) property.request_identifier = sharedRequestIdentifier;
   writeJSON(path.join(dataDir, "property.json"), property);
   const tax = extractTax($);
   if (tax && tax.tax_year)
-    writeJSON(path.join(dataDir, `tax_${tax.tax_year}.json`), tax);
+    writeJSON(path.join(dataDir, `tax_${tax.tax_year}.json`), {
+      ...tax,
+      ...(sharedSourceHttpRequest ? { source_http_request: sharedSourceHttpRequest } : {}),
+      ...(sharedRequestIdentifier ? { request_identifier: sharedRequestIdentifier } : {}),
+    });
   const sales = extractSales($);
   const salesFiles = [];
   sales.forEach((s, idx) => {
     const fn = path.join(dataDir, `sales_${idx + 1}.json`);
     const { links, ...salesData } = s;
-    writeJSON(fn, salesData);
+    const saleOut = {
+      ...salesData,
+      ...(sharedSourceHttpRequest ? { source_http_request: sharedSourceHttpRequest } : {}),
+      ...(sharedRequestIdentifier ? { request_identifier: sharedRequestIdentifier } : {}),
+    };
+    writeJSON(fn, saleOut);
     salesFiles.push({ file: `sales_${idx + 1}.json`, data: s });
   });
   const ownersRes = buildOwners(
@@ -810,18 +1064,37 @@ function main() {
       path.join("owners", "utilities_data.json"),
       parcelId,
       dataDir,
+      sharedSourceHttpRequest,
+      sharedRequestIdentifier,
     );
   } catch {}
   try {
     buildLayouts(path.join("owners", "layout_data.json"), parcelId, dataDir);
   } catch {}
   try {
-    const structure = extractStructure($, { floors, acArea, totalArea });
-    writeJSON(path.join(dataDir, "structure.json"), structure);
+    const structure = extractStructure($, {
+      floors,
+      acArea,
+      totalArea,
+      propertyType: property.property_type,
+    });
+    if (structure) {
+      if (sharedSourceHttpRequest)
+        structure.source_http_request = sharedSourceHttpRequest;
+      if (sharedRequestIdentifier)
+        structure.request_identifier = sharedRequestIdentifier;
+      writeJSON(path.join(dataDir, "structure.json"), structure);
+    }
   } catch {}
   try {
     const lot = extractLot($);
-    writeJSON(path.join(dataDir, "lot.json"), lot);
+    if (lot) {
+      if (sharedSourceHttpRequest)
+        lot.source_http_request = sharedSourceHttpRequest;
+      if (sharedRequestIdentifier)
+        lot.request_identifier = sharedRequestIdentifier;
+      writeJSON(path.join(dataDir, "lot.json"), lot);
+    }
   } catch {}
   try {
     buildDeedsAndFiles($, dataDir, salesFiles);

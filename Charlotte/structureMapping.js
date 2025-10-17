@@ -95,37 +95,31 @@ function mapToStructure($) {
   const pid = extractPropertyId($);
   const binfo = parseBuildingInfo($) || {};
   const comps = parseComponents($);
+  const finishedBaseArea = binfo.area || binfo.acArea || null;
 
-  // Defaults per schema with null or Unknown where allowed
   const out = {
     architectural_style_type: null,
     attachment_type: "Detached",
-    ceiling_condition: null,
-    ceiling_height_average: null,
-    ceiling_insulation_type: "Unknown",
-    ceiling_structure_material: null,
-    ceiling_surface_material: null,
-    exterior_door_installation_date: null,
     exterior_door_material: null,
     exterior_wall_condition: null,
     exterior_wall_condition_primary: null,
     exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type: "Unknown",
-    exterior_wall_insulation_type_primary: "Unknown",
-    exterior_wall_insulation_type_secondary: "Unknown",
+    exterior_wall_insulation_type: null,
+    exterior_wall_insulation_type_primary: null,
+    exterior_wall_insulation_type_secondary: null,
     exterior_wall_material_primary: null,
     exterior_wall_material_secondary: null,
-    finished_base_area: binfo.acArea || null,
+    finished_base_area: finishedBaseArea != null ? Number(finishedBaseArea) : null,
     finished_basement_area: null,
-    finished_upper_story_area: 0,
+    finished_upper_story_area: null,
     flooring_condition: null,
     flooring_material_primary: null,
     flooring_material_secondary: null,
-    foundation_condition: "Unknown",
+    foundation_condition: null,
     foundation_material: null,
     foundation_repair_date: null,
     foundation_type: null,
-    foundation_waterproofing: "Unknown",
+    foundation_waterproofing: null,
     gutters_condition: null,
     gutters_material: null,
     interior_door_material: null,
@@ -138,16 +132,16 @@ function mapToStructure($) {
     interior_wall_surface_material_primary: null,
     interior_wall_surface_material_secondary: null,
     number_of_buildings: 1,
-    number_of_stories: binfo.floors || null,
+    number_of_stories: binfo.floors != null ? Number(binfo.floors) : null,
     primary_framing_material: null,
     roof_age_years: null,
     roof_condition: null,
     roof_covering_material: null,
     roof_date: null,
     roof_design_type: null,
-    roof_material_type: "Tile",
+    roof_material_type: null,
     roof_structure_material: null,
-    roof_underlayment_type: "Unknown",
+    roof_underlayment_type: null,
     secondary_framing_material: null,
     siding_installation_date: null,
     structural_damage_indicators: null,
@@ -162,33 +156,36 @@ function mapToStructure($) {
     window_screen_material: null,
   };
 
-  // Map components
+  const buildingUseUpper = (binfo.buildingUse || "").toUpperCase();
+  if (/(DUPLEX|TOWN|CONDO|ATTACH)/.test(buildingUseUpper)) out.attachment_type = "Attached";
+
   comps.forEach((c) => {
-    const d = (c.description || "").toLowerCase();
-    if (d.includes("masonry") && d.includes("stucco")) {
+    const desc = (c.description || "").toLowerCase();
+    if (!desc) return;
+    if (desc.includes("masonry") && desc.includes("stucco")) {
       out.exterior_wall_material_primary = "Stucco";
-      out.primary_framing_material = "Concrete Block"; // CMU typical in FL when stucco on block
+      out.primary_framing_material = "Concrete Block";
     }
-    if (d.includes("clay tile") || d.includes("concrete tile")) {
+    if (desc.includes("clay tile") || desc.includes("concrete tile")) {
       out.roof_covering_material = "Concrete Tile";
       out.roof_material_type = "Tile";
     }
-    if (d.includes("slab on grade")) {
+    if (desc.includes("shingle")) {
+      out.roof_covering_material = out.roof_covering_material || "Asphalt Shingle";
+      out.roof_material_type = out.roof_material_type || "Shingle";
+    }
+    if (desc.includes("slab on grade")) {
       out.foundation_type = "Slab on Grade";
       out.foundation_material = "Poured Concrete";
       out.subfloor_material = "Concrete Slab";
     }
-    if (d.includes("plaster interior")) {
+    if (desc.includes("plaster interior")) {
       out.interior_wall_surface_material_primary = "Plaster";
     }
+    if (desc.includes("impact window")) {
+      out.window_glazing_type = "Impact Resistant";
+    }
   });
-
-  // If any interior wall structure unknown, leave null; else try fallback
-  if (!out.interior_wall_structure_material) {
-    out.interior_wall_structure_material = null; // unknown
-  }
-
-  // window and door materials are not present in provided HTML; leave null
 
   const data = {};
   data[`property_${pid}`] = out;
