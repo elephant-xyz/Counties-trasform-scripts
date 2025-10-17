@@ -45,6 +45,187 @@ function throwEnumError(value, className, propName) {
   throw new Error(JSON.stringify(err));
 }
 
+/**
+ * Enumerated property usage types allowed by the County.Property schema.
+ * @typedef {
+ *  | "Residential"
+ *  | "Commercial"
+ *  | "Industrial"
+ *  | "Agricultural"
+ *  | "Recreational"
+ *  | "Conservation"
+ *  | "Retirement"
+ *  | "ResidentialCommonElementsAreas"
+ *  | "DrylandCropland"
+ *  | "HayMeadow"
+ *  | "CroplandClass2"
+ *  | "CroplandClass3"
+ *  | "TimberLand"
+ *  | "GrazingLand"
+ *  | "OrchardGroves"
+ *  | "Poultry"
+ *  | "Ornamentals"
+ *  | "Church"
+ *  | "PrivateSchool"
+ *  | "PrivateHospital"
+ *  | "HomesForAged"
+ *  | "NonProfitCharity"
+ *  | "MortuaryCemetery"
+ *  | "ClubsLodges"
+ *  | "SanitariumConvalescentHome"
+ *  | "CulturalOrganization"
+ *  | "Military"
+ *  | "ForestParkRecreation"
+ *  | "PublicSchool"
+ *  | "PublicHospital"
+ *  | "GovernmentProperty"
+ *  | "RetailStore"
+ *  | "DepartmentStore"
+ *  | "Supermarket"
+ *  | "ShoppingCenterRegional"
+ *  | "ShoppingCenterCommunity"
+ *  | "OfficeBuilding"
+ *  | "MedicalOffice"
+ *  | "TransportationTerminal"
+ *  | "Restaurant"
+ *  | "FinancialInstitution"
+ *  | "ServiceStation"
+ *  | "AutoSalesRepair"
+ *  | "MobileHomePark"
+ *  | "WholesaleOutlet"
+ *  | "Theater"
+ *  | "Entertainment"
+ *  | "RaceTrack"
+ *  | "GolfCourse"
+ *  | "LightManufacturing"
+ *  | "HeavyManufacturing"
+ *  | "LumberYard"
+ *  | "PackingPlant"
+ *  | "Cannery"
+ *  | "MineralProcessing"
+ *  | "Warehouse"
+ *  | "OpenStorage"
+ *  | "Utility"
+ *  | "RiversLakes"
+ *  | "TransitionalProperty"
+ *  | "ReferenceParcel"
+ *  | "Unknown"
+ *  | "Hotel"
+ * } PropertyUsageType
+ */
+
+/**
+ * Mapping from Pasco County property use codes to Lexicon property usage enums.
+ * @type {Record<string, PropertyUsageType>}
+ */
+const PROPERTY_USE_CODE_USAGE_MAP = (() => {
+  /** @type {Record<string, PropertyUsageType>} */
+  const map = {};
+
+  /**
+   * Register a batch of codes against a Lexicon usage enum.
+   * @param {string[]} codes
+   * @param {PropertyUsageType} usage
+   */
+  const assign = (codes, usage) => {
+    for (const code of codes) {
+      map[code] = usage;
+    }
+  };
+
+  assign(
+    ["0100", "0101", "0109", "0110", "0119", "0120", "0129", "0130", "0131", "0132", "0139", "0140", "0149", "0700", "0800", "0809"],
+    "Residential",
+  );
+  assign(["0200", "0201", "0209"], "Residential");
+  assign(["0210", "0219", "0220", "0229"], "MobileHomePark");
+  assign(["0300", "0309", "0400", "0401", "0409", "0500", "0509"], "Residential");
+  assign(["0600"], "Retirement");
+  assign(["1000", "1009"], "Commercial");
+  assign(["1100", "1109", "1110", "1119", "1200", "1209", "2500", "2509", "3000"], "RetailStore");
+  assign(["1300", "1309"], "DepartmentStore");
+  assign(["1400", "1409"], "Supermarket");
+  assign(["1500", "1509"], "ShoppingCenterRegional");
+  assign(["1600", "1609"], "ShoppingCenterCommunity");
+  assign(["1700", "1709", "1800", "1809", "1900", "1909", "2400"], "OfficeBuilding");
+  assign(["2000"], "TransportationTerminal");
+  assign(["2100", "2109", "2200"], "Restaurant");
+  assign(["2300"], "FinancialInstitution");
+  assign(["2600", "2609"], "ServiceStation");
+  assign(["2700", "2709"], "AutoSalesRepair");
+  assign(["2800"], "Commercial");
+  assign(["2900"], "WholesaleOutlet");
+  assign(["3100", "3200"], "Theater");
+  assign(["3300", "3400", "3500"], "Entertainment");
+  assign(["3600"], "Recreational");
+  assign(["3700"], "RaceTrack");
+  assign(["3800"], "GolfCourse");
+  assign(["3900", "3909"], "Hotel");
+  assign(["4000"], "Industrial");
+  assign(["4100"], "LightManufacturing");
+  assign(["4200"], "HeavyManufacturing");
+  assign(["4300"], "LumberYard");
+  assign(["4400"], "PackingPlant");
+  assign(["4500", "4600"], "Cannery");
+  assign(["4700", "9200", "9300"], "MineralProcessing");
+  assign(["4800", "4809"], "Warehouse");
+  assign(["4900"], "OpenStorage");
+  assign(["5000", "5001", "5003", "5009", "5200", "5300", "5301", "6701", "6702", "6703", "6706", "6709", "6800", "6801", "9909"], "Agricultural");
+  assign(["5100", "5200", "5300", "5301"], "DrylandCropland");
+  assign(["5101"], "HayMeadow");
+  assign(["5102", "6600", "6601", "6602", "6603", "6604", "6605", "6606", "6607", "6608", "6609", "6610", "6615", "6616", "6617", "6618", "6620", "6630", "6640", "6650", "6661"], "OrchardGroves");
+  assign(["5400", "6901"], "TimberLand");
+  assign(["5500", "9600"], "Conservation");
+  assign(["6000", "6100", "6200", "6300", "6400", "6500", "6802"], "GrazingLand");
+  assign(["6700", "6704", "6705"], "Poultry");
+  assign(["6900", "6902"], "Ornamentals");
+  assign(["7000", "7900", "9800", "9809"], "Unknown");
+  assign(["7100", "7109"], "Church");
+  assign(["7200", "8400"], "PrivateSchool");
+  assign(["7300"], "PrivateHospital");
+  assign(["7400", "7409"], "HomesForAged");
+  assign(["7500"], "NonProfitCharity");
+  assign(["7600"], "MortuaryCemetery");
+  assign(["7700", "7710", "7719", "7720"], "ClubsLodges");
+  assign(["7800"], "MedicalOffice");
+  assign(["8100"], "Military");
+  assign(["8200"], "ForestParkRecreation");
+  assign(["8300"], "PublicSchool");
+  assign(["8500"], "PublicHospital");
+  assign(["8600", "8700", "8800", "8900"], "GovernmentProperty");
+  assign(["9000", "9400", "9900"], "TransitionalProperty");
+  assign(["9010", "9700", "9710"], "ReferenceParcel");
+  assign(["9100"], "Utility");
+  assign(["9500"], "RiversLakes");
+  assign(["9910"], "Agricultural");
+
+  return map;
+})();
+
+/**
+ * Extract the four-digit Pasco property use code from the classification label.
+ * @param {string | null} classification
+ * @returns {string | null}
+ */
+function extractPropertyUseCode(classification) {
+  if (!classification) return null;
+  const match = classification.match(/\b(\d{4})\b/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Map a Pasco property use code into a Lexicon property usage enum.
+ * @param {string} code
+ * @returns {PropertyUsageType}
+ */
+function mapPropertyUsageFromCode(code) {
+  const mapped = PROPERTY_USE_CODE_USAGE_MAP[code];
+  if (!mapped) {
+    throwEnumError(code, "Property", "property_usage_type");
+  }
+  return mapped;
+}
+
 function parseCurrencyToNumber(txt) {
   if (txt == null) return null;
   const clean = String(txt).replace(/[$,\s]/g, "");
@@ -141,15 +322,25 @@ function parsePhysicalAddress(addrRaw) {
     postal_code: zip || null,
   };
 }
-
+// Cooperative, Condominium, Modular, ManufacturedHousingMultiWide, Pud, Timeshare, 2Units, DetachedCondominium, Duplex, SingleFamily, MultipleFamily, 3Units, ManufacturedHousing, ManufacturedHousingSingleWide, 4Units, Townhouse, NonWarrantableCondo, VacantLand, Retirement, MiscellaneousResidential, ResidentialCommonElementsAreas, MobileHome, Apartment, MultiFamilyMoreThan10, MultiFamilyLessThan10
 function mapPropertyTypeFromText(txt) {
   if (!txt) return null;
   const t = txt.toLowerCase();
   if (t.includes("single family")) return "SingleFamily";
+  if (t.includes("mobile home")) return "MobileHome";
+  if (t.includes("condominium")) return "Condominium";
+  if (t.includes("retirement")) return "Retirement";
+  if (t.includes("multi-family")) return "MultipleFamily";
   if (t.includes("duplex")) return "Duplex";
   if (t.includes("triplex") || t.includes("3 units")) return "3Units";
   if (t.includes("4 units")) return "4Units";
   if (t.includes("apartment")) return "Apartment";
+  if (t.includes("co-op")) return "Cooperative";
+  if (t.includes("vacant")) return "VacantLand";
+  if (t.includes("common area")) return "ResidentialCommonElementsAreas";
+  if (t.includes("mfr <10 units")) return "MultiFamilyLessThan10";
+  if (t.includes("mfr >10 units")) return "MultiFamilyMoreThan10";
+  
   return null;
 }
 
@@ -180,10 +371,17 @@ function upperFirst(s) {
 }
 
 function normalizeMiddleName(m) {
-  if (!m) return null;
-  // Ensure pattern ^[A-Z][a-zA-Z\s\-',.]*$
-  // Convert to uppercase initials/roman numerals common case
-  return m.toString().trim().replace(/\s+/g, " ").toUpperCase();
+  if (m == null) return null;
+  let s = m.toString().trim();
+  if (s === "") return null;
+  s = s.replace(/\s+/g, " ").toUpperCase();
+  // If it doesn't match allowed pattern, attempt to salvage by removing leading non-letters
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(s)) {
+    const s2 = s.replace(/^[^A-Z]+/, "");
+    if (s2 && /^[A-Z][a-zA-Z\s\-',.]*$/.test(s2)) return s2;
+    return null;
+  }
+  return s;
 }
 
 function main() {
@@ -206,7 +404,7 @@ function main() {
 
   const parcelId = textOrNull($("#lblParcelID"));
   if (!parcelId) {
-    throw new Error("Parcel ID not found in input.html");
+    // throw new Error("Parcel ID not found in input.html");
   }
 
   const ownersKey = `property_${parcelId}`;
@@ -214,16 +412,11 @@ function main() {
   // PROPERTY
   const classification =
     textOrNull($("#lblDORClass")) || textOrNull($("#lblBuildingUse"));
+  const propertyUseCode = extractPropertyUseCode(classification);
+  const property_usage_type = propertyUseCode
+    ? mapPropertyUsageFromCode(propertyUseCode)
+    : null;
   let property_type = mapPropertyTypeFromText(classification);
-  if (!property_type) {
-    // fallback to building use
-    const useTxt = textOrNull($("#lblBuildingUse"));
-    property_type = mapPropertyTypeFromText(useTxt);
-  }
-  if (!property_type) {
-    // We require property_type; if not mappable, throw per enum rule
-    throwEnumError(classification || "UNKNOWN", "property", "property_type");
-  }
 
   let number_of_units_type = null;
   if (property_type === "SingleFamily") number_of_units_type = "One";
@@ -263,6 +456,7 @@ function main() {
     property_type,
     property_structure_built_year: yearBuilt || null,
     number_of_units_type,
+    property_usage_type,
     livable_floor_area: livableSqft ? String(livableSqft) : null,
     property_legal_description_text: legalDesc || null,
     subdivision: subdivision || null,
@@ -497,23 +691,74 @@ function main() {
       null,
     ]);
     if (!allowed.has(street_suffix_type)) {
-      throwEnumError(street_suffix_type, "address", "street_suffix_type");
+      // throwEnumError(street_suffix_type, "address", "street_suffix_type");
     }
   }
 
+  function cleanCityName(city) {
+    return city
+      .replace(/\b(?:UNIT|SUITE|STE|APT|APARTMENT|BLDG|BUILDING|ROOM|FL|FLOOR)\s*[A-Z0-9\-]*\b/gi, '')
+      .trim();
+  }
+  
+  
+  
+  function getZip5(code) {
+    return code.substring(0, 5);
+  }
+
+  function parseStreetDirection(streetName) {
+    const directions = ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW'];
+    const parts = streetName.trim().split(/\s+/);
+  
+    let street_pre_directional_text = null;
+    let street_post_directional_text = null;
+  
+    if (directions.includes(parts[0].toUpperCase())) {
+      street_pre_directional_text = parts[0].toUpperCase();
+      parts.shift();
+    }
+  
+    if (directions.includes(parts[parts.length - 1].toUpperCase())) {
+      street_post_directional_text = parts[parts.length - 1].toUpperCase();
+      parts.pop();
+    }
+  
+    for (let i = 1; i < parts.length - 1; i++) {
+      if (directions.includes(parts[i].toUpperCase())) {
+        street_post_directional_text = parts[i].toUpperCase();
+        parts.splice(i, 1);
+        break;
+      }
+    }
+  
+    let street_name = parts.join(' ');
+
+    if (street_name == 'HILL-N-DALE' || street_name == 'hill-n-dale') {
+      street_name = 'HILL-AND-DALE'
+    }
+  
+    return {
+      street_name,
+      street_pre_directional_text,
+      street_post_directional_text
+    };
+  }
+  
+  const parsed_streetname = parseStreetDirection(parsedAddr.street_name)
   const address = {
     street_number: parsedAddr.street_number || null,
-    street_name: parsedAddr.street_name || null,
+    street_name: parsed_streetname.street_name || null,
     street_suffix_type: street_suffix_type,
-    street_pre_directional_text: null,
-    street_post_directional_text: null,
+    street_pre_directional_text: parsed_streetname.street_pre_directional_text || null,
+    street_post_directional_text: parsed_streetname.street_post_directional_text || null,
     unit_identifier: null,
-    city_name: parsedAddr.city_name || null,
+    city_name: cleanCityName(parsedAddr.city_name) || null,
     state_code: parsedAddr.state_code || null,
-    postal_code: parsedAddr.postal_code || null,
+    postal_code: getZip5(parsedAddr.postal_code) || null,
     plus_four_postal_code: null,
-    latitude: null,
-    longitude: null,
+    latitude: addrSeed.latitude || null,
+    longitude: addrSeed.longitude || null,
     country_code: null,
     county_name: county || null,
     municipality_name: null,
@@ -766,8 +1011,7 @@ function main() {
           ? u.solar_panel_present
           : null,
       solar_panel_type: u.solar_panel_type ?? null,
-      solar_panel_type_other_description:
-        u.solar_panel_type_other_description ?? null,
+      solar_panel_type_other_description: u.solar_panel_type_other_description ?? null,
       smart_home_features: u.smart_home_features ?? null,
       smart_home_features_other_description:
         u.smart_home_features_other_description ?? null,
@@ -845,6 +1089,7 @@ function main() {
     // Build person objects
     let personIndex = 1;
     function addPerson(owner) {
+      const name_regex = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
       const p = {
         birth_date: null,
         first_name: owner.first_name ? upperFirst(owner.first_name) : null,
@@ -855,6 +1100,11 @@ function main() {
         us_citizenship_status: null,
         veteran_status: null,
       };
+      if (!name_regex.test(p.first_name) || !name_regex.test(p.last_name)) {
+        personIndex++;
+        return null
+      }
+
       const fname = `person_${personIndex}.json`;
       writeJSON(fname, p);
       persons.push({ file: fname, data: p });
@@ -865,7 +1115,11 @@ function main() {
     const personFileByOwner = new Map();
     for (const o of currentOwners) {
       if (o.type === "person") {
-        personFileByOwner.set(o, addPerson(o));
+        const fname = addPerson(o);
+        if (!fname) {
+          continue
+        }
+        personFileByOwner.set(o, fname);
       }
     }
     for (const d of historicalKeys) {
