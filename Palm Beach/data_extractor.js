@@ -84,6 +84,24 @@ function mapDeedTypeEnum(s) {
   return null;
 }
 
+function normalizeMiddleName(s) {
+  const t = safeNullIfEmpty(s);
+  if (t == null) return null;
+  const tt = t.trim();
+  if (/^N\.?M\.?I\.?$/i.test(tt)) return null;
+  const cap = tt.charAt(0).toUpperCase() + tt.slice(1);
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(cap) ? cap : null;
+}
+
+function toTitleCase(str) {
+  if (!str || str.trim() === "") return "";
+  return str
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -98,13 +116,13 @@ function main() {
   let layoutData = {};
   try {
     ownersData = readJSON(path.join("owners", "owner_data.json"));
-  } catch (e) {}
+  } catch (e) { }
   try {
     utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
-  } catch (e) {}
+  } catch (e) { }
   try {
     layoutData = readJSON(path.join("owners", "layout_data.json"));
-  } catch (e) {}
+  } catch (e) { }
 
   const parcelId = seed && seed.parcel_id ? String(seed.parcel_id) : null;
   const ownersKey = parcelId ? `property_${parcelId}` : null;
@@ -139,6 +157,7 @@ function main() {
   let totalSquareFootage = null;
   let numberOfUnitsStr = null;
   let yearBuiltStr = null;
+  let effectiveYearStr = null;
   let zoning = null;
 
   if (
@@ -152,7 +171,9 @@ function main() {
       if (/Area Under Air/i.test(name)) areaUnderAir = val;
       if (/Total Square Footage/i.test(name)) totalSquareFootage = val;
       if (/Number of Units/i.test(name)) numberOfUnitsStr = val;
+      if (/Dwelling Units/i.test(name)) numberOfUnitsStr = val;
       if (/Year Built/i.test(name)) yearBuiltStr = val;
+      if (/Effective Year/i.test(name)) effectiveYearStr = val;
     }
   }
   // Zoning from model.propertyDetail if present
@@ -183,11 +204,27 @@ function main() {
     );
     if (mN) numberOfUnitsStr = mN[1];
   }
+  // Also try DWELLING UNITS pattern from building details
+  if (!numberOfUnitsStr) {
+    const mDU = inputHTML.match(
+      /<b>DWELLING UNITS<\/b>-<i>(\d+)<\/i>/i,
+    );
+    if (mDU) numberOfUnitsStr = mDU[1];
+  }
   if (!yearBuiltStr) {
     const mY = inputHTML.match(
       /Year Built[\s\S]*?<td class=\"value\">\s*(\d{4})\s*<\/td>/i,
     );
     if (mY) yearBuiltStr = mY[1];
+  }
+  // Also try Year Built from building header
+  if (!yearBuiltStr) {
+    const mYB = inputHTML.match(/Year Built:\s*(\d{4})/i);
+    if (mYB) yearBuiltStr = mYB[1];
+  }
+  if (!effectiveYearStr) {
+    const mEY = inputHTML.match(/Effective Year:\s*(\d{4})/i);
+    if (mEY) effectiveYearStr = mEY[1];
   }
   if (!zoning) {
     const mZ = inputHTML.match(
@@ -196,37 +233,82 @@ function main() {
     if (mZ) zoning = mZ[1].replace(/\s+/g, " ").trim();
   }
 
+  // Helper function to clean and validate livable floor area
+  function cleanLivableFloorArea(value) {
+    if (!value) return null;
+    const cleaned = String(value).replace(/[^\d]/g, ''); // Remove all non-digits
+    // Must have at least 2 consecutive digits to match schema pattern .*\d{2,}.*
+    return cleaned.length >= 2 ? cleaned : null;
+  }
+
   // Build property.json
-  // Cooperative, Condominium, Modular, ManufacturedHousingMultiWide, Pud, Timeshare, 2Units, DetachedCondominium, Duplex, SingleFamily, TwoToFourFamily, MultipleFamily, 3Units, ManufacturedHousing, ManufacturedHousingSingleWide, 4Units, Townhouse, NonWarrantableCondo, VacantLand, Retirement, MiscellaneousResidential, ResidentialCommonElementsAreas, MobileHome
+  // property_type enum: LandParcel, Building, Unit, ManufacturedHome
 
   function propertyType(v) {
     if (!v) return null;
     const s = v.toUpperCase();
-    if (s.includes("COOPERATIVE")) return "Cooperative";
-    if (s.includes("CONDOMINIUM")) return "Condominium";
-    if (s.includes("MODULAR")) return "Modular";
-    if (s.includes("TOWNHOUSE")) return "Townhouse";
-    if (s.includes("TIMESHARE")) return "Timeshare";
-    if (s.includes("SINGLE FAMILY")) return "SingleFamily";
-    if (s.includes("MULTIFAMILY")) return "MultipleFamily";
-    if (s.includes("VACANT")) return "VacantLand";
-    if (s.includes("RETIREMENT")) return "Retirement";
-    if (s.includes("MOBILE HOME")) return "MobileHome";
-    if (s.includes("MHT COOP")) return "ManufacturedHousing";
-    if (s.includes("MOBILE HOME/MANUFACTURED HOME")) return "ManufacturedHousing";
-    if (s.includes("MULTIFAMILY < 5 UNITS")) return "MultiFamilyLessThan10";
-    if (s.includes("STATE")) return "VacantLand";
-    if (s.includes("CITY INC NONMUNI")) return "VacantLand";
-    return null;
+
+    // ManufacturedHome - mobile homes and manufactured housing
+    if (s.includes("MOBILE HOME") || s.includes("MANUFACTURED HOME") ||
+        s.includes("MHT COOP") || s.includes("MODULAR")) return "ManufacturedHome";
+
+    // Unit - individual units within larger structures
+    if (s.includes("CONDO") || s.includes("CONDOMINIUM") ||
+        s.includes("COOPERATIVE") || s.includes("CO-OP") ||
+        s.includes("INTERVAL OWNERSHIP") || s.includes("TIMESHARE") ||
+        s.includes("BOAT UNITS") || s.includes("BOAT SLIPS") ||
+        s.includes("LEASE INTEREST") || s.includes("NO LAND INTEREST")) return "Unit";
+
+    // LandParcel - vacant land or land-focused properties
+    if (s.includes("VACANT") || s.includes("ACREAGE") ||
+        s.includes("AGRICULTURAL") || s.includes("PASTURE") ||
+        s.includes("GROVE") || s.includes("TIMBER") || s.includes("FARM") ||
+        s.includes("PARKING LOT") || s.includes("GOLF COURSE") ||
+        s.includes("CEMETERY") || s.includes("OPEN STORAGE") ||
+        s.includes("SUBMERGED") || s.includes("LAKE") || s.includes("POND") ||
+        s.includes("RIVER") || s.includes("WETLANDS") || s.includes("PRESERVE") ||
+        s.includes("CONSERVATION") || s.includes("RIGHT OF WAY")) return "LandParcel";
+
+    // Building - default for structures (residential, commercial, industrial, institutional)
+    return "Building";
   }
 
   function unitsType(v) {
     switch (v) {
-      case "1": return "One";
-      case "2": return "Two";
-      case "3": return "Three";
-      case "4": return "Four";
-      default: return null;
+      case "1":
+        return "One";
+      case "2":
+        return "Two";
+      case "3":
+        return "Three";
+      case "4":
+        return "Four";
+      default:
+        return null;
+    }
+  }
+
+  // Extract property type from HTML model
+  let mappedPropertyType = null;
+  let useCode = null;
+  let units = null;
+
+  const modelMatch = inputHTML.match(/var model = ({.*?});/s);
+  if (modelMatch) {
+    try {
+      const modelData = JSON.parse(modelMatch[1]);
+      if (modelData.propertyDetail) {
+        useCode =
+          modelData.propertyDetail.UseCodeDesc ||
+          modelData.propertyDetail.UseCode ||
+          modelData.propertyDetail.PropertyUseCode ||
+          modelData.propertyDetail.PropertyUseDescription ||
+          null;
+        mappedPropertyType = mapPropertyUseCodeToType(useCode);
+        units = parseInt(modelData.propertyDetail.Units) || 0;
+      }
+    } catch (e) {
+      console.log("Error parsing property type from model:", e.message);
     }
   }
 
@@ -240,19 +322,23 @@ function main() {
     property_legal_description_text: safeNullIfEmpty(
       legalDesc ? legalDesc.replace(/\s+/g, " ").trim() : null,
     ),
-    property_type: propertyType(extractBetween(
-      inputHTML,
-      /<td[^>]*class="label"[^>]*>\s*Property Use Code\s*<\/td>\s*<td[^>]*class="value"[^>]*>\s*\d+—([A-Z\s]+)\s*<\/td>/i
-    )),
-    livable_floor_area: safeNullIfEmpty(areaUnderAir),
-    number_of_units_type: safeNullIfEmpty(unitsType(numberOfUnitsStr)),
-    area_under_air: safeNullIfEmpty(areaUnderAir),
-    total_area: safeNullIfEmpty(totalSquareFootage),
-    number_of_units: numberOfUnitsStr ? parseInt(numberOfUnitsStr, 10) : null,
+    property_type: mappedPropertyType,
+    property_usage_type: mapPropertyUsageType(useCode),
+    livable_floor_area: cleanLivableFloorArea(areaUnderAir),
+    number_of_units_type: null,
+    number_of_units: units || (numberOfUnitsStr ? parseInt(numberOfUnitsStr, 10) : null),
     subdivision: safeNullIfEmpty(subdivision),
     zoning: safeNullIfEmpty(zoning),
-    property_effective_built_year: null,
+    property_effective_built_year: effectiveYearStr
+      ? parseInt(effectiveYearStr, 10)
+      : null,
     historic_designation: false,
+    source_http_request: {
+      url: "https://pbcpao.gov/Property/Details",
+      method: "GET",
+      multiValueQueryString: { parcelId: [parcelId || "unknown"] },
+    },
+    request_identifier: parcelId || "unknown",
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -330,30 +416,48 @@ function main() {
     if (blkM) block = blkM[1];
   }
 
+  // Parse Section, Township, Range from Section Map Id (e.g., "05-1S-29-2")
+  let section = null,
+    township = null,
+    range = null;
+  const sectionMapMatch = inputHTML.match(
+    /<b>Section Map Id:<\/b>[\s\S]*?<a[^>]*>(\d{2}-\d+[NS]-\d+(?:-\d+)?)<\/a>/i
+  );
+  if (sectionMapMatch) {
+    const parts = sectionMapMatch[1].split("-");
+    if (parts.length >= 3) {
+      section = parts[0]; // "05"
+      township = parts[1]; // "1S"
+      range = parts[2]; // "29"
+    }
+  }
+
   const countyName =
     unAddr && unAddr.county_jurisdiction ? unAddr.county_jurisdiction : null;
 
-    function cardinalStreetName(v) {
-      if (!v) return null;
-      const s = v.toUpperCase().trim();
-      const regex = /^(N|S|E|W|NE|NW|SE|SW)\s+|\s+(N|S|E|W|NE|NW|SE|SW)$/g;
-      const cleaned = s.replace(regex, '').trim();
-      return cleaned;
-    }
+  function cardinalStreetName(v) {
+    if (!v) return null;
+    const s = v.toUpperCase().trim();
+    const regex = /^(N|S|E|W|NE|NW|SE|SW)\s+|\s+(N|S|E|W|NE|NW|SE|SW)$/g;
+    const cleaned = s.replace(regex, "").trim();
+    return cleaned;
+  }
 
-    function directionPrefix(v) {
-      const s = v.toUpperCase();
-      const regex = /^(N|S|E|W|NE|NW|SE|SW)\b/;
-      const match = s.match(regex);
-      return match ? match[1] : null;
-    }
+  function directionPrefix(v) {
+    if (!v) return null;
+    const s = v.toUpperCase();
+    const regex = /^(N|S|E|W|NE|NW|SE|SW)\b/;
+    const match = s.match(regex);
+    return match ? match[1] : null;
+  }
 
-    function directionSuffix(v) {
-      const s = v.toUpperCase();
-      const regex = /\b(N|S|E|W|NE|NW|SE|SW)\b$/;
-      const match = s.match(regex);
-      return match ? match[1] : null;
-    }
+  function directionSuffix(v) {
+    if (!v) return null;
+    const s = v.toUpperCase();
+    const regex = /\b(N|S|E|W|NE|NW|SE|SW)\b$/;
+    const match = s.match(regex);
+    return match ? match[1] : null;
+  }
 
   const address = {
     street_number: safeNullIfEmpty(streetNumber),
@@ -362,9 +466,7 @@ function main() {
     street_pre_directional_text: safeNullIfEmpty(directionPrefix(streetName)),
     street_post_directional_text: safeNullIfEmpty(directionSuffix(streetName)),
     unit_identifier: null,
-    city_name: safeNullIfEmpty(
-      cityFromFull,
-    ),
+    city_name: safeNullIfEmpty(cityFromFull),
     postal_code: safeNullIfEmpty(postalCode),
     plus_four_postal_code: safeNullIfEmpty(plus4),
     state_code: safeNullIfEmpty(stateCode),
@@ -374,9 +476,9 @@ function main() {
     longitude: null,
     municipality_name: safeNullIfEmpty(municipality),
     route_number: null,
-    township: null,
-    range: null,
-    section: null,
+    township: safeNullIfEmpty(township),
+    range: safeNullIfEmpty(range),
+    section: safeNullIfEmpty(section),
     block: safeNullIfEmpty(block),
     lot: safeNullIfEmpty(lotNo),
   };
@@ -391,7 +493,10 @@ function main() {
     intWall2Val = null,
     floorType1Val = null,
     floorType2Val = null,
-    storiesVal = null;
+    storiesVal = null,
+    foundationVal = null,
+    structuralFrameVal = null,
+    heatAirVal = null;
 
   if (
     model &&
@@ -410,6 +515,9 @@ function main() {
       if (/Floor Type 1/i.test(name)) floorType1Val = val;
       if (/Floor Type 2/i.test(name)) floorType2Val = val;
       if (/Stories/i.test(name)) storiesVal = val;
+      if (/Foundation/i.test(name)) foundationVal = val;
+      if (/Structural Frame/i.test(name)) structuralFrameVal = val;
+      if (/Heat\/Air/i.test(name)) heatAirVal = val;
     }
   }
   // Fallback to regex when needed
@@ -458,6 +566,23 @@ function main() {
       inputHTML,
       /<td class="label">\s*Stories\s*<\/td>\s*<td class="value">\s*(\d+)\s*<\/td>/i,
     );
+  // Also try from building details patterns
+  if (!foundationVal) {
+    const mF = inputHTML.match(/<b>FOUNDATION<\/b>-<i>(.*?)<\/i>/i);
+    if (mF) foundationVal = mF[1];
+  }
+  if (!structuralFrameVal) {
+    const mSF = inputHTML.match(/<b>STRUCTURAL FRAME<\/b>-<i>(.*?)<\/i>/i);
+    if (mSF) structuralFrameVal = mSF[1];
+  }
+  if (!storiesVal) {
+    const mSt = inputHTML.match(/<b>NO\. STORIES<\/b>-<i>(\d+)<\/i>/i);
+    if (mSt) storiesVal = mSt[1];
+  }
+  if (!heatAirVal) {
+    const mHA = inputHTML.match(/<b>HEAT\/AIR<\/b>-<i>(.*?)<\/i>/i);
+    if (mHA) heatAirVal = mHA[1];
+  }
 
   function mapRoofDesign(v) {
     if (!v) return null;
@@ -500,6 +625,332 @@ function main() {
     if (s.includes("PLASTER")) return "Plaster";
     return null;
   }
+  function mapFoundationType(v) {
+    if (!v) return null;
+    const s = v.toUpperCase();
+    if (s.includes("SLAB")) return "Slab";
+    if (s.includes("CRAWL")) return "Crawl Space";
+    if (s.includes("BASEMENT")) return "Full Basement";
+    if (s.includes("PIER")) return "Pier and Beam";
+    if (s.includes("PILING")) return "Piling";
+    return null;
+  }
+  function mapFramingMaterial(v) {
+    if (!v) return null;
+    const s = v.toUpperCase();
+    if (s.includes("WOOD")) return "Wood";
+    if (s.includes("STEEL")) return "Steel";
+    if (s.includes("CONCRETE")) return "Concrete";
+    if (s.includes("MASONRY")) return "Masonry";
+    return null;
+  }
+  function mapHVACSystem(heatAirValue) {
+    // Parse HEAT/AIR field like "WALL/FLOOR FURN" to extract heating and cooling
+    if (!heatAirValue) return { heating: null, cooling: null };
+    const s = heatAirValue.toUpperCase();
+
+    let heating = null;
+    let cooling = null;
+
+    // Heating system mappings
+    if (s.includes("CENTRAL") && s.includes("GAS")) heating = "Forced Air";
+    else if (s.includes("CENTRAL") || s.includes("FORCED AIR")) heating = "Forced Air";
+    else if (s.includes("HEAT PUMP")) heating = "Heat Pump";
+    else if (s.includes("ELECTRIC")) heating = "Electric";
+    else if (s.includes("WALL") || s.includes("FLOOR") || s.includes("FURN")) heating = "Wall Furnace";
+    else if (s.includes("BASEBOARD")) heating = "Electric Baseboard";
+    else if (s.includes("RADIANT")) heating = "Radiant";
+    else if (s.includes("NONE") || s.includes("NO HEAT")) heating = null;
+
+    // Cooling system mappings
+    if (s.includes("CENTRAL") && (s.includes("AIR") || s.includes("A/C") || s.includes("AC"))) cooling = "Central Air";
+    else if (s.includes("HEAT PUMP")) cooling = "Heat Pump";
+    else if (s.includes("WINDOW") || s.includes("WALL UNIT")) cooling = "Window Unit";
+    else if (s.includes("NONE") || s.includes("NO A/C") || s.includes("NO AIR")) cooling = null;
+    // If it mentions FURN (furnace) without AC, assume basic heating only
+    else if (s.includes("FURN") && !s.includes("AIR") && !s.includes("A/C")) cooling = null;
+
+    return { heating, cooling };
+  }
+
+  function mapElementNameToSpaceType(elementName) {
+    if (!elementName) return null;
+    const name = elementName.toUpperCase();
+
+    // Skip summary elements that shouldn't be individual spaces
+    if (
+      name.includes("TOTAL SQUARE FOOTAGE") ||
+      name.includes("AREA UNDER AIR")
+    ) {
+      return null; // Don't create layout items for these summary elements
+    }
+
+    if (name.includes("FOP") || name.includes("FINISHED OPEN PORCH"))
+      return "Open Porch";
+    if (name.includes("BAS") || name.includes("BASE AREA"))
+      return "Living Area";
+    if (name.includes("FGR") || name.includes("FINISHED GARAGE"))
+      return "Attached Garage";
+    if (name.includes("GARAGE")) return "Attached Garage";
+    if (name.includes("PORCH")) return "Open Porch";
+    if (name.includes("DECK")) return "Deck";
+    if (name.includes("PATIO")) return "Patio";
+    if (name.includes("BALCONY")) return "Balcony";
+    if (name.includes("LIVING")) return "Living Area";
+    if (name.includes("BEDROOM")) return "Bedroom";
+    if (name.includes("BATH")) return "Bathroom";
+    if (name.includes("KITCHEN")) return "Kitchen";
+    if (name.includes("DINING")) return "Dining Room";
+    if (name.includes("FAMILY")) return "Family Room";
+    if (name.includes("LAUNDRY")) return "Laundry Room";
+    if (name.includes("STORAGE")) return "Storage";
+    if (name.includes("CLOSET")) return "Closet";
+    if (name.includes("UTILITY")) return "Utility Room";
+    if (name.includes("MECHANICAL")) return "Mechanical Room";
+    if (name.includes("ELECTRICAL")) return "Electrical Room";
+    if (name.includes("PLUMBING")) return "Plumbing Room";
+    if (name.includes("HVAC")) return "HVAC Room";
+    if (name.includes("HEATING")) return "Heating Room";
+    if (name.includes("WATER")) return "Water Heater Room";
+    if (name.includes("SEWER")) return "Sewer Room";
+    if (name.includes("GAS")) return "Gas Room";
+    if (name.includes("OTHER")) return "Other";
+
+    return "Other"; // Default fallback
+  }
+
+  /**
+   * Map Palm Beach Property Use Code to property_usage_type enum.
+   * @param {unknown} useCodeRaw
+   * @returns {string|null} Property usage type from Elephant schema enum
+   */
+  function mapPropertyUsageType(useCodeRaw) {
+    if (useCodeRaw == null) return null;
+    const s = String(useCodeRaw).toUpperCase();
+
+    // RESIDENTIAL (0000-0900)
+    if (s.includes("SINGLE FAMILY") || s.includes("DUPLEX") || s.includes("TRIPLEX") ||
+        s.includes("MULTI-FAMILY") || s.includes("MOBILE HOME") || s.includes("CONDOMINIUM") ||
+        s.includes("COOPERATIVE") || s.includes("APARTMENT") || s.includes("VACANT RESIDENTIAL") ||
+        s.includes("INTERVAL OWNERSHIP") || s.includes("TIMESHARE") || s.includes("MISC RES"))
+      return "Residential";
+
+    // RETIREMENT
+    if (s.includes("RETIREMENT HOME") || s.includes("HOME FOR THE AGED") || s.includes("NURSING HOME"))
+      return "Retirement";
+
+    // RESIDENTIAL COMMON ELEMENTS
+    if (s.includes("RESIDENTIAL COMMON AREA") || s.includes("RESIDENTIAL COMMON AREA/ELEMENT"))
+      return "ResidentialCommonElementsAreas";
+
+    // COMMERCIAL - Retail
+    if (s.includes("STORE") || s.includes("SUPERMARKET") || s.includes("CONVENIENCE STORE"))
+      return "RetailStore";
+    if (s.includes("DEPARTMENT STORE")) return "DepartmentStore";
+    if (s.includes("SHOPPING CENTER, REGIONAL")) return "ShoppingCenterRegional";
+    if (s.includes("SHOPPING CENTER, COMMUNITY") || s.includes("SHOPPING CENTER, NEIGHBORHOOD"))
+      return "ShoppingCenterCommunity";
+
+    // COMMERCIAL - Office
+    if (s.includes("OFFICE BUILDING")) return "OfficeBuilding";
+    if (s.includes("MEDICAL OFFICE")) return "MedicalOffice";
+
+    // COMMERCIAL - Transportation
+    if (s.includes("AIRPORT") || s.includes("BUS TERMINAL") || s.includes("MARINA"))
+      return "TransportationTerminal";
+
+    // COMMERCIAL - Food & Lodging
+    if (s.includes("RESTAURANT")) return "Restaurant";
+    if (s.includes("HOTEL") || s.includes("MOTEL")) return "Hotel";
+
+    // COMMERCIAL - Financial
+    if (s.includes("FINANCIAL INSTITUTION") || s.includes("INSURANCE COMPANY"))
+      return "FinancialInstitution";
+
+    // COMMERCIAL - Automotive
+    if (s.includes("SERVICE STATION") || s.includes("VEHICLE LUBE")) return "ServiceStation";
+    if (s.includes("AUTO SALES") || s.includes("GARAGE, REPAIR")) return "AutoSalesRepair";
+
+    // COMMERCIAL - Entertainment
+    if (s.includes("THEATRE") || s.includes("AUDITORIUM") || s.includes("NIGHT CLUB") ||
+        s.includes("BAR") || s.includes("BOWLING ALLEY") || s.includes("SKATING") ||
+        s.includes("TOURIST ATTRACTION") || s.includes("CAMPS"))
+      return "Entertainment";
+    if (s.includes("RACE TRACK")) return "RaceTrack";
+    if (s.includes("GOLF COURSE")) return "GolfCourse";
+
+    // COMMERCIAL - Other
+    if (s.includes("MOBILE HOME PARK")) return "MobileHomePark";
+    if (s.includes("WHOLESALER") || s.includes("PRODUCE HOUSE")) return "WholesaleOutlet";
+    if (s.includes("PARKING LOT") || s.includes("COMMERCIAL, VACANT") || s.includes("PROFESSIONAL, VACANT"))
+      return "Commercial";
+
+    // INDUSTRIAL
+    if (s.includes("LIGHT MANUFACTURING")) return "LightManufacturing";
+    if (s.includes("HEAVY MANUFACTURING") || s.includes("EXCEPTIONAL INDUSTRIAL"))
+      return "HeavyManufacturing";
+    if (s.includes("LUMBER YARD")) return "LumberYard";
+    if (s.includes("PACKING PLANT")) return "PackingPlant";
+    if (s.includes("BOTTLER") || s.includes("FOOD PROCESSING")) return "Cannery";
+    if (s.includes("MINERAL PROCESSING")) return "MineralProcessing";
+    if (s.includes("WAREHOUSING")) return "Warehouse";
+    if (s.includes("OPEN STORAGE") || s.includes("INDUSTRIAL, VACANT")) return "OpenStorage";
+
+    // AGRICULTURAL
+    if (s.includes("FIELD CROP") || s.includes("VEGETABLES") || s.includes("HAY"))
+      return "DrylandCropland";
+    if (s.includes("PASTURE")) return "GrazingLand";
+    if (s.includes("TIMBER")) return "TimberLand";
+    if (s.includes("GROVE") || s.includes("CITRUS") || s.includes("GRAPES")) return "OrchardGroves";
+    if (s.includes("FOWL") || s.includes("BEES")) return "Poultry";
+    if (s.includes("NURSERY") || s.includes("ORNAMENTAL")) return "Ornamentals";
+    if (s.includes("HORSES") || s.includes("SWINE") || s.includes("GOATS") ||
+        s.includes("AQUACULTURE") || s.includes("FISH") || s.includes("MISCELLANEOUS AG"))
+      return "Agricultural";
+
+    // INSTITUTIONAL - Church & Education
+    if (s.includes("CHURCH")) return "Church";
+    if (s.includes("SCHOOL, PRIVATE") || s.includes("DAY CARE") || s.includes("DORMITORY"))
+      return "PrivateSchool";
+
+    // INSTITUTIONAL - Healthcare
+    if (s.includes("HOSPITAL, PRIVATE")) return "PrivateHospital";
+    if (s.includes("SANITARIUM")) return "SanitariumConvalescentHome";
+
+    // INSTITUTIONAL - Other
+    if (s.includes("ORPHANAGE") || s.includes("MISC") && s.includes("INSTITUTIONAL"))
+      return "NonProfitCharity";
+    if (s.includes("MORTUARY") || s.includes("FUNERAL HOME") || s.includes("CEMETERY"))
+      return "MortuaryCemetery";
+    if (s.includes("LODGES") || s.includes("CLUBS") || s.includes("UNION HALLS") ||
+        s.includes("YACHTING CLUBS") || s.includes("COUNTRY CLUBS"))
+      return "ClubsLodges";
+    if (s.includes("CULTURAL FACILITIES") || s.includes("PERFORMING ARTS"))
+      return "CulturalOrganization";
+
+    // GOVERNMENTAL
+    if (s.includes("MILITARY FACILITY")) return "Military";
+    if (s.includes("GOVERNMENT OWNED, FOREST") || s.includes("GOVERNMENT OWNED, PARK") ||
+        s.includes("GOVERNMENT OWNED, RECREATIONAL") || s.includes("GOVERNMENT OWNED, OUTDOOR"))
+      return "ForestParkRecreation";
+    if (s.includes("GOVERNMENT OWNED, PUBLIC SCHOOL")) return "PublicSchool";
+    if (s.includes("GOVERNMENT OWNED, COLLEGE") || s.includes("GOVERNMENT OWNED, UNIVERSITY"))
+      return "PublicSchool";
+    if (s.includes("GOVERNMENT OWNED, HOSPITAL")) return "PublicHospital";
+    if (s.includes("COUNTY OWNED") || s.includes("STATE OWNED") ||
+        s.includes("FEDERALLY OWNED") || s.includes("MUNICIPALLY OWNED") ||
+        s.includes("VACANT GOVERNMENTAL"))
+      return "GovernmentProperty";
+
+    // UTILITIES & OTHER
+    if (s.includes("UTILITIES") || s.includes("WATERWORKS") || s.includes("CENTRALLY ASSESSED"))
+      return "Utility";
+    if (s.includes("SUBMERGED") || s.includes("LAKE") || s.includes("POND") ||
+        s.includes("RIVER") || s.includes("BAY BOTTOM"))
+      return "RiversLakes";
+    if (s.includes("SEWER DISP") || s.includes("SOLID WASTE") || s.includes("BORROW PIT") ||
+        s.includes("WASTE LAND") || s.includes("HAZARDOUS WASTE"))
+      return "SewageDisposal";
+    if (s.includes("RIGHT OF WAY") || s.includes("RAILROAD")) return "Railroad";
+
+    // CONSERVATION & RECREATIONAL
+    if (s.includes("CONSERVATION EASEMENT") || s.includes("MARKET VALUE CONSERVATION") ||
+        s.includes("WETLANDS") || s.includes("PRESERVE") || s.includes("RESOURCE PROTECT") ||
+        s.includes("ENDANGERED SPECIES") || s.includes("MANGROVE") || s.includes("MARSH LANDS") ||
+        s.includes("SWAMP") || s.includes("CYPRESS HEAD"))
+      return "Conservation";
+    if (s.includes("PARKS, PRIVATELY OWNED") || s.includes("RECREATIONAL AREAS"))
+      return "Recreational";
+
+    // Generic fallbacks
+    if (s.includes("VACANT")) return "TransitionalProperty";
+
+    return null;
+  }
+
+  /**
+   * Map Palm Beach Property Use Code/description text to property_type.
+   * New simplified enum: LandParcel, Building, Unit, ManufacturedHome
+   * Handles residential, commercial, industrial, agricultural, institutional, and governmental properties.
+   * @param {unknown} useCodeRaw
+   * @returns {string|null} Property type from Elephant schema enum (LandParcel, Building, Unit, ManufacturedHome)
+   */
+  function mapPropertyUseCodeToType(useCodeRaw) {
+    if (useCodeRaw == null) return null;
+    const s = String(useCodeRaw).toUpperCase();
+
+    // MANUFACTURED HOMES - Mobile homes and manufactured housing
+    if (s.includes("MOBILE HOME") || s.includes("MANUFACTURED HOME") ||
+        s.includes("RECREATIONAL VEHICLE PARK")) return "ManufacturedHome";
+
+    // UNITS - Individual units within larger structures, condos, co-ops, timeshares, boat slips
+    if (s.includes("CONDOMINIUM") || s.includes("CONDO") ||
+        s.includes("CO-OPERATIVE") || s.includes("INTERVAL OWNERSHIP") ||
+        s.includes("TIME SHARE") || s.includes("BOAT UNITS") ||
+        s.includes("BOAT SLIPS") || s.includes("LEASE INTEREST") ||
+        s.includes("NO LAND INTEREST")) return "Unit";
+
+    // LAND PARCELS - Vacant land, agricultural, conservation, parking, water bodies, etc.
+    if (s.includes("VACANT RESIDENTIAL") || s.includes("VACANT") ||
+        s.includes("COMMERCIAL, VACANT") || s.includes("PROFESSIONAL, VACANT") ||
+        s.includes("INDUSTRIAL, VACANT") || s.includes("VACANT INSTITUTIONAL") ||
+        s.includes("VACANT GOVERNMENTAL")) return "LandParcel";
+
+    // Agricultural land
+    if (s.includes("FIELD CROP") || s.includes("VEGETABLES") || s.includes("POTATOES") ||
+        s.includes("MISCELLANEOUS AG LAND") || s.includes("SOD") ||
+        s.includes("TIMBER") || s.includes("PASTURE") || s.includes("GROVE") ||
+        s.includes("GRAPES") || s.includes("CITRUS NURSERY") || s.includes("BEES") ||
+        s.includes("FOWL") || s.includes("FISH") || s.includes("HORSES") ||
+        s.includes("SWINE") || s.includes("GOATS") || s.includes("NURSERY") ||
+        s.includes("AQUACULTURE") || s.includes("ACREAGE") ||
+        s.includes("MARKET VALUE AGRICULTURAL")) return "LandParcel";
+
+    // Open land and natural features
+    if (s.includes("PARKING LOT") || s.includes("GOLF COURSE") ||
+        s.includes("CEMETERY") || s.includes("OPEN STORAGE") ||
+        s.includes("MINING") || s.includes("PETROLEUM") || s.includes("PHOSPHATE") ||
+        s.includes("BOAT RAMPS") || s.includes("RIGHT OF WAY") ||
+        s.includes("SUBMERGED") || s.includes("LOW LOT") || s.includes("LAKE") ||
+        s.includes("POND") || s.includes("BAY BOTTOM") || s.includes("BORROW PIT") ||
+        s.includes("WASTE LAND") || s.includes("SEWER DISP") ||
+        s.includes("SOLID WASTE") || s.includes("HISTORICAL") ||
+        s.includes("SLOUGH") || s.includes("INDIAN MOUND") ||
+        s.includes("MARSH LANDS") || s.includes("ISLAND") || s.includes("SWAMP") ||
+        s.includes("SPOILS EASEMENTS") || s.includes("ENDANGERED SPECIES") ||
+        s.includes("MANGROVE") || s.includes("UNBUILDABLE") ||
+        s.includes("RESOURCE PROTECT") || s.includes("WETLANDS") ||
+        s.includes("PRESERVE") || s.includes("CYPRESS HEAD") ||
+        s.includes("HAZARDOUS WASTE") || s.includes("MINERAL RIGHTS") ||
+        s.includes("PARKS, PRIVATELY OWNED") || s.includes("RECREATIONAL AREAS") ||
+        s.includes("MARKET VALUE CONSERVATION") || s.includes("CONSERVATION EASEMENT") ||
+        s.includes("GOVERNMENT OWNED, FOREST") || s.includes("GOVERNMENT OWNED, PARK") ||
+        s.includes("GOVERNMENT OWNED, RECREATIONAL") || s.includes("GOVERNMENT OWNED, OUTDOOR")) return "LandParcel";
+
+    // BUILDINGS - All other structures (residential, commercial, industrial, institutional, governmental)
+    // This is the default for most property types with structures
+    return "Building";
+  }
+
+  // Extract number of buildings from HTML model
+  let numberOfBuildings = 1; // Default to 1 building
+
+  // Parse the JavaScript model from HTML to get building count
+  if (modelMatch) {
+    try {
+      const modelData = JSON.parse(modelMatch[1]);
+      if (
+        modelData.structuralDetails &&
+        modelData.structuralDetails.BuildingNumbers &&
+        Array.isArray(modelData.structuralDetails.BuildingNumbers)
+      ) {
+        numberOfBuildings = modelData.structuralDetails.BuildingNumbers.length;
+        console.log("Number of buildings extracted:", numberOfBuildings);
+      }
+    } catch (e) {
+      console.log("Error parsing model data for building count:", e.message);
+    }
+  }
 
   const structure = {
     architectural_style_type: null,
@@ -531,7 +982,7 @@ function main() {
     gutters_material: null,
     gutters_condition: null,
     roof_material_type: null,
-    foundation_type: null,
+    foundation_type: mapFoundationType(foundationVal),
     foundation_material: null,
     foundation_waterproofing: null,
     foundation_condition: null,
@@ -546,10 +997,11 @@ function main() {
     window_glazing_type: null,
     window_operation_type: null,
     window_screen_material: null,
-    primary_framing_material: null,
+    primary_framing_material: mapFramingMaterial(structuralFrameVal),
     secondary_framing_material: null,
     structural_damage_indicators: null,
     number_of_stories: storiesVal ? parseInt(storiesVal, 10) : null,
+    number_of_buildings: numberOfBuildings,
     finished_base_area: areaUnderAir ? parseInt(areaUnderAir, 10) : null,
     finished_basement_area: null,
     finished_upper_story_area: null,
@@ -559,14 +1011,18 @@ function main() {
   };
   writeJSON(path.join(dataDir, "structure.json"), structure);
 
-  // Utilities from owners/utilities_data.json
+  // Utilities from owners/utilities_data.json or extracted from HTML
+  const hvacSystems = mapHVACSystem(heatAirVal);
   let utilityOut = null;
   if (utilitiesData && ownersKey && utilitiesData[ownersKey]) {
     utilityOut = utilitiesData[ownersKey];
+    // Override with extracted HVAC data if available
+    if (hvacSystems.heating) utilityOut.heating_system_type = hvacSystems.heating;
+    if (hvacSystems.cooling) utilityOut.cooling_system_type = hvacSystems.cooling;
   } else {
     utilityOut = {
-      cooling_system_type: null,
-      heating_system_type: null,
+      cooling_system_type: hvacSystems.cooling,
+      heating_system_type: hvacSystems.heating,
       public_utility_type: null,
       sewer_type: null,
       water_source_type: null,
@@ -588,19 +1044,11 @@ function main() {
   }
   writeJSON(path.join(dataDir, "utility.json"), utilityOut);
 
-  // Layouts from owners/layout_data.json
-  if (
-    layoutData &&
-    ownersKey &&
-    layoutData[ownersKey] &&
-    Array.isArray(layoutData[ownersKey].layouts)
-  ) {
-    let idx = 1;
-    for (const layout of layoutData[ownersKey].layouts) {
-      writeJSON(path.join(dataDir, `layout_${idx}.json`), layout);
-      idx++;
-    }
-  }
+  // Generate layouts from extracted building data or fallback to owners/layout_data.json
+  let layoutIdx = 1;
+
+  // First, use extracted building data if available
+  // Layout files are now created by the layout mapping script
 
   const lotOut = {
     lot_type: null,
@@ -708,70 +1156,226 @@ function main() {
     relSDIdx++;
   }
 
-  // Owners: create person files and relationships using owners/owner_data.json
-  const peopleIndex = new Map(); // key: first|middle|last -> personIndex
+  // Extract person and company names using improved classification
   let personIdx = 1;
-  function personKey(o) {
-    return [o.first_name || "", o.middle_name || "", o.last_name || ""]
-      .map((x) => x.toLowerCase())
-      .join("|");
-  }
-  function ensurePerson(o) {
-    const key = personKey(o);
-    if (!peopleIndex.has(key)) {
-      const person = {
-        birth_date: null,
-        first_name: o.first_name,
-        last_name: o.last_name,
-        middle_name: safeNullIfEmpty(o.middle_name || null),
-        prefix_name: null,
-        suffix_name: null,
-        us_citizenship_status: null,
-        veteran_status: null,
-      };
-      writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
-      peopleIndex.set(key, personIdx);
-      personIdx++;
+  let companyIdx = 1;
+  let relIdx = 1;
+  const processedNames = new Set(); // Track processed names to avoid duplicates
+
+  // Company detection keywords (case-insensitive)
+  const companyRegex =
+    /(\binc\b|\binc\.|\bllc\b|l\.l\.c\.|\bltd\b|\bltd\.\b|\bfoundation\b|\balliance\b|\bsolutions\b|\bcorp\b|\bcorp\.\b|\bco\b|\bco\.\b|\bcompany\b|\bservices\b|\btrust\b|\btr\b|\bassociates\b|\bpartners\b|\bholdings\b|\bgroup\b|\blp\b|\bpllc\b|\bpc\b|\bbank\b|\bna\b|n\.a\.)/i;
+
+  function classifyRawToOwners(raw) {
+    const normalized = raw.replace(/[.,]+/g, " ").replace(/\s+/g, " ").trim();
+
+    if (!normalized || !/[a-zA-Z]/.test(normalized)) {
+      return { owners: [], invalids: [{ raw, reason: "non_name" }] };
     }
-    return peopleIndex.get(key);
+
+    // Company classification: treat entire string as a single company
+    if (companyRegex.test(normalized)) {
+      return { owners: [{ type: "company", name: normalized }], invalids: [] };
+    }
+
+    // Multi-person split on '&'
+    if (normalized.includes("&")) {
+      const segments = normalized
+        .split("&")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const owners = [];
+      const invalids = [];
+
+      for (const seg of segments) {
+        const tokens = seg.split(/\s+/).filter(Boolean);
+        if (tokens.length < 2) {
+          invalids.push({ raw: seg, reason: "insufficient_parts" });
+          continue;
+        }
+        const first = tokens[0];
+        const last = tokens[tokens.length - 1];
+        const middle = tokens.slice(1, -1).join(" ").trim();
+        const person = { type: "person", first_name: first, last_name: last };
+        if (middle) person.middle_name = middle;
+        owners.push(person);
+      }
+      return { owners, invalids };
+    }
+
+    // Single person path
+    const tokens = normalized.split(" ").filter(Boolean);
+    if (tokens.length < 2) {
+      return {
+        owners: [],
+        invalids: [{ raw: normalized, reason: "insufficient_parts" }],
+      };
+    }
+    const first = tokens[0];
+    const last = tokens[tokens.length - 1];
+    const middle = tokens.slice(1, -1).join(" ").trim();
+    const person = { type: "person", first_name: first, last_name: last };
+    if (middle) person.middle_name = middle;
+    return { owners: [person], invalids: [] };
   }
 
-  const ownerByDate =
-    ownersData &&
-    ownersKey &&
-    ownersData[ownersKey] &&
-    ownersData[ownersKey].owners_by_date
-      ? ownersData[ownersKey].owners_by_date
-      : null;
-  if (ownerByDate) {
-    const dateToPersons = new Map();
-    for (const [date, arr] of Object.entries(ownerByDate)) {
-      if (String(date).toLowerCase() === "current") continue;
-      if (!Array.isArray(arr)) continue;
-      for (const o of arr) {
-        if (o.type === "person") {
-          const idx = ensurePerson(o);
-          if (!dateToPersons.has(date)) dateToPersons.set(date, []);
-          dateToPersons.get(date).push(idx);
+  // Extract from sales history
+  if (model && Array.isArray(model.salesInfo)) {
+    for (let i = 0; i < model.salesInfo.length; i++) {
+      const sale = model.salesInfo[i];
+      if (sale.OwnerName) {
+        const ownerName = sale.OwnerName.trim();
+        if (ownerName && !processedNames.has(ownerName)) {
+          processedNames.add(ownerName);
+
+          const { owners, invalids } = classifyRawToOwners(ownerName);
+
+          for (const owner of owners) {
+            if (owner.type === "company") {
+              // Create company record
+              const company = {
+                name: toTitleCase(owner.name),
+                request_identifier: `company_${companyIdx}`,
+                source_http_request: {
+                  url: "https://pbcpao.gov/Property/Details",
+                  method: "GET",
+                  multiValueQueryString: { parcelId: [parcelId] },
+                },
+              };
+
+              writeJSON(
+                path.join(dataDir, `company_${companyIdx}.json`),
+                company,
+              );
+
+              // Create relationship to sales record
+              const rel = {
+                to: { "/": `./company_${companyIdx}.json` },
+                from: { "/": `./sales_${i + 1}.json` },
+              };
+              writeJSON(
+                path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
+                rel,
+              );
+
+              companyIdx++;
+              relIdx++;
+            } else {
+              // Create person record
+              const person = {
+                birth_date: null,
+                first_name: toTitleCase(owner.first_name),
+                last_name: toTitleCase(owner.last_name),
+                middle_name: toTitleCase(owner.middle_name) || "None",
+                prefix_name: null,
+                suffix_name: null,
+                us_citizenship_status: null,
+                veteran_status: null,
+                request_identifier: `person_${personIdx}`,
+                source_http_request: {
+                  url: "https://pbcpao.gov/Property/Details",
+                  method: "GET",
+                  multiValueQueryString: { parcelId: [parcelId] },
+                },
+              };
+
+              writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
+
+              // Create relationship to sales record
+              const rel = {
+                to: { "/": `./person_${personIdx}.json` },
+                from: { "/": `./sales_${i + 1}.json` },
+              };
+              writeJSON(
+                path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
+                rel,
+              );
+
+              personIdx++;
+              relIdx++;
+            }
+          }
         }
       }
     }
-    // Create relationships for matching sales
-    let relIdx = 1;
-    for (const s of salesFiles) {
-      if (!s.date) continue;
-      const ownersForDate = dateToPersons.get(s.date);
-      if (ownersForDate && ownersForDate.length) {
-        for (const pi of ownersForDate) {
-          const rel = {
-            to: { "/": `./person_${pi}.json` },
-            from: { "/": `./sales_${s.index}.json` },
-          };
-          writeJSON(
-            path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
-            rel,
-          );
-          relIdx++;
+  }
+
+  // Also extract from current owner info if available
+  if (model && Array.isArray(model.ownerInfo)) {
+    for (const ownerName of model.ownerInfo) {
+      if (ownerName && !processedNames.has(ownerName)) {
+        processedNames.add(ownerName);
+
+        const { owners, invalids } = classifyRawToOwners(ownerName);
+
+        for (const owner of owners) {
+          if (owner.type === "company") {
+            // Create company record
+            const company = {
+              name: toTitleCase(owner.name),
+              request_identifier: `company_${companyIdx}`,
+              source_http_request: {
+                url: "https://pbcpao.gov/Property/Details",
+                method: "GET",
+                multiValueQueryString: { parcelId: [parcelId] },
+              },
+            };
+
+            writeJSON(
+              path.join(dataDir, `company_${companyIdx}.json`),
+              company,
+            );
+
+            // Create relationship from property to company
+            const propRel = {
+              to: { "/": `./company_${companyIdx}.json` },
+              from: { "/": `./property.json` },
+            };
+            writeJSON(
+              path.join(
+                dataDir,
+                `relationship_company_${companyIdx}_property.json`,
+              ),
+              propRel,
+            );
+
+            companyIdx++;
+          } else {
+            // Create person record
+            const person = {
+              birth_date: null,
+              first_name: toTitleCase(owner.first_name),
+              last_name: toTitleCase(owner.last_name),
+              middle_name: toTitleCase(owner.middle_name) || "None",
+              prefix_name: null,
+              suffix_name: null,
+              us_citizenship_status: null,
+              veteran_status: null,
+              request_identifier: `person_${personIdx}`,
+              source_http_request: {
+                url: "https://pbcpao.gov/Property/Details",
+                method: "GET",
+                multiValueQueryString: { parcelId: [parcelId] },
+              },
+            };
+
+            writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
+
+            // Create relationship from property to person
+            const propRel = {
+              to: { "/": `./person_${personIdx}.json` },
+              from: { "/": `./property.json` },
+            };
+            writeJSON(
+              path.join(
+                dataDir,
+                `relationship_person_${personIdx}_property.json`,
+              ),
+              propRel,
+            );
+
+            personIdx++;
+          }
         }
       }
     }
@@ -828,6 +1432,21 @@ function main() {
       writeJSON(path.join(dataDir, `tax_${y}.json`), taxObj);
     }
   }
+
+  // Run mapping scripts to generate additional data files
+  console.log("Running owner mapping...");
+  require("./ownerMapping.js");
+
+  console.log("Running layout mapping...");
+  require("./layoutMapping.js");
+
+  console.log("Running structure mapping...");
+  require("./structureMapping.js");
+
+  console.log("Running utility mapping...");
+  require("./utilityMapping.js");
+
+  console.log("All mapping scripts completed successfully");
 }
 
 main();

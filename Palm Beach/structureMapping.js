@@ -119,6 +119,58 @@ function mapPrimaryFraming(rawExterior) {
   return null;
 }
 
+// Mapping table for Palm Beach structural labels → exterior + framing per guideline
+function mapWallAndFrameGuideline(raw) {
+  const key = (raw || "").toUpperCase().trim();
+  const MAP = {
+    "NONE": { exterior: null, framing: null },
+    "MSY: CONC. SIP FORMING": { exterior: "Precast Concrete", framing: "Concrete Block" },
+    "MSY: PRECAST PNL/REIN. CONC": { exterior: "Precast Concrete", framing: "Concrete Block" },
+    "WSF/MSY: CEMENT FIBER SIDING": { exterior: "Fiber Cement Siding", framing: "Wood Frame" },
+    "WSF/MSY: WOOD SIDING": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "WSF: PREFAB PNL": { exterior: "Metal Siding", framing: "Wood Frame" },
+    "WSF: ASPHALT SIDING": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "WSF: STONE": { exterior: "Natural Stone", framing: "Wood Frame" },
+    "MSY: STONE": { exterior: "Natural Stone", framing: "Concrete Block" },
+    "WSF/MSY: VINYL/STL/ALUM": { exterior: "Vinyl Siding", framing: "Wood Frame" },
+    "WSF: PLYWD/STL/ALUM SHTH": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "ADOBE/HOLLOW CLAY BLK": { exterior: "Adobe", framing: "Masonry" },
+    "MSY: CONC. BLOCK": { exterior: "Concrete Block", framing: "Concrete Block" },
+    "WSF: STUCCO": { exterior: "Stucco", framing: "Wood Frame" },
+    "MSY: CB STUCCO": { exterior: "Stucco", framing: "Concrete Block" },
+    "WSF: BRICK": { exterior: "Brick", framing: "Wood Frame" },
+    "MSY: BRICK": { exterior: "Brick", framing: "Concrete Block" },
+    "WSF: WOOD SHINGLE": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "WSF: COMP OR HARD BD": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "LOG": { exterior: "Log", framing: "Log Construction" },
+    "WSF LOG VENEER": { exterior: "Log", framing: "Wood Frame" },
+    "MSY LOG VENEER": { exterior: "Log", framing: "Concrete Block" },
+    "GLASS": { exterior: "Curtain Wall", framing: "Steel Frame" },
+    "BARN/HANGAR: HOLLOW CLAY BLOCK": { exterior: "Adobe", framing: "Masonry" },
+    "BARN/HANGAR: CONCRETE BLOCK": { exterior: "Concrete Block", framing: "Concrete Block" },
+    "BARN/HANGAR: CONCRETE BLOCK STUCCO": { exterior: "Stucco", framing: "Concrete Block" },
+    "BARN/HANGAR: REINFORCED CONCRETE": { exterior: "Precast Concrete", framing: "Poured Concrete" },
+    "BARN/HANGAR: PRECAST PANELS": { exterior: "Precast Concrete", framing: "Concrete Block" },
+    "BARN/HANGAR: STONE": { exterior: "Natural Stone", framing: "Masonry" },
+    "BARN/HANGAR: METAL PANELS (ALUM/STEEL)": { exterior: "Metal Siding", framing: "Steel Frame" },
+    "BARN/HANGAR: CEMENT FIBER SIDING/SHINGLES": { exterior: "Fiber Cement Siding", framing: "Wood Frame" },
+    "BARN/HANGAR: PLYWOOD / WOOD FRAME STUCCO / WOOD SIDING / CEDAR/REDWOOD": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "BARN/HANGAR: VINYL SIDING": { exterior: "Vinyl Siding", framing: "Wood Frame" },
+    "BARN/HANGAR: BRICK VENEER": { exterior: "Brick", framing: "Wood Frame" },
+    "BARN/HANGAR: STONE VENEER": { exterior: "Manufactured Stone", framing: "Wood Frame" },
+    "MFG HOME: ALUMINUM": { exterior: "Metal Siding", framing: "Wood Frame" },
+    "MFG HOME: CEMENT FIBER SIDING": { exterior: "Fiber Cement Siding", framing: "Wood Frame" },
+    "MFG HOME: HARD-BOARD SIDING": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "MFG HOME: LOG SIDING": { exterior: "Log", framing: "Wood Frame" },
+    "MFG HOME: PLYWOOD SIDING": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "MFG HOME: STUCCO SIDING": { exterior: "Stucco", framing: "Wood Frame" },
+    "MFG HOME: WOOD SHINGLE/SHAKE": { exterior: "Wood Siding", framing: "Wood Frame" },
+    "MFG HOME: VINYL SIDING": { exterior: "Vinyl Siding", framing: "Wood Frame" },
+    "MFG HOME: MASONRY VENEER": { exterior: "Brick", framing: "Wood Frame" },
+  };
+  return MAP[key] || null;
+}
+
 function run() {
   const html = readInputHtml();
   const $ = cheerio.load(html);
@@ -224,7 +276,14 @@ function run() {
     exterior_wall_insulation_type: null,
     exterior_wall_insulation_type_primary: null,
     exterior_wall_insulation_type_secondary: null,
-    exterior_wall_material_primary: mapExteriorWallPrimary(exteriorWall1),
+    // Apply guideline mapping first; fallback to generic mappers
+    exterior_wall_material_primary: (function () {
+      const m1 = mapWallAndFrameGuideline(exteriorWall1);
+      const m2 = mapWallAndFrameGuideline(exteriorWall2);
+      if (m1 && m1.exterior !== undefined) return m1.exterior;
+      if (m2 && m2.exterior !== undefined) return m2.exterior;
+      return mapExteriorWallPrimary(exteriorWall1);
+    })(),
     exterior_wall_material_secondary: mapExteriorWallPrimary(exteriorWall2),
     finished_base_area: finishedBaseArea || null,
     finished_basement_area: null,
@@ -242,8 +301,16 @@ function run() {
     interior_wall_condition: null,
     interior_wall_finish_primary: null,
     interior_wall_finish_secondary: null,
-    interior_wall_structure_material: "Wood Frame",
-    interior_wall_structure_material_primary: "Wood Frame",
+    interior_wall_structure_material: (function () {
+      const m1 = mapWallAndFrameGuideline(exteriorWall1);
+      if (m1 && m1.framing) return m1.framing === "Concrete Block" ? "Concrete Block" : m1.framing;
+      return "Wood Frame";
+    })(),
+    interior_wall_structure_material_primary: (function () {
+      const m1 = mapWallAndFrameGuideline(exteriorWall1);
+      if (m1 && m1.framing) return m1.framing;
+      return "Wood Frame";
+    })(),
     interior_wall_structure_material_secondary: null,
     interior_wall_surface_material_primary: (interiorWall1 || "")
       .toLowerCase()
@@ -252,7 +319,13 @@ function run() {
       : null,
     interior_wall_surface_material_secondary: null,
     number_of_stories: Number.parseInt(storiesRaw, 10) || null,
-    primary_framing_material: mapPrimaryFraming(exteriorWall1),
+    primary_framing_material: (function () {
+      const m1 = mapWallAndFrameGuideline(exteriorWall1);
+      const m2 = mapWallAndFrameGuideline(exteriorWall2);
+      if (m1 && m1.framing !== undefined) return m1.framing;
+      if (m2 && m2.framing !== undefined) return m2.framing;
+      return mapPrimaryFraming(exteriorWall1);
+    })(),
     secondary_framing_material: null,
     roof_age_years: null,
     roof_condition: null,
@@ -270,6 +343,14 @@ function run() {
     window_glazing_type: null,
     window_operation_type: null,
     window_screen_material: null,
+    // Schema-required identifiers
+    request_identifier: propertyId || "unknown",
+    source_http_request: {
+      method: "GET",
+      url: propertyId
+        ? `https://www.pbcgov.org/papa/Asps/PropertyDetail.aspx?pcn=${propertyId}`
+        : "https://www.pbcgov.org/papa/",
+    },
   };
 
   const outObj = {};

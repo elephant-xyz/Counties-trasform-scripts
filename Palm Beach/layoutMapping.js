@@ -48,6 +48,7 @@ function defaultLayout(space_index, overrides = {}) {
     {
       space_type: null,
       space_index,
+      story_type: null,
       flooring_material_type: null,
       size_square_feet: null,
       floor_level: null,
@@ -78,6 +79,9 @@ function defaultLayout(space_index, overrides = {}) {
       pool_condition: null,
       pool_surface_type: null,
       pool_water_quality: null,
+      building_number: null,
+      request_identifier: null,
+      source_http_request: { method: "GET", url: "https://www.pbcgov.org/papa/" },
     },
     overrides,
   );
@@ -99,49 +103,132 @@ function run() {
   const propKey = `property_${propertyId || "unknown"}`;
 
   // Structural counts for bedrooms/baths
-  const structHeader = $("h3:contains('Structural Element')").first();
-  const structScope = structHeader.length
-    ? structHeader.next(".building_col")
-    : null;
+  // Initialize layouts array
+  const layouts = [];
+  let space_index = 1;
 
-  const bedCount =
-    toInt(structScope ? findValueByLabel($, structScope, "Bed Rooms") : "") ||
-    0;
-  const fullBaths =
-    toInt(structScope ? findValueByLabel($, structScope, "Full Baths") : "") ||
-    0;
-  const halfBaths =
-    toInt(structScope ? findValueByLabel($, structScope, "Half Baths") : "") ||
-    0;
+  // Extract bedroom/bathroom counts from embedded model
+  let bedCount = 0;
+  let fullBaths = 0;
+  let halfBaths = 0;
 
-  const subareaHeader = $("h3:contains('SUBAREA AND SQUARE FOOTAGE')").first();
-  const subareaScope = subareaHeader.length
-    ? subareaHeader.next(".building_col")
-    : null;
-  let baseArea = null;
-  if (subareaScope) {
-    $(subareaScope)
-      .find("tr")
-      .each((_, tr) => {
-        const tds = $(tr).find("td");
-        if (tds.length >= 2) {
-          const label = $(tds[0]).text().replace(/\s+/g, " ").trim();
-          const val = toInt($(tds[1]).text());
-          if (/BAS\s+Base Area/i.test(label) && val) baseArea = val;
-        }
-      });
+  // Read HTML file
+  const inputHTML = fs.readFileSync("input.html", "utf8");
+
+  // Helper function to map element names to space types
+  function mapElementNameToSpaceType(elementName) {
+    if (!elementName) return null;
+    const name = elementName.toUpperCase();
+
+    // Skip summary elements that shouldn't be individual spaces
+    if (name.includes("TOTAL SQUARE FOOTAGE") || name.includes("AREA UNDER AIR")) {
+      return null; // Don't create layout items for these summary elements
+    }
+
+    if (name.includes("FOP") || name.includes("FINISHED OPEN PORCH")) return "Open Porch";
+    if (name.includes("BAS") || name.includes("BASE AREA")) return "Living Area";
+    if (name.includes("FGR") || name.includes("FINISHED GARAGE")) return "Attached Garage";
+    if (name.includes("GARAGE")) return "Attached Garage";
+    if (name.includes("PORCH")) return "Open Porch";
+    if (name.includes("DECK")) return "Deck";
+    if (name.includes("PATIO")) return "Patio";
+    if (name.includes("BALCONY")) return "Balcony";
+    if (name.includes("LIVING")) return "Living Area";
+    if (name.includes("BEDROOM")) return "Bedroom";
+    if (name.includes("BATH")) return "Bathroom";
+    if (name.includes("KITCHEN")) return "Kitchen";
+
+    return null;
   }
 
-  let space_index = 1;
-  const layouts = [];
+  // Parse embedded model from HTML (use greedy match to capture entire model)
+  const modelMatch = inputHTML.match(/var model = ({.+});/);
+  if (modelMatch) {
+    try {
+      const model = JSON.parse(modelMatch[1]);
+      if (model.structuralDetails && Array.isArray(model.structuralDetails.StructuralElements)) {
+        // Extract bedroom/bathroom counts
+        for (const el of model.structuralDetails.StructuralElements) {
+          const name = (el.ElementName || "").trim();
+          const val = (el.ElementValue || "").toString().trim();
+          if (/Bedroom|Bed Rooms/i.test(name)) bedCount = parseInt(val) || 0;
+          if (/Bath\(s\)|Full Baths/i.test(name) && !/Half/i.test(name)) fullBaths = parseInt(val) || 0;
+          if (/Half Bath|Half Baths/i.test(name)) halfBaths = parseInt(val) || 0;
+        }
+
+        // Extract area-based layout elements (living area, porches, garage, etc.)
+        for (const el of model.structuralDetails.StructuralElements) {
+          if (el.DetailsSection === "Bottom" && el.BuildingNumber) {
+            const buildingNum = parseInt(el.BuildingNumber);
+            const spaceType = mapElementNameToSpaceType(el.ElementName);
+
+            // Skip elements that shouldn't be individual spaces
+            if (!spaceType) {
+              continue;
+            }
+
+            const layoutItem = {
+              space_type: spaceType,
+              space_index: layouts.length + 1,
+              size_square_feet: parseInt(el.ElementValue) || null,
+              building_number: buildingNum,
+              floor_level: null,
+              is_exterior: el.ElementName.includes("FOP") || el.ElementName.includes("Porch"),
+              is_finished: !el.ElementName.includes("Unfinished"),
+              story_type: null,
+              flooring_material_type: null,
+              has_windows: null,
+              window_design_type: null,
+              window_material_type: null,
+              window_treatment_type: null,
+              furnished: null,
+              paint_condition: null,
+              flooring_wear: null,
+              clutter_level: null,
+              visible_damage: null,
+              countertop_material: null,
+              cabinet_style: null,
+              fixture_finish_quality: null,
+              design_style: null,
+              natural_light_quality: null,
+              decor_elements: null,
+              pool_type: null,
+              pool_equipment: null,
+              spa_type: null,
+              safety_features: null,
+              view_type: null,
+              lighting_features: null,
+              condition_issues: null,
+              pool_condition: null,
+              pool_surface_type: null,
+              pool_water_quality: null,
+              request_identifier: propertyId || "unknown",
+              source_http_request: {
+                url: "https://pbcpao.gov/Property/Details",
+                method: "GET",
+                multiValueQueryString: { parcelId: [propertyId || "unknown"] }
+              }
+            };
+
+            layouts.push(layoutItem);
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Error parsing model for layout data:", e.message);
+    }
+  }
+
+  console.log(`Extracted bedroom/bathroom counts: ${bedCount} bedrooms, ${fullBaths} full baths, ${halfBaths} half baths`);
+
+  // Skip subarea processing to avoid duplication - we're using embedded model data instead
 
   // Bedrooms
   for (let i = 0; i < bedCount; i++) {
     layouts.push(
-      defaultLayout(space_index++, {
+      defaultLayout(layouts.length + 1, {
         space_type: "Bedroom",
         size_square_feet: null,
-        floor_level: "1st Floor",
       }),
     );
   }
@@ -149,9 +236,8 @@ function run() {
   // Full bathrooms
   for (let i = 0; i < fullBaths; i++) {
     layouts.push(
-      defaultLayout(space_index++, {
+      defaultLayout(layouts.length + 1, {
         space_type: "Full Bathroom",
-        floor_level: "1st Floor",
       }),
     );
   }
@@ -159,58 +245,45 @@ function run() {
   // Half bathrooms
   for (let i = 0; i < halfBaths; i++) {
     layouts.push(
-      defaultLayout(space_index++, {
+      defaultLayout(layouts.length + 1, {
         space_type: "Half Bathroom / Powder Room",
-        floor_level: "1st Floor",
       }),
     );
   }
 
-  // Generic Living Room and Kitchen
-  if (baseArea) {
-    layouts.push(
-      defaultLayout(space_index++, {
-        space_type: "Living Room",
-        floor_level: "1st Floor",
-      }),
-    );
-    layouts.push(
-      defaultLayout(space_index++, {
-        space_type: "Kitchen",
-        floor_level: "1st Floor",
-      }),
-    );
-  }
-
-  if (layouts.length === 0) {
-    layouts.push(
-      defaultLayout(space_index++, {
-        space_type: "Living Room",
-        floor_level: "1st Floor",
-      }),
-    );
-  }
-
-  const outObj = {};
-  outObj[propKey] = { layouts };
+  // Removed default Living Room and Kitchen additions; keep only detected spaces
 
   const ownersDir = path.resolve("owners");
   const dataDir = path.resolve("data");
   fs.mkdirSync(ownersDir, { recursive: true });
   fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(ownersDir, "layout_data.json"),
-    JSON.stringify(outObj, null, 2),
-    "utf8",
-  );
-  fs.writeFileSync(
-    path.join(dataDir, "layout_data.json"),
-    JSON.stringify(outObj, null, 2),
-    "utf8",
-  );
+
+  // Create individual layout files (layout_1.json, layout_2.json, etc.)
+  layouts.forEach((layout, index) => {
+    const layoutIndex = index + 1;
+    const layoutFileName = `layout_${layoutIndex}.json`;
+
+    // Write individual layout file to data directory only
+    fs.writeFileSync(
+      path.join(dataDir, layoutFileName),
+      JSON.stringify(layout, null, 2),
+      "utf8",
+    );
+
+    // Create relationship file for each layout
+    const layoutRel = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${layoutFileName}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_layout_${layoutIndex}.json`),
+      JSON.stringify(layoutRel, null, 2),
+      "utf8",
+    );
+  });
 
   console.log(
-    "layout_data.json written for",
+    "Individual layout files written for",
     propKey,
     "with",
     layouts.length,
@@ -218,6 +291,5 @@ function run() {
   );
 }
 
-if (require.main === module) {
-  run();
-}
+// Always run when required or executed directly
+run();
