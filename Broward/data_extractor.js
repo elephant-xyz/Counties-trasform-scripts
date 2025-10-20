@@ -37,6 +37,13 @@ function parseDateToISO(s) {
   return null;
 }
 
+function parseCoordinate(value) {
+  if (value == null || value === "") return null;
+  const num = typeof value === "number" ? value : parseFloat(String(value));
+  if (!isFinite(num)) return null;
+  return num;
+}
+
 function errorOut(message, pathStr) {
   const err = { type: "error", message, path: pathStr };
   console.error(JSON.stringify(err));
@@ -325,6 +332,11 @@ function parseAddressParts(situsAddress1) {
     }
   }
   const { lot, block, section, township } = extractLotBlockSection(parcelInfo.legal);
+
+  // Extract latitude and longitude from unnormalized_address.json if available
+  const latitude = parseCoordinate(unAddr && unAddr.latitude);
+  const longitude = parseCoordinate(unAddr && unAddr.longitude);
+
   const address = {
     street_number: addrParts.number,
     street_name: addrParts.name || null,
@@ -341,8 +353,8 @@ function parseAddressParts(situsAddress1) {
     county_name: "Broward",
     unit_identifier: null,
     municipality_name: null,
-    latitude: null,
-    longitude: null,
+    latitude: latitude,
+    longitude: longitude,
     route_number: null,
     township: township,
     range: null,
