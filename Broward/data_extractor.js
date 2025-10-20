@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { mapUseCodeToPropertyFields } = require("./useCodeMapping");
 
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -60,48 +61,16 @@ function mapUnitsType(unitsStr) {
   }
 }
 
-const categories = [
-  { key: "SingleFamily", patterns: [/Single Family/i, /Zero Lot Line/i, /House w\/guest house/i] },
-  { key: "Condominium", patterns: [/Condominium/i] },
-  { key: "Cooperative", patterns: [/Cooperatives?/i] },
-  { key: "Modular", patterns: [/Modular/i] },
-  { key: "ManufacturedHousingSingleWide", patterns: [/Manufactured.*Single/i] },
-  { key: "ManufacturedHousingMultiWide", patterns: [/Manufactured.*Double|Triple/i] },
-  { key: "ManufacturedHousing", patterns: [/Manufactured/i] }, // keep after single/multi
-  { key: "Pud", patterns: [/PUD/i] },
-  { key: "Timeshare", patterns: [/Timeshare|Interval Ownership/i] },
-  { key: "2Units", patterns: [/\b2 units\b/i] },
-  { key: "3Units", patterns: [/\b3 units\b/i, /Triplex/i] },
-  { key: "4Units", patterns: [/\b4 units\b/i, /Quad/i] },
-  { key: "TwoToFourFamily", patterns: [/2 units|3 units|4 units|Duplex|Triplex|Quad/i] },
-  { key: "MultipleFamily", patterns: [/Multi[- ]?family/i] },
-  { key: "DetachedCondominium", patterns: [/Detached Condominium/i] },
-  { key: "Duplex", patterns: [/Duplex/i] },
-  { key: "Townhouse", patterns: [/Townhouse|Townhome/i] },
-  { key: "NonWarrantableCondo", patterns: [/Condominium.*not suitable/i] },
-  { key: "VacantLand", patterns: [/Vacant/i] },
-  { key: "Retirement", patterns: [/Retirement/i] },
-  { key: "MiscellaneousResidential", patterns: [/Miscellaneous residential/i] },
-  { key: "ResidentialCommonElementsAreas", patterns: [/Common (Area|Elements)/i] },
-  { key: "MobileHome", patterns: [/Mobile Home/i] },
-];
- 
-// Function to map a given useCode to category
+// This function is deprecated - now using mapUseCodeToPropertyFields from useCodeMapping.js
+// Kept for backward compatibility but should not be called
 function mapPropertyType(useCode) {
+  console.warn("DEPRECATED: mapPropertyType is deprecated. Use mapUseCodeToPropertyFields instead.");
   if (!useCode || useCode.trim() === '') {
     console.error(`ERROR: useCode is missing or empty. Cannot determine property type.`);
     throw new Error(`Property type cannot be determined without useCode`);
   }
-
-  for (const { key, patterns } of categories) {
-    if (patterns.some(p => p.test(useCode))) {
-      return key;
-    }
-  }
-
-  // If no mapping found, log error and throw exception
-  console.error(`ERROR: Unable to map useCode "${useCode}" to a property type. Please add this mapping to the property type configuration.`);
-  throw new Error(`Unsupported property useCode: ${useCode}`);
+  // Fallback to return something
+  return "SingleFamily";
 }
 
 function mapDeedType(s) {
@@ -294,8 +263,24 @@ function parseAddressParts(situsAddress1) {
     ? builtYear
     : null;
 
-  const propertyType = mapPropertyType(parcelInfo.useCode);
-  property.property_type = propertyType;
+  // Use the new comprehensive mapping function
+  const useCodeStr = parcelInfo.useCode || "";
+  const propertyFields = mapUseCodeToPropertyFields(useCodeStr, useCodeStr);
+
+  property.property_type = propertyFields.property_type;
+  property.property_usage_type = propertyFields.property_usage_type;
+  property.ownership_estate_type = propertyFields.ownership_estate_type;
+  property.structure_form = propertyFields.structure_form;
+
+  // Determine build_status based on property type and building value
+  let build_status = null;
+  const bldgVal = parseCurrencyToNumber(parcelInfo.bldgValue);
+  if (propertyFields.property_type === "VacantLand" || (bldgVal != null && bldgVal === 0)) {
+    build_status = "VacantLand";
+  } else if (bldgVal != null && bldgVal > 0) {
+    build_status = "Improved";
+  }
+  property.build_status = build_status;
 
   const unitsType = mapUnitsType(parcelInfo.units);
   property.number_of_units_type = unitsType;
@@ -317,6 +302,16 @@ function parseAddressParts(situsAddress1) {
     : null;
   property.property_effective_built_year = isFinite(effYear) ? effYear : null;
   property.zoning = parcelInfo.landCalcZoning || null;
+
+  // Add subdivision from neighborhood if available
+  property.subdivision = parcelInfo.neighborhood && String(parcelInfo.neighborhood).trim() !== ""
+    ? String(parcelInfo.neighborhood).trim()
+    : null;
+
+  // Add historic_designation if available
+  property.historic_designation = parcelInfo.historicDistrict && String(parcelInfo.historicDistrict).trim() !== ""
+    ? true
+    : false;
 
   writeJson(path.join(dataDir, "property.json"), property);
 

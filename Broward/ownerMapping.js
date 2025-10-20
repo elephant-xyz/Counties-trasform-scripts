@@ -93,6 +93,9 @@ function isCompany(raw) {
     " international",
     " intl",
     " corporation",
+    " office",
+    " dept",
+    " department",
   ];
   const sPad = " " + s.replace(/\s+/g, " ") + " ";
   return (
