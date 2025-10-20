@@ -61,17 +61,6 @@ function mapUnitsType(unitsStr) {
   }
 }
 
-// This function is deprecated - now using mapUseCodeToPropertyFields from useCodeMapping.js
-// Kept for backward compatibility but should not be called
-function mapPropertyType(useCode) {
-  console.warn("DEPRECATED: mapPropertyType is deprecated. Use mapUseCodeToPropertyFields instead.");
-  if (!useCode || useCode.trim() === '') {
-    console.error(`ERROR: useCode is missing or empty. Cannot determine property type.`);
-    throw new Error(`Property type cannot be determined without useCode`);
-  }
-  // Fallback to return something
-  return "SingleFamily";
-}
 
 function mapDeedType(s) {
   if (!s || typeof s !== "string") return null;
