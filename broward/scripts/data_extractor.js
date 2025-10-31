@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { mapUseCodeToPropertyFields } = require("./useCodeMapping");
 
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -36,6 +37,13 @@ function parseDateToISO(s) {
   return null;
 }
 
+function parseCoordinate(value) {
+  if (value == null || value === "") return null;
+  const num = typeof value === "number" ? value : parseFloat(String(value));
+  if (!isFinite(num)) return null;
+  return num;
+}
+
 function errorOut(message, pathStr) {
   const err = { type: "error", message, path: pathStr };
   console.error(JSON.stringify(err));
@@ -56,56 +64,10 @@ function mapUnitsType(unitsStr) {
     case 4:
       return "Four";
     default:
-      errorOut(
-        `Unknown enum value ${unitsStr}.`,
-        "property.number_of_units_type",
-      );
+      return null;
   }
 }
 
-const categories = [
-  { key: "SingleFamily", patterns: [/Single Family/i, /Zero Lot Line/i] },
-  { key: "Condominium", patterns: [/Condominium/i] },
-  { key: "Cooperative", patterns: [/Cooperatives?/i] },
-  { key: "Modular", patterns: [/Modular/i] },
-  { key: "ManufacturedHousingSingleWide", patterns: [/Manufactured.*Single/i] },
-  { key: "ManufacturedHousingMultiWide", patterns: [/Manufactured.*Double|Triple/i] },
-  { key: "ManufacturedHousing", patterns: [/Manufactured/i] }, // keep after single/multi
-  { key: "Pud", patterns: [/PUD/i] },
-  { key: "Timeshare", patterns: [/Timeshare|Interval Ownership/i] },
-  { key: "2Units", patterns: [/\b2 units\b/i] },
-  { key: "3Units", patterns: [/\b3 units\b/i, /Triplex/i] },
-  { key: "4Units", patterns: [/\b4 units\b/i, /Quad/i] },
-  { key: "TwoToFourFamily", patterns: [/2 units|3 units|4 units|Duplex|Triplex|Quad/i] },
-  { key: "MultipleFamily", patterns: [/Multi[- ]?family/i] },
-  { key: "DetachedCondominium", patterns: [/Detached Condominium/i] },
-  { key: "Duplex", patterns: [/Duplex/i] },
-  { key: "Townhouse", patterns: [/Townhouse|Townhome/i] },
-  { key: "NonWarrantableCondo", patterns: [/Condominium.*not suitable/i] },
-  { key: "VacantLand", patterns: [/^Vacant/i] },
-  { key: "Retirement", patterns: [/Retirement/i] },
-  { key: "MiscellaneousResidential", patterns: [/Miscellaneous residential/i] },
-  { key: "ResidentialCommonElementsAreas", patterns: [/Common Area/i] },
-  { key: "MobileHome", patterns: [/Mobile Home/i] },
-];
- 
-// Function to map a given useCode to category
-function mapPropertyType(useCode) {
-  if (!useCode || useCode.trim() === '') {
-    console.error(`ERROR: useCode is missing or empty. Cannot determine property type.`);
-    throw new Error(`Property type cannot be determined without useCode`);
-  }
-
-  for (const { key, patterns } of categories) {
-    if (patterns.some(p => p.test(useCode))) {
-      return key;
-    }
-  }
-
-  // If no mapping found, log error and throw exception
-  console.error(`ERROR: Unable to map useCode "${useCode}" to a property type. Please add this mapping to the property type configuration.`);
-  throw new Error(`Unsupported property useCode: ${useCode}`);
-}
 
 function mapDeedType(s) {
   if (!s || typeof s !== "string") return null;
@@ -254,10 +216,29 @@ function parseAddressParts(situsAddress1) {
 
   // PROPERTY
   const property = {};
-  const livable =
-    parcelInfo.bldgUnderAirFootage != null
+
+  // For area_under_air: use bldgUnderAirFootage only (can be null/empty)
+  const underAir =
+    parcelInfo.bldgUnderAirFootage != null && String(parcelInfo.bldgUnderAirFootage).trim() !== ""
       ? String(parcelInfo.bldgUnderAirFootage).trim()
       : null;
+
+  // For livable_floor_area: prefer bldgUnderAirFootage, fall back to bldgSqFT
+  let livable = underAir;
+  if (!livable && parcelInfo.bldgSqFT != null) {
+    const sqft = String(parcelInfo.bldgSqFT).trim();
+    if (sqft && sqft !== "") {
+      livable = sqft;
+    }
+  }
+
+  // Ensure livable_floor_area is null if value is 0 or non-positive (schema doesn't allow non-positive)
+  if (livable != null) {
+    const numVal = parseFloat(livable);
+    if (!isNaN(numVal) && numVal <= 0) {
+      livable = null;
+    }
+  }
 
   property.livable_floor_area = livable;
   property.parcel_identifier =
@@ -278,15 +259,31 @@ function parseAddressParts(situsAddress1) {
     ? builtYear
     : null;
 
-  const propertyType = mapPropertyType(parcelInfo.useCode);
-  property.property_type = propertyType;
+  // Use the new comprehensive mapping function
+  const useCodeStr = parcelInfo.useCode || "";
+  const propertyFields = mapUseCodeToPropertyFields(useCodeStr, useCodeStr);
+
+  property.property_type = propertyFields.property_type;
+  property.property_usage_type = propertyFields.property_usage_type;
+  property.ownership_estate_type = propertyFields.ownership_estate_type;
+  property.structure_form = propertyFields.structure_form;
+
+  // Determine build_status based on property type and building value
+  let build_status = null;
+  const bldgVal = parseCurrencyToNumber(parcelInfo.bldgValue);
+  if (propertyFields.property_type === "VacantLand" || (bldgVal != null && bldgVal === 0)) {
+    build_status = "VacantLand";
+  } else if (bldgVal != null && bldgVal > 0) {
+    build_status = "Improved";
+  }
+  property.build_status = build_status;
 
   const unitsType = mapUnitsType(parcelInfo.units);
   property.number_of_units_type = unitsType;
 
   const unitsN = parcelInfo.units ? parseInt(parcelInfo.units, 10) : null;
   property.number_of_units = isFinite(unitsN) ? unitsN : null;
-  property.area_under_air = livable;
+  property.area_under_air = underAir;
 
   const totRaw = parcelInfo.bldgTotSqFootage;
   let totalArea = null;
@@ -301,6 +298,16 @@ function parseAddressParts(situsAddress1) {
     : null;
   property.property_effective_built_year = isFinite(effYear) ? effYear : null;
   property.zoning = parcelInfo.landCalcZoning || null;
+
+  // Add subdivision from neighborhood if available
+  property.subdivision = parcelInfo.neighborhood && String(parcelInfo.neighborhood).trim() !== ""
+    ? String(parcelInfo.neighborhood).trim()
+    : null;
+
+  // Add historic_designation if available
+  property.historic_designation = parcelInfo.historicDistrict && String(parcelInfo.historicDistrict).trim() !== ""
+    ? true
+    : false;
 
   writeJson(path.join(dataDir, "property.json"), property);
 
@@ -325,6 +332,11 @@ function parseAddressParts(situsAddress1) {
     }
   }
   const { lot, block, section, township } = extractLotBlockSection(parcelInfo.legal);
+
+  // Extract latitude and longitude from unnormalized_address.json if available
+  const latitude = parseCoordinate(unAddr && unAddr.latitude);
+  const longitude = parseCoordinate(unAddr && unAddr.longitude);
+
   const address = {
     street_number: addrParts.number,
     street_name: addrParts.name || null,
@@ -341,8 +353,8 @@ function parseAddressParts(situsAddress1) {
     county_name: "Broward",
     unit_identifier: null,
     municipality_name: null,
-    latitude: null,
-    longitude: null,
+    latitude: latitude,
+    longitude: longitude,
     route_number: null,
     township: township,
     range: null,
@@ -359,6 +371,10 @@ function parseAddressParts(situsAddress1) {
       .replace(/,/g, "")
       .match(/(\d{1,9})/);
     if (m) lotSqft = parseInt(m[1], 10);
+  }
+  // Ensure lot_area_sqft is null if value is 0 or non-positive
+  if (isFinite(lotSqft) && lotSqft <= 0) {
+    lotSqft = null;
   }
   const lotObj = {
     lot_type: null,
@@ -505,9 +521,17 @@ function parseAddressParts(situsAddress1) {
   }
   const urlList = Array.from(urls);
   const fileNames = [];
-  urlList.forEach((u, idx) => {
+  let fileIdx = 1;
+  urlList.forEach((u) => {
     const url = String(u);
-    const name = url.split("/").pop() || `image_${idx + 1}.jpg`;
+
+    // Skip relative URLs (only process full http/https URLs)
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      console.log(`Skipping relative URL: "${url}"`);
+      return;
+    }
+
+    const name = url.split("/").pop() || `image_${fileIdx}.jpg`;
     const ext = (name.split(".").pop() || "").toLowerCase();
     let file_format = null;
     if (ext === "jpg" || ext === "jpeg") file_format = "jpeg";
@@ -522,9 +546,10 @@ function parseAddressParts(situsAddress1) {
       original_url: encodeURI(url),
       ipfs_url: null,
     };
-    const f = `file_${idx + 1}.json`;
+    const f = `file_${fileIdx}.json`;
     writeJson(path.join(dataDir, f), fileObj);
     fileNames.push(f);
+    fileIdx++;
   });
 
   // RELATIONSHIPS: deed -> file (associate all files to first deed if exists)

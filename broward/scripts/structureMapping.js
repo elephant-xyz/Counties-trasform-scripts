@@ -25,7 +25,16 @@ function extractFromInput(inputObj) {
 
   const folio = parcel.folioNumber || parcel.folio || "unknown";
   const useCode = parcel.useCode || "";
-  const attachment = /single\s*family/i.test(useCode) ? "Detached" : null;
+
+  // Determine attachment type based on use code
+  let attachment = null;
+  if (/single\s*family/i.test(useCode) && !/attached/i.test(useCode)) {
+    attachment = "Detached";
+  } else if (/attached|townhouse|townhome/i.test(useCode)) {
+    attachment = "Attached";
+  } else if (/duplex|triplex|quad/i.test(useCode)) {
+    attachment = "SemiDetached";
+  }
 
   // Map structure fields with conservative nulls where unknown. Use condo heuristics minimally.
   const structure = {
@@ -90,7 +99,14 @@ function extractFromInput(inputObj) {
   // Attempt to derive some dimensions when present
   const underAir = parcel.bldgUnderAirFootage || parcel.bldgSqFT;
   if (underAir && !isNaN(Number(underAir))) {
-    structure.finished_base_area = parseInt(underAir, 10);
+    const sqft = parseInt(underAir, 10);
+    structure.finished_base_area = sqft;
+  }
+
+  // Try to derive number of stories from use code description or other hints
+  // For now, default to 1 for single family homes with data
+  if (structure.finished_base_area && /single\s*family/i.test(useCode)) {
+    structure.number_of_stories = 1;
   }
 
   return { folio, structure };

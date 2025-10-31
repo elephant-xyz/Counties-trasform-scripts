@@ -40,6 +40,20 @@ function titleCasePhrase(str) {
   return lower;
 }
 
+// Check if owner string should be ignored (generic placeholders)
+function shouldIgnoreOwner(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  const ignorePatterns = [
+    "public land",
+    "private land",
+    "unknown",
+    "not available",
+    "n/a",
+    "none",
+  ];
+  return ignorePatterns.includes(s);
+}
+
 // Detect whether a raw owner string is a company
 function isCompany(raw) {
   const s = String(raw || "").toLowerCase();
@@ -75,6 +89,7 @@ function isCompany(raw) {
     " plc",
     " investments",
     " properties",
+    " property",
     " reit",
     " church",
     " ministries",
@@ -93,6 +108,15 @@ function isCompany(raw) {
     " international",
     " intl",
     " corporation",
+    " office",
+    " dept",
+    " department",
+    " city",
+    " county",
+    " state",
+    " government",
+    " municipal",
+    " municipality",
   ];
   const sPad = " " + s.replace(/\s+/g, " ") + " ";
   return (
@@ -116,18 +140,31 @@ function parsePersonName(raw) {
     const restPart = (restPartRaw || "").trim();
     if (!lastPart || !restPart) return null;
     const tokens = restPart.split(/\s+/).filter(Boolean);
-    const firstName = tokens[0] || null;
+
+    // Clean leading/trailing special characters from each token
+    const cleanedTokens = tokens.map(t => t.replace(/^[-_]+|[-_]+$/g, "")).filter(Boolean);
+
+    const firstName = cleanedTokens[0] || null;
     const middleName =
-      tokens.length > 2
-        ? tokens.slice(1).join(" ")
-        : tokens.length === 2
-          ? tokens[1]
+      cleanedTokens.length > 2
+        ? cleanedTokens.slice(1).join(" ")
+        : cleanedTokens.length === 2
+          ? cleanedTokens[1]
           : null;
-    const last = titleCasePhrase(lastPart);
+
+    // Clean last name as well
+    const cleanedLastPart = lastPart.replace(/^[-_]+|[-_]+$/g, "");
+
+    const last = titleCasePhrase(cleanedLastPart);
     const first = titleCasePhrase(firstName);
     // Exclude middle name if it contains "/" symbol (e.g., "H/E" is not a valid middle name)
     const middle = middleName && !middleName.includes("/") ? titleCasePhrase(middleName) : null;
     if (!first || !last) return null;
+    // Skip person if first_name or last_name is "H/E" (incomplete information)
+    if (first === "H/E" || last === "H/E" || first === "H/e" || last === "H/e") {
+      console.log(`Skipping person with H/E as name: first="${first}", last="${last}"`);
+      return null;
+    }
     return {
       type: "person",
       first_name: first,
@@ -139,15 +176,25 @@ function parsePersonName(raw) {
   // Otherwise assume FIRST MIDDLE LAST
   const tokens = name.split(/\s+/).filter(Boolean);
   if (tokens.length === 1) return null;
-  const first = titleCasePhrase(tokens[0]);
-  const last = titleCasePhrase(tokens[tokens.length - 1]);
-  const middleTokens = tokens.slice(1, -1);
+
+  // Clean leading/trailing special characters from each token
+  const cleanedTokens = tokens.map(t => t.replace(/^[-_]+|[-_]+$/g, "")).filter(Boolean);
+  if (cleanedTokens.length < 2) return null;
+
+  const first = titleCasePhrase(cleanedTokens[0]);
+  const last = titleCasePhrase(cleanedTokens[cleanedTokens.length - 1]);
+  const middleTokens = cleanedTokens.slice(1, -1);
   const middleStr = middleTokens.length ? middleTokens.join(" ") : null;
   // Exclude middle name if it contains "/" symbol (e.g., "H/E" is not a valid middle name)
   const middle = middleStr && !middleStr.includes("/")
     ? titleCasePhrase(middleStr)
     : null;
   if (!first || !last) return null;
+  // Skip person if first_name or last_name is "H/E" (incomplete information)
+  if (first === "H/E" || last === "H/E" || first === "H/e" || last === "H/e") {
+    console.log(`Skipping person with H/E as name: first="${first}", last="${last}"`);
+    return null;
+  }
   return {
     type: "person",
     first_name: first,
@@ -301,8 +348,22 @@ for (const raw of processedOwners) {
 // Classify and structure owners
 const structuredOwners = [];
 for (const raw of uniqueRawOwners) {
-  const trimmed = raw.trim();
+  let trimmed = raw.trim();
   if (!trimmed) continue;
+
+  // Strip leading "%" or "%/" care-of markers
+  trimmed = trimmed.replace(/^[%/]+\s*/, "");
+
+  // Strip leading/trailing special characters (hyphens, underscores, etc.)
+  trimmed = trimmed.replace(/^[-_\s]+|[-_\s]+$/g, "");
+
+  if (!trimmed) continue;
+
+  // Skip generic placeholders like "PUBLIC LAND"
+  if (shouldIgnoreOwner(trimmed)) {
+    console.log(`Skipping generic placeholder owner: "${trimmed}"`);
+    continue;
+  }
 
   // Handle joint names with '&' (only if not a company)
   if (trimmed.includes("&") && !isCompany(trimmed)) {
