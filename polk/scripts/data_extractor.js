@@ -1,3 +1,8 @@
+// scripts/data_extractor.js
+// Extraction script per evaluator workflow
+// Reads: input.html, unnormalized_address.json, property_seed.json, owners/owner_data.json, owners/utilities_data.json, owners/layout_data.json
+// Writes: JSON outputs to ./data
+
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");

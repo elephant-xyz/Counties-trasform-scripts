@@ -10,117 +10,190 @@ function ensureDir(dirPath) {
 
 function parseIntSafe(txt) {
   if (txt == null) return null;
-  const m = String(txt).replace(/[^0-9\-]/g, "");
-  if (!m) return null;
-  const v = parseInt(m, 10);
-  return isNaN(v) ? null : v;
+  const numeric = String(txt).replace(/[^0-9-]/g, "");
+  if (!numeric) return null;
+  const value = parseInt(numeric, 10);
+  return Number.isNaN(value) ? null : value;
 }
 
 function extractStrap($, rawHtml) {
   let strap = null;
   const scriptsText = $("script")
-    .map((i, el) => $(el).html() || "")
+    .map((_, el) => $(el).html() || "")
     .get()
     .join("\n");
-  const m = scriptsText.match(/var\s+g_strap\s*=\s*"(\d+)"/);
-  if (m) strap = m[1];
+  const match = scriptsText.match(/var\s+g_strap\s*=\s*"(\d+)"/);
+  if (match) strap = match[1];
   if (!strap) {
-    const pn = $("#pacel_no").text().trim();
-    if (pn) strap = pn.replace(/\D/g, "");
+    const parcelNo = $("#pacel_no").text().trim();
+    if (parcelNo) strap = parcelNo.replace(/\D/g, "");
   }
   return strap || "unknown_id";
 }
 
-/**
- * Maps a sub-area code/description from the HTML to a schema-defined space_type.
- * This mapping is crucial and might need refinement based on specific property types (residential vs. commercial).
- * @param {string} subAreaText - e.g., "Base (BAS):", "Office Good (OFG):", "Canopy(only or loading platform) (CAW):"
- * @returns {string | null} The corresponding space_type from the schema enum.
- */
-function mapSubAreaToSpaceType(subAreaText) {
-  const text = subAreaText.toLowerCase();
+function getStructuralValue($, $panel, label) {
+  const lowerLabel = label.toLowerCase();
+  const row = $panel
+    .find("table.table-bordered")
+    .filter((_, tbl) => {
+      const header = $(tbl).find("thead th").first().text().trim().toLowerCase();
+      return header.includes("structural elements");
+    })
+    .first()
+    .find("tbody tr")
+    .filter((_, tr) => {
+      const key = $(tr).find("td").first().text().trim().toLowerCase();
+      return key.startsWith(lowerLabel);
+    })
+    .first();
 
-  // Extract code if present (e.g., "BAS", "OFG", "CAW")
-  const codeMatch = text.match(/\(([^)]+)\)/);
-  const code = codeMatch ? codeMatch[1].toUpperCase() : null;
-
-  switch (code) {
-    case 'OFG': // Office Good
-    case 'OFA': // Office Average
-      return "Home Office"; // Closest in schema, assuming it's an office within the property.
-    case 'OPF': // Open Porch
-    case 'OPU': // Open Porch
-      return "Porch";
-    case 'CAW': // Canopy (only or loading platform)
-      // "Carport" or "Shed" could fit. "Shed" is in the enum.
-      return "Shed";
-    // Add more mappings as needed based on observed codes
-    default:
-      // Fallback based on keywords if no code or code not mapped
-      if (text.includes("office")) return "Home Office";
-      if (text.includes("porch")) return "Porch";
-      if (text.includes("canopy")) return "Shed";
-      if (text.includes("wasteland") || text.includes("marsh")) return "VacantLand"; // Not a space_type, but might appear in sub-areas
-      return null; // No direct mapping found in schema
-  }
+  if (!row.length) return null;
+  return row.find("td").eq(1).text().trim() || null;
 }
 
-/**
- * Determines if a space is exterior based on its type.
- * @param {string | null} spaceType
- * @returns {boolean}
- */
-function isExteriorSpace(spaceType) {
-  if (!spaceType) return false;
-  const exteriorTypes = ["Porch", "Screened Porch", "Sunroom", "Deck", "Patio", "Pergola", "Balcony", "Terrace", "Gazebo", "Pool House", "Outdoor Kitchen", "Attached Garage", "Detached Garage", "Carport", "Shed", "Pool Area", "Outdoor Pool", "Hot Tub / Spa Area"];
-  return exteriorTypes.includes(spaceType);
-}
+function getSubAreaTotals($, $panel) {
+  const table = $panel
+    .find("table.table-bordered")
+    .filter((_, tbl) => {
+      const header = $(tbl).find("thead th").first().text().trim().toLowerCase();
+      return header.includes("sub area");
+    })
+    .first();
 
-/**
- * Determines if a space is finished based on its sub-area text.
- * @param {string} subAreaText
- * @returns {boolean}
- */
-function isFinishedSpace(subAreaText) {
-  const unfinished_regex = /SEMI-FINISHED|UNFINISHED|SEMIFINISHED/i;
-  return !unfinished_regex.test(subAreaText);
-}
+  if (!table.length) return { heated: null, gross: null, livable: null };
 
-function defaultRoom(space_type, index, is_finished, sizeSqFt, is_exterior) {
-  return {
-    space_type: space_type,
-    space_index: index,
-    flooring_material_type: null, // Not in HTML
-    size_square_feet: sizeSqFt,
-    floor_level: null, // Not in HTML, assuming 1st floor for all if not specified
-    has_windows: null, // Not in HTML
-    window_design_type: null, // Not in HTML
-    window_material_type: null, // Not in HTML
-    window_treatment_type: null, // Not in HTML
-    is_finished: is_finished,
-    furnished: null, // Not in HTML
-    paint_condition: null, // Not in HTML
-    flooring_wear: null, // Not in HTML
-    clutter_level: null, // Not in HTML
-    visible_damage: null, // Not in HTML
-    countertop_material: null, // Not in HTML
-    cabinet_style: null, // Not in HTML
-    fixture_finish_quality: null, // Not in HTML
-    design_style: null, // Not in HTML
-    natural_light_quality: null, // Not in HTML
-    decor_elements: null, // Not in HTML
-    pool_type: null, // Not in HTML
-    pool_equipment: null, // Not in HTML
-    spa_type: null, // Not in HTML
-    safety_features: null, // Not in HTML
-    view_type: null, // Not in HTML
-    lighting_features: null, // Not in HTML
-    condition_issues: null, // Not in HTML
-    is_exterior: is_exterior,
-    pool_condition: null, // Not in HTML
-    pool_surface_type: null, // Not in HTML
-    pool_water_quality: null, // Not in HTML
+  const headers = table
+    .find("thead th")
+    .map((_, th) => $(th).text().trim().toLowerCase())
+    .get();
+
+  const heatedIdx = headers.findIndex((text) => text.includes("heated"));
+  const grossIdx = headers.findIndex((text) => text.includes("gross"));
+  const livingIdx = headers.findIndex((text) => text.includes("living"));
+
+  const totalRow = table
+    .find("tbody tr")
+    .filter((_, tr) => {
+      const key = $(tr).find("td").first().text().trim().toLowerCase();
+      return key.startsWith("total area sf");
+    })
+    .first();
+
+  if (!totalRow.length) return { heated: null, gross: null, livable: null };
+
+  const getValue = (idx) => {
+    if (idx < 0) return null;
+    return parseIntSafe(totalRow.find("td").eq(idx).text().trim());
   };
+
+  const heated = getValue(heatedIdx >= 0 ? heatedIdx : 1);
+  const gross = getValue(grossIdx >= 0 ? grossIdx : 2);
+  let livable = getValue(livingIdx);
+  if (livable == null) {
+    livable = heated;
+  }
+
+  return { heated, gross, livable };
+}
+
+function createLayoutEntry({
+  space_type,
+  space_type_index,
+  building_number = null,
+  built_year = null,
+  heated_area_sq_ft = null,
+  total_area_sq_ft = null,
+  livable_area_sq_ft = null,
+  size_square_feet = null,
+  is_finished = null,
+  is_exterior = null,
+}) {
+  return {
+    space_type,
+    space_type_index,
+    building_number,
+    built_year,
+    heated_area_sq_ft,
+    total_area_sq_ft,
+    livable_area_sq_ft,
+    size_square_feet,
+    flooring_material_type: null,
+    floor_level: null,
+    has_windows: null,
+    window_design_type: null,
+    window_material_type: null,
+    window_treatment_type: null,
+    is_finished,
+    furnished: null,
+    paint_condition: null,
+    flooring_wear: null,
+    clutter_level: null,
+    visible_damage: null,
+    countertop_material: null,
+    cabinet_style: null,
+    fixture_finish_quality: null,
+    design_style: null,
+    natural_light_quality: null,
+    decor_elements: null,
+    pool_type: null,
+    pool_equipment: null,
+    spa_type: null,
+    safety_features: null,
+    view_type: null,
+    lighting_features: null,
+    condition_issues: null,
+    is_exterior,
+    pool_condition: null,
+    pool_surface_type: null,
+    pool_water_quality: null,
+  };
+}
+
+function buildLayouts($) {
+  const layouts = [];
+
+  $("div.panel-body[id^='structural_']").each((idx, panelEl) => {
+    const $panel = $(panelEl);
+    const buildingNumber = idx + 1;
+
+    const builtYear = parseIntSafe(getStructuralValue($, $panel, "Year Built")) || null;
+    const livingUnits = parseIntSafe(getStructuralValue($, $panel, "Living Units")) || 0;
+    const { heated, gross, livable } = getSubAreaTotals($, $panel);
+
+    layouts.push(
+      createLayoutEntry({
+        space_type: "Building",
+        space_type_index: String(buildingNumber),
+        building_number: buildingNumber,
+        built_year: builtYear,
+        heated_area_sq_ft: heated,
+        total_area_sq_ft: gross,
+        livable_area_sq_ft: livable,
+        size_square_feet: null,
+        is_finished: null,
+        is_exterior: null,
+      })
+    );
+
+    for (let unit = 1; unit <= livingUnits; unit += 1) {
+      layouts.push(
+        createLayoutEntry({
+          space_type: "Living Area",
+          space_type_index: `${buildingNumber}.${unit}`,
+          building_number: buildingNumber,
+          built_year: builtYear,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          livable_area_sq_ft: null,
+          size_square_feet: null,
+          is_finished: null,
+          is_exterior: null,
+        })
+      );
+    }
+  });
+
+  return layouts;
 }
 
 (function main() {
@@ -129,51 +202,7 @@ function defaultRoom(space_type, index, is_finished, sizeSqFt, is_exterior) {
     const $ = cheerio.load(rawHtml);
 
     const strap = extractStrap($, rawHtml);
-    const allLayouts = [];
-    let globalSpaceIndex = 1; // To ensure unique space_index across all buildings
-    // Iterate through each "Structural Elements and Sub Area Information" panel
-    const $buildingEl = $("#divStructuralElementContainer .panel.panel-default.col-Area-Information").first();
-    const buildingTitle = $buildingEl.find(".panel-heading .detail-title").text().trim();
-    // console.log(`Processing: ${buildingTitle}`);
-
-    // Find the "Sub Area" table within this building's panel
-    const $subAreaTable = $buildingEl.find("table.table-bordered").filter((i, table) => {
-      return $(table).find("th").first().text().trim() === "Sub Area";
-    });
-
-    if ($subAreaTable.length === 0) {
-      console.warn(`No "Sub Area" table found for ${buildingTitle}.`);
-      return; // Skip to next building
-    }
-
-    $subAreaTable.find('tbody tr').each((i, row) => {
-      const $row = $(row);
-      const subAreaText = $row.find('td').eq(0).text().trim();
-
-      // Skip the "Total Area SF" summary row
-      if (subAreaText.toLowerCase().includes("total area sf")) {
-        return;
-      }
-
-      const heatedAreaSfText = $row.find('td').eq(1).text().trim();
-      const grossAreaSfText = $row.find('td').eq(2).text().trim();
-
-      const sizeSqFt = parseIntSafe(heatedAreaSfText) || parseIntSafe(grossAreaSfText);
-      // console.log(globalSpaceIndex + " " + subAreaText + " " + sizeSqFt);
-
-      if (sizeSqFt === null || sizeSqFt === 0) {
-        console.warn(`Skipping sub-area "${subAreaText}" due to invalid size.`);
-        return;
-      }
-
-      const space_type = mapSubAreaToSpaceType(subAreaText);
-      const is_finished = isFinishedSpace(subAreaText);
-      const is_exterior = isExteriorSpace(space_type); // Infer from mapped space_type
-
-      // Create a layout object for this sub-area
-      const layout = defaultRoom(space_type, globalSpaceIndex++, is_finished, sizeSqFt, is_exterior);
-      allLayouts.push(layout);
-    });
+    const layouts = buildLayouts($);
 
     const outDir = path.join("owners");
     ensureDir(outDir);
@@ -181,7 +210,7 @@ function defaultRoom(space_type, index, is_finished, sizeSqFt, is_exterior) {
 
     const key = `property_${strap}`;
     const payload = {};
-    payload[key] = { layouts: allLayouts };
+    payload[key] = { layouts };
 
     fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
     console.log(`Wrote layout data for ${key} to ${outPath}`);

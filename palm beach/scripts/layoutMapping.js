@@ -106,25 +106,25 @@ function run() {
   // Initialize layouts array
   const layouts = [];
   let space_index = 1;
-
+  
   // Extract bedroom/bathroom counts from embedded model
   let bedCount = 0;
   let fullBaths = 0;
   let halfBaths = 0;
-
+  
   // Read HTML file
   const inputHTML = fs.readFileSync("input.html", "utf8");
-
+  
   // Helper function to map element names to space types
   function mapElementNameToSpaceType(elementName) {
     if (!elementName) return null;
     const name = elementName.toUpperCase();
-
+    
     // Skip summary elements that shouldn't be individual spaces
     if (name.includes("TOTAL SQUARE FOOTAGE") || name.includes("AREA UNDER AIR")) {
       return null; // Don't create layout items for these summary elements
     }
-
+    
     if (name.includes("FOP") || name.includes("FINISHED OPEN PORCH")) return "Open Porch";
     if (name.includes("BAS") || name.includes("BASE AREA")) return "Living Area";
     if (name.includes("FGR") || name.includes("FINISHED GARAGE")) return "Attached Garage";
@@ -137,10 +137,10 @@ function run() {
     if (name.includes("BEDROOM")) return "Bedroom";
     if (name.includes("BATH")) return "Bathroom";
     if (name.includes("KITCHEN")) return "Kitchen";
-
+    
     return null;
   }
-
+  
   // Parse embedded model from HTML (use greedy match to capture entire model)
   const modelMatch = inputHTML.match(/var model = ({.+});/);
   if (modelMatch) {
@@ -155,18 +155,18 @@ function run() {
           if (/Bath\(s\)|Full Baths/i.test(name) && !/Half/i.test(name)) fullBaths = parseInt(val) || 0;
           if (/Half Bath|Half Baths/i.test(name)) halfBaths = parseInt(val) || 0;
         }
-
+        
         // Extract area-based layout elements (living area, porches, garage, etc.)
         for (const el of model.structuralDetails.StructuralElements) {
           if (el.DetailsSection === "Bottom" && el.BuildingNumber) {
             const buildingNum = parseInt(el.BuildingNumber);
             const spaceType = mapElementNameToSpaceType(el.ElementName);
-
+            
             // Skip elements that shouldn't be individual spaces
             if (!spaceType) {
               continue;
             }
-
+            
             const layoutItem = {
               space_type: spaceType,
               space_index: layouts.length + 1,
@@ -209,7 +209,7 @@ function run() {
                 multiValueQueryString: { parcelId: [propertyId || "unknown"] }
               }
             };
-
+            
             layouts.push(layoutItem);
           }
         }
@@ -218,7 +218,7 @@ function run() {
       console.log("Error parsing model for layout data:", e.message);
     }
   }
-
+  
   console.log(`Extracted bedroom/bathroom counts: ${bedCount} bedrooms, ${fullBaths} full baths, ${halfBaths} half baths`);
 
   // Skip subarea processing to avoid duplication - we're using embedded model data instead
@@ -229,6 +229,7 @@ function run() {
       defaultLayout(layouts.length + 1, {
         space_type: "Bedroom",
         size_square_feet: null,
+        floor_level: "1st Floor",
       }),
     );
   }
@@ -238,6 +239,7 @@ function run() {
     layouts.push(
       defaultLayout(layouts.length + 1, {
         space_type: "Full Bathroom",
+        floor_level: "1st Floor",
       }),
     );
   }
@@ -247,6 +249,7 @@ function run() {
     layouts.push(
       defaultLayout(layouts.length + 1, {
         space_type: "Half Bathroom / Powder Room",
+        floor_level: "1st Floor",
       }),
     );
   }
@@ -262,7 +265,7 @@ function run() {
   layouts.forEach((layout, index) => {
     const layoutIndex = index + 1;
     const layoutFileName = `layout_${layoutIndex}.json`;
-
+    
     // Write individual layout file to data directory only
     fs.writeFileSync(
       path.join(dataDir, layoutFileName),

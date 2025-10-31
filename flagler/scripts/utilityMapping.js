@@ -1,122 +1,152 @@
-// Utility mapping script
-// Reads input.html, parses with cheerio, and writes owners/utilities_data.json per schema
+// Utility extractor: reads input.html and writes owners/utilities_data.json per schema
+// Uses cheerio for HTML parsing
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+function text($el) {
+  if (!$el || $el.length === 0) return "";
+  return $el.text().trim();
 }
 
-function getCellValueByHeader($, table, headerText) {
-  let val = null;
-  $(table)
-    .find("tr")
-    .each((i, tr) => {
-      const th = $(tr).find("td strong").first();
-      const label = (th.text() || "").trim();
-      if (label.toLowerCase() === (headerText || "").toLowerCase()) {
-        const td = $(tr).find("td").eq(1);
-        val = td.text().replace(/\s+/g, " ").trim();
-      }
-    });
-  return val;
+function loadHtml() {
+  const html = fs.readFileSync("input.html", "utf8");
+  return cheerio.load(html);
 }
 
-function extractPropertyId($) {
-  const summaryTable = $(
-    "#ctlBodyPane_ctl02_ctl01_dynamicSummary_divSummary table.tabular-data-two-column",
+function getPropId($) {
+  const propId = text(
+    $(
+      "#ctlBodyPane_ctl02_ctl01_dynamicSummary_rptrDynamicColumns_ctl01_pnlSingleValue span",
+    ),
   );
-  let propId = getCellValueByHeader($, summaryTable, "Prop ID");
-  if (propId) return propId.trim();
-  let parcelId = getCellValueByHeader($, summaryTable, "Parcel ID");
-  if (parcelId) return parcelId.trim();
-  const title = $("title").text();
-  const m = title.match(/Card:\s*([\d\-]+)/);
-  if (m) return m[1];
-  return "unknown";
+  return propId || "unknown";
 }
 
 function extractHVAC($) {
-  const rightTable = $(
-    "#ctlBodyPane_ctl10_ctl01_lstBuildings_ctl00_dynamicBuildingDataRightColumn_divSummary table",
-  );
-  const air = getCellValueByHeader($, rightTable, "Air Conditioning");
-  const heat = getCellValueByHeader($, rightTable, "Heat");
-  let cooling_system_type = null;
-  if (/CENTRAL/i.test(air || "")) cooling_system_type = "CentralAir";
+  const facts = {};
+  const section = $("#ctlBodyPane_ctl10_mSection");
+  section.find(".tabular-data-two-column tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length >= 2) {
+      const key = text($(tds[0])).replace(/\s+/g, " ").trim();
+      const val = text($(tds[1]));
+      if (key) facts[key] = val;
+    }
+  });
+  return facts;
+}
+
+function mapUtilities($) {
+  const propId = getPropId($);
+  const hvacFacts = extractHVAC($);
+
+  const heatRaw = (hvacFacts["Heat"] || "").toUpperCase();
+  const acRaw = (hvacFacts["Air Conditioning"] || "").toUpperCase();
 
   let heating_system_type = null;
-  if (/FO AIR DCT|FORCED|CENTRAL|DUCT/i.test(heat || ""))
-    heating_system_type = "Central";
+  if (heatRaw) heating_system_type = "Central";
 
-  return { cooling_system_type, heating_system_type };
+  let cooling_system_type = null;
+  if (acRaw.includes("CENTRAL")) cooling_system_type = "CentralAir";
+
+  const utilities = {
+    cooling_system_type,
+    heating_system_type,
+
+    public_utility_type: null,
+    sewer_type: null,
+    water_source_type: null,
+
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+
+    electrical_panel_capacity: "Unknown",
+    electrical_wiring_type: null,
+    electrical_wiring_type_other_description: null,
+
+    hvac_condensing_unit_present: "Unknown",
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+
+    plumbing_system_installation_date: null,
+
+    public_utility_type_other_description: undefined, // not in schema, avoid
+
+    sewer_connection_date: null,
+
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+
+    solar_panel_present: false,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    solar_installation_date: null,
+
+    solar_inverter_visible: false,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    well_installation_date: null,
+  };
+
+  // Ensure required keys exist per schema
+  const required = [
+    "cooling_system_type",
+    "heating_system_type",
+    "public_utility_type",
+    "sewer_type",
+    "water_source_type",
+    "plumbing_system_type",
+    "plumbing_system_type_other_description",
+    "electrical_panel_capacity",
+    "electrical_wiring_type",
+    "hvac_condensing_unit_present",
+    "electrical_wiring_type_other_description",
+    "solar_panel_present",
+    "solar_panel_type",
+    "solar_panel_type_other_description",
+    "smart_home_features",
+    "smart_home_features_other_description",
+    "hvac_unit_condition",
+    "solar_inverter_visible",
+    "hvac_unit_issues",
+  ];
+  required.forEach((k) => {
+    if (!(k in utilities)) utilities[k] = null;
+  });
+
+  return { propId, utilities };
+}
+
+function writeOutput(propId, utilities) {
+  const outDir = path.join("owners");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "utilities_data.json");
+  const payload = {};
+  payload[`property_${propId}`] = utilities;
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
+  return outPath;
 }
 
 (function main() {
-  try {
-    const inputPath = path.join(process.cwd(), "input.html");
-    const html = fs.readFileSync(inputPath, "utf8");
-    const $ = cheerio.load(html);
-
-    const propId = extractPropertyId($);
-    const hvac = extractHVAC($);
-
-    const utility = {
-      cooling_system_type: hvac.cooling_system_type,
-      heating_system_type: hvac.heating_system_type,
-      public_utility_type: null,
-      sewer_type: null,
-      water_source_type: null,
-      plumbing_system_type: null,
-      plumbing_system_type_other_description: null,
-      electrical_panel_capacity: null,
-      electrical_wiring_type: null,
-      hvac_condensing_unit_present: "Unknown",
-      electrical_wiring_type_other_description: null,
-      solar_panel_present: false,
-      solar_panel_type: null,
-      solar_panel_type_other_description: null,
-      smart_home_features: null,
-      smart_home_features_other_description: null,
-      hvac_unit_condition: null,
-      solar_inverter_visible: false,
-      hvac_unit_issues: null,
-
-      // Optional fields
-      electrical_panel_installation_date: null,
-      electrical_rewire_date: null,
-      hvac_capacity_kw: null,
-      hvac_capacity_tons: null,
-      hvac_equipment_component: null,
-      hvac_equipment_manufacturer: null,
-      hvac_equipment_model: null,
-      hvac_installation_date: null,
-      hvac_seer_rating: null,
-      hvac_system_configuration: null,
-      plumbing_system_installation_date: null,
-      public_utility_details: undefined,
-      sewer_connection_date: null,
-      solar_installation_date: null,
-      solar_inverter_installation_date: null,
-      solar_inverter_manufacturer: null,
-      solar_inverter_model: null,
-      water_connection_date: null,
-      water_heater_installation_date: null,
-      water_heater_manufacturer: null,
-      water_heater_model: null,
-    };
-
-    const out = {};
-    out[`property_${propId}`] = utility;
-
-    ensureDir(path.join(process.cwd(), "owners"));
-    const outPath = path.join(process.cwd(), "owners", "utilities_data.json");
-    fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
-    console.log("Wrote utilities data to", outPath);
-  } catch (e) {
-    console.error("Error in utilityMapping:", e.message);
-    process.exit(1);
-  }
+  const $ = loadHtml();
+  const { propId, utilities } = mapUtilities($);
+  const outPath = writeOutput(propId, utilities);
+  console.log(`Utilities data written to: ${outPath}`);
 })();

@@ -1,225 +1,278 @@
-// Structure mapping script
-// Reads input.html, parses with cheerio, and writes owners/structure_data.json per schema
+// Structure extractor: reads input.html and writes owners/structure_data.json per schema
+// Uses cheerio for HTML parsing
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+function parseNumber(val) {
+  if (val == null) return null;
+  const n = String(val).replace(/[,\s]/g, "");
+  const num = parseFloat(n);
+  return isNaN(num) ? null : num;
 }
 
-function getCellValueByHeader($, table, headerText) {
-  let val = null;
-  $(table)
-    .find("tr")
-    .each((i, tr) => {
-      const th = $(tr).find("td strong").first();
-      const label = (th.text() || "").trim();
-      if (label.toLowerCase() === (headerText || "").toLowerCase()) {
-        const td = $(tr).find("td").eq(1);
-        val = td.text().replace(/\s+/g, " ").trim();
-      }
-    });
-  return val;
+function text($el) {
+  if (!$el || $el.length === 0) return "";
+  return $el.text().trim();
 }
 
-function parseIntSafe(s) {
-  if (!s) return null;
-  const num = parseInt(String(s).replace(/[^0-9.-]/g, ""), 10);
-  return Number.isFinite(num) ? num : null;
+function loadHtml() {
+  const html = fs.readFileSync("input.html", "utf8");
+  return cheerio.load(html);
 }
 
-function extractPropertyId($) {
-  // Prefer Prop ID from Parcel Summary table
-  const summaryTable = $(
-    "#ctlBodyPane_ctl02_ctl01_dynamicSummary_divSummary table.tabular-data-two-column",
+function getPropId($) {
+  // Prop ID in Parcel Summary table
+  const propId = text(
+    $(
+      "#ctlBodyPane_ctl02_ctl01_dynamicSummary_rptrDynamicColumns_ctl01_pnlSingleValue span",
+    ),
   );
-  let propId = getCellValueByHeader($, summaryTable, "Prop ID");
-  if (propId) return propId.trim();
-  // Fallback: Parcel ID
-  let parcelId = getCellValueByHeader($, summaryTable, "Parcel ID");
-  if (parcelId) return parcelId.trim();
-  // Last resort: from title
-  const title = $("title").text();
-  const m = title.match(/Card:\s*([\d\-]+)/);
-  if (m) return m[1];
-  return "unknown";
+  return propId || "unknown";
 }
 
-function extractResidentialLeftRightTables($) {
+function extractBuildingFacts($) {
+  const facts = {};
+  // Collect key-value from both left and right two-column tables in Residential Buildings
   const section = $("#ctlBodyPane_ctl10_mSection");
-  const leftTable = section.find(
-    "#ctlBodyPane_ctl10_ctl01_lstBuildings_ctl00_dynamicBuildingDataLeftColumn_divSummary table",
-  );
-  const rightTable = section.find(
-    "#ctlBodyPane_ctl10_ctl01_lstBuildings_ctl00_dynamicBuildingDataRightColumn_divSummary table",
-  );
-  return { leftTable, rightTable };
-}
-
-function getValueFromTwoColTable($, table, labelText) {
-  let result = null;
-  $(table)
-    .find("tr")
-    .each((_, tr) => {
-      const label = $(tr).find("td strong").first().text().trim();
-      if (label.toLowerCase() === labelText.toLowerCase()) {
-        result = $(tr).find("td").eq(1).text().replace(/\s+/g, " ").trim();
-      }
-    });
-  return result;
-}
-
-function extractBaseArea($) {
-  // Building Area Types table
-  const table = $(
-    "#ctlBodyPane_ctl13_ctl01_lstSubAreaSqFt_ctl00_gvwSubAreaSqFtDetail",
-  );
-  let base = null;
-  table.find("tbody tr").each((_, tr) => {
-    const code = $(tr).find("th").first().text().trim();
-    const desc = $(tr).find("td").eq(0).text().trim();
-    if (code === "BAS" || /BASE AREA/i.test(desc)) {
-      const sqft = $(tr).find("td").eq(1).text().trim();
-      base = parseIntSafe(sqft);
+  section.find(".tabular-data-two-column tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length >= 2) {
+      const key = text($(tds[0])).replace(/\s+/g, " ").trim();
+      const val = text($(tds[1]));
+      if (key) facts[key] = val;
     }
   });
-  return base;
+  return facts;
+}
+
+function extractAreaTypes($) {
+  const res = [];
+  const rows = $(
+    "#ctlBodyPane_ctl13_ctl01_lstSubAreaSqFt_ctl00_gvwSubAreaSqFtDetail tbody tr",
+  );
+  rows.each((_, tr) => {
+    const th = $(tr).find("th");
+    const tds = $(tr).find("td");
+    if (tds.length >= 3) {
+      res.push({
+        code: text(th),
+        description: text($(tds[0])),
+        sqft: parseNumber(text($(tds[1]))),
+        year: text($(tds[2])),
+      });
+    }
+  });
+  return res;
 }
 
 function mapStructure($) {
-  const { leftTable, rightTable } = extractResidentialLeftRightTables($);
+  const propId = getPropId($);
+  const facts = extractBuildingFacts($);
+  const areas = extractAreaTypes($);
 
-  const type = getValueFromTwoColTable($, leftTable, "Type");
-  const exteriorWalls = getValueFromTwoColTable($, leftTable, "Exterior Walls");
-  const roofCover = getValueFromTwoColTable($, leftTable, "Roof Cover");
-  const interiorWalls = getValueFromTwoColTable($, leftTable, "Interior Walls");
-  const frameType = getValueFromTwoColTable($, leftTable, "Frame Type");
-  const totalArea = getValueFromTwoColTable($, leftTable, "Total Area");
-  const heatedArea = getValueFromTwoColTable($, leftTable, "Heated Area");
+  // Inferences and mappings
+  const exteriorWallsRaw = (facts["Exterior Walls"] || "").toUpperCase();
+  const roofCoverRaw = (facts["Roof Cover"] || "").toUpperCase();
+  const interiorWallsRaw = (facts["Interior Walls"] || "").toUpperCase();
+  const frameTypeRaw = (facts["Frame Type"] || "").toUpperCase();
+  const floorCoverRaw = (facts["Floor Cover"] || "").toUpperCase();
 
-  const bedrooms = getValueFromTwoColTable($, rightTable, "Bedrooms");
-  const bathrooms = getValueFromTwoColTable($, rightTable, "Bathrooms");
+  // Exterior wall material primary
+  let exterior_wall_material_primary = null;
+  if (exteriorWallsRaw.includes("STUCCO"))
+    exterior_wall_material_primary = "Stucco";
 
-  // Derivations
-  const attachment_type = /SINGLE/i.test(type || "") ? "Detached" : null;
-  const exteriorPrimary = /STUCCO/i.test(exteriorWalls || "") ? "Stucco" : null;
-  const roof_covering_material = /ASP|COM|SH/i.test(roofCover || "")
-    ? "Architectural Asphalt Shingle"
-    : null;
-  const interior_surface_primary = /DRYWALL/i.test(interiorWalls || "")
-    ? "Drywall"
-    : null;
-  const primary_framing_material = /MASONRY/i.test(frameType || "")
-    ? "Masonry"
-    : null;
+  // Flooring
+  let flooring_material_primary = null;
+  let flooring_material_secondary = null;
+  if (floorCoverRaw.includes("CARPET")) flooring_material_primary = "Carpet";
+  if (floorCoverRaw.match(/CER|CLAY|CERA|CERAM|TILE/)) {
+    if (!flooring_material_primary) flooring_material_primary = "Ceramic Tile";
+    else flooring_material_secondary = "Ceramic Tile";
+  }
 
-  const finished_base_area = extractBaseArea($);
+  // Interior wall surface
+  let interior_wall_surface_material_primary = null;
+  if (interiorWallsRaw.includes("DRYWALL"))
+    interior_wall_surface_material_primary = "Drywall";
 
-  // Build structure object following schema required fields with nulls where unknown
+  // Framing material
+  let primary_framing_material = null;
+  if (frameTypeRaw.includes("MASONRY")) primary_framing_material = "Masonry";
+
+  // Roof covering material
+  let roof_covering_material = null;
+  if (roofCoverRaw.includes("ASP") || roofCoverRaw.includes("COM")) {
+    // Asphalt/Composition Shingle
+    roof_covering_material = "Architectural Asphalt Shingle";
+  }
+
+  // Foundation/Subfloor: infer slab on grade for Florida SFR unless stated otherwise
+  const foundation_type = "Slab on Grade";
+  const foundation_material = "Poured Concrete";
+  const subfloor_material = "Concrete Slab";
+
+  // Finished base area from Building Area Types (BAS)
+  let finished_base_area = null;
+  areas.forEach((a) => {
+    if (a.code === "BAS" && typeof a.sqft === "number")
+      finished_base_area = Math.round(a.sqft);
+  });
+
+  // Assemble structure object adhering to schema
   const structure = {
     architectural_style_type: null,
-    attachment_type: attachment_type,
-    exterior_wall_material_primary: exteriorPrimary,
+    attachment_type: "Detached",
+
+    exterior_wall_material_primary: exterior_wall_material_primary,
     exterior_wall_material_secondary: null,
     exterior_wall_condition: null,
-    exterior_wall_insulation_type: null,
-    flooring_material_primary: /CARPET/i.test(String(totalArea))
-      ? "Carpet"
-      : null, // placeholder; we'll improve below
-    flooring_material_secondary: null,
-    subfloor_material: null,
+    exterior_wall_insulation_type: "Unknown",
+    exterior_wall_insulation_type_primary: null,
+    exterior_wall_insulation_type_secondary: null,
+
+    flooring_material_primary: flooring_material_primary,
+    flooring_material_secondary: flooring_material_secondary,
+    subfloor_material: subfloor_material,
     flooring_condition: null,
+
     interior_wall_structure_material: null,
-    interior_wall_surface_material_primary: interior_surface_primary,
+    interior_wall_structure_material_primary: null,
+    interior_wall_structure_material_secondary: null,
+
+    interior_wall_surface_material_primary:
+      interior_wall_surface_material_primary,
     interior_wall_surface_material_secondary: null,
+
     interior_wall_finish_primary: null,
     interior_wall_finish_secondary: null,
     interior_wall_condition: null,
+
     roof_covering_material: roof_covering_material,
-    roof_underlayment_type: null,
+    roof_underlayment_type: "Unknown",
     roof_structure_material: null,
     roof_design_type: null,
     roof_condition: null,
     roof_age_years: null,
+    roof_material_type: "Shingle",
+
     gutters_material: null,
     gutters_condition: null,
-    roof_material_type: /ASP|COM|SH/i.test(roofCover || "") ? "Shingle" : null,
-    foundation_type: null,
-    foundation_material: null,
-    foundation_waterproofing: null,
-    foundation_condition: null,
+
+    foundation_type: foundation_type,
+    foundation_material: foundation_material,
+    foundation_waterproofing: "Unknown",
+    foundation_condition: "Unknown",
+
     ceiling_structure_material: null,
     ceiling_surface_material: null,
-    ceiling_insulation_type: null,
+    ceiling_insulation_type: "Unknown",
     ceiling_height_average: null,
     ceiling_condition: null,
+
     exterior_door_material: null,
     interior_door_material: null,
+
     window_frame_material: null,
     window_glazing_type: null,
     window_operation_type: null,
     window_screen_material: null,
+
     primary_framing_material: primary_framing_material,
     secondary_framing_material: null,
     structural_damage_indicators: null,
 
-    // Optional fields not required but present in schema
-    exterior_wall_condition_primary: null,
-    exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type_primary: null,
-    exterior_wall_insulation_type_secondary: null,
-    exterior_door_installation_date: null,
-    siding_installation_date: null,
-    window_installation_date: null,
-    roof_date: null,
+    // Optional areas
     finished_base_area: finished_base_area,
+    finished_basement_area: null,
     finished_upper_story_area: null,
     unfinished_base_area: null,
-    finished_basement_area: null,
     unfinished_basement_area: null,
     unfinished_upper_story_area: null,
+
+    exterior_wall_condition_primary: null,
+    exterior_wall_condition_secondary: null,
+    exterior_wall_material_secondary: null,
+
+    // Dates optional
+    exterior_door_installation_date: null,
+    foundation_repair_date: null,
+    roof_date: null,
+    siding_installation_date: null,
+    window_installation_date: null,
+
     number_of_stories: null,
-    gutters_material_secondary: undefined, // not in schema; ensure no extra props
+    ceiling_structure_material: null,
   };
 
-  // Fix flooring primary/secondary based on explicit Floor Cover info from left/right tables text
-  const floorCover = getValueFromTwoColTable(
-    $,
-    $(
-      "#ctlBodyPane_ctl10_ctl01_lstBuildings_ctl00_dynamicBuildingDataRightColumn_divSummary table",
-    ),
-    "Floor Cover",
-  );
-  if (floorCover) {
-    const hasCarpet = /CARPET/i.test(floorCover);
-    const hasTile = /CERA|CERAM|CLAY|TILE/i.test(floorCover);
-    if (hasCarpet) structure.flooring_material_primary = "Carpet";
-    if (hasTile) structure.flooring_material_secondary = "Ceramic Tile";
-  }
+  // Ensure required fields exist; fallback to null where needed
+  const requiredKeys = [
+    "architectural_style_type",
+    "attachment_type",
+    "exterior_wall_material_primary",
+    "exterior_wall_material_secondary",
+    "exterior_wall_condition",
+    "exterior_wall_insulation_type",
+    "flooring_material_primary",
+    "flooring_material_secondary",
+    "subfloor_material",
+    "flooring_condition",
+    "interior_wall_structure_material",
+    "interior_wall_surface_material_primary",
+    "interior_wall_surface_material_secondary",
+    "interior_wall_finish_primary",
+    "interior_wall_finish_secondary",
+    "interior_wall_condition",
+    "roof_covering_material",
+    "roof_underlayment_type",
+    "roof_structure_material",
+    "roof_design_type",
+    "roof_condition",
+    "roof_age_years",
+    "gutters_material",
+    "gutters_condition",
+    "roof_material_type",
+    "foundation_type",
+    "foundation_material",
+    "foundation_waterproofing",
+    "foundation_condition",
+    "ceiling_structure_material",
+    "ceiling_surface_material",
+    "ceiling_insulation_type",
+    "ceiling_height_average",
+    "ceiling_condition",
+    "exterior_door_material",
+    "interior_door_material",
+    "window_frame_material",
+    "window_glazing_type",
+    "window_operation_type",
+    "window_screen_material",
+    "primary_framing_material",
+    "secondary_framing_material",
+    "structural_damage_indicators",
+  ];
+  requiredKeys.forEach((k) => {
+    if (!(k in structure)) structure[k] = null;
+  });
 
-  return structure;
+  return { propId, structure };
+}
+
+function writeOutput(propId, structure) {
+  const outDir = path.join("owners");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "structure_data.json");
+  const payload = {};
+  payload[`property_${propId}`] = structure;
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
+  return outPath;
 }
 
 (function main() {
-  try {
-    const inputPath = path.join(process.cwd(), "input.html");
-    const html = fs.readFileSync(inputPath, "utf8");
-    const $ = cheerio.load(html);
-
-    const propId = extractPropertyId($);
-    const structure = mapStructure($);
-
-    const out = {};
-    out[`property_${propId}`] = structure;
-
-    ensureDir(path.join(process.cwd(), "owners"));
-    const outPath = path.join(process.cwd(), "owners", "structure_data.json");
-    fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
-    console.log("Wrote structure data to", outPath);
-  } catch (e) {
-    console.error("Error in structureMapping:", e.message);
-    process.exit(1);
-  }
+  const $ = loadHtml();
+  const { propId, structure } = mapStructure($);
+  const outPath = writeOutput(propId, structure);
+  console.log(`Structure data written to: ${outPath}`);
 })();

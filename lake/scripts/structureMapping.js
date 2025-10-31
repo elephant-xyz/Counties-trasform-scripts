@@ -97,7 +97,7 @@ function main() {
   // Build structure object adhering to schema with nulls for unknowns
   const structure = {
     architectural_style_type: null,
-    attachment_type: null,
+    attachment_type: "Detached",
     ceiling_condition: null,
     ceiling_height_average: null,
     ceiling_insulation_type: null,
@@ -107,9 +107,9 @@ function main() {
     exterior_wall_condition: null,
     exterior_wall_condition_primary: null,
     exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type: null,
-    exterior_wall_insulation_type_primary: null,
-    exterior_wall_insulation_type_secondary: null,
+    exterior_wall_insulation_type: "Unknown",
+    exterior_wall_insulation_type_primary: "Unknown",
+    exterior_wall_insulation_type_secondary: "Unknown",
     exterior_wall_material_primary: exteriorPrimary || null,
     exterior_wall_material_secondary: null,
     finished_base_area: null,

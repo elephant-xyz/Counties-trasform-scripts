@@ -38,72 +38,341 @@ function toISODate(dstr) {
   return `${yr}-${mm}-${day}`;
 }
 
+const COMPANY_KEYWORD_SETS = [
+  ["LIMITED", "PARTNERSHIP"],
+  ["LIMITED", "LIABILITY", "COMPANY"],
+  ["LIMITED", "LIABILITY", "PARTNERSHIP"],
+  ["LIMITED", "LIABILITY"],
+  ["PROFESSIONAL", "ASSOCIATION"],
+  ["PROFESSIONAL", "CORPORATION"],
+  ["HOMEOWNERS", "ASSOCIATION"],
+  ["CONDOMINIUM", "ASSOCIATION"],
+  ["PROPERTY", "OWNERS", "ASSOCIATION"],
+  ["STATE", "OF"],
+  ["CITY", "OF"],
+  ["COUNTY", "OF"],
+  ["UNITED", "STATES"],
+  ["HOUSING", "AUTHORITY"],
+  ["COMMUNITY", "DEVELOPMENT"],
+  ["ECONOMIC", "DEVELOPMENT"],
+  ["FAMILY", "TRUST"],
+  ["REVOCABLE", "TRUST"],
+  ["LIVING", "TRUST"],
+  ["IRREVOCABLE", "TRUST"],
+  ["APARTMENTS"],
+  ["ASSOCIATES"],
+  ["ASSOCIATION"],
+  ["AUTOMOTIVE"],
+  ["BANK"],
+  ["CAPITAL"],
+  ["CHURCH"],
+  ["CLINIC"],
+  ["CO-OP"],
+  ["COMPANY"],
+  ["CONSTRUCTION"],
+  ["CORPORATION"],
+  ["DEPARTMENT"],
+  ["ENTERPRISE"],
+  ["ENTERPRISES"],
+  ["ESTATE"],
+  ["ESTATES"],
+  ["FOUNDATION"],
+  ["FUND"],
+  ["GROUP"],
+  ["HOLDINGS"],
+  ["HOSPITAL"],
+  ["HOUSING"],
+  ["INSURANCE"],
+  ["INVESTMENT"],
+  ["INVESTMENTS"],
+  ["LLC"],
+  ["LLP"],
+  ["LLLP"],
+  ["LTD"],
+  ["MANAGEMENT"],
+  ["MINISTRIES"],
+  ["MINISTRY"],
+  ["MORTGAGE"],
+  ["PARTNERSHIP"],
+  ["PARTNERS"],
+  ["PROPERTIES"],
+  ["PROPERTY"],
+  ["REALTY"],
+  ["RESORT"],
+  ["SERVICES"],
+  ["SOLUTIONS"],
+  ["SCHOOL"],
+  ["TRUST"],
+  ["UNIVERSITY"],
+  ["VENTURES"],
+];
+
+const COMPANY_TOKENS = new Set([
+  "INC",
+  "INCORPORATED",
+  "CO",
+  "CO.",
+  "COMPANY",
+  "CORP",
+  "CORP.",
+  "CORPORATION",
+  "LLC",
+  "L.L.C",
+  "L L C",
+  "LC",
+  "LC.",
+  "LTD",
+  "L.T.D",
+  "L L P",
+  "LLP",
+  "L.L.P",
+  "L L L P",
+  "LLLP",
+  "PLC",
+  "P.L.C",
+  "PLLC",
+  "P.L.L.C",
+  "PC",
+  "P.C",
+  "PA",
+  "P.A",
+  "GP",
+  "G.P",
+  "LP",
+  "L.P",
+  "TR",
+  "TRS",
+  "TRUST",
+  "FBO",
+  "IRA",
+  "C/O",
+  "ETAL",
+  "ET-AL",
+  "ASSOC",
+  "ASSN",
+  "ASPHA",
+  "FOUNDATION",
+  "FNDN",
+  "PARTNERS",
+  "PARTNERSHIP",
+  "HOLDINGS",
+  "INVESTMENTS",
+  "PROPERTIES",
+  "PROPERTY",
+  "REALTY",
+  "MANAGEMENT",
+  "MGMT",
+  "SOLUTIONS",
+  "SERVICES",
+  "SERVICE",
+  "ENTERPRISE",
+  "ENTERPRISES",
+  "VENTURES",
+  "BANK",
+  "MORTGAGE",
+  "FINANCIAL",
+  "FUND",
+  "CAPITAL",
+  "TRUSTEE",
+  "TRUSTEES",
+  "AUTHORITY",
+  "DEPARTMENT",
+  "DEPT",
+  "CITY",
+  "COUNTY",
+  "TOWN",
+  "STATE",
+  "UNIVERSITY",
+  "COLLEGE",
+  "SCHOOL",
+  "HOSPITAL",
+  "MEDICAL",
+  "CLINIC",
+  "CHURCH",
+  "TEMPLE",
+  "MOSQUE",
+  "SYNAGOGUE",
+  "MINISTRY",
+  "MINISTRIES",
+  "ASSOCIATION",
+  "ASSOCIATES",
+  "APARTMENTS",
+  "PRODUCTIONS",
+  "LOGISTICS",
+  "TRANSPORT",
+  "SUPPLY",
+  "SUPPLIES",
+  "DISTRIBUTION",
+  "DESIGN",
+  "DEVELOPMENT",
+  "STUDIO",
+  "PROPERTIES",
+  "ESTATES",
+  "ESTATE",
+  "HOMES",
+  "HOMESITES",
+  "HOLDING",
+  "SYSTEMS",
+  "TECHNOLOGIES",
+  "TECHNOLOGY",
+  "SOLN",
+  "LLC.",
+  "LLP.",
+  "LLLP.",
+  "PLC.",
+  "PLLC.",
+  "PC.",
+  "PA.",
+  "GP.",
+  "LP.",
+  "COOP",
+  "CO-OP",
+]);
+
+const PREFIX_MAP = {
+  MR: "Mr.",
+  MRS: "Mrs.",
+  MS: "Ms.",
+  MISS: "Miss",
+  MX: "Mx.",
+  DR: "Dr.",
+  PROF: "Prof.",
+  REV: "Rev.",
+  FR: "Fr.",
+  SR: "Sr.",
+  BR: "Br.",
+  CAPT: "Capt.",
+  COL: "Col.",
+  MAJ: "Maj.",
+  LT: "Lt.",
+  SGT: "Sgt.",
+  HON: "Hon.",
+  JUDGE: "Judge",
+  RABBI: "Rabbi",
+  IMAM: "Imam",
+  SHEIKH: "Sheikh",
+  SIR: "Sir",
+  DAME: "Dame",
+};
+
+const SUFFIX_MAP = {
+  JR: "Jr.",
+  SR: "Sr.",
+  II: "II",
+  III: "III",
+  IV: "IV",
+  PHD: "PhD",
+  MD: "MD",
+  ESQ: "Esq.",
+  JD: "JD",
+  LLM: "LLM",
+  MBA: "MBA",
+  RN: "RN",
+  DDS: "DDS",
+  DVM: "DVM",
+  CFA: "CFA",
+  CPA: "CPA",
+  PE: "PE",
+  PMP: "PMP",
+  EMERITUS: "Emeritus",
+  RET: "Ret.",
+};
+
+const PERSON_NAME_REGEX = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+const MIDDLE_NAME_REGEX = /^[A-Z][A-Za-z\s-',.]*$/;
+
+function formatPersonName(value) {
+  if (!value) return null;
+  const cleaned = value.replace(/[^A-Za-z\s\-',.]/g, " ").trim();
+  if (!cleaned) return null;
+  const formatted = cleaned
+    .toLowerCase()
+    .replace(/(^|[ \-'\.])([a-z])/g, (match, sep, char) => `${sep}${char.toUpperCase()}`)
+    .replace(/\s+/g, " ")
+    .trim();
+  const withoutTrailingPeriod = formatted.replace(/\.+$/, "");
+  return withoutTrailingPeriod || null;
+}
+
+function formatMiddleNameValue(value) {
+  const formatted = formatPersonName(value);
+  if (!formatted) return null;
+  return MIDDLE_NAME_REGEX.test(formatted) ? formatted : null;
+}
+
 // Helper: detect if a name is likely a company
 function isCompany(raw) {
-  const s = clean(raw).toLowerCase();
+  const sClean = clean(raw);
+  const s = sClean.toUpperCase();
   if (!s) return false;
-  // Tokenize on non-letters to find whole-word markers
-  const tokens = s.split(/[^a-z0-9&]+/).filter(Boolean);
-  const hasToken = (t) => tokens.includes(t);
-  const contains = (re) => re.test(s);
-  const markers = [
-    /\binc\.?\b/i,
-    /\bllc\b|\bl\.l\.c\b/i,
-    /\bltd\.?\b/i,
-    /\bcorp\.?\b|\bcorporation\b/i,
-    /\bcompany\b|\bco\.?\b/i,
-    /\bfoundation\b/i,
-    /\balliance\b/i,
-    /\bsolutions\b/i,
-    /\bservices?\b/i,
-    /\btrust\b/i,
-    /\bhoa\b|\bhomeowners\b|\bassn\b|\bassociation\b/i,
-    /\bassociates?\b/i,
-    /\bpartners?\b|\bholdings?\b/i,
-    /\blp\b|\bllp\b|\bplc\b/i,
-    /\bbank\b/i,
-    /\buniversity\b|\bcollege\b/i,
-    /\bministry\b|\bministries\b/i,
-    /\bchurch\b/i,
-    /\bauthority\b|\bdepartment\b/i,
-    /\bcity of\b|\bcounty of\b|\btown of\b/i,
-  ];
-  // Special: standalone TR token (common for Trust)
-  if (hasToken("tr")) return true;
-  return markers.some(contains);
+  const normalized = s.replace(/[.\']/g, " ");
+  const tokens = normalized.split(/[^A-Z0-9&]+/).filter(Boolean);
+  for (const token of tokens) {
+    if (COMPANY_TOKENS.has(token)) {
+      return true;
+    }
+  }
+  const words = normalized.split(/\s+/).filter(Boolean);
+  for (const keywordSet of COMPANY_KEYWORD_SETS) {
+    const matchesAll = keywordSet.every((kw) =>
+      words.includes(kw.toUpperCase()) || s.includes(kw.toUpperCase()),
+    );
+    if (matchesAll) return true;
+  }
+  return false;
 }
 
 // Helper: split multiple parties separated by '&' or ' and '
 function splitParties(raw) {
   const s = clean(raw);
   if (!s) return [];
-  // Normalize common separators
-  const parts = s
-    .replace(/\sand\s/gi, " & ")
+  const normalized = s.replace(/\sand\s/gi, " & ");
+  const parts = normalized
     .split(/\s*&\s*/)
     .map((p) => clean(p))
     .filter(Boolean);
+  if (parts.length <= 1) {
+    return parts;
+  }
+  if (isCompany(s)) {
+    const shouldKeepWhole = parts.some((part) => {
+      const tokenCount = part.split(/\s+/).filter(Boolean).length;
+      return !isCompany(part) && tokenCount < 2;
+    });
+    if (shouldKeepWhole) {
+      return [s];
+    }
+  }
+  // Normalize common separators for person/person ownership
   return parts;
 }
 
 // Helper: Map raw suffix to schema enum
 function mapSuffixToSchema(rawSuffix) {
-  const s = (rawSuffix || "").toUpperCase().replace(/\./g, "");
-  switch (s) {
-    case "JR":
-      return "Jr.";
-    case "SR":
-      return "Sr.";
-    case "II":
-      return "II";
-    case "III":
-      return "III";
-    case "IV":
-      return "IV";
-    // Add other suffixes from your schema enum if needed
-    default:
-      return null;
+  if (!rawSuffix) return null;
+  const normalized = rawSuffix.toUpperCase().replace(/[^A-Z]/g, "");
+  return SUFFIX_MAP[normalized] || null;
+}
+
+function mapPrefixToSchema(token) {
+  if (!token) return null;
+  const normalized = token.toUpperCase().replace(/[^A-Z]/g, "");
+  return PREFIX_MAP[normalized] || null;
+}
+
+function extractSuffixTokens(tokens) {
+  let extractedSuffix = null;
+  const filteredTokens = [];
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const normalizedToken = tokens[i].toUpperCase().replace(/[^A-Z]/g, "");
+    const mapped = mapSuffixToSchema(normalizedToken);
+    if (!extractedSuffix && mapped) {
+      extractedSuffix = mapped;
+      continue;
+    }
+    filteredTokens.unshift(tokens[i]);
   }
+  return { extractedSuffix, filteredTokens };
 }
 
 // Helper: classify and structure a single name string
@@ -112,11 +381,11 @@ function parseOwnerName(raw, requestIdentifier, sourceHttpRequest) {
   if (!s) return { valid: false, reason: "empty", raw };
 
   if (isCompany(s)) {
+    const companyName = clean(s);
     return {
       valid: true,
       owner: {
-        type: "company",
-        name: s,
+        name: companyName,
         request_identifier: requestIdentifier,
         source_http_request: sourceHttpRequest,
       },
@@ -124,35 +393,29 @@ function parseOwnerName(raw, requestIdentifier, sourceHttpRequest) {
   }
 
   // Define suffixes to look for and remove from name parts
-  const SUFFIXES_TO_EXTRACT = ["JR", "SR", "II", "III", "IV", "V"];
-
   let last = null,
     first = null,
     middle = null,
     suffix = null;
 
-  // Function to extract suffix from a list of tokens
-  const extractSuffix = (tokens) => {
-    let extractedSuffix = null;
-    let filteredTokens = [];
-    for (let i = tokens.length - 1; i >= 0; i--) {
-      const token = tokens[i].toUpperCase().replace(/\./g, "");
-      if (SUFFIXES_TO_EXTRACT.includes(token)) {
-        extractedSuffix = mapSuffixToSchema(token);
-      } else {
-        filteredTokens.unshift(tokens[i]); // Add to beginning if not a suffix
-      }
+  let working = s;
+  let prefix = null;
+  const leadingParts = working.split(/\s+/);
+  if (leadingParts.length > 1) {
+    const mappedPrefix = mapPrefixToSchema(leadingParts[0]);
+    if (mappedPrefix) {
+      prefix = mappedPrefix;
+      working = working.slice(leadingParts[0].length).trim();
     }
-    return { extractedSuffix, filteredTokens };
-  };
+  }
 
-  if (s.includes(",")) {
+  if (working.includes(",")) {
     // Format: LAST, FIRST [MIDDLE] [SUFFIX]
-    const [left, rightRaw] = s.split(",");
+    const [left, rightRaw] = working.split(",");
     last = clean(left);
     const rightTokens = clean(rightRaw).split(/\s+/).filter(Boolean);
 
-    const { extractedSuffix, filteredTokens } = extractSuffix(rightTokens);
+    const { extractedSuffix, filteredTokens } = extractSuffixTokens(rightTokens);
     suffix = extractedSuffix;
 
     if (filteredTokens.length >= 1) {
@@ -164,17 +427,15 @@ function parseOwnerName(raw, requestIdentifier, sourceHttpRequest) {
     // Given the HTML example "POLYPACK LTD PARTNERSHIP", it's likely company.
     // For persons, "SMITH, DWIGHT R JR" is common.
     // Let's assume if no comma, it's FIRST MIDDLE LAST, or FIRST LAST.
-    const toks = s.split(/\s+/).filter(Boolean);
-    const { extractedSuffix, filteredTokens } = extractSuffix(toks);
+    const toks = working.split(/\s+/).filter(Boolean);
+    const { extractedSuffix, filteredTokens } = extractSuffixTokens(toks);
     suffix = extractedSuffix;
 
     if (filteredTokens.length >= 2) {
-      // Assume LAST is the last token if no comma, and FIRST is the first.
-      // This is a common pattern for informal names or when comma is omitted.
-      first = filteredTokens[0];
-      last = filteredTokens[filteredTokens.length - 1];
+      last = filteredTokens[0];
+      first = filteredTokens[1];
       if (filteredTokens.length > 2) {
-        middle = filteredTokens.slice(1, filteredTokens.length - 1).join(" ");
+        middle = filteredTokens.slice(2).join(" ");
       }
     } else if (filteredTokens.length === 1) {
       // Only one name part after suffix extraction, likely an error or single name.
@@ -183,37 +444,28 @@ function parseOwnerName(raw, requestIdentifier, sourceHttpRequest) {
     }
   }
 
-  // Format names to match schema patterns
-  const formatName = (name) => {
-    if (!name) return null;
-    return name.replace(/([a-zA-Z]+)/g, (match) => 
-      match.charAt(0).toUpperCase() + match.slice(1).toLowerCase()
-    );
-  };
-
-  const formatMiddleName = (name) => {
-    if (!name) return null;
-    return name.replace(/([a-zA-Z]+)/g, (match) => 
-      match.charAt(0).toUpperCase() + match.slice(1).toLowerCase()
-    );
-  };
-
   // Validate required fields - first_name and last_name must have minimum length 1
-  const formattedFirst = formatName(first);
-  const formattedLast = formatName(last);
-  
-  if (!formattedFirst || formattedFirst.length < 1 || !formattedLast || formattedLast.length < 1) {
+  const formattedFirst = formatPersonName(first);
+  const formattedLast = formatPersonName(last);
+
+  if (
+    !formattedFirst ||
+    !formattedLast ||
+    !PERSON_NAME_REGEX.test(formattedFirst) ||
+    !PERSON_NAME_REGEX.test(formattedLast)
+  ) {
     return { valid: false, reason: "missing_required_name_fields", raw: s };
   }
 
+  const middleNameFormatted = formatMiddleNameValue(middle);
   const person = {
     source_http_request: sourceHttpRequest,
     request_identifier: requestIdentifier,
     birth_date: null,
     first_name: formattedFirst,
     last_name: formattedLast,
-    middle_name: formatMiddleName(middle),
-    prefix_name: null,
+    middle_name: middleNameFormatted,
+    prefix_name: prefix,
     suffix_name: suffix,
     us_citizenship_status: null,
     veteran_status: null,
@@ -235,7 +487,9 @@ function ownersFromRaw(raw, invalids, requestIdentifier, sourceHttpRequest) {
 
 // Helper: normalize for dedupe
 function normalizeOwner(o) {
-  if (o.type === "company") return `company:${clean(o.name).toLowerCase()}`;
+  if (o && "name" in o && !("first_name" in o)) {
+    return `company:${clean(o.name).toLowerCase()}`;
+  }
   const f = clean(o.first_name || "").toLowerCase();
   const l = clean(o.last_name || "").toLowerCase();
   const m = o.middle_name ? clean(o.middle_name).toLowerCase() : "";
@@ -280,7 +534,7 @@ try {
   const requestIdentifier = propertyId; // Using propertyId as request_identifier
   const sourceHttpRequest = {
     method: "GET",
-    url: `https://www.pcpao.gov/property-details?s=${propertyId}`, // Example URL
+    url: 'https://www.pcpao.gov/property-details', // Example URL
   };
 
   // Collect owners
@@ -349,7 +603,7 @@ try {
   });
 
   // Add current owners at the end under 'current'
-  ownersByDate["current"] = currentOwners;
+  // ownersByDate["current"] = currentOwners;
 
   // Sort chronological keys (ISO dates), keep unknown_date_* in insertion order, current last
   const dateKeys = Object.keys(ownersByDate)

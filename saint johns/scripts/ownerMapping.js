@@ -43,15 +43,15 @@ function cleanRawName(raw) {
   });
   s = s.replace(/[(),]/g, " ").replace(/\s+/g, " ").trim();
   s = s
-    .replace(/^(&|and)\s+/i, "")
-    .replace(/\s+(&|and)$/i, "")
-    .trim();
+      .replace(/^(&|and)\s+/i, "")
+      .replace(/\s+(&|and)$/i, "")
+      .trim();
   // If a trailing bare number remains right after a company suffix, drop it
   const companySuffix =
-    "(?:LLC|L\\.L\\.C|INC|CORP|CO|COMPANY|LTD|TRUST|LP|LLP|PLC|PLLC)";
+      "(?:LLC|L\\.L\\.C|INC|CORP|CO|COMPANY|LTD|TRUST|LP|LLP|PLC|PLLC)";
   const trailingNumAfterCo = new RegExp(
-    `^(.*?\\b${companySuffix}\\b)\\s+\\d{1,3}$`,
-    "i",
+      `^(.*?\\b${companySuffix}\\b)\\s+\\d{1,3}$`,
+      "i",
   );
   const m = s.match(trailingNumAfterCo);
   if (m) {
@@ -62,16 +62,16 @@ function cleanRawName(raw) {
 
 function normalizeWhitespace(str) {
   return (str || "")
-    .replace(/\s+/g, " ")
-    .replace(/[\u00A0\s]+/g, " ")
-    .trim();
+      .replace(/\s+/g, " ")
+      .replace(/[\u00A0\s]+/g, " ")
+      .trim();
 }
 
 function cleanInvalidCharsFromName(raw) {
   let parsedName = normalizeWhitespace(raw)
-    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
-    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
-    .trim();
+      .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+      .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+      .trim();
   while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
     parsedName = parsedName.slice(1);
   }
@@ -115,7 +115,7 @@ const COMPANY_KEYWORDS = [
 function isCompanyName(name) {
   const n = name.toLowerCase();
   return COMPANY_KEYWORDS.some((kw) =>
-    new RegExp(`(^|\\b)${kw}(\\b|\.$)`, "i").test(n),
+      new RegExp(`(^|\\b)${kw}(\\b|\.$)`, "i").test(n),
   );
 }
 
@@ -123,9 +123,9 @@ function splitCompositeNames(name) {
   const cleaned = cleanRawName(name);
   if (!cleaned) return [];
   const parts = cleaned
-    .split(/\s*&\s*|\s+and\s+/i)
-    .map((p) => p.trim())
-    .filter(Boolean);
+      .split(/\s*&\s*|\s+and\s+/i)
+      .map((p) => p.trim())
+      .filter(Boolean);
   return parts;
 }
 
@@ -149,13 +149,13 @@ function classifyOwner(raw) {
   // }
   const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
   if (first && last) {
-  const person = {
-    type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middle ? middle : null,
-  };
-  return { valid: true, owner: person };
+    const person = {
+      type: "person",
+      first_name: first,
+      last_name: last,
+      middle_name: middle ? middle : null,
+    };
+    return { valid: true, owner: person };
   }
   return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
@@ -280,7 +280,7 @@ if (priorOwners && priorOwners.length > 0) {
         granteeNamesNorm.add(`company:${normalizeName(o.name)}`);
       else
         granteeNamesNorm.add(
-          `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
+            `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
         );
     });
   });
@@ -308,8 +308,8 @@ if (priorOwners && priorOwners.length > 0) {
   }
   if (placeholderRaw.length > 0) {
     const unknownOwners = resolveOwnersFromRawStrings(
-      placeholderRaw,
-      invalid_owners,
+        placeholderRaw,
+        invalid_owners,
     );
     if (unknownOwners.length > 0) {
       let idx = 1;
@@ -324,8 +324,8 @@ if (priorOwners && priorOwners.length > 0) {
 }
 
 const currentOwnersStructured = resolveOwnersFromRawStrings(
-  currentOwnerRaw,
-  invalid_owners,
+    currentOwnerRaw,
+    invalid_owners,
 );
 if (currentOwnersStructured.length > 0) {
   owners_by_date["current"] = currentOwnersStructured;
@@ -335,14 +335,14 @@ if (currentOwnersStructured.length > 0) {
 
 const orderedOwnersByDate = {};
 const dateKeys = Object.keys(owners_by_date)
-  .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
-  .sort();
+    .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+    .sort();
 for (const dk of dateKeys) orderedOwnersByDate[dk] = owners_by_date[dk];
 Object.keys(owners_by_date)
-  .filter((k) => /^unknown_date_\d+$/.test(k))
-  .forEach((k) => {
-    orderedOwnersByDate[k] = owners_by_date[k];
-  });
+    .filter((k) => /^unknown_date_\d+$/.test(k))
+    .forEach((k) => {
+      orderedOwnersByDate[k] = owners_by_date[k];
+    });
 if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
   orderedOwnersByDate["current"] = owners_by_date["current"];
 }

@@ -1,84 +1,47 @@
-// Layout mapping script
-// Reads input.html, parses with cheerio, and writes owners/layout_data.json per schema
+// Layout extractor: reads input.html and writes owners/layout_data.json per schema
+// Uses cheerio for HTML parsing
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+function text($el) {
+  if (!$el || $el.length === 0) return "";
+  return $el.text().trim();
 }
 
-function getCellValueByHeader($, table, headerText) {
-  let val = null;
-  $(table)
-    .find("tr")
-    .each((i, tr) => {
-      const th = $(tr).find("td strong").first();
-      const label = (th.text() || "").trim();
-      if (label.toLowerCase() === (headerText || "").toLowerCase()) {
-        const td = $(tr).find("td").eq(1);
-        val = td.text().replace(/\s+/g, " ").trim();
-      }
-    });
-  return val;
+function loadHtml() {
+  const html = fs.readFileSync("input.html", "utf8");
+  return cheerio.load(html);
 }
 
-function extractPropertyId($) {
-  const summaryTable = $(
-    "#ctlBodyPane_ctl02_ctl01_dynamicSummary_divSummary table.tabular-data-two-column",
+function getPropId($) {
+  const propId = text(
+    $(
+      "#ctlBodyPane_ctl02_ctl01_dynamicSummary_rptrDynamicColumns_ctl01_pnlSingleValue span",
+    ),
   );
-  let propId = getCellValueByHeader($, summaryTable, "Prop ID");
-  if (propId) return propId.trim();
-  let parcelId = getCellValueByHeader($, summaryTable, "Parcel ID");
-  if (parcelId) return parcelId.trim();
-  const title = $("title").text();
-  const m = title.match(/Card:\s*([\d\-]+)/);
-  if (m) return m[1];
-  return "unknown";
+  return propId || "unknown";
 }
 
-function extractCounts($) {
-  const rightTable = $(
-    "#ctlBodyPane_ctl10_ctl01_lstBuildings_ctl00_dynamicBuildingDataRightColumn_divSummary table",
-  );
-  const bedrooms =
-    parseInt(
-      (getCellValueByHeader($, rightTable, "Bedrooms") || "").replace(
-        /[^0-9]/g,
-        "",
-      ),
-      10,
-    ) || 0;
-  const bathrooms =
-    parseInt(
-      (getCellValueByHeader($, rightTable, "Bathrooms") || "").replace(
-        /[^0-9]/g,
-        "",
-      ),
-      10,
-    ) || 0;
-  return { bedrooms, bathrooms };
-}
-
-function extractBaseArea($) {
-  const table = $(
-    "#ctlBodyPane_ctl13_ctl01_lstSubAreaSqFt_ctl00_gvwSubAreaSqFtDetail",
-  );
-  let base = null;
-  table.find("tbody tr").each((_, tr) => {
-    const code = $(tr).find("th").first().text().trim();
-    const desc = $(tr).find("td").eq(0).text().trim();
-    if (code === "BAS" || /BASE AREA/i.test(desc)) {
-      const sqft = $(tr).find("td").eq(1).text().trim();
-      base = parseInt(sqft.replace(/[^0-9]/g, ""), 10);
+function extractResidentialCounts($) {
+  const facts = {};
+  const section = $("#ctlBodyPane_ctl10_mSection");
+  section.find(".tabular-data-two-column tbody tr").each((_, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length >= 2) {
+      const key = text($(tds[0])).replace(/\s+/g, " ").trim();
+      const val = text($(tds[1]));
+      if (key) facts[key] = val;
     }
   });
-  return base;
+  return facts;
 }
 
-function baseLayoutDefaults() {
+function defaultLayout(spaceType, index) {
   return {
+    space_type: spaceType,
+    space_index: index,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: "1st Floor",
@@ -110,80 +73,52 @@ function baseLayoutDefaults() {
     pool_surface_type: null,
     pool_water_quality: null,
 
-    // optional dates
+    // Optional dates
     bathroom_renovation_date: null,
     kitchen_renovation_date: null,
     flooring_installation_date: null,
-    pool_installation_date: null,
     spa_installation_date: null,
+    pool_installation_date: null,
   };
 }
 
-(function main() {
-  try {
-    const inputPath = path.join(process.cwd(), "input.html");
-    const html = fs.readFileSync(inputPath, "utf8");
-    const $ = cheerio.load(html);
+function mapLayouts($) {
+  const propId = getPropId($);
+  const facts = extractResidentialCounts($);
+  const bedrooms = parseInt((facts["Bedrooms"] || "").replace(/\D/g, "")) || 0;
+  const bathrooms =
+    parseInt((facts["Bathrooms"] || "").replace(/\D/g, "")) || 0;
 
-    const propId = extractPropertyId($);
-    const counts = extractCounts($);
-    const baseArea = extractBaseArea($);
-
-    const layouts = [];
-    // Create one Primary Bedroom + Secondary bedrooms based on count, sizes unknown
-    if (counts.bedrooms > 0) {
-      for (let i = 1; i <= counts.bedrooms; i++) {
-        const layout = Object.assign({}, baseLayoutDefaults(), {
-          space_type: i === 1 ? "Primary Bedroom" : "Secondary Bedroom",
-          space_index: i,
-          flooring_material_type: null,
-          size_square_feet: null,
-          has_windows: null,
-          window_design_type: null,
-          window_material_type: null,
-          window_treatment_type: null,
-        });
-        layouts.push(layout);
-      }
-    }
-    // Bathrooms: assume first is Primary Bathroom if bedrooms>0
-    if (counts.bathrooms > 0) {
-      for (let b = 1; b <= counts.bathrooms; b++) {
-        const layout = Object.assign({}, baseLayoutDefaults(), {
-          space_type: b === 1 ? "Primary Bathroom" : "Full Bathroom",
-          space_index: (counts.bedrooms || 0) + b,
-          size_square_feet: null,
-        });
-        layouts.push(layout);
-      }
-    }
-
-    // Add generic Living Room and Kitchen if base area exists
-    const nextIndex = layouts.length + 1;
-    layouts.push(
-      Object.assign({}, baseLayoutDefaults(), {
-        space_type: "Living Room",
-        space_index: nextIndex,
-        size_square_feet: null,
-      }),
-    );
-    layouts.push(
-      Object.assign({}, baseLayoutDefaults(), {
-        space_type: "Kitchen",
-        space_index: nextIndex + 1,
-        size_square_feet: null,
-      }),
-    );
-
-    const out = {};
-    out[`property_${propId}`] = { layouts };
-
-    ensureDir(path.join(process.cwd(), "owners"));
-    const outPath = path.join(process.cwd(), "owners", "layout_data.json");
-    fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
-    console.log("Wrote layout data to", outPath);
-  } catch (e) {
-    console.error("Error in layoutMapping:", e.message);
-    process.exit(1);
+  const layouts = [];
+  // Create a layout per bedroom
+  for (let i = 1; i <= bedrooms; i++) {
+    const l = defaultLayout("Bedroom", i);
+    layouts.push(l);
   }
+  // Create a layout per bathroom (assume full baths as we don't have half counts)
+  for (let i = 1; i <= bathrooms; i++) {
+    const l = defaultLayout("Full Bathroom", bedrooms + i);
+    layouts.push(l);
+  }
+
+  // Use BAS area as gross living area for size hint if only one great room exists; keep sizes null to respect unknowns
+
+  return { propId, layouts };
+}
+
+function writeOutput(propId, layouts) {
+  const outDir = path.join("owners");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "layout_data.json");
+  const payload = {};
+  payload[`property_${propId}`] = { layouts };
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
+  return outPath;
+}
+
+(function main() {
+  const $ = loadHtml();
+  const { propId, layouts } = mapLayouts($);
+  const outPath = writeOutput(propId, layouts);
+  console.log(`Layout data written to: ${outPath}`);
 })();

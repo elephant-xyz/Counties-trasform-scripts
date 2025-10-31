@@ -6,7 +6,12 @@ function ensureDir(p) {
 }
 
 function readJson(p) {
-  return JSON.parse(fs.readFileSync(p, "utf8"));
+  const content = fs.readFileSync(p, "utf8");
+  // Check if it's HTML (error page) instead of JSON
+  if (content.trim().startsWith('<')) {
+    return null; // Return null for HTML error pages
+  }
+  return JSON.parse(content);
 }
 
 function writeJson(p, obj) {
@@ -22,6 +27,38 @@ function toTitleCase(name) {
     .replace(/(^|[\s\-'])[a-z]/g, (s) => s.toUpperCase());
 }
 
+function formatNameForValidation(name) {
+  if (!name || typeof name !== "string") return null;
+  
+  // Clean the name: remove special characters except spaces, hyphens, apostrophes, periods, commas
+  let cleaned = name.trim().replace(/[^A-Za-z\s\-',.]/g, "");
+  
+  // If empty after cleaning, return null
+  if (!cleaned) return null;
+  
+  // Apply title case formatting
+  cleaned = cleaned
+    .toLowerCase()
+    .replace(/(^|[\s\-'])[a-z]/g, (s) => s.toUpperCase());
+  
+  // Check if it matches the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (pattern.test(cleaned)) {
+    return cleaned;
+  }
+  
+  // If it doesn't match, try to fix common issues
+  // Remove multiple spaces and ensure proper capitalization
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  
+  // If still doesn't match, return null to avoid validation errors
+  if (!pattern.test(cleaned)) {
+    return null;
+  }
+  
+  return cleaned;
+}
+
 function parseISODate(mdy) {
   if (!mdy) return null;
   // supports MM/DD/YYYY or M/D/YYYY
@@ -33,13 +70,23 @@ function parseISODate(mdy) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function mapDorToPropertyType(dorCode) {
+function mapDorToPropertyType(dorCode, dorDescription) {
   if (!dorCode || typeof dorCode !== "string" || dorCode.length < 2)
     return null;
+  
+  // Check for invalid 0000 REFERENCE FOLIO case
+  if (dorCode === "0000" && dorDescription === "REFERENCE FOLIO") {
+    return { 
+      error: true, 
+      message: `Invalid 0000 REFERENCE FOLIO - skipping transformation`,
+      value: dorCode 
+    };
+  }
+  
   const prefix = dorCode.slice(0, 2);
   switch (prefix) {
     case "00":
-      return "VacantLand";
+      return "VacantLand"; // VACANT : TOWNHOUSE
     case "01":
       return "SingleFamily";
     case "02":
@@ -54,46 +101,593 @@ function mapDorToPropertyType(dorCode) {
       return "MultiFamilyLessThan10";
     case "09":
       return "ResidentialCommonElementsAreas";
+    case "10":
+      // Check for specific vacant land cases
+      if (dorCode === "1066" || dorCode === "1081") {
+        return "VacantLand"; // VACANT LAND
+      }
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "11":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "12":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "13":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "14":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "15":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "20":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "21":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "22":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "23":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "24":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "25":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "26":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "27":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "28":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "29":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "30":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "31":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "32":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "33":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "34":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "35":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "36":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "37":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "38":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "39":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "40":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "41":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "42":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "43":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "44":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "45":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "46":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "47":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "48":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
+    case "49":
+      return { error: true, message: `Unknown enum value ${dorCode}`, value: dorCode };
     default:
-      return { error: true, value: prefix };
+      return { error: true, message: `Unknown enum value ${prefix}`, value: prefix };
   }
 }
 
-function mapUnitsType(n) {
-  if (n == null) return null;
-  const i = Number(n);
-  if (i === 1) return "One";
-  if (i === 2) return "Two";
-  if (i === 3) return "Three";
-  if (i === 4) return "Four";
-  return null; // unknown
-}
 
 function normalizeSuffix(suf) {
   if (!suf) return null;
   const map = {
+    // Standard mappings
     ST: "St",
     STREET: "St",
+    STS: "Sts",
     AVE: "Ave",
     AVENUE: "Ave",
+    AVES: "Aves",
     BLVD: "Blvd",
+    BOULEVARD: "Blvd",
+    BLVDS: "Blvds",
     RD: "Rd",
     ROAD: "Rd",
+    RDS: "Rds",
     DR: "Dr",
     DRIVE: "Dr",
+    DRIVES: "Drs",
     LN: "Ln",
     LANE: "Ln",
+    LANES: "Lns",
     CT: "Ct",
     COURT: "Ct",
+    COURTS: "Cts",
     PL: "Pl",
     PLACE: "Pl",
+    PLACES: "Pls",
     TER: "Ter",
     TERRACE: "Ter",
+    TERRACES: "Ters",
     HWY: "Hwy",
     HIGHWAY: "Hwy",
+    HIGHWAYS: "Hwys",
+    
+    // Additional enum values from validation schema
+    LK: "Lk",
+    LAKE: "Lk",
+    LAKES: "Lks",
+    PIKE: "Pike",
+    PIKES: "Pikes",
+    KY: "Ky",
+    KEY: "Ky",
+    KEYS: "Kys",
+    VW: "Vw",
+    VIEW: "Vw",
+    VIEWS: "Vws",
+    CURV: "Curv",
+    CURVE: "Curv",
+    CURVES: "Curvs",
+    PSGE: "Psge",
+    PASSAGE: "Psge",
+    PASSAGES: "Psges",
+    LDG: "Ldg",
+    LODGE: "Ldg",
+    LODGES: "Ldgs",
+    MT: "Mt",
+    MOUNT: "Mt",
+    MOUNTAIN: "Mt",
+    MOUNTAINS: "Mts",
+    UN: "Un",
+    UNION: "Un",
+    UNIONS: "Uns",
+    MDW: "Mdw",
+    MEADOW: "Mdw",
+    MEADOWS: "Mdws",
+    VIA: "Via",
+    VIAS: "Vias",
+    COR: "Cor",
+    CORNER: "Cor",
+    CORNERS: "Cors",
+    KYS: "Kys",
+    VL: "Vl",
+    VALLEY: "Vl",
+    VALLEYS: "Vlys",
+    PR: "Pr",
+    PRAIRIE: "Pr",
+    PRAIRIES: "Prs",
+    CV: "Cv",
+    COVE: "Cv",
+    COVES: "Cvs",
+    ISLE: "Isle",
+    ISLAND: "Isle",
+    ISLANDS: "Isles",
+    LGT: "Lgt",
+    LIGHT: "Lgt",
+    LIGHTS: "Lgts",
+    HBR: "Hbr",
+    HARBOR: "Hbr",
+    HARBORS: "Hbrs",
+    BTM: "Btm",
+    BOTTOM: "Btm",
+    BOTTOMS: "Btms",
+    HL: "Hl",
+    HILL: "Hl",
+    HILLS: "Hls",
+    MEWS: "Mews",
+    HLS: "Hls",
+    PNES: "Pnes",
+    PINES: "Pnes",
+    LGTS: "Lgts",
+    STRM: "Strm",
+    STREAM: "Strm",
+    STREAMS: "Strms",
+    TRWY: "Trwy",
+    THRUWAY: "Trwy",
+    THRUWAYS: "Trwys",
+    SKWY: "Skwy",
+    SKYWAY: "Skwy",
+    SKYWAYS: "Skwys",
+    IS: "Is",
+    EST: "Est",
+    ESTATE: "Est",
+    ESTATES: "Ests",
+    EXTS: "Exts",
+    EXTENSION: "Exts",
+    EXTENSIONS: "Exts",
+    ROW: "Row",
+    ROWS: "Rows",
+    RTE: "Rte",
+    ROUTE: "Rte",
+    ROUTES: "Rtes",
+    FALL: "Fall",
+    FALLS: "Falls",
+    GTWY: "Gtwy",
+    GATEWAY: "Gtwy",
+    GATEWAYS: "Gtwys",
+    WLS: "Wls",
+    WELLS: "Wls",
+    CLB: "Clb",
+    CLUB: "Clb",
+    CLUBS: "Clbs",
+    FRK: "Frk",
+    FORK: "Frk",
+    FORKS: "Frks",
+    CPE: "Cpe",
+    CAPE: "Cpe",
+    CAPES: "Cpes",
+    FWY: "Fwy",
+    FREEWAY: "Fwy",
+    FREEWAYS: "Fwys",
+    KNLS: "Knls",
+    KNOLLS: "Knls",
+    RDG: "Rdg",
+    RIDGE: "Rdg",
+    RIDGES: "Rdgs",
+    JCT: "Jct",
+    JUNCTION: "Jct",
+    JUNCTIONS: "Jcts",
+    RST: "Rst",
+    REST: "Rst",
+    RESTS: "Rsts",
+    SPGS: "Spgs",
+    SPRINGS: "Spgs",
+    CIR: "Cir",
+    CIRCLE: "Cir",
+    CIRCLES: "Cirs",
+    CRST: "Crst",
+    CREST: "Crst",
+    CRESTS: "Crsts",
+    EXPY: "Expy",
+    EXPRESSWAY: "Expy",
+    EXPRESSWAYS: "Expys",
+    SMT: "Smt",
+    SUMMIT: "Smt",
+    SUMMITS: "Smts",
+    TRFY: "Trfy",
+    TRAFFICWAY: "Trfy",
+    TRAFFICWAYS: "Trfys",
+    LAND: "Land",
+    LANDS: "Lands",
+    WAYS: "Ways",
+    TRL: "Trl",
+    TRAIL: "Trl",
+    TRAILS: "Trls",
+    WAY: "Way",
+    WAYS: "Ways",
+    TRLR: "Trlr",
+    TRAILER: "Trlr",
+    TRAILERS: "Trlrs",
+    ALY: "Aly",
+    ALLEY: "Aly",
+    ALLEYS: "Alys",
+    SPG: "Spg",
+    SPRING: "Spg",
+    SPRINGS: "Spgs",
+    PKWY: "Pkwy",
+    PARKWAY: "Pkwy",
+    PARKWAYS: "Pkwys",
+    CMN: "Cmn",
+    COMMON: "Cmn",
+    COMMONS: "Cmns",
+    GRNS: "Grns",
+    GREEN: "Grn",
+    GREENS: "Grns",
+    OVAL: "Oval",
+    OVALS: "Ovals",
+    CIRS: "Cirs",
+    PT: "Pt",
+    POINT: "Pt",
+    POINTS: "Pts",
+    SHLS: "Shls",
+    SHOALS: "Shls",
+    VLY: "Vly",
+    VALLEY: "Vly",
+    VALLEYS: "Vlys",
+    HTS: "Hts",
+    HEIGHTS: "Hts",
+    CLF: "Clf",
+    CLIFF: "Clf",
+    CLIFFS: "Clfs",
+    FLT: "Flt",
+    FLAT: "Flt",
+    FLATS: "Flts",
+    MALL: "Mall",
+    MALLS: "Malls",
+    FRDS: "Frds",
+    FORDS: "Frds",
+    CYN: "Cyn",
+    CANYON: "Cyn",
+    CANYONS: "Cyns",
+    LNDG: "Lndg",
+    LANDING: "Lndg",
+    LANDINGS: "Lndgs",
+    RDGS: "Rdgs",
+    INLT: "Inlt",
+    INLET: "Inlt",
+    INLETS: "Inlts",
+    TRAK: "Trak",
+    TRACK: "Trak",
+    TRACKS: "Traks",
+    BYU: "Byu",
+    BAYOU: "Byu",
+    BAYOUS: "Byus",
+    VLGS: "Vlgs",
+    VILLAGE: "Vlg",
+    VILLAGES: "Vlgs",
+    CTR: "Ctr",
+    CENTER: "Ctr",
+    CENTERS: "Ctrs",
+    ML: "Ml",
+    MILL: "Ml",
+    MILLS: "Mls",
+    CTS: "Cts",
+    ARC: "Arc",
+    ARCADE: "Arc",
+    ARCADES: "Arcs",
+    BND: "Bnd",
+    BEND: "Bnd",
+    BENDS: "Bnds",
+    RIV: "Riv",
+    RIVER: "Riv",
+    RIVERS: "Rivs",
+    FLDS: "Flds",
+    FIELDS: "Flds",
+    MTWY: "Mtwy",
+    MOTORWAY: "Mtwy",
+    MOTORWAYS: "Mtwys",
+    MSN: "Msn",
+    MISSION: "Msn",
+    MISSIONS: "Msns",
+    SHRS: "Shrs",
+    SHORES: "Shrs",
+    RUE: "Rue",
+    RUES: "Rues",
+    CRSE: "Crse",
+    COURSE: "Crse",
+    COURSES: "Crses",
+    CRES: "Cres",
+    CRESCENT: "Cres",
+    CRESCENTS: "Cres",
+    ANX: "Anx",
+    ANEX: "Anx",
+    ANEXES: "Anxes",
+    DRS: "Drs",
+    STS: "Sts",
+    HOLW: "Holw",
+    HOLLOW: "Holw",
+    HOLLOWS: "Holws",
+    VLG: "Vlg",
+    PRTS: "Prts",
+    PORTS: "Prts",
+    STA: "Sta",
+    STATION: "Sta",
+    STATIONS: "Stas",
+    FLD: "Fld",
+    FIELD: "Fld",
+    FIELDS: "Flds",
+    XRD: "Xrd",
+    CROSSROAD: "Xrd",
+    CROSSROADS: "Xrds",
+    WALL: "Wall",
+    WALLS: "Walls",
+    TPKE: "Tpke",
+    TURNPIKE: "Tpke",
+    TURNPIKES: "Tpkes",
+    FT: "Ft",
+    FORT: "Ft",
+    FORTS: "Fts",
+    BG: "Bg",
+    BURG: "Bg",
+    BURGS: "Bgs",
+    KNL: "Knl",
+    KNOLL: "Knl",
+    KNOLLS: "Knls",
+    PLZ: "Plz",
+    PLAZA: "Plz",
+    PLAZAS: "Plzs",
+    CSWY: "Cswy",
+    CAUSEWAY: "Cswy",
+    CAUSEWAYS: "Cswys",
+    BGS: "Bgs",
+    RNCH: "Rnch",
+    RANCH: "Rnch",
+    RANCHES: "Rnchs",
+    FRKS: "Frks",
+    MTN: "Mtn",
+    MOUNTAIN: "Mtn",
+    MOUNTAINS: "Mtns",
+    CTRS: "Ctrs",
+    ORCH: "Orch",
+    ORCHARD: "Orch",
+    ORCHARDS: "Orchs",
+    ISS: "Iss",
+    ISLANDS: "Iss",
+    BRKS: "Brks",
+    BROOKS: "Brks",
+    BR: "Br",
+    BRANCH: "Br",
+    BRANCHES: "Brs",
+    FLS: "Fls",
+    FALLS: "Fls",
+    TRCE: "Trce",
+    TRACE: "Trce",
+    TRACES: "Trces",
+    PARK: "Park",
+    PARKS: "Parks",
+    GDNS: "Gdns",
+    GARDENS: "Gdns",
+    RPD: "Rpd",
+    RAPID: "Rpd",
+    RAPIDS: "Rpds",
+    SHL: "Shl",
+    SHOAL: "Shl",
+    SHOALS: "Shls",
+    LF: "Lf",
+    LOAF: "Lf",
+    LOAVES: "Lfs",
+    RPD: "Rpd",
+    LCKS: "Lcks",
+    LOCKS: "Lcks",
+    GLN: "Gln",
+    GLEN: "Gln",
+    GLENS: "Glns",
+    PATH: "Path",
+    PATHS: "Paths",
+    VIS: "Vis",
+    VISTA: "Vis",
+    VISTAS: "Viss",
+    LKS: "Lks",
+    RUN: "Run",
+    RUNS: "Runs",
+    FRG: "Frg",
+    FORGE: "Frg",
+    FORGES: "Frgs",
+    BRG: "Brg",
+    BRIDGE: "Brg",
+    BRIDGES: "Brgs",
+    SQS: "Sqs",
+    SQUARE: "Sq",
+    SQUARES: "Sqs",
+    XING: "Xing",
+    CROSSING: "Xing",
+    CROSSINGS: "Xings",
+    PLN: "Pln",
+    PLAIN: "Pln",
+    PLAINS: "Plns",
+    GLNS: "Glns",
+    BLFS: "Blfs",
+    BLUFFS: "Blfs",
+    PLNS: "Plns",
+    DL: "Dl",
+    DALE: "Dl",
+    DALES: "Dls",
+    CLFS: "Clfs",
+    EXT: "Ext",
+    PASS: "Pass",
+    PASSAGE: "Pass",
+    PASSAGES: "Passes",
+    GDN: "Gdn",
+    GARDEN: "Gdn",
+    GARDENS: "Gdns",
+    BRK: "Brk",
+    BROOK: "Brk",
+    BROOKS: "Brks",
+    GRN: "Grn",
+    MNR: "Mnr",
+    MANOR: "Mnr",
+    MANORS: "Mnrs",
+    CP: "Cp",
+    CAMP: "Cp",
+    CAMPS: "Cps",
+    PNE: "Pne",
+    PINE: "Pne",
+    PINES: "Pnes",
+    SPUR: "Spur",
+    SPURS: "Spurs",
+    OPAS: "Opas",
+    OVERPASS: "Opas",
+    OVERPASSES: "Opases",
+    UPAS: "Upas",
+    UNDERPASS: "Upas",
+    UNDERPASSES: "Upases",
+    TUNL: "Tunl",
+    TUNNEL: "Tunl",
+    TUNNELS: "Tunls",
+    SQ: "Sq",
+    LCK: "Lck",
+    LOCK: "Lck",
+    LOCKS: "Lcks",
+    ESTS: "Ests",
+    SHR: "Shr",
+    SHORE: "Shr",
+    SHORES: "Shrs",
+    DM: "Dm",
+    DAM: "Dm",
+    DAMS: "Dms",
+    MLS: "Mls",
+    WL: "Wl",
+    WELL: "Wl",
+    WELLS: "Wls",
+    MNRS: "Mnrs",
+    STRA: "Stra",
+    STRAND: "Stra",
+    STRANDS: "Stras",
+    FRGS: "Frgs",
+    FRST: "Frst",
+    FOREST: "Frst",
+    FORESTS: "Frsts",
+    FLTS: "Flts",
+    CT: "Ct",
+    MTNS: "Mtns",
+    FRD: "Frd",
+    FORD: "Frd",
+    FORDS: "Frds",
+    NCK: "Nck",
+    NECK: "Nck",
+    NECKS: "Ncks",
+    RAMP: "Ramp",
+    RAMPS: "Ramps",
+    VLYS: "Vlys",
+    PTS: "Pts",
+    BCH: "Bch",
+    BEACH: "Bch",
+    BEACHES: "Bchs",
+    LOOP: "Loop",
+    LOOPS: "Loops",
+    BYP: "Byp",
+    BYPASS: "Byp",
+    BYPASSES: "Byps",
+    CMNS: "Cmns",
+    FRY: "Fry",
+    FERRY: "Fry",
+    FERRIES: "Fries",
+    WALK: "Walk",
+    WALKS: "Walks",
+    HBRS: "Hbrs",
+    DV: "Dv",
+    DIVIDE: "Dv",
+    DIVIDES: "Dvs",
+    HVN: "Hvn",
+    HAVEN: "Hvn",
+    HAVENS: "Hvns",
+    BLF: "Blf",
+    BLUFF: "Blf",
+    BLUFFS: "Blfs",
+    GRV: "Grv",
+    GROVE: "Grv",
+    GROVES: "Grvs",
+    CRK: "Crk",
+    CREEK: "Crk",
+    CREEKS: "Crks"
   };
   const key = String(suf).toUpperCase();
-  return map[key] || suf; // best effort
+  return map[key] || null; // Return null for unmapped values to avoid validation errors
+}
+
+function validateAreaUnderAir(area) {
+  if (!area) return null;
+  
+  // Convert to string and clean
+  const areaStr = String(area).trim();
+  if (!areaStr) return null;
+  
+  // Remove commas and extra spaces
+  const cleaned = areaStr.replace(/,/g, '').replace(/\s+/g, ' ').trim();
+  
+  // Check if it matches numeric pattern (digits with optional decimal)
+  const numericPattern = /^\d+(\.\d+)?$/;
+  if (numericPattern.test(cleaned)) {
+    return cleaned;
+  }
+  
+  // If it doesn't match the pattern, return null to avoid validation errors
+  return null;
 }
 
 function extractLotSizeFromLegal(desc) {
@@ -123,7 +717,7 @@ function lotTypeFromSqft(sf) {
 function nonEmptyStringOrNull(val) {
   if (val == null) return null;
   const s = String(val).trim();
-  return s === "" ? null : s;
+  return s === "" || s === "0" ? null : s;
 }
 
 // For fields requiring at least two digits in the string (e.g., property.total_area)
@@ -152,6 +746,12 @@ function main() {
 
   ensureDir("data");
 
+  // Handle failed API request (HTML error page)
+  if (!input) {
+    console.error("No valid property data found - likely a failed API request");
+    process.exit(1); // Exit with error code to prevent processing
+  }
+
   // PROPERTY
   const pInfo = input.PropertyInfo || {};
   const legal = input.LegalDescription || {};
@@ -162,12 +762,16 @@ function main() {
       : {};
 
   const dorCode = pInfo.DORCode || null;
-  const mappedType = mapDorToPropertyType(dorCode);
+  const dorDescription = pInfo.DORDescription || null;
+  
+  const mappedType = mapDorToPropertyType(dorCode, dorDescription);
   if (mappedType && mappedType.error) {
     const err = {
       type: "error",
-      message: `Unknown enum value ${mappedType.value}.`,
+      message: mappedType.message,
       path: "property.property_type",
+      dorCode: dorCode,
+      dorDescription: dorDescription
     };
     console.error(JSON.stringify(err));
     process.exit(1);
@@ -187,20 +791,14 @@ function main() {
       if (effs.length) effYear = Math.min(...effs);
     }
   }
-  if (!builtYear && Number.isInteger(pInfo.YearBuilt)) {
-    builtYear = pInfo.YearBuilt;
+  if (!builtYear) {
+    const yearBuiltNum =
+      typeof pInfo.YearBuilt === "string"
+        ? parseInt(pInfo.YearBuilt, 10)
+        : pInfo.YearBuilt;
+    if (Number.isFinite(yearBuiltNum)) builtYear = yearBuiltNum;
   }
 
-  const unitsType = mapUnitsType(pInfo.UnitCount);
-  if (pInfo.UnitCount != null && unitsType == null) {
-    const err = {
-      type: "error",
-      message: `Unknown enum value ${pInfo.UnitCount}.`,
-      path: "property.number_of_units_type",
-    };
-    console.error(JSON.stringify(err));
-    process.exit(1);
-  }
 
   const property = {
     parcel_identifier: pInfo.FolioNumber || null,
@@ -208,10 +806,9 @@ function main() {
     property_structure_built_year: builtYear || null,
     property_effective_built_year: effYear || null,
     property_type: mappedType || null,
-    number_of_units_type: unitsType || null,
     number_of_units: pInfo.UnitCount != null ? Number(pInfo.UnitCount) : null,
-    livable_floor_area: nonEmptyStringOrNull(pInfo.BuildingHeatedArea),
-    area_under_air: nonEmptyStringOrNull(pInfo.BuildingHeatedArea),
+    livable_floor_area: areaStringOrNull(pInfo.BuildingHeatedArea),
+    area_under_air: validateAreaUnderAir(pInfo.BuildingHeatedArea),
     total_area: areaStringOrNull(pInfo.BuildingGrossArea),
     subdivision: pInfo.SubdivisionDescription || null,
     zoning: pInfo.PrimaryZoneDescription || null,
@@ -223,11 +820,7 @@ function main() {
   const mailing = input.MailingAddress || {};
   let postal = null,
     plus4 = null;
-  if (mailing.ZipCode && mailing.ZipCode.includes("-")) {
-    const parts = mailing.ZipCode.split("-");
-    postal = parts[0];
-    plus4 = parts[1];
-  } else if (unAddr.full_address && /\d{5}-\d{4}/.test(unAddr.full_address)) {
+  if (unAddr.full_address && /\d{5}-\d{4}/.test(unAddr.full_address)) {
     const m = /(\d{5})-(\d{4})/.exec(unAddr.full_address);
     if (m) {
       postal = m[1];
@@ -246,7 +839,9 @@ function main() {
       siteAddr.StreetNumber != null ? String(siteAddr.StreetNumber) : null,
     street_pre_directional_text: siteAddr.StreetPrefix || null,
     street_name:
-      siteAddr.StreetName != null ? String(siteAddr.StreetName) : null,
+      siteAddr.StreetName != null && String(siteAddr.StreetName).trim().length > 0 
+        ? String(siteAddr.StreetName).trim() 
+        : null,
     street_suffix_type: normalizeSuffix(siteAddr.StreetSuffix) || null,
     street_post_directional_text: siteAddr.StreetSuffixDirection
       ? siteAddr.StreetSuffixDirection
@@ -277,6 +872,20 @@ function main() {
     lot: null,
     municipality_name: pInfo.Municipality || null,
   };
+
+  // Check if street name is extractable - throw error if not
+  if (!address.street_name || address.street_name.trim().length === 0) {
+    const err = {
+      type: "error",
+      message: "Street name is not extractable from property data",
+      path: "address.street_name",
+      value: siteAddr.StreetName || "null",
+      folio: pInfo.FolioNumber || "unknown"
+    };
+    console.error(JSON.stringify(err));
+    process.exit(1);
+  }
+
   writeJson(path.join("data", "address.json"), address);
 
   // LOT
@@ -284,7 +893,8 @@ function main() {
   let lotSize = null;
   if (lotSizeRaw != null && String(lotSizeRaw).trim() !== "") {
     const n = Number(lotSizeRaw);
-    lotSize = isFinite(n) && n >= 1 ? Math.round(n) : null;
+    // Preserve fractional square footage when provided
+    lotSize = isFinite(n) && n > 0 ? n : null;
   }
 
   const { width: lotWidth, length: lotLength } = extractLotSizeFromLegal(
@@ -294,6 +904,7 @@ function main() {
   // Fencing detection
   let fencingType = null;
   let fenceLengthStr = null;
+  let fenceHeight = null;
   if (
     input.ExtraFeature &&
     Array.isArray(input.ExtraFeature.ExtraFeatureInfos)
@@ -302,12 +913,69 @@ function main() {
       if (
         ef &&
         typeof ef.Description === "string" &&
-        /wood fence/i.test(ef.Description)
+        /fence/i.test(ef.Description)
       ) {
-        fencingType = "Wood";
+        const desc = ef.Description.toLowerCase();
+        if (/chain.?link/i.test(desc)) {
+          fencingType = "ChainLink";
+        } else if (/wood/i.test(desc)) {
+          fencingType = "Wood";
+        } else if (/vinyl/i.test(desc)) {
+          fencingType = "Vinyl";
+        } else if (/aluminum/i.test(desc)) {
+          fencingType = "Aluminum";
+        } else if (/wrought.?iron/i.test(desc)) {
+          fencingType = "WroughtIron";
+        } else if (/bamboo/i.test(desc)) {
+          fencingType = "Bamboo";
+        } else if (/composite/i.test(desc)) {
+          fencingType = "Composite";
+        } else if (/privacy/i.test(desc)) {
+          fencingType = "Privacy";
+        } else if (/picket/i.test(desc)) {
+          fencingType = "Picket";
+        } else if (/split.?rail/i.test(desc)) {
+          fencingType = "SplitRail";
+        } else if (/stockade/i.test(desc)) {
+          fencingType = "Stockade";
+        } else if (/board/i.test(desc)) {
+          fencingType = "Board";
+        } else if (/post.?and.?rail/i.test(desc)) {
+          fencingType = "PostAndRail";
+        } else if (/lattice/i.test(desc)) {
+          fencingType = "Lattice";
+        } else {
+          fencingType = "Wood"; // Default to Wood
+        }
+        
         if (ef.Units != null) {
           const l = Math.round(Number(ef.Units));
-          fenceLengthStr = isFinite(l) ? `${l}ft` : null;
+          // Map to valid enum values
+          if (l <= 25) fenceLengthStr = "25ft";
+          else if (l <= 50) fenceLengthStr = "50ft";
+          else if (l <= 75) fenceLengthStr = "75ft";
+          else if (l <= 100) fenceLengthStr = "100ft";
+          else if (l <= 150) fenceLengthStr = "150ft";
+          else if (l <= 200) fenceLengthStr = "200ft";
+          else if (l <= 300) fenceLengthStr = "300ft";
+          else if (l <= 500) fenceLengthStr = "500ft";
+          else if (l <= 1000) fenceLengthStr = "1000ft";
+          else fenceLengthStr = "1000ft"; // Default to max
+        }
+        
+        // Extract height from description (e.g., "4-5 ft high")
+        const heightMatch = desc.match(/(\d+)-?(\d+)?\s*ft\s*high/i);
+        if (heightMatch) {
+          const height = parseInt(heightMatch[1]);
+          // Map to valid enum values
+          if (height <= 3) fenceHeight = "3ft";
+          else if (height <= 4) fenceHeight = "4ft";
+          else if (height <= 5) fenceHeight = "5ft";
+          else if (height <= 6) fenceHeight = "6ft";
+          else if (height <= 8) fenceHeight = "8ft";
+          else if (height <= 10) fenceHeight = "10ft";
+          else if (height <= 12) fenceHeight = "12ft";
+          else fenceHeight = "6ft"; // Default
         }
         break;
       }
@@ -318,11 +986,11 @@ function main() {
     lot_type: lotTypeFromSqft(lotSize),
     lot_length_feet: lotLength != null ? lotLength : null,
     lot_width_feet: lotWidth != null ? lotWidth : null,
-    lot_area_sqft: lotSize,
+    lot_area_sqft: lotSize != null ? Math.round(lotSize) : null,
     landscaping_features: null,
     view: null,
     fencing_type: fencingType,
-    fence_height: null,
+    fence_height: fenceHeight,
     fence_length: fenceLengthStr,
     driveway_material: null,
     driveway_condition: null,
@@ -369,16 +1037,239 @@ function main() {
     }
   }
 
-  // SALES
+  // SALES + DEEDS + FILES (create one deed per sale; optionally create file per book/page or instrument)
   if (Array.isArray(input.SalesInfos) && input.SalesInfos.length) {
     let saleIndex = 1;
+    /**
+     * @typedef {Object} MiamiSaleMeta
+     * @property {number} index
+     * @property {string|null} date
+     * @property {string|null} book
+     * @property {string|null} page
+     * @property {string|null} instrument
+     * @property {string|null} saleType
+     */
+    /** @type {MiamiSaleMeta[]} */
+    const salesFiles = [];
+
+    /**
+     * Extract a string value or null from an arbitrary field.
+     * @param {unknown} v
+     * @returns {string|null}
+     */
+    function asStringOrNull(v) {
+      if (v == null) return null;
+      const t = String(v).trim();
+      return t === "" ? null : t;
+    }
+
+    /**
+     * Map Miami-Dade SaleInstrument codes to Elephant Lexicon deed types.
+     * @param {string|null} s
+     * @returns {"Warranty Deed"|"Special Warranty Deed"|"Quitclaim Deed"|"Grant Deed"|"Bargain and Sale Deed"|"Lady Bird Deed"|"Transfer on Death Deed"|"Sheriff's Deed"|"Tax Deed"|"Trustee's Deed"|"Personal Representative Deed"|"Correction Deed"|"Deed in Lieu of Foreclosure"|"Life Estate Deed"|"Joint Tenancy Deed"|"Tenancy in Common Deed"|"Community Property Deed"|"Gift Deed"|"Interspousal Transfer Deed"|"Wild Deed"|"Special Master's Deed"|"Court Order Deed"|"Contract for Deed"|"Quiet Title Deed"|"Administrator's Deed"|"Guardian's Deed"|"Receiver's Deed"|"Right of Way Deed"|"Vacation of Plat Deed"|"Assignment of Contract"|"Release of Contract"}
+     */
+    function mapDeedType(s) {
+      if (!s) return "Warranty Deed"; // Default to most common deed type
+      const t = s.toUpperCase().trim();
+      
+      // Miami-Dade SaleInstrument code mappings
+      switch (t) {
+        case "QCD": return "Quitclaim Deed";
+        case "DEE": return "Warranty Deed"; // General deed, assume warranty
+        case "WDE": return "Warranty Deed";
+        case "SWD": return "Special Warranty Deed";
+        case "GRD": return "Grant Deed";
+        case "BSD": return "Bargain and Sale Deed";
+        case "LBD": return "Lady Bird Deed";
+        case "TOD": return "Transfer on Death Deed";
+        case "SHD": return "Sheriff's Deed";
+        case "TXD": return "Tax Deed";
+        case "TRD": return "Trustee's Deed";
+        case "PRD": return "Personal Representative Deed";
+        case "CRD": return "Correction Deed";
+        case "DIL": return "Deed in Lieu of Foreclosure";
+        case "LED": return "Life Estate Deed";
+        case "JTD": return "Joint Tenancy Deed";
+        case "TCD": return "Tenancy in Common Deed";
+        case "CPD": return "Community Property Deed";
+        case "GFT": return "Gift Deed";
+        case "ITD": return "Interspousal Transfer Deed";
+        case "WLD": return "Wild Deed";
+        case "SMD": return "Special Master's Deed";
+        case "COD": return "Court Order Deed";
+        case "CFD": return "Contract for Deed";
+        case "QTD": return "Quiet Title Deed";
+        case "ADM": return "Administrator's Deed";
+        case "GAD": return "Guardian's Deed";
+        case "RCD": return "Receiver's Deed";
+        case "RWD": return "Right of Way Deed";
+        case "VPD": return "Vacation of Plat Deed";
+        case "AOC": return "Assignment of Contract";
+        case "ROC": return "Release of Contract";
+        default: return "Warranty Deed"; // Default fallback
+      }
+    }
+
+    /**
+     * Map Miami-Dade SaleInstrument codes to Elephant Lexicon file document types.
+     * @param {string|null} s
+     * @returns {"ConveyanceDeedQuitClaimDeed"|"ConveyanceDeedBargainAndSaleDeed"|"ConveyanceDeedWarrantyDeed"|"ConveyanceDeed"|"AssignmentAssignmentOfDeedOfTrust"|"AssignmentAssignmentOfMortgage"|"AssignmentAssignmentOfRents"|"Assignment"|"AssignmentAssignmentOfTrade"|"AssignmentBlanketAssignment"|"AssignmentCooperativeAssignmentOfProprietaryLease"|"AffidavitOfDeath"|"AbstractOfJudgment"|"AttorneyInFactAffidavit"|"ArticlesOfIncorporation"|"BuildingPermit"|"ComplianceInspectionReport"|"ConditionalCommitment"|"CounselingCertification"|"AirportNoisePollutionAgreement"|"BreachNotice"|"BrokerPriceOpinion"|"AmendatoryClause"|"AssuranceOfCompletion"|"Bid"|"BuildersCertificationBuilderCertificationOfPlansAndSpecifications"|"BuildersCertificationBuildersCertificate"|"BuildersCertificationPropertyInspection"|"BuildersCertificationTermiteTreatment"|"PropertyImage"}
+     */
+    function mapFileDocType(s) {
+      if (!s) return "ConveyanceDeedWarrantyDeed"; // Default to most common deed type
+      const t = s.toUpperCase().trim();
+      
+      // Miami-Dade SaleInstrument code mappings to file document types
+      switch (t) {
+        case "QCD": return "ConveyanceDeedQuitClaimDeed";
+        case "DEE": return "ConveyanceDeedWarrantyDeed"; // General deed, assume warranty
+        case "WDE": return "ConveyanceDeedWarrantyDeed";
+        case "SWD": return "ConveyanceDeedWarrantyDeed"; // Special warranty maps to warranty
+        case "GRD": return "ConveyanceDeed";
+        case "BSD": return "ConveyanceDeedBargainAndSaleDeed";
+        case "LBD": return "ConveyanceDeed"; // Lady Bird Deed maps to general conveyance
+        case "TOD": return "ConveyanceDeed"; // Transfer on Death maps to general conveyance
+        case "SHD": return "ConveyanceDeed"; // Sheriff's Deed maps to general conveyance
+        case "TXD": return "ConveyanceDeed"; // Tax Deed maps to general conveyance
+        case "TRD": return "ConveyanceDeed"; // Trustee's Deed maps to general conveyance
+        case "PRD": return "ConveyanceDeed"; // Personal Representative Deed maps to general conveyance
+        case "CRD": return "ConveyanceDeed"; // Correction Deed maps to general conveyance
+        case "DIL": return "ConveyanceDeed"; // Deed in Lieu of Foreclosure maps to general conveyance
+        case "LED": return "ConveyanceDeed"; // Life Estate Deed maps to general conveyance
+        case "JTD": return "ConveyanceDeed"; // Joint Tenancy Deed maps to general conveyance
+        case "TCD": return "ConveyanceDeed"; // Tenancy in Common Deed maps to general conveyance
+        case "CPD": return "ConveyanceDeed"; // Community Property Deed maps to general conveyance
+        case "GFT": return "ConveyanceDeed"; // Gift Deed maps to general conveyance
+        case "ITD": return "ConveyanceDeed"; // Interspousal Transfer Deed maps to general conveyance
+        case "WLD": return "ConveyanceDeed"; // Wild Deed maps to general conveyance
+        case "SMD": return "ConveyanceDeed"; // Special Master's Deed maps to general conveyance
+        case "COD": return "ConveyanceDeed"; // Court Order Deed maps to general conveyance
+        case "CFD": return "ConveyanceDeed"; // Contract for Deed maps to general conveyance
+        case "QTD": return "ConveyanceDeed"; // Quiet Title Deed maps to general conveyance
+        case "ADM": return "ConveyanceDeed"; // Administrator's Deed maps to general conveyance
+        case "GAD": return "ConveyanceDeed"; // Guardian's Deed maps to general conveyance
+        case "RCD": return "ConveyanceDeed"; // Receiver's Deed maps to general conveyance
+        case "RWD": return "ConveyanceDeed"; // Right of Way Deed maps to general conveyance
+        case "VPD": return "ConveyanceDeed"; // Vacation of Plat Deed maps to general conveyance
+        case "AOC": return "AssignmentAssignmentOfContract";
+        case "ROC": return "Assignment";
+        default: return "ConveyanceDeedWarrantyDeed"; // Default fallback
+      }
+    }
+
     for (const s of input.SalesInfos) {
       const sales = {
         ownership_transfer_date: parseISODate(s.DateOfSale) || null,
         purchase_price_amount: s.SalePrice != null ? Number(s.SalePrice) : null,
       };
       writeJson(path.join("data", `sales_${saleIndex}.json`), sales);
+
+      // Common Miami-Dade fields we might encounter
+      const book =
+        asStringOrNull(s.Book) ||
+        asStringOrNull(s.OfficialRecordBook) ||
+        asStringOrNull(s.DeedBook) ||
+        null;
+      const page =
+        asStringOrNull(s.Page) ||
+        asStringOrNull(s.OfficialRecordPage) ||
+        asStringOrNull(s.DeedPage) ||
+        null;
+      const instrument =
+        asStringOrNull(s.Instrument) ||
+        asStringOrNull(s.InstrumentNumber) ||
+        asStringOrNull(s.DocumentNumber) ||
+        null;
+      const saleType = asStringOrNull(s.SaleType) || asStringOrNull(s.DeedType) || asStringOrNull(s.SaleInstrument) || null;
+
+      salesFiles.push({
+        index: saleIndex,
+        date: sales.ownership_transfer_date,
+        book,
+        page,
+        instrument,
+        saleType,
+        EncodedRecordBookAndPage: s.EncodedRecordBookAndPage || null,
+      });
       saleIndex++;
+    }
+
+    // Optional: create files when we have book/page or instrument
+    /** @type {Map<number, number>} */
+    const fileIndexBySale = new Map();
+    let fileIdx = 1;
+    for (const s of salesFiles) {
+      if ((s.book && s.page) || s.instrument) {
+        /** @type {{file_format:"txt",name:string,original_url:string|null,ipfs_url:null,document_type:ReturnType<typeof mapFileDocType>}} */
+        const fileObj = {
+          file_format: "txt",
+          name: s.book && s.page
+            ? `OR Book ${s.book} Page ${s.page}`
+            : `Instrument ${s.instrument}`,
+          // Construct Miami-Dade clerk URL using EncodedRecordBookAndPage
+          original_url: s.EncodedRecordBookAndPage 
+            ? `https://onlineservices.miamidadeclerk.gov/officialrecords/SearchResults?QS=${s.EncodedRecordBookAndPage}`
+            : null,
+          ipfs_url: null,
+          document_type: mapFileDocType(s.saleType),
+        };
+        writeJson(path.join("data", `file_${fileIdx}.json`), fileObj);
+        fileIndexBySale.set(s.index, fileIdx);
+        fileIdx++;
+      }
+    }
+
+    // Create deeds and map sale -> deed index
+    /** @type {Map<number, number>} */
+    const deedMap = new Map();
+    let deedIdx = 1;
+    for (const s of salesFiles) {
+      const deed = {
+        deed_type: mapDeedType(s.saleType),
+        request_identifier: pInfo.FolioNumber || "unknown",
+        source_http_request: {
+          url: "https://apps.miamidadepa.gov/PApublicServiceProxy/PaServicesProxy.ashx",
+          method: "GET",
+          multiValueQueryString: {
+            Operation: ["GetPropertySearchByFolio"],
+            clientAppName: ["PropertySearch"],
+            folioNumber: [pInfo.FolioNumber || "unknown"]
+          }
+        }
+      };
+      writeJson(path.join("data", `deed_${deedIdx}.json`), deed);
+      deedMap.set(s.index, deedIdx);
+      // relationship_property_deed (property → deed)
+      const relPD = {
+        to: { "/": `./deed_${deedIdx}.json` },
+        from: { "/": "./property.json" },
+      };
+      writeJson(path.join("data", `relationship_property_deed_${deedIdx}.json`), relPD);
+      deedIdx++;
+    }
+
+    // relationship_sales_deed (deed → sale)
+    let relSDIdx = 1;
+    for (const [sIndex, dIndex] of deedMap.entries()) {
+      const relSD = {
+        to: { "/": `./sales_${sIndex}.json` },
+        from: { "/": `./deed_${dIndex}.json` },
+      };
+      writeJson(path.join("data", `relationship_sales_deed_${relSDIdx}.json`), relSD);
+      relSDIdx++;
+    }
+
+    // relationship_deed_file (deed → file) when file exists for that sale
+    let rdfIdx = 1;
+    for (const [sIndex, dIndex] of deedMap.entries()) {
+      const fIndex = fileIndexBySale.get(sIndex);
+      if (!fIndex) continue;
+      const relDF = {
+        to: { "/": `./deed_${dIndex}.json` },
+        from: { "/": `./file_${fIndex}.json` },
+      };
+      writeJson(path.join("data", `relationship_deed_file_${rdfIdx}.json`), relDF);
+      rdfIdx++;
     }
   }
 
@@ -410,9 +1301,9 @@ function main() {
       if (o.type === "person") {
         const person = {
           birth_date: null,
-          first_name: toTitleCase(o.first_name || ""),
-          last_name: toTitleCase(o.last_name || ""),
-          middle_name: o.middle_name != null ? o.middle_name : null,
+          first_name: formatNameForValidation(o.first_name),
+          last_name: formatNameForValidation(o.last_name),
+          middle_name: formatNameForValidation(o.middle_name),
           prefix_name: null,
           suffix_name: null,
           us_citizenship_status: null,
@@ -530,7 +1421,7 @@ function main() {
     writeJson(path.join("data", "utility.json"), utility);
   }
 
-  // LAYOUTS
+  // LAYOUTS from owners/layout_data.json only (layout synthesis moved to layoutMapping.js)
   const layoutPkg = layouts[ownersKey] || null;
   if (layoutPkg && Array.isArray(layoutPkg.layouts)) {
     let idx = 1;
@@ -571,6 +1462,14 @@ function main() {
         bathroom_renovation_date: l.bathroom_renovation_date ?? null,
         kitchen_renovation_date: l.kitchen_renovation_date ?? null,
         flooring_installation_date: l.flooring_installation_date ?? null,
+        story_type: l.story_type ?? null,
+        building_number: l.building_number ?? null,
+        request_identifier: l.request_identifier ?? null,
+        source_http_request: l.source_http_request ?? null,
+        area_under_air_sq_ft: l.area_under_air_sq_ft ?? null,
+        total_area_sq_ft: l.total_area_sq_ft ?? null,
+        heated_area_sq_ft: l.heated_area_sq_ft ?? null,
+        adjustable_area_sq_ft: l.adjustable_area_sq_ft ?? null,
       };
       writeJson(path.join("data", `layout_${idx}.json`), layoutObj);
       idx++;
@@ -578,6 +1477,19 @@ function main() {
   }
 
   // STRUCTURE from input (set required to null where not provided)
+  // Determine number of buildings from BuildingInfos
+  let numberOfBuildings = null;
+  if (input.Building && Array.isArray(input.Building.BuildingInfos)) {
+    const buildingNos = new Set();
+    for (const b of input.Building.BuildingInfos) {
+      if (b && b.BuildingNo != null) {
+        const n = Number(b.BuildingNo);
+        if (Number.isFinite(n)) buildingNos.add(n);
+      }
+    }
+    if (buildingNos.size > 0) numberOfBuildings = buildingNos.size;
+  }
+
   const structure = {
     architectural_style_type: null,
     attachment_type: pInfo && pInfo.UnitCount === 1 ? "Detached" : null,
@@ -630,6 +1542,7 @@ function main() {
     unfinished_upper_story_area: null,
     number_of_stories:
       pInfo && pInfo.FloorCount != null ? Number(pInfo.FloorCount) : null,
+    number_of_buildings: numberOfBuildings,
   };
   writeJson(path.join("data", "structure.json"), structure);
 }

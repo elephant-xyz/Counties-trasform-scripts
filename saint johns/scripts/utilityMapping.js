@@ -28,105 +28,73 @@ function getParcelId($) {
 function collectBuildings($) {
   const buildings = [];
   const section = $("section")
-    .filter(
-      (_, s) =>
-        textTrim($(s).find(".module-header .title").first().text()) ===
-        BUILDING_SECTION_TITLE,
-    )
-    .first();
+      .filter(
+          (_, s) =>
+              textTrim($(s).find(".module-header .title").first().text()) ===
+              BUILDING_SECTION_TITLE,
+      )
+      .first();
   if (!section.length) return buildings;
   $(section)
-    .find(
-      '.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"]',
-    )
-    .each((_, div) => {
-      const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          let label = textTrim($(tr).find("td strong").first().text());
-          if (!label || !label.trim()) {
-            label = textTrim($(tr).find("th strong").first().text());
-          }
-          const value = textTrim($(tr).find("td span").first().text());
-          if (label) map[label] = value;
-        });
-      if (Object.keys(map).length) buildings.push(map);
-    });
+      .find(
+          '.two-column-blocks > div[id$="_dynamicBuildingDataLeftColumn_divSummary"]',
+      )
+      .each((_, div) => {
+        const map = {};
+        $(div)
+            .find("table tbody tr")
+            .each((__, tr) => {
+              let label = textTrim($(tr).find("td strong").first().text());
+              if (!label || !label.trim()) {
+                label = textTrim($(tr).find("th strong").first().text());
+              }
+              const value = textTrim($(tr).find("td span").first().text());
+              if (label) map[label] = value;
+            });
+        if (Object.keys(map).length) buildings.push(map);
+      });
   let buildingCount = 0;
   $(section)
-    .find(
-      '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
-    )
-    .each((_, div) => {
-      const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          let label = textTrim($(tr).find("td strong").first().text());
-          if (!label || !label.trim()) {
-            label = textTrim($(tr).find("th strong").first().text());
-          }
-          const value = textTrim($(tr).find("td span").first().text());
-          if (label) map[label] = value;
-        });
-      if (Object.keys(map).length) {
-        const combined_map = {...buildings[buildingCount], ...map};
-        buildings[buildingCount++] = combined_map;
-      };
-    });
+      .find(
+          '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+      )
+      .each((_, div) => {
+        const map = {};
+        $(div)
+            .find("table tbody tr")
+            .each((__, tr) => {
+              let label = textTrim($(tr).find("td strong").first().text());
+              if (!label || !label.trim()) {
+                label = textTrim($(tr).find("th strong").first().text());
+              }
+              const value = textTrim($(tr).find("td span").first().text());
+              if (label) map[label] = value;
+            });
+        if (Object.keys(map).length) {
+          const combined_map = {...buildings[buildingCount], ...map};
+          buildings[buildingCount++] = combined_map;
+        };
+      });
   return buildings;
 }
 
-function mapAirConditioning(value) {
-  if (!value) {
-    return null;
-  }
-  const acMapping = {
-    "Central": "CentralAir",
-    "None": null,
-    "Window": "WindowAirConditioner",
-    "Energy Package Central": "CentralAir",
-    "N/A": null,
-    "Energy Package": null,
-    "Chilled Water": null,
-    "Central, None": "CentralAir",
-    "Roof Top": null,
-    "Central, Window": "Hybrid"
-  };
-  if (value in acMapping) {
-    return acMapping[value];
-  }
-  return null;
-}
+function inferHVAC(buildings) {
+  let cooling_system_type = null;
+  let heating_system_type = null;
 
-function mapHeating(value) {
-  if (!value || !value.trim()) {
-    return null;
-  }
-  const heatMapping = {
-    "Air Duct": "Central",
-    "None": null,
-    "Forced Air": "Central",
-    "Engineered Forced Air": "Central",
-    "N/A": null,
-    "Convection": null,
-    "Air Duct, None": "Central",
-    "Electric Radiator": "Electric",
-    "Hot Water": null,
-    "Air Duct, Forced Air": "Central"
-  };
-  if (value in heatMapping) {
-    return heatMapping[value];
-  }
-  return null;
-}
+  buildings.forEach((b) => {
+    const ac = (b["Air Conditioning"] || "").toUpperCase();
+    const heat = (b["Heating Type	"] || "").toUpperCase();
+    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
+    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
+      heating_system_type = "Central";
+  });
 
-function inferHVAC(building) {
-  const ac = (building["Air Conditioning"] || null);
-  const heat = (building["Heating Type"] || null);
-  const cooling_system_type = mapAirConditioning(ac);
-  const heating_system_type = mapHeating(heat);
+  if (cooling_system_type === "CentralAir") {
+    hvac_system_configuration = "SplitSystem";
+    hvac_equipment_component = "CondenserAndAirHandler";
+    hvac_condensing_unit_present = "Yes";
+  }
 
   return {
     cooling_system_type,
@@ -135,54 +103,51 @@ function inferHVAC(building) {
 }
 
 function buildUtilityRecord($, buildings) {
-  let utilities = {};
-  buildings.forEach((building, bIdx) => {
-    const hvac = inferHVAC(building);
-    const util = {
-      cooling_system_type: hvac.cooling_system_type,
-      heating_system_type: hvac.heating_system_type,
-      public_utility_type: null,
-      sewer_type: null,
-      water_source_type: null,
-      plumbing_system_type: null,
-      plumbing_system_type_other_description: null,
-      electrical_panel_capacity: null,
-      electrical_wiring_type: null,
-      hvac_condensing_unit_present: null,
-      electrical_wiring_type_other_description: null,
-      solar_panel_present: false,
-      solar_panel_type: null,
-      solar_panel_type_other_description: null,
-      smart_home_features: null,
-      smart_home_features_other_description: null,
-      hvac_unit_condition: null,
-      solar_inverter_visible: false,
-      hvac_unit_issues: null,
-      electrical_panel_installation_date: null,
-      electrical_rewire_date: null,
-      hvac_capacity_kw: null,
-      hvac_capacity_tons: null,
-      hvac_equipment_component: null,
-      hvac_equipment_manufacturer: null,
-      hvac_equipment_model: null,
-      hvac_installation_date: null,
-      hvac_seer_rating: null,
-      hvac_system_configuration: null,
-      plumbing_system_installation_date: null,
-      sewer_connection_date: null,
-      solar_installation_date: null,
-      solar_inverter_installation_date: null,
-      solar_inverter_manufacturer: null,
-      solar_inverter_model: null,
-      water_connection_date: null,
-      water_heater_installation_date: null,
-      water_heater_manufacturer: null,
-      water_heater_model: null,
-      well_installation_date: null,
-    };
-    utilities[(bIdx + 1).toString()] = util;
-  });
-  return utilities;
+  const hvac = inferHVAC(buildings);
+  const rec = {
+    cooling_system_type: hvac.cooling_system_type,
+    heating_system_type: hvac.heating_system_type,
+    public_utility_type: null,
+    sewer_type: null,
+    water_source_type: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    electrical_panel_capacity: null,
+    electrical_wiring_type: null,
+    hvac_condensing_unit_present: null,
+    electrical_wiring_type_other_description: null,
+    solar_panel_present: false,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    hvac_unit_condition: null,
+    solar_inverter_visible: false,
+    hvac_unit_issues: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    plumbing_system_installation_date: null,
+    sewer_connection_date: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    well_installation_date: null,
+  };
+
+  return rec;
 }
 
 function main() {

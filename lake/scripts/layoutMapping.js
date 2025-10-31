@@ -20,54 +20,6 @@ function toInt(val) {
   return Number.isFinite(n) ? n : null;
 }
 
-function buildLayout(spaceType, index) {
-  return {
-    building_number: null,
-    total_area_sq_ft: null,
-    built_year: null,
-    adjustable_area_sq_ft: null,
-    livable_area_sq_ft: null,
-    heated_area_sq_ft: null,
-    area_under_air_sq_ft: null,
-    story_type: null,
-    //ceiling_height_average: null,
-    source_http_request: null,
-    request_identifier: null,
-    space_type: spaceType,
-    space_index: index,
-    flooring_material_type: null,
-    size_square_feet: null,
-    floor_level: null,
-    has_windows: null,
-    window_design_type: null,
-    window_material_type: null,
-    window_treatment_type: null,
-    is_finished: true,
-    furnished: null,
-    paint_condition: null,
-    flooring_wear: null,
-    clutter_level: null,
-    visible_damage: null,
-    countertop_material: null,
-    cabinet_style: null,
-    fixture_finish_quality: null,
-    design_style: null,
-    natural_light_quality: null,
-    decor_elements: null,
-    pool_type: null,
-    pool_equipment: null,
-    spa_type: null,
-    safety_features: null,
-    view_type: null,
-    lighting_features: null,
-    condition_issues: null,
-    is_exterior: false,
-    pool_condition: null,
-    pool_surface_type: null,
-    pool_water_quality: null,
-  };
-}
-
 function main() {
   const html = readInputHtml();
   const $ = cheerio.load(html);
@@ -83,28 +35,170 @@ function main() {
   const summaryTable = $(".property_building_summary").first();
   let bedrooms = 0,
     fullBaths = 0,
-    halfBaths = 0;
+    halfBaths = 0,
+    totalLivingArea = null;
 
   summaryTable.find("td").each((i, el) => {
     const tx = textNormalize($(el).text());
     if (/Bedrooms:/i.test(tx)) bedrooms = toInt(tx) || 0;
     if (/Full Bathrooms:/i.test(tx)) fullBaths = toInt(tx) || 0;
     if (/Half Bathrooms:/i.test(tx)) halfBaths = toInt(tx) || 0;
+    if (/Total Living Area:/i.test(tx)) totalLivingArea = toInt(tx);
   });
+
+  // Assume all spaces are on 1st Floor unless otherwise stated
+  const defaultFloor = "1st Floor";
 
   // Create bedrooms
   for (let i = 1; i <= bedrooms; i++) {
-    layouts.push(buildLayout("Bedroom", i));
+    layouts.push({
+      space_type: "Bedroom",
+      space_index: i,
+      flooring_material_type: null,
+      size_square_feet: null,
+      floor_level: defaultFloor,
+      has_windows: null,
+      window_design_type: null,
+      window_material_type: null,
+      window_treatment_type: null,
+      is_finished: true,
+      furnished: null,
+      paint_condition: null,
+      flooring_wear: null,
+      clutter_level: null,
+      visible_damage: null,
+      countertop_material: null,
+      cabinet_style: null,
+      fixture_finish_quality: null,
+      design_style: null,
+      natural_light_quality: null,
+      decor_elements: null,
+      pool_type: null,
+      pool_equipment: null,
+      spa_type: null,
+      safety_features: null,
+      view_type: null,
+      lighting_features: null,
+      condition_issues: null,
+      is_exterior: false,
+      pool_condition: null,
+      pool_surface_type: null,
+      pool_water_quality: null,
+    });
   }
 
   // Create full bathrooms
   for (let i = 1; i <= fullBaths; i++) {
-    layouts.push(buildLayout("Full Bathroom", i));
+    layouts.push({
+      space_type: "Full Bathroom",
+      space_index: i,
+      flooring_material_type: null,
+      size_square_feet: null,
+      floor_level: defaultFloor,
+      has_windows: null,
+      window_design_type: null,
+      window_material_type: null,
+      window_treatment_type: null,
+      is_finished: true,
+      furnished: null,
+      paint_condition: null,
+      flooring_wear: null,
+      clutter_level: null,
+      visible_damage: null,
+      countertop_material: null,
+      cabinet_style: null,
+      fixture_finish_quality: null,
+      design_style: null,
+      natural_light_quality: null,
+      decor_elements: null,
+      pool_type: null,
+      pool_equipment: null,
+      spa_type: null,
+      safety_features: null,
+      view_type: null,
+      lighting_features: null,
+      condition_issues: null,
+      is_exterior: false,
+      pool_condition: null,
+      pool_surface_type: null,
+      pool_water_quality: null,
+    });
   }
 
   // Create half bathrooms
   for (let i = 1; i <= halfBaths; i++) {
-    layouts.push(buildLayout("Half Bathroom / Powder Room", i));
+    layouts.push({
+      space_type: "Half Bathroom / Powder Room",
+      space_index: i,
+      flooring_material_type: null,
+      size_square_feet: null,
+      floor_level: defaultFloor,
+      has_windows: null,
+      window_design_type: null,
+      window_material_type: null,
+      window_treatment_type: null,
+      is_finished: true,
+      furnished: null,
+      paint_condition: null,
+      flooring_wear: null,
+      clutter_level: null,
+      visible_damage: null,
+      countertop_material: null,
+      cabinet_style: null,
+      fixture_finish_quality: null,
+      design_style: null,
+      natural_light_quality: null,
+      decor_elements: null,
+      pool_type: null,
+      pool_equipment: null,
+      spa_type: null,
+      safety_features: null,
+      view_type: null,
+      lighting_features: null,
+      condition_issues: null,
+      is_exterior: false,
+      pool_condition: null,
+      pool_surface_type: null,
+      pool_water_quality: null,
+    });
+  }
+
+  // Optionally add a Great Room / Living area placeholder using total living area (not room size)
+  if (totalLivingArea) {
+    layouts.push({
+      space_type: "Living Room",
+      space_index: bedrooms + fullBaths + halfBaths + 1,
+      flooring_material_type: null,
+      size_square_feet: null,
+      floor_level: defaultFloor,
+      has_windows: null,
+      window_design_type: null,
+      window_material_type: null,
+      window_treatment_type: null,
+      is_finished: true,
+      furnished: null,
+      paint_condition: null,
+      flooring_wear: null,
+      clutter_level: null,
+      visible_damage: null,
+      countertop_material: null,
+      cabinet_style: null,
+      fixture_finish_quality: null,
+      design_style: null,
+      natural_light_quality: null,
+      decor_elements: null,
+      pool_type: null,
+      pool_equipment: null,
+      spa_type: null,
+      safety_features: null,
+      view_type: null,
+      lighting_features: null,
+      condition_issues: null,
+      is_exterior: false,
+      pool_condition: null,
+      pool_surface_type: null,
+      pool_water_quality: null,
+    });
   }
 
   const outDir = path.join(process.cwd(), "owners");

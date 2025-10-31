@@ -11,11 +11,11 @@ function ensureDir(dirPath) {
 function extractStrap($, rawHtml) {
   let strap = null;
   const scriptsText = $("script")
-    .map((i, el) => $(el).html() || "")
+    .map((_, el) => $(el).html() || "")
     .get()
     .join("\n");
-  const m = scriptsText.match(/var\s+g_strap\s*=\s*"(\d+)"/);
-  if (m) strap = m[1];
+  const match = scriptsText.match(/var\s+g_strap\s*=\s*"(\d+)"/);
+  if (match) strap = match[1];
   if (!strap) {
     const pn = $("#pacel_no").text().trim();
     if (pn) strap = pn.replace(/\D/g, "");
@@ -23,123 +23,155 @@ function extractStrap($, rawHtml) {
   return strap || "unknown_id";
 }
 
-/**
- * Extracts key-value pairs from a specific "Structural Elements" table.
- * This function is designed to work for a single building's structural elements.
- * @param {cheerio.CheerioAPI} $ - Cheerio instance.
- * @param {string} panelId - The ID of the structural panel (e.g., 'structural_1').
- * @returns {Object} A map of structural elements.
- */
-function extractStructuralKeyValues($, panelId) {
-  const map = {};
-  const $panel = $(`#${panelId}`);
-  const $structTable = $panel.find("table.table-bordered").filter((i, tbl) => {
-    return $(tbl).find("thead th").first().text().trim().toLowerCase().includes("structural elements");
-  }).first();
-
-  if ($structTable.length > 0) {
-    $structTable.find("tbody tr").each((i, tr) => {
-      const k = $(tr).find("td").eq(0).text().trim().replace(/:$/, "");
-      const v = $(tr).find("td").eq(1).text().trim();
-      if (k) map[k] = v;
-    });
-  }
-  return map;
+function parseIntSafe(txt) {
+  if (txt == null) return null;
+  const numeric = String(txt).replace(/[^0-9-]/g, "");
+  if (!numeric) return null;
+  const value = parseInt(numeric, 10);
+  return Number.isNaN(value) ? null : value;
 }
 
-/**
- * Infers utility details from the HTML content.
- * @param {cheerio.CheerioAPI} $ - Cheerio instance.
- * @param {string} requestIdentifier - The identifier for the request.
- * @param {object} sourceHttpRequest - The source HTTP request details.
- * @returns {object} An object containing inferred utility properties.
- */
-function inferUtilities($, requestIdentifier, sourceHttpRequest) {
-  // Extract structural key values for Building 1 (assuming primary structure for utility info)
-  const kv = extractStructuralKeyValues($, 'structural_1');
+function getStructuralValue($, $panel, label) {
+  const lowerLabel = label.toLowerCase();
+  const row = $panel
+    .find("table.table-bordered")
+    .filter((_, tbl) => {
+      const header = $(tbl).find("thead th").first().text().trim().toLowerCase();
+      return header.includes("structural elements");
+    })
+    .first()
+    .find("tbody tr")
+    .filter((_, tr) => {
+      const key = $(tr).find("td").first().text().trim().toLowerCase();
+      return key.startsWith(lowerLabel);
+    })
+    .first();
 
-  // Heating and cooling
-  let heating_system_type = null;
-  let cooling_system_type = null;
+  if (!row.length) return null;
+  return row.find("td").eq(1).text().trim() || null;
+}
 
-  // Check for "Cooling" in structural elements
-  const coolTxt = (kv["Cooling"] || "").toLowerCase();
-  if (coolTxt.includes("heat & cooling pkg") || coolTxt.includes("central")) {
-    cooling_system_type = "CentralAir";
-    // If it's a package, it likely includes heating too
-    heating_system_type = "HeatPump"; // Common for heat & cooling packages
-  } else if (coolTxt.includes("none")) {
-    cooling_system_type = null;
+function mapCoolingSystemType(raw) {
+  const text = (raw || "").trim().toLowerCase();
+  if (!text) return null;
+
+  if (text.includes("central") || text.includes("heat & cooling pkg") || text.includes("ac package")) {
+    return "CentralAir";
   }
-
-  // Check for "Heating" in structural elements (if present, might override/refine)
-  const heatTxt = (kv["Heating"] || "").toLowerCase();
-  if (heatTxt.includes("central")) {
-    heating_system_type = "Central";
-  } else if (heatTxt.includes("electric")) {
-    heating_system_type = "Electric";
-  } else if (heatTxt.includes("gas")) {
-    heating_system_type = "Gas";
+  if (text.includes("window")) {
+    return "WindowAirConditioner";
   }
-
-
-
-  const public_utility_type = null;
-
-  const sewer_type = null;
-
-  const water_source_type = null;
-
-  // Solar panel presence and type
-  let solar_panel_present = false;
-  let solar_panel_type = null;
-  let solar_inverter_visible = false; // Not directly inferable from HTML
-
-  // Check Extra Features table for "SOLAR"
-  const hasSolarFeature = $("#tblExtraFeatures tbody tr td").filter((i, el) =>
-    /solar/i.test($(el).text())
-  ).length > 0;
-
-  // Check Permit Data table for "SOLAR PANELS" description
-  const solarPermit = $("#tblPermit tbody tr").filter((i, tr) =>
-    /solar panels/i.test($(tr).find("td").eq(1).text() || "")
-  ).length > 0;
-
-  if (hasSolarFeature || solarPermit) {
-    solar_panel_present = true;
-    // solar_panel_type = "Photovoltaic";
+  if (text.includes("ductless") || text.includes("mini split") || text.includes("mini-split")) {
+    return "Ductless";
   }
+  if (text.includes("whole house fan")) {
+    return "WholeHouseFan";
+  }
+  if (text.includes("ceiling fans")) {
+    return "CeilingFans";
+  }
+  if (text.includes("ceiling fan")) {
+    return "CeilingFan";
+  }
+  if (text.includes("geothermal")) {
+    return "GeothermalCooling";
+  }
+  if (text.includes("hybrid")) {
+    return "Hybrid";
+  }
+  if (text.includes("zoned")) {
+    return "Zoned";
+  }
+  if (text.includes("electric")) {
+    return "Electric";
+  }
+  return null;
+}
 
-  // Construct the utility object, filling in required fields with null if not found
-  return {
-    request_identifier: requestIdentifier,
-    source_http_request: sourceHttpRequest,
+function mapHeatingSystemType(raw) {
+  const text = (raw || "").trim().toLowerCase();
+  if (!text) return null;
 
-    cooling_system_type: cooling_system_type,
-    heating_system_type: heating_system_type,
-    public_utility_type: public_utility_type,
-    sewer_type: sewer_type,
-    water_source_type: water_source_type,
+  if (text.includes("heat & cooling pkg") || text.includes("central")) {
+    return "Central";
+  }
+  if (text.includes("heat pump")) {
+    return "HeatPump";
+  }
+  if (text.includes("electric furnace")) {
+    return "ElectricFurnace";
+  }
+  if (text.includes("electric")) {
+    return "Electric";
+  }
+  if (text.includes("gas furnace")) {
+    return "GasFurnace";
+  }
+  if (text.includes("gas")) {
+    return "Gas";
+  }
+  if (text.includes("radiant")) {
+    return "Radiant";
+  }
+  if (text.includes("baseboard")) {
+    return "Baseboard";
+  }
+  if (text.includes("solar")) {
+    return "Solar";
+  }
+  if (text.includes("ductless") || text.includes("mini split") || text.includes("mini-split")) {
+    return "Ductless";
+  }
+  if (text.includes("oil")) {
+    return "Oil";
+  }
+  return null;
+}
 
-    plumbing_system_type: null, // Not in HTML
-    plumbing_system_type_other_description: null, // Not in HTML
+function buildUtilities($, strap) {
+  const utilities = [];
 
-    electrical_panel_capacity: null, // Not in HTML
-    electrical_wiring_type: null, // Not in HTML
-    hvac_condensing_unit_present: null, // Not in HTML
-    electrical_wiring_type_other_description: null, // Not in HTML
+  $("div.panel-body[id^='structural_']").each((idx, panelEl) => {
+    const $panel = $(panelEl);
+    const buildingNumber = idx + 1;
 
-    solar_panel_present: solar_panel_present,
-    solar_panel_type: solar_panel_type,
-    solar_panel_type_other_description: null, // Not in HTML
+    const coolingRaw = getStructuralValue($, $panel, "Cooling");
+    const heatingRaw = getStructuralValue($, $panel, "Heating");
+    const fixturesRaw = getStructuralValue($, $panel, "Fixtures");
 
-    smart_home_features: null, // Not in HTML (schema expects array or null)
-    smart_home_features_other_description: null, // Not in HTML
+    const utility = {
+      request_identifier: strap,
+      source_http_request: {
+        method: "GET",
+        url: `https://www.pcpao.gov/property-details?s=${strap}`,
+      },
+      building_number: buildingNumber,
+      cooling_system_type: mapCoolingSystemType(coolingRaw),
+      heating_system_type: mapHeatingSystemType(heatingRaw || coolingRaw),
+      plumbing_fixture_count: parseIntSafe(fixturesRaw),
+      public_utility_type: null,
+      sewer_type: null,
+      water_source_type: null,
+      plumbing_system_type: null,
+      plumbing_system_type_other_description: null,
+      electrical_panel_capacity: null,
+      electrical_wiring_type: null,
+      hvac_condensing_unit_present: null,
+      electrical_wiring_type_other_description: null,
+      solar_panel_present: null,
+      solar_panel_type: null,
+      solar_panel_type_other_description: null,
+      smart_home_features: null,
+      smart_home_features_other_description: null,
+      hvac_unit_condition: null,
+      solar_inverter_visible: null,
+      hvac_unit_issues: null,
+    };
 
-    hvac_unit_condition: null, // Not in HTML
-    solar_inverter_visible: solar_inverter_visible, // Not directly inferable, default to false
-    hvac_unit_issues: null, // Not in HTML
-  };
+    utilities.push(utility);
+  });
+
+  return utilities;
 }
 
 (function main() {
@@ -148,15 +180,7 @@ function inferUtilities($, requestIdentifier, sourceHttpRequest) {
     const $ = cheerio.load(rawHtml);
 
     const strap = extractStrap($, rawHtml);
-
-    // Define request_identifier and source_http_request
-    const requestIdentifier = strap;
-    const sourceHttpRequest = {
-      method: "GET",
-      url: `https://www.pcpao.gov/property-details?s=${strap}`, // Example URL
-    };
-
-    const utility = inferUtilities($, requestIdentifier, sourceHttpRequest);
+    const utilities = buildUtilities($, strap);
 
     const outDir = path.join("owners");
     ensureDir(outDir);
@@ -164,7 +188,7 @@ function inferUtilities($, requestIdentifier, sourceHttpRequest) {
 
     const key = `property_${strap}`;
     const payload = {};
-    payload[key] = utility; // Wrap the utility object under the property key
+    payload[key] = { utilities };
 
     fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
     console.log(`Wrote utility data for ${key} to ${outPath}`);

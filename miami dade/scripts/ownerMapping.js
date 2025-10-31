@@ -124,9 +124,29 @@ function toPerson(name) {
   const noAmp = name.replace(/\s*&\s*/g, " ");
   const tokens = noAmp.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return null;
-  const first = tokens[0];
-  const last = tokens[tokens.length - 1];
-  const middle = tokens.slice(1, -1).join(" ") || null;
+  
+  let first = tokens[0];
+  let last = tokens[tokens.length - 1];
+  let middle = tokens.slice(1, -1).join(" ") || null;
+  
+  // Clean names: remove special characters except letters, spaces, hyphens, apostrophes
+  first = first.replace(/[^A-Za-z\-']/g, "").trim();
+  last = last.replace(/[^A-Za-z\-']/g, "").trim();
+  if (middle) {
+    middle = middle.replace(/[^A-Za-z\-']/g, "").trim();
+  }
+  
+  // Reject names that are empty, start with numbers, or contain only special characters
+  if (!first || !last || /^\d+$/.test(first) || /^\d+$/.test(last) || 
+      /^[^A-Za-z]+$/.test(first) || /^[^A-Za-z]+$/.test(last)) {
+    return null;
+  }
+  
+  // Reject if middle name is empty or only special characters
+  if (middle && (!middle || /^[^A-Za-z]+$/.test(middle))) {
+    middle = null;
+  }
+  
   return {
     type: "person",
     first_name: first,
@@ -136,8 +156,16 @@ function toPerson(name) {
 }
 
 function classifyOwner(rawName) {
-  const name = normWS(rawName).replace(/\s{2,}/g, " ");
+  let name = normWS(rawName).replace(/\s{2,}/g, " ");
   if (!name) return { owner: null, reason: "empty" };
+
+  // Remove content in parentheses but keep the rest of the name
+  name = name.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+
+  // Check for specific company patterns
+  if (name.includes("JEWISH OUTREACH") || name.includes("CHABAD") || name.includes("PROGRAM")) {
+    return { owner: { type: "company", name: name }, reason: null };
+  }
 
   if (isCompany(name)) {
     return { owner: { type: "company", name: name }, reason: null };

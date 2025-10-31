@@ -20,17 +20,25 @@ function titleCase(str) {
 
 // Extract property id
 function extractPropertyId($) {
-  const candidates = [];
-  const titleText = $("title").text() || "";
-  candidates.push(titleText);
-  candidates.push($(".title h1").text());
-  candidates.push($('.nav a[href*="pin="]').attr("href") || "");
-  const text = candidates.join(" ");
-  const match = text.match(/\b\d{2}-\d{2}-\d{2}-\d{4}-\d{4}-\d{4}\b/);
-  if (match) return match[0];
-  return "unknown_id";
-}
+  // Identify parcel identifier from HTML
 
+  const parcelHeader = $("section.title h1").first().text().trim();
+  // console.log("parcelHeader>>>",parcelHeader)
+
+  let parcelIdentifier = null;
+  const m = parcelHeader.match(/Parcel\s+(.+)/i);  // Capture everything after "Parcel"
+  // console.log("m>>>", m);
+
+  if (m) parcelIdentifier = m[1];
+
+  if (!parcelIdentifier) {
+    const title = $("title").text();
+    const m2 = title.match(/(\d{2}-\d{2}-\d{2}-\d{4}-\d{4}-\d{4})/);
+    if (m2) parcelIdentifier = m2[1];
+  }
+  // console.log("Final parcelIdentifier>>>", parcelIdentifier);
+  return parcelIdentifier;
+}
 const propId = extractPropertyId($);
 
 // Corporate/company detection keywords (broad). Note: exclude 'trustee' to avoid false positives like 'TRUSTEE OF THE'.
@@ -89,12 +97,27 @@ const COMPANY_KEYWORDS = [
 
 function isCompanyName(name) {
   const n = (name || "").toLowerCase();
-  return COMPANY_KEYWORDS.some((k) => n.includes(k));
+  // More strict matching - require word boundaries for most keywords
+  const strictKeywords = [
+    "\\binc\\b", "\\bllc\\b", "\\bl\\.l\\.c\\b", "\\bltd\\b", "\\bcorp\\b", "\\bcorporation\\b",
+    "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
+    "\\btrust\\b", "\\btr\\b", "\\bfoundation\\b", "\\bfund\\b", "\\bpartnership\\b",
+    "\\bholdings\\b", "\\bholding\\b", "\\bassociation\\b", "\\bassociates\\b",
+    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b"
+  ];
+  
+  // Check for strict keyword matches
+  for (const pattern of strictKeywords) {
+    if (new RegExp(pattern, 'i').test(n)) return true;
+  }
+  
+  // Only return true for obvious company patterns, not person names
+  return false;
 }
 
 // Parse possible multiple owners joined by '&' or ' and '
 function splitJointOwners(raw) {
-  const s = normalizeSpace(raw);
+  const s = normalizeSpace(raw).replace(/&amp;/g, '&').replace(/\s*\([^)]*\)\s*/g, ' ');
   if (!s) return [];
   // Split on & or ' and ' while preserving meaningful tokens
   const parts = s
@@ -104,56 +127,90 @@ function splitJointOwners(raw) {
   return parts.length ? parts : [s];
 }
 
-// Detect if a string looks like a person name in LAST FIRST [MIDDLE] format (common on PA sites)
+// Detect if a string looks like a person name
 function looksLikePerson(name) {
   const s = normalizeSpace(name);
   if (!s) return false;
   if (isCompanyName(s)) return false;
-  // Discard obvious non-names (has digits)
-  if (/\d/.test(s)) return false;
+  // Discard obvious non-names (has digits, except for suffixes like "III")
+  if (/\d/.test(s) && !/\b(II|III|IV|V|JR|SR)\b/i.test(s)) return false;
   const tokens = s.split(" ");
-  // Typical person patterns: 2-4 tokens, usually last-first-middle or first-middle-last
-  return tokens.length >= 2 && tokens.length <= 4;
+  // Typical person patterns: 2-4 tokens for names like "SMITH JOHN" or "JOHN SMITH" or "SMITH JOHN M"
+  if (tokens.length < 2 || tokens.length > 5) return false;
+  
+  // All tokens should look like name parts (alphabetic, possibly with common name punctuation)
+  return tokens.every(token => /^[A-Za-z][A-Za-z'.-]*$/.test(token));
+}
+
+// Validate prefix/suffix against schema
+function validatePrefix(prefix) {
+  const validPrefixes = ["Mr.", "Mrs.", "Ms.", "Miss", "Mx.", "Dr.", "Prof.", "Rev.", "Fr.", "Sr.", "Br.", "Capt.", "Col.", "Maj.", "Lt.", "Sgt.", "Hon.", "Judge", "Rabbi", "Imam", "Sheikh", "Sir", "Dame"];
+  return validPrefixes.find(p => p.toLowerCase() === prefix.toLowerCase()) || null;
+}
+
+function validateSuffix(suffix) {
+  const validSuffixes = ["Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM", "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."];
+  return validSuffixes.find(s => s.toLowerCase() === suffix.toLowerCase()) || null;
 }
 
 // Build a person object using inferred pattern
-function buildPerson(first, last, middle) {
+function buildPerson(first, last, middle, prefix, suffix) {
   return {
     type: "person",
     first_name: titleCase(first),
     last_name: titleCase(last),
     middle_name: middle ? titleCase(middle) : null,
+    prefix_name: prefix ? validatePrefix(prefix) : null,
+    suffix_name: suffix ? validateSuffix(suffix) : null,
   };
 }
 
-// Build person object from a tokenized name. Prefer LAST FIRST [MIDDLE] if all uppercase without comma
-function parsePerson(name, fallbackLastName, idxInGroup) {
+// Build person object from a tokenized name. Each name is parsed independently
+function parsePerson(name) {
   const s = normalizeSpace(name).replace(/\s+,\s+/g, ", ");
   const upper = s === s.toUpperCase();
-  const tokens = s.replace(/,/g, " ").split(/\s+/).filter(Boolean);
+  let tokens = s.replace(/,/g, " ").split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return null;
 
-  // If this is a secondary joint owner in uppercase with no obvious last name, use FIRST [MIDDLE] + fallback last
-  if (upper && idxInGroup > 0 && fallbackLastName) {
-    const first = tokens[0];
-    const middle = tokens.slice(1).join(" ") || null;
-    return buildPerson(first, fallbackLastName, middle);
+  // Extract prefix (schema-compliant values)
+  const prefixes = ["Mr.", "Mrs.", "Ms.", "Miss", "Mx.", "Dr.", "Prof.", "Rev.", "Fr.", "Sr.", "Br.", "Capt.", "Col.", "Maj.", "Lt.", "Sgt.", "Hon.", "Judge", "Rabbi", "Imam", "Sheikh", "Sir", "Dame"];
+  let prefix = null;
+  if (tokens.length > 0) {
+    const foundPrefix = prefixes.find(p => tokens[0].toLowerCase() === p.toLowerCase());
+    if (foundPrefix) {
+      prefix = foundPrefix;
+      tokens.shift();
+    }
   }
 
+  // Extract suffix (schema-compliant values, check all positions)
+  const suffixes = ["Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM", "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."];
+  let suffix = null;
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const foundSuffix = suffixes.find(s => tokens[i].toLowerCase() === s.toLowerCase() || (s === "Jr." && tokens[i].toLowerCase() === "jr") || (s === "Sr." && tokens[i].toLowerCase() === "sr"));
+    if (foundSuffix) {
+      suffix = foundSuffix;
+      tokens.splice(i, 1);
+      break;
+    }
+  }
+
+  if (tokens.length < 2) return null;
+
   if (upper) {
-    // Assume LAST FIRST [MIDDLE]
+    // Assume LAST FIRST [MIDDLE] for uppercase names
     const last = tokens[0];
     const first = tokens[1] || null;
     const middle = tokens.length >= 3 ? tokens.slice(2).join(" ") : null;
     if (!first || !last) return null;
-    return buildPerson(first, last, middle);
+    return buildPerson(first, last, middle, prefix, suffix);
   } else {
-    // Assume FIRST [MIDDLE] LAST
+    // Assume FIRST [MIDDLE] LAST for mixed case names
     const first = tokens[0];
     const last = tokens[tokens.length - 1];
     const middle = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
     if (!first || !last) return null;
-    return buildPerson(first, last, middle);
+    return buildPerson(first, last, middle, prefix, suffix);
   }
 }
 
@@ -244,25 +301,11 @@ function buildOwnersByDate($) {
     const parts = splitJointOwners(grantee);
     const owners = [];
 
-    // Determine fallback last name from first part tokens if uppercase and looks like LAST FIRST
-    let fallbackLast = null;
-    if (parts.length >= 1) {
-      const firstPart = normalizeSpace(parts[0]);
-      const firstPartTokens = firstPart
-        .replace(/,/g, " ")
-        .split(/\s+/)
-        .filter(Boolean);
-      if (
-        firstPartTokens.length >= 2 &&
-        firstPart === firstPart.toUpperCase()
-      ) {
-        fallbackLast = firstPartTokens[0];
-      }
-    }
+    // Parse each owner independently
 
     for (let idx = 0; idx < parts.length; idx++) {
       const raw = parts[idx];
-      const clean = normalizeSpace(raw.replace(/\.$/, ""));
+      const clean = normalizeSpace(raw.replace(/\.$/, "").replace(/\s*\([^)]*\)\s*$/, ""));
 
       if (!clean) continue;
 
@@ -275,7 +318,7 @@ function buildOwnersByDate($) {
       }
 
       if (looksLikePerson(clean)) {
-        const person = parsePerson(clean, fallbackLast, idx);
+        const person = parsePerson(clean);
         if (person) {
           owners.push(person);
         } else {
@@ -283,11 +326,20 @@ function buildOwnersByDate($) {
         }
         continue;
       }
+      
+      // Debug: Check if it's a person name that failed looksLikePerson
+      console.log(`Debug: '${clean}' failed looksLikePerson check`);
 
       if (/\b(trust|revocable|estate)\b/i.test(clean)) {
         owners.push({ type: "company", name: clean });
       } else {
-        invalid.push({ raw: clean, reason: "unrecognized_owner_format" });
+        // Try parsing as person even if looksLikePerson failed
+        const person = parsePerson(clean);
+        if (person) {
+          owners.push(person);
+        } else {
+          invalid.push({ raw: clean, reason: "unrecognized_owner_format" });
+        }
       }
     }
 

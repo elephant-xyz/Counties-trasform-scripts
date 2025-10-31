@@ -46,6 +46,7 @@ function main() {
     }
   }
 
+  // Other utilities not present in the HTML, set to null or sensible defaults per schema
   const utility = {
     cooling_system_type: cooling_system_type || null,
     heating_system_type: null,
@@ -58,7 +59,6 @@ function main() {
     electrical_wiring_type: null,
     hvac_condensing_unit_present: hvac_condensing_unit_present || null,
     electrical_wiring_type_other_description: null,
-    // Schema expects booleans; absence on the page is treated as false
     solar_panel_present: false,
     solar_panel_type: null,
     solar_panel_type_other_description: null,

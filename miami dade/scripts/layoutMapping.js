@@ -68,6 +68,14 @@ function defaultLayout(spaceType, index, floorLevel) {
     bathroom_renovation_date: null,
     kitchen_renovation_date: null,
     flooring_installation_date: null,
+    story_type: null,
+    building_number: null,
+    request_identifier: null,
+    source_http_request: null,
+    area_under_air_sq_ft: null,
+    total_area_sq_ft: null,
+    heated_area_sq_ft: null,
+    adjustable_area_sq_ft: null,
   };
 }
 
@@ -93,6 +101,197 @@ function mapLayouts(data) {
     layouts.push(
       defaultLayout("Full Bathroom", layouts.length + 1, floorLevel),
     );
+  }
+
+  function parseIntLike(v) {
+    if (v == null) return null;
+    const n = Number(String(v).replace(/[^0-9.]/g, ""));
+    return Number.isFinite(n) ? Math.round(n) : null;
+  }
+
+  // Extra features → layouts
+  const efi = data && data.ExtraFeature && Array.isArray(data.ExtraFeature.ExtraFeatureInfos)
+    ? data.ExtraFeature.ExtraFeatureInfos
+    : [];
+  function parseBuildingNumber(obj) {
+    if (!obj || typeof obj !== "object") return null;
+    const candidates = [
+      obj.BuildingNo,
+      obj.BuildingNumber,
+      obj.BldgNo,
+      obj.Bldg,
+      obj.Building,
+      obj.BldgNumber,
+    ];
+    for (const c of candidates) {
+      if (c == null) continue;
+      const n = Number(String(c).replace(/[^0-9]/g, ""));
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  }
+  function extractSpaData(description) {
+    if (!description) return {};
+    const d = String(description).toUpperCase();
+    
+    // Extract spa type from description
+    let spaType = null;
+    if (/\bJACUZZI\b/.test(d)) spaType = "Jacuzzi";
+    else if (/\bIN\s*GROUND\b/.test(d)) spaType = "InGround";
+    else if (/\bROOFTOP\b/.test(d)) spaType = "Rooftop";
+    else if (/\bWOOD\s*FIRED\b/.test(d)) spaType = "WoodFiredHotTub";
+    else if (/\bJAPANESE\s*SOAKING\b/.test(d)) spaType = "JapaneseSoakingTub";
+    else if (/\bSALT\s*WATER\b/.test(d)) spaType = "Saltwater";
+    else if (/\bHEATED\b/.test(d)) spaType = "Heated";
+    else spaType = "Jacuzzi"; // Default for residential spas
+    
+    return {
+      spa_type: spaType
+    };
+  }
+
+  function extractPoolData(description) {
+    if (!description) return {};
+    const d = String(description).toUpperCase();
+    
+    // Extract pool type from description
+    let poolType = null;
+    if (/\bINDOOR\b/.test(d)) poolType = "IndoorPool";
+    else if (/\bOUTDOOR\b/.test(d)) poolType = "OutdoorPool";
+    else if (/\bHEATED\b/.test(d)) poolType = "Heated";
+    else if (/\bSALT\s*WATER\b/.test(d)) poolType = "SaltWater";
+    else if (/\bABOVE\s*GROUND\b/.test(d)) poolType = "AboveGround";
+    else if (/\bCONCRETE\b/.test(d)) poolType = "Concrete";
+    else if (/\bFIBERGLASS\b/.test(d)) poolType = "Fiberglass";
+    else if (/\bVINYL\b/.test(d)) poolType = "Vinyl";
+    else if (/\bNATURAL\b/.test(d)) poolType = "Natural";
+    else poolType = "BuiltIn"; // Default for residential pools
+    
+    // Extract surface type
+    let surfaceType = null;
+    if (/\bTILE\b/.test(d)) surfaceType = "Tile";
+    else if (/\bCONCRETE\b/.test(d)) surfaceType = "Concrete";
+    else if (/\bVINYL\s*LINER\b/.test(d)) surfaceType = "Vinyl Liner";
+    else if (/\bFIBERGLASS\b/.test(d)) surfaceType = "Fiberglass";
+    else if (/\bPAINTED\b/.test(d)) surfaceType = "Painted";
+    else if (/\bNATURAL\s*STONE\b/.test(d)) surfaceType = "Natural Stone";
+    else surfaceType = "Unknown";
+    
+    // Extract condition from description keywords
+    let condition = null;
+    if (/\bNEW\b/.test(d)) condition = "New";
+    else if (/\bGOOD\b/.test(d)) condition = "Good";
+    else if (/\bWORN\b/.test(d)) condition = "Worn";
+    else if (/\bNEEDS?\s*REPAIR\b/.test(d)) condition = "Needs Repair";
+    else if (/\bDAMAGED\b/.test(d)) condition = "Damaged";
+    else condition = "Unknown";
+    
+    // Extract water quality (default to clear for residential pools)
+    const waterQuality = "Clear";
+    
+    // Extract equipment (basic detection)
+    let equipment = null;
+    if (/\bHEATED\b/.test(d)) equipment = "Heater";
+    else if (/\bFILTER\b/.test(d)) equipment = "Filter";
+    else equipment = "Unknown";
+    
+    return {
+      pool_type: poolType,
+      pool_surface_type: surfaceType,
+      pool_condition: condition,
+      pool_water_quality: waterQuality,
+      pool_equipment: equipment
+    };
+  }
+
+  function mapExtraFeatureToLayout(description) {
+    if (!description) return null;
+    const d = String(description).toUpperCase();
+    // Check for spa/whirlpool first (more specific)
+    if (/\bSPA\b|\bHOT TUB\b|\bJACUZZI\b|\bWHIRLPOOL\b/.test(d)) return { 
+      spaceType: "Hot Tub / Spa Area", 
+      isExterior: true,
+      spaData: extractSpaData(description)
+    };
+    // Then check for pool (less specific)
+    if (/\bPOOL\b/.test(d)) return { 
+      spaceType: "Pool Area", 
+      isExterior: true,
+      poolData: extractPoolData(description)
+    };
+    if (/\bENCLOSED\s*PORCH\b/.test(d)) return { spaceType: "Enclosed Porch", isExterior: true };
+    if (/\bSCREEN(ED)?\s*PORCH\b|\bSCREEN\s*ROOM\b/.test(d)) return { spaceType: "Screened Porch", isExterior: true };
+    if (/\bOPEN\s*PORCH\b|\bPORCH\b/.test(d)) return { spaceType: "Open Porch", isExterior: true };
+    if (/\bLANAI\b/.test(d)) return { spaceType: "Lanai", isExterior: true };
+    if (/\bPATIO\b/.test(d)) return { spaceType: "Patio", isExterior: true };
+    if (/\bBALCONY\b/.test(d)) return { spaceType: "Balcony", isExterior: true };
+    if (/\bTERRACE\b/.test(d)) return { spaceType: "Terrace", isExterior: true };
+    if (/\bDECK\b/.test(d)) return { spaceType: "Deck", isExterior: true };
+    if (/\bGAZEBO\b/.test(d)) return { spaceType: "Gazebo", isExterior: true };
+    if (/\bSUN\s*ROOM\b|\bSUNROOM\b|\bFLORIDA\s*ROOM\b/.test(d)) return { spaceType: "Sunroom", isExterior: false };
+    if (/\bSCREEN\s*ENCLOSURE\b/.test(d)) return { spaceType: "Screen Enclosure (Custom)", isExterior: true };
+    if (/\bCOURTYARD\b/.test(d)) return { spaceType: "Open Courtyard", isExterior: true };
+    if (/\bSTOOP\b/.test(d)) return { spaceType: "Stoop", isExterior: true };
+    if (/\bDET(ACHED)?\s*GARAGE\b/.test(d)) return { spaceType: "Detached Garage", isExterior: false };
+    if (/\bATT(ACHED)?\s*GARAGE\b|\bGARAGE\b/.test(d)) return { spaceType: "Attached Garage", isExterior: false };
+    if (/\bCARPORT\b/.test(d)) return { spaceType: "Carport", isExterior: true };
+    if (/\bUTILITY\s*CLOSET\b|\bUTILITY\s*ROOM\b/.test(d)) return { spaceType: "Utility Closet", isExterior: false };
+    if (/\bSHED\b/.test(d)) return { spaceType: "Shed", isExterior: true };
+    if (/\bFENCE\b|\bCHAIN\s*LINK\b/.test(d)) return null; // Skip fences - handle in structure/lot instead
+    return null;
+  }
+  // Deduplicate ExtraFeatureInfos by description to avoid multiple years creating duplicate layouts
+  const seenDescriptions = new Set();
+  for (const ef of efi) {
+    const desc = ef && ef.Description ? String(ef.Description).trim() : null;
+    if (!desc) {
+      throw new Error("ExtraFeatureInfos item is missing Description");
+    }
+    
+    // Skip if we've already processed this description (deduplicate by year)
+    if (seenDescriptions.has(desc)) {
+      continue;
+    }
+    seenDescriptions.add(desc);
+    
+    const m = mapExtraFeatureToLayout(desc);
+    if (!m) {
+      // Skip unmapped features (like fences) instead of throwing error
+      continue;
+    }
+    const size = parseIntLike(ef && (ef.Units || ef.SquareFeet || ef.Size));
+    const idx = layouts.length + 1;
+    const lay = defaultLayout(m.spaceType, idx, null);
+    lay.is_exterior = m.isExterior;
+    lay.size_square_feet = size;
+    lay.building_number = parseBuildingNumber(ef);
+    
+    // Add pool-specific data if available
+    if (m.poolData) {
+      Object.assign(lay, m.poolData);
+    }
+    
+    // Add spa-specific data if available
+    if (m.spaData) {
+      Object.assign(lay, m.spaData);
+    }
+    
+    layouts.push(lay);
+  }
+
+  // Living Area summary from PropertyInfo
+  const heated = parseIntLike(pi.BuildingHeatedArea);
+  const total = parseIntLike(pi.BuildingGrossArea);
+  const adjusted = parseIntLike(pi.BuildingEffectiveArea);
+  if (heated != null || total != null || adjusted != null) {
+    const idx = layouts.length + 1;
+    const lay = defaultLayout("Living Area", idx, null);
+    lay.is_exterior = false;
+    lay.size_square_feet = heated != null ? heated : null;
+    lay.heated_area_sq_ft = heated;
+    lay.total_area_sq_ft = total;
+    lay.adjustable_area_sq_ft = adjusted;
+    layouts.push(lay);
   }
 
   return { [`property_${id}`]: { layouts } };

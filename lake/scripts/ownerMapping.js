@@ -15,42 +15,7 @@ const cleanName = (s) =>
     .trim();
 const isAllCapsWord = (w) => !!w && w === w.toUpperCase();
 const hasLetters = (s) => /[A-Za-z]/.test(s || "");
-const stripPunctuation = (s) =>
-  (s || "")
-    .replace(/[\.,;:&]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-function normalizePersonComponents(person) {
-  if (!person || person.type !== "person") return person;
-  const normalizeComponent = (value, { allowInitial = false } = {}) => {
-    if (!value) return null;
-    let component = value
-      .replace(/\b(AND|&|ET|ET\s+AL|ET\s+UX|ET\s+VIR)\b/gi, " ")
-      .replace(/[^A-Za-z\s'\-\.]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!component) return null;
-    const tokens = component.split(" ").map((token) => {
-      if (!token) return "";
-      if (allowInitial && token.length === 1) return token.toUpperCase();
-      if (/^[A-Z]\.$/.test(token)) {
-        return token[0].toUpperCase() + ".";
-      }
-      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
-    });
-    const merged = tokens.filter(Boolean).join(" ").trim();
-    return merged || null;
-  };
-
-  person.first_name = normalizeComponent(person.first_name);
-  person.last_name = normalizeComponent(person.last_name);
-  person.middle_name = normalizeComponent(person.middle_name, {
-    allowInitial: true,
-  });
-  if (!person.middle_name) delete person.middle_name;
-  return person;
-}
+const stripPunctuation = (s) => (s || "").replace(/[\.,;:]+/g, "").trim();
 
 // Company detection keywords (case-insensitive)
 const companyKeywords = [
@@ -251,16 +216,8 @@ function parseOwnersFromString(rawStr) {
     }
 
     if (person && person.first_name && person.last_name) {
-      const normalizedPerson = normalizePersonComponents({ ...person });
-      if (normalizedPerson.first_name && normalizedPerson.last_name) {
-        owners.push(normalizedPerson);
-        priorLastName = normalizedPerson.last_name || priorLastName;
-      } else {
-        invalid.push({
-          raw: part,
-          reason: "failed normalization of person name components",
-        });
-      }
+      owners.push(person);
+      priorLastName = person.last_name || priorLastName;
     } else {
       invalid.push({
         raw: part,
