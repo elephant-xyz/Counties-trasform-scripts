@@ -10,6 +10,14 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
+}
+
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl02_ctl01_dynamicSummary_rptrDynamicColumns_ctl01_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Information";
 
@@ -150,6 +158,16 @@ function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
+
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier != parcelId) {
+    throw {
+      type: "error",
+      message: `Request identifier and parcel id don't match.`,
+      path: "property.request_identifier",
+    };
+  }
+  
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);

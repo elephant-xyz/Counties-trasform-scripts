@@ -10,7 +10,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0001-VACANT RESIDENTIAL W\\/SITE AMEN",
@@ -18,7 +18,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0002-VACANT MOBILE HOME LOT PLATTED",
@@ -26,7 +26,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0003-MH LOT\\/VALUED VACANT\\/HAS IMPR.",
@@ -34,7 +34,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0008-FUTURE DEVELOPMENT SITE-PLATTED",
@@ -42,7 +42,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "TransitionalProperty",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0009-VACANT RESIDENTIAL TRACT\\/UNUSABLE",
@@ -50,7 +50,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0010-VAC UNPLATTED <10 AC",
@@ -66,7 +66,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0041-VACANT RES.LAND CONDO",
@@ -74,7 +74,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0050-CO-OP:VALUED VACANT\\/HAS IMPR.",
@@ -82,7 +82,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0055-CO-OP-VACANT LOT",
@@ -90,7 +90,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0100-SINGLE FAMILY RESIDENTIAL",
@@ -98,7 +98,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
     "property_usage_type": "Residential",
-    "property_type": "SingleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0101-SFR-MODEL HOME",
@@ -106,7 +106,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
     "property_usage_type": "Unknown",
-    "property_type": "SingleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0105-SINGLE FAM RES\\/10+AC",
@@ -122,7 +122,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "Duplex",
     "property_usage_type": "Residential",
-    "property_type": "Duplex"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0110-TOWNHOUSE",
@@ -130,7 +130,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "TownhouseRowhouse",
     "property_usage_type": "Residential",
-    "property_type": "Townhouse"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0164-UNINHABITABLE RES",
@@ -146,7 +146,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHousingSingleWide",
     "property_usage_type": "Residential",
-    "property_type": "ManufacturedHome"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0202-DOUBLE WIDE MOBILE HOME",
@@ -154,7 +154,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHousingMultiWide",
     "property_usage_type": "Residential",
-    "property_type": "ManufacturedHome"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0203-TRIPLE WIDE+MOBILE HOME",
@@ -162,7 +162,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHousingMultiWide",
     "property_usage_type": "Residential",
-    "property_type": "ManufacturedHome"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0210-MOBILE HOME ON 10+ACRES",
@@ -170,7 +170,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHousing",
     "property_usage_type": "Residential",
-    "property_type": "ManufacturedHome"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0264-UNINHABITABLE MOBILE HOME",
@@ -178,7 +178,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHousing",
     "property_usage_type": "Residential",
-    "property_type": "ManufacturedHome"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0300-GARDEN APTS.",
@@ -194,7 +194,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "MultiFamily5Plus",
     "property_usage_type": "Residential",
-    "property_type": "Apartment"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0302-INCOME RESTRICTED APT",
@@ -210,7 +210,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0408-SINGLE FAMILY HOMES\\/CONDOMINIA",
@@ -218,7 +218,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
     "property_usage_type": "Residential",
-    "property_type": "SingleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0409-ATTACHED UNIT\\/LAND CONDO",
@@ -226,7 +226,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0410-SINGLE FAMILY HOMES\\/LAND CONDO",
@@ -234,7 +234,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
     "property_usage_type": "Residential",
-    "property_type": "SingleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0411-SINGLE WIDE MH\\/CONDOMINIA",
@@ -242,7 +242,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0412-DOUBLE WIDE MH\\/CONDOMINIA",
@@ -250,7 +250,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0413-TRIPLE WIDE MH\\/CONDOMINIA",
@@ -258,7 +258,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0464-CONDOMINIA UNINHABITABLE",
@@ -266,7 +266,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0501-SINGLE WIDE MH\\/CO-OP",
@@ -274,7 +274,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Cooperative"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0502-DOUBLE WIDE MH\\/CO-OP",
@@ -282,7 +282,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Cooperative"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0503-TRIPLE WIDE MH\\/CO-OP",
@@ -290,7 +290,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Cooperative"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0600-RETIREMENT HOMES NOT ELIGIBLE",
@@ -322,7 +322,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "ForestParkRecreation",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0725-RES RELATED AMENITIES",
@@ -346,7 +346,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "Duplex",
     "property_usage_type": "Residential",
-    "property_type": "Duplex"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0801-TWO OR MORE HOUSES",
@@ -362,7 +362,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "MultiFamily5Plus",
     "property_usage_type": "Unknown",
-    "property_type": "MultipleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0805-HOUSE PLUS DUPLEX",
@@ -370,7 +370,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "Duplex",
     "property_usage_type": "Residential",
-    "property_type": "Duplex"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0864-UNINHABITABLE MULTI-FAMILY",
@@ -378,7 +378,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "MultiFamily5Plus",
     "property_usage_type": "Unknown",
-    "property_type": "MultipleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "0900-VACANT RESIDENTIAL COMMON AREA",
@@ -386,7 +386,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "ResidentialCommonElementsAreas",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0901-IMPROVED RESIDENTIAL COMMON AREA",
@@ -418,7 +418,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "ResidentialCommonElementsAreas",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "0941-IMPROVED CONDO COMMON AREA",
@@ -426,7 +426,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "ResidentialCommonElementsAreas",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1000-VACANT COMMERCIAL",
@@ -434,7 +434,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Unknown",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "1001-VACANT COMMERCIAL W\\/IMPV",
@@ -442,7 +442,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Unknown",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "1004-VACANT CONDOMINIA COMMERCIAL",
@@ -450,7 +450,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "1009-VACANT NON-RESIDENTIAL\\/UNUSABLE",
@@ -458,7 +458,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "1033-VAC COMMERCIAL COMMON AREA",
@@ -474,7 +474,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "ResidentialCommonElementsAreas",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1041-VACANT COM.LAND CONDO",
@@ -482,7 +482,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Residential",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "1100-STORES,ONE UNIT",
@@ -546,7 +546,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "RetailStore",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1200-MIXED USE COMMERCIAL",
@@ -586,7 +586,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "ResidentialCommonElementsAreas",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1264-UNINHABITABLE COMMERCIAL\\/INDUST.",
@@ -634,7 +634,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1700-OFFICE BUILDINGS-ONE STORY",
@@ -650,7 +650,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1710-OFFICE BUILDING\\/LAND CONDO",
@@ -658,7 +658,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1800-OFFICE BUILDINGS-MULTI STORY",
@@ -682,7 +682,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "1910-PROFESSIONAL OFFICE\\/LAND CONDO",
@@ -690,7 +690,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "2000-AIRPORTS",
@@ -722,7 +722,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "2100-RESTAURANTS,CAFETERIAS",
@@ -786,7 +786,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHousing",
     "property_usage_type": "Residential",
-    "property_type": "ManufacturedHome"
+    "property_type": "Building"
   },
   {
     "property_usecode": "2730-GARAGE\\/AUTO BODY\\/PAINT SHOP",
@@ -826,7 +826,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHomeInPark",
     "property_usage_type": "ForestParkRecreation",
-    "property_type": "MultiFamilyMoreThan10"
+    "property_type": "Building"
   },
   {
     "property_usecode": "2805-RV PARKS",
@@ -834,7 +834,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHomeInPark",
     "property_usage_type": "ForestParkRecreation",
-    "property_type": "MultiFamilyMoreThan10"
+    "property_type": "Building"
   },
   {
     "property_usecode": "2832-RENTAL PP MOBILE HOME ATTACHMENTS",
@@ -842,7 +842,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ManufacturedHousing",
     "property_usage_type": "Residential",
-    "property_type": "ManufacturedHome"
+    "property_type": "Building"
   },
   {
     "property_usecode": "2900-PRODUCE AND FISHHOUSES WHOLE",
@@ -978,7 +978,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Hotel",
-    "property_type": "Timeshare"
+    "property_type": "Building"
   },
   {
     "property_usecode": "4000-VACANT INDUSTRIAL",
@@ -986,7 +986,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "LightManufacturing",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "4001-VACANT INDUSTRIAL W\\/IMPV",
@@ -994,7 +994,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "LightManufacturing",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "4100-LIGHT INDUSTRIAL",
@@ -1010,7 +1010,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "4200-HEAVY INDUSTRIAL",
@@ -1090,7 +1090,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Warehouse",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "4805-WAREHOUSING CONDO FLEX",
@@ -1098,7 +1098,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Warehouse",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "4810-WAREHOUSING\\/LAND CONDO",
@@ -1106,7 +1106,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Warehouse",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "4900-OPEN STORAGE,SUPPLY\\/JUNKYARDS",
@@ -1122,7 +1122,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
     "property_usage_type": "Residential",
-    "property_type": "SingleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "5010-AG.LAND\\/IMP.W\\/NON RES.BLDGS.",
@@ -1146,7 +1146,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
     "property_usage_type": "Agricultural",
-    "property_type": "SingleFamily"
+    "property_type": "Building"
   },
   {
     "property_usecode": "5040-AG.LAND\\/IMP. W\\/SOLAR FIELDS",
@@ -1226,7 +1226,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "NonProfitCharity",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "7100-CHURCH",
@@ -1338,7 +1338,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Military",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "8082-GOVT OWNED VAC FOREST,PRKS,RECAREA",
@@ -1362,7 +1362,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "PrivateSchool",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "8085-GOVT OWNED VACANT HOSPITALS",
@@ -1370,7 +1370,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "PrivateHospital",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "8086-GOVT OWNED VACANT COUNTY",
@@ -1378,7 +1378,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "8087-GOVT OWNED VACANT STATE",
@@ -1386,7 +1386,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "8088-GOVT OWNED VACANT FEDERAL",
@@ -1394,7 +1394,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "8089-GOVT OWNED VACANT MUNICIPAL",
@@ -1402,7 +1402,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "8100-GOVT OWNED MILITARY",
@@ -1586,7 +1586,7 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "TransitionalProperty",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   },
   {
     "property_usecode": "9901-VAC. ACR.,NOT AG 10+ AC. W\\/IMP",
@@ -1602,7 +1602,7 @@ const propertyTypeMapping = [
     "build_status": "Improved",
     "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
-    "property_type": "Condominium"
+    "property_type": "Building"
   },
   {
     "property_usecode": "9908-FUTURE DEV. SITE-PLATTED 10+ AC.",
@@ -1618,10 +1618,648 @@ const propertyTypeMapping = [
     "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "ReferenceParcel",
-    "property_type": "VacantLand"
+    "property_type": "LandParcel"
   }
 ]
 
+const permitTypeMapping = {
+"MECHANICAL A/C CHANGE-OUT": "MechanicalHVAC",
+"REROOF/ROOFING MEMBRANE": "Roofing",
+"RESIDENTIAL (1 & 2) SINGLE DET": "ResidentialConstruction",
+"RENOVATION PERMIT ADMIN (1&2)": "ResidentialConstruction",
+"SWIMMING POOL": "PoolSpaInstallation",
+"ALUMINUM SCREEN ROOM": "ScreenEnclosure",
+"ALUMINUM POOL CAGE": "ScreenEnclosure",
+"ROOFING SHINGLE": "Roofing",
+"ZONING/FENCING/MISCELLANEOUS": "Fencing",
+"ELECTRICAL RES ALTERATION": "Electrical",
+"MECHANICAL": "MechanicalHVAC",
+"NEW ADDITION (RESIDENTIAL)": "BuildingAddition",
+"SEWER, INSTALL NEW/CHG SEPTIC": "UtilitiesConnection",
+"BUILDING": "GeneralBuilding",
+"MISCELLANEOUS": null,
+"RES ALTERATION OR EXTENTION": "ResidentialConstruction",
+"DOCK": "DockAndShore",
+"PLUMBING": "Plumbing",
+"ROOF RESIDENTIAL": "Roofing",
+"NEW ADDITION (COMMERCIAL)": "BuildingAddition",
+"RESIDENTIAL (1 & 2) SINGLE ATT": "ResidentialConstruction",
+"MECHANICAL RESIDENTIAL": "MechanicalHVAC",
+"MECHANICAL COMMERCIAL": "MechanicalHVAC",
+"SOLAR HOT WATER SYSTEM": "Electrical",
+"SIGN": null,
+"SCREEN RM/PORCH/PATIO/GARAGE": "ScreenEnclosure",
+"GENERATOR": "Electrical",
+"DEMOLISH": "Demolition",
+"RESIDENTIAL": "ResidentialConstruction",
+"ACCESSORY BLD (COMM) CANOPY": "CommercialConstruction",
+"REROOF": "Roofing",
+"ELECTRICAL": "Electrical",
+"WINDOW/DOOR UNDER 3 STORY": "ExteriorOpeningsAndFinishes",
+"MOBILE HOME SET-UP": "MobileHomeRV",
+"FENCE": "Fencing",
+"PLUMBING RESIDENTIAL": "Plumbing",
+"ALUMINUM ROOFOVER W/O GAS VENT": "Roofing",
+"WINDOW/DOOR REPLACEMENT": "ExteriorOpeningsAndFinishes",
+"RENOVATION BLD (1 & 2 FAMILY)": "ResidentialConstruction",
+"SIGN ON SITE": null,
+"RENOVATION PLB (1 & 2 FAMILY)": "Plumbing",
+"SIGN BILLBOARD": null,
+"MECHANICAL A/C CHANGE OUT": "MechanicalHVAC",
+"NEW SINGLE FAMILY": "ResidentialConstruction",
+"CONCRETE FOUNDATION": "GeneralBuilding",
+"RENOVATION ELE (1 & 2 FAMILY)": "Electrical",
+"MECHANICAL COMM DUCT SYS": "MechanicalHVAC",
+"CONCRETE STRUCT SLAB/DRIVEWAY": "GeneralBuilding",
+"ELECTRICAL SERVICE CHANGE": "Electrical",
+"ROOF COMMERICIAL": "Roofing",
+"RESIDENTIAL ALT ADD": "ResidentialConstruction",
+"ALUMINUM SIDING/VINYL WINDOWS": "ExteriorOpeningsAndFinishes",
+"ACCESSORY BLD(RES)UTL/BARN/SHD": "ResidentialConstruction",
+"ALUMINUM CARPORT W/U-BLD": "GeneralBuilding",
+"COMMERCIAL ALT ADD": "CommercialConstruction",
+"NEW 1&2 FAMILY & TOWNHOUSE": "ResidentialConstruction",
+"WINDOWS": "ExteriorOpeningsAndFinishes",
+"ALUMINUM GLASS ROOM": "ScreenEnclosure",
+"SPECIAL USE": null,
+"SIDING, FASCIA, SOFFIT": "ExteriorOpeningsAndFinishes",
+"RESIDENTIAL STRUCTURE": "ResidentialConstruction",
+"ALUMINUM STRUCTURE": "GeneralBuilding",
+"TREE REMOVAL RESIDENTIAL": "VegetationRemoval",
+"AMENDMENT": null,
+"ALUMINUM CARPORT/CANOPY": "GeneralBuilding",
+"COMM ALTERATION OR EXTENTION": "CommercialConstruction",
+"ACCESSORY BLD (RES) GARAGE": "ResidentialConstruction",
+"PLUMBING COMMERCIAL": "Plumbing",
+"RESIDENTIAL (MULTI) APARTMENT": "ResidentialConstruction",
+"CONCRETE RETAINING/SEA WALL": "GeneralBuilding",
+"POOL/SPA RESIDENTIAL": "PoolSpaInstallation",
+"ELECTRICAL SERVICE CHG (RES)": "Electrical",
+"SOLAR RESIDENTIAL": "Electrical",
+"COMMERCIAL STRUCTURE": "CommercialConstruction",
+"FENCE RESIDENTIAL": "Fencing",
+"ANTENNA RADIO/TELEVISION": "GeneralBuilding",
+"FIRE ALARM": "FireProtectionSystem",
+"MECHANICAL RES NEW/REMODEL": "MechanicalHVAC",
+"COMMERCIAL BLD (SHELL ONLY)": "CommercialConstruction",
+"DRIVEWAY OR PATIO": "DrivewayPermit",
+"FIRE SPRINKLER SYSTEM": "FireProtectionSystem",
+"WATERFRONT STRUCTURE": "DockAndShore",
+"ELECTRICAL RESIDENTIAL": "Electrical",
+"ROOF": "Roofing",
+"SITE IMPROVEMENTS": "SiteDevelopment",
+"PRE APPLICATION MEETING": "InformalMeeting",
+"INTERIOR COMPLETION (COMM)": "CommercialConstruction",
+"ELECTRICAL COMMERCIAL": "Electrical",
+"STORAGE AUTO PARKING STRUCT": "CommercialConstruction",
+"DEMOLITION": "Demolition",
+"MULTI FAMILY": "ResidentialConstruction",
+"INGROUND SPA": "PoolSpaInstallation",
+"STAIR/MISC": "GeneralBuilding",
+"RESIDENTIAL (1 & 2) DUPLEX": "ResidentialConstruction",
+"ACCESSORY STRUCTURE RES": "ResidentialConstruction",
+"DOCK/SEAWALL": "DockAndShore",
+"FENCE COMMERCIAL": "Fencing",
+"MECHANICAL GAS VENT ALTER/EXTN": "MechanicalHVAC",
+"DECK": "GeneralBuilding",
+"CHANGE OF USE": null,
+"ACCESSORY BLD (RES) CANOPY": "ResidentialConstruction",
+"ACCESSORY BLD (COMM) PAVILIAN": "CommercialConstruction",
+"COMMERCIAL OFFICE BLD": "CommercialConstruction",
+"ACCESSORY BLD (RES) CARPORT": "ResidentialConstruction",
+"COMMERCIAL MODULAR BLD": "CommercialConstruction",
+"STORAGE BLDG": "GeneralBuilding",
+"MULTIFAMILY": "ResidentialConstruction",
+"MOBILE HOME": "MobileHomeRV",
+"INDUSTRIAL FACTORY": "CommercialConstruction",
+"DRIVEWAY-NON PAVER": "DrivewayPermit",
+"ASSEMBLY CONST AUDITORIUM": "CommercialConstruction",
+"VENDING": null,
+"COMMERCIAL RETAIL STORE": "CommercialConstruction",
+"COMMERCIAL NEW": "CommercialConstruction",
+"TENT": "GeneralBuilding",
+"TENT SETUP": "GeneralBuilding",
+"TREE REMOVAL NON RESIDENTIAL": "VegetationRemoval",
+"ACESSORY STRUCTURE COMMERCIAL": "CommercialConstruction",
+"CONCRETE PAD W/FOOTING": "GeneralBuilding",
+"MECHANICAL COMM NEW/REMODEL": "MechanicalHVAC",
+"VARIANCE": "Variance",
+"ALUMINUM/VINYL SOFFIT & FASCIA": "ExteriorOpeningsAndFinishes",
+"FORM-BASED CODE ADJUSTMENT": null,
+"ACCESSORY BLD (RES) GAZEBO": "ResidentialConstruction",
+"DUMPSTER": null,
+"CONCRETE POOL CAGE -- AUTO CLOSE": "ScreenEnclosure",
+"FIRE SYSTEM UNDERGROUND": "FireProtectionSystem",
+"ACCESSORY BLD (COMM) CARPORT": "CommercialConstruction",
+"RENOVATION BLD (MULTI FAMILY)": "ResidentialConstruction",
+"PRELIMINARY": null,
+"PARKING LOT": "SiteDevelopment",
+"ANTENNA": "GeneralBuilding",
+"MODULAR BLD": "GeneralBuilding",
+"DAMAGE": null,
+"SPECIAL USE AMENDMENT": null,
+"STRUCTURE RELOCATION (RES)": "StructureMove",
+"FIRE SUPPRESSION SYSTEM": "FireProtectionSystem",
+"TBD": null,
+"BACKFLOW DEVICE INSTALL": "Plumbing",
+"POOL/SPA COMMERCIAL": "PoolSpaInstallation",
+"CONVERTED FROM EDEN": null,
+"FIRE HOOD SUPPRESSION SYSTEM": "FireProtectionSystem",
+"Agricultural Exemption": null,
+"MECHANICAL COMM RANGE HOOD": "MechanicalHVAC",
+"ELECTRICAL SERVICE INTERRUPT": "Electrical",
+"MECHANICAL GAS PIPING/RES": "GasInstallation",
+"INTERIOR COMPLETION (RES)": "ResidentialConstruction",
+"NEW WATER SERVICE": "UtilitiesConnection",
+"STORAGE TANK FUEL": "GeneralBuilding",
+"ANTENNA SATELLITE DISH": "GeneralBuilding",
+"ELECTRICAL COMM ALTER>3 SP CIR": "Electrical",
+"LAND USE ATLAS AMENDMENT": "ComprehensivePlanAmendment",
+"FLOW/FIRE HYDRANT": "FireProtectionSystem",
+"ALCOHOL BEVERAGE LICENSE": null,
+"PLANNED DEV MINOR AMENDMENT": "PlannedDevelopment",
+"UNDERGROUND PIPING": "Plumbing",
+"ELECTRICAL POLE MOUNTED SER": "Electrical",
+"EASEMENT VACATION": "Vacation",
+"CAP": null,
+"RES IRRIGATION SYS": "LandscapeIrrigation",
+"CHANGE OF OCCUPANCY": null,
+"DAMAGE ASSESSMENT": null,
+"ABOVE GROUND SPA": "PoolSpaInstallation",
+"MODULAR BUILDING COMMERCIAL": "CommercialConstruction",
+"RENOVATION MECH (1 & 2 FAMILY)": "MechanicalHVAC",
+"SIP WITH LA": null,
+"RENOVATION PLB (MULTI FAMILY)": "Plumbing",
+"ROW/VACATION": "RightOfWayPermit",
+"PLANNED DEV MAJOR AMENDMENT": "PlannedDevelopment",
+"KITCHEN HOOD": "MechanicalHVAC",
+"EDUCATIONAL BLD PRIVATE": "CommercialConstruction",
+"RENOVATION PERMIT ADMIN (MULT)": "ResidentialConstruction",
+"CERTIFICATE OF APPROPRIATNESS": "SpecialCertificateOfAppropriateness",
+"MECHANICAL REFRIGERATION/COMM": "MechanicalHVAC",
+"MINOR PDP AMENDMENT": "PlannedDevelopment",
+"PLANNED DEV PRELIMINARY": "PlannedDevelopment",
+"ALUMINUM ROOFOVER W/GAS VENT": "Roofing",
+"ELECTRICAL SERVICE CHG (COMM)": "Electrical",
+"COMP PLAN CHANGE": "ComprehensivePlanAmendment",
+"ADMINISTRATIVE VARIANCE": "AdministrativeApproval",
+"RENOVATION MECH (MULTI FAMILY)": "MechanicalHVAC",
+"FIRE HYDRANT FLOW DATA REQ": "FireProtectionSystem",
+"TANKS": "GeneralBuilding",
+"GREENHOUSE (COMM)": "CommercialConstruction",
+"SOLAR COMMERCIAL": "Electrical",
+"ASSEMBLY CONST CHURCH": "CommercialConstruction",
+"STRUCTURE RELOCATION (COMM)": "StructureMove",
+"SIGN DIRECTIONAL": null,
+"RESIDENTIAL (MULTI) CONVENT": "ResidentialConstruction",
+"REPLACE EXISTING FIXTURES": "Electrical",
+"ALTER DRAIN, WASTE PIPE": "Plumbing",
+"FIRE PUMP": "FireProtectionSystem",
+"FIRE STANDPIPE SYSTEM": "FireProtectionSystem",
+"ANNEXATION": null,
+"GREENHOUSE (RES)": "ResidentialConstruction",
+"SPECIAL USE DOCK": "DockAndShore",
+"STORAGE WAREHOUSE": "CommercialConstruction",
+"SITE IMPROVEMENT PLAN": "SiteDevelopment",
+"COMM IRRIGATION SYS": "LandscapeIrrigation",
+"ASSEMBLY CONST RECREATION BLD": "CommercialConstruction",
+"EASEMENT": null,
+"RESIDENTIAL (MULTI)HOTEL/MOTEL": "ResidentialConstruction",
+"EXTENSION OF TIME": "ZoningExtension",
+"ZONING MAP AMENDMENT": "Rezoning",
+"APPEALS OTHER": "AdministrativeAppeal",
+"MECHANICAL POOL HEATER": "MechanicalHVAC",
+"STORAGE GARAGE": "GeneralBuilding",
+"ASSEMBLY CONST RESTAURANT": "CommercialConstruction",
+"ALTER WATER DIST PIPE": "Plumbing",
+"RENOVATION ELE (MULTI FAMILY)": "Electrical",
+"SUBDIVISION FINAL": "SiteDevelopment",
+"SPECIAL USE WITH PREAPP": null,
+"FLUM AMEND-SMALL SCALE": "ComprehensivePlanAmendment",
+"SITE IMP PLAN LANDSCAPE ONLY": "LandscapeIrrigation",
+"MECHANICAL GAS PIPING/COMM": "GasInstallation",
+"MOVING PERMIT": "StructureMove",
+"SUB PRELIM PLAT W/PREAPP": "SiteDevelopment",
+"ASSEMBLY CONST HOUSE OF WORSHP": "CommercialConstruction",
+"STORAGE AIRCRAFT HANGER": "CommercialConstruction",
+"SIGN IN R.O.W.": null,
+"COMMERCIAL SHOPPING MALL": "CommercialConstruction",
+"SUBDIVISION PRELIMINARY": "SiteDevelopment",
+"MAJOR PDP AMENDMENT": "PlannedDevelopment",
+"FLUM AMEND-LARGE SCALE": "ComprehensivePlanAmendment",
+"SPECIAL CITY COUNCIL APPROVAL": null,
+"RESIDENTIAL (MULTI) DORMITORY": "ResidentialConstruction",
+"INDUSTRIAL MANUFACTURING PLANT": "CommercialConstruction",
+"ELECTRICAL COMM REPLACE MOTORS": "Electrical",
+"STORAGE FREIGHT DEPOT": "CommercialConstruction",
+"PLANNED DEV FINAL": "PlannedDevelopment",
+"PLANNED RE-DEVELOPMENT PROJECT": "PlannedDevelopment",
+"INDUSTRIAL ASSEMBLY PLANT": "CommercialConstruction",
+"BUILDING RELOCATION": "StructureMove",
+"PYROTECHNICS": null,
+"REVIEWING STAND & BLEACHER": "GeneralBuilding",
+"RESIDENTIAL (MULTI) MONASTERY": "ResidentialConstruction",
+"TREE REMOVAL": "VegetationRemoval",
+"INSTITUTIONAL MENTAL & CORRECT": "CommercialConstruction"
+}
+
+const permitActionMapping = {"MECHANICAL A/C CHANGE-OUT": "Replacement",
+"REROOF/ROOFING MEMBRANE": "Replacement",
+"RESIDENTIAL (1 & 2) SINGLE DET": "New",
+"RENOVATION PERMIT ADMIN (1&2)": "Alteration",
+"SWIMMING POOL": "New",
+"ALUMINUM SCREEN ROOM": "New",
+"ALUMINUM POOL CAGE": "New",
+"ROOFING SHINGLE": "Replacement",
+"ZONING/FENCING/MISCELLANEOUS": "Other",
+"ELECTRICAL RES ALTERATION": "Alteration",
+"MECHANICAL": "Other",
+"NEW ADDITION (RESIDENTIAL)": "Addition",
+"SEWER, INSTALL NEW/CHG SEPTIC": "New",
+"BUILDING": "Other",
+"MISCELLANEOUS": "Other",
+"RES ALTERATION OR EXTENTION": "Alteration",
+"DOCK": "New",
+"PLUMBING": "Other",
+"ROOF RESIDENTIAL": "Replacement",
+"NEW ADDITION (COMMERCIAL)": "Addition",
+"RESIDENTIAL (1 & 2) SINGLE ATT": "New",
+"MECHANICAL RESIDENTIAL": "Other",
+"MECHANICAL COMMERCIAL": "Other",
+"SOLAR HOT WATER SYSTEM": "New",
+"SIGN": "New",
+"SCREEN RM/PORCH/PATIO/GARAGE": "New",
+"GENERATOR": "New",
+"DEMOLISH": "Remove",
+"RESIDENTIAL": "New",
+"ACCESSORY BLD (COMM) CANOPY": "New",
+"REROOF": "Replacement",
+"ELECTRICAL": "Other",
+"WINDOW/DOOR UNDER 3 STORY": "New",
+"MOBILE HOME SET-UP": "New",
+"FENCE": "New",
+"PLUMBING RESIDENTIAL": "Other",
+"ALUMINUM ROOFOVER W/O GAS VENT": "New",
+"WINDOW/DOOR REPLACEMENT": "Replacement",
+"RENOVATION BLD (1 & 2 FAMILY)": "Alteration",
+"SIGN ON SITE": "New",
+"RENOVATION PLB (1 & 2 FAMILY)": "Alteration",
+"SIGN BILLBOARD": "New",
+"MECHANICAL A/C CHANGE OUT": "Replacement",
+"NEW SINGLE FAMILY": "New",
+"CONCRETE FOUNDATION": "New",
+"RENOVATION ELE (1 & 2 FAMILY)": "Alteration",
+"MECHANICAL COMM DUCT SYS": "New",
+"CONCRETE STRUCT SLAB/DRIVEWAY": "New",
+"ELECTRICAL SERVICE CHANGE": "Replacement",
+"ROOF COMMERICIAL": "Replacement",
+"RESIDENTIAL ALT ADD": "Alteration",
+"ALUMINUM SIDING/VINYL WINDOWS": "New",
+"ACCESSORY BLD(RES)UTL/BARN/SHD": "New",
+"ALUMINUM CARPORT W/U-BLD": "New",
+"COMMERCIAL ALT ADD": "Alteration",
+"NEW 1&2 FAMILY & TOWNHOUSE": "New",
+"WINDOWS": "Replacement",
+"ALUMINUM GLASS ROOM": "New",
+"SPECIAL USE": "Other",
+"SIDING, FASCIA, SOFFIT": "New",
+"RESIDENTIAL STRUCTURE": "New",
+"ALUMINUM STRUCTURE": "New",
+"TREE REMOVAL RESIDENTIAL": "Remove",
+"AMENDMENT": "Other",
+"ALUMINUM CARPORT/CANOPY": "New",
+"COMM ALTERATION OR EXTENTION": "Alteration",
+"ACCESSORY BLD (RES) GARAGE": "New",
+"PLUMBING COMMERCIAL": "Other",
+"RESIDENTIAL (MULTI) APARTMENT": "New",
+"CONCRETE RETAINING/SEA WALL": "New",
+"POOL/SPA RESIDENTIAL": "New",
+"ELECTRICAL SERVICE CHG (RES)": "Replacement",
+"SOLAR RESIDENTIAL": "New",
+"COMMERCIAL STRUCTURE": "New",
+"FENCE RESIDENTIAL": "New",
+"ANTENNA RADIO/TELEVISION": "New",
+"FIRE ALARM": "New",
+"MECHANICAL RES NEW/REMODEL": "New",
+"COMMERCIAL BLD (SHELL ONLY)": "New",
+"DRIVEWAY OR PATIO": "New",
+"FIRE SPRINKLER SYSTEM": "New",
+"WATERFRONT STRUCTURE": "New",
+"ELECTRICAL RESIDENTIAL": "Other",
+"ROOF": "Replacement",
+"SITE IMPROVEMENTS": "Other",
+"PRE APPLICATION MEETING": "Other",
+"INTERIOR COMPLETION (COMM)": "Other",
+"ELECTRICAL COMMERCIAL": "Other",
+"STORAGE AUTO PARKING STRUCT": "New",
+"DEMOLITION": "Remove",
+"MULTI FAMILY": "New",
+"INGROUND SPA": "New",
+"STAIR/MISC": "New",
+"RESIDENTIAL (1 & 2) DUPLEX": "New",
+"ACCESSORY STRUCTURE RES": "New",
+"DOCK/SEAWALL": "New",
+"FENCE COMMERCIAL": "New",
+"MECHANICAL GAS VENT ALTER/EXTN": "Alteration",
+"DECK": "New",
+"CHANGE OF USE": "Other",
+"ACCESSORY BLD (RES) CANOPY": "New",
+"ACCESSORY BLD (COMM) PAVILIAN": "New",
+"COMMERCIAL OFFICE BLD": "New",
+"ACCESSORY BLD (RES) CARPORT": "New",
+"COMMERCIAL MODULAR BLD": "New",
+"STORAGE BLDG": "New",
+"MULTIFAMILY": "New",
+"MOBILE HOME": "New",
+"INDUSTRIAL FACTORY": "New",
+"DRIVEWAY-NON PAVER": "New",
+"ASSEMBLY CONST AUDITORIUM": "New",
+"VENDING": "Other",
+"COMMERCIAL RETAIL STORE": "New",
+"COMMERCIAL NEW": "New",
+"TENT": "New",
+"TENT SETUP": "New",
+"TREE REMOVAL NON RESIDENTIAL": "Remove",
+"ACESSORY STRUCTURE COMMERCIAL": "New",
+"CONCRETE PAD W/FOOTING": "New",
+"MECHANICAL COMM NEW/REMODEL": "New",
+"VARIANCE": "Other",
+"ALUMINUM/VINYL SOFFIT & FASCIA": "New",
+"FORM-BASED CODE ADJUSTMENT": "Other",
+"ACCESSORY BLD (RES) GAZEBO": "New",
+"DUMPSTER": "New",
+"CONCRETE POOL CAGE -- AUTO CLOSE": "New",
+"FIRE SYSTEM UNDERGROUND": "New",
+"ACCESSORY BLD (COMM) CARPORT": "New",
+"RENOVATION BLD (MULTI FAMILY)": "Alteration",
+"PRELIMINARY": "Other",
+"PARKING LOT": "New",
+"ANTENNA": "New",
+"MODULAR BLD": "New",
+"DAMAGE": "Repair",
+"SPECIAL USE AMENDMENT": "Other",
+"STRUCTURE RELOCATION (RES)": "Other",
+"FIRE SUPPRESSION SYSTEM": "New",
+"TBD": "Other",
+"BACKFLOW DEVICE INSTALL": "New",
+"POOL/SPA COMMERCIAL": "New",
+"CONVERTED FROM EDEN": "Other",
+"FIRE HOOD SUPPRESSION SYSTEM": "New",
+"Agricultural Exemption": "Other",
+"MECHANICAL COMM RANGE HOOD": "New",
+"ELECTRICAL SERVICE INTERRUPT": "Other",
+"MECHANICAL GAS PIPING/RES": "New",
+"INTERIOR COMPLETION (RES)": "Other",
+"NEW WATER SERVICE": "New",
+"STORAGE TANK FUEL": "New",
+"ANTENNA SATELLITE DISH": "New",
+"ELECTRICAL COMM ALTER>3 SP CIR": "Alteration",
+"LAND USE ATLAS AMENDMENT": "Other",
+"FLOW/FIRE HYDRANT": "New",
+"ALCOHOL BEVERAGE LICENSE": "Other",
+"PLANNED DEV MINOR AMENDMENT": "Other",
+"UNDERGROUND PIPING": "New",
+"ELECTRICAL POLE MOUNTED SER": "New",
+"EASEMENT VACATION": "Other",
+"CAP": "Other",
+"RES IRRIGATION SYS": "New",
+"CHANGE OF OCCUPANCY": "Other",
+"DAMAGE ASSESSMENT": "Other",
+"ABOVE GROUND SPA": "New",
+"MODULAR BUILDING COMMERCIAL": "New",
+"RENOVATION MECH (1 & 2 FAMILY)": "Alteration",
+"SIP WITH LA": "Other",
+"RENOVATION PLB (MULTI FAMILY)": "Alteration",
+"ROW/VACATION": "Other",
+"PLANNED DEV MAJOR AMENDMENT": "Other",
+"KITCHEN HOOD": "New",
+"EDUCATIONAL BLD PRIVATE": "New",
+"RENOVATION PERMIT ADMIN (MULT)": "Alteration",
+"CERTIFICATE OF APPROPRIATNESS": "Other",
+"MECHANICAL REFRIGERATION/COMM": "New",
+"MINOR PDP AMENDMENT": "Other",
+"PLANNED DEV PRELIMINARY": "Other",
+"ALUMINUM ROOFOVER W/GAS VENT": "New",
+"ELECTRICAL SERVICE CHG (COMM)": "Replacement",
+"COMP PLAN CHANGE": "Other",
+"ADMINISTRATIVE VARIANCE": "Other",
+"RENOVATION MECH (MULTI FAMILY)": "Alteration",
+"FIRE HYDRANT FLOW DATA REQ": "Other",
+"TANKS": "New",
+"GREENHOUSE (COMM)": "New",
+"SOLAR COMMERCIAL": "New",
+"ASSEMBLY CONST CHURCH": "New",
+"STRUCTURE RELOCATION (COMM)": "Other",
+"SIGN DIRECTIONAL": "New",
+"RESIDENTIAL (MULTI) CONVENT": "New",
+"REPLACE EXISTING FIXTURES": "Replacement",
+"ALTER DRAIN, WASTE PIPE": "Alteration",
+"FIRE PUMP": "New",
+"FIRE STANDPIPE SYSTEM": "New",
+"ANNEXATION": "Other",
+"GREENHOUSE (RES)": "New",
+"SPECIAL USE DOCK": "New",
+"STORAGE WAREHOUSE": "New",
+"SITE IMPROVEMENT PLAN": "Other",
+"COMM IRRIGATION SYS": "New",
+"ASSEMBLY CONST RECREATION BLD": "New",
+"EASEMENT": "Other",
+"RESIDENTIAL (MULTI)HOTEL/MOTEL": "New",
+"EXTENSION OF TIME": "Other",
+"ZONING MAP AMENDMENT": "Other",
+"APPEALS OTHER": "Other",
+"MECHANICAL POOL HEATER": "New",
+"STORAGE GARAGE": "New",
+"ASSEMBLY CONST RESTAURANT": "New",
+"ALTER WATER DIST PIPE": "Alteration",
+"RENOVATION ELE (MULTI FAMILY)": "Alteration",
+"SUBDIVISION FINAL": "Other",
+"SPECIAL USE WITH PREAPP": "Other",
+"FLUM AMEND-SMALL SCALE": "Other",
+"SITE IMP PLAN LANDSCAPE ONLY": "New",
+"MECHANICAL GAS PIPING/COMM": "New",
+"MOVING PERMIT": "Other",
+"SUB PRELIM PLAT W/PREAPP": "Other",
+"ASSEMBLY CONST HOUSE OF WORSHP": "New",
+"STORAGE AIRCRAFT HANGER": "New",
+"SIGN IN R.O.W.": "New",
+"COMMERCIAL SHOPPING MALL": "New",
+"SUBDIVISION PRELIMINARY": "Other",
+"MAJOR PDP AMENDMENT": "Other",
+"FLUM AMEND-LARGE SCALE": "Other",
+"SPECIAL CITY COUNCIL APPROVAL": "Other",
+"RESIDENTIAL (MULTI) DORMITORY": "New",
+"INDUSTRIAL MANUFACTURING PLANT": "New",
+"ELECTRICAL COMM REPLACE MOTORS": "Replacement",
+"STORAGE FREIGHT DEPOT": "New",
+"PLANNED DEV FINAL": "Other",
+"PLANNED RE-DEVELOPMENT PROJECT": "Other",
+"INDUSTRIAL ASSEMBLY PLANT": "New",
+"BUILDING RELOCATION": "Other",
+"PYROTECHNICS": "Other",
+"REVIEWING STAND & BLEACHER": "New",
+"RESIDENTIAL (MULTI) MONASTERY": "New",
+"TREE REMOVAL": "Remove",
+"INSTITUTIONAL MENTAL & CORRECT": "New"}
+
+const permitStatusMapping = {
+"ACTIVE": "InProgress",
+"INITIAL": "Planned",
+"PENDING": "InProgress",
+"EXTENDED": "InProgress",
+"APPROVED": "Permitted",
+"CANCELED": "Cancelled",
+"CANCELLED": "Cancelled",
+"SUSPENDED": "OnHold",
+"FINALED": "Completed",
+"ABANDONED": "Cancelled",
+"CLOSED": "Completed",
+"COMPLETE": "Completed",
+"TRANSFER": "InProgress",
+"DENIED": "Cancelled",
+"REJECTED": "Cancelled",
+"WITHDRAWN": "Cancelled",
+"EXPIRED": "Completed",
+"CLO": "Completed",
+"PERMIT ISSUED": "Permitted",
+"CLOS": "Completed",
+"ISSU": "Permitted",
+"COMP": "Completed",
+"ISSUED": "Permitted",
+"OPEN": "InProgress",
+"INSPECTION PASSED": "Permitted",
+"EXPI": "Completed",
+"VOID": "Cancelled",
+"APP": "Permitted",
+"MORE INFO REQUIRED": "OnHold",
+"PENDING CLOSURE": "InProgress",
+"WITH": "Cancelled",
+"CO ISSUED": "Permitted",
+"CC ISSUED": "Permitted",
+"CANC": "Cancelled",
+"ABAN": "Cancelled",
+"COFC ISSUED": "Permitted",
+"APPROVED": "Permitted",
+"WD": "Cancelled",
+"WITHDRAWN": "Cancelled",
+"PERMIT EXTENSION APP": "Permitted",
+"EXPIRED CTB": "Completed",
+"DATA ENTRY ERROR": null
+}
+
+function parseAndFormatDate(dateString) {
+  if (!dateString) {
+    return null;
+  }
+  const formats = [
+    'YYYY-MM-DD HH:mm:ss',
+    'YYYY-MM-DD',
+    'MM/DD/YYYY',
+    'MM-DD-YYYY',
+    'DD-MMM-YY HH:mm:ss'
+  ];
+
+  let parsedDate = null;
+
+  for (const format of formats) {
+    parsedDate = tryParseDate(dateString, format);
+    if (parsedDate) {
+      break; // Found a successful parse
+    }
+  }
+
+  if (parsedDate) {
+    // Format the date to YYYY-MM-DD
+    const month = (parsedDate.getMonth() + 1).toString().padStart(2, '0');
+    const day = parsedDate.getDate().toString().padStart(2, '0');
+    const year = parsedDate.getFullYear();
+    return `${year}-${month}-${day}`;
+  } else {
+    // If no format matched, return null or throw an error, depending on your desired behavior
+    return null;
+  }
+}
+
+function tryParseDate(dateString, format) {
+  let year, month, day, hour, minute, second;
+  let dateParts;
+
+  switch (format) {
+    case 'YYYY-MM-DD HH:mm:ss':
+      dateParts = dateString.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+      if (dateParts) {
+        year = parseInt(dateParts[1], 10);
+        month = parseInt(dateParts[2], 10) - 1; // Month is 0-indexed
+        day = parseInt(dateParts[3], 10);
+        hour = parseInt(dateParts[4], 10);
+        minute = parseInt(dateParts[5], 10);
+        second = parseInt(dateParts[6], 10);
+        return new Date(year, month, day, hour, minute, second);
+      }
+      break;
+
+    case 'YYYY-MM-DD':
+      dateParts = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dateParts) {
+        year = parseInt(dateParts[1], 10);
+        month = parseInt(dateParts[2], 10) - 1;
+        day = parseInt(dateParts[3], 10);
+        return new Date(year, month, day);
+      }
+      break;
+
+    case 'MM/DD/YYYY':
+      dateParts = dateString.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (dateParts) {
+        month = parseInt(dateParts[1], 10) - 1;
+        day = parseInt(dateParts[2], 10);
+        year = parseInt(dateParts[3], 10);
+        return new Date(year, month, day);
+      }
+      break;
+
+    case 'MM-DD-YYYY':
+      dateParts = dateString.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (dateParts) {
+        month = parseInt(dateParts[1], 10) - 1;
+        day = parseInt(dateParts[2], 10);
+        year = parseInt(dateParts[3], 10);
+        return new Date(year, month, day);
+      }
+      break;
+
+    case 'DD-MMM-YY HH:mm:ss':
+      const monthMap = {
+        'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3, 'MAY': 4, 'JUN': 5,
+        'JUL': 6, 'AUG': 7, 'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
+      };
+      dateParts = dateString.match(/^(\d{2})-([A-Za-z]{3})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+      if (dateParts) {
+        day = parseInt(dateParts[1], 10);
+        month = monthMap[dateParts[2].toUpperCase()];
+        year = parseInt(dateParts[3], 10);
+        // Handle 2-digit year: assume 20xx for years <= current year's last two digits, else 19xx
+        const currentYear = new Date().getFullYear();
+        const currentTwoDigitYear = currentYear % 100;
+        year = (year <= currentTwoDigitYear) ? 2000 + year : 1900 + year;
+
+        hour = parseInt(dateParts[4], 10);
+        minute = parseInt(dateParts[5], 10);
+        second = parseInt(dateParts[6], 10);
+        return new Date(year, month, day, hour, minute, second);
+      }
+      break;
+
+    default:
+      // Fallback for formats not explicitly handled, or if Date.parse can handle it
+      const date = new Date(dateString);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+      break;
+  }
+  return null; // Parsing failed for this format
+}
 
 function readJsonSafe(p) {
   try {
@@ -1631,6 +2269,19 @@ function readJsonSafe(p) {
     return null;
   }
 }
+
+
+
+function toInt(val) {
+  const n = parseInt(String(val).replace(/[,\s]/g, "").trim(), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toIntRounded(val) {
+  const n = parseInt(String(val).replace(/[,\s]/g, "").trim(), 10);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1666,7 +2317,10 @@ function extractSecTwpRng(value) {
 
 function extractAddress(overallDetails, unnorm) {
   let hasOwnerMailingAddress = false;
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
+  let inputCounty = (unnorm.county_jurisdiction || "").trim();
+  if (!inputCounty) {
+    inputCounty = (unnorm.county_name || "").trim();
+  }
   const county_name = inputCounty || null;
   const secTwpRngRawValue = overallDetails["Sec/Twp/Rge"];
   let secTwpRng = null;
@@ -1793,7 +2447,7 @@ function extractLegalDescription(htmlContent) {
 }
 
 function mapInstrumentToDeedType(instr) {
-  if (!instr) return null;
+  if (!instr) return "Miscellaneous";
   const u = instr.trim().toUpperCase();
   if (u === "WD") return "Warranty Deed";
   if (u == "TD") return "Tax Deed";
@@ -1851,6 +2505,60 @@ function parseCurrencyToNumber(txt) {
   return Math.round(n * 100) / 100;
 }
 
+function processPermits(input) {
+  const permits = input && input.Permits && input.Permits.response;
+  if (permits && Array.isArray(permits.rows) && permits.rows.length > 0) {
+    // Determine indexes from cols
+    const cols = permits.cols || [];
+    let idx = {};
+    cols.forEach((c, i) => {
+      idx[c.title] = i;
+    });
+    permits.rows.forEach((permit, pIdx) => {
+      const permitPurpose = permit[idx["Purpose"]];
+      const permitStatus = permit[idx["Bldg Dept Status"]] ? permit[idx["Bldg Dept Status"]].trim().toUpperCase() : null;
+      const permit_number = permit[idx["Permit"]] ? permit[idx["Permit"]] : null;
+      const permit_issue_date = parseAndFormatDate(permit[idx["Issued"]]);
+      const permit_close_date = parseAndFormatDate(permit[idx["Final Date"]]);
+      // const occDate = parseAndFormatDate(permit[idx["Cert Occ Date"]]);
+      let improvement_type = null;
+      let improvement_action = null;
+      let improvement_status = null;
+      if (permitPurpose && permitPurpose in permitTypeMapping) {
+        improvement_type = permitTypeMapping[permitPurpose];
+      }
+      if (permitPurpose && permitPurpose in permitActionMapping) {
+        improvement_action = permitActionMapping[permitPurpose];
+      }
+      if (permitStatus && permitStatus in permitStatusMapping) {
+        improvement_status = permitStatusMapping[permitStatus];
+      }
+      const property_improvement = {
+        improvement_type: improvement_type,
+        improvement_status: improvement_status,
+        completion_date: null,
+        contractor_type: null,
+        permit_required: true,
+        permit_number: permit_number,
+        application_received_date: null,
+        permit_issue_date: permit_issue_date,
+        final_inspection_date: null,
+        permit_close_date: permit_close_date,
+        improvement_action: improvement_action,
+        is_owner_builder: null,
+        is_disaster_recovery: null,
+        private_provider_plan_review: null,
+        private_provider_inspections: null
+      }
+      writeOut(`property_improvement_${(pIdx + 1)}.json`, property_improvement);
+      // writeOut(`relationship_property_to_property_improvement_${(pIdx + 1)}.json`, {
+      //     from: { "/": `./property.json` },
+      //     to: { "/": `./property_improvement_${(pIdx + 1)}.json` },
+      //   });
+    });
+  }
+}
+
 function writeTaxes(input) {
   const valuation = input && input.Tax && input.Tax.response;
   const cols = valuation.cols || [];
@@ -1889,6 +2597,109 @@ function writeTaxes(input) {
     };
     writeJSON(path.join("data", `tax_${taxYear}.json`), taxObj);
   });
+}
+
+function closestFenceEnumValue(length) {
+  const fenceLengthEnum = [25,
+            50,
+            75,
+            100,
+            150,
+            200,
+            300,
+            500,
+            1000]
+  let lowestDiff = Math.abs(length-25);
+  let curr = 25;
+  for (let val of fenceLengthEnum) {
+    if(Math.abs(length - val) < lowestDiff) {
+      lowestDiff = Math.abs(length - val);
+      curr = val;
+    }
+  }
+  return `${curr}ft`
+}
+
+function buildLot(input) {
+  const land = input && input.Land && input.Land.response;
+  let totalLandAreaAcres = 0;
+  let totalLandAreaSqFt = 0;
+  let fenceLength = null;
+  if (land && Array.isArray(land.rows) && land.rows.length > 0) {
+    // Determine indexes from cols
+    const cols = land.cols || [];
+    let idx = {};
+    cols.forEach((c, i) => {
+      idx[c.title] = i;
+    });
+    land.rows.forEach((lrow, bIdx) => {
+      if (lrow[idx["Acreage"]]) {
+        const landAcres = toInt(lrow[idx["Acreage"]]);
+        if (landAcres) {
+          totalLandAreaAcres += landAcres;
+        }
+      }
+      if (lrow[idx["SqFootage"]]) {
+        const landSqFt = toInt(lrow[idx["SqFootage"]]);
+        if (landSqFt) {
+          totalLandAreaSqFt += landSqFt;
+        }
+      }
+    });
+  }
+  const features = input && input.Features && input.Features.response;
+  if (features && Array.isArray(features.rows) && features.rows.length > 0) {
+    // Determine indexes from cols
+    const cols = features.cols || [];
+    let idx = {};
+    cols.forEach((c, i) => {
+      idx[c.title] = i;
+    });
+    let fenceAlreadyFound = false;
+    features.rows.forEach((feature, bIdx) => {
+      if (fenceAlreadyFound || !feature[idx["Description"]]) {
+        return;
+      }
+      const featureType = feature[idx["Description"]].toUpperCase();
+      if (featureType.includes("FENCE")) {
+        if (feature[idx["Length"]]) {
+          const length = toInt(feature[idx["Length"]]);
+          if (length) {
+            fenceLength = closestFenceEnumValue(length);
+            fenceAlreadyFound = true;
+          }
+        }
+        if (!fenceAlreadyFound && feature[idx["Width"]]) {
+          const length = toInt(feature[idx["Width"]]);
+          if (length) {
+            fenceLength = closestFenceEnumValue(length);
+            fenceAlreadyFound = true;
+          }
+        }
+      }
+    });
+  }
+
+  const lot = {
+    lot_type:
+      totalLandAreaAcres != null
+        ? totalLandAreaAcres > 0.25
+          ? "GreaterThanOneQuarterAcre"
+          : "LessThanOrEqualToOneQuarterAcre"
+        : null,
+    lot_length_feet: null,
+    lot_width_feet: null,
+    lot_area_sqft: totalLandAreaSqFt > 0 ? totalLandAreaSqFt : null,
+    landscaping_features: null,
+    view: null,
+    fencing_type: null,
+    fence_height: null,
+    fence_length: fenceLength,
+    driveway_material: null,
+    driveway_condition: null,
+    lot_condition_issues: null,
+  };
+  writeOut(`lot.json`, lot);
 }
 
 function main() {
@@ -2005,40 +2816,32 @@ function main() {
     propertyOut.property_structure_built_year = yrblts.length
       ? Math.min(...yrblts)
       : null;
-    propertyOut.property_effective_built_year = effyrs.length
-      ? Math.max(...effyrs)
-      : null;
+    // propertyOut.property_effective_built_year = effyrs.length
+    //   ? Math.max(...effyrs)
+    //   : null;
 
     const totalArea = sumNumbers(unroof);
     const living = sumNumbers(livbus);
 
-    propertyOut.total_area = totalArea ? String(totalArea) : null;
-    propertyOut.livable_floor_area = living ? String(living) : null;
-    propertyOut.area_under_air = living ? String(living) : null;
+    // propertyOut.total_area = totalArea ? String(totalArea) : null;
+    // propertyOut.livable_floor_area = living ? String(living) : null;
+    // propertyOut.area_under_air = living ? String(living) : null;
 
     // Optional/unknown fields
     propertyOut.property_legal_description_text = extractLegalDescription(html);
     propertyOut.number_of_units = null;
-    propertyOut.number_of_units_type = null;
-    propertyOut.ownership_estate_type = null;
-    propertyOut.property_usage_type = null;
-    propertyOut.structure_form = null;
-    propertyOut.subdivision = null;
-    propertyOut.zoning = null;
+    propertyOut.subdivision = null; //
+    propertyOut.zoning = null; //
   } else {
     propertyOut.property_structure_built_year = null;
-    propertyOut.property_effective_built_year = null;
-    propertyOut.total_area = null;
-    propertyOut.livable_floor_area = null;
-    propertyOut.area_under_air = null;
+    // propertyOut.property_effective_built_year = null;
+    // propertyOut.total_area = null;
+    // propertyOut.livable_floor_area = null;
+    // propertyOut.area_under_air = null;
     propertyOut.property_legal_description_text = extractLegalDescription(html);
     propertyOut.number_of_units = null;
-    propertyOut.number_of_units_type = null;
-    propertyOut.ownership_estate_type = null;
-    propertyOut.property_usage_type = null;
-    propertyOut.structure_form = null;
-    propertyOut.subdivision = null;
-    propertyOut.zoning = null;
+    propertyOut.subdivision = null; //
+    propertyOut.zoning = null; //
   }
   if (!overallDetails || !overallDetails["Land Use"])  {
     throw new Error("Property type not found");
@@ -2055,32 +2858,6 @@ function main() {
   propertyOut.property_usage_type = propertyMapping.property_usage_type,
 
   writeOut("property.json", propertyOut);
-
-  // Lot extraction from Features
-  // const features = input && input.Features && input.Features.response;
-  // if (features) {
-  //   const lotOut = {
-  //     lot_type: null,
-  //     lot_length_feet: null,
-  //     lot_width_feet: null,
-  //     lot_area_sqft: null,
-  //     landscaping_features: null,
-  //     view: null,
-  //     fencing_type: null,
-  //     fence_height: null,
-  //     fence_length: null,
-  //     driveway_material: null,
-  //     driveway_condition: null,
-  //     lot_condition_issues: null,
-  //     paving_area_sqft: null,
-  //     paving_installation_date: null,
-  //     paving_type: null,
-  //     site_lighting_fixture_count: null,
-  //     site_lighting_installation_date: null,
-  //     site_lighting_type: null,
-  //   };
-  //   writeOut("lot.json", lotOut);
-  // }
 
   const key =
       parcel && parcel.parcel_identifier
@@ -2122,7 +2899,7 @@ function main() {
         purchase_price_amount,
       };
       if (multi && salesReq) out.source_http_request = salesReq;
-      if (!purchase_price_amount) {
+      if (purchase_price_amount !== 0 && !purchase_price_amount) {
         i++;
         continue;
       }
@@ -2133,7 +2910,16 @@ function main() {
       let grantee = granteeIdx >= 0 ? row[granteeIdx] || null : null;
       let instrNumber = instrNumberIdx >= 0 ? row[instrNumberIdx] || null : null;
       let deedType = mapInstrumentToDeedType(instrType);
-      const deed = { deed_type: deedType };
+      let deed = { deed_type: deedType };
+      if (book) {
+        deed.book = book;
+      }
+      if (page) {
+        deed.page = page;
+      }
+      if (instrNumber) {
+        deed.instrument_number = instrNumber;
+      }
       writeOut(`deed_${i}.json`, deed);
       const relSalesDeed = {
         from: { "/": `./sales_${i}.json` },
@@ -2144,7 +2930,7 @@ function main() {
       if(instrNumber) {
         link = `https://records.manateeclerk.com/OfficialRecords/Search/InstrumentNumber?instrumentNumber=${instrNumber}`;
         const file = {
-          document_type: null,
+          document_type: "Title",
           file_format: null,
           ipfs_url: null,
           name: `Deed ${instrNumber}`,
@@ -2159,7 +2945,7 @@ function main() {
       } else if(book && page) {
         link = `https://records.manateeclerk.com/OfficialRecords/Search/InstrumentBookPage/${book}/${page}`;
         const file = {
-          document_type: null,
+          document_type: "Title",
           file_format: null,
           ipfs_url: null,
           name: `Deed ${book}/${page}`,
@@ -2179,6 +2965,8 @@ function main() {
     }
   }
   writeTaxes(input);
+  processPermits(input);
+  buildLot(input);
 
   // Utilities extraction from owners/utilities_data.json
   let util = null;
@@ -2202,7 +2990,7 @@ function main() {
     for (const l of lset) {
       const layoutOut = {
         space_type: l.space_type ?? null,
-        space_index: l.space_index ?? null,
+        space_type_index: l.space_type_index ?? null,
         flooring_material_type: l.flooring_material_type ?? null,
         size_square_feet: l.size_square_feet ?? null,
         has_windows: l.has_windows ?? null,
@@ -2250,14 +3038,17 @@ function main() {
       if (l.space_type === "Building") {
         const building_number = l.building_number;
         layoutBuildingMap[building_number.toString()] = idx;
-      }
-      if (l.space_type === "Floor") {
+      } else {
         const building_number = l.building_number;
-        const building_layout_number = layoutBuildingMap[building_number.toString()];
-        writeOut(`relationship_layout_${building_layout_number}_to_layout_${idx}.json`, {
-                  to: { "/": `./layout_${idx}.json` },
-                  from: { "/": `./layout_${building_layout_number}.json` },
-        },);
+        if (building_number) {
+          const building_layout_number = layoutBuildingMap[building_number.toString()];
+          if (building_layout_number) {
+            writeOut(`relationship_layout_${building_layout_number}_to_layout_${idx}.json`, {
+                      to: { "/": `./layout_${idx}.json` },
+                      from: { "/": `./layout_${building_layout_number}.json` },
+            });
+          }
+        }
       }
       if (util && l.space_type === "Building") {
         if (l.building_number && l.building_number.toString() in util) {

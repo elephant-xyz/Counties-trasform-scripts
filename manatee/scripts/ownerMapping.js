@@ -126,7 +126,6 @@ function isCompany(name) {
   const v = norm(name);
   if (!v) return false;
   // Token-based match anywhere in the string
-  console.log(v);
   if (COMPANY_TOKEN_REGEX.test(v)) return true;
   // Extra heuristic: names that are all caps and contain numbers are likely entities
   if (/^[A-Z0-9\s,&\-\.]+$/.test(v) && /\b\d{2,}\b/.test(v)) return true;
@@ -327,17 +326,23 @@ function extractOwnersByDate(input) {
   // Sort dates chronologically
   const sortedDates = Object.keys(dated).filter(Boolean).sort();
   const owners_by_date = {};
+  let final_owner = null;
   for (const d of sortedDates) {
     owners_by_date[d] = dated[d];
+    final_owner = dated[d];
   }
 
   // Determine current owners: prefer HTML extraction, else latest sales grantee
-  let finalCurrent = currentOwners;
-  if (!finalCurrent || !finalCurrent.length) {
-    const latest = sortedDates[sortedDates.length - 1];
-    if (latest) finalCurrent = dated[latest] || [];
+  if (sortedDates.length === 0) {
+    let finalCurrent = currentOwners;
+    if (!finalCurrent || !finalCurrent.length) {
+      const latest = sortedDates[sortedDates.length - 1];
+      if (latest) finalCurrent = dated[latest] || [];
+    }
+    owners_by_date["current"] = dedupOwners(finalCurrent || []);
+  } else {
+    owners_by_date["current"] = final_owner;
   }
-  owners_by_date["current"] = dedupOwners(finalCurrent || []);
 
   const topKey = `property_${propId}`;
   const result = {};
@@ -375,5 +380,5 @@ function dedupInvalids(invalids) {
   fs.writeFileSync(outFile, outStr, "utf8");
 
   // Output to stdout
-  console.log(outStr);
+  console.log("Owner extraction done");
 })();
