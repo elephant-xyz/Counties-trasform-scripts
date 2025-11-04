@@ -17,9 +17,11 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
-function ref() {
-  // Relationship URIs are populated downstream; emit null placeholders.
-  return null;
+function ref(relativePath) {
+  if (typeof relativePath !== "string") return null;
+  const trimmed = relativePath.trim();
+  if (!trimmed) return null;
+  return { "/": trimmed };
 }
 
 function extractBetween(html, regex, idx = 1) {
