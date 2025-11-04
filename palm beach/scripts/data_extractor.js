@@ -527,9 +527,25 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-// Unnormalized addresses must still expose the normalized field set (even when null)
-// so the address.oneOf schema can validate the raw representation branch.
-const UNNORMALIZED_ADDRESS_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+// Raw (unnormalized) representation keeps only fields supported by the schema's raw branch.
+// Avoid including street component fields so the payload satisfies exactly one oneOf option.
+const RAW_ADDRESS_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+  "municipality_name",
+  "request_identifier",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 function collectAddressFields(source, fields) {
   const result = {};
@@ -1770,11 +1786,27 @@ function main() {
       );
     } else if (hasUnnormalizedAddress) {
       addressRepresentation = "unnormalized";
-      finalAddress = collectAddressFieldsAllowNulls(
-        address,
-        UNNORMALIZED_ADDRESS_FIELDS,
-      );
-      finalAddress.unnormalized_address = trimmedUnnormalized;
+      const rawAddress = {
+        unnormalized_address: trimmedUnnormalized,
+      };
+      for (const field of RAW_ADDRESS_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+        const value = address[field];
+        if (value == null) continue;
+        if (typeof value === "number") {
+          if (Number.isFinite(value)) rawAddress[field] = value;
+          continue;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (trimmed.length) {
+            rawAddress[field] = trimmed;
+          }
+          continue;
+        }
+        rawAddress[field] = value;
+      }
+      finalAddress = rawAddress;
     }
 
     const hasCoordinateOnly = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
@@ -1789,15 +1821,13 @@ function main() {
       );
     }
 
+    if (fs.existsSync(addressRelationshipPath)) {
+      fs.unlinkSync(addressRelationshipPath);
+    }
+
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
 
-      const addressRelationship = {
-        from: ref("./property.json"),
-        to: ref("./address.json"),
-      };
-
-      writeJSON(addressRelationshipPath, addressRelationship);
       const relationshipAddress = JSON.parse(JSON.stringify(finalAddress));
       if (
         addressRepresentation === "unnormalized" &&
@@ -1817,9 +1847,6 @@ function main() {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
-      }
-      if (fs.existsSync(addressRelationshipPath)) {
-        fs.unlinkSync(addressRelationshipPath);
       }
       if (fs.existsSync(factSheetRelationshipPath)) {
         fs.unlinkSync(factSheetRelationshipPath);
