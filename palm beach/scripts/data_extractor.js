@@ -1752,7 +1752,10 @@ function main() {
     let finalAddress = null;
 
     if (hasNormalizedAddress) {
-      finalAddress = collectAddressFields(address, NORMALIZED_ADDRESS_FIELDS);
+      finalAddress = collectAddressFieldsAllowNulls(
+        address,
+        NORMALIZED_ADDRESS_FIELDS,
+      );
     } else if (hasUnnormalizedAddress) {
       finalAddress = collectAddressFieldsAllowNulls(
         address,
