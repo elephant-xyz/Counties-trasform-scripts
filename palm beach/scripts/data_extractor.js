@@ -1645,22 +1645,6 @@ function main() {
     const shouldUseNormalized = hasNormalizedCore && hasCoordinateCoverage;
 
     if (!shouldUseNormalized) {
-      const fieldsToClear = [
-        "street_number",
-        "street_name",
-        "street_pre_directional_text",
-        "street_post_directional_text",
-        "street_suffix_type",
-        "unit_identifier",
-        "route_number",
-        "city_name",
-        "state_code",
-        "postal_code",
-        "plus_four_postal_code",
-      ];
-      for (const field of fieldsToClear) {
-        address[field] = null;
-      }
       address.unnormalized_address = fallbackUnnormalizedValue || null;
     } else {
       address.unnormalized_address = null;
