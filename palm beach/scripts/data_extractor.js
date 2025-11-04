@@ -73,6 +73,115 @@ function extractUnitIdentifierFromAddressLines(lines = []) {
   return null;
 }
 
+function cleanStreetCandidate(value) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return null;
+
+  let candidate = normalized;
+  if (candidate.includes(",")) {
+    const firstSegment = candidate.split(",")[0].trim();
+    if (firstSegment) candidate = firstSegment;
+  }
+
+  if (/C\/O/i.test(candidate)) {
+    const parts = candidate.split(/C\/O/i);
+    const after = parts[parts.length - 1].trim();
+    if (after) candidate = after;
+  }
+
+  return candidate || null;
+}
+
+function combineAddressLines(lines = []) {
+  const seen = new Set();
+  const filtered = [];
+  for (const line of lines) {
+    const cleaned = safeNullIfEmpty(line);
+    if (!cleaned) continue;
+    const key = cleaned.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    filtered.push(cleaned);
+  }
+  if (!filtered.length) return null;
+  return filtered.join(", ");
+}
+
+function titleCaseCounty(county) {
+  if (!county) return null;
+  const lc = String(county).toLowerCase();
+  const map = {
+    "miami dade": "Miami Dade",
+    broward: "Broward",
+    "palm beach": "Palm Beach",
+    lee: "Lee",
+    hillsborough: "Hillsborough",
+    orange: "Orange",
+    pinellas: "Pinellas",
+    polk: "Polk",
+    duval: "Duval",
+    brevard: "Brevard",
+    pasco: "Pasco",
+    volusia: "Volusia",
+    sarasota: "Sarasota",
+    collier: "Collier",
+    marion: "Marion",
+    manatee: "Manatee",
+    charlotte: "Charlotte",
+    lake: "Lake",
+    osceola: "Osceola",
+    "st. lucie": "St. Lucie",
+    seminole: "Seminole",
+    escambia: "Escambia",
+    "st. johns": "St. Johns",
+    citrus: "Citrus",
+    bay: "Bay",
+    "santa rosa": "Santa Rosa",
+    hernando: "Hernando",
+    okaloosa: "Okaloosa",
+    highlands: "Highlands",
+    leon: "Leon",
+    alachua: "Alachua",
+    clay: "Clay",
+    sumter: "Sumter",
+    putnam: "Putnam",
+    martin: "Martin",
+    "indian river": "Indian River",
+    walton: "Walton",
+    monroe: "Monroe",
+    flagler: "Flagler",
+    nassau: "Nassau",
+    levy: "Levy",
+    washington: "Washington",
+    jackson: "Jackson",
+    suwannee: "Suwannee",
+    columbia: "Columbia",
+    hendry: "Hendry",
+    okeechobee: "Okeechobee",
+    gadsden: "Gadsden",
+    wakulla: "Wakulla",
+    desoto: "DeSoto",
+    gulf: "Gulf",
+    taylor: "Taylor",
+    franklin: "Franklin",
+    dixie: "Dixie",
+    madison: "Madison",
+    bradford: "Bradford",
+    hardee: "Hardee",
+    gilchrist: "Gilchrist",
+    holmes: "Holmes",
+    calhoun: "Calhoun",
+    hamilton: "Hamilton",
+    baker: "Baker",
+    jefferson: "Jefferson",
+    glades: "Glades",
+    lafayette: "Lafayette",
+    union: "Union",
+    liberty: "Liberty",
+  };
+  return map[lc] || toTitleCase(county);
+}
+
 const STREET_DIRECTIONS = new Set([
   "N",
   "S",
@@ -764,7 +873,9 @@ function parseCoordinate(value) {
   if (value === null || value === undefined) return null;
   const stringValue = String(value).trim();
   if (!stringValue) return null;
-  const numeric = Number(stringValue);
+  const match = stringValue.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const numeric = Number(match[0]);
   return Number.isFinite(numeric) ? numeric : null;
 }
 
@@ -1202,73 +1313,110 @@ function main() {
   }
 
   const fullAddrInput = safeNullIfEmpty(unAddr && unAddr.full_address);
+  const modelAddressLines = [addressLine1, addressLine2, addressLine3].filter(Boolean);
+  const combinedModelAddress = combineAddressLines(modelAddressLines);
+
   const hasMeaningfulFullAddress = (value) =>
     !!value && /[A-Z]/i.test(value) && /\d/.test(value);
+
   const locationFullAddressCandidates = [
     safeNullIfEmpty(siteLocationLine),
     safeNullIfEmpty(modelDetail && modelDetail.Location),
+    combinedModelAddress,
     fullAddrInput,
   ].filter(Boolean);
+
   const fullAddr =
     locationFullAddressCandidates.find((candidate) =>
       hasMeaningfulFullAddress(candidate),
-    ) || null;
+    ) || locationFullAddressCandidates[0] || null;
 
-  const fullAddrTail = fullAddr && fullAddr.includes(",")
-    ? fullAddr
-        .split(",")
-        .slice(-1)
-        .join(" ")
-    : fullAddr;
-  const cityStateFromFull = parseCityStatePostal(fullAddrTail);
-  const cityStateFromLocation = parseCityStatePostal(siteLocationLine);
+  const tailSegments = [
+    fullAddr && fullAddr.includes(",")
+      ? fullAddr.split(",").slice(-1).join(" ")
+      : fullAddr,
+    siteLocationLine,
+    combinedModelAddress,
+    addressLine3,
+    addressLine2,
+    addressLine1,
+    fullAddrInput,
+  ].filter(Boolean);
+
+  const cityStateCandidates = tailSegments.map((segment) =>
+    parseCityStatePostal(segment),
+  );
+
+  const resolveField = (getter) => {
+    for (const candidate of cityStateCandidates) {
+      const value = getter(candidate);
+      if (value) return value;
+    }
+    return null;
+  };
+
+  const resolvedCity = resolveField((c) => c.city);
+  const resolvedState = resolveField((c) => c.state);
+  const postalCode = resolveField((c) => c.postal);
+  const plus4 = resolveField((c) => c.plus4);
 
   const countyName = safeNullIfEmpty(
     unAddr && unAddr.county_jurisdiction ? unAddr.county_jurisdiction : null,
   );
-  const formattedCountyName = countyName ? toTitleCase(countyName) : null;
+  const formattedCountyName = countyName ? titleCaseCounty(countyName) : null;
   const normalizedMunicipality = municipality
     ? municipality.replace(/\s+/g, " ").trim()
     : null;
-  const resolvedCity =
-    cityStateFromFull.city ||
-    cityStateFromLocation.city ||
-    (normalizedMunicipality ? normalizedMunicipality.toUpperCase() : null);
-  const resolvedState =
-    cityStateFromFull.state ||
-    cityStateFromLocation.state ||
-    null;
-  const postalCode =
-    cityStateFromFull.postal ||
-    cityStateFromLocation.postal ||
-    null;
-  const plus4 =
-    cityStateFromFull.plus4 ||
-    cityStateFromLocation.plus4 ||
-    null;
-  const normalizedCity = resolvedCity
-    ? resolvedCity
-    : normalizedMunicipality
-      ? normalizedMunicipality.toUpperCase()
-      : null;
+  const normalizedCity = (() => {
+    if (resolvedCity) return resolvedCity.toUpperCase();
+    if (normalizedMunicipality) return normalizedMunicipality.toUpperCase();
+    return null;
+  })();
 
-  const candidateStreetLines = [
+  const rawStreetCandidates = [
     siteLocationLine,
-    safeNullIfEmpty(modelDetail && modelDetail.Location),
-    fullAddr && fullAddr.includes(",") ? fullAddr.split(",")[0] : null,
-    hasMeaningfulFullAddress(fullAddr) ? fullAddr : null,
-  ]
-    .map((line) => safeNullIfEmpty(line))
-    .filter(Boolean);
-  let locationLine = null;
-  for (const candidate of candidateStreetLines) {
-    if (/\d/.test(candidate)) {
-      locationLine = candidate;
-      break;
+    modelDetail && modelDetail.Location,
+    addressLine1,
+    addressLine2,
+    combinedModelAddress,
+    fullAddr,
+    fullAddrInput,
+  ];
+
+  const splitStreetSegments = [];
+  for (const candidate of rawStreetCandidates) {
+    const cleaned = cleanStreetCandidate(candidate);
+    if (cleaned) splitStreetSegments.push(cleaned);
+    const raw = safeNullIfEmpty(candidate);
+    if (raw && raw.includes(",")) {
+      const first = raw.split(",")[0];
+      const furtherClean = cleanStreetCandidate(first);
+      if (furtherClean) splitStreetSegments.push(furtherClean);
     }
   }
-  if (!locationLine && candidateStreetLines.length) {
-    locationLine = candidateStreetLines[0];
+
+  const streetCandidates = [];
+  const seenStreet = new Set();
+  for (const candidate of splitStreetSegments) {
+    const normalized = normalizeWhitespace(candidate);
+    if (!normalized) continue;
+    const key = normalized.toUpperCase();
+    if (seenStreet.has(key)) continue;
+    seenStreet.add(key);
+    streetCandidates.push(normalized);
+  }
+
+  const isLikelyStreetLine = (line) => {
+    if (!line) return false;
+    if (/\d/.test(line)) return true;
+    return /\bLOT\b|\bBLK\b|\bBLOCK\b/i.test(line);
+  };
+
+  let locationLine = streetCandidates.find((candidate) =>
+    isLikelyStreetLine(candidate),
+  );
+  if (!locationLine && streetCandidates.length) {
+    locationLine = streetCandidates[0];
   }
 
   if (locationLine || normalizedCity || resolvedState || postalCode) {
@@ -1326,7 +1474,7 @@ function main() {
 
     const baseStreetCandidates = [
       locationLine,
-      ...candidateStreetLines.filter((candidate) => candidate !== locationLine),
+      ...streetCandidates.filter((candidate) => candidate !== locationLine),
     ];
     const streetCandidatesForFallback = baseStreetCandidates
       .map((candidate) => safeNullIfEmpty(candidate))
@@ -1434,7 +1582,11 @@ function main() {
       }
     }
 
-    const hasSufficientAddressData = hasRequiredAddressCore;
+    const hasCoordinateData = ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
+      Number.isFinite(address[field]),
+    );
+
+    const hasSufficientAddressData = hasRequiredAddressCore && hasCoordinateData;
 
     if (hasSufficientAddressData) {
       writeJSON(addressFilePath, address);
