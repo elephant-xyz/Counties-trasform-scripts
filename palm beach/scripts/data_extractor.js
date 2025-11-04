@@ -1428,13 +1428,18 @@ function main() {
     if (hasSufficientAddressData) {
       writeJSON(addressFilePath, address);
 
+      const addressRelationshipTarget = { "/": "./address.json" };
+      for (const field of ADDRESS_SCHEMA_FIELDS) {
+        addressRelationshipTarget[field] =
+          Object.prototype.hasOwnProperty.call(address, field) ? address[field] : null;
+      }
+
       const addressRelationship = {
         from: ref("./property.json"),
-        to: ref("./address.json"),
+        to: addressRelationshipTarget,
       };
 
       writeJSON(addressRelationshipPath, addressRelationship);
-
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
