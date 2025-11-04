@@ -423,6 +423,7 @@ const ADDRESS_SCHEMA_FIELDS = [
   "lot",
   "county_name",
   "municipality_name",
+  "unnormalized_address",
 ];
 
 const ADDRESS_CORE_FIELDS = [
@@ -1360,6 +1361,23 @@ function main() {
       hasMeaningfulFullAddress(candidate),
     ) || locationFullAddressCandidates[0] || null;
 
+  const unnormalizedAddressCandidate = (() => {
+    const prioritized = [
+      locationFullAddressCandidates.find((candidate) =>
+        hasMeaningfulFullAddress(candidate),
+      ),
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddrInput,
+      fullAddr,
+    ];
+    for (const candidate of prioritized) {
+      const normalizedCandidate = normalizeWhitespace(candidate);
+      if (normalizedCandidate) return normalizedCandidate;
+    }
+    return null;
+  })();
+
   const tailSegments = [
     fullAddr && fullAddr.includes(",")
       ? fullAddr.split(",").slice(-1).join(" ")
@@ -1539,6 +1557,36 @@ function main() {
       legalDescription: legalDesc,
     });
 
+    const hasNormalizedAddress = ADDRESS_CORE_FIELDS.every((field) => {
+      const value = address[field];
+      if (value == null) return false;
+      if (typeof value === "string") return value.trim().length > 0;
+      return true;
+    });
+
+    if (!hasNormalizedAddress) {
+      const fieldsToClear = [
+        "street_number",
+        "street_name",
+        "street_pre_directional_text",
+        "street_post_directional_text",
+        "street_suffix_type",
+        "unit_identifier",
+        "route_number",
+        "city_name",
+        "state_code",
+        "postal_code",
+      ];
+      for (const field of fieldsToClear) {
+        address[field] = null;
+      }
+      if (unnormalizedAddressCandidate) {
+        address.unnormalized_address = unnormalizedAddressCandidate;
+      }
+    } else {
+      address.unnormalized_address = null;
+    }
+
     // Ensure every property is either a trimmed string or null
     for (const key of Object.keys(address)) {
       const value = address[key];
@@ -1556,9 +1604,6 @@ function main() {
       if (!Object.prototype.hasOwnProperty.call(address, field)) {
         address[field] = null;
       }
-    }
-    if (Object.prototype.hasOwnProperty.call(address, "unnormalized_address")) {
-      delete address.unnormalized_address;
     }
 
     if (
