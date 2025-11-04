@@ -1417,11 +1417,13 @@ function main() {
       fs.unlinkSync(factSheetRelationshipPath);
     }
 
-    const hasValidCoordinates = ADDRESS_REQUIRED_COORDINATE_FIELDS.every(
-      (field) => Number.isFinite(address[field]),
-    );
+    for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+      if (!Number.isFinite(address[coordinateField])) {
+        address[coordinateField] = null;
+      }
+    }
 
-    const hasSufficientAddressData = hasRequiredAddressCore && hasValidCoordinates;
+    const hasSufficientAddressData = hasRequiredAddressCore;
 
     if (hasSufficientAddressData) {
       writeJSON(addressFilePath, address);
