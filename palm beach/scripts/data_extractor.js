@@ -523,18 +523,7 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const UNNORMALIZED_ADDRESS_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "route_number",
-];
+const UNNORMALIZED_ADDRESS_FIELDS = [...NORMALIZED_ADDRESS_FIELDS, "unnormalized_address"];
 
 function collectAddressFields(source, fields) {
   const result = {};
@@ -551,6 +540,18 @@ function collectAddressFields(source, fields) {
       continue;
     }
     result[field] = value;
+  }
+  return result;
+}
+
+function collectAddressFieldsAllowNulls(source, fields) {
+  const result = {};
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      result[field] = source[field];
+    } else {
+      result[field] = null;
+    }
   }
   return result;
 }
@@ -1753,7 +1754,10 @@ function main() {
     if (hasNormalizedAddress) {
       finalAddress = collectAddressFields(address, NORMALIZED_ADDRESS_FIELDS);
     } else if (hasUnnormalizedAddress) {
-      finalAddress = collectAddressFields(address, UNNORMALIZED_ADDRESS_FIELDS);
+      finalAddress = collectAddressFieldsAllowNulls(
+        address,
+        UNNORMALIZED_ADDRESS_FIELDS,
+      );
       finalAddress.unnormalized_address = trimmedUnnormalized;
     }
 
@@ -1762,7 +1766,10 @@ function main() {
     );
 
     if (!finalAddress && hasCoordinateOnly) {
-      finalAddress = collectAddressFields(address, UNNORMALIZED_ADDRESS_FIELDS);
+      finalAddress = collectAddressFieldsAllowNulls(
+        address,
+        NORMALIZED_ADDRESS_FIELDS,
+      );
     }
 
     if (finalAddress && Object.keys(finalAddress).length) {
