@@ -1425,13 +1425,8 @@ function main() {
       writeJSON(addressFilePath, address);
 
       const addressRelationship = {
-        from: { "/": "./property.json" },
-        to: ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
-          acc[key] = Object.prototype.hasOwnProperty.call(address, key)
-            ? address[key]
-            : null;
-          return acc;
-        }, {}),
+        from: ref("./property.json"),
+        to: ref("./address.json"),
       };
 
       writeJSON(addressRelationshipPath, addressRelationship);
