@@ -17,16 +17,9 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
-function ref(relativePath) {
-  if (typeof relativePath !== "string") return null;
-  const trimmed = relativePath.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("../")) {
-    return { "/": trimmed };
-  }
-  const normalized = trimmed.replace(/^\.\/+/, "").replace(/^\/+/, "");
-  if (!normalized) return null;
-  return { "/": `../data/${normalized}` };
+function ref() {
+  // Relationship URIs are populated downstream; emit null placeholders.
+  return null;
 }
 
 function extractBetween(html, regex, idx = 1) {
@@ -493,7 +486,9 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const ADDRESS_CORE_FIELDS = [
+const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
+
+const NORMALIZED_ADDRESS_REQUIRED_STRINGS = [
   "street_number",
   "street_name",
   "city_name",
@@ -502,7 +497,63 @@ const ADDRESS_CORE_FIELDS = [
   "country_code",
 ];
 
-const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
+const NORMALIZED_ADDRESS_REQUIRED_NUMBERS = ["latitude", "longitude"];
+
+const NORMALIZED_ADDRESS_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "country_code",
+  "plus_four_postal_code",
+  "postal_code",
+  "state_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "county_name",
+  "municipality_name",
+];
+
+const UNNORMALIZED_ADDRESS_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "route_number",
+];
+
+function collectAddressFields(source, fields) {
+  const result = {};
+  for (const field of fields) {
+    const value = source[field];
+    if (value == null) continue;
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) result[field] = value;
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length) result[field] = trimmed;
+      continue;
+    }
+    result[field] = value;
+  }
+  return result;
+}
 
 const STREET_SUFFIX_SYNONYMS = {
   RD: "Rd",
@@ -1636,21 +1687,6 @@ function main() {
     const fallbackUnnormalizedValue =
       composeUnnormalizedAddress(normalizedSnapshot) || unnormalizedAddressCandidate;
 
-    const hasNormalizedCore = ADDRESS_CORE_FIELDS.every((field) => {
-      const value = address[field];
-      if (value == null) return false;
-      if (typeof value === "string") return value.trim().length > 0;
-      return true;
-    });
-
-    const shouldUseNormalized = hasNormalizedCore;
-
-    if (shouldUseNormalized) {
-      address.unnormalized_address = null;
-    } else {
-      address.unnormalized_address = fallbackUnnormalizedValue || null;
-    }
-
     // Ensure every property is either a trimmed string or null
     for (const key of Object.keys(address)) {
       const value = address[key];
@@ -1698,55 +1734,38 @@ function main() {
       }
     }
 
-    const normalizeValueForSchema = (value) => {
-      if (value == null) return null;
-      if (typeof value === "number") {
-        return Number.isFinite(value) ? value : null;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        return trimmed.length ? trimmed : null;
-      }
-      return value;
-    };
-
-    const finalAddress = {};
-    for (const field of ADDRESS_SCHEMA_FIELDS) {
-      if (field === "unnormalized_address") continue;
-      finalAddress[field] = normalizeValueForSchema(address[field]);
-    }
-
-    const rawUnnormalized = normalizeValueForSchema(address.unnormalized_address);
-    const shouldEmitUnnormalized =
-      !shouldUseNormalized && rawUnnormalized !== null;
-    const finalUnnormalized = shouldEmitUnnormalized ? rawUnnormalized : null;
-    finalAddress.unnormalized_address = shouldEmitUnnormalized
-      ? rawUnnormalized
-      : null;
-
-    const hasUnnormalizedAddress =
-      typeof finalUnnormalized === "string" && finalUnnormalized.trim().length > 0;
-
-    const hasNormalizedAddressFinal =
-      shouldUseNormalized &&
-      ADDRESS_CORE_FIELDS.every((field) => {
-        const value = finalAddress[field];
-        if (value == null) return false;
-        if (typeof value === "string") return value.trim().length > 0;
-        if (typeof value === "number") return Number.isFinite(value);
-        return false;
-      });
-
-    const hasCoordinateOnly =
-      !hasNormalizedAddressFinal &&
-      ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
+    const trimmedUnnormalized =
+      typeof fallbackUnnormalizedValue === "string"
+        ? fallbackUnnormalizedValue.trim()
+        : "";
+    const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
+    const hasNormalizedAddress =
+      NORMALIZED_ADDRESS_REQUIRED_STRINGS.every((field) => {
+        const value = address[field];
+        return typeof value === "string" && value.trim().length > 0;
+      }) &&
+      NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
         Number.isFinite(address[field]),
       );
 
-    const hasMeaningfulAddressContent =
-      hasNormalizedAddressFinal || hasUnnormalizedAddress || hasCoordinateOnly;
+    let finalAddress = null;
 
-    if (hasMeaningfulAddressContent) {
+    if (hasNormalizedAddress) {
+      finalAddress = collectAddressFields(address, NORMALIZED_ADDRESS_FIELDS);
+    } else if (hasUnnormalizedAddress) {
+      finalAddress = collectAddressFields(address, UNNORMALIZED_ADDRESS_FIELDS);
+      finalAddress.unnormalized_address = trimmedUnnormalized;
+    }
+
+    const hasCoordinateOnly = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
+      Number.isFinite(address[field]),
+    );
+
+    if (!finalAddress && hasCoordinateOnly) {
+      finalAddress = collectAddressFields(address, UNNORMALIZED_ADDRESS_FIELDS);
+    }
+
+    if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
 
       const addressRelationship = {
@@ -1754,9 +1773,7 @@ function main() {
         to: ref("./address.json"),
       };
 
-      if (addressRelationship.from && addressRelationship.to) {
-        writeJSON(addressRelationshipPath, addressRelationship);
-      }
+      writeJSON(addressRelationshipPath, addressRelationship);
     } else {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
@@ -2420,10 +2437,8 @@ function main() {
       from: ref(`./deed_${dIndex}.json`),
       to: ref(`./file_${fIndex}.json`),
     };
-    if (rel.from && rel.to) {
-      writeJSON(path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`), rel);
-      rdfIdx++;
-    }
+    writeJSON(path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`), rel);
+    rdfIdx++;
   }
 
   // relationship_sales_deed (sales → deed)
@@ -2433,13 +2448,11 @@ function main() {
       from: ref(`./sales_${sIndex}.json`),
       to: ref(`./deed_${dIndex}.json`),
     };
-    if (rel.from && rel.to) {
-      writeJSON(
-        path.join(dataDir, `relationship_sales_deed_${relSDIdx}.json`),
-        rel,
-      );
-      relSDIdx++;
-    }
+    writeJSON(
+      path.join(dataDir, `relationship_sales_deed_${relSDIdx}.json`),
+      rel,
+    );
+    relSDIdx++;
   }
 
   // Extract person and company names using improved classification
@@ -2574,13 +2587,11 @@ function main() {
                 to: ref(`./company_${companyIdx}.json`),
                 from: ref(`./sales_${i + 1}.json`),
               };
-              if (rel.from && rel.to) {
-                writeJSON(
-                  path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
-                  rel,
-                );
-                relIdx++;
-              }
+              writeJSON(
+                path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
+                rel,
+              );
+              relIdx++;
               companyIdx++;
             } else {
               // Create person record
@@ -2609,13 +2620,11 @@ function main() {
                 to: ref(`./person_${personIdx}.json`),
                 from: ref(`./sales_${i + 1}.json`),
               };
-              if (rel.from && rel.to) {
-                writeJSON(
-                  path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
-                  rel,
-                );
-                relIdx++;
-              }
+              writeJSON(
+                path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
+                rel,
+              );
+              relIdx++;
               personIdx++;
             }
           }
@@ -2649,15 +2658,13 @@ function main() {
               to: ref(`./company_${companyIdx}.json`),
               from: ref(`./property.json`),
             };
-            if (propRel.from && propRel.to) {
-              writeJSON(
-                path.join(
-                  dataDir,
-                  `relationship_company_${companyIdx}_property.json`,
-                ),
-                propRel,
-              );
-            }
+            writeJSON(
+              path.join(
+                dataDir,
+                `relationship_company_${companyIdx}_property.json`,
+              ),
+              propRel,
+            );
             companyIdx++;
           } else {
             // Create person record
@@ -2686,15 +2693,13 @@ function main() {
               to: ref(`./person_${personIdx}.json`),
               from: ref(`./property.json`),
             };
-            if (propRel.from && propRel.to) {
-              writeJSON(
-                path.join(
-                  dataDir,
-                  `relationship_person_${personIdx}_property.json`,
-                ),
-                propRel,
-              );
-            }
+            writeJSON(
+              path.join(
+                dataDir,
+                `relationship_person_${personIdx}_property.json`,
+              ),
+              propRel,
+            );
             personIdx++;
           }
         }
