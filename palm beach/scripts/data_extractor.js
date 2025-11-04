@@ -1202,13 +1202,17 @@ function main() {
   }
 
   const fullAddrInput = safeNullIfEmpty(unAddr && unAddr.full_address);
-  const derivedFullAddrParts = [addressLine1, addressLine2, addressLine3].filter(Boolean);
-  const fallbackFullAddr = derivedFullAddrParts.length
-    ? derivedFullAddrParts.join(", ")
-    : null;
   const hasMeaningfulFullAddress = (value) =>
     !!value && /[A-Z]/i.test(value) && /\d/.test(value);
-  const fullAddr = hasMeaningfulFullAddress(fullAddrInput) ? fullAddrInput : fallbackFullAddr;
+  const locationFullAddressCandidates = [
+    safeNullIfEmpty(siteLocationLine),
+    safeNullIfEmpty(modelDetail && modelDetail.Location),
+    fullAddrInput,
+  ].filter(Boolean);
+  const fullAddr =
+    locationFullAddressCandidates.find((candidate) =>
+      hasMeaningfulFullAddress(candidate),
+    ) || null;
 
   const fullAddrTail = fullAddr && fullAddr.includes(",")
     ? fullAddr
@@ -1216,13 +1220,8 @@ function main() {
         .slice(-1)
         .join(" ")
     : fullAddr;
-  const cityStateFromLine3 = parseCityStatePostal(addressLine3);
   const cityStateFromFull = parseCityStatePostal(fullAddrTail);
-
-  const resolvedCity = cityStateFromLine3.city || cityStateFromFull.city || null;
-  const resolvedState = cityStateFromLine3.state || cityStateFromFull.state || null;
-  const postalCode = cityStateFromLine3.postal || cityStateFromFull.postal || null;
-  const plus4 = cityStateFromLine3.plus4 || cityStateFromFull.plus4 || null;
+  const cityStateFromLocation = parseCityStatePostal(siteLocationLine);
 
   const countyName = safeNullIfEmpty(
     unAddr && unAddr.county_jurisdiction ? unAddr.county_jurisdiction : null,
@@ -1231,6 +1230,22 @@ function main() {
   const normalizedMunicipality = municipality
     ? municipality.replace(/\s+/g, " ").trim()
     : null;
+  const resolvedCity =
+    cityStateFromFull.city ||
+    cityStateFromLocation.city ||
+    (normalizedMunicipality ? normalizedMunicipality.toUpperCase() : null);
+  const resolvedState =
+    cityStateFromFull.state ||
+    cityStateFromLocation.state ||
+    null;
+  const postalCode =
+    cityStateFromFull.postal ||
+    cityStateFromLocation.postal ||
+    null;
+  const plus4 =
+    cityStateFromFull.plus4 ||
+    cityStateFromLocation.plus4 ||
+    null;
   const normalizedCity = resolvedCity
     ? resolvedCity
     : normalizedMunicipality
@@ -1239,9 +1254,9 @@ function main() {
 
   const candidateStreetLines = [
     siteLocationLine,
+    safeNullIfEmpty(modelDetail && modelDetail.Location),
     fullAddr && fullAddr.includes(",") ? fullAddr.split(",")[0] : null,
     hasMeaningfulFullAddress(fullAddr) ? fullAddr : null,
-    addressLine1,
   ]
     .map((line) => safeNullIfEmpty(line))
     .filter(Boolean);
