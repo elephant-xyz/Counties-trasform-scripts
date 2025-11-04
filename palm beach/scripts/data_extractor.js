@@ -527,17 +527,9 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const UNNORMALIZED_ADDRESS_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "request_identifier",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+// Unnormalized addresses must still expose the normalized field set (even when null)
+// so the address.oneOf schema can validate the raw representation branch.
+const UNNORMALIZED_ADDRESS_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 function collectAddressFields(source, fields) {
   const result = {};
