@@ -1713,18 +1713,16 @@ function main() {
     const finalAddress = {};
     for (const field of ADDRESS_SCHEMA_FIELDS) {
       if (field === "unnormalized_address") continue;
-      const normalizedValue = normalizeValueForSchema(address[field]);
-      if (shouldUseNormalized || normalizedValue !== null) {
-        finalAddress[field] = normalizedValue;
-      }
+      finalAddress[field] = normalizeValueForSchema(address[field]);
     }
 
     const rawUnnormalized = normalizeValueForSchema(address.unnormalized_address);
-    let finalUnnormalized = null;
-    if (!shouldUseNormalized && rawUnnormalized !== null) {
-      finalAddress.unnormalized_address = rawUnnormalized;
-      finalUnnormalized = rawUnnormalized;
-    }
+    const shouldEmitUnnormalized =
+      !shouldUseNormalized && rawUnnormalized !== null;
+    const finalUnnormalized = shouldEmitUnnormalized ? rawUnnormalized : null;
+    finalAddress.unnormalized_address = shouldEmitUnnormalized
+      ? rawUnnormalized
+      : null;
 
     const hasUnnormalizedAddress =
       typeof finalUnnormalized === "string" && finalUnnormalized.trim().length > 0;
