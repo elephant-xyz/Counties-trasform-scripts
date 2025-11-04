@@ -17,6 +17,10 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+function ref(relativePath) {
+  return { "/": relativePath };
+}
+
 function extractBetween(html, regex, idx = 1) {
   const m = html.match(regex);
   return m ? (m[idx] || "").trim() : null;
@@ -38,6 +42,669 @@ function safeNullIfEmpty(s) {
   if (s == null) return null;
   const t = String(s).trim();
   return t === "" ? null : t;
+}
+
+function normalizeWhitespace(value) {
+  if (!value) return "";
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+const STREET_DIRECTIONS = new Set([
+  "N",
+  "S",
+  "E",
+  "W",
+  "NE",
+  "NW",
+  "SE",
+  "SW",
+]);
+
+const STREET_SUFFIX_ENUM = [
+  "Rds",
+  "Blvd",
+  "Lk",
+  "Pike",
+  "Ky",
+  "Vw",
+  "Curv",
+  "Psge",
+  "Ldg",
+  "Mt",
+  "Un",
+  "Mdw",
+  "Via",
+  "Cor",
+  "Kys",
+  "Vl",
+  "Pr",
+  "Cv",
+  "Isle",
+  "Lgt",
+  "Hbr",
+  "Btm",
+  "Hl",
+  "Mews",
+  "Hls",
+  "Pnes",
+  "Lgts",
+  "Strm",
+  "Hwy",
+  "Trwy",
+  "Skwy",
+  "Is",
+  "Est",
+  "Vws",
+  "Ave",
+  "Exts",
+  "Cvs",
+  "Row",
+  "Rte",
+  "Fall",
+  "Gtwy",
+  "Wls",
+  "Clb",
+  "Frk",
+  "Cpe",
+  "Fwy",
+  "Knls",
+  "Rdg",
+  "Jct",
+  "Rst",
+  "Spgs",
+  "Cir",
+  "Crst",
+  "Expy",
+  "Smt",
+  "Trfy",
+  "Cors",
+  "Land",
+  "Uns",
+  "Jcts",
+  "Ways",
+  "Trl",
+  "Way",
+  "Trlr",
+  "Aly",
+  "Spg",
+  "Pkwy",
+  "Cmn",
+  "Dr",
+  "Grns",
+  "Oval",
+  "Cirs",
+  "Pt",
+  "Shls",
+  "Vly",
+  "Hts",
+  "Clf",
+  "Flt",
+  "Mall",
+  "Frds",
+  "Cyn",
+  "Lndg",
+  "Mdws",
+  "Rd",
+  "Xrds",
+  "Ter",
+  "Prt",
+  "Radl",
+  "Grvs",
+  "Rdgs",
+  "Inlt",
+  "Trak",
+  "Byu",
+  "Vlgs",
+  "Ctr",
+  "Ml",
+  "Cts",
+  "Arc",
+  "Bnd",
+  "Riv",
+  "Flds",
+  "Mtwy",
+  "Msn",
+  "Shrs",
+  "Rue",
+  "Crse",
+  "Cres",
+  "Anx",
+  "Drs",
+  "Sts",
+  "Holw",
+  "Vlg",
+  "Prts",
+  "Sta",
+  "Fld",
+  "Xrd",
+  "Wall",
+  "Tpke",
+  "Ft",
+  "Bg",
+  "Knl",
+  "Plz",
+  "St",
+  "Cswy",
+  "Bgs",
+  "Rnch",
+  "Frks",
+  "Ln",
+  "Mtn",
+  "Ctrs",
+  "Orch",
+  "Iss",
+  "Brks",
+  "Br",
+  "Fls",
+  "Trce",
+  "Park",
+  "Gdns",
+  "Rpds",
+  "Shl",
+  "Lf",
+  "Rpd",
+  "Lcks",
+  "Gln",
+  "Pl",
+  "Path",
+  "Vis",
+  "Lks",
+  "Run",
+  "Frg",
+  "Brg",
+  "Sqs",
+  "Xing",
+  "Pln",
+  "Glns",
+  "Blfs",
+  "Plns",
+  "Dl",
+  "Clfs",
+  "Ext",
+  "Pass",
+  "Gdn",
+  "Brk",
+  "Grn",
+  "Mnr",
+  "Cp",
+  "Pne",
+  "Spur",
+  "Opas",
+  "Upas",
+  "Tunl",
+  "Sq",
+  "Lck",
+  "Ests",
+  "Shr",
+  "Dm",
+  "Mls",
+  "Wl",
+  "Mnrs",
+  "Stra",
+  "Frgs",
+  "Frst",
+  "Flts",
+  "Ct",
+  "Mtns",
+  "Frd",
+  "Nck",
+  "Ramp",
+  "Vlys",
+  "Pts",
+  "Bch",
+  "Loop",
+  "Byp",
+  "Cmns",
+  "Fry",
+  "Walk",
+  "Hbrs",
+  "Dv",
+  "Hvn",
+  "Blf",
+  "Grv",
+  "Crk",
+];
+
+const STREET_SUFFIX_SYNONYMS = {
+  RD: "Rd",
+  ROAD: "Rd",
+  DRIVE: "Dr",
+  DR: "Dr",
+  STREET: "St",
+  ST: "St",
+  AVE: "Ave",
+  AVENUE: "Ave",
+  HIGHWAY: "Hwy",
+  HWY: "Hwy",
+  LANE: "Ln",
+  LN: "Ln",
+  COURT: "Ct",
+  CT: "Ct",
+  CIRCLE: "Cir",
+  CIR: "Cir",
+  PARKWAY: "Pkwy",
+  PKWY: "Pkwy",
+  TERRACE: "Ter",
+  TER: "Ter",
+  PLACE: "Pl",
+  PL: "Pl",
+  BOULEVARD: "Blvd",
+  BLVD: "Blvd",
+  DRIVEWAY: "Dr",
+  TRL: "Trl",
+  TRAIL: "Trl",
+  WAY: "Way",
+};
+
+const STREET_SUFFIX_LOOKUP = new Map(
+  STREET_SUFFIX_ENUM.map((value) => [value.toUpperCase(), value]),
+);
+
+for (const [key, value] of Object.entries(STREET_SUFFIX_SYNONYMS)) {
+  if (!STREET_SUFFIX_LOOKUP.has(key)) {
+    STREET_SUFFIX_LOOKUP.set(key, value);
+  }
+}
+
+function mapStreetSuffixType(token) {
+  if (!token) return null;
+  const cleaned = token.replace(/\./g, "").toUpperCase();
+  if (STREET_SUFFIX_LOOKUP.has(cleaned)) {
+    return STREET_SUFFIX_LOOKUP.get(cleaned);
+  }
+  return null;
+}
+
+function parseCityStatePostal(raw) {
+  const parsed = {
+    city: null,
+    state: null,
+    postal: null,
+    plus4: null,
+  };
+  const normalized = normalizeWhitespace(raw);
+  if (!normalized) return parsed;
+
+  const cleaned = normalized.replace(/,/g, "").toUpperCase();
+  const cityStateZipMatch = cleaned.match(
+    /^(.+?)\s+([A-Z]{2})\s+(\d{5})(?:\s+(\d{4}))?$/,
+  );
+  if (cityStateZipMatch) {
+    parsed.city = cityStateZipMatch[1].trim();
+    parsed.state = cityStateZipMatch[2].trim();
+    parsed.postal = cityStateZipMatch[3];
+    parsed.plus4 = cityStateZipMatch[4] || null;
+    return parsed;
+  }
+
+  const stateZipMatch = cleaned.match(/([A-Z]{2})\s+(\d{5})(?:\s+(\d{4}))?/);
+  if (stateZipMatch) {
+    parsed.state = stateZipMatch[1].trim();
+    parsed.postal = stateZipMatch[2];
+    parsed.plus4 = stateZipMatch[3] || null;
+    const cityCandidate = cleaned.slice(0, stateZipMatch.index).trim();
+    if (cityCandidate) parsed.city = cityCandidate;
+    return parsed;
+  }
+
+  const postalMatch = cleaned.match(/\b(\d{5})(?:\s+(\d{4}))?\b/);
+  if (postalMatch) {
+    parsed.postal = postalMatch[1];
+    parsed.plus4 = postalMatch[2] || null;
+  }
+  return parsed;
+}
+
+function parseLocationAddress(raw) {
+  const result = {
+    streetNumber: null,
+    streetName: null,
+    streetPreDirectional: null,
+    streetPostDirectional: null,
+    streetSuffix: null,
+    unitIdentifier: null,
+    routeNumber: null,
+  };
+
+  const normalized = normalizeWhitespace(raw);
+  if (!normalized) return result;
+
+  const tokens = normalized
+    .toUpperCase()
+    .split(/\s+/)
+    .map((token) => token.replace(/[,.]/g, ""));
+  if (!tokens.length) return result;
+
+  const first = tokens[0];
+  if (/^\d+[A-Z]?$/i.test(first)) {
+    result.streetNumber = first;
+    tokens.shift();
+  }
+
+  if (!tokens.length) return result;
+
+  const consumePostDirectional = () => {
+    if (!tokens.length) return;
+    const candidate = tokens[tokens.length - 1].toUpperCase();
+    if (STREET_DIRECTIONS.has(candidate)) {
+      result.streetPostDirectional = candidate;
+      tokens.pop();
+    }
+  };
+
+  const maybePre = tokens[0].toUpperCase();
+  if (STREET_DIRECTIONS.has(maybePre)) {
+    result.streetPreDirectional = maybePre;
+    tokens.shift();
+  }
+
+  if (!tokens.length) return result;
+
+  consumePostDirectional();
+  if (!tokens.length) return result;
+
+  // Handle explicit unit keywords (UNIT 5, APT B, STE 2, etc.)
+  if (tokens.length >= 2) {
+    const keyword = tokens[tokens.length - 2].toUpperCase();
+    if (/^(APT|UNIT|STE|SUITE|BLDG|BUILDING|FL|FLOOR|LOT|RM|ROOM|TRLR|SPC|SPACE)$/.test(keyword)) {
+      if (!result.unitIdentifier) {
+        result.unitIdentifier = tokens[tokens.length - 1];
+      }
+      tokens.pop();
+      tokens.pop();
+    }
+  }
+
+  if (!tokens.length) return result;
+
+  const removeTrailingUnitToken = () => {
+    if (!tokens.length) return false;
+    const lastToken = tokens[tokens.length - 1];
+    if (!lastToken) return false;
+    const normalizedLast = lastToken.toUpperCase();
+    if (STREET_DIRECTIONS.has(normalizedLast)) return false;
+    if (mapStreetSuffixType(lastToken)) return false;
+
+    const ordinalRegex = /^\d+(ST|ND|RD|TH)$/;
+    const hasHashPrefix = lastToken.startsWith("#");
+    const hasDigits = /\d/.test(lastToken);
+    const looksOrdinal = ordinalRegex.test(lastToken);
+    const isCompactToken = /^[#A-Z0-9-]+$/.test(lastToken) && lastToken.length <= 6;
+
+    if (isCompactToken && (hasHashPrefix || (hasDigits && !looksOrdinal))) {
+      if (!result.unitIdentifier) {
+        result.unitIdentifier = lastToken.replace(/^#/, "");
+      }
+      tokens.pop();
+      return true;
+    }
+    return false;
+  };
+
+  removeTrailingUnitToken();
+  consumePostDirectional();
+
+  if (!tokens.length) return result;
+
+  const suffixToken = tokens[tokens.length - 1];
+  const suffix = mapStreetSuffixType(suffixToken);
+  if (suffix) {
+    result.streetSuffix = suffix;
+    tokens.pop();
+  }
+
+  if (!tokens.length) return result;
+
+  consumePostDirectional();
+  if (!tokens.length) return result;
+
+  const remaining = tokens.join(" ").trim();
+  if (!remaining) return result;
+
+  const routePatterns = [
+    { regex: /^(?:US|U\.S\.)\s+(?:HWY|HIGHWAY)\s+([A-Z0-9-]+)$/, name: "US Highway" },
+    { regex: /^(?:US|U\.S\.)\s+([A-Z0-9-]+)$/, name: "US Highway" },
+    { regex: /^(?:STATE\s+(?:ROAD|RD)|SR)\s+([A-Z0-9-]+)$/, name: "State Road" },
+    { regex: /^(?:COUNTY\s+(?:ROAD|RD)|CR)\s+([A-Z0-9-]+)$/, name: "County Road" },
+    { regex: /^(?:HWY|HIGHWAY)\s+([A-Z0-9-]+)$/, name: "Highway" },
+    { regex: /^(?:ROUTE|RTE)\s+([A-Z0-9-]+)$/, name: "Route" },
+  ];
+
+  for (const pattern of routePatterns) {
+    const match = remaining.match(pattern.regex);
+    if (match) {
+      result.routeNumber = match[1];
+      result.streetName = pattern.name.toUpperCase();
+      return result;
+    }
+  }
+
+  result.streetName = remaining;
+  return result;
+}
+
+function sanitizePostalCode(value) {
+  if (!value) return null;
+  const cleaned = String(value).replace(/\D/g, "");
+  if (cleaned.length >= 5) return cleaned.slice(0, 5);
+  return null;
+}
+
+function sanitizePlus4(value) {
+  if (!value) return null;
+  const cleaned = String(value).replace(/\D/g, "");
+  if (cleaned.length >= 4) return cleaned.slice(0, 4);
+  return null;
+}
+
+function deriveGridPartsFromPcn(rawPcn) {
+  if (!rawPcn) return {};
+  const normalized = normalizeWhitespace(String(rawPcn));
+  if (!normalized) return {};
+  const tokens = normalized
+    .split("-")
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const grid = {};
+  if (tokens.length >= 4) {
+    grid.township = tokens[1] || null;
+    grid.range = tokens[2] || null;
+    grid.section = tokens[3] || null;
+  }
+  if (tokens.length >= 6) grid.block = tokens[5] || null;
+  if (tokens.length >= 7) grid.lot = tokens[6] || null;
+  return grid;
+}
+
+function fillAddressStreetComponents(address, streetCandidates) {
+  const seen = new Set();
+  for (const candidate of streetCandidates) {
+    const normalized = normalizeWhitespace(candidate);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    const parsed = parseLocationAddress(normalized);
+
+    if (parsed.streetNumber && !address.street_number) {
+      address.street_number = safeNullIfEmpty(parsed.streetNumber);
+    }
+    if (parsed.streetPreDirectional && !address.street_pre_directional_text) {
+      address.street_pre_directional_text = parsed.streetPreDirectional.toUpperCase();
+    }
+    if (parsed.streetPostDirectional && !address.street_post_directional_text) {
+      address.street_post_directional_text = parsed.streetPostDirectional.toUpperCase();
+    }
+    if (parsed.streetSuffix && !address.street_suffix_type) {
+      address.street_suffix_type = safeNullIfEmpty(parsed.streetSuffix);
+    }
+    if (parsed.streetName && !address.street_name) {
+      const formatted = safeNullIfEmpty(formatStreetNameCase(parsed.streetName));
+      address.street_name = formatted ? formatted.toUpperCase() : null;
+    }
+    if (parsed.unitIdentifier && !address.unit_identifier) {
+      address.unit_identifier = safeNullIfEmpty(parsed.unitIdentifier);
+    }
+    if (parsed.routeNumber && !address.route_number) {
+      address.route_number = safeNullIfEmpty(parsed.routeNumber);
+    }
+  }
+
+  if (address.street_number && address.street_name && address.street_suffix_type) {
+    return;
+  }
+
+  for (const candidate of streetCandidates) {
+    const normalized = normalizeWhitespace(candidate);
+    if (!normalized) continue;
+    const parts = normalized
+      .replace(/[.,]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) continue;
+
+    let idxStart = 0;
+    let idxEnd = parts.length;
+
+    if (!address.street_number) {
+      const maybeNumber = parts[0];
+      if (/^\d+[A-Z]?$/i.test(maybeNumber)) {
+        address.street_number = maybeNumber;
+        idxStart += 1;
+      }
+    }
+
+    if (!address.street_pre_directional_text && idxStart < idxEnd) {
+      const maybePre = parts[idxStart].toUpperCase();
+      if (STREET_DIRECTIONS.has(maybePre)) {
+        address.street_pre_directional_text = maybePre;
+        idxStart += 1;
+      }
+    }
+
+    if (!address.street_post_directional_text && idxStart < idxEnd) {
+      const maybePost = parts[idxEnd - 1].toUpperCase();
+      if (STREET_DIRECTIONS.has(maybePost)) {
+        address.street_post_directional_text = maybePost;
+        idxEnd -= 1;
+      }
+    }
+
+    if (!address.street_suffix_type && idxStart < idxEnd) {
+      const maybeSuffix = parts[idxEnd - 1];
+      const mappedSuffix = mapStreetSuffixType(maybeSuffix);
+      if (mappedSuffix) {
+        address.street_suffix_type = mappedSuffix;
+        idxEnd -= 1;
+      }
+    }
+
+    if (!address.street_name && idxEnd > idxStart) {
+      const nameTokens = parts.slice(idxStart, idxEnd);
+      if (nameTokens.length) {
+        const formatted = safeNullIfEmpty(formatStreetNameCase(nameTokens.join(" ")));
+        address.street_name = formatted ? formatted.toUpperCase() : null;
+      }
+    }
+
+    if (
+      address.street_number &&
+      address.street_name &&
+      address.street_suffix_type
+    ) {
+      break;
+    }
+  }
+}
+
+function applyAddressFallbacks(address, options = {}) {
+  const {
+    streetCandidates = [],
+    fallbackCity = null,
+    fallbackState = null,
+    fallbackPostal = null,
+    fallbackPlus4 = null,
+    municipality = null,
+    county = null,
+    formattedPcn = null,
+    legalDescription = null,
+  } = options;
+
+  if (!address.city_name && fallbackCity) {
+    address.city_name = fallbackCity.toUpperCase();
+  }
+  if (!address.state_code && fallbackState) {
+    address.state_code = fallbackState.toUpperCase();
+  }
+  address.postal_code = sanitizePostalCode(address.postal_code || fallbackPostal);
+  address.plus_four_postal_code =
+    sanitizePlus4(address.plus_four_postal_code || fallbackPlus4);
+
+  if (!address.country_code && (address.state_code || address.postal_code)) {
+    address.country_code = "US";
+  }
+
+  if (!address.municipality_name && municipality) {
+    address.municipality_name = toTitleCase(municipality);
+  }
+
+  if (!address.county_name && county) {
+    address.county_name = toTitleCase(county);
+  }
+
+  fillAddressStreetComponents(address, streetCandidates);
+
+  address.street_pre_directional_text = address.street_pre_directional_text
+    ? address.street_pre_directional_text.toUpperCase()
+    : null;
+  address.street_post_directional_text = address.street_post_directional_text
+    ? address.street_post_directional_text.toUpperCase()
+    : null;
+  address.street_name = address.street_name ? address.street_name.toUpperCase() : null;
+
+  if (formattedPcn) {
+    const parts = deriveGridPartsFromPcn(formattedPcn);
+    for (const key of ["section", "township", "range", "block", "lot"]) {
+      if (!address[key] && parts[key]) {
+        address[key] = parts[key];
+      }
+    }
+  }
+
+  if (legalDescription) {
+    const normalized = legalDescription.toUpperCase();
+    if (!address.lot) {
+      const lotMatch =
+        normalized.match(/\bLOT\s+([A-Z0-9-]+)/) ||
+        normalized.match(/\bLT\s+([A-Z0-9-]+)/);
+      if (lotMatch) address.lot = lotMatch[1];
+    }
+    if (!address.block) {
+      const blockMatch =
+        normalized.match(/\bBLOCK\s+([A-Z0-9-]+)/) ||
+        normalized.match(/\bBLK\s+([A-Z0-9-]+)/);
+      if (blockMatch) address.block = blockMatch[1];
+    }
+  }
+}
+
+function formatStreetNameCase(value) {
+  if (!value) return null;
+  const tokens = String(value)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (upper === "US" || upper === "SR" || upper === "CR") return upper;
+      if (word.length === 1) return upper;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    });
+  return tokens.length ? tokens.join(" ") : null;
+}
+
+function parseCoordinate(value) {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(String(value).trim());
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 const MIDDLE_NAME_PLACEHOLDERS = new Set([
@@ -172,27 +839,48 @@ function main() {
   // Parse embedded model first (robust source inside HTML)
   const model = parseModelJSONFromHTML(inputHTML);
 
-  // Extract property core fields from HTML (supplement)
-  const locAddr = extractBetween(
+  const modelDetail = model && model.propertyDetail ? model.propertyDetail : null;
+
+  // Extract property core fields from HTML (supplement) with fallbacks to embedded model
+  const addressLine1 = safeNullIfEmpty(modelDetail && modelDetail.AddressLine1);
+  const addressLine2 = safeNullIfEmpty(modelDetail && modelDetail.AddressLine2);
+  const addressLine3 = safeNullIfEmpty(modelDetail && modelDetail.AddressLine3);
+
+  const rawLocAddr = extractBetween(
     inputHTML,
     /<span id="MainContent_lblLocation">([\s\S]*?)<\/span>/i,
   );
-  const municipality = extractBetween(
-    inputHTML,
-    /"AddressLine3":"([\w\s]+?)\s[A-Z]{2}\s\d{5}/i,
+  const siteLocationLine =
+    safeNullIfEmpty(rawLocAddr) ||
+    safeNullIfEmpty(modelDetail && modelDetail.Location) ||
+    null;
+  let municipality =
+    safeNullIfEmpty(
+      extractBetween(
+        inputHTML,
+        /"AddressLine3":"([\w\s]+?)\s[A-Z]{2}\s\d{5}/i,
+      ),
+    ) || safeNullIfEmpty(modelDetail && modelDetail.Municipality);
+  const pcnHyphen = safeNullIfEmpty(
+    extractBetween(
+      inputHTML,
+      /<span id="MainContent_lblPCN">([\s\S]*?)<\/span>/i,
+    ),
   );
-  const pcnHyphen = extractBetween(
-    inputHTML,
-    /<span id="MainContent_lblPCN">([\s\S]*?)<\/span>/i,
-  );
-  const subdivision = extractBetween(
-    inputHTML,
-    /<span id="MainContent_lblSubdiv">([\s\S]*?)<\/span>/i,
-  );
-  const legalDesc = extractBetween(
-    inputHTML,
-    /<span id="MainContent_lblLegalDesc">([\s\S]*?)<\/span>/i,
-  );
+  const subdivision =
+    safeNullIfEmpty(
+      extractBetween(
+        inputHTML,
+        /<span id="MainContent_lblSubdiv">([\s\S]*?)<\/span>/i,
+      ),
+    ) || safeNullIfEmpty(modelDetail && modelDetail.Subdivision);
+  const legalDesc =
+    safeNullIfEmpty(
+      extractBetween(
+        inputHTML,
+        /<span id="MainContent_lblLegalDesc">([\s\S]*?)<\/span>/i,
+      ),
+    ) || safeNullIfEmpty(modelDetail && modelDetail.LegalDesc);
 
   // Property metrics from model.structuralDetails if available
   let areaUnderAir = null;
@@ -378,44 +1066,6 @@ function main() {
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
-  // Build address.json using unnormalized_address and HTML
-  const fullAddr = unAddr && unAddr.full_address ? unAddr.full_address : null;
-  let postalCode = null,
-    plus4 = null,
-    stateCode = null,
-    cityFromFull = null;
-  if (fullAddr) {
-    const zipMatch = fullAddr.match(/\b(\d{5})(?:-(\d{4}))?\b/);
-    if (zipMatch) {
-      postalCode = zipMatch[1];
-      plus4 = zipMatch[2] || null;
-    }
-    const stateMatch = fullAddr.match(/,\s*([A-Z]{2})\s+\d{5}/);
-    if (stateMatch) stateCode = stateMatch[1];
-    const parts = fullAddr.split(",");
-    if (parts.length >= 2) {
-      cityFromFull = parts[1].trim().toUpperCase();
-    }
-  }
-  // Street components from Location Address
-  let streetNumber = null,
-    streetName = null,
-    streetSuffix = null;
-  if (locAddr) {
-    const parts = locAddr.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      streetNumber = parts[0];
-      const last = parts[parts.length - 1].toUpperCase();
-      if (last === "WAY") {
-        streetSuffix = "Way";
-        streetName = parts.slice(1, parts.length - 1).join(" ");
-      } else {
-        streetName = parts.slice(1).join(" ");
-      }
-      if (streetName) streetName = streetName.toUpperCase();
-    }
-  }
-
   // Lot.json - with allowed nulls and lot_size_acre
   let lotSizeAcre = null;
   // Prefer embedded model.propertyDetail.Acres
@@ -468,57 +1118,257 @@ function main() {
     }
   }
 
-  const countyName =
-    unAddr && unAddr.county_jurisdiction ? unAddr.county_jurisdiction : null;
-
-  function cardinalStreetName(v) {
-    if (!v) return null;
-    const s = v.toUpperCase().trim();
-    const regex = /^(N|S|E|W|NE|NW|SE|SW)\s+|\s+(N|S|E|W|NE|NW|SE|SW)$/g;
-    const cleaned = s.replace(regex, "").trim();
-    return cleaned;
+  if (
+    (!section || !township || !range || !block || !lotNo) &&
+    modelDetail &&
+    modelDetail.FormattedPCN
+  ) {
+    const formatted = String(modelDetail.FormattedPCN).trim();
+    if (formatted) {
+      const parcelParts = formatted.split("-").map((part) => part.trim());
+      if (parcelParts.length >= 4) {
+        if (!township && parcelParts[1]) township = parcelParts[1];
+        if (!range && parcelParts[2]) range = parcelParts[2];
+        if (!section && parcelParts[3]) section = parcelParts[3];
+      }
+      if (!block && parcelParts.length >= 6 && parcelParts[5]) {
+        block = parcelParts[5];
+      }
+      if (!lotNo && parcelParts.length >= 7 && parcelParts[6]) {
+        lotNo = parcelParts[6];
+      }
+    }
   }
 
-  function directionPrefix(v) {
-    if (!v) return null;
-    const s = v.toUpperCase();
-    const regex = /^(N|S|E|W|NE|NW|SE|SW)\b/;
-    const match = s.match(regex);
-    return match ? match[1] : null;
+  const fullAddrInput = safeNullIfEmpty(unAddr && unAddr.full_address);
+  const derivedFullAddrParts = [addressLine1, addressLine2, addressLine3].filter(Boolean);
+  const fallbackFullAddr = derivedFullAddrParts.length
+    ? derivedFullAddrParts.join(", ")
+    : null;
+  const hasMeaningfulFullAddress = (value) =>
+    !!value && /[A-Z]/i.test(value) && /\d/.test(value);
+  const fullAddr = hasMeaningfulFullAddress(fullAddrInput) ? fullAddrInput : fallbackFullAddr;
+
+  const fullAddrTail = fullAddr && fullAddr.includes(",")
+    ? fullAddr
+        .split(",")
+        .slice(-1)
+        .join(" ")
+    : fullAddr;
+  const cityStateFromLine3 = parseCityStatePostal(addressLine3);
+  const cityStateFromFull = parseCityStatePostal(fullAddrTail);
+
+  const resolvedCity = cityStateFromLine3.city || cityStateFromFull.city || null;
+  const resolvedState = cityStateFromLine3.state || cityStateFromFull.state || null;
+  const postalCode = cityStateFromLine3.postal || cityStateFromFull.postal || null;
+  const plus4 = cityStateFromLine3.plus4 || cityStateFromFull.plus4 || null;
+
+  const countyName = safeNullIfEmpty(
+    unAddr && unAddr.county_jurisdiction ? unAddr.county_jurisdiction : null,
+  );
+  const formattedCountyName = countyName ? toTitleCase(countyName) : null;
+  const normalizedMunicipality = municipality
+    ? municipality.replace(/\s+/g, " ").trim()
+    : null;
+  const normalizedCity = resolvedCity
+    ? resolvedCity
+    : normalizedMunicipality
+      ? normalizedMunicipality.toUpperCase()
+      : null;
+
+  const candidateStreetLines = [
+    siteLocationLine,
+    fullAddr && fullAddr.includes(",") ? fullAddr.split(",")[0] : null,
+    hasMeaningfulFullAddress(fullAddr) ? fullAddr : null,
+    addressLine1,
+  ]
+    .map((line) => safeNullIfEmpty(line))
+    .filter(Boolean);
+  let locationLine = null;
+  for (const candidate of candidateStreetLines) {
+    if (/\d/.test(candidate)) {
+      locationLine = candidate;
+      break;
+    }
+  }
+  if (!locationLine && candidateStreetLines.length) {
+    locationLine = candidateStreetLines[0];
   }
 
-  function directionSuffix(v) {
-    if (!v) return null;
-    const s = v.toUpperCase();
-    const regex = /\b(N|S|E|W|NE|NW|SE|SW)\b$/;
-    const match = s.match(regex);
-    return match ? match[1] : null;
+  if (locationLine || normalizedCity || resolvedState || postalCode) {
+    const locationLineForParsing = (() => {
+      if (!locationLine) return locationLine;
+      const firstSegment = locationLine.split(",")[0].trim();
+      return firstSegment || locationLine;
+    })();
+    const parsedAddress = parseLocationAddress(locationLineForParsing);
+    const inferredStateCode =
+      resolvedState ||
+      (formattedCountyName && formattedCountyName.toUpperCase().includes("PALM BEACH")
+        ? "FL"
+        : null);
+
+    const address = {
+      city_name: normalizedCity ? normalizedCity.toUpperCase() : null,
+      country_code: null,
+      county_name: safeNullIfEmpty(formattedCountyName),
+      latitude: parseCoordinate(unAddr && unAddr.latitude),
+      longitude: parseCoordinate(unAddr && unAddr.longitude),
+      plus_four_postal_code: sanitizePlus4(plus4),
+      postal_code: sanitizePostalCode(postalCode),
+      state_code: inferredStateCode ? inferredStateCode.toUpperCase() : null,
+      street_name: (() => {
+        if (!parsedAddress.streetName) return null;
+        const formatted = safeNullIfEmpty(formatStreetNameCase(parsedAddress.streetName));
+        return formatted ? formatted.toUpperCase() : null;
+      })(),
+      street_post_directional_text: safeNullIfEmpty(parsedAddress.streetPostDirectional),
+      street_pre_directional_text: safeNullIfEmpty(parsedAddress.streetPreDirectional),
+      street_number: safeNullIfEmpty(parsedAddress.streetNumber),
+      street_suffix_type: safeNullIfEmpty(parsedAddress.streetSuffix),
+      unit_identifier: safeNullIfEmpty(parsedAddress.unitIdentifier),
+      route_number: safeNullIfEmpty(parsedAddress.routeNumber),
+      township: safeNullIfEmpty(township),
+      range: safeNullIfEmpty(range),
+      section: safeNullIfEmpty(section),
+      block: safeNullIfEmpty(block),
+      lot: safeNullIfEmpty(lotNo),
+      municipality_name: normalizedMunicipality
+        ? toTitleCase(normalizedMunicipality)
+        : null,
+    };
+
+    const baseStreetCandidates = [
+      locationLine,
+      ...candidateStreetLines.filter((candidate) => candidate !== locationLine),
+    ];
+    const streetCandidatesForFallback = baseStreetCandidates
+      .map((candidate) => safeNullIfEmpty(candidate))
+      .filter(Boolean)
+      .map((candidate) => {
+        if (candidate.includes(",")) {
+          const firstSegment = safeNullIfEmpty(candidate.split(",")[0]);
+          return firstSegment || candidate.trim();
+        }
+        return candidate.trim();
+      })
+      .filter(
+        (candidate, index, self) =>
+          candidate && self.indexOf(candidate) === index,
+      )
+      .filter((candidate) => {
+        const parsed = parseLocationAddress(candidate);
+        return !!parsed.streetNumber;
+      });
+
+    const fallbackPcnSource =
+      (modelDetail && modelDetail.FormattedPCN) || pcnHyphen || null;
+
+    applyAddressFallbacks(address, {
+      streetCandidates: streetCandidatesForFallback,
+      fallbackCity: normalizedCity,
+      fallbackState: inferredStateCode,
+      fallbackPostal: postalCode,
+      fallbackPlus4: plus4,
+      municipality: normalizedMunicipality,
+      county: formattedCountyName,
+      formattedPcn: fallbackPcnSource,
+      legalDescription: legalDesc,
+    });
+
+    // Ensure every property is either a trimmed string or null
+    for (const key of Object.keys(address)) {
+      const value = address[key];
+      if (value == null) {
+        address[key] = null;
+        continue;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        address[key] = trimmed.length ? trimmed : null;
+      }
+    }
+
+    if (
+      !address.country_code &&
+      (address.state_code ||
+        address.postal_code ||
+        (formattedCountyName && formattedCountyName.length))
+    ) {
+      address.country_code = "US";
+    }
+
+    const requiredAddressKeys = [
+      "street_number",
+      "street_name",
+      "city_name",
+      "state_code",
+      "postal_code",
+      "country_code",
+    ];
+    const hasRequiredAddressCore = requiredAddressKeys.every((key) => {
+      const value = address[key];
+      if (value == null) return false;
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
+      return true;
+    });
+
+    const addressFilePath = path.join(dataDir, "address.json");
+    const addressRelationshipPath = path.join(
+      dataDir,
+      "relationship_property_has_address.json",
+    );
+
+    if (hasRequiredAddressCore) {
+      writeJSON(addressFilePath, address);
+
+      const addressRelationship = {
+        from: ref("./property.json"),
+        to: ref("./address.json"),
+      };
+
+      writeJSON(addressRelationshipPath, addressRelationship);
+
+      const factSheetPath = path.join(dataDir, "fact_sheet.json");
+      const factSheetRelationshipPath = path.join(
+        dataDir,
+        "relationship_address_has_fact_sheet.json",
+      );
+      const factSheet = {
+        full_generation_command: "node data_extractor.js",
+      };
+
+      writeJSON(factSheetPath, factSheet);
+
+      const factSheetRelationship = {
+        from: ref("./address.json"),
+        to: ref("./fact_sheet.json"),
+      };
+
+      writeJSON(factSheetRelationshipPath, factSheetRelationship);
+    } else {
+      if (fs.existsSync(addressFilePath)) {
+        fs.unlinkSync(addressFilePath);
+      }
+      if (fs.existsSync(addressRelationshipPath)) {
+        fs.unlinkSync(addressRelationshipPath);
+      }
+      const factSheetPath = path.join(dataDir, "fact_sheet.json");
+      const factSheetRelationshipPath = path.join(
+        dataDir,
+        "relationship_address_has_fact_sheet.json",
+      );
+      if (fs.existsSync(factSheetPath)) {
+        fs.unlinkSync(factSheetPath);
+      }
+      if (fs.existsSync(factSheetRelationshipPath)) {
+        fs.unlinkSync(factSheetRelationshipPath);
+      }
+    }
   }
 
-  const address = {
-    street_number: safeNullIfEmpty(streetNumber),
-    street_name: safeNullIfEmpty(cardinalStreetName(streetName)),
-    street_suffix_type: safeNullIfEmpty(streetSuffix),
-    street_pre_directional_text: safeNullIfEmpty(directionPrefix(streetName)),
-    street_post_directional_text: safeNullIfEmpty(directionSuffix(streetName)),
-    unit_identifier: null,
-    city_name: safeNullIfEmpty(cityFromFull),
-    postal_code: safeNullIfEmpty(postalCode),
-    plus_four_postal_code: safeNullIfEmpty(plus4),
-    state_code: safeNullIfEmpty(stateCode),
-    country_code: "US",
-    county_name: countyName || null,
-    latitude: null,
-    longitude: null,
-    municipality_name: safeNullIfEmpty(municipality),
-    route_number: null,
-    township: safeNullIfEmpty(township),
-    range: safeNullIfEmpty(range),
-    section: safeNullIfEmpty(section),
-    block: safeNullIfEmpty(block),
-    lot: safeNullIfEmpty(lotNo),
-  };
-  writeJSON(path.join(dataDir, "address.json"), address);
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
@@ -1139,12 +1989,9 @@ function main() {
     if (s.Book && s.Page) {
       const book = String(s.Book).trim();
       const page = String(s.Page).trim();
-      const url = `https://erec.mypalmbeachclerk.com/Search/DocumentAndInfoByBookPage?Key=Assessor&booktype=O&booknumber=${encodeURIComponent(book)}&pagenumber=${encodeURIComponent(page)}`;
       const fileObj = {
         file_format: "txt",
         name: `OR Book ${book} Page ${page}`,
-        original_url: url,
-        ipfs_url: null,
         document_type: mapFileDocType(s.saleType),
       };
       writeJSON(path.join(dataDir, `file_${fileIdx}.json`), fileObj);
@@ -1171,8 +2018,8 @@ function main() {
     const fIndex = fileIndexBySale.get(sIndex);
     if (!fIndex) continue;
     const rel = {
-      from: { "/": `./deed_${dIndex}.json` },
-      to: { "/": `./file_${fIndex}.json` },
+      from: ref(`./deed_${dIndex}.json`),
+      to: ref(`./file_${fIndex}.json`),
     };
     writeJSON(path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`), rel);
     rdfIdx++;
@@ -1182,8 +2029,8 @@ function main() {
   let relSDIdx = 1;
   for (const [sIndex, dIndex] of deedMap.entries()) {
     const rel = {
-      from: { "/": `./sales_${sIndex}.json` },
-      to: { "/": `./deed_${dIndex}.json` },
+      from: ref(`./sales_${sIndex}.json`),
+      to: ref(`./deed_${dIndex}.json`),
     };
     writeJSON(
       path.join(dataDir, `relationship_sales_deed_${relSDIdx}.json`),
@@ -1321,8 +2168,8 @@ function main() {
 
               // Create relationship to sales record
               const rel = {
-                to: { "/": `./company_${companyIdx}.json` },
-                from: { "/": `./sales_${i + 1}.json` },
+                to: ref(`./company_${companyIdx}.json`),
+                from: ref(`./sales_${i + 1}.json`),
               };
               writeJSON(
                 path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
@@ -1355,8 +2202,8 @@ function main() {
 
               // Create relationship to sales record
               const rel = {
-                to: { "/": `./person_${personIdx}.json` },
-                from: { "/": `./sales_${i + 1}.json` },
+                to: ref(`./person_${personIdx}.json`),
+                from: ref(`./sales_${i + 1}.json`),
               };
               writeJSON(
                 path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
@@ -1394,8 +2241,8 @@ function main() {
 
             // Create relationship from property to company
             const propRel = {
-              to: { "/": `./company_${companyIdx}.json` },
-              from: { "/": `./property.json` },
+              to: ref(`./company_${companyIdx}.json`),
+              from: ref(`./property.json`),
             };
             writeJSON(
               path.join(
@@ -1430,8 +2277,8 @@ function main() {
 
             // Create relationship from property to person
             const propRel = {
-              to: { "/": `./person_${personIdx}.json` },
-              from: { "/": `./property.json` },
+              to: ref(`./person_${personIdx}.json`),
+              from: ref(`./property.json`),
             };
             writeJSON(
               path.join(
