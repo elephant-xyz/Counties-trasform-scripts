@@ -1405,14 +1405,10 @@ function main() {
       dataDir,
       "relationship_property_has_address.json",
     );
-    const factSheetPath = path.join(dataDir, "fact_sheet.json");
     const factSheetRelationshipPath = path.join(
       dataDir,
       "relationship_address_has_fact_sheet.json",
     );
-    if (fs.existsSync(factSheetPath)) {
-      fs.unlinkSync(factSheetPath);
-    }
     if (fs.existsSync(factSheetRelationshipPath)) {
       fs.unlinkSync(factSheetRelationshipPath);
     }
@@ -1430,16 +1426,34 @@ function main() {
 
       const addressRelationshipTarget = { "/": "./address.json" };
       for (const field of ADDRESS_SCHEMA_FIELDS) {
-        addressRelationshipTarget[field] =
-          Object.prototype.hasOwnProperty.call(address, field) ? address[field] : null;
+        const value = Object.prototype.hasOwnProperty.call(address, field)
+          ? address[field]
+          : null;
+        addressRelationshipTarget[field] = value === undefined ? null : value;
       }
 
+      const propertyRelationshipSource = {
+        "/": "./property.json",
+        parcel_identifier:
+          property && Object.prototype.hasOwnProperty.call(property, "parcel_identifier")
+            ? property.parcel_identifier || null
+            : null,
+      };
+
       const addressRelationship = {
-        from: ref("./property.json"),
+        type: "property_has_address",
+        from: propertyRelationshipSource,
         to: addressRelationshipTarget,
       };
 
-      writeJSON(addressRelationshipPath, addressRelationship);
+      writeJSON(addressRelationshipPath, [addressRelationship]);
+
+      const factSheetRelationship = {
+        type: null,
+        from: { ...addressRelationshipTarget },
+        to: { "/": "./fact_sheet.json" },
+      };
+      writeJSON(factSheetRelationshipPath, [factSheetRelationship]);
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
