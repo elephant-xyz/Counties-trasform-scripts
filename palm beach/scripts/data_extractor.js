@@ -18,7 +18,9 @@ function writeJSON(p, obj) {
 }
 
 function ref(relativePath) {
-  return { "/": relativePath };
+  if (typeof relativePath !== "string") return null;
+  const trimmed = relativePath.trim();
+  return trimmed.length ? trimmed : null;
 }
 
 function extractBetween(html, regex, idx = 1) {
@@ -1596,7 +1598,9 @@ function main() {
         to: ref("./address.json"),
       };
 
-      writeJSON(addressRelationshipPath, addressRelationship);
+      if (addressRelationship.from && addressRelationship.to) {
+        writeJSON(addressRelationshipPath, addressRelationship);
+      }
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
@@ -2259,8 +2263,10 @@ function main() {
       from: ref(`./deed_${dIndex}.json`),
       to: ref(`./file_${fIndex}.json`),
     };
-    writeJSON(path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`), rel);
-    rdfIdx++;
+    if (rel.from && rel.to) {
+      writeJSON(path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`), rel);
+      rdfIdx++;
+    }
   }
 
   // relationship_sales_deed (sales → deed)
@@ -2270,11 +2276,13 @@ function main() {
       from: ref(`./sales_${sIndex}.json`),
       to: ref(`./deed_${dIndex}.json`),
     };
-    writeJSON(
-      path.join(dataDir, `relationship_sales_deed_${relSDIdx}.json`),
-      rel,
-    );
-    relSDIdx++;
+    if (rel.from && rel.to) {
+      writeJSON(
+        path.join(dataDir, `relationship_sales_deed_${relSDIdx}.json`),
+        rel,
+      );
+      relSDIdx++;
+    }
   }
 
   // Extract person and company names using improved classification
@@ -2409,13 +2417,14 @@ function main() {
                 to: ref(`./company_${companyIdx}.json`),
                 from: ref(`./sales_${i + 1}.json`),
               };
-              writeJSON(
-                path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
-                rel,
-              );
-
+              if (rel.from && rel.to) {
+                writeJSON(
+                  path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
+                  rel,
+                );
+                relIdx++;
+              }
               companyIdx++;
-              relIdx++;
             } else {
               // Create person record
               const firstName = formatNamePart(owner.first_name);
@@ -2443,13 +2452,14 @@ function main() {
                 to: ref(`./person_${personIdx}.json`),
                 from: ref(`./sales_${i + 1}.json`),
               };
-              writeJSON(
-                path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
-                rel,
-              );
-
+              if (rel.from && rel.to) {
+                writeJSON(
+                  path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
+                  rel,
+                );
+                relIdx++;
+              }
               personIdx++;
-              relIdx++;
             }
           }
         }
@@ -2482,14 +2492,15 @@ function main() {
               to: ref(`./company_${companyIdx}.json`),
               from: ref(`./property.json`),
             };
-            writeJSON(
-              path.join(
-                dataDir,
-                `relationship_company_${companyIdx}_property.json`,
-              ),
-              propRel,
-            );
-
+            if (propRel.from && propRel.to) {
+              writeJSON(
+                path.join(
+                  dataDir,
+                  `relationship_company_${companyIdx}_property.json`,
+                ),
+                propRel,
+              );
+            }
             companyIdx++;
           } else {
             // Create person record
@@ -2518,14 +2529,15 @@ function main() {
               to: ref(`./person_${personIdx}.json`),
               from: ref(`./property.json`),
             };
-            writeJSON(
-              path.join(
-                dataDir,
-                `relationship_person_${personIdx}_property.json`,
-              ),
-              propRel,
-            );
-
+            if (propRel.from && propRel.to) {
+              writeJSON(
+                path.join(
+                  dataDir,
+                  `relationship_person_${personIdx}_property.json`,
+                ),
+                propRel,
+              );
+            }
             personIdx++;
           }
         }
