@@ -21,7 +21,12 @@ function ref(relativePath) {
   if (typeof relativePath !== "string") return null;
   const trimmed = relativePath.trim();
   if (!trimmed) return null;
-  return { "/": trimmed };
+  if (trimmed.startsWith("../")) {
+    return { "/": trimmed };
+  }
+  const normalized = trimmed.replace(/^\.\/+/, "").replace(/^\/+/, "");
+  if (!normalized) return null;
+  return { "/": `../data/${normalized}` };
 }
 
 function extractBetween(html, regex, idx = 1) {
@@ -1712,15 +1717,21 @@ function main() {
     const finalAddress = {};
     for (const field of ADDRESS_SCHEMA_FIELDS) {
       if (field === "unnormalized_address") continue;
-      finalAddress[field] = normalizeValueForSchema(address[field]);
+      const normalizedValue = normalizeValueForSchema(address[field]);
+      if (shouldUseNormalized || normalizedValue !== null) {
+        finalAddress[field] = normalizedValue;
+      }
     }
 
     const rawUnnormalized = normalizeValueForSchema(address.unnormalized_address);
-    finalAddress.unnormalized_address = shouldUseNormalized ? null : rawUnnormalized;
+    let finalUnnormalized = null;
+    if (!shouldUseNormalized && rawUnnormalized !== null) {
+      finalAddress.unnormalized_address = rawUnnormalized;
+      finalUnnormalized = rawUnnormalized;
+    }
 
     const hasUnnormalizedAddress =
-      typeof finalAddress.unnormalized_address === "string" &&
-      finalAddress.unnormalized_address.trim().length > 0;
+      typeof finalUnnormalized === "string" && finalUnnormalized.trim().length > 0;
 
     const hasNormalizedAddressFinal =
       shouldUseNormalized &&
