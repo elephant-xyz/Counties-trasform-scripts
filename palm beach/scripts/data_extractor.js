@@ -1405,6 +1405,17 @@ function main() {
       dataDir,
       "relationship_property_has_address.json",
     );
+    const factSheetPath = path.join(dataDir, "fact_sheet.json");
+    const factSheetRelationshipPath = path.join(
+      dataDir,
+      "relationship_address_has_fact_sheet.json",
+    );
+    if (fs.existsSync(factSheetPath)) {
+      fs.unlinkSync(factSheetPath);
+    }
+    if (fs.existsSync(factSheetRelationshipPath)) {
+      fs.unlinkSync(factSheetRelationshipPath);
+    }
 
     const hasValidCoordinates = ADDRESS_REQUIRED_COORDINATE_FIELDS.every(
       (field) => Number.isFinite(address[field]),
@@ -1422,40 +1433,12 @@ function main() {
 
       writeJSON(addressRelationshipPath, addressRelationship);
 
-      const factSheetPath = path.join(dataDir, "fact_sheet.json");
-      const factSheetRelationshipPath = path.join(
-        dataDir,
-        "relationship_address_has_fact_sheet.json",
-      );
-      const factSheet = {
-        full_generation_command: "node data_extractor.js",
-      };
-
-      writeJSON(factSheetPath, factSheet);
-
-      const factSheetRelationship = {
-        from: ref("./address.json"),
-        to: ref("./fact_sheet.json"),
-      };
-
-      writeJSON(factSheetRelationshipPath, factSheetRelationship);
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
       }
       if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
-      }
-      const factSheetPath = path.join(dataDir, "fact_sheet.json");
-      const factSheetRelationshipPath = path.join(
-        dataDir,
-        "relationship_address_has_fact_sheet.json",
-      );
-      if (fs.existsSync(factSheetPath)) {
-        fs.unlinkSync(factSheetPath);
-      }
-      if (fs.existsSync(factSheetRelationshipPath)) {
-        fs.unlinkSync(factSheetRelationshipPath);
       }
     }
   }
