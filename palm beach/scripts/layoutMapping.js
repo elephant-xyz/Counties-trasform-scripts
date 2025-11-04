@@ -8,7 +8,8 @@ const cheerio = require("cheerio");
 function createReference(relativePath) {
   if (typeof relativePath !== "string") return null;
   const trimmed = relativePath.trim();
-  return trimmed ? trimmed : null;
+  if (!trimmed) return null;
+  return { "/": trimmed };
 }
 
 function readInputHtml() {
