@@ -1663,12 +1663,6 @@ function main() {
       }
     }
 
-    for (const field of ADDRESS_SCHEMA_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(address, field)) {
-        address[field] = null;
-      }
-    }
-
     if (
       !address.country_code &&
       (address.state_code ||
@@ -1703,30 +1697,77 @@ function main() {
       }
     }
 
+    const pickFields = (source, fields) => {
+      const result = {};
+      for (const field of fields) {
+        const value = source[field];
+        if (value == null) continue;
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (!trimmed) continue;
+          result[field] = trimmed;
+          continue;
+        }
+        result[field] = value;
+      }
+      return result;
+    };
+
+    const normalizedAddress = pickFields(address, ADDRESS_SCHEMA_FIELDS.filter((field) => field !== "unnormalized_address"));
+
+    const UNNORMALIZED_METADATA_FIELDS = [
+      "latitude",
+      "longitude",
+      "country_code",
+      "county_name",
+      "municipality_name",
+      "township",
+      "range",
+      "section",
+      "block",
+      "lot",
+    ];
+    const unnormalizedAddress = (() => {
+      const base = pickFields(address, UNNORMALIZED_METADATA_FIELDS);
+      if (typeof address.unnormalized_address === "string") {
+        const trimmed = address.unnormalized_address.trim();
+        if (trimmed) {
+          base.unnormalized_address = trimmed;
+        }
+      }
+      return base;
+    })();
+
+    const finalAddress = shouldUseNormalized ? normalizedAddress : unnormalizedAddress;
+
     const hasUnnormalizedAddress =
-      typeof address.unnormalized_address === "string" &&
-      address.unnormalized_address.trim().length > 0;
+      typeof finalAddress.unnormalized_address === "string" &&
+      finalAddress.unnormalized_address.trim().length > 0;
 
     const hasNormalizedAddressFinal =
       shouldUseNormalized &&
       ADDRESS_CORE_FIELDS.every((field) => {
-        const value = address[field];
+        const value = finalAddress[field];
         if (value == null) return false;
         if (typeof value === "string") return value.trim().length > 0;
-        return true;
-      });
+        if (typeof value === "number") return Number.isFinite(value);
+        return false;
+      }) &&
+      ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
+        Number.isFinite(finalAddress[field]),
+      );
 
     const hasCoordinateOnly =
       !hasNormalizedAddressFinal &&
       ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-        Number.isFinite(address[field]),
+        Number.isFinite(finalAddress[field]),
       );
 
     const hasMeaningfulAddressContent =
       hasNormalizedAddressFinal || hasUnnormalizedAddress || hasCoordinateOnly;
 
     if (hasMeaningfulAddressContent) {
-      writeJSON(addressFilePath, address);
+      writeJSON(addressFilePath, finalAddress);
 
       const addressRelationship = {
         from: ref("./property.json"),
