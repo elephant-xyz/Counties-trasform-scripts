@@ -20,7 +20,8 @@ function writeJSON(p, obj) {
 function ref(relativePath) {
   if (typeof relativePath !== "string") return null;
   const trimmed = relativePath.trim();
-  return trimmed.length ? trimmed : null;
+  if (!trimmed.length) return null;
+  return { "/": trimmed };
 }
 
 function extractBetween(html, regex, idx = 1) {
@@ -989,6 +990,14 @@ function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
+  const obsoleteFactSheetRelationshipPath = path.join(
+    dataDir,
+    "relationship_address_has_fact_sheet.json",
+  );
+  if (fs.existsSync(obsoleteFactSheetRelationshipPath)) {
+    fs.unlinkSync(obsoleteFactSheetRelationshipPath);
+  }
+
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
@@ -1570,13 +1579,6 @@ function main() {
       dataDir,
       "relationship_property_has_address.json",
     );
-    const obsoleteFactSheetRelationshipPath = path.join(
-      dataDir,
-      "relationship_address_has_fact_sheet.json",
-    );
-    if (fs.existsSync(obsoleteFactSheetRelationshipPath)) {
-      fs.unlinkSync(obsoleteFactSheetRelationshipPath);
-    }
 
     for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
