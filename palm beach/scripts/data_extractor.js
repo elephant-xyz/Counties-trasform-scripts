@@ -543,11 +543,29 @@ function parseLocationAddress(raw) {
   const tokens = normalized
     .toUpperCase()
     .split(/\s+/)
-    .map((token) => token.replace(/[,.]/g, ""));
+    .map((token) => token.replace(/[.,/]/g, ""));
   if (!tokens.length) return result;
 
+  const numberPattern = /^\d+[A-Z]?$/i;
+  let numberIndex = numberPattern.test(tokens[0]) ? 0 : tokens.findIndex((token) => numberPattern.test(token));
+
+  if (numberIndex > 0) {
+    const leadingTokens = tokens.slice(0, numberIndex);
+    if (!result.unitIdentifier && leadingTokens.length) {
+      const leadingUnitMatch = leadingTokens.join(" ").match(
+        /(?:APT|UNIT|SUITE|STE|BLDG|BUILDING|FL|FLOOR|LOT|TRLR|TRAILER|SPC|SPACE|#)\s*([A-Z0-9-]+)/i,
+      );
+      if (leadingUnitMatch && leadingUnitMatch[1]) {
+        result.unitIdentifier = leadingUnitMatch[1].replace(/^#/, "");
+      }
+    }
+    tokens.splice(0, numberIndex);
+  } else if (numberIndex === -1) {
+    numberIndex = 0;
+  }
+
   const first = tokens[0];
-  if (/^\d+[A-Z]?$/i.test(first)) {
+  if (numberPattern.test(first)) {
     result.streetNumber = first;
     tokens.shift();
   }
@@ -736,10 +754,10 @@ function fillAddressStreetComponents(address, streetCandidates) {
     let idxEnd = parts.length;
 
     if (!address.street_number) {
-      const maybeNumber = parts[0];
-      if (/^\d+[A-Z]?$/i.test(maybeNumber)) {
-        address.street_number = maybeNumber;
-        idxStart += 1;
+      const numberIdx = parts.findIndex((part) => /^\d+[A-Z]?$/i.test(part));
+      if (numberIdx !== -1) {
+        address.street_number = parts[numberIdx];
+        idxStart = numberIdx + 1;
       }
     }
 
@@ -1565,15 +1583,6 @@ function main() {
       }
     }
 
-    const hasRequiredAddressCore = ADDRESS_CORE_FIELDS.every((key) => {
-      const value = address[key];
-      if (value == null) return false;
-      if (typeof value === "string") {
-        return value.trim().length > 0;
-      }
-      return true;
-    });
-
     const addressFilePath = path.join(dataDir, "address.json");
     const addressRelationshipPath = path.join(
       dataDir,
@@ -1586,13 +1595,16 @@ function main() {
       }
     }
 
-    const hasCoordinateData = ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-      Number.isFinite(address[field]),
-    );
+    const hasRequiredAddressCore = ADDRESS_CORE_FIELDS.every((key) => {
+      const value = address[key];
+      if (value == null) return false;
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
+      return true;
+    });
 
-    const hasSufficientAddressData = hasRequiredAddressCore && hasCoordinateData;
-
-    if (hasSufficientAddressData) {
+    if (hasRequiredAddressCore) {
       writeJSON(addressFilePath, address);
 
       const addressRelationship = {
