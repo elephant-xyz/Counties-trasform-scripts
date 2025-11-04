@@ -322,6 +322,8 @@ const ADDRESS_CORE_FIELDS = [
   "country_code",
 ];
 
+const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
+
 const STREET_SUFFIX_SYNONYMS = {
   RD: "Rd",
   ROAD: "Rd",
@@ -1402,7 +1404,13 @@ function main() {
       "relationship_property_has_address.json",
     );
 
-    if (hasRequiredAddressCore) {
+    const hasValidCoordinates = ADDRESS_REQUIRED_COORDINATE_FIELDS.every(
+      (field) => Number.isFinite(address[field]),
+    );
+
+    const hasSufficientAddressData = hasRequiredAddressCore && hasValidCoordinates;
+
+    if (hasSufficientAddressData) {
       writeJSON(addressFilePath, address);
 
       const addressRelationship = {
