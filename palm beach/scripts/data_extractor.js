@@ -1643,16 +1643,12 @@ function main() {
       return true;
     });
 
-    const hasCoordinateCoverage = ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-      Number.isFinite(address[field]),
-    );
+    const shouldUseNormalized = hasNormalizedCore;
 
-    const shouldUseNormalized = hasNormalizedCore && hasCoordinateCoverage;
-
-    if (!shouldUseNormalized) {
-      address.unnormalized_address = fallbackUnnormalizedValue || null;
-    } else {
+    if (shouldUseNormalized) {
       address.unnormalized_address = null;
+    } else {
+      address.unnormalized_address = fallbackUnnormalizedValue || null;
     }
 
     // Ensure every property is either a trimmed string or null
@@ -1741,15 +1737,12 @@ function main() {
         if (typeof value === "string") return value.trim().length > 0;
         if (typeof value === "number") return Number.isFinite(value);
         return false;
-      }) &&
-      ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-        Number.isFinite(finalAddress[field]),
-      );
+      });
 
     const hasCoordinateOnly =
       !hasNormalizedAddressFinal &&
       ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-        Number.isFinite(finalAddress[field]),
+        Number.isFinite(address[field]),
       );
 
     const hasMeaningfulAddressContent =
