@@ -527,7 +527,17 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const UNNORMALIZED_ADDRESS_FIELDS = [...NORMALIZED_ADDRESS_FIELDS, "unnormalized_address"];
+const UNNORMALIZED_ADDRESS_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "request_identifier",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 function collectAddressFields(source, fields) {
   const result = {};
@@ -1752,21 +1762,22 @@ function main() {
         const value = address[field];
         return typeof value === "string" && value.trim().length > 0;
       }) &&
-      NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
-        Number.isFinite(address[field]),
-      );
+      NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) => {
+        const value = address[field];
+        return value == null || Number.isFinite(value);
+      });
 
-    let selectedAddressFields = null;
     let finalAddress = null;
+    let addressRepresentation = null;
 
     if (hasNormalizedAddress) {
-      selectedAddressFields = NORMALIZED_ADDRESS_FIELDS;
+      addressRepresentation = "normalized";
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
       );
     } else if (hasUnnormalizedAddress) {
-      selectedAddressFields = UNNORMALIZED_ADDRESS_FIELDS;
+      addressRepresentation = "unnormalized";
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         UNNORMALIZED_ADDRESS_FIELDS,
@@ -1779,7 +1790,7 @@ function main() {
     );
 
     if (!finalAddress && hasCoordinateOnly) {
-      selectedAddressFields = NORMALIZED_ADDRESS_FIELDS;
+      addressRepresentation = "coordinate_only";
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
@@ -1797,6 +1808,7 @@ function main() {
       writeJSON(addressRelationshipPath, addressRelationship);
       const relationshipAddress = JSON.parse(JSON.stringify(finalAddress));
       if (
+        addressRepresentation === "unnormalized" &&
         trimmedUnnormalized &&
         (!relationshipAddress.unnormalized_address ||
           !relationshipAddress.unnormalized_address.trim())
