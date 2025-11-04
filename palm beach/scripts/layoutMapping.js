@@ -1,1 +1,306 @@
-Ly8gbGF5b3V0TWFwcGluZy5qcwovLyBQYXJzZXMgaW5wdXQuaHRtbCB3aXRoIGNoZWVyaW8gYW5kIG91dHB1dHMgbGF5b3V0IGRhdGEgcGVyIHNjaGVtYS4KCmNvbnN0IGZzID0gcmVxdWlyZSgiZnMiKTsKY29uc3QgcGF0aCA9IHJlcXVpcmUoInBhdGgiKTsKY29uc3QgY2hlZXJpbyA9IHJlcXVpcmUoImNoZWVyaW8iKTsKCmZ1bmN0aW9uIHJlYWRJbnB1dEh0bWwoKSB7CiAgY29uc3QgaW5wdXRQYXRoID0gcGF0aC5yZXNvbHZlKCJpbnB1dC5odG1sIik7CiAgcmV0dXJuIGZzLnJlYWRGaWxlU3luYyhpbnB1dFBhdGgsICJ1dGY4Iik7Cn0KCmZ1bmN0aW9uIGRpZ2l0c09ubHkoc3RyKSB7CiAgcmV0dXJuIChzdHIgfHwgIiIpLnJlcGxhY2UoL1xEKy9nLCAiIik7Cn0KCmZ1bmN0aW9uIGdldFRleHQoJCwgc2VsZWN0b3IpIHsKICBjb25zdCBlbCA9ICQoc2VsZWN0b3IpLmZpcnN0KCk7CiAgcmV0dXJuIGVsLmxlbmd0aCA/IGVsLnRleHQoKS50cmltKCkgOiAiIjsKfQoKZnVuY3Rpb24gZmluZFZhbHVlQnlMYWJlbCgkLCBzY29wZSwgbGFiZWxUZXh0KSB7CiAgbGV0IHZhbHVlID0gIiI7CiAgJChzY29wZSkKICAgIC5maW5kKCJ0ciIpCiAgICAuZWFjaCgoXywgdHIpID0+IHsKICAgICAgY29uc3QgJHRyID0gJCh0cik7CiAgICAgIGNvbnN0IGxhYmVsVGQgPSAkdHIuZmluZCgidGQubGFiZWwiKS5maXJzdCgpOwogICAgICBjb25zdCB2YWxUZCA9ICR0ci5maW5kKCJ0ZC52YWx1ZSIpLmZpcnN0KCk7CiAgICAgIGlmIChsYWJlbFRkLmxlbmd0aCAmJiB2YWxUZC5sZW5ndGgpIHsKICAgICAgICBjb25zdCBsYmwgPSBsYWJlbFRkLnRleHQoKS5yZXBsYWNlKC9ccysvZywgIiAiKS50cmltKCkudG9Mb3dlckNhc2UoKTsKICAgICAgICBpZiAobGJsLmluY2x1ZGVzKGxhYmVsVGV4dC50b0xvd2VyQ2FzZSgpKSkgewogICAgICAgICAgdmFsdWUgPSB2YWxUZC50ZXh0KCkucmVwbGFjZSgvXHMrL2csICIgIikudHJpbSgpOwogICAgICAgICAgcmV0dXJuIGZhbHNlOwogICAgICAgIH0KICAgICAgfQogICAgfSk7CiAgcmV0dXJuIHZhbHVlOwp9CgpmdW5jdGlvbiB0b0ludCh2YWwpIHsKICBjb25zdCBuID0gcGFyc2VJbnQoKHZhbCB8fCAiIikudG9TdHJpbmcoKS5yZXBsYWNlKC9bXjAtOV0vZywgIiIpLCAxMCk7CiAgcmV0dXJuIE51bWJlci5pc0Zpbml0ZShuKSA/IG4gOiBudWxsOwp9CgpmdW5jdGlvbiBkZWZhdWx0TGF5b3V0KHNwYWNlX2luZGV4LCBvdmVycmlkZXMgPSB7fSkgewogIHJldHVybiBPYmplY3QuYXNzaWduKAogICAgewogICAgICBzcGFjZV90eXBlOiBudWxsLAogICAgICBzcGFjZV9pbmRleCwKICAgICAgc3BhY2VfdHlwZV9pbmRleDogbnVsbCwKICAgICAgc3RvcnlfdHlwZTogbnVsbCwKICAgICAgZmxvb3JpbmdfbWF0ZXJpYWxfdHlwZTogbnVsbCwKICAgICAgc2l6ZV9zcXVhcmVfZmVldDogbnVsbCwKICAgICAgZmxvb3JfbGV2ZWw6IG51bGwsCiAgICAgIGhhc193aW5kb3dzOiBudWxsLAogICAgICB3aW5kb3dfZGVzaWduX3R5cGU6IG51bGwsCiAgICAgIHdpbmRvd19tYXRlcmlhbF90eXBlOiBudWxsLAogICAgICB3aW5kb3dfdHJlYXRtZW50X3R5cGU6IG51bGwsCiAgICAgIGlzX2ZpbmlzaGVkOiB0cnVlLAogICAgICBmdXJuaXNoZWQ6IG51bGwsCiAgICAgIHBhaW50X2NvbmRpdGlvbjogbnVsbCwKICAgICAgZmxvb3Jpbmdfd2VhcjogbnVsbCwKICAgICAgY2x1dHRlcl9sZXZlbDogbnVsbCwKICAgICAgdmlzaWJsZV9kYW1hZ2U6IG51bGwsCiAgICAgIGNvdW50ZXJ0b3BfbWF0ZXJpYWw6IG51bGwsCiAgICAgIGNhYmluZXRfc3R5bGU6IG51bGwsCiAgICAgIGZpeHR1cmVfZmluaXNoX3F1YWxpdHk6IG51bGwsCiAgICAgIGRlc2lnbl9zdHlsZTogbnVsbCwKICAgICAgbmF0dXJhbF9saWdodF9xdWFsaXR5OiBudWxsLAogICAgICBkZWNvcl9lbGVtZW50czogbnVsbCwKICAgICAgcG9vbF90eXBlOiBudWxsLAogICAgICBwb29sX2VxdWlwbWVudDogbnVsbCwKICAgICAgc3BhX3R5cGU6IG51bGwsCiAgICAgIHNhZmV0eV9mZWF0dXJlczogbnVsbCwKICAgICAgdmlld190eXBlOiBudWxsLAogICAgICBsaWdodGluZ19mZWF0dXJlczogbnVsbCwKICAgICAgY29uZGl0aW9uX2lzc3VlczogbnVsbCwKICAgICAgaXNfZXh0ZXJpb3I6IGZhbHNlLAogICAgICBwb29sX2NvbmRpdGlvbjogbnVsbCwKICAgICAgcG9vbF9zdXJmYWNlX3R5cGU6IG51bGwsCiAgICAgIHBvb2xfd2F0ZXJfcXVhbGl0eTogbnVsbCwKICAgICAgYnVpbGRpbmdfbnVtYmVyOiBudWxsLAogICAgfSwKICAgIG92ZXJyaWRlcywKICApOwp9CgpmdW5jdGlvbiBydW4oKSB7CiAgY29uc3QgaHRtbCA9IHJlYWRJbnB1dEh0bWwoKTsKICBjb25zdCAkID0gY2hlZXJpby5sb2FkKGh0bWwpOwoKICAvLyBFeHRyYWN0IHByb3BlcnR5IGlkCiAgbGV0IHBjblRleHQgPSBnZXRUZXh0KCQsICIjTWFpbkNvbnRlbnRfbGJsUENOIik7CiAgaWYgKCFwY25UZXh0KSB7CiAgICBwY25UZXh0ID0gJCgidGQubGFiZWw6Y29udGFpbnMoJ1BhcmNlbCBDb250cm9sIE51bWJlcicpIikKICAgICAgLm5leHQoIi52YWx1ZSIpCiAgICAgIC50ZXh0KCkKICAgICAgLnRyaW0oKTsKICB9CiAgY29uc3QgcHJvcGVydHlJZCA9IGRpZ2l0c09ubHkocGNuVGV4dCk7CiAgY29uc3QgcHJvcEtleSA9IGBwcm9wZXJ0eV8ke3Byb3BlcnR5SWQgfHwgInVua25vd24ifWA7CgogIC8vIFN0cnVjdHVyYWwgY291bnRzIGZvciBiZWRyb29tcy9iYXRocwogIC8vIEluaXRpYWxpemUgbGF5b3V0cyBhcnJheQogIGNvbnN0IGxheW91dHMgPSBbXTsKICBjb25zdCBsYXlvdXRUeXBlQ291bnRzID0gbmV3IE1hcCgpOwoKICBmdW5jdGlvbiBhZGRMYXlvdXQobGF5b3V0KSB7CiAgICBjb25zdCBub3JtYWxpemVkID0geyAuLi5sYXlvdXQgfTsKCiAgICBpZiAoCiAgICAgICFOdW1iZXIuaXNJbnRlZ2VyKG5vcm1hbGl6ZWQuc3BhY2VfaW5kZXgpIHx8CiAgICAgIG5vcm1hbGl6ZWQuc3BhY2VfaW5kZXggPD0gMAogICAgKSB7CiAgICAgIG5vcm1hbGl6ZWQuc3BhY2VfaW5kZXggPSBsYXlvdXRzLmxlbmd0aCArIDE7CiAgICB9CgogICAgY29uc3QgdHlwZUtleSA9IG5vcm1hbGl6ZWQuc3BhY2VfdHlwZSB8fCAiVW5rbm93biI7CiAgICBjb25zdCBuZXh0Q291bnQgPSAobGF5b3V0VHlwZUNvdW50cy5nZXQodHlwZUtleSkgfHwgMCkgKyAxOwogICAgbGF5b3V0VHlwZUNvdW50cy5zZXQodHlwZUtleSwgbmV4dENvdW50KTsKICAgIG5vcm1hbGl6ZWQuc3BhY2VfdHlwZV9pbmRleCA9IGAke25vcm1hbGl6ZWQuc3BhY2VfaW5kZXh9LiR7bmV4dENvdW50fWA7CgogICAgbGF5b3V0cy5wdXNoKG5vcm1hbGl6ZWQpOwogIH0KCiAgLy8gRXh0cmFjdCBiZWRyb29tL2JhdGhyb29tIGNvdW50cyBmcm9tIGVtYmVkZGVkIG1vZGVsCiAgbGV0IGJlZENvdW50ID0gMDsKICBsZXQgZnVsbEJhdGhzID0gMDsKICBsZXQgaGFsZkJhdGhzID0gMDsKCiAgLy8gUmVhZCBIVE1MIGZpbGUKICBjb25zdCBpbnB1dEhUTUwgPSBmcy5yZWFkRmlsZVN5bmMoImlucHV0Lmh0bWwiLCAidXRmOCIpOwoKICAvLyBIZWxwZXIgZnVuY3Rpb24gdG8gbWFwIGVsZW1lbnQgbmFtZXMgdG8gc3BhY2UgdHlwZXMKICBmdW5jdGlvbiBtYXBFbGVtZW50TmFtZVRvU3BhY2VUeXBlKGVsZW1lbnROYW1lKSB7CiAgICBpZiAoIWVsZW1lbnROYW1lKSByZXR1cm4gbnVsbDsKICAgIGNvbnN0IG5hbWUgPSBlbGVtZW50TmFtZS50b1VwcGVyQ2FzZSgpOwoKICAgIC8vIFNraXAgc3VtbWFyeSBlbGVtZW50cyB0aGF0IHNob3VsZG4ndCBiZSBpbmRpdmlkdWFsIHNwYWNlcwogICAgaWYgKG5hbWUuaW5jbHVkZXMoIlRPVEFMIFNRVUFSRSBGT09UQUdFIikgfHwgbmFtZS5pbmNsdWRlcygiQVJFQSBVTkRFUiBBSVIiKSkgewogICAgICByZXR1cm4gbnVsbDsgLy8gRG9uJ3QgY3JlYXRlIGxheW91dCBpdGVtcyBmb3IgdGhlc2Ugc3VtbWFyeSBlbGVtZW50cwogICAgfQoKICAgIGlmIChuYW1lLmluY2x1ZGVzKCJGT1AiKSB8fCBuYW1lLmluY2x1ZGVzKCJGSU5JU0hFRCBPUEVOIFBPUkNIIikpIHJldHVybiAiT3BlbiBQb3JjaCI7CiAgICBpZiAobmFtZS5pbmNsdWRlcygiQkFTIikgfHwgbmFtZS5pbmNsdWRlcygiQkFTRSBBUkVBIikpIHJldHVybiAiTGl2aW5nIEFyZWEiOwogICAgaWYgKG5hbWUuaW5jbHVkZXMoIkZHUiIpIHx8IG5hbWUuaW5jbHVkZXMoIkZJTklTSEVEIEdBUkFHRSIpKSByZXR1cm4gIkF0dGFjaGVkIEdhcmFnZSI7CiAgICBpZiAobmFtZS5pbmNsdWRlcygiR0FSQUdFIikpIHJldHVybiAiQXR0YWNoZWQgR2FyYWdlIjsKICAgIGlmIChuYW1lLmluY2x1ZGVzKCJQT1JDSCIpKSByZXR1cm4gIk9wZW4gUG9yY2giOwogICAgaWYgKG5hbWUuaW5jbHVkZXMoIkRFQ0siKSkgcmV0dXJuICJEZWNrIjsKICAgIGlmIChuYW1lLmluY2x1ZGVzKCJQQVRJTyIpKSByZXR1cm4gIlBhdGlvIjsKICAgIGlmIChuYW1lLmluY2x1ZGVzKCJCQUxDT05ZIikpIHJldHVybiAiQmFsY29ueSI7CiAgICBpZiAobmFtZS5pbmNsdWRlcygiTElWSU5HIikpIHJldHVybiAiTGl2aW5nIEFyZWEiOwogICAgaWYgKG5hbWUuaW5jbHVkZXMoIkJFRFJPT00iKSkgcmV0dXJuICJCZWRyb29tIjsKICAgIGlmIChuYW1lLmluY2x1ZGVzKCJCQVRIIikpIHJldHVybiAiQmF0aHJvb20iOwogICAgaWYgKG5hbWUuaW5jbHVkZXMoIktJVENIRU4iKSkgcmV0dXJuICJLaXRjaGVuIjsKCiAgICByZXR1cm4gbnVsbDsKICB9CgogIC8vIFBhcnNlIGVtYmVkZGVkIG1vZGVsIGZyb20gSFRNTCAodXNlIGdyZWVkeSBtYXRjaCB0byBjYXB0dXJlIGVudGlyZSBtb2RlbCkKICBjb25zdCBtb2RlbE1hdGNoID0gaW5wdXRIVE1MLm1hdGNoKC92YXIgbW9kZWwgPSAoey4rfSk7Lyk7CiAgaWYgKG1vZGVsTWF0Y2gpIHsKICAgIHRyeSB7CiAgICAgIGNvbnN0IG1vZGVsID0gSlNPTi5wYXJzZShtb2RlbE1hdGNoWzFdKTsKICAgICAgaWYgKG1vZGVsLnN0cnVjdHVyYWxEZXRhaWxzICYmIEFycmF5LmlzQXJyYXkobW9kZWwuc3RydWN0dXJhbERldGFpbHMuU3RydWN0dXJhbEVsZW1lbnRzKSkgewogICAgICAgIC8vIEV4dHJhY3QgYmVkcm9vbS9iYXRocm9vbSBjb3VudHMKICAgICAgICBmb3IgKGNvbnN0IGVsIG9mIG1vZGVsLnN0cnVjdHVyYWxEZXRhaWxzLlN0cnVjdHVyYWxFbGVtZW50cykgewogICAgICAgICAgY29uc3QgbmFtZSA9IChlbC5FbGVtZW50TmFtZSB8fCAiIikudHJpbSgpOwogICAgICAgICAgY29uc3QgdmFsID0gKGVsLkVsZW1lbnRWYWx1ZSB8fCAiIikudG9TdHJpbmcoKS50cmltKCk7CiAgICAgICAgICBpZiAoL0JlZHJvb218QmVkIFJvb21zL2kudGVzdChuYW1lKSkgYmVkQ291bnQgPSBwYXJzZUludCh2YWwpIHx8IDA7CiAgICAgICAgICBpZiAoL0JhdGhcKHNcKXxGdWxsIEJhdGhzL2kudGVzdChuYW1lKSAmJiAhL0hhbGYvaS50ZXN0KG5hbWUpKSBmdWxsQmF0aHMgPSBwYXJzZUludCh2YWwpIHx8IDA7CiAgICAgICAgICBpZiAoL0hhbGYgQmF0aHxIYWxmIEJhdGhzL2kudGVzdChuYW1lKSkgaGFsZkJhdGhzID0gcGFyc2VJbnQodmFsKSB8fCAwOwogICAgICAgIH0KCiAgICAgICAgLy8gRXh0cmFjdCBhcmVhLWJhc2VkIGxheW91dCBlbGVtZW50cyAobGl2aW5nIGFyZWEsIHBvcmNoZXMsIGdhcmFnZSwgZXRjLikKICAgICAgICBmb3IgKGNvbnN0IGVsIG9mIG1vZGVsLnN0cnVjdHVyYWxEZXRhaWxzLlN0cnVjdHVyYWxFbGVtZW50cykgewogICAgICAgICAgaWYgKGVsLkRldGFpbHNTZWN0aW9uID09PSAiQm90dG9tIiAmJiBlbC5CdWlsZGluZ051bWJlcikgewogICAgICAgICAgICBjb25zdCBidWlsZGluZ051bSA9IHBhcnNlSW50KGVsLkJ1aWxkaW5nTnVtYmVyKTsKICAgICAgICAgICAgY29uc3Qgc3BhY2VUeXBlID0gbWFwRWxlbWVudE5hbWVUb1NwYWNlVHlwZShlbC5FbGVtZW50TmFtZSk7CgogICAgICAgICAgICAvLyBTa2lwIGVsZW1lbnRzIHRoYXQgc2hvdWxkbid0IGJlIGluZGl2aWR1YWwgc3BhY2VzCiAgICAgICAgICAgIGlmICghc3BhY2VUeXBlKSB7CiAgICAgICAgICAgICAgY29udGludWU7CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGNvbnN0IGxheW91dEl0ZW0gPSB7CiAgICAgICAgICAgICAgc3BhY2VfdHlwZTogc3BhY2VUeXBlLAogICAgICAgICAgICAgIHNwYWNlX2luZGV4OiBsYXlvdXRzLmxlbmd0aCArIDEsCiAgICAgICAgICAgICAgc2l6ZV9zcXVhcmVfZmVldDogcGFyc2VJbnQoZWwuRWxlbWVudFZhbHVlKSB8fCBudWxsLAogICAgICAgICAgICAgIGJ1aWxkaW5nX251bWJlcjogYnVpbGRpbmdOdW0sCiAgICAgICAgICAgICAgZmxvb3JfbGV2ZWw6IG51bGwsCiAgICAgICAgICAgICAgaXNfZXh0ZXJpb3I6IGVsLkVsZW1lbnROYW1lLmluY2x1ZGVzKCJGT1AiKSB8fCBlbC5FbGVtZW50TmFtZS5pbmNsdWRlcygiUG9yY2giKSwKICAgICAgICAgICAgICBpc19maW5pc2hlZDogIWVsLkVsZW1lbnROYW1lLmluY2x1ZGVzKCJVbmZpbmlzaGVkIiksCiAgICAgICAgICAgICAgc3RvcnlfdHlwZTogbnVsbCwKICAgICAgICAgICAgICBmbG9vcmluZ19tYXRlcmlhbF90eXBlOiBudWxsLAogICAgICAgICAgICAgIGhhc193aW5kb3dzOiBudWxsLAogICAgICAgICAgICAgIHdpbmRvd19kZXNpZ25fdHlwZTogbnVsbCwKICAgICAgICAgICAgICB3aW5kb3dfbWF0ZXJpYWxfdHlwZTogbnVsbCwKICAgICAgICAgICAgICB3aW5kb3dfdHJlYXRtZW50X3R5cGU6IG51bGwsCiAgICAgICAgICAgICAgZnVybmlzaGVkOiBudWxsLAogICAgICAgICAgICAgIHBhaW50X2NvbmRpdGlvbjogbnVsbCwKICAgICAgICAgICAgICBmbG9vcmluZ193ZWFyOiBudWxsLAogICAgICAgICAgICAgIGNsdXR0ZXJfbGV2ZWw6IG51bGwsCiAgICAgICAgICAgICAgdmlzaWJsZV9kYW1hZ2U6IG51bGwsCiAgICAgICAgICAgICAgY291bnRlcnRvcF9tYXRlcmlhbDogbnVsbCwKICAgICAgICAgICAgICBjYWJpbmV0X3N0eWxlOiBudWxsLAogICAgICAgICAgICAgIGZpeHR1cmVfZmluaXNoX3F1YWxpdHk6IG51bGwsCiAgICAgICAgICAgICAgZGVzaWduX3N0eWxlOiBudWxsLAogICAgICAgICAgICAgIG5hdHVyYWxfbGlnaHRfcXVhbGl0eTogbnVsbCwKICAgICAgICAgICAgICBkZWNvcl9lbGVtZW50czogbnVsbCwKICAgICAgICAgICAgICBwb29sX3R5cGU6IG51bGwsCiAgICAgICAgICAgICAgcG9vbF9lcXVpcG1lbnQ6IG51bGwsCiAgICAgICAgICAgICAgc3BhX3R5cGU6IG51bGwsCiAgICAgICAgICAgICAgc2FmZXR5X2ZlYXR1cmVzOiBudWxsLAogICAgICAgICAgICAgIHZpZXdfdHlwZTogbnVsbCwKICAgICAgICAgICAgICBsaWdodGluZ19mZWF0dXJlczogbnVsbCwKICAgICAgICAgICAgICBjb25kaXRpb25faXNzdWVzOiBudWxsLAogICAgICAgICAgICAgIHBvb2xfY29uZGl0aW9uOiBudWxsLAogICAgICAgICAgICAgIHBvb2xfc3VyZmFjZV90eXBlOiBudWxsLAogICAgICAgICAgICAgIHBvb2xfd2F0ZXJfcXVhbGl0eTogbnVsbCwKICAgICAgICAgICAgfTsKCiAgICAgICAgICAgIGFkZExheW91dChsYXlvdXRJdGVtKTsKICAgICAgICAgIH0KICAgICAgICB9CiAgICAgIH0KICAgIH0gY2F0Y2ggKGUpIHsKICAgICAgY29uc29sZS5sb2coIkVycm9yIHBhcnNpbmcgbW9kZWwgZm9yIGxheW91dCBkYXRhOiIsIGUubWVzc2FnZSk7CiAgICB9CiAgfQoKICBjb25zb2xlLmxvZyhgRXh0cmFjdGVkIGJlZHJvb20vYmF0aHJvb20gY291bnRzOiAke2JlZENvdW50fSBiZWRyb29tcywgJHtmdWxsQmF0aHN9IGZ1bGwgYmF0aHMsICR7aGFsZkJhdGhzfSBoYWxmIGJhdGhzYCk7CgogIC8vIFNraXAgc3ViYXJlYSBwcm9jZXNzaW5nIHRvIGF2b2lkIGR1cGxpY2F0aW9uIC0gd2UncmUgdXNpbmcgZW1iZWRkZWQgbW9kZWwgZGF0YSBpbnN0ZWFkCgogIC8vIEJlZHJvb21zCiAgZm9yIChsZXQgaSA9IDA7IGkgPCBiZWRDb3VudDsgaSsrKSB7CiAgICBhZGRMYXlvdXQoCiAgICAgIGRlZmF1bHRMYXlvdXQobGF5b3V0cy5sZW5ndGggKyAxLCB7CiAgICAgICAgc3BhY2VfdHlwZTogIkJlZHJvb20iLAogICAgICAgIHNpemVfc3F1YXJlX2ZlZXQ6IG51bGwsCiAgICAgIH0pLAogICAgKTsKICB9CgogIC8vIEZ1bGwgYmF0aHJvb21zCiAgZm9yIChsZXQgaSA9IDA7IGkgPCBmdWxsQmF0aHM7IGkrKykgewogICAgYWRkTGF5b3V0KAogICAgICBkZWZhdWx0TGF5b3V0KGxheW91dHMubGVuZ3RoICsgMSwgewogICAgICAgIHNwYWNlX3R5cGU6ICJGdWxsIEJhdGhyb29tIiwKICAgICAgfSksCiAgICApOwogIH0KCiAgLy8gSGFsZiBiYXRocm9vbXMKICBmb3IgKGxldCBpID0gMDsgaSA8IGhhbGZCYXRoczsgaSsrKSB7CiAgICBhZGRMYXlvdXQoCiAgICAgIGRlZmF1bHRMYXlvdXQobGF5b3V0cy5sZW5ndGggKyAxLCB7CiAgICAgICAgc3BhY2VfdHlwZTogIkhhbGYgQmF0aHJvb20gLyBQb3dkZXIgUm9vbSIsCiAgICAgIH0pLAogICAgKTsKICB9CgogIC8vIFJlbW92ZWQgZGVmYXVsdCBMaXZpbmcgUm9vbSBhbmQgS2l0Y2hlbiBhZGRpdGlvbnM7IGtlZXAgb25seSBkZXRlY3RlZCBzcGFjZXMKCiAgY29uc3Qgb3duZXJzRGlyID0gcGF0aC5yZXNvbHZlKCJvd25lcnMiKTsKICBjb25zdCBkYXRhRGlyID0gcGF0aC5yZXNvbHZlKCJkYXRhIik7CiAgZnMubWtkaXJTeW5jKG93bmVyc0RpciwgeyByZWN1cnNpdmU6IHRydWUgfSk7CiAgZnMubWtkaXJTeW5jKGRhdGFEaXIsIHsgcmVjdXJzaXZlOiB0cnVlIH0pOwoKICAvLyBDcmVhdGUgaW5kaXZpZHVhbCBsYXlvdXQgZmlsZXMgKGxheW91dF8xLmpzb24sIGxheW91dF8yLmpzb24sIGV0Yy4pCiAgbGF5b3V0cy5mb3JFYWNoKChsYXlvdXQsIGluZGV4KSA9PiB7CiAgICBjb25zdCBsYXlvdXRJbmRleCA9IGluZGV4ICsgMTsKICAgIGNvbnN0IGxheW91dEZpbGVOYW1lID0gYGxheW91dF8ke2xheW91dEluZGV4fS5qc29uYDsKCiAgICAvLyBXcml0ZSBpbmRpdmlkdWFsIGxheW91dCBmaWxlIHRvIGRhdGEgZGlyZWN0b3J5IG9ubHkKICAgIGZzLndyaXRlRmlsZVN5bmMoCiAgICAgIHBhdGguam9pbihkYXRhRGlyLCBsYXlvdXRGaWxlTmFtZSksCiAgICAgIEpTT04uc3RyaW5naWZ5KGxheW91dCwgbnVsbCwgMiksCiAgICAgICJ1dGY4IiwKICAgICk7CgogICAgLy8gQ3JlYXRlIHJlbGF0aW9uc2hpcCBmaWxlIGZvciBlYWNoIGxheW91dAogICAgY29uc3QgbGF5b3V0UmVsID0gewogICAgICBmcm9tOiB7ICIvIjogIi4vcHJvcGVydHkuanNvbiIgfSwKICAgICAgdG86IHsgIi8iOiBgLi8ke2xheW91dEZpbGVOYW1lfWAgfSwKICAgIH07CiAgICBmcy53cml0ZUZpbGVTeW5jKAogICAgICBwYXRoLmpvaW4oZGF0YURpciwgYHJlbGF0aW9uc2hpcF9wcm9wZXJ0eV9sYXlvdXRfJHtsYXlvdXRJbmRleH0uanNvbmApLAogICAgICBKU09OLnN0cmluZ2lmeShsYXlvdXRSZWwsIG51bGwsIDIpLAogICAgICAidXRmOCIsCiAgICApOwogIH0pOwoKICBjb25zb2xlLmxvZygKICAgICJJbmRpdmlkdWFsIGxheW91dCBmaWxlcyB3cml0dGVuIGZvciIsCiAgICBwcm9wS2V5LAogICAgIndpdGgiLAogICAgbGF5b3V0cy5sZW5ndGgsCiAgICAibGF5b3V0cyIsCiAgKTsKfQoKLy8gQWx3YXlzIHJ1biB3aGVuIHJlcXVpcmVkIG9yIGV4ZWN1dGVkIGRpcmVjdGx5CnJ1bigpOwo=
+// layoutMapping.js
+// Parses input.html with cheerio and outputs layout data per schema.
+
+const fs = require("fs");
+const path = require("path");
+const cheerio = require("cheerio");
+
+function readInputHtml() {
+  const inputPath = path.resolve("input.html");
+  return fs.readFileSync(inputPath, "utf8");
+}
+
+function digitsOnly(str) {
+  return (str || "").replace(/\D+/g, "");
+}
+
+function getText($, selector) {
+  const el = $(selector).first();
+  return el.length ? el.text().trim() : "";
+}
+
+function findValueByLabel($, scope, labelText) {
+  let value = "";
+  $(scope)
+    .find("tr")
+    .each((_, tr) => {
+      const $tr = $(tr);
+      const labelTd = $tr.find("td.label").first();
+      const valTd = $tr.find("td.value").first();
+      if (labelTd.length && valTd.length) {
+        const lbl = labelTd.text().replace(/\s+/g, " ").trim().toLowerCase();
+        if (lbl.includes(labelText.toLowerCase())) {
+          value = valTd.text().replace(/\s+/g, " ").trim();
+          return false;
+        }
+      }
+    });
+  return value;
+}
+
+function toInt(val) {
+  const n = parseInt((val || "").toString().replace(/[^0-9]/g, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function defaultLayout(space_index, overrides = {}) {
+  return Object.assign(
+    {
+      space_type: null,
+      space_index,
+      space_type_index: null,
+      story_type: null,
+      flooring_material_type: null,
+      size_square_feet: null,
+      floor_level: null,
+      has_windows: null,
+      window_design_type: null,
+      window_material_type: null,
+      window_treatment_type: null,
+      is_finished: true,
+      furnished: null,
+      paint_condition: null,
+      flooring_wear: null,
+      clutter_level: null,
+      visible_damage: null,
+      countertop_material: null,
+      cabinet_style: null,
+      fixture_finish_quality: null,
+      design_style: null,
+      natural_light_quality: null,
+      decor_elements: null,
+      pool_type: null,
+      pool_equipment: null,
+      spa_type: null,
+      safety_features: null,
+      view_type: null,
+      lighting_features: null,
+      condition_issues: null,
+      is_exterior: false,
+      pool_condition: null,
+      pool_surface_type: null,
+      pool_water_quality: null,
+      building_number: null,
+    },
+    overrides,
+  );
+}
+
+function run() {
+  const html = readInputHtml();
+  const $ = cheerio.load(html);
+
+  // Extract property id
+  let pcnText = getText($, "#MainContent_lblPCN");
+  if (!pcnText) {
+    pcnText = $("td.label:contains('Parcel Control Number')")
+      .next(".value")
+      .text()
+      .trim();
+  }
+  const propertyId = digitsOnly(pcnText);
+  const propKey = `property_${propertyId || "unknown"}`;
+
+  // Structural counts for bedrooms/baths
+  // Initialize layouts array
+  const layouts = [];
+  const layoutTypeCounts = new Map();
+
+  function addLayout(layout) {
+    const normalized = { ...layout };
+
+    if (
+      !Number.isInteger(normalized.space_index) ||
+      normalized.space_index <= 0
+    ) {
+      normalized.space_index = layouts.length + 1;
+    }
+
+    const typeKey = normalized.space_type || "Unknown";
+    const nextCount = (layoutTypeCounts.get(typeKey) || 0) + 1;
+    layoutTypeCounts.set(typeKey, nextCount);
+    normalized.space_type_index = `${normalized.space_index}.${nextCount}`;
+
+    layouts.push(normalized);
+  }
+
+  // Extract bedroom/bathroom counts from embedded model
+  let bedCount = 0;
+  let fullBaths = 0;
+  let halfBaths = 0;
+
+  // Read HTML file
+  const inputHTML = fs.readFileSync("input.html", "utf8");
+
+  // Helper function to map element names to space types
+  function mapElementNameToSpaceType(elementName) {
+    if (!elementName) return null;
+    const name = elementName.toUpperCase();
+
+    // Skip summary elements that shouldn't be individual spaces
+    if (name.includes("TOTAL SQUARE FOOTAGE") || name.includes("AREA UNDER AIR")) {
+      return null; // Don't create layout items for these summary elements
+    }
+
+    if (name.includes("FOP") || name.includes("FINISHED OPEN PORCH")) return "Open Porch";
+    if (name.includes("BAS") || name.includes("BASE AREA")) return "Living Area";
+    if (name.includes("FGR") || name.includes("FINISHED GARAGE")) return "Attached Garage";
+    if (name.includes("GARAGE")) return "Attached Garage";
+    if (name.includes("PORCH")) return "Open Porch";
+    if (name.includes("DECK")) return "Deck";
+    if (name.includes("PATIO")) return "Patio";
+    if (name.includes("BALCONY")) return "Balcony";
+    if (name.includes("LIVING")) return "Living Area";
+    if (name.includes("BEDROOM")) return "Bedroom";
+    if (name.includes("BATH")) return "Bathroom";
+    if (name.includes("KITCHEN")) return "Kitchen";
+
+    return null;
+  }
+
+  // Parse embedded model from HTML (use greedy match to capture entire model)
+  const modelMatch = inputHTML.match(/var model = ({.+});/);
+  if (modelMatch) {
+    try {
+      const model = JSON.parse(modelMatch[1]);
+      if (model.structuralDetails && Array.isArray(model.structuralDetails.StructuralElements)) {
+        // Extract bedroom/bathroom counts
+        for (const el of model.structuralDetails.StructuralElements) {
+          const name = (el.ElementName || "").trim();
+          const val = (el.ElementValue || "").toString().trim();
+          if (/Bedroom|Bed Rooms/i.test(name)) bedCount = parseInt(val) || 0;
+          if (/Bath\(s\)|Full Baths/i.test(name) && !/Half/i.test(name)) fullBaths = parseInt(val) || 0;
+          if (/Half Bath|Half Baths/i.test(name)) halfBaths = parseInt(val) || 0;
+        }
+
+        // Extract area-based layout elements (living area, porches, garage, etc.)
+        for (const el of model.structuralDetails.StructuralElements) {
+          if (el.DetailsSection === "Bottom" && el.BuildingNumber) {
+            const buildingNum = parseInt(el.BuildingNumber);
+            const spaceType = mapElementNameToSpaceType(el.ElementName);
+
+            // Skip elements that shouldn't be individual spaces
+            if (!spaceType) {
+              continue;
+            }
+
+            const layoutItem = {
+              space_type: spaceType,
+              space_index: layouts.length + 1,
+              size_square_feet: parseInt(el.ElementValue) || null,
+              building_number: buildingNum,
+              floor_level: null,
+              is_exterior: el.ElementName.includes("FOP") || el.ElementName.includes("Porch"),
+              is_finished: !el.ElementName.includes("Unfinished"),
+              story_type: null,
+              flooring_material_type: null,
+              has_windows: null,
+              window_design_type: null,
+              window_material_type: null,
+              window_treatment_type: null,
+              furnished: null,
+              paint_condition: null,
+              flooring_wear: null,
+              clutter_level: null,
+              visible_damage: null,
+              countertop_material: null,
+              cabinet_style: null,
+              fixture_finish_quality: null,
+              design_style: null,
+              natural_light_quality: null,
+              decor_elements: null,
+              pool_type: null,
+              pool_equipment: null,
+              spa_type: null,
+              safety_features: null,
+              view_type: null,
+              lighting_features: null,
+              condition_issues: null,
+              pool_condition: null,
+              pool_surface_type: null,
+              pool_water_quality: null,
+            };
+
+            addLayout(layoutItem);
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Error parsing model for layout data:", e.message);
+    }
+  }
+
+  console.log(`Extracted bedroom/bathroom counts: ${bedCount} bedrooms, ${fullBaths} full baths, ${halfBaths} half baths`);
+
+  // Skip subarea processing to avoid duplication - we're using embedded model data instead
+
+  // Bedrooms
+  for (let i = 0; i < bedCount; i++) {
+    addLayout(
+      defaultLayout(layouts.length + 1, {
+        space_type: "Bedroom",
+        size_square_feet: null,
+      }),
+    );
+  }
+
+  // Full bathrooms
+  for (let i = 0; i < fullBaths; i++) {
+    addLayout(
+      defaultLayout(layouts.length + 1, {
+        space_type: "Full Bathroom",
+      }),
+    );
+  }
+
+  // Half bathrooms
+  for (let i = 0; i < halfBaths; i++) {
+    addLayout(
+      defaultLayout(layouts.length + 1, {
+        space_type: "Half Bathroom / Powder Room",
+      }),
+    );
+  }
+
+  // Removed default Living Room and Kitchen additions; keep only detected spaces
+
+  const ownersDir = path.resolve("owners");
+  const dataDir = path.resolve("data");
+  fs.mkdirSync(ownersDir, { recursive: true });
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  // Create individual layout files (layout_1.json, layout_2.json, etc.)
+  layouts.forEach((layout, index) => {
+    const layoutIndex = index + 1;
+    const layoutFileName = `layout_${layoutIndex}.json`;
+
+    // Write individual layout file to data directory only
+    fs.writeFileSync(
+      path.join(dataDir, layoutFileName),
+      JSON.stringify(layout, null, 2),
+      "utf8",
+    );
+
+    // Create relationship file for each layout
+    const layoutRel = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${layoutFileName}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_layout_${layoutIndex}.json`),
+      JSON.stringify(layoutRel, null, 2),
+      "utf8",
+    );
+  });
+
+  console.log(
+    "Individual layout files written for",
+    propKey,
+    "with",
+    layouts.length,
+    "layouts",
+  );
+}
+
+// Always run when required or executed directly
+run();

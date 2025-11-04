@@ -1,1 +1,376 @@
-Y29uc3QgZnMgPSByZXF1aXJlKCJmcyIpOwpjb25zdCBwYXRoID0gcmVxdWlyZSgicGF0aCIpOwpjb25zdCBjaGVlcmlvID0gcmVxdWlyZSgiY2hlZXJpbyIpOwoKLy8gVXRpbGl0eTogY2xlYW4gdGV4dApmdW5jdGlvbiBjbGVhbihzdHIpIHsKICByZXR1cm4gKHN0ciB8fCAiIikKICAgIC5yZXBsYWNlKC9cdTAwQTAvZywgIiAiKQogICAgLnJlcGxhY2UoL1xzKiZccyokLywgIiIpIC8vIGRyb3AgdHJhaWxpbmcgYW1wZXJzYW5kIGxpa2UgIk5BTUUgJiIKICAgIC5yZXBsYWNlKC9ccysvZywgIiAiKQogICAgLnRyaW0oKTsKfQoKLy8gTmFtZSBub3JtYWxpemF0aW9uIGhlbHBlcnMgZm9yIHBlcnNvbiBwYXJzaW5nCmNvbnN0IFBFUlNPTl9OQU1FX1BBVFRFUk4gPSAvXltBLVpdW2Etel0qKFsgXC0nLC5dW0EtWmEtel1bYS16XSopKiQvOwpjb25zdCBNSURETEVfUExBQ0VIT0xERVJTID0gbmV3IFNldChbCiAgIm5taSIsCiAgIm4gbSBpIiwKICAibm0iLAogICJuIG0iLAogICJubyIsCiAgIm5vbmUiLAogICJubyBtaWRkbGUiLAogICJubyBtaWRkbGUgbmFtZSIsCiAgIm5vIG1pZGRsZSBpbml0aWFsIiwKICAibm9uZSByZWNvcmRlZCIsCiAgInVua25vd24iLAogICJuYSIsCiAgIm4vYSIsCiAgIm5vIG1uIiwKXSk7CgpmdW5jdGlvbiBmb3JtYXROYW1lUGFydChwYXJ0KSB7CiAgaWYgKCFwYXJ0KSByZXR1cm4gbnVsbDsKICBjb25zdCBjbGVhbmVkID0gY2xlYW4ocGFydCkKICAgIC5yZXBsYWNlKC9bXkEtWmEtelxzXC0nLC5dL2csICIgIikKICAgIC5yZXBsYWNlKC9ccysvZywgIiAiKQogICAgLnRyaW0oKTsKICBpZiAoIWNsZWFuZWQpIHJldHVybiBudWxsOwogIGNvbnN0IG5vcm1hbGl6ZWQgPSBjbGVhbmVkCiAgICAudG9Mb3dlckNhc2UoKQogICAgLnJlcGxhY2UoLyhefFsgXC0nLC5dKShbYS16XSkvZywgKF8sIHByZWZpeCwgY2hhcikgPT4gYCR7cHJlZml4fSR7Y2hhci50b1VwcGVyQ2FzZSgpfWApCiAgICAucmVwbGFjZSgvXHMrL2csICIgIikKICAgIC50cmltKCk7CiAgcmV0dXJuIFBFUlNPTl9OQU1FX1BBVFRFUk4udGVzdChub3JtYWxpemVkKSA/IG5vcm1hbGl6ZWQgOiBudWxsOwp9CgpmdW5jdGlvbiBub3JtYWxpemVNaWRkbGVOYW1lKG1pZGRsZSkgewogIGlmICghbWlkZGxlKSByZXR1cm4gbnVsbDsKICBjb25zdCBjbGVhbmVkID0gY2xlYW4obWlkZGxlKQogICAgLnJlcGxhY2UoL1teQS1aYS16XHNdL2csICIgIikKICAgIC5yZXBsYWNlKC9ccysvZywgIiAiKQogICAgLnRyaW0oKTsKICBpZiAoIWNsZWFuZWQpIHJldHVybiBudWxsOwogIGNvbnN0IGNhbm9uaWNhbCA9IGNsZWFuZWQudG9Mb3dlckNhc2UoKTsKICBpZiAoIWNhbm9uaWNhbCB8fCBNSURETEVfUExBQ0VIT0xERVJTLmhhcyhjYW5vbmljYWwpKSByZXR1cm4gbnVsbDsKICByZXR1cm4gZm9ybWF0TmFtZVBhcnQoY2xlYW5lZCk7Cn0KCi8vIERldGVjdCBjb21wYW55IHRva2Vucwpjb25zdCBjb21wYW55UmVnZXggPQogIC8oXGIoPzppbmN8bFwuP2xcLj9jfGxsY3xsdGR8Y29cLj98Y29tcGFueXxjb3JwXC4/fGNvcnBvcmF0aW9ufGZvdW5kYXRpb258YWxsaWFuY2V8c29sdXRpb25zfHNlcnZpY2VzfHRydXN0XGJ8XGJ0clxifGFzc29jaWF0ZXN8YXNzb2NpYXRpb258cGFydG5lcnN8aG9sZGluZ3N8Z3JvdXB8YmFua3xtb3J0Z2FnZXxpbnZlc3RtZW50fGludmVzdG1lbnRzfGxwfGxscHxwbGMpXGIpL2k7CgovLyBOb3JtYWxpemUgb3duZXIga2V5IGZvciBkZWR1cApmdW5jdGlvbiBub3JtYWxpemVPd25lcihvd25lcikgewogIGlmICghb3duZXIpIHJldHVybiAiIjsKICBpZiAob3duZXIudHlwZSA9PT0gImNvbXBhbnkiKSB7CiAgICByZXR1cm4gY2xlYW4ob3duZXIubmFtZSkudG9Mb3dlckNhc2UoKTsKICB9CiAgY29uc3QgcGFydHMgPSBbb3duZXIuZmlyc3RfbmFtZSwgb3duZXIubWlkZGxlX25hbWUgfHwgIiIsIG93bmVyLmxhc3RfbmFtZV0KICAgIC5maWx0ZXIoQm9vbGVhbikKICAgIC5tYXAoKHgpID0+IGNsZWFuKFN0cmluZyh4KSkudG9Mb3dlckNhc2UoKSk7CiAgcmV0dXJuIHBhcnRzLmpvaW4oIiAiKS50cmltKCk7Cn0KCi8vIFNwbGl0IGEgcmF3IG93bmVyIHN0cmluZyBpbnRvIHBvc3NpYmxlIG11bHRpcGxlIG93bmVycyB1c2luZyBjb21tb24gZGVsaW1pdGVycwpmdW5jdGlvbiBzcGxpdFJhd093bmVycyhyYXcpIHsKICBjb25zdCBzID0gY2xlYW4ocmF3KTsKICBpZiAoIXMpIHJldHVybiBbXTsKICAvLyBSZXBsYWNlIGNvbW1vbiBqb2luZXJzIHdpdGggYSBkZWxpbWl0ZXIKICBjb25zdCByZXBsYWNlZCA9IHMucmVwbGFjZSgvXHMrKD86YW5kfCYpXHMrL2dpLCAiIHwgIik7CiAgcmV0dXJuIHJlcGxhY2VkCiAgICAuc3BsaXQoInwiKQogICAgLm1hcCgoeCkgPT4gY2xlYW4oeCkpCiAgICAuZmlsdGVyKEJvb2xlYW4pOwp9CgovLyBQYXJzZSBhIHBlcnNvbiBuYW1lIGZyb20gYXNzZXNzb3Itc3R5bGUgc3RyaW5ncyAob2Z0ZW4gTEFTVCBGSVJTVCBNSURETEUgb3IgTEFTVCwgRklSU1QgTUlERExFKQpmdW5jdGlvbiBwYXJzZVBlcnNvbk5hbWUocmF3LCBjYXJyeUxhc3ROYW1lLCBpc0NvbnRpbnVhdGlvbikgewogIGNvbnN0IHMgPSBjbGVhbihyYXcpLnJlcGxhY2UoL1wuL2csICIiKTsKICBpZiAoIXMpIHJldHVybiBudWxsOwoKICAvLyBSZW1vdmUgY29tbW9uIHN1ZmZpeGVzCiAgY29uc3Qgc3VmZml4ZXMgPSBbIkpSIiwgIlNSIiwgIklJIiwgIklJSSIsICJJViIsICJWIl07CgogIC8vIElmIGNvbnRpbnVhdGlvbiBhZnRlciBhIGpvaW5lciBhbmQgd2UgaGF2ZSBjYXJyeS1sYXN0LW5hbWUsIHBhcnNlIGFzIEZJUlNUIFtNSURETEVdIHdpdGggY2FycmllZCBMQVNUCiAgY29uc3QgY2FycmllZExhc3QgPSBmb3JtYXROYW1lUGFydChjYXJyeUxhc3ROYW1lKTsKCiAgaWYgKGlzQ29udGludWF0aW9uICYmIGNhcnJpZWRMYXN0KSB7CiAgICBjb25zdCBwYXJ0cyA9IHMuc3BsaXQoL1xzKy8pLmZpbHRlcihCb29sZWFuKTsKICAgIGlmIChwYXJ0cy5sZW5ndGggPj0gMSkgewogICAgICBjb25zdCBmaXJzdCA9IGZvcm1hdE5hbWVQYXJ0KHBhcnRzWzBdKTsKICAgICAgaWYgKCFmaXJzdCkgcmV0dXJuIG51bGw7CiAgICAgIGNvbnN0IHJhd01pZGRsZSA9IHBhcnRzLmxlbmd0aCA+PSAyID8gcGFydHMuc2xpY2UoMSkuam9pbigiICIpIDogbnVsbDsKICAgICAgcmV0dXJuIHsKICAgICAgICB0eXBlOiAicGVyc29uIiwKICAgICAgICBmaXJzdF9uYW1lOiBmaXJzdCwKICAgICAgICBsYXN0X25hbWU6IGNhcnJpZWRMYXN0LAogICAgICAgIG1pZGRsZV9uYW1lOiBub3JtYWxpemVNaWRkbGVOYW1lKHJhd01pZGRsZSksCiAgICAgIH07CiAgICB9CiAgfQoKICBsZXQgdG9rZW5zID0gcy5zcGxpdCgvXHMqLFxzKi8pOwogIGxldCBsYXN0ID0gbnVsbCwKICAgIGZpcnN0ID0gbnVsbCwKICAgIG1pZGRsZSA9IG51bGw7CgogIGlmICh0b2tlbnMubGVuZ3RoID4gMSkgewogICAgLy8gRm9ybWF0OiBMQVNULCBGSVJTVCBNSURETEUKICAgIGxhc3QgPSBjbGVhbih0b2tlbnNbMF0pOwogICAgY29uc3QgcmVzdCA9IGNsZWFuKHRva2Vucy5zbGljZSgxKS5qb2luKCIgIikpOwogICAgY29uc3QgcmVzdFBhcnRzID0gcmVzdC5zcGxpdCgvXHMrLykuZmlsdGVyKEJvb2xlYW4pOwogICAgaWYgKHJlc3RQYXJ0cy5sZW5ndGggPj0gMSkgZmlyc3QgPSByZXN0UGFydHNbMF07CiAgICBpZiAocmVzdFBhcnRzLmxlbmd0aCA+PSAyKSBtaWRkbGUgPSByZXN0UGFydHMuc2xpY2UoMSkuam9pbigiICIpOwogIH0gZWxzZSB7CiAgICAvLyBMaWtlbHkgTEFTVCBGSVJTVCBNSURETEUKICAgIGNvbnN0IHBhcnRzID0gcy5zcGxpdCgvXHMrLykuZmlsdGVyKEJvb2xlYW4pOwogICAgaWYgKHBhcnRzLmxlbmd0aCA+PSAyKSB7CiAgICAgIGxhc3QgPSBwYXJ0c1swXTsKICAgICAgZmlyc3QgPSBwYXJ0c1sxXTsKICAgICAgaWYgKHBhcnRzLmxlbmd0aCA+PSAzKSBtaWRkbGUgPSBwYXJ0cy5zbGljZSgyKS5qb2luKCIgIik7CiAgICB9IGVsc2UgaWYgKHBhcnRzLmxlbmd0aCA9PT0gMSkgewogICAgICAvLyBPbmx5IG9uZSB0b2tlbiBwcm92aWRlZDsgaWYgd2UgaGF2ZSBhIGNhcnJ5TGFzdE5hbWUsIGFzc3VtZSB0aGlzIGlzIEZJUlNUCiAgICAgIGlmIChjYXJyaWVkTGFzdCkgewogICAgICAgIGZpcnN0ID0gcGFydHNbMF07CiAgICAgICAgbGFzdCA9IGNhcnJpZWRMYXN0OwogICAgICB9IGVsc2UgewogICAgICAgIHJldHVybiBudWxsOwogICAgICB9CiAgICB9CiAgfQoKICAvLyBTdHJpcCBzdWZmaXhlcyBpZiBwcmVzZW50IGluIG1pZGRsZQogIGlmIChtaWRkbGUpIHsKICAgIGNvbnN0IG1pZFBhcnRzID0gbWlkZGxlLnNwbGl0KC9ccysvKS5maWx0ZXIoQm9vbGVhbik7CiAgICBjb25zdCBmaWx0ZXJlZCA9IG1pZFBhcnRzLmZpbHRlcigKICAgICAgKHApID0+CiAgICAgICAgIXN1ZmZpeGVzLmluY2x1ZGVzKAogICAgICAgICAgcAogICAgICAgICAgICAucmVwbGFjZSgvW15BLVphLXpdL2csICIiKQogICAgICAgICAgICAudG9VcHBlckNhc2UoKSwKICAgICAgICApLAogICAgKTsKICAgIG1pZGRsZSA9IGZpbHRlcmVkLmpvaW4oIiAiKSB8fCBudWxsOwogIH0KCiAgY29uc3QgZmlyc3RGb3JtYXR0ZWQgPSBmb3JtYXROYW1lUGFydChmaXJzdCk7CiAgY29uc3QgbGFzdEZvcm1hdHRlZCA9IGZvcm1hdE5hbWVQYXJ0KGxhc3QpOwogIGlmICghZmlyc3RGb3JtYXR0ZWQgfHwgIWxhc3RGb3JtYXR0ZWQpIHJldHVybiBudWxsOwoKICBjb25zdCBtaWRkbGVGb3JtYXR0ZWQgPSBub3JtYWxpemVNaWRkbGVOYW1lKG1pZGRsZSk7CgogIHJldHVybiB7CiAgICB0eXBlOiAicGVyc29uIiwKICAgIGZpcnN0X25hbWU6IGZpcnN0Rm9ybWF0dGVkLAogICAgbGFzdF9uYW1lOiBsYXN0Rm9ybWF0dGVkLAogICAgbWlkZGxlX25hbWU6IG1pZGRsZUZvcm1hdHRlZCwKICB9Owp9CgovLyBDbGFzc2lmeSBhIHNpbmdsZSByYXcgb3duZXIgc3RyaW5nIGludG8gcGVyc29uL2NvbXBhbnksIG9yIG51bGwgaWYgaW52YWxpZApmdW5jdGlvbiBjbGFzc2lmeU93bmVyKHJhdywgY2FycnlMYXN0TmFtZSwgaXNDb250aW51YXRpb24pIHsKICBjb25zdCBzID0gY2xlYW4ocmF3KTsKICBpZiAoIXMpIHJldHVybiBudWxsOwogIGlmIChjb21wYW55UmVnZXgudGVzdChzKSkgewogICAgcmV0dXJuIHsgdHlwZTogImNvbXBhbnkiLCBuYW1lOiBjbGVhbihzKSB9OwogIH0KICBjb25zdCBwZXJzb24gPSBwYXJzZVBlcnNvbk5hbWUocywgY2FycnlMYXN0TmFtZSwgaXNDb250aW51YXRpb24pOwogIGlmIChwZXJzb24pIHJldHVybiBwZXJzb247CiAgcmV0dXJuIG51bGw7Cn0KCi8vIENvbnZlcnQgTU0vREQvWVlZWSB0byBZWVlZLU1NLURECmZ1bmN0aW9uIHRvSVNPRGF0ZShtZHkpIHsKICBjb25zdCBzID0gY2xlYW4obWR5KTsKICBpZiAoIXMpIHJldHVybiAiIjsKICBjb25zdCBwYXJ0cyA9IHMuc3BsaXQoIi8iKS5tYXAoKHgpID0+IHgudHJpbSgpKTsKICBpZiAocGFydHMubGVuZ3RoICE9PSAzKSByZXR1cm4gIiI7CiAgY29uc3QgbW0gPSBwYXJ0c1swXS5wYWRTdGFydCgyLCAiMCIpOwogIGNvbnN0IGRkID0gcGFydHNbMV0ucGFkU3RhcnQoMiwgIjAiKTsKICBjb25zdCB5eXl5ID0KICAgIHBhcnRzWzJdLmxlbmd0aCA9PT0gMgogICAgICA/IE51bWJlcihwYXJ0c1syXSkgPCA1MAogICAgICAgID8gIjIwIiArIHBhcnRzWzJdCiAgICAgICAgOiAiMTkiICsgcGFydHNbMl0KICAgICAgOiBwYXJ0c1syXTsKICByZXR1cm4gYCR7eXl5eX0tJHttbX0tJHtkZH1gOwp9CgovLyBSZWFkIGFuZCBwYXJzZSBpbnB1dApjb25zdCBodG1sID0gZnMucmVhZEZpbGVTeW5jKHBhdGguam9pbihwcm9jZXNzLmN3ZCgpLCAiaW5wdXQuaHRtbCIpLCAidXRmLTgiKTsKY29uc3QgJCA9IGNoZWVyaW8ubG9hZChodG1sKTsKCi8vIEV4dHJhY3QgcHJvcGVydHkgSUQgKFBhcmNlbCBDb250cm9sIE51bWJlcikKbGV0IHByb3BlcnR5SWQgPSBudWxsOwpjb25zdCBwY25TcGFuID0gJCgiI01haW5Db250ZW50X2xibFBDTiIpLmZpcnN0KCk7CmlmIChwY25TcGFuICYmIHBjblNwYW4udGV4dCgpKSB7CiAgcHJvcGVydHlJZCA9IGNsZWFuKHBjblNwYW4udGV4dCgpKS5yZXBsYWNlKC9cRC9nLCAiIik7Cn0KaWYgKCFwcm9wZXJ0eUlkKSB7CiAgJCgidGQubGFiZWwiKS5lYWNoKChpLCBlbCkgPT4gewogICAgY29uc3QgbGFiZWwgPSBjbGVhbigkKGVsKS50ZXh0KCkpOwogICAgaWYgKC9wYXJjZWwgY29udHJvbCBudW1iZXIvaS50ZXN0KGxhYmVsKSkgewogICAgICBjb25zdCB2YWwgPSBjbGVhbigkKGVsKS5uZXh0KCJ0ZC52YWx1ZSIpLnRleHQoKSk7CiAgICAgIGlmICh2YWwpIHByb3BlcnR5SWQgPSB2YWwucmVwbGFjZSgvXEQvZywgIiIpOwogICAgfQogIH0pOwp9CmlmICghcHJvcGVydHlJZCkgcHJvcGVydHlJZCA9ICJ1bmtub3duX2lkIjsKCi8vIEV4dHJhY3QgY3VycmVudCBvd25lciBjYW5kaWRhdGVzIGZyb20gT3duZXIgSU5GT1JNQVRJT04gc2VjdGlvbgpmdW5jdGlvbiBleHRyYWN0Q3VycmVudE93bmVycygpIHsKICBjb25zdCBvd25lcnMgPSBbXTsKICAkKCJoMiIpLmVhY2goKGksIGVsKSA9PiB7CiAgICBjb25zdCB0aXRsZSA9IGNsZWFuKCQoZWwpLnRleHQoKSk7CiAgICBpZiAoL15vd25lclxzK2luZm9ybWF0aW9uJC9pLnRlc3QodGl0bGUpKSB7CiAgICAgIGNvbnN0IGNvbnRhaW5lciA9ICQoZWwpLmNsb3Nlc3QoIi5oYXMtYWNjb3JkaW9uIik7CiAgICAgIGNvbnN0IHRhYmxlID0gY29udGFpbmVyLmZpbmQoInRhYmxlIikuZmlyc3QoKTsKICAgICAgdGFibGUuZmluZCgidGJvZHkgPiB0ciIpLmVhY2goKHJpLCB0cikgPT4gewogICAgICAgIGNvbnN0IHRoID0gJCh0cikuZmluZCgidGgiKTsKICAgICAgICBpZiAodGgubGVuZ3RoKSByZXR1cm47IC8vIHNraXAgaGVhZGVyCiAgICAgICAgY29uc3QgdGRzID0gJCh0cikuZmluZCgidGQiKTsKICAgICAgICBpZiAoIXRkcy5sZW5ndGgpIHJldHVybjsKICAgICAgICBjb25zdCBvd25lckNlbGwgPSB0ZHMuZXEoMCk7CiAgICAgICAgY29uc3QgcmF3ID0gY2xlYW4ob3duZXJDZWxsLnRleHQoKSk7CiAgICAgICAgaWYgKHJhdykgb3duZXJzLnB1c2gocmF3KTsKICAgICAgfSk7CiAgICB9CiAgfSk7CiAgaWYgKG93bmVycy5sZW5ndGggPT09IDApIHsKICAgICQoInRkLmxhYmVsIikuZWFjaCgoaSwgZWwpID0+IHsKICAgICAgY29uc3QgdCA9IGNsZWFuKCQoZWwpLnRleHQoKSk7CiAgICAgIGlmICgvXm93bmVyIG5hbWUkL2kudGVzdCh0KSkgewogICAgICAgIGNvbnN0IHYgPSBjbGVhbigkKGVsKS5uZXh0KCJ0ZC52YWx1ZSIpLnRleHQoKSk7CiAgICAgICAgaWYgKHYpIG93bmVycy5wdXNoKHYpOwogICAgICB9CiAgICB9KTsKICB9CiAgcmV0dXJuIG93bmVyczsKfQoKLy8gRXh0cmFjdCBzYWxlcyBoaXN0b3J5IG93bmVycyBieSBkYXRlIGZyb20gU2FsZXMgSU5GT1JNQVRJT04KZnVuY3Rpb24gZXh0cmFjdFNhbGVzSGlzdG9yeSgpIHsKICBjb25zdCBzYWxlcyA9IFtdOwogICQoImgyIikuZWFjaCgoaSwgZWwpID0+IHsKICAgIGNvbnN0IHRpdGxlID0gY2xlYW4oJChlbCkudGV4dCgpKTsKICAgIGlmICgvXnNhbGVzXHMraW5mb3JtYXRpb24kL2kudGVzdCh0aXRsZSkpIHsKICAgICAgY29uc3QgY29udGFpbmVyID0gJChlbCkuY2xvc2VzdCgiLmhhcy1hY2NvcmRpb24iKTsKICAgICAgY29uc3QgdGFibGUgPSBjb250YWluZXIuZmluZCgidGFibGUiKS5maXJzdCgpOwogICAgICB0YWJsZS5maW5kKCJ0Ym9keSA+IHRyIikuZWFjaCgocmksIHRyKSA9PiB7CiAgICAgICAgY29uc3QgdGRzID0gJCh0cikuZmluZCgidGQiKTsKICAgICAgICBpZiAodGRzLmxlbmd0aCA8IDIpIHJldHVybjsKICAgICAgICBjb25zdCBkYXRlVGV4dCA9IGNsZWFuKHRkcy5lcSgwKS50ZXh0KCkpOwogICAgICAgIGNvbnN0IG93bmVyVGV4dCA9IGNsZWFuKHRkcy5lcSh0ZHMubGVuZ3RoIC0gMSkudGV4dCgpKTsKICAgICAgICBpZiAoZGF0ZVRleHQpIHsKICAgICAgICAgIHNhbGVzLnB1c2goeyBkYXRlOiB0b0lTT0RhdGUoZGF0ZVRleHQpLCBvd25lclJhdzogb3duZXJUZXh0IH0pOwogICAgICAgIH0KICAgICAgfSk7CiAgICB9CiAgfSk7CiAgcmV0dXJuIHNhbGVzOwp9Cgpjb25zdCBjdXJyZW50T3duZXJSYXdzID0gZXh0cmFjdEN1cnJlbnRPd25lcnMoKTsKY29uc3Qgc2FsZXMgPSBleHRyYWN0U2FsZXNIaXN0b3J5KCk7CgovLyBCdWlsZCBvd25lcnNfYnlfZGF0ZQpjb25zdCBvd25lcnNCeURhdGUgPSB7fTsKY29uc3QgaW52YWxpZE93bmVycyA9IFtdOwoKLy8gUHJvY2VzcyBzYWxlcyBpbnRvIGdyb3VwZWQgYnkgZGF0ZQpjb25zdCBkYXRlTWFwID0gbmV3IE1hcCgpOwpzYWxlcy5mb3JFYWNoKCh7IGRhdGUsIG93bmVyUmF3IH0pID0+IHsKICBpZiAoIWRhdGUpIHJldHVybjsKICBjb25zdCByYXdQaWVjZXMgPSBzcGxpdFJhd093bmVycyhvd25lclJhdyk7CgogIGNvbnN0IG93bmVycyA9IFtdOwogIGxldCBjYXJyeUxhc3QgPSBudWxsOwogIHJhd1BpZWNlcy5mb3JFYWNoKChwaWVjZSwgaWR4KSA9PiB7CiAgICBjb25zdCBpc0NvbnQgPSBpZHggPiAwOwogICAgLy8gRm9yIHRoZSBmaXJzdCBwaWVjZSwgYXR0ZW1wdCB0byBkZXJpdmUgY2FycnlMYXN0IHVzaW5nIGFzc2Vzc29yIGZvcm1hdAogICAgaWYgKCFpc0NvbnQpIHsKICAgICAgY29uc3QgdG9rZW5zID0gY2xlYW4ocGllY2UpLnNwbGl0KC9ccysvKS5maWx0ZXIoQm9vbGVhbik7CiAgICAgIGlmICh0b2tlbnMubGVuZ3RoID49IDEpIGNhcnJ5TGFzdCA9IHRva2Vuc1swXTsKICAgIH0KCiAgICBjb25zdCBjbGFzc2lmaWVkID0gY2xhc3NpZnlPd25lcihwaWVjZSwgY2FycnlMYXN0LCBpc0NvbnQpOwogICAgaWYgKGNsYXNzaWZpZWQpIHsKICAgICAgb3duZXJzLnB1c2goY2xhc3NpZmllZCk7CiAgICAgIGlmICghaXNDb250ICYmIGNsYXNzaWZpZWQudHlwZSA9PT0gInBlcnNvbiIgJiYgY2xhc3NpZmllZC5sYXN0X25hbWUpCiAgICAgICAgY2FycnlMYXN0ID0gY2xhc3NpZmllZC5sYXN0X25hbWU7CiAgICB9IGVsc2UgewogICAgICBpZiAoY2xlYW4ocGllY2UpKQogICAgICAgIGludmFsaWRPd25lcnMucHVzaCh7IHJhdzogcGllY2UsIHJlYXNvbjogInVuY2xhc3NpZmllZF9vd25lciIgfSk7CiAgICB9CiAgfSk7CgogIGlmICghZGF0ZU1hcC5oYXMoZGF0ZSkpIGRhdGVNYXAuc2V0KGRhdGUsIFtdKTsKICBkYXRlTWFwLmdldChkYXRlKS5wdXNoKC4uLm93bmVycyk7Cn0pOwoKLy8gRGVkdXBsaWNhdGUgb3duZXJzIHBlciBkYXRlCmZ1bmN0aW9uIGRlZHVwT3duZXJzKGxpc3QpIHsKICBjb25zdCBzZWVuID0gbmV3IFNldCgpOwogIGNvbnN0IG91dCA9IFtdOwogIGxpc3QuZm9yRWFjaCgobykgPT4gewogICAgY29uc3Qga2V5ID0gbm9ybWFsaXplT3duZXIobyk7CiAgICBpZiAoIWtleSkgcmV0dXJuOwogICAgaWYgKCFzZWVuLmhhcyhrZXkpKSB7CiAgICAgIHNlZW4uYWRkKGtleSk7CiAgICAgIG91dC5wdXNoKG8pOwogICAgfQogIH0pOwogIHJldHVybiBvdXQ7Cn0KCi8vIFNvcnQgZGF0ZXMgYXNjZW5kaW5nIGFuZCBwbGFjZSBpbnRvIG93bmVyc0J5RGF0ZQpjb25zdCBzb3J0ZWREYXRlcyA9IEFycmF5LmZyb20oZGF0ZU1hcC5rZXlzKCkpCiAgLmZpbHRlcihCb29sZWFuKQogIC5zb3J0KChhLCBiKSA9PiAoYSA8IGIgPyAtMSA6IGEgPiBiID8gMSA6IDApKTsKc29ydGVkRGF0ZXMuZm9yRWFjaCgoZCkgPT4gewogIGNvbnN0IGxpc3QgPSBkZWR1cE93bmVycyhkYXRlTWFwLmdldChkKSk7CiAgaWYgKGxpc3QubGVuZ3RoKSBvd25lcnNCeURhdGVbZF0gPSBsaXN0Owp9KTsKCi8vIFByb2Nlc3MgY3VycmVudCBvd25lcnMKY29uc3QgY3VycmVudE93bmVycyA9IFtdOwpsZXQgY2FycnlMYXN0Q3VycmVudCA9IG51bGw7CmN1cnJlbnRPd25lclJhd3MuZm9yRWFjaCgocmF3KSA9PiB7CiAgY29uc3QgcGllY2VzID0gc3BsaXRSYXdPd25lcnMocmF3KTsKICBwaWVjZXMuZm9yRWFjaCgocGllY2UsIGlkeCkgPT4gewogICAgY29uc3QgaXNDb250ID0gaWR4ID4gMDsKICAgIGlmICghaXNDb250KSB7CiAgICAgIGNvbnN0IHRva2VucyA9IGNsZWFuKHBpZWNlKS5zcGxpdCgvXHMrLykuZmlsdGVyKEJvb2xlYW4pOwogICAgICBpZiAodG9rZW5zLmxlbmd0aCA+PSAxKSBjYXJyeUxhc3RDdXJyZW50ID0gdG9rZW5zWzBdOwogICAgfQogICAgY29uc3QgY2xhc3NpZmllZCA9IGNsYXNzaWZ5T3duZXIocGllY2UsIGNhcnJ5TGFzdEN1cnJlbnQsIGlzQ29udCk7CiAgICBpZiAoY2xhc3NpZmllZCkgewogICAgICBjdXJyZW50T3duZXJzLnB1c2goY2xhc3NpZmllZCk7CiAgICAgIGlmICghaXNDb250ICYmIGNsYXNzaWZpZWQudHlwZSA9PT0gInBlcnNvbiIgJiYgY2xhc3NpZmllZC5sYXN0X25hbWUpCiAgICAgICAgY2FycnlMYXN0Q3VycmVudCA9IGNsYXNzaWZpZWQubGFzdF9uYW1lOwogICAgfSBlbHNlIHsKICAgICAgaWYgKGNsZWFuKHBpZWNlKSkKICAgICAgICBpbnZhbGlkT3duZXJzLnB1c2goeyByYXc6IHBpZWNlLCByZWFzb246ICJ1bmNsYXNzaWZpZWRfb3duZXIiIH0pOwogICAgfQogIH0pOwp9KTsKCmNvbnN0IGN1cnJlbnREZWR1cGVkID0gZGVkdXBPd25lcnMoY3VycmVudE93bmVycyk7Cm93bmVyc0J5RGF0ZVsiY3VycmVudCJdID0gY3VycmVudERlZHVwZWQ7CgovLyBDb21wb3NlIGZpbmFsIEpTT04gc3RydWN0dXJlCmNvbnN0IHRvcEtleSA9IGBwcm9wZXJ0eV8ke3Byb3BlcnR5SWQgfHwgInVua25vd25faWQifWA7CmNvbnN0IHJlc3VsdCA9IHt9OwpyZXN1bHRbdG9wS2V5XSA9IHsgb3duZXJzX2J5X2RhdGU6IG93bmVyc0J5RGF0ZSB9OwpyZXN1bHQuaW52YWxpZF9vd25lcnMgPSBpbnZhbGlkT3duZXJzOwoKLy8gRW5zdXJlIG91dHB1dCBkaXJlY3RvcnkgYW5kIHdyaXRlIGZpbGUKY29uc3Qgb3V0RGlyID0gcGF0aC5qb2luKHByb2Nlc3MuY3dkKCksICJvd25lcnMiKTsKZnMubWtkaXJTeW5jKG91dERpciwgeyByZWN1cnNpdmU6IHRydWUgfSk7CmNvbnN0IG91dFBhdGggPSBwYXRoLmpvaW4ob3V0RGlyLCAib3duZXJfZGF0YS5qc29uIik7CmZzLndyaXRlRmlsZVN5bmMob3V0UGF0aCwgSlNPTi5zdHJpbmdpZnkocmVzdWx0LCBudWxsLCAyKSwgInV0Zi04Iik7CgovLyBQcmludCB0byBjb25zb2xlCmNvbnNvbGUubG9nKEpTT04uc3RyaW5naWZ5KHJlc3VsdCkpOwo=
+const fs = require("fs");
+const path = require("path");
+const cheerio = require("cheerio");
+
+// Utility: clean text
+function clean(str) {
+  return (str || "")
+    .replace(/\u00A0/g, " ")
+    .replace(/\s*&\s*$/, "") // drop trailing ampersand like "NAME &"
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Name normalization helpers for person parsing
+const PERSON_NAME_PATTERN = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+const MIDDLE_PLACEHOLDERS = new Set([
+  "nmi",
+  "n m i",
+  "nm",
+  "n m",
+  "no",
+  "none",
+  "no middle",
+  "no middle name",
+  "no middle initial",
+  "none recorded",
+  "unknown",
+  "na",
+  "n/a",
+  "no mn",
+]);
+
+function formatNamePart(part) {
+  if (!part) return null;
+  const cleaned = clean(part)
+    .replace(/[^A-Za-z\s\-',.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  const normalized = cleaned
+    .toLowerCase()
+    .replace(/(^|[ \-',.])([a-z])/g, (_, prefix, char) => `${prefix}${char.toUpperCase()}`)
+    .replace(/\s+/g, " ")
+    .trim();
+  return PERSON_NAME_PATTERN.test(normalized) ? normalized : null;
+}
+
+function normalizeMiddleName(middle) {
+  if (!middle) return null;
+  const cleaned = clean(middle)
+    .replace(/[^A-Za-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  const canonical = cleaned.toLowerCase();
+  if (!canonical || MIDDLE_PLACEHOLDERS.has(canonical)) return null;
+  return formatNamePart(cleaned);
+}
+
+// Detect company tokens
+const companyRegex =
+  /(\b(?:inc|l\.?l\.?c|llc|ltd|co\.?|company|corp\.?|corporation|foundation|alliance|solutions|services|trust\b|\btr\b|associates|association|partners|holdings|group|bank|mortgage|investment|investments|lp|llp|plc)\b)/i;
+
+// Normalize owner key for dedup
+function normalizeOwner(owner) {
+  if (!owner) return "";
+  if (owner.type === "company") {
+    return clean(owner.name).toLowerCase();
+  }
+  const parts = [owner.first_name, owner.middle_name || "", owner.last_name]
+    .filter(Boolean)
+    .map((x) => clean(String(x)).toLowerCase());
+  return parts.join(" ").trim();
+}
+
+// Split a raw owner string into possible multiple owners using common delimiters
+function splitRawOwners(raw) {
+  const s = clean(raw);
+  if (!s) return [];
+  // Replace common joiners with a delimiter
+  const replaced = s.replace(/\s+(?:and|&)\s+/gi, " | ");
+  return replaced
+    .split("|")
+    .map((x) => clean(x))
+    .filter(Boolean);
+}
+
+// Parse a person name from assessor-style strings (often LAST FIRST MIDDLE or LAST, FIRST MIDDLE)
+function parsePersonName(raw, carryLastName, isContinuation) {
+  const s = clean(raw).replace(/\./g, "");
+  if (!s) return null;
+
+  // Remove common suffixes
+  const suffixes = ["JR", "SR", "II", "III", "IV", "V"];
+
+  // If continuation after a joiner and we have carry-last-name, parse as FIRST [MIDDLE] with carried LAST
+  const carriedLast = formatNamePart(carryLastName);
+
+  if (isContinuation && carriedLast) {
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length >= 1) {
+      const first = formatNamePart(parts[0]);
+      if (!first) return null;
+      const rawMiddle = parts.length >= 2 ? parts.slice(1).join(" ") : null;
+      return {
+        type: "person",
+        first_name: first,
+        last_name: carriedLast,
+        middle_name: normalizeMiddleName(rawMiddle),
+      };
+    }
+  }
+
+  let tokens = s.split(/\s*,\s*/);
+  let last = null,
+    first = null,
+    middle = null;
+
+  if (tokens.length > 1) {
+    // Format: LAST, FIRST MIDDLE
+    last = clean(tokens[0]);
+    const rest = clean(tokens.slice(1).join(" "));
+    const restParts = rest.split(/\s+/).filter(Boolean);
+    if (restParts.length >= 1) first = restParts[0];
+    if (restParts.length >= 2) middle = restParts.slice(1).join(" ");
+  } else {
+    // Likely LAST FIRST MIDDLE
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      last = parts[0];
+      first = parts[1];
+      if (parts.length >= 3) middle = parts.slice(2).join(" ");
+    } else if (parts.length === 1) {
+      // Only one token provided; if we have a carryLastName, assume this is FIRST
+      if (carriedLast) {
+        first = parts[0];
+        last = carriedLast;
+      } else {
+        return null;
+      }
+    }
+  }
+
+  // Strip suffixes if present in middle
+  if (middle) {
+    const midParts = middle.split(/\s+/).filter(Boolean);
+    const filtered = midParts.filter(
+      (p) =>
+        !suffixes.includes(
+          p
+            .replace(/[^A-Za-z]/g, "")
+            .toUpperCase(),
+        ),
+    );
+    middle = filtered.join(" ") || null;
+  }
+
+  const firstFormatted = formatNamePart(first);
+  const lastFormatted = formatNamePart(last);
+  if (!firstFormatted || !lastFormatted) return null;
+
+  const middleFormatted = normalizeMiddleName(middle);
+
+  return {
+    type: "person",
+    first_name: firstFormatted,
+    last_name: lastFormatted,
+    middle_name: middleFormatted,
+  };
+}
+
+// Classify a single raw owner string into person/company, or null if invalid
+function classifyOwner(raw, carryLastName, isContinuation) {
+  const s = clean(raw);
+  if (!s) return null;
+  if (companyRegex.test(s)) {
+    return { type: "company", name: clean(s) };
+  }
+  const person = parsePersonName(s, carryLastName, isContinuation);
+  if (person) return person;
+  return null;
+}
+
+// Convert MM/DD/YYYY to YYYY-MM-DD
+function toISODate(mdy) {
+  const s = clean(mdy);
+  if (!s) return "";
+  const parts = s.split("/").map((x) => x.trim());
+  if (parts.length !== 3) return "";
+  const mm = parts[0].padStart(2, "0");
+  const dd = parts[1].padStart(2, "0");
+  const yyyy =
+    parts[2].length === 2
+      ? Number(parts[2]) < 50
+        ? "20" + parts[2]
+        : "19" + parts[2]
+      : parts[2];
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Read and parse input
+const html = fs.readFileSync(path.join(process.cwd(), "input.html"), "utf-8");
+const $ = cheerio.load(html);
+
+// Extract property ID (Parcel Control Number)
+let propertyId = null;
+const pcnSpan = $("#MainContent_lblPCN").first();
+if (pcnSpan && pcnSpan.text()) {
+  propertyId = clean(pcnSpan.text()).replace(/\D/g, "");
+}
+if (!propertyId) {
+  $("td.label").each((i, el) => {
+    const label = clean($(el).text());
+    if (/parcel control number/i.test(label)) {
+      const val = clean($(el).next("td.value").text());
+      if (val) propertyId = val.replace(/\D/g, "");
+    }
+  });
+}
+if (!propertyId) propertyId = "unknown_id";
+
+// Extract current owner candidates from Owner INFORMATION section
+function extractCurrentOwners() {
+  const owners = [];
+  $("h2").each((i, el) => {
+    const title = clean($(el).text());
+    if (/^owner\s+information$/i.test(title)) {
+      const container = $(el).closest(".has-accordion");
+      const table = container.find("table").first();
+      table.find("tbody > tr").each((ri, tr) => {
+        const th = $(tr).find("th");
+        if (th.length) return; // skip header
+        const tds = $(tr).find("td");
+        if (!tds.length) return;
+        const ownerCell = tds.eq(0);
+        const raw = clean(ownerCell.text());
+        if (raw) owners.push(raw);
+      });
+    }
+  });
+  if (owners.length === 0) {
+    $("td.label").each((i, el) => {
+      const t = clean($(el).text());
+      if (/^owner name$/i.test(t)) {
+        const v = clean($(el).next("td.value").text());
+        if (v) owners.push(v);
+      }
+    });
+  }
+  return owners;
+}
+
+// Extract sales history owners by date from Sales INFORMATION
+function extractSalesHistory() {
+  const sales = [];
+  $("h2").each((i, el) => {
+    const title = clean($(el).text());
+    if (/^sales\s+information$/i.test(title)) {
+      const container = $(el).closest(".has-accordion");
+      const table = container.find("table").first();
+      table.find("tbody > tr").each((ri, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length < 2) return;
+        const dateText = clean(tds.eq(0).text());
+        const ownerText = clean(tds.eq(tds.length - 1).text());
+        if (dateText) {
+          sales.push({ date: toISODate(dateText), ownerRaw: ownerText });
+        }
+      });
+    }
+  });
+  return sales;
+}
+
+const currentOwnerRaws = extractCurrentOwners();
+const sales = extractSalesHistory();
+
+// Build owners_by_date
+const ownersByDate = {};
+const invalidOwners = [];
+
+// Process sales into grouped by date
+const dateMap = new Map();
+sales.forEach(({ date, ownerRaw }) => {
+  if (!date) return;
+  const rawPieces = splitRawOwners(ownerRaw);
+
+  const owners = [];
+  let carryLast = null;
+  rawPieces.forEach((piece, idx) => {
+    const isCont = idx > 0;
+    // For the first piece, attempt to derive carryLast using assessor format
+    if (!isCont) {
+      const tokens = clean(piece).split(/\s+/).filter(Boolean);
+      if (tokens.length >= 1) carryLast = tokens[0];
+    }
+
+    const classified = classifyOwner(piece, carryLast, isCont);
+    if (classified) {
+      owners.push(classified);
+      if (!isCont && classified.type === "person" && classified.last_name)
+        carryLast = classified.last_name;
+    } else {
+      if (clean(piece))
+        invalidOwners.push({ raw: piece, reason: "unclassified_owner" });
+    }
+  });
+
+  if (!dateMap.has(date)) dateMap.set(date, []);
+  dateMap.get(date).push(...owners);
+});
+
+// Deduplicate owners per date
+function dedupOwners(list) {
+  const seen = new Set();
+  const out = [];
+  list.forEach((o) => {
+    const key = normalizeOwner(o);
+    if (!key) return;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(o);
+    }
+  });
+  return out;
+}
+
+// Sort dates ascending and place into ownersByDate
+const sortedDates = Array.from(dateMap.keys())
+  .filter(Boolean)
+  .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+sortedDates.forEach((d) => {
+  const list = dedupOwners(dateMap.get(d));
+  if (list.length) ownersByDate[d] = list;
+});
+
+// Process current owners
+const currentOwners = [];
+let carryLastCurrent = null;
+currentOwnerRaws.forEach((raw) => {
+  const pieces = splitRawOwners(raw);
+  pieces.forEach((piece, idx) => {
+    const isCont = idx > 0;
+    if (!isCont) {
+      const tokens = clean(piece).split(/\s+/).filter(Boolean);
+      if (tokens.length >= 1) carryLastCurrent = tokens[0];
+    }
+    const classified = classifyOwner(piece, carryLastCurrent, isCont);
+    if (classified) {
+      currentOwners.push(classified);
+      if (!isCont && classified.type === "person" && classified.last_name)
+        carryLastCurrent = classified.last_name;
+    } else {
+      if (clean(piece))
+        invalidOwners.push({ raw: piece, reason: "unclassified_owner" });
+    }
+  });
+});
+
+const currentDeduped = dedupOwners(currentOwners);
+ownersByDate["current"] = currentDeduped;
+
+// Compose final JSON structure
+const topKey = `property_${propertyId || "unknown_id"}`;
+const result = {};
+result[topKey] = { owners_by_date: ownersByDate };
+result.invalid_owners = invalidOwners;
+
+// Ensure output directory and write file
+const outDir = path.join(process.cwd(), "owners");
+fs.mkdirSync(outDir, { recursive: true });
+const outPath = path.join(outDir, "owner_data.json");
+fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf-8");
+
+// Print to console
+console.log(JSON.stringify(result));
