@@ -265,6 +265,39 @@ const STREET_SUFFIX_ENUM = [
   "Crk",
 ];
 
+const ADDRESS_SCHEMA_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "country_code",
+  "plus_four_postal_code",
+  "postal_code",
+  "state_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "county_name",
+  "municipality_name",
+];
+
+const ADDRESS_CORE_FIELDS = [
+  "street_number",
+  "street_name",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+];
+
 const STREET_SUFFIX_SYNONYMS = {
   RD: "Rd",
   ROAD: "Rd",
@@ -1208,35 +1241,37 @@ function main() {
         ? "FL"
         : null);
 
-    const address = {
-      city_name: normalizedCity ? normalizedCity.toUpperCase() : null,
-      country_code: null,
-      county_name: safeNullIfEmpty(formattedCountyName),
-      latitude: parseCoordinate(unAddr && unAddr.latitude),
-      longitude: parseCoordinate(unAddr && unAddr.longitude),
-      plus_four_postal_code: sanitizePlus4(plus4),
-      postal_code: sanitizePostalCode(postalCode),
-      state_code: inferredStateCode ? inferredStateCode.toUpperCase() : null,
-      street_name: (() => {
-        if (!parsedAddress.streetName) return null;
-        const formatted = safeNullIfEmpty(formatStreetNameCase(parsedAddress.streetName));
-        return formatted ? formatted.toUpperCase() : null;
-      })(),
-      street_post_directional_text: safeNullIfEmpty(parsedAddress.streetPostDirectional),
-      street_pre_directional_text: safeNullIfEmpty(parsedAddress.streetPreDirectional),
-      street_number: safeNullIfEmpty(parsedAddress.streetNumber),
-      street_suffix_type: safeNullIfEmpty(parsedAddress.streetSuffix),
-      unit_identifier: safeNullIfEmpty(parsedAddress.unitIdentifier),
-      route_number: safeNullIfEmpty(parsedAddress.routeNumber),
-      township: safeNullIfEmpty(township),
-      range: safeNullIfEmpty(range),
-      section: safeNullIfEmpty(section),
-      block: safeNullIfEmpty(block),
-      lot: safeNullIfEmpty(lotNo),
-      municipality_name: normalizedMunicipality
-        ? toTitleCase(normalizedMunicipality)
-        : null,
-    };
+    const address = ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
+      acc[key] = null;
+      return acc;
+    }, {});
+
+    address.city_name = normalizedCity ? normalizedCity.toUpperCase() : null;
+    address.county_name = safeNullIfEmpty(formattedCountyName);
+    address.latitude = parseCoordinate(unAddr && unAddr.latitude);
+    address.longitude = parseCoordinate(unAddr && unAddr.longitude);
+    address.plus_four_postal_code = sanitizePlus4(plus4);
+    address.postal_code = sanitizePostalCode(postalCode);
+    address.state_code = inferredStateCode ? inferredStateCode.toUpperCase() : null;
+    address.street_name = (() => {
+      if (!parsedAddress.streetName) return null;
+      const formatted = safeNullIfEmpty(formatStreetNameCase(parsedAddress.streetName));
+      return formatted ? formatted.toUpperCase() : null;
+    })();
+    address.street_post_directional_text = safeNullIfEmpty(parsedAddress.streetPostDirectional);
+    address.street_pre_directional_text = safeNullIfEmpty(parsedAddress.streetPreDirectional);
+    address.street_number = safeNullIfEmpty(parsedAddress.streetNumber);
+    address.street_suffix_type = safeNullIfEmpty(parsedAddress.streetSuffix);
+    address.unit_identifier = safeNullIfEmpty(parsedAddress.unitIdentifier);
+    address.route_number = safeNullIfEmpty(parsedAddress.routeNumber);
+    address.township = safeNullIfEmpty(township);
+    address.range = safeNullIfEmpty(range);
+    address.section = safeNullIfEmpty(section);
+    address.block = safeNullIfEmpty(block);
+    address.lot = safeNullIfEmpty(lotNo);
+    address.municipality_name = normalizedMunicipality
+      ? toTitleCase(normalizedMunicipality)
+      : null;
 
     const baseStreetCandidates = [
       locationLine,
@@ -1289,6 +1324,15 @@ function main() {
       }
     }
 
+    for (const field of ADDRESS_SCHEMA_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(address, field)) {
+        address[field] = null;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(address, "unnormalized_address")) {
+      delete address.unnormalized_address;
+    }
+
     if (
       !address.country_code &&
       (address.state_code ||
@@ -1298,15 +1342,7 @@ function main() {
       address.country_code = "US";
     }
 
-    const requiredAddressKeys = [
-      "street_number",
-      "street_name",
-      "city_name",
-      "state_code",
-      "postal_code",
-      "country_code",
-    ];
-    const hasRequiredAddressCore = requiredAddressKeys.every((key) => {
+    const hasRequiredAddressCore = ADDRESS_CORE_FIELDS.every((key) => {
       const value = address[key];
       if (value == null) return false;
       if (typeof value === "string") {
