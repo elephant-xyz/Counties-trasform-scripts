@@ -762,7 +762,9 @@ function formatStreetNameCase(value) {
 
 function parseCoordinate(value) {
   if (value === null || value === undefined) return null;
-  const numeric = Number(String(value).trim());
+  const stringValue = String(value).trim();
+  if (!stringValue) return null;
+  const numeric = Number(stringValue);
   return Number.isFinite(numeric) ? numeric : null;
 }
 
