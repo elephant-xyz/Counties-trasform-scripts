@@ -1697,48 +1697,26 @@ function main() {
       }
     }
 
-    const pickFields = (source, fields) => {
-      const result = {};
-      for (const field of fields) {
-        const value = source[field];
-        if (value == null) continue;
-        if (typeof value === "string") {
-          const trimmed = value.trim();
-          if (!trimmed) continue;
-          result[field] = trimmed;
-          continue;
-        }
-        result[field] = value;
+    const normalizeValueForSchema = (value) => {
+      if (value == null) return null;
+      if (typeof value === "number") {
+        return Number.isFinite(value) ? value : null;
       }
-      return result;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : null;
+      }
+      return value;
     };
 
-    const normalizedAddress = pickFields(address, ADDRESS_SCHEMA_FIELDS.filter((field) => field !== "unnormalized_address"));
+    const finalAddress = {};
+    for (const field of ADDRESS_SCHEMA_FIELDS) {
+      if (field === "unnormalized_address") continue;
+      finalAddress[field] = normalizeValueForSchema(address[field]);
+    }
 
-    const UNNORMALIZED_METADATA_FIELDS = [
-      "latitude",
-      "longitude",
-      "country_code",
-      "county_name",
-      "municipality_name",
-      "township",
-      "range",
-      "section",
-      "block",
-      "lot",
-    ];
-    const unnormalizedAddress = (() => {
-      const base = pickFields(address, UNNORMALIZED_METADATA_FIELDS);
-      if (typeof address.unnormalized_address === "string") {
-        const trimmed = address.unnormalized_address.trim();
-        if (trimmed) {
-          base.unnormalized_address = trimmed;
-        }
-      }
-      return base;
-    })();
-
-    const finalAddress = shouldUseNormalized ? normalizedAddress : unnormalizedAddress;
+    const rawUnnormalized = normalizeValueForSchema(address.unnormalized_address);
+    finalAddress.unnormalized_address = shouldUseNormalized ? null : rawUnnormalized;
 
     const hasUnnormalizedAddress =
       typeof finalAddress.unnormalized_address === "string" &&
