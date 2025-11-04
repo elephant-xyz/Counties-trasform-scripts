@@ -20,8 +20,7 @@ function writeJSON(p, obj) {
 function ref(relativePath) {
   if (typeof relativePath !== "string") return null;
   const trimmed = relativePath.trim();
-  if (!trimmed.length) return null;
-  return { "/": trimmed };
+  return trimmed.length ? trimmed : null;
 }
 
 function extractBetween(html, regex, idx = 1) {
