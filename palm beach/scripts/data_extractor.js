@@ -49,6 +49,30 @@ function normalizeWhitespace(value) {
   return String(value).replace(/\s+/g, " ").trim();
 }
 
+function padGridValue(value, length) {
+  const cleaned = safeNullIfEmpty(value);
+  if (!cleaned) return null;
+  const alphanumeric = cleaned.replace(/\s+/g, "");
+  if (!alphanumeric) return null;
+  if (/^[0-9]+$/.test(alphanumeric)) {
+    return alphanumeric.padStart(length, "0");
+  }
+  return alphanumeric;
+}
+
+function extractUnitIdentifierFromAddressLines(lines = []) {
+  for (const raw of lines) {
+    const candidate = safeNullIfEmpty(raw);
+    if (!candidate) continue;
+    const match =
+      candidate.match(/(?:APT|APARTMENT|STE|SUITE|UNIT|BLDG|BUILDING|LOT|SPACE|SPC|TRLR|#)\s*([A-Z0-9-]+)/i);
+    if (match && match[1]) {
+      return match[1].trim().toUpperCase();
+    }
+  }
+  return null;
+}
+
 const STREET_DIRECTIONS = new Set([
   "N",
   "S",
@@ -1264,6 +1288,14 @@ function main() {
     address.street_suffix_type = safeNullIfEmpty(parsedAddress.streetSuffix);
     address.unit_identifier = safeNullIfEmpty(parsedAddress.unitIdentifier);
     address.route_number = safeNullIfEmpty(parsedAddress.routeNumber);
+    if (!address.unit_identifier) {
+      const unitFallback = extractUnitIdentifierFromAddressLines([
+        addressLine1,
+        addressLine2,
+        locationLine,
+      ]);
+      if (unitFallback) address.unit_identifier = unitFallback;
+    }
     address.township = safeNullIfEmpty(township);
     address.range = safeNullIfEmpty(range);
     address.section = safeNullIfEmpty(section);
@@ -1340,6 +1372,19 @@ function main() {
         (formattedCountyName && formattedCountyName.length))
     ) {
       address.country_code = "US";
+    }
+
+    const GRID_FIELD_LENGTHS = {
+      section: 2,
+      township: 2,
+      range: 2,
+      block: 3,
+      lot: 4,
+    };
+    for (const [field, length] of Object.entries(GRID_FIELD_LENGTHS)) {
+      if (address[field]) {
+        address[field] = padGridValue(address[field], length);
+      }
     }
 
     const hasRequiredAddressCore = ADDRESS_CORE_FIELDS.every((key) => {
