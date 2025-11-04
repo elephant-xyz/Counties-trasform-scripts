@@ -485,6 +485,7 @@ const ADDRESS_SCHEMA_FIELDS = [
   "lot",
   "county_name",
   "municipality_name",
+  "request_identifier",
   "unnormalized_address",
 ];
 
@@ -516,6 +517,7 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "street_suffix_type",
   "unit_identifier",
   "route_number",
+  "request_identifier",
   "township",
   "range",
   "section",
@@ -1130,12 +1132,12 @@ function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
-  const obsoleteFactSheetRelationshipPath = path.join(
+  const factSheetRelationshipPath = path.join(
     dataDir,
     "relationship_address_has_fact_sheet.json",
   );
-  if (fs.existsSync(obsoleteFactSheetRelationshipPath)) {
-    fs.unlinkSync(obsoleteFactSheetRelationshipPath);
+  if (fs.existsSync(factSheetRelationshipPath)) {
+    fs.unlinkSync(factSheetRelationshipPath);
   }
 
   const inputHTML = readText("input.html");
@@ -1647,6 +1649,9 @@ function main() {
     address.municipality_name = normalizedMunicipality
       ? toTitleCase(normalizedMunicipality)
       : null;
+    address.request_identifier =
+      safeNullIfEmpty(seed && seed.request_identifier) ||
+      (parcelId ? safeNullIfEmpty(parcelId) : null);
 
     const baseStreetCandidates = [
       locationLine,
@@ -1751,14 +1756,17 @@ function main() {
         Number.isFinite(address[field]),
       );
 
+    let selectedAddressFields = null;
     let finalAddress = null;
 
     if (hasNormalizedAddress) {
+      selectedAddressFields = NORMALIZED_ADDRESS_FIELDS;
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
       );
     } else if (hasUnnormalizedAddress) {
+      selectedAddressFields = UNNORMALIZED_ADDRESS_FIELDS;
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         UNNORMALIZED_ADDRESS_FIELDS,
@@ -1771,6 +1779,7 @@ function main() {
     );
 
     if (!finalAddress && hasCoordinateOnly) {
+      selectedAddressFields = NORMALIZED_ADDRESS_FIELDS;
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
@@ -1786,6 +1795,20 @@ function main() {
       };
 
       writeJSON(addressRelationshipPath, addressRelationship);
+      const relationshipAddress = JSON.parse(JSON.stringify(finalAddress));
+      if (
+        trimmedUnnormalized &&
+        (!relationshipAddress.unnormalized_address ||
+          !relationshipAddress.unnormalized_address.trim())
+      ) {
+        relationshipAddress.unnormalized_address = trimmedUnnormalized;
+      }
+      writeJSON(factSheetRelationshipPath, [
+        {
+          from: relationshipAddress,
+          to: null,
+        },
+      ]);
     } else {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
@@ -1793,6 +1816,9 @@ function main() {
       }
       if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
+      }
+      if (fs.existsSync(factSheetRelationshipPath)) {
+        fs.unlinkSync(factSheetRelationshipPath);
       }
     }
   }
