@@ -1595,7 +1595,7 @@ function main() {
       }
     }
 
-    const hasRequiredAddressCore = ADDRESS_CORE_FIELDS.every((key) => {
+    const hasMeaningfulAddressContent = ADDRESS_SCHEMA_FIELDS.some((key) => {
       const value = address[key];
       if (value == null) return false;
       if (typeof value === "string") {
@@ -1604,7 +1604,7 @@ function main() {
       return true;
     });
 
-    if (hasRequiredAddressCore) {
+    if (hasMeaningfulAddressContent) {
       writeJSON(addressFilePath, address);
 
       const addressRelationship = {
@@ -1616,6 +1616,7 @@ function main() {
         writeJSON(addressRelationshipPath, addressRelationship);
       }
     } else {
+      // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
       }
