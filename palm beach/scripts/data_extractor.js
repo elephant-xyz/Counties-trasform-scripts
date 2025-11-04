@@ -1405,12 +1405,12 @@ function main() {
       dataDir,
       "relationship_property_has_address.json",
     );
-    const factSheetRelationshipPath = path.join(
+    const obsoleteFactSheetRelationshipPath = path.join(
       dataDir,
       "relationship_address_has_fact_sheet.json",
     );
-    if (fs.existsSync(factSheetRelationshipPath)) {
-      fs.unlinkSync(factSheetRelationshipPath);
+    if (fs.existsSync(obsoleteFactSheetRelationshipPath)) {
+      fs.unlinkSync(obsoleteFactSheetRelationshipPath);
     }
 
     for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
@@ -1424,36 +1424,12 @@ function main() {
     if (hasSufficientAddressData) {
       writeJSON(addressFilePath, address);
 
-      const addressRelationshipTarget = { "/": "./address.json" };
-      for (const field of ADDRESS_SCHEMA_FIELDS) {
-        const value = Object.prototype.hasOwnProperty.call(address, field)
-          ? address[field]
-          : null;
-        addressRelationshipTarget[field] = value === undefined ? null : value;
-      }
-
-      const propertyRelationshipSource = {
-        "/": "./property.json",
-        parcel_identifier:
-          property && Object.prototype.hasOwnProperty.call(property, "parcel_identifier")
-            ? property.parcel_identifier || null
-            : null,
-      };
-
       const addressRelationship = {
-        type: "property_has_address",
-        from: propertyRelationshipSource,
-        to: addressRelationshipTarget,
+        from: { "/": "./property.json" },
+        to: { "/": "./address.json" },
       };
 
-      writeJSON(addressRelationshipPath, [addressRelationship]);
-
-      const factSheetRelationship = {
-        type: null,
-        from: { ...addressRelationshipTarget },
-        to: { "/": "./fact_sheet.json" },
-      };
-      writeJSON(factSheetRelationshipPath, [factSheetRelationship]);
+      writeJSON(addressRelationshipPath, addressRelationship);
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
