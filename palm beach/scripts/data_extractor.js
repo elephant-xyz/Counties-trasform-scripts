@@ -585,9 +585,8 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS, {
-    preserveNulls: true,
-  });
+  // Only keep populated fields so downstream oneOf validation can select the raw-address branch.
+  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS);
 
   return {
     ...rawAddress,
@@ -1822,7 +1821,6 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { preserveNulls: true },
       );
       finalAddress = normalizedAddress;
     } else if (hasUnnormalizedAddress) {
