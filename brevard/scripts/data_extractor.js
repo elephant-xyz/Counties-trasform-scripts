@@ -3755,6 +3755,14 @@ function writeJSON(filePath, obj) {
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2));
 }
 
+function writeRelationshipFile(filePath, fromPath, toPath) {
+  const relationship = {
+    from: { "/": fromPath },
+    to: { "/": toPath },
+  };
+  writeJSON(filePath, relationship);
+}
+
 function normalizeOwnerKey(o) {
   if (!o) return null;
   const fn = (o.first_name || "").trim().toLowerCase();
@@ -3978,7 +3986,9 @@ function createLayoutFiles(seed,parcelIdentifier){
   if (layoutsData && parcelIdentifier) {
     const key = `property_${parcelIdentifier}`;
     const layouts = layoutsData[key]?.layouts || [];
+    let factSheetRelationshipIndex = 0;
     layouts.forEach((layout, idx) => {
+      const layoutFileName = `layout_${idx + 1}.json`;
       const out = {
         ...appendSourceInfo(seed),
         space_type: layout.space_type ?? null,
@@ -4023,9 +4033,25 @@ function createLayoutFiles(seed,parcelIdentifier){
         flooring_installation_date: layout.flooring_installation_date ?? null,
         building_number: layout.building_number ?? null
       };
-      writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
+      writeJSON(path.join("data", layoutFileName), out);
+      writeRelationshipFile(
+        path.join("data", `relationship_property_has_layout_${idx + 1}.json`),
+        "./property.json",
+        `./${layoutFileName}`,
+      );
+      if (layout.space_type === "Building") {
+        factSheetRelationshipIndex += 1;
+        writeRelationshipFile(
+          path.join(
+            "data",
+            `relationship_property_has_fact_sheet_${factSheetRelationshipIndex}.json`,
+          ),
+          "./property.json",
+          `./${layoutFileName}`,
+        );
+      }
     });
-    
+
     // Create layout relationships
     layouts.forEach((layout, idx) => {
       if (layout.space_type === "Building") {
@@ -4210,6 +4236,7 @@ function main() {
     property.property_usage_type = property_usage_type;
   }
   writeJSON(path.join(dataDir, "property.json"), property);
+  const propertyRef = "./property.json";
 
   // ---------- Address parsing and files creation logic ----------
   const siteAddr = $(
@@ -4313,6 +4340,13 @@ function main() {
     unnormalized_address: siteAddr || null
   };
   writeJSON(path.join(dataDir, "address.json"), address);
+  if (siteAddr) {
+    writeRelationshipFile(
+      path.join(dataDir, "relationship_property_has_address.json"),
+      propertyRef,
+      "./address.json",
+    );
+  }
 
 
   //MAILING ADDRESS FILES.
@@ -4376,13 +4410,20 @@ function main() {
     }
     writeJSON(path.join(dataDir, `deed_${salesFileIndex}.json`), deed);
 
+    const fileName = `file_${salesFileIndex}.json`;
+    const filePath = path.join(dataDir, fileName);
     const fileObj = {
       ...appendSourceInfo(seed),
-      document_type: "Title", //document_Type for deed.
+      document_type: "Title", //document type for deed.
       name: null,
-      original_url: deedLink || null,
+      original_url: null,
     };
-    writeJSON(path.join(dataDir, `file_${salesFileIndex}.json`), fileObj);
+    writeJSON(filePath, fileObj);
+    writeRelationshipFile(
+      path.join(dataDir, `relationship_property_has_file_${salesFileIndex}.json`),
+      propertyRef,
+      `./${fileName}`,
+    );
 
     const relSalesDeed = {
       from: { "/": `./sales_${salesFileIndex}.json` },
@@ -4635,6 +4676,11 @@ function main() {
   };
 
   writeJSON(path.join(dataDir, "lot.json"), lotOut);
+  writeRelationshipFile(
+    path.join(dataDir, "relationship_property_has_lot.json"),
+    propertyRef,
+    "./lot.json",
+  );
 }
 
 main();
