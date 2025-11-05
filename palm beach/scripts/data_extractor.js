@@ -653,7 +653,9 @@ function parseCityStatePostal(raw) {
     parsed.postal = stateZipMatch[2];
     parsed.plus4 = stateZipMatch[3] || null;
     const cityCandidate = cleaned.slice(0, stateZipMatch.index).trim();
-    if (cityCandidate) parsed.city = cityCandidate;
+    if (cityCandidate && !/\d/.test(cityCandidate)) {
+      parsed.city = cityCandidate;
+    }
     return parsed;
   }
 
@@ -957,7 +959,10 @@ function applyAddressFallbacks(address, options = {}) {
   } = options;
 
   if (!address.city_name && fallbackCity) {
-    address.city_name = fallbackCity.toUpperCase();
+    const fallbackCityUpper = fallbackCity.toUpperCase();
+    if (!/\d/.test(fallbackCityUpper)) {
+      address.city_name = fallbackCityUpper;
+    }
   }
   if (!address.state_code && fallbackState) {
     address.state_code = fallbackState.toUpperCase();
@@ -972,6 +977,12 @@ function applyAddressFallbacks(address, options = {}) {
 
   if (!address.municipality_name && municipality) {
     address.municipality_name = toTitleCase(municipality);
+  }
+  if (!address.city_name && address.municipality_name) {
+    const municipalityUpper = address.municipality_name.toUpperCase();
+    if (!/\d/.test(municipalityUpper)) {
+      address.city_name = municipalityUpper;
+    }
   }
 
   if (!address.county_name && county) {
@@ -1631,6 +1642,9 @@ function main() {
     }, {});
 
     address.city_name = normalizedCity ? normalizedCity.toUpperCase() : null;
+    if (address.city_name && /\d/.test(address.city_name)) {
+      address.city_name = null;
+    }
     address.county_name = safeNullIfEmpty(formattedCountyName);
     address.latitude = parseCoordinate(unAddr && unAddr.latitude);
     address.longitude = parseCoordinate(unAddr && unAddr.longitude);
@@ -1765,11 +1779,12 @@ function main() {
     const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
       Number.isFinite(address[field]),
     );
+    const shouldUseNormalized = hasNormalizedCoreStrings && hasNormalizedCoordinates;
 
     let finalAddress = null;
     let addressFlavor = null;
 
-    if (hasNormalizedCoreStrings) {
+    if (shouldUseNormalized) {
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
