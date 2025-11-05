@@ -2867,14 +2867,9 @@ const BUILD_STATUS_VALUES = new Set([
   "UnderConstruction",
 ]);
 
-function appendSourceInfo(seed) {
-  return {
-    source_http_request: {
-      method: "GET",
-      url: seed?.source_http_request?.url || null,
-    },
-    request_identifier: seed?.request_identifier || seed?.parcel_id || "",
-  };
+function appendSourceInfo() {
+  // Downstream ingestion populates source request metadata.
+  return {};
 }
 
 function normalizeUseCodeString(code) {
@@ -4179,9 +4174,12 @@ function main() {
     bldgDetails.numberOfUnits && bldgDetails.numberOfUnits > 0
       ? "Building"
       : "LandParcel";
-  const property_type = PROPERTY_TYPE_VALUES.has(propertyTypeCandidate)
+  const resolvedPropertyType = PROPERTY_TYPE_VALUES.has(propertyTypeCandidate)
     ? propertyTypeCandidate
     : fallbackPropertyType;
+  const property_type = PROPERTY_TYPE_VALUES.has(resolvedPropertyType)
+    ? resolvedPropertyType
+    : "LandParcel";
 
   const buildStatusCandidate = mapBuildStatusFromUseCode(useText || "");
   const defaultBuildStatus =
@@ -4190,12 +4188,20 @@ function main() {
     ? buildStatusCandidate
     : defaultBuildStatus;
 
-  const ownership_estate_type =
+  const ownership_estate_type_candidate =
     mapOwnershipEstateTypeFromUseCode(useText || "") ||
     (property_type === "Unit" ? "Condominium" : "FeeSimple");
+  const ownership_estate_type =
+    typeof ownership_estate_type_candidate === "string"
+      ? ownership_estate_type_candidate
+      : null;
 
-  const structure_form =
+  const structure_form_candidate =
     mapStructureFormFromUseCode(useText || "") || null;
+  const structure_form =
+    typeof structure_form_candidate === "string"
+      ? structure_form_candidate
+      : null;
 
   const propertyUsageCandidate =
     mapPropertyUsageTypeFromUseCode(useText || "") || null;
@@ -4213,15 +4219,11 @@ function main() {
     property_structure_built_year: bldgDetails.yearBuilt ?? null,
     subdivision,
     zoning: null,
+    property_type,
+    build_status,
   };
-  if (property_type) {
-    property.property_type = property_type;
-  }
-  if (ownership_estate_type !== null && ownership_estate_type !== undefined) {
+  if (ownership_estate_type) {
     property.ownership_estate_type = ownership_estate_type;
-  }
-  if (build_status) {
-    property.build_status = build_status;
   }
   if (structure_form) {
     property.structure_form = structure_form;
@@ -4233,13 +4235,18 @@ function main() {
   const propertyRef = "./property.json";
 
   // ---------- Address parsing and files creation logic ----------
-  const siteAddr = $(
+  const siteAddrRaw = $(
     "#divDetails_Top_SiteAddressContainer .cssDetails_Top_SiteAddress",
   )
     .first()
     .text()
     .replace(/\s+/g, " ")
     .trim();
+  const siteAddr =
+    siteAddrRaw && !/^(-{2}|none|n\/a|null|unknown)$/i.test(siteAddrRaw)
+      ? siteAddrRaw
+      : null;
+  const hasSiteAddress = Boolean(siteAddr);
   const mailingAddressRaw = extractMailingAddress($);
   // console.log("MAILING address",mailingAddressRaw)
 
@@ -4253,7 +4260,7 @@ function main() {
     state_code = null,
     postal_code = null;
 
-  if (siteAddr) {
+  if (hasSiteAddress) {
     // Match pattern: "1910 N COCOA BLVD COCOA FL 32922"
     const addrMatch = siteAddr.match(
       /^(\d+)\s+(?:(N|S|E|W|NE|NW|SE|SW)\s+)?(.+?)\s+(?:(N|S|E|W|NE|NW|SE|SW)\s+)?([A-Z]+)\s+([A-Z\s]+)\s+([A-Z]{2})\s+(\d{5})$/i,
@@ -4331,15 +4338,18 @@ function main() {
     range: range || null,
     section: section || null,
     township: township || null,
-    unnormalized_address: siteAddr || null
+    unnormalized_address: hasSiteAddress ? siteAddr : null,
   };
-  writeJSON(path.join(dataDir, "address.json"), address);
-  if (siteAddr) {
+  if (hasSiteAddress) {
+    writeJSON(path.join(dataDir, "address.json"), address);
     writeRelationshipFile(
       path.join(dataDir, "relationship_property_has_address.json"),
       propertyRef,
       "./address.json",
     );
+  } else {
+    // Still persist address shell to capture available metadata without invalid relationships.
+    writeJSON(path.join(dataDir, "address.json"), address);
   }
 
 
