@@ -490,15 +490,6 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
-const NORMALIZED_ADDRESS_REQUIRED_STRINGS = [
-  "street_number",
-  "street_name",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-];
-
 const NORMALIZED_ADDRESS_REQUIRED_NUMBERS = ["latitude", "longitude"];
 
 const NORMALIZED_ADDRESS_FIELDS = [
@@ -524,6 +515,41 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "county_name",
   "municipality_name",
 ];
+
+const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "plus_four_postal_code",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+];
+
+function hasCompleteNormalizedAddress(address) {
+  if (!address || typeof address !== "object") return false;
+  for (const field of NORMALIZED_ADDRESS_REQUIRED_NUMBERS) {
+    if (!Number.isFinite(address[field])) {
+      return false;
+    }
+  }
+  for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
+    const value = address[field];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // Raw (unnormalized) representation keeps only fields supported by the schema's raw branch.
 // Avoid including street component fields so the payload satisfies exactly one oneOf option.
@@ -1770,20 +1796,15 @@ function main() {
         ? fallbackUnnormalizedValue.trim()
         : "";
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
-    const hasNormalizedCoreStrings = NORMALIZED_ADDRESS_REQUIRED_STRINGS.every((field) => {
-      const value = address[field];
-      return typeof value === "string" && value.trim().length > 0;
-    });
+    const normalizedAddressIsComplete = hasCompleteNormalizedAddress(address);
     const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
       Number.isFinite(address[field]),
     );
-    const shouldUseNormalized = hasNormalizedCoreStrings && hasNormalizedCoordinates;
 
     let finalAddress = null;
     let factSheetPayload = null;
-    let propertyRelationshipPayload = null;
 
-    if (shouldUseNormalized) {
+    if (normalizedAddressIsComplete) {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
@@ -1791,7 +1812,6 @@ function main() {
       );
       finalAddress = normalizedAddress;
       factSheetPayload = { ...normalizedAddress };
-      propertyRelationshipPayload = { ...normalizedAddress };
     } else if (hasUnnormalizedAddress) {
       const rawAddress = collectAddressFields(
         address,
@@ -1802,7 +1822,6 @@ function main() {
       finalAddress = rawAddress;
       // Without normalized components the fact sheet relationship violates the address schema's oneOf.
       factSheetPayload = null;
-      propertyRelationshipPayload = null;
     } else if (hasNormalizedCoordinates) {
       finalAddress = collectAddressFields(
         address,
@@ -1813,16 +1832,7 @@ function main() {
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
-      const propertyRef = ref("./property.json");
-      if (propertyRef && propertyRelationshipPayload) {
-        const relationshipAddress = JSON.parse(
-          JSON.stringify(propertyRelationshipPayload),
-        );
-        writeJSON(addressRelationshipPath, {
-          from: propertyRef,
-          to: relationshipAddress,
-        });
-      } else if (fs.existsSync(addressRelationshipPath)) {
+      if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
       }
 
