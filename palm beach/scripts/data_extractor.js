@@ -1758,41 +1758,32 @@ function main() {
         ? fallbackUnnormalizedValue.trim()
         : "";
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
-    const hasNormalizedAddress =
-      NORMALIZED_ADDRESS_REQUIRED_STRINGS.every((field) => {
-        const value = address[field];
-        return typeof value === "string" && value.trim().length > 0;
-      }) &&
-      NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) => {
-        const value = address[field];
-        return value == null || Number.isFinite(value);
-      });
+    const hasNormalizedCoreStrings = NORMALIZED_ADDRESS_REQUIRED_STRINGS.every((field) => {
+      const value = address[field];
+      return typeof value === "string" && value.trim().length > 0;
+    });
+    const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
+      Number.isFinite(address[field]),
+    );
 
     let finalAddress = null;
 
-    if (hasNormalizedAddress) {
+    if (hasNormalizedCoreStrings && hasNormalizedCoordinates) {
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
       );
     } else if (hasUnnormalizedAddress) {
-      const rawAddress = collectAddressFieldsAllowNulls(
-        address,
-        RAW_ADDRESS_FIELDS,
-      );
+      const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS);
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-    }
-
-    const hasCoordinateOnly = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
-      Number.isFinite(address[field]),
-    );
-
-    if (!finalAddress && hasCoordinateOnly) {
+    } else if (hasNormalizedCoreStrings) {
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
       );
+    } else if (hasNormalizedCoordinates) {
+      finalAddress = collectAddressFields(address, NORMALIZED_ADDRESS_REQUIRED_NUMBERS);
     }
 
     if (fs.existsSync(addressRelationshipPath)) {
