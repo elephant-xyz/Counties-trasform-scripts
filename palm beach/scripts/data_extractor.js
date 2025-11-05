@@ -538,8 +538,6 @@ const RAW_ADDRESS_FIELDS = [
   "lot",
 ];
 
-const FACT_SHEET_NORMALIZED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
-
 function collectAddressFields(source, fields, options = {}) {
   const { preserveNulls = false } = options;
   const result = {};
@@ -1782,19 +1780,16 @@ function main() {
     const shouldUseNormalized = hasNormalizedCoreStrings && hasNormalizedCoordinates;
 
     let finalAddress = null;
-    let normalizedFactSheetCandidate = null;
-    let rawFactSheetCandidate = null;
+    let factSheetPayload = null;
 
     if (shouldUseNormalized) {
-      finalAddress = collectAddressFields(
+      const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
         { preserveNulls: true },
       );
-      normalizedFactSheetCandidate = collectAddressFields(
-        address,
-        FACT_SHEET_NORMALIZED_FIELDS,
-      );
+      finalAddress = normalizedAddress;
+      factSheetPayload = { ...normalizedAddress };
     } else if (hasUnnormalizedAddress) {
       const rawAddress = collectAddressFields(
         address,
@@ -1803,14 +1798,7 @@ function main() {
       );
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-
-      const rawFactSheetCore = collectAddressFields(address, RAW_ADDRESS_FIELDS);
-      if (Object.keys(rawFactSheetCore).length) {
-        rawFactSheetCandidate = {
-          ...rawFactSheetCore,
-          unnormalized_address: trimmedUnnormalized,
-        };
-      }
+      factSheetPayload = { ...rawAddress };
     } else if (hasNormalizedCoordinates) {
       finalAddress = collectAddressFields(
         address,
@@ -1818,18 +1806,6 @@ function main() {
         { preserveNulls: true },
       );
     }
-
-    const factSheetPayload = (() => {
-      if (
-        normalizedFactSheetCandidate &&
-        FACT_SHEET_NORMALIZED_FIELDS.every((field) =>
-          Object.prototype.hasOwnProperty.call(normalizedFactSheetCandidate, field),
-        )
-      ) {
-        return normalizedFactSheetCandidate;
-      }
-      return rawFactSheetCandidate || null;
-    })();
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
