@@ -538,18 +538,34 @@ const RAW_ADDRESS_FIELDS = [
   "lot",
 ];
 
-function collectAddressFields(source, fields) {
+function collectAddressFields(source, fields, options = {}) {
+  const { preserveNulls = false } = options;
   const result = {};
   for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(source, field)) {
+      if (preserveNulls) result[field] = null;
+      continue;
+    }
     const value = source[field];
-    if (value == null) continue;
+    if (value == null) {
+      if (preserveNulls) result[field] = null;
+      continue;
+    }
     if (typeof value === "number") {
-      if (Number.isFinite(value)) result[field] = value;
+      if (Number.isFinite(value)) {
+        result[field] = value;
+      } else if (preserveNulls) {
+        result[field] = null;
+      }
       continue;
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (trimmed.length) result[field] = trimmed;
+      if (trimmed.length) {
+        result[field] = trimmed;
+      } else if (preserveNulls) {
+        result[field] = null;
+      }
       continue;
     }
     result[field] = value;
@@ -1770,10 +1786,15 @@ function main() {
       finalAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
+        { preserveNulls: true },
       );
       addressFlavor = "normalized";
     } else if (hasUnnormalizedAddress) {
-      const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS);
+      const rawAddress = collectAddressFields(
+        address,
+        RAW_ADDRESS_FIELDS,
+        { preserveNulls: true },
+      );
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
       addressFlavor = "raw";
@@ -1781,6 +1802,7 @@ function main() {
       finalAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_REQUIRED_NUMBERS,
+        { preserveNulls: true },
       );
       addressFlavor = "coordinates-only";
     }
