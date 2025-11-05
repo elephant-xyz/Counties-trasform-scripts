@@ -512,6 +512,8 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
+const RAW_ADDRESS_OPTIONAL_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -576,8 +578,8 @@ function buildRawAddressPayload(address, unnormalizedValue) {
 
   const rawAddress = collectAddressFields(
     address,
-    NORMALIZED_ADDRESS_FIELDS,
-    { preserveNulls: true },
+    RAW_ADDRESS_OPTIONAL_FIELDS,
+    { omitNulls: true },
   );
   rawAddress.unnormalized_address = unnormalizedValue;
 
@@ -1811,21 +1813,33 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { preserveNulls: true },
+        { omitNulls: true },
       );
-      finalAddress = normalizedAddress;
-    } else if (hasUnnormalizedAddress) {
+      if (
+        NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+          (key) => typeof normalizedAddress[key] === "string" && normalizedAddress[key].trim().length,
+        )
+      ) {
+        finalAddress = normalizedAddress;
+      }
+    }
+
+    if (!finalAddress && hasUnnormalizedAddress) {
       const rawAddress = buildRawAddressPayload(address, trimmedUnnormalized);
       if (rawAddress && Object.keys(rawAddress).length >= 1) {
         finalAddress = rawAddress;
       }
-    } else if (hasNormalizedCoordinates) {
+    }
+
+    if (!finalAddress && hasNormalizedCoordinates) {
       const coordinateAddress = collectAddressFields(
         address,
         COORDINATE_ADDRESS_REQUIRED_NUMBERS,
         { omitNulls: true },
       );
-      finalAddress = coordinateAddress;
+      if (COORDINATE_ADDRESS_REQUIRED_NUMBERS.every((key) => Number.isFinite(coordinateAddress[key]))) {
+        finalAddress = coordinateAddress;
+      }
     }
 
     const propertyFilePath = path.join(dataDir, "property.json");
