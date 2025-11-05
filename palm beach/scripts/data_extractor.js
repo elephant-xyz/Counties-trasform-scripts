@@ -1774,9 +1774,10 @@ function main() {
       const value = address[field];
       return typeof value === "string" && value.trim().length > 0;
     });
-    const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
-      Number.isFinite(address[field]),
-    );
+    const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) => {
+      const value = address[field];
+      return value == null || Number.isFinite(value);
+    });
     const shouldUseNormalized = hasNormalizedCoreStrings && hasNormalizedCoordinates;
 
     let finalAddress = null;
