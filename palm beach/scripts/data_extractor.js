@@ -1774,14 +1774,14 @@ function main() {
       const value = address[field];
       return typeof value === "string" && value.trim().length > 0;
     });
-    const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) => {
-      const value = address[field];
-      return value == null || Number.isFinite(value);
-    });
+    const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
+      Number.isFinite(address[field]),
+    );
     const shouldUseNormalized = hasNormalizedCoreStrings && hasNormalizedCoordinates;
 
     let finalAddress = null;
     let factSheetPayload = null;
+    let propertyRelationshipPayload = null;
 
     if (shouldUseNormalized) {
       const normalizedAddress = collectAddressFields(
@@ -1791,6 +1791,7 @@ function main() {
       );
       finalAddress = normalizedAddress;
       factSheetPayload = { ...normalizedAddress };
+      propertyRelationshipPayload = { ...normalizedAddress };
     } else if (hasUnnormalizedAddress) {
       const rawAddress = collectAddressFields(
         address,
@@ -1801,6 +1802,7 @@ function main() {
       finalAddress = rawAddress;
       // Without normalized components the fact sheet relationship violates the address schema's oneOf.
       factSheetPayload = null;
+      propertyRelationshipPayload = null;
     } else if (hasNormalizedCoordinates) {
       finalAddress = collectAddressFields(
         address,
@@ -1811,21 +1813,24 @@ function main() {
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
-      const addressRef = ref("./address.json");
       const propertyRef = ref("./property.json");
-      if (addressRef && propertyRef) {
+      if (propertyRef && propertyRelationshipPayload) {
+        const relationshipAddress = JSON.parse(
+          JSON.stringify(propertyRelationshipPayload),
+        );
         writeJSON(addressRelationshipPath, {
           from: propertyRef,
-          to: addressRef,
+          to: relationshipAddress,
         });
       } else if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
       }
 
       if (factSheetPayload) {
+        const factSheetAddress = JSON.parse(JSON.stringify(factSheetPayload));
         writeJSON(factSheetRelationshipPath, [
           {
-            from: factSheetPayload,
+            from: factSheetAddress,
             to: null,
           },
         ]);
