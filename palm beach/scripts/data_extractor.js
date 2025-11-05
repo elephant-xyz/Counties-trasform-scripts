@@ -1808,12 +1808,27 @@ function main() {
       finalAddress = coordinateAddress;
     }
 
+    const propertyFilePath = path.join(dataDir, "property.json");
+    const factSheetFilePath = path.join(dataDir, "fact_sheet.json");
+
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
-      if (fs.existsSync(addressRelationshipPath)) {
+
+      if (fs.existsSync(propertyFilePath)) {
+        writeJSON(addressRelationshipPath, {
+          from: ref("./property.json"),
+          to: ref("./address.json"),
+        });
+      } else if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
       }
-      if (fs.existsSync(factSheetRelationshipPath)) {
+
+      if (fs.existsSync(factSheetFilePath)) {
+        writeJSON(factSheetRelationshipPath, {
+          from: ref("./address.json"),
+          to: ref("./fact_sheet.json"),
+        });
+      } else if (fs.existsSync(factSheetRelationshipPath)) {
         fs.unlinkSync(factSheetRelationshipPath);
       }
     } else {
