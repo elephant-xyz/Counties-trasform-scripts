@@ -525,11 +525,6 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
 const RAW_ADDRESS_OPTIONAL_FIELDS = [
   "latitude",
   "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
   "county_name",
   "municipality_name",
   "township",
@@ -1838,7 +1833,7 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { omitNulls: true },
+        { preserveNulls: true },
       );
       finalAddress = normalizedAddress;
     } else if (hasUnnormalizedAddress) {
