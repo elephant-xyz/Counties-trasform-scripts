@@ -579,7 +579,11 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   const rawAddress = collectAddressFields(
     address,
     RAW_ADDRESS_OPTIONAL_FIELDS,
-    { omitNulls: true },
+    {
+      // Preserve explicit nulls so the schema's oneOf branch that expects the
+      // normalized fields to be present (even when unknown) is satisfied.
+      preserveNulls: true,
+    },
   );
   rawAddress.unnormalized_address = unnormalizedValue;
 
