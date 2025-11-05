@@ -485,7 +485,6 @@ const ADDRESS_SCHEMA_FIELDS = [
   "lot",
   "county_name",
   "municipality_name",
-  "request_identifier",
   "unnormalized_address",
 ];
 
@@ -517,7 +516,6 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "street_suffix_type",
   "unit_identifier",
   "route_number",
-  "request_identifier",
   "township",
   "range",
   "section",
@@ -539,7 +537,6 @@ const RAW_ADDRESS_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
-  "request_identifier",
   "township",
   "range",
   "section",
@@ -1667,10 +1664,6 @@ function main() {
     address.municipality_name = normalizedMunicipality
       ? toTitleCase(normalizedMunicipality)
       : null;
-    address.request_identifier =
-      safeNullIfEmpty(seed && seed.request_identifier) ||
-      (parcelId ? safeNullIfEmpty(parcelId) : null);
-
     const baseStreetCandidates = [
       locationLine,
       ...streetCandidates.filter((candidate) => candidate !== locationLine),
@@ -1783,26 +1776,11 @@ function main() {
         NORMALIZED_ADDRESS_FIELDS,
       );
     } else if (hasUnnormalizedAddress) {
-      const rawAddress = {
-        unnormalized_address: trimmedUnnormalized,
-      };
-      for (const field of RAW_ADDRESS_FIELDS) {
-        if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-        const value = address[field];
-        if (value == null) continue;
-        if (typeof value === "number") {
-          if (Number.isFinite(value)) rawAddress[field] = value;
-          continue;
-        }
-        if (typeof value === "string") {
-          const trimmed = value.trim();
-          if (trimmed.length) {
-            rawAddress[field] = trimmed;
-          }
-          continue;
-        }
-        rawAddress[field] = value;
-      }
+      const rawAddress = collectAddressFieldsAllowNulls(
+        address,
+        RAW_ADDRESS_FIELDS,
+      );
+      rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
     }
 
