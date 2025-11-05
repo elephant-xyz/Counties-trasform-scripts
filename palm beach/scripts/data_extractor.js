@@ -1803,14 +1803,13 @@ function main() {
       );
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-      rawFactSheetCandidate = {
-        unnormalized_address: trimmedUnnormalized,
-      };
-      if (Number.isFinite(address.latitude)) {
-        rawFactSheetCandidate.latitude = address.latitude;
-      }
-      if (Number.isFinite(address.longitude)) {
-        rawFactSheetCandidate.longitude = address.longitude;
+
+      const rawFactSheetCore = collectAddressFields(address, RAW_ADDRESS_FIELDS);
+      if (Object.keys(rawFactSheetCore).length) {
+        rawFactSheetCandidate = {
+          ...rawFactSheetCore,
+          unnormalized_address: trimmedUnnormalized,
+        };
       }
     } else if (hasNormalizedCoordinates) {
       finalAddress = collectAddressFields(
