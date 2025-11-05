@@ -2854,6 +2854,29 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
   return lookup;
 }, {});
 
+const PROPERTY_TYPE_VALUES = new Set([
+  "LandParcel",
+  "Building",
+  "Unit",
+  "ManufacturedHome",
+]);
+
+const BUILD_STATUS_VALUES = new Set([
+  "VacantLand",
+  "Improved",
+  "UnderConstruction",
+]);
+
+function appendSourceInfo(seed) {
+  return {
+    source_http_request: {
+      method: "GET",
+      url: seed?.source_http_request?.url || null,
+    },
+    request_identifier: seed?.request_identifier || seed?.parcel_id || "",
+  };
+}
+
 function normalizeUseCodeString(code) {
   if (code == null) return "";
   return String(code).replace(/\s+/g, " ").trim().toUpperCase();
@@ -3777,33 +3800,6 @@ function normalizeCompanyKey(o) {
   return name || null;
 }
 
-
-// const utilitiesPath = path.join("owners", "utilities_data.json");
-const layoutsPath = path.join("owners", "layout_data.json");
-// const structuresPath = path.join("owners", "structure_data.json");
-// const utilitiesData = null;
-// const layoutsData = null;
-// const structuresData = null;
-const seed = readJSON("property_seed.json");
-const appendSourceInfo = (seed) => ({
-  source_http_request: {
-    method: "GET",
-    url: seed?.source_http_request?.url || null,
-  },
-  request_identifier: seed?.request_identifier || seed?.parcel_id || "",
-  });
-
-// try {
-//   structuresData = readJSON(structuresPath);
-// } catch (e) {}
-// try {
-//   utilitiesData = readJSON(utilitiesPath);
-// } catch (e) {}
-try {
-  layoutsData = readJSON(layoutsPath);
-} catch (e) {}
-
-
 function createStructureFiles(seed,parcelIdentifier) {
   // Create structures for each building
   let structuresData = null;
@@ -3816,7 +3812,6 @@ function createStructureFiles(seed,parcelIdentifier) {
   } catch (e) {}
   
   if (structuresData && parcelIdentifier) {
-    console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
     structures.forEach((struct, idx) => {
@@ -4108,17 +4103,6 @@ function main() {
     ? readJSON(layoutsJsonPath)
     : {};
 
-  const appendSourceInfo = (seed) => ({
-  source_http_request: {
-    method: "GET",
-    url: seed?.source_http_request?.url || null,
-  },
-  request_identifier: seed?.request_identifier || seed?.parcel_id || "",
-  });
-
-
-
-
   // ---------- Parse Property ----------
   const parcelId = $("#divDetails_Pid").text().trim() || null;
 
@@ -4159,22 +4143,6 @@ function main() {
   // const cleanedUseCodeText = useText.replace(/-/g, '').replace(/\s+/g, ' ').trim();
   // console.log(cleanedUseCodeText)
   
-  const derivedPropertyType = mapPropertyTypeFromUseCode(useText || "");
-  const property_type =
-    derivedPropertyType ||
-    (bldgDetails.numberOfUnits && bldgDetails.numberOfUnits > 0
-      ? "Building"
-      : "LandParcel");
-  const derivedBuildStatus = mapBuildStatusFromUseCode(useText || "");
-  const build_status =
-    derivedBuildStatus ||
-    (property_type === "LandParcel" ? "VacantLand" : "Improved");
-  const ownership_estate_type =
-    mapOwnershipEstateTypeFromUseCode(useText || "") ||
-    (property_type === "Unit" ? "Condominium" : "FeeSimple");
-  const structure_form = mapStructureFormFromUseCode(useText || "");
-  const property_usage_type = mapPropertyUsageTypeFromUseCode(useText || "");
-
   // Acres
   const acresText = $("#divInfo_Description .cssDetails_Top_Row")
     .filter((i, el) => {
@@ -4206,7 +4174,33 @@ function main() {
   });
   bldgDetails.numberOfUnits = totalResidentialUnits + totalCommercialUnits;
 
+  const propertyTypeCandidate = mapPropertyTypeFromUseCode(useText || "");
+  const fallbackPropertyType =
+    bldgDetails.numberOfUnits && bldgDetails.numberOfUnits > 0
+      ? "Building"
+      : "LandParcel";
+  const property_type = PROPERTY_TYPE_VALUES.has(propertyTypeCandidate)
+    ? propertyTypeCandidate
+    : fallbackPropertyType;
 
+  const buildStatusCandidate = mapBuildStatusFromUseCode(useText || "");
+  const defaultBuildStatus =
+    property_type === "LandParcel" ? "VacantLand" : "Improved";
+  const build_status = BUILD_STATUS_VALUES.has(buildStatusCandidate)
+    ? buildStatusCandidate
+    : defaultBuildStatus;
+
+  const ownership_estate_type =
+    mapOwnershipEstateTypeFromUseCode(useText || "") ||
+    (property_type === "Unit" ? "Condominium" : "FeeSimple");
+
+  const structure_form =
+    mapStructureFormFromUseCode(useText || "") || null;
+
+  const propertyUsageCandidate =
+    mapPropertyUsageTypeFromUseCode(useText || "") || null;
+  const property_usage_type =
+    typeof propertyUsageCandidate === "string" ? propertyUsageCandidate : null;
 
   // Sub-areas: Total Base Area, Total Sub Area
 
@@ -4416,7 +4410,6 @@ function main() {
       ...appendSourceInfo(seed),
       document_type: "Title", //document type for deed.
       name: null,
-      original_url: null,
     };
     writeJSON(filePath, fileObj);
     writeRelationshipFile(
