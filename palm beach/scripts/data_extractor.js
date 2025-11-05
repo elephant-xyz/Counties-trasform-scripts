@@ -578,18 +578,9 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = {};
-
-  for (const field of ADDRESS_SCHEMA_FIELDS) {
-    rawAddress[field] = null;
-  }
-
-  rawAddress.unnormalized_address = unnormalizedValue;
-
-  for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-    const value = address[field];
-    rawAddress[field] = Number.isFinite(value) ? value : null;
-  }
+  const rawAddress = {
+    unnormalized_address: unnormalizedValue,
+  };
 
   const uppercaseFields = new Set([
     "country_code",
@@ -598,6 +589,13 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     "street_post_directional_text",
   ]);
 
+  for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+    const value = address[field];
+    if (Number.isFinite(value)) {
+      rawAddress[field] = value;
+    }
+  }
+
   for (const field of ADDRESS_SCHEMA_FIELDS) {
     if (
       field === "unnormalized_address" ||
@@ -605,15 +603,27 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     ) {
       continue;
     }
+
     const value = address[field];
     if (value == null) continue;
-    const stringValue =
-      typeof value === "string" ? value : String(value);
-    const trimmed = stringValue.trim();
-    if (!trimmed.length) continue;
-    rawAddress[field] = uppercaseFields.has(field)
-      ? trimmed.toUpperCase()
-      : trimmed;
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      rawAddress[field] = value;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) continue;
+      rawAddress[field] = uppercaseFields.has(field)
+        ? trimmed.toUpperCase()
+        : trimmed;
+      continue;
+    }
+
+    if (typeof value !== "object") {
+      rawAddress[field] = value;
+    }
   }
 
   return rawAddress;
@@ -1754,7 +1764,7 @@ function main() {
 
     const normalizedSnapshot = { ...address };
     const fallbackUnnormalizedValue =
-      composeUnnormalizedAddress(normalizedSnapshot) || unnormalizedAddressCandidate;
+      unnormalizedAddressCandidate || composeUnnormalizedAddress(normalizedSnapshot);
 
     // Ensure every property is either a trimmed string or null
     for (const key of Object.keys(address)) {
