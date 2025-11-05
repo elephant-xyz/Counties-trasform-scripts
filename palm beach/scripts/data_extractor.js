@@ -512,9 +512,22 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const RAW_ADDRESS_FIELDS = ADDRESS_SCHEMA_FIELDS.filter(
-  (field) => field !== "unnormalized_address",
-);
+const RAW_ADDRESS_CORE_FIELDS = ["latitude", "longitude"];
+
+const RAW_ADDRESS_OPTIONAL_FIELDS = [
+  "city_name",
+  "country_code",
+  "plus_four_postal_code",
+  "postal_code",
+  "state_code",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -578,11 +591,30 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  // Preserve null placeholders because the raw-address branch requires each field to be present,
-  // even when the value is unknown. Omitting them causes the schema's oneOf validation to fail.
-  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS, {
-    preserveNulls: true,
-  });
+  // Emit only the fields that belong to the unnormalized branch so the schema's oneOf matches.
+  const rawAddress = {};
+
+  for (const field of RAW_ADDRESS_CORE_FIELDS) {
+    const value = address[field];
+    rawAddress[field] = Number.isFinite(value) ? value : null;
+  }
+
+  for (const field of RAW_ADDRESS_OPTIONAL_FIELDS) {
+    if (RAW_ADDRESS_CORE_FIELDS.includes(field)) continue;
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+
+    const value = address[field];
+    if (value == null) continue;
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) continue;
+      rawAddress[field] = trimmed;
+      continue;
+    }
+
+    rawAddress[field] = value;
+  }
 
   return {
     ...rawAddress,
