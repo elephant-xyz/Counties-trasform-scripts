@@ -1776,16 +1776,13 @@ function main() {
       });
 
     let finalAddress = null;
-    let addressRepresentation = null;
 
     if (hasNormalizedAddress) {
-      addressRepresentation = "normalized";
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
       );
     } else if (hasUnnormalizedAddress) {
-      addressRepresentation = "unnormalized";
       const rawAddress = {
         unnormalized_address: trimmedUnnormalized,
       };
@@ -1814,7 +1811,6 @@ function main() {
     );
 
     if (!finalAddress && hasCoordinateOnly) {
-      addressRepresentation = "coordinate_only";
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
@@ -1828,18 +1824,10 @@ function main() {
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
 
-      const relationshipAddress = JSON.parse(JSON.stringify(finalAddress));
-      if (
-        addressRepresentation === "unnormalized" &&
-        trimmedUnnormalized &&
-        (!relationshipAddress.unnormalized_address ||
-          !relationshipAddress.unnormalized_address.trim())
-      ) {
-        relationshipAddress.unnormalized_address = trimmedUnnormalized;
-      }
+      const addressRef = ref("./address.json");
       writeJSON(factSheetRelationshipPath, [
         {
-          from: relationshipAddress,
+          from: addressRef,
           to: null,
         },
       ]);
