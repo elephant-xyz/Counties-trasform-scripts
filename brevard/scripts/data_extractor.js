@@ -3773,11 +3773,14 @@ function writeJSON(filePath, obj) {
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2));
 }
 
-function writeRelationshipFile(filePath, fromPath, toPath) {
+function writeRelationshipFile(filePath, fromPath, toPath, relationshipType) {
   const relationship = {
     from: { "/": fromPath },
     to: { "/": toPath },
   };
+  if (relationshipType) {
+    relationship.type = relationshipType;
+  }
   writeJSON(filePath, relationship);
 }
 
@@ -3976,7 +3979,6 @@ function createLayoutFiles(seed,parcelIdentifier){
   if (layoutsData && parcelIdentifier) {
     const key = `property_${parcelIdentifier}`;
     const layouts = layoutsData[key]?.layouts || [];
-    let factSheetRelationshipIndex = 0;
     layouts.forEach((layout, idx) => {
       const layoutFileName = `layout_${idx + 1}.json`;
       const out = {
@@ -4028,18 +4030,8 @@ function createLayoutFiles(seed,parcelIdentifier){
         path.join("data", `relationship_property_has_layout_${idx + 1}.json`),
         "./property.json",
         `./${layoutFileName}`,
+        "property_has_layout",
       );
-      if (layout.space_type === "Building") {
-        factSheetRelationshipIndex += 1;
-        writeRelationshipFile(
-          path.join(
-            "data",
-            `relationship_property_has_fact_sheet_${factSheetRelationshipIndex}.json`,
-          ),
-          "./property.json",
-          `./${layoutFileName}`,
-        );
-      }
     });
 
     // Create layout relationships
@@ -4346,6 +4338,7 @@ function main() {
       path.join(dataDir, "relationship_property_has_address.json"),
       propertyRef,
       "./address.json",
+      "property_has_address",
     );
   } else {
     // Still persist address shell to capture available metadata without invalid relationships.
@@ -4394,6 +4387,15 @@ function main() {
       sale.purchase_price_amount = purchasePrice;
     }
     writeJSON(path.join(dataDir, `sales_${salesFileIndex}.json`), sale);
+    writeRelationshipFile(
+      path.join(
+        dataDir,
+        `relationship_property_has_sales_history_${salesFileIndex}.json`,
+      ),
+      propertyRef,
+      `./sales_${salesFileIndex}.json`,
+      "property_has_sales_history",
+    );
 
     // Map deed code/title to deed_type
     // console.log(deedCode)
@@ -4426,6 +4428,7 @@ function main() {
       path.join(dataDir, `relationship_property_has_file_${salesFileIndex}.json`),
       propertyRef,
       `./${fileName}`,
+      "property_has_file",
     );
 
     const relSalesDeed = {
@@ -4640,6 +4643,12 @@ function main() {
           yearly_tax_amount: null,
         };
         writeJSON(path.join(dataDir, `tax_${yr}.json`), tax);
+        writeRelationshipFile(
+          path.join(dataDir, `relationship_property_has_tax_${yr}.json`),
+          propertyRef,
+          `./tax_${yr}.json`,
+          "property_has_tax",
+        );
       }
     });
   }
@@ -4683,6 +4692,7 @@ function main() {
     path.join(dataDir, "relationship_property_has_lot.json"),
     propertyRef,
     "./lot.json",
+    "property_has_lot",
   );
 }
 
