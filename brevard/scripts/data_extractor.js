@@ -2776,96 +2776,103 @@ const propertyTypeMapping=[
 
 const extraFeaturesCodeListMapping=[]
 
-function deriveUseCodeKeys(raw) {
-  if (raw == null) return [];
-  const text = String(raw).trim();
-  if (!text) return [];
-  const normalized = text.replace(/[-\s:()]+/g, "").toUpperCase();
-  const keys = [];
-  if (normalized) keys.push(normalized);
-  const leadingDigits = text.match(/^(\d{3,6})/);
-  if (leadingDigits && leadingDigits[1]) {
-    keys.push(leadingDigits[1]);
-  }
-  return [...new Set(keys)];
-}
-
-function buildUseCodeLookup(fieldName) {
-  return propertyTypeMapping.reduce((lookup, entry) => {
-    if (!entry || !entry.property_usecode) return lookup;
-    const value = entry[fieldName];
-    deriveUseCodeKeys(entry.property_usecode).forEach((key) => {
-      if (key) lookup[key] = value ?? null;
-    });
+const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) {
     return lookup;
-  }, {});
-}
-
-function lookupUseCodeValue(lookup, raw) {
-  if (!raw && raw !== 0) return null;
-  for (const key of deriveUseCodeKeys(raw)) {
-    if (key && Object.prototype.hasOwnProperty.call(lookup, key)) {
-      return lookup[key];
+  }
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) {
+    return lookup;
     }
+  lookup[normalizedUseCode] = entry.property_type ?? null;
+  return lookup;
+}, {});
+
+
+const ownershipEstateTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.ownership_estate_type ?? null;
+  return lookup;
+}, {});
+
+const buildStatusByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.build_status ?? null;
+  return lookup;
+}, {});
+
+const structureFormByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.structure_form ?? null;
+  return lookup;
+}, {});
+
+const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.property_usage_type ?? null;
+  return lookup;
+}, {});
+
+function mapPropertyTypeFromUseCode(code) {
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  // console.log("1",normalizedInput)
+  // console.log(propertyTypeByUseCode)
+  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+    return propertyTypeByUseCode[normalizedInput];
   }
   return null;
 }
 
-const propertyTypeByUseCode = buildUseCodeLookup("property_type");
-const ownershipEstateTypeByUseCode = buildUseCodeLookup("ownership_estate_type");
-const buildStatusByUseCode = buildUseCodeLookup("build_status");
-const structureFormByUseCode = buildUseCodeLookup("structure_form");
-const propertyUsageTypeByUseCode = buildUseCodeLookup("property_usage_type");
 
-function mapPropertyTypeFromUseCode(code) {
-  const mapped = lookupUseCodeValue(propertyTypeByUseCode, code);
-  if (mapped) return mapped;
-  return inferPropertyTypeFromDescription(code);
-}
 
 function mapOwnershipEstateTypeFromUseCode(code) {
-  return lookupUseCodeValue(ownershipEstateTypeByUseCode, code);
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
+    return ownershipEstateTypeByUseCode[normalizedInput];
+  }
+  return null;
 }
 
 function mapBuildStatusFromUseCode(code) {
-  const mapped = lookupUseCodeValue(buildStatusByUseCode, code);
-  if (mapped) return mapped;
-  return inferBuildStatusFromDescription(code);
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
+    return buildStatusByUseCode[normalizedInput];
+  }
+  return null;
 }
 
 function mapStructureFormFromUseCode(code) {
-  return lookupUseCodeValue(structureFormByUseCode, code);
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
+    return structureFormByUseCode[normalizedInput];
+  }
+  return null;
 }
 
 function mapPropertyUsageTypeFromUseCode(code) {
-  return lookupUseCodeValue(propertyUsageTypeByUseCode, code);
-}
-
-function inferPropertyTypeFromDescription(raw) {
-  const text = String(raw || "").toUpperCase();
-  if (!text) return "Building";
-  if (/MANUFACTURED|MOBILE/.test(text)) return "ManufacturedHome";
-  if (/CONDO|CONDOMINIUM|UNIT|CO-OP|COOP|APT|APARTMENT/.test(text)) return "Unit";
-  if (
-    /(LAND|ACRE|LOT|TRACT|ORCHARD|PASTURE|FIELD|NURSERY|TIMBER|FARM)/.test(text) &&
-    !/(BUILD|STRUCT|UNIT|IMPROV)/.test(text)
-  ) {
-    return "LandParcel";
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
+    return propertyUsageTypeByUseCode[normalizedInput];
   }
-  return "Building";
-}
-
-function inferBuildStatusFromDescription(raw) {
-  const text = String(raw || "").toUpperCase();
-  if (!text) return "Improved";
-  if (/UNDER\s+CONSTR|CONSTRUCTION/.test(text)) return "UnderConstruction";
-  const referencesLand =
-    /(VACANT|LAND|ACRE|LOT|TRACT|ORCHARD|PASTURE|FIELD|NURSERY|TIMBER|FARM)/.test(text);
-  const mentionsImprovements = /(IMPROV|WITH\s+IMPROV|WITH\s+BLDG|WITH\s+BUILDING)/.test(text);
-  if (referencesLand && !mentionsImprovements) {
-    return "VacantLand";
-  }
-  return "Improved";
+  return null;
 }
 
 
@@ -3566,6 +3573,7 @@ function createStructureFiles(seed,parcelIdentifier) {
   } catch (e) {}
   
   if (structuresData && parcelIdentifier) {
+    console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
     structures.forEach((struct, idx) => {
@@ -3891,10 +3899,12 @@ function main() {
   // console.log(cleanedUseCodeText)
   
   const property_type = mapPropertyTypeFromUseCode(useText || "");
+  // console.log("property_type>>",property_type);
   const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(useText || "");
   const build_status= mapBuildStatusFromUseCode(useText || "");
   const structure_form = mapStructureFormFromUseCode(useText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(useText || "");
+  console.log(useText,property_type,ownership_estate_type,build_status,structure_form,property_usage_type)
 
   // Acres
   const acresText = $("#divInfo_Description .cssDetails_Top_Row")
@@ -4033,6 +4043,8 @@ function main() {
   
   // Count total siteAddr
   const totalSiteAddr = $("#divDetails_Top_SiteAddressContainer .cssDetails_Top_SiteAddress").length;
+  console.log("Total siteAddr count:", totalSiteAddr);
+  
   if (totalSiteAddr > 1) {
     throw new Error(`Multiple site addresses found: ${totalSiteAddr}`);
   }
