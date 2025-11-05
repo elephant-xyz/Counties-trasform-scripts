@@ -519,20 +519,10 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
   "city_name",
   "state_code",
   "postal_code",
   "country_code",
-  "plus_four_postal_code",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
 ];
 
 function hasCompleteNormalizedAddress(address) {
@@ -1182,14 +1172,6 @@ function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
-  const factSheetRelationshipPath = path.join(
-    dataDir,
-    "relationship_address_has_fact_sheet.json",
-  );
-  if (fs.existsSync(factSheetRelationshipPath)) {
-    fs.unlinkSync(factSheetRelationshipPath);
-  }
-
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
@@ -1784,6 +1766,10 @@ function main() {
       dataDir,
       "relationship_property_has_address.json",
     );
+    const factSheetRelationshipPath = path.join(
+      dataDir,
+      "relationship_address_has_fact_sheet.json",
+    );
 
     for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -1808,7 +1794,6 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { preserveNulls: true },
       );
       finalAddress = normalizedAddress;
       factSheetPayload = { ...normalizedAddress };
@@ -1816,31 +1801,31 @@ function main() {
       const rawAddress = collectAddressFields(
         address,
         RAW_ADDRESS_FIELDS,
-        { preserveNulls: true },
       );
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-      // Without normalized components the fact sheet relationship violates the address schema's oneOf.
-      factSheetPayload = null;
+      factSheetPayload = { ...rawAddress };
     } else if (hasNormalizedCoordinates) {
-      finalAddress = collectAddressFields(
+      const coordinateAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_REQUIRED_NUMBERS,
-        { preserveNulls: true },
       );
+      finalAddress = coordinateAddress;
+      factSheetPayload = { ...coordinateAddress };
     }
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
-      if (fs.existsSync(addressRelationshipPath)) {
-        fs.unlinkSync(addressRelationshipPath);
-      }
+      const propertyToAddress = {
+        from: ref("./property.json"),
+        to: ref("./address.json"),
+      };
+      writeJSON(addressRelationshipPath, propertyToAddress);
 
-      if (factSheetPayload) {
-        const factSheetAddress = JSON.parse(JSON.stringify(factSheetPayload));
+      if (factSheetPayload && Object.keys(factSheetPayload).length) {
         writeJSON(factSheetRelationshipPath, [
           {
-            from: factSheetAddress,
+            from: factSheetPayload,
             to: null,
           },
         ]);
