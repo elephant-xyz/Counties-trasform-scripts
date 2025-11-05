@@ -2854,14 +2854,210 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
   return lookup;
 }, {});
 
+function normalizeUseCodeString(code) {
+  if (code == null) return "";
+  return String(code).replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+const USE_CODE_PATTERNS = {
+  vacant: /\b(VACANT|UNIMPROVED|UNDEVELOP|RAW\s*LAND)\b/,
+  underConstruction: /UNDER\s*(CONSTR|CONST|CONSTRUCTION)/,
+  manufactured: /\b(MANUFACT(?:URED)?|MOBILE\s*HOME|MH\b|TRAILER)\b/,
+  mobileHomePark: /(MOBILE\s*HOME\s*(RENTAL\s*)?LOT|TRAILER\s*PARK|MOBILE\s*HOME\s*PARK)/,
+  condo: /\b(CONDO(MINIUM)?|CONDOM)\b/,
+  cooperative: /\b(CO-?OP|COOP|COOPERATIVE)\b/,
+  timeshare: /\bTIME\s*SHARE\b/,
+  townhouse: /\b(TOWN\s*HOUSE|TOWNHOUSE|TWNH|TWH)\b/,
+  duplex: /\b(DUPLEX|2\s*UNIT|TWO\s*UNIT|HALF[-\s]*DUPLEX)\b/,
+  triplex: /\b(TRIPLEX|3\s*UNIT|THREE\s*UNIT)\b/,
+  quadplex: /\b(QUAD(?:RAPLEX)?|4\s*UNIT|FOUR\s*(PLEX|UNIT))\b/,
+  multiFamily: /\b(APARTMENT|MULTI\s*FAM|MULTI-FAM|MFR|APT|APTS|LOW\s*RISE|HIGH\s*RISE|GARDEN\s*APT)\b/,
+  singleFamily: /\b(SINGLE\s*FAMILY|SFR|RESIDENCE)\b/,
+  modular: /\bMODULAR\b/,
+  retirement: /\b(RETIREMENT|ASSISTED\s*LIV|NURSING\s*HOME|CONVALESCENT)\b/,
+  agricultural: /\b(AGRIC|FARM|PASTURE|CROP|FIELD|RANCH)\b/,
+  timber: /\bTIMBER\b/,
+  grazing: /\bGRAZING|RANGE(LAND)?|PASTURE\b/,
+  orchard: /\b(CITRUS|GROVE|ORCHARD)\b/,
+  poultry: /\bPOULTRY\b/,
+  nursery: /\bNURSERY|GREEN\s*HOUSE|GREENHOUSE\b/,
+  livestock: /\b(LIVESTOCK|DAIRY|FEED\s*LOT|RANCH)\b/,
+  aquaculture: /\b(AQUA|FISH\s*FARM|MARICULTURE)\b/,
+  vineyard: /\b(VINEYARD|WINERY)\b/,
+  commercial: /\b(COMM(ERCIAL)?|RETAIL|STORE|SHOP|STRIP\s*CENTER|SHOPPING\s*CENTER|SUPERMARKET|HOTEL|MOTEL|RESTAURANT|GAS\s*STATION|SERVICE\s*STATION|AUTO\s*SALES|BANK|OFFICE|CLUB|THEATER|ARENA)\b/,
+  industrial: /\b(INDUSTR|MANUFACT|PLANT|FACTORY|WAREHOUSE|PACKING\s*PLANT|LUMBER|MILL|MINE|PROCESSING)\b/,
+  utility: /\b(UTILITY|POWER\s*PLANT|SUBSTATION|ELECTRIC|WATER\s*TREATMENT|SEWAGE|TELECOM|DATA\s*CENTER)\b/,
+  church: /\b(CHURCH|RELIG|MINISTR|TEMPLE|MOSQUE|SYNAGOGUE)\b/,
+  school: /\bSCHOOL\b/,
+  hospital: /\b(HOSPITAL|MEDICAL\s*CENTER|CLINIC)\b/,
+  government: /\b(GOVERNMENT|GOVT|STATE|FEDERAL|COUNTY|MUNICIPAL|CITY\s*HALL|COURT(HOUSE)?)\b/,
+  mortuary: /\b(MORTUARY|CEMETERY|FUNERAL)\b/,
+  forestPark: /\b(FOREST|PARK|RECREATION|REC\s*AREA)\b/,
+  golf: /\bGOLF\s*COURSE\b/,
+};
+
+function extractUnitCountRange(text) {
+  const rangeMatch = text.match(/(\d+)\s*(?:TO|-)?\s*(\d+)?\s*UNIT/);
+  if (!rangeMatch) return null;
+  const first = parseInt(rangeMatch[1], 10);
+  const second = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : first;
+  if (Number.isNaN(first)) return null;
+  const maxVal = Number.isNaN(second) ? first : Math.max(first, second);
+  return { min: Math.min(first, second || first), max: maxVal };
+}
+
+function computeFallbackAttributes(code) {
+  const normalized = normalizeUseCodeString(code);
+  if (!normalized) return {};
+
+  const attr = {};
+  const unitRange = extractUnitCountRange(normalized);
+  const isVacant = USE_CODE_PATTERNS.vacant.test(normalized);
+  const isUnderConstruction = USE_CODE_PATTERNS.underConstruction.test(normalized);
+  const isManufactured = USE_CODE_PATTERNS.manufactured.test(normalized);
+  const isMobileHomePark = USE_CODE_PATTERNS.mobileHomePark.test(normalized);
+  const isCondo = USE_CODE_PATTERNS.condo.test(normalized);
+  const isCoop = USE_CODE_PATTERNS.cooperative.test(normalized);
+  const isTimeshare = USE_CODE_PATTERNS.timeshare.test(normalized);
+  const isTownhouse = USE_CODE_PATTERNS.townhouse.test(normalized);
+  const isDuplex = USE_CODE_PATTERNS.duplex.test(normalized);
+  const isTriplex = USE_CODE_PATTERNS.triplex.test(normalized);
+  const isQuadplex = USE_CODE_PATTERNS.quadplex.test(normalized);
+  const isMultiFamily = USE_CODE_PATTERNS.multiFamily.test(normalized);
+  const isSingleFamily = USE_CODE_PATTERNS.singleFamily.test(normalized);
+  const isModular = USE_CODE_PATTERNS.modular.test(normalized);
+
+  if (isManufactured) {
+    attr.property_type = "ManufacturedHome";
+  } else if (isCondo || isCoop || (isMultiFamily && /\bUNIT\b/.test(normalized))) {
+    attr.property_type = "Unit";
+  } else if (isVacant) {
+    attr.property_type = "LandParcel";
+  } else {
+    attr.property_type = "Building";
+  }
+
+  if (isUnderConstruction) {
+    attr.build_status = "UnderConstruction";
+  } else if (isVacant && attr.property_type === "LandParcel") {
+    attr.build_status = "VacantLand";
+  } else {
+    attr.build_status = "Improved";
+  }
+
+  if (isCondo) {
+    attr.ownership_estate_type = "Condominium";
+  } else if (isCoop) {
+    attr.ownership_estate_type = "Cooperative";
+  } else if (isTimeshare) {
+    attr.ownership_estate_type = "Timeshare";
+  } else {
+    attr.ownership_estate_type = "FeeSimple";
+  }
+
+  if (isManufactured) {
+    if (/\bSINGLE\b/.test(normalized) && /\bWIDE\b/.test(normalized)) {
+      attr.structure_form = "ManufacturedHousingSingleWide";
+    } else if (/\bDOUBLE\b|\bTRIPLE\b|\bMULTI\b/.test(normalized)) {
+      attr.structure_form = "ManufacturedHousingMultiWide";
+    } else if (isMobileHomePark) {
+      attr.structure_form = "ManufacturedHomeInPark";
+    } else if (isModular) {
+      attr.structure_form = "Modular";
+    } else {
+      attr.structure_form = "ManufacturedHousing";
+    }
+  } else if (isTownhouse) {
+    attr.structure_form = "TownhouseRowhouse";
+  } else if (isDuplex) {
+    attr.structure_form = "Duplex";
+  } else if (isTriplex) {
+    attr.structure_form = "Triplex";
+  } else if (isQuadplex) {
+    attr.structure_form = "Quadplex";
+  } else if (isMultiFamily) {
+    if (unitRange) {
+      if (unitRange.max >= 10) {
+        attr.structure_form = "MultiFamilyMoreThan10";
+      } else if (unitRange.max >= 5) {
+        attr.structure_form = "MultiFamilyLessThan10";
+      }
+    }
+    if (!attr.structure_form) {
+      attr.structure_form =
+        /HIGH\s*RISE|TOWER|GARDEN|50\s*UNIT|APARTMENT/.test(normalized)
+          ? "MultiFamilyMoreThan10"
+          : "MultiFamilyLessThan10";
+    }
+  } else if (isSingleFamily) {
+    attr.structure_form = "SingleFamilyDetached";
+  } else if (isModular) {
+    attr.structure_form = "Modular";
+  }
+
+  if (USE_CODE_PATTERNS.mobileHomePark.test(normalized)) {
+    attr.property_usage_type = "MobileHomePark";
+  } else if (USE_CODE_PATTERNS.timber.test(normalized)) {
+    attr.property_usage_type = "TimberLand";
+  } else if (USE_CODE_PATTERNS.grazing.test(normalized)) {
+    attr.property_usage_type = "GrazingLand";
+  } else if (USE_CODE_PATTERNS.orchard.test(normalized)) {
+    attr.property_usage_type = "OrchardGroves";
+  } else if (USE_CODE_PATTERNS.poultry.test(normalized)) {
+    attr.property_usage_type = "Poultry";
+  } else if (USE_CODE_PATTERNS.nursery.test(normalized)) {
+    attr.property_usage_type = "NurseryGreenhouse";
+  } else if (USE_CODE_PATTERNS.livestock.test(normalized)) {
+    attr.property_usage_type = "LivestockFacility";
+  } else if (USE_CODE_PATTERNS.aquaculture.test(normalized)) {
+    attr.property_usage_type = "Aquaculture";
+  } else if (USE_CODE_PATTERNS.vineyard.test(normalized)) {
+    attr.property_usage_type = "VineyardWinery";
+  } else if (USE_CODE_PATTERNS.agricultural.test(normalized)) {
+    attr.property_usage_type = "Agricultural";
+  } else if (USE_CODE_PATTERNS.commercial.test(normalized)) {
+    attr.property_usage_type = "Commercial";
+  } else if (USE_CODE_PATTERNS.industrial.test(normalized)) {
+    attr.property_usage_type = "Industrial";
+  } else if (USE_CODE_PATTERNS.utility.test(normalized)) {
+    attr.property_usage_type = "Utility";
+  } else if (USE_CODE_PATTERNS.church.test(normalized)) {
+    attr.property_usage_type = "Church";
+  } else if (USE_CODE_PATTERNS.school.test(normalized)) {
+    attr.property_usage_type = normalized.includes("PRIVATE")
+      ? "PrivateSchool"
+      : "PublicSchool";
+  } else if (USE_CODE_PATTERNS.hospital.test(normalized)) {
+    attr.property_usage_type = "PrivateHospital";
+  } else if (USE_CODE_PATTERNS.retirement.test(normalized)) {
+    attr.property_usage_type = "Retirement";
+  } else if (USE_CODE_PATTERNS.government.test(normalized)) {
+    attr.property_usage_type = "GovernmentProperty";
+  } else if (USE_CODE_PATTERNS.mortuary.test(normalized)) {
+    attr.property_usage_type = "MortuaryCemetery";
+  } else if (USE_CODE_PATTERNS.forestPark.test(normalized)) {
+    attr.property_usage_type = "ForestParkRecreation";
+  } else if (USE_CODE_PATTERNS.golf.test(normalized)) {
+    attr.property_usage_type = "GolfCourse";
+  } else if (USE_CODE_PATTERNS.singleFamily.test(normalized) || isMultiFamily || isTownhouse || isDuplex || isTriplex || isQuadplex || isCondo || isCoop || isManufactured) {
+    attr.property_usage_type = "Residential";
+  } else if (isVacant && attr.property_type === "LandParcel") {
+    attr.property_usage_type = "Unknown";
+  }
+
+  return attr;
+}
+
 function mapPropertyTypeFromUseCode(code) {
   const keys = deriveUseCodeKeys(code);
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, key)) {
-      return propertyTypeByUseCode[key];
+      const mapped = propertyTypeByUseCode[key];
+      if (mapped) return mapped;
     }
   }
-  return null;
+  const fallback = computeFallbackAttributes(code);
+  return fallback.property_type ?? null;
 }
 
 
@@ -2870,40 +3066,48 @@ function mapOwnershipEstateTypeFromUseCode(code) {
   const keys = deriveUseCodeKeys(code);
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, key)) {
-      return ownershipEstateTypeByUseCode[key];
+      const mapped = ownershipEstateTypeByUseCode[key];
+      if (mapped) return mapped;
     }
   }
-  return null;
+  const fallback = computeFallbackAttributes(code);
+  return fallback.ownership_estate_type ?? null;
 }
 
 function mapBuildStatusFromUseCode(code) {
   const keys = deriveUseCodeKeys(code);
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, key)) {
-      return buildStatusByUseCode[key];
+      const mapped = buildStatusByUseCode[key];
+      if (mapped) return mapped;
     }
   }
-  return null;
+  const fallback = computeFallbackAttributes(code);
+  return fallback.build_status ?? null;
 }
 
 function mapStructureFormFromUseCode(code) {
   const keys = deriveUseCodeKeys(code);
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, key)) {
-      return structureFormByUseCode[key];
+      const mapped = structureFormByUseCode[key];
+      if (mapped) return mapped;
     }
   }
-  return null;
+  const fallback = computeFallbackAttributes(code);
+  return fallback.structure_form ?? null;
 }
 
 function mapPropertyUsageTypeFromUseCode(code) {
   const keys = deriveUseCodeKeys(code);
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, key)) {
-      return propertyUsageTypeByUseCode[key];
+      const mapped = propertyUsageTypeByUseCode[key];
+      if (mapped) return mapped;
     }
   }
-  return null;
+  const fallback = computeFallbackAttributes(code);
+  return fallback.property_usage_type ?? null;
 }
 
 
@@ -3929,13 +4133,21 @@ function main() {
   // const cleanedUseCodeText = useText.replace(/-/g, '').replace(/\s+/g, ' ').trim();
   // console.log(cleanedUseCodeText)
   
-  const property_type = mapPropertyTypeFromUseCode(useText || "");
-  // console.log("property_type>>",property_type);
-  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(useText || "");
-  const build_status= mapBuildStatusFromUseCode(useText || "");
+  const derivedPropertyType = mapPropertyTypeFromUseCode(useText || "");
+  const property_type =
+    derivedPropertyType ||
+    (bldgDetails.numberOfUnits && bldgDetails.numberOfUnits > 0
+      ? "Building"
+      : "LandParcel");
+  const derivedBuildStatus = mapBuildStatusFromUseCode(useText || "");
+  const build_status =
+    derivedBuildStatus ||
+    (property_type === "LandParcel" ? "VacantLand" : "Improved");
+  const ownership_estate_type =
+    mapOwnershipEstateTypeFromUseCode(useText || "") ||
+    (property_type === "Unit" ? "Condominium" : "FeeSimple");
   const structure_form = mapStructureFormFromUseCode(useText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(useText || "");
-  console.log(useText,property_type,ownership_estate_type,build_status,structure_form,property_usage_type)
 
   // Acres
   const acresText = $("#divInfo_Description .cssDetails_Top_Row")
