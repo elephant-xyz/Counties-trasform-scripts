@@ -530,13 +530,7 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const RAW_ADDRESS_FIELDS = [
   "latitude",
   "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
   "county_name",
-  "municipality_name",
   "township",
   "range",
   "section",
@@ -559,18 +553,6 @@ function collectAddressFields(source, fields) {
       continue;
     }
     result[field] = value;
-  }
-  return result;
-}
-
-function collectAddressFieldsAllowNulls(source, fields) {
-  const result = {};
-  for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(source, field)) {
-      result[field] = source[field];
-    } else {
-      result[field] = null;
-    }
   }
   return result;
 }
@@ -1785,13 +1767,13 @@ function main() {
     let addressFlavor = null;
 
     if (shouldUseNormalized) {
-      finalAddress = collectAddressFieldsAllowNulls(
+      finalAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
       );
       addressFlavor = "normalized";
     } else if (hasUnnormalizedAddress) {
-      const rawAddress = collectAddressFieldsAllowNulls(address, RAW_ADDRESS_FIELDS);
+      const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS);
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
       addressFlavor = "raw";
