@@ -1769,7 +1769,7 @@ function main() {
     let finalAddress = null;
     let addressFlavor = null;
 
-    if (hasNormalizedCoreStrings && hasNormalizedCoordinates) {
+    if (hasNormalizedCoreStrings) {
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
@@ -1790,11 +1790,17 @@ function main() {
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
-      if (fs.existsSync(addressRelationshipPath)) {
+      const addressRef = ref("./address.json");
+      const propertyRef = ref("./property.json");
+      if (addressRef && propertyRef) {
+        writeJSON(addressRelationshipPath, {
+          from: propertyRef,
+          to: addressRef,
+        });
+      } else if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
       }
 
-      const addressRef = ref("./address.json");
       if (addressFlavor === "normalized") {
         writeJSON(factSheetRelationshipPath, [
           {
@@ -1809,6 +1815,9 @@ function main() {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
+      }
+      if (fs.existsSync(addressRelationshipPath)) {
+        fs.unlinkSync(addressRelationshipPath);
       }
       if (fs.existsSync(factSheetRelationshipPath)) {
         fs.unlinkSync(factSheetRelationshipPath);
