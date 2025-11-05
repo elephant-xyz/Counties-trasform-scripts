@@ -1798,7 +1798,8 @@ function main() {
       );
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-      factSheetPayload = { ...rawAddress };
+      // Without normalized components the fact sheet relationship violates the address schema's oneOf.
+      factSheetPayload = null;
     } else if (hasNormalizedCoordinates) {
       finalAddress = collectAddressFields(
         address,
