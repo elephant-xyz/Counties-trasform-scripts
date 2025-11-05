@@ -1774,7 +1774,7 @@ function main() {
         NORMALIZED_ADDRESS_FIELDS,
       );
     } else if (hasUnnormalizedAddress) {
-      const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS);
+      const rawAddress = collectAddressFieldsAllowNulls(address, RAW_ADDRESS_FIELDS);
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
     } else if (hasNormalizedCoreStrings) {
