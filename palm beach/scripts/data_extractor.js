@@ -17,13 +17,6 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
-function ref(relativePath) {
-  if (typeof relativePath !== "string") return null;
-  const trimmed = relativePath.trim();
-  if (!trimmed) return null;
-  return { "/": trimmed };
-}
-
 function extractBetween(html, regex, idx = 1) {
   const m = html.match(regex);
   return m ? (m[idx] || "").trim() : null;
@@ -585,8 +578,10 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  // Only keep populated fields so downstream oneOf validation can select the raw-address branch.
-  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS);
+  // Preserve explicit nulls so the oneOf branch that expects these keys is satisfied.
+  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS, {
+    preserveNulls: true,
+  });
 
   return {
     ...rawAddress,
@@ -1844,8 +1839,8 @@ function main() {
 
       if (fs.existsSync(propertyFilePath)) {
         writeJSON(addressRelationshipPath, {
-          from: ref("./property.json"),
-          to: ref("./address.json"),
+          from: null,
+          to: null,
         });
       } else if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
@@ -1853,8 +1848,8 @@ function main() {
 
       if (fs.existsSync(factSheetFilePath)) {
         writeJSON(factSheetRelationshipPath, {
-          from: ref("./address.json"),
-          to: ref("./fact_sheet.json"),
+          from: null,
+          to: null,
         });
       } else if (fs.existsSync(factSheetRelationshipPath)) {
         fs.unlinkSync(factSheetRelationshipPath);
@@ -2522,8 +2517,8 @@ function main() {
     const fIndex = fileIndexBySale.get(sIndex);
     if (!fIndex) continue;
     const rel = {
-      from: ref(`./deed_${dIndex}.json`),
-      to: ref(`./file_${fIndex}.json`),
+      from: null,
+      to: null,
     };
     writeJSON(path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`), rel);
     rdfIdx++;
@@ -2533,8 +2528,8 @@ function main() {
   let relSDIdx = 1;
   for (const [sIndex, dIndex] of deedMap.entries()) {
     const rel = {
-      from: ref(`./sales_${sIndex}.json`),
-      to: ref(`./deed_${dIndex}.json`),
+      from: null,
+      to: null,
     };
     writeJSON(
       path.join(dataDir, `relationship_sales_deed_${relSDIdx}.json`),
@@ -2672,8 +2667,8 @@ function main() {
 
               // Create relationship to sales record
               const rel = {
-                to: ref(`./company_${companyIdx}.json`),
-                from: ref(`./sales_${i + 1}.json`),
+                to: null,
+                from: null,
               };
               writeJSON(
                 path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
@@ -2705,8 +2700,8 @@ function main() {
 
               // Create relationship to sales record
               const rel = {
-                to: ref(`./person_${personIdx}.json`),
-                from: ref(`./sales_${i + 1}.json`),
+                to: null,
+                from: null,
               };
               writeJSON(
                 path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
@@ -2743,8 +2738,8 @@ function main() {
 
             // Create relationship from property to company
             const propRel = {
-              to: ref(`./company_${companyIdx}.json`),
-              from: ref(`./property.json`),
+              to: null,
+              from: null,
             };
             writeJSON(
               path.join(
@@ -2778,8 +2773,8 @@ function main() {
 
             // Create relationship from property to person
             const propRel = {
-              to: ref(`./person_${personIdx}.json`),
-              from: ref(`./property.json`),
+              to: null,
+              from: null,
             };
             writeJSON(
               path.join(
