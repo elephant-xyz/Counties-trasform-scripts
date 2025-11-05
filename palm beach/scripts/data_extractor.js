@@ -81,6 +81,9 @@ function cleanStreetCandidate(value) {
   if (!normalized) return null;
 
   let candidate = normalized;
+  if (/\bP\.?\s*O\.?\s*BOX\b/i.test(candidate) || /\bPOST OFFICE BOX\b/i.test(candidate)) {
+    return null;
+  }
   if (candidate.includes(",")) {
     const firstSegment = candidate.split(",")[0].trim();
     if (firstSegment) candidate = firstSegment;
@@ -516,18 +519,6 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
-
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -590,36 +581,13 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = {
-    unnormalized_address: unnormalizedValue,
-  };
+  const rawAddress = collectAddressFields(
+    address || {},
+    ADDRESS_SCHEMA_FIELDS.filter((field) => field !== "unnormalized_address"),
+    { preserveNulls: true },
+  );
 
-  if (!address || typeof address !== "object") {
-    return rawAddress;
-  }
-
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    const value = address[field];
-    if (value == null) continue;
-
-    if (typeof value === "number") {
-      if (Number.isFinite(value)) {
-        rawAddress[field] = value;
-      }
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.length) {
-        rawAddress[field] = trimmed;
-      }
-      continue;
-    }
-
-    rawAddress[field] = value;
-  }
+  rawAddress.unnormalized_address = unnormalizedValue;
 
   return rawAddress;
 }
@@ -1247,12 +1215,13 @@ function main() {
     safeNullIfEmpty(modelDetail && modelDetail.Location) ||
     null;
   let municipality =
+    safeNullIfEmpty(modelDetail && modelDetail.Municipality) ||
     safeNullIfEmpty(
       extractBetween(
         inputHTML,
         /"AddressLine3":"([\w\s]+?)\s[A-Z]{2}\s\d{5}/i,
       ),
-    ) || safeNullIfEmpty(modelDetail && modelDetail.Municipality);
+    );
   const pcnHyphen = safeNullIfEmpty(
     extractBetween(
       inputHTML,
@@ -1553,12 +1522,12 @@ function main() {
 
   const unnormalizedAddressCandidate = (() => {
     const prioritized = [
+      fullAddrInput,
       locationFullAddressCandidates.find((candidate) =>
         hasMeaningfulFullAddress(candidate),
       ),
       combinedModelAddress,
       siteLocationLine,
-      fullAddrInput,
       fullAddr,
     ];
     for (const candidate of prioritized) {
@@ -1601,18 +1570,28 @@ function main() {
     unAddr && unAddr.county_jurisdiction ? unAddr.county_jurisdiction : null,
   );
   const formattedCountyName = countyName ? titleCaseCounty(countyName) : null;
+  const countyInferredStateCode = formattedCountyName ? "FL" : null; // Palm Beach data always targets Florida parcels
   const normalizedMunicipality = municipality
     ? municipality.replace(/\s+/g, " ").trim()
     : null;
   const normalizedCity = (() => {
-    if (resolvedCity) return resolvedCity.toUpperCase();
     if (normalizedMunicipality) {
-      if (!/\d/.test(normalizedMunicipality)) {
-        return normalizedMunicipality.toUpperCase();
+      const municipalityUpper = normalizedMunicipality.toUpperCase();
+      if (!/\d/.test(municipalityUpper)) {
+        return municipalityUpper;
       }
       const parsedMunicipality = parseCityStatePostal(normalizedMunicipality);
       if (parsedMunicipality.city) {
-        return parsedMunicipality.city.toUpperCase();
+        const parsedUpper = parsedMunicipality.city.toUpperCase();
+        if (!/\d/.test(parsedUpper)) {
+          return parsedUpper;
+        }
+      }
+    }
+    if (resolvedCity) {
+      const resolvedUpper = resolvedCity.toUpperCase();
+      if (!/\d/.test(resolvedUpper)) {
+        return resolvedUpper;
       }
     }
     return null;
@@ -1646,6 +1625,13 @@ function main() {
     const normalized = normalizeWhitespace(candidate);
     if (!normalized) continue;
     const key = normalized.toUpperCase();
+    if (
+      (normalizedMunicipality &&
+        key === normalizedMunicipality.toUpperCase()) ||
+      (normalizedCity && key === normalizedCity)
+    ) {
+      continue;
+    }
     if (seenStreet.has(key)) continue;
     seenStreet.add(key);
     streetCandidates.push(normalized);
@@ -1671,11 +1657,14 @@ function main() {
       return firstSegment || locationLine;
     })();
     const parsedAddress = parseLocationAddress(locationLineForParsing);
-    const inferredStateCode =
-      resolvedState ||
-      (formattedCountyName && formattedCountyName.toUpperCase().includes("PALM BEACH")
-        ? "FL"
-        : null);
+    const resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
+    const inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
+    const sanitizedPostalCode = sanitizePostalCode(postalCode);
+    const sanitizedPlus4 = sanitizePlus4(plus4);
+    const stateMismatch =
+      countyInferredStateCode &&
+      resolvedStateUpper &&
+      resolvedStateUpper !== countyInferredStateCode;
 
     const address = ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
       acc[key] = null;
@@ -1689,9 +1678,9 @@ function main() {
     address.county_name = safeNullIfEmpty(formattedCountyName);
     address.latitude = parseCoordinate(unAddr && unAddr.latitude);
     address.longitude = parseCoordinate(unAddr && unAddr.longitude);
-    address.plus_four_postal_code = sanitizePlus4(plus4);
-    address.postal_code = sanitizePostalCode(postalCode);
-    address.state_code = inferredStateCode ? inferredStateCode.toUpperCase() : null;
+    address.plus_four_postal_code = stateMismatch ? null : sanitizedPlus4;
+    address.postal_code = stateMismatch ? null : sanitizedPostalCode;
+    address.state_code = inferredStateCode;
     address.street_name = (() => {
       if (!parsedAddress.streetName) return null;
       const formatted = safeNullIfEmpty(formatStreetNameCase(parsedAddress.streetName));
@@ -1744,13 +1733,15 @@ function main() {
 
     const fallbackPcnSource =
       (modelDetail && modelDetail.FormattedPCN) || pcnHyphen || null;
+    const fallbackPostalValue = stateMismatch ? null : sanitizedPostalCode;
+    const fallbackPlus4Value = stateMismatch ? null : sanitizedPlus4;
 
     applyAddressFallbacks(address, {
       streetCandidates: streetCandidatesForFallback,
       fallbackCity: normalizedCity,
       fallbackState: inferredStateCode,
-      fallbackPostal: postalCode,
-      fallbackPlus4: plus4,
+      fallbackPostal: fallbackPostalValue,
+      fallbackPlus4: fallbackPlus4Value,
       municipality: normalizedMunicipality,
       county: formattedCountyName,
       formattedPcn: fallbackPcnSource,
