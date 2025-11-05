@@ -2835,7 +2835,7 @@ function normalizeAreaValue(value) {
   if (!Number.isFinite(numericValue)) return null;
   if (Math.abs(numericValue) < 10) return null;
   const asString = String(value).trim();
-  if (/\\d{2,}/.test(asString)) return asString;
+  if (/\d{2,}/.test(asString)) return asString;
   const rounded = Math.round(numericValue);
   return rounded >= 10 ? String(rounded) : null;
 }
