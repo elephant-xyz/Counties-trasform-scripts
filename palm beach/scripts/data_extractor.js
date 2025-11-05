@@ -1816,6 +1816,7 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
+        { preserveNulls: true },
       );
       finalAddress = normalizedAddress;
     } else if (hasUnnormalizedAddress) {
@@ -1839,8 +1840,8 @@ function main() {
 
       if (fs.existsSync(propertyFilePath)) {
         writeJSON(addressRelationshipPath, {
-          from: null,
-          to: null,
+          from: { "/": "./property.json" },
+          to: { "/": "./address.json" },
         });
       } else if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
@@ -1848,8 +1849,8 @@ function main() {
 
       if (fs.existsSync(factSheetFilePath)) {
         writeJSON(factSheetRelationshipPath, {
-          from: null,
-          to: null,
+          from: { "/": "./address.json" },
+          to: { "/": "./fact_sheet.json" },
         });
       } else if (fs.existsSync(factSheetRelationshipPath)) {
         fs.unlinkSync(factSheetRelationshipPath);
