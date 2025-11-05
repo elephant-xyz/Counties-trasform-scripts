@@ -1817,9 +1817,10 @@ function main() {
       }
 
       if (addressFlavor === "normalized") {
+        const addressForFactSheet = JSON.parse(JSON.stringify(finalAddress));
         writeJSON(factSheetRelationshipPath, [
           {
-            from: addressRef,
+            from: addressForFactSheet,
             to: null,
           },
         ]);
