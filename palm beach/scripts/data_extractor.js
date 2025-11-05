@@ -580,7 +580,9 @@ function buildRawAddressPayload(address, unnormalizedValue) {
 
   // Collect only meaningful values so the raw branch of the schema (unnormalized address)
   // is satisfied without introducing null placeholders that get stripped downstream.
-  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS);
+  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS, {
+    preserveNulls: true,
+  });
 
   return {
     ...rawAddress,
