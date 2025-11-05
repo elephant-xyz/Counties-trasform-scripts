@@ -490,7 +490,7 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
-const NORMALIZED_ADDRESS_REQUIRED_NUMBERS = ["latitude", "longitude"];
+const COORDINATE_ADDRESS_REQUIRED_NUMBERS = ["latitude", "longitude"];
 
 const NORMALIZED_ADDRESS_FIELDS = [
   "latitude",
@@ -519,6 +519,7 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
+  "street_suffix_type",
   "city_name",
   "state_code",
   "postal_code",
@@ -527,11 +528,6 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
 
 function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
-  for (const field of NORMALIZED_ADDRESS_REQUIRED_NUMBERS) {
-    if (!Number.isFinite(address[field])) {
-      return false;
-    }
-  }
   for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
     const value = address[field];
     if (typeof value !== "string" || value.trim().length === 0) {
@@ -1783,7 +1779,7 @@ function main() {
         : "";
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
     const normalizedAddressIsComplete = hasCompleteNormalizedAddress(address);
-    const hasNormalizedCoordinates = NORMALIZED_ADDRESS_REQUIRED_NUMBERS.every((field) =>
+    const hasNormalizedCoordinates = COORDINATE_ADDRESS_REQUIRED_NUMBERS.every((field) =>
       Number.isFinite(address[field]),
     );
 
@@ -1806,7 +1802,7 @@ function main() {
     } else if (hasNormalizedCoordinates) {
       const coordinateAddress = collectAddressFields(
         address,
-        NORMALIZED_ADDRESS_REQUIRED_NUMBERS,
+        COORDINATE_ADDRESS_REQUIRED_NUMBERS,
       );
       finalAddress = coordinateAddress;
     }
