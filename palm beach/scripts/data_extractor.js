@@ -537,22 +537,22 @@ function hasCompleteNormalizedAddress(address) {
 // When preserveNulls is true the returned object explicitly includes null-valued fields so
 // consumers can satisfy schema branches that require property presence.
 function collectAddressFields(source, fields, options = {}) {
-  const { preserveNulls = false } = options;
+  const { preserveNulls = false, omitNulls = false } = options;
   const result = {};
   for (const field of fields) {
     if (!Object.prototype.hasOwnProperty.call(source, field)) {
-      if (preserveNulls) result[field] = null;
+      if (preserveNulls && !omitNulls) result[field] = null;
       continue;
     }
     const value = source[field];
     if (value == null) {
-      if (preserveNulls) result[field] = null;
+      if (preserveNulls && !omitNulls) result[field] = null;
       continue;
     }
     if (typeof value === "number") {
       if (Number.isFinite(value)) {
         result[field] = value;
-      } else if (preserveNulls) {
+      } else if (preserveNulls && !omitNulls) {
         result[field] = null;
       }
       continue;
@@ -561,7 +561,7 @@ function collectAddressFields(source, fields, options = {}) {
       const trimmed = value.trim();
       if (trimmed.length) {
         result[field] = trimmed;
-      } else if (preserveNulls) {
+      } else if (preserveNulls && !omitNulls) {
         result[field] = null;
       }
       continue;
@@ -574,14 +574,29 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const schemaFieldsExcludingUnnormalized = ADDRESS_SCHEMA_FIELDS.filter(
-    (field) => field !== "unnormalized_address",
-  );
-  const rawAddress = collectAddressFields(address, schemaFieldsExcludingUnnormalized, {
-    preserveNulls: true,
-  });
+  const rawAddress = {
+    unnormalized_address: unnormalizedValue,
+  };
 
-  rawAddress.unnormalized_address = unnormalizedValue;
+  for (const field of ADDRESS_SCHEMA_FIELDS) {
+    if (field === "unnormalized_address") continue;
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    const value = address[field];
+    if (value == null) continue;
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        rawAddress[field] = value;
+      }
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) continue;
+      rawAddress[field] = trimmed;
+      continue;
+    }
+    rawAddress[field] = value;
+  }
 
   return rawAddress;
 }
@@ -1813,7 +1828,7 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { preserveNulls: true },
+        { omitNulls: true },
       );
       finalAddress = normalizedAddress;
     } else if (hasUnnormalizedAddress) {
@@ -1825,6 +1840,7 @@ function main() {
       const coordinateAddress = collectAddressFields(
         address,
         COORDINATE_ADDRESS_REQUIRED_NUMBERS,
+        { omitNulls: true },
       );
       finalAddress = coordinateAddress;
     }
