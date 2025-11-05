@@ -539,17 +539,6 @@ function hasCompleteNormalizedAddress(address) {
 
 // Raw (unnormalized) representation keeps only fields supported by the schema's raw branch.
 // Avoid including street component fields so the payload satisfies exactly one oneOf option.
-const RAW_ADDRESS_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
-
 function collectAddressFields(source, fields, options = {}) {
   const { preserveNulls = false } = options;
   const result = {};
@@ -583,6 +572,53 @@ function collectAddressFields(source, fields, options = {}) {
     result[field] = value;
   }
   return result;
+}
+
+function buildRawAddressPayload(address, unnormalizedValue) {
+  if (!unnormalizedValue) return null;
+
+  const rawAddress = {
+    unnormalized_address: unnormalizedValue,
+  };
+
+  const numberFields = ["latitude", "longitude"];
+  for (const field of numberFields) {
+    const value = address[field];
+    if (Number.isFinite(value)) {
+      rawAddress[field] = value;
+    }
+  }
+
+  const normalizedCountry = typeof address.country_code === "string" ? address.country_code.trim() : "";
+  if (normalizedCountry) {
+    rawAddress.country_code = normalizedCountry.toUpperCase();
+  }
+
+  const stringFields = [
+    "county_name",
+    "municipality_name",
+    "city_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+  ];
+
+  for (const field of stringFields) {
+    const value = address[field];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length) {
+        rawAddress[field] = trimmed;
+      }
+    }
+  }
+
+  return rawAddress;
 }
 
 const STREET_SUFFIX_SYNONYMS = {
@@ -1789,17 +1825,14 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { preserveNulls: true },
+        { preserveNulls: false },
       );
       finalAddress = normalizedAddress;
     } else if (hasUnnormalizedAddress) {
-      const rawAddress = collectAddressFields(
-        address,
-        RAW_ADDRESS_FIELDS,
-        { preserveNulls: true },
-      );
-      rawAddress.unnormalized_address = trimmedUnnormalized;
-      finalAddress = rawAddress;
+      const rawAddress = buildRawAddressPayload(address, trimmedUnnormalized);
+      if (rawAddress && Object.keys(rawAddress).length >= 1) {
+        finalAddress = rawAddress;
+      }
     } else if (hasNormalizedCoordinates) {
       const coordinateAddress = collectAddressFields(
         address,
