@@ -537,8 +537,9 @@ function hasCompleteNormalizedAddress(address) {
   return true;
 }
 
-// Raw (unnormalized) representation keeps only fields supported by the schema's raw branch.
-// Avoid including street component fields so the payload satisfies exactly one oneOf option.
+// Utility helper that builds an object containing only the requested fields from the source.
+// When preserveNulls is true the returned object explicitly includes null-valued fields so
+// consumers can satisfy schema branches that require property presence.
 function collectAddressFields(source, fields, options = {}) {
   const { preserveNulls = false } = options;
   const result = {};
@@ -577,45 +578,42 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = {
-    unnormalized_address: unnormalizedValue,
-  };
+  const rawAddress = {};
 
-  const numberFields = ["latitude", "longitude"];
-  for (const field of numberFields) {
+  for (const field of ADDRESS_SCHEMA_FIELDS) {
+    rawAddress[field] = null;
+  }
+
+  rawAddress.unnormalized_address = unnormalizedValue;
+
+  for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     const value = address[field];
-    if (Number.isFinite(value)) {
-      rawAddress[field] = value;
-    }
+    rawAddress[field] = Number.isFinite(value) ? value : null;
   }
 
-  const normalizedCountry = typeof address.country_code === "string" ? address.country_code.trim() : "";
-  if (normalizedCountry) {
-    rawAddress.country_code = normalizedCountry.toUpperCase();
-  }
-
-  const stringFields = [
-    "county_name",
-    "municipality_name",
-    "city_name",
+  const uppercaseFields = new Set([
+    "country_code",
     "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-  ];
+    "street_pre_directional_text",
+    "street_post_directional_text",
+  ]);
 
-  for (const field of stringFields) {
-    const value = address[field];
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.length) {
-        rawAddress[field] = trimmed;
-      }
+  for (const field of ADDRESS_SCHEMA_FIELDS) {
+    if (
+      field === "unnormalized_address" ||
+      ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)
+    ) {
+      continue;
     }
+    const value = address[field];
+    if (value == null) continue;
+    const stringValue =
+      typeof value === "string" ? value : String(value);
+    const trimmed = stringValue.trim();
+    if (!trimmed.length) continue;
+    rawAddress[field] = uppercaseFields.has(field)
+      ? trimmed.toUpperCase()
+      : trimmed;
   }
 
   return rawAddress;
@@ -1825,7 +1823,7 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { preserveNulls: false },
+        { preserveNulls: true },
       );
       finalAddress = normalizedAddress;
     } else if (hasUnnormalizedAddress) {
