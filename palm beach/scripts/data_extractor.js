@@ -581,15 +581,9 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = collectAddressFields(
-    address || {},
-    ADDRESS_SCHEMA_FIELDS.filter((field) => field !== "unnormalized_address"),
-    { preserveNulls: true },
-  );
-
-  rawAddress.unnormalized_address = unnormalizedValue;
-
-  return rawAddress;
+  return {
+    unnormalized_address: unnormalizedValue,
+  };
 }
 
 const STREET_SUFFIX_SYNONYMS = {
