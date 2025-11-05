@@ -2859,6 +2859,31 @@ const PROPERTY_TYPE_VALUES = new Set([
   "Building",
   "Unit",
   "ManufacturedHome",
+  "VacantLand",
+  "SingleFamily",
+  "Duplex",
+  "2Units",
+  "3Units",
+  "4Units",
+  "MultipleFamily",
+  "MultiFamilyMoreThan10",
+  "MultiFamilyLessThan10",
+  "Apartment",
+  "Townhouse",
+  "Condominium",
+  "DetachedCondominium",
+  "Cooperative",
+  "Modular",
+  "ManufacturedHousing",
+  "ManufacturedHousingSingleWide",
+  "ManufacturedHousingMultiWide",
+  "MobileHome",
+  "Timeshare",
+  "Pud",
+  "Retirement",
+  "MiscellaneousResidential",
+  "ResidentialCommonElementsAreas",
+  "NonWarrantableCondo",
 ]);
 
 const BUILD_STATUS_VALUES = new Set([
@@ -3064,6 +3089,98 @@ function computeFallbackAttributes(code) {
   }
 
   return attr;
+}
+
+function derivePropertyTypeFromUseText(rawUseText, fallbackType, options = {}) {
+  const normalized = normalizeUseCodeString(rawUseText);
+  const {
+    numberOfUnits = null,
+    unitRange = null,
+  } = options;
+  const unitsEstimate =
+    (unitRange && unitRange.max != null ? unitRange.max : null) ??
+    (typeof numberOfUnits === "number" && numberOfUnits >= 0
+      ? numberOfUnits
+      : null);
+
+  if (!normalized) {
+    return PROPERTY_TYPE_VALUES.has(fallbackType) ? fallbackType : "LandParcel";
+  }
+
+  const has = (regex) => regex.test(normalized);
+
+  if (has(/\bVACANT\b/)) {
+    if (has(/COMMON\s+(AREA|ELEMENT)/) || has(/AMENITY/)) {
+      return "ResidentialCommonElementsAreas";
+    }
+    return "VacantLand";
+  }
+
+  if (has(/COMMON\s+(AREA|ELEMENT)/) || has(/AMENITY/)) {
+    return "ResidentialCommonElementsAreas";
+  }
+
+  if (has(/MISC(?:ELLANEOUS)?\s*RESIDENTIAL/) || has(/MIGRANT\s*CAMP/)) {
+    return "MiscellaneousResidential";
+  }
+
+  if (has(/\bRETIREMENT\b/)) return "Retirement";
+  if (has(/\bPUD\b/)) return "Pud";
+  if (has(/TIMESHARE/)) return "Timeshare";
+  if (has(/NON\s*WARRANTABLE/)) return "NonWarrantableCondo";
+  if (has(/CO-?OP/)) return "Cooperative";
+  if (has(/DETACHED/) && has(/CONDO/)) return "DetachedCondominium";
+  if (has(/CONDO/)) return "Condominium";
+  if (has(/MODULAR/)) return "Modular";
+
+  if (has(/SINGLE\s+FAMILY/)) return "SingleFamily";
+  if (has(/HALF\s*-?\s*DUPLEX/)) return "Duplex";
+
+  if (has(/\bTWO\s+(?:OR\s+MORE\s+)?RESIDENTIAL\s+UNITS\b/) || has(/\b2\s*UNIT\b/)) {
+    return "2Units";
+  }
+  if (has(/DUPLEX/)) return "Duplex";
+  if (has(/TRIPLEX/)) return "3Units";
+  if (has(/QUAD|FOURPLEX|4\s*UNIT/)) return "4Units";
+  if (has(/TOWN(HOUSE|HOME)/)) return "Townhouse";
+
+  const multiFamilyLike = has(/MULTI[\s-]*FAM/);
+  const apartmentLike = has(/APARTMENT|APT/);
+
+  if (multiFamilyLike || apartmentLike) {
+    if (unitsEstimate != null) {
+      if (unitsEstimate >= 10) return "MultiFamilyMoreThan10";
+      if (unitsEstimate >= 5) return "MultiFamilyLessThan10";
+      if (unitsEstimate === 4) return "4Units";
+      if (unitsEstimate === 3) return "3Units";
+      if (unitsEstimate === 2) return "2Units";
+    }
+    if (has(/\b(10|12|20|30|40|50|60|70|80|90|100)\b/) && has(/UNIT/)) {
+      return "MultiFamilyMoreThan10";
+    }
+    if (has(/\bLESS\s+THAN\s+5\b/) || has(/\bUNDER\s+10\b/) || has(/<\s*10\s*UNIT/)) {
+      return "MultiFamilyLessThan10";
+    }
+    if (apartmentLike) return "Apartment";
+    return "MultipleFamily";
+  }
+
+  const manufacturedLike =
+    has(/MANUFACT/) || has(/MOBILE\s+HOME/) || has(/\bMH\b/) || has(/TRAILER/);
+  if (manufacturedLike) {
+    const isSingleWide = has(/\bSINGLE\b/) && has(/\bWIDE\b/);
+    const isMultiWide =
+      has(/\bDOUBLE\b/) || has(/\bTRIPLE\b/) || has(/\bMULTI\b/);
+    if (isSingleWide) return "ManufacturedHousingSingleWide";
+    if (isMultiWide) return "ManufacturedHousingMultiWide";
+    if (has(/PARK/) || has(/RENTAL\s+LOT/)) return "MobileHome";
+    return "ManufacturedHome";
+  }
+
+  if (has(/MOBILE\s+HOME/)) return "MobileHome";
+
+  if (PROPERTY_TYPE_VALUES.has(fallbackType)) return fallbackType;
+  return "LandParcel";
 }
 
 function mapPropertyTypeFromUseCode(code) {
@@ -4161,6 +4278,8 @@ function main() {
   });
   bldgDetails.numberOfUnits = totalResidentialUnits + totalCommercialUnits;
 
+  const normalizedUseCodeText = normalizeUseCodeString(useText || "");
+  const useCodeUnitRange = extractUnitCountRange(normalizedUseCodeText);
   const propertyTypeCandidate = mapPropertyTypeFromUseCode(useText || "");
   const fallbackPropertyType =
     bldgDetails.numberOfUnits && bldgDetails.numberOfUnits > 0
@@ -4169,13 +4288,22 @@ function main() {
   const resolvedPropertyType = PROPERTY_TYPE_VALUES.has(propertyTypeCandidate)
     ? propertyTypeCandidate
     : fallbackPropertyType;
-  const property_type = PROPERTY_TYPE_VALUES.has(resolvedPropertyType)
-    ? resolvedPropertyType
-    : "LandParcel";
+  const property_type = derivePropertyTypeFromUseText(
+    useText || "",
+    PROPERTY_TYPE_VALUES.has(resolvedPropertyType)
+      ? resolvedPropertyType
+      : "LandParcel",
+    {
+      numberOfUnits: bldgDetails.numberOfUnits,
+      unitRange: useCodeUnitRange,
+    },
+  );
 
   const buildStatusCandidate = mapBuildStatusFromUseCode(useText || "");
   const defaultBuildStatus =
-    property_type === "LandParcel" ? "VacantLand" : "Improved";
+    property_type === "LandParcel" || property_type === "VacantLand"
+      ? "VacantLand"
+      : "Improved";
   const build_status = BUILD_STATUS_VALUES.has(buildStatusCandidate)
     ? buildStatusCandidate
     : defaultBuildStatus;
