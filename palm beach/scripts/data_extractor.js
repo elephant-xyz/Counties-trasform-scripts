@@ -1788,7 +1788,6 @@ function main() {
     );
 
     let finalAddress = null;
-    let factSheetPayload = null;
 
     if (normalizedAddressIsComplete) {
       const normalizedAddress = collectAddressFields(
@@ -1796,40 +1795,28 @@ function main() {
         NORMALIZED_ADDRESS_FIELDS,
       );
       finalAddress = normalizedAddress;
-      factSheetPayload = { ...normalizedAddress };
     } else if (hasUnnormalizedAddress) {
       const rawAddress = collectAddressFields(
         address,
         RAW_ADDRESS_FIELDS,
+        { preserveNulls: true },
       );
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-      factSheetPayload = { ...rawAddress };
     } else if (hasNormalizedCoordinates) {
       const coordinateAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_REQUIRED_NUMBERS,
       );
       finalAddress = coordinateAddress;
-      factSheetPayload = { ...coordinateAddress };
     }
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
-      const propertyToAddress = {
-        from: ref("./property.json"),
-        to: ref("./address.json"),
-      };
-      writeJSON(addressRelationshipPath, propertyToAddress);
-
-      if (factSheetPayload && Object.keys(factSheetPayload).length) {
-        writeJSON(factSheetRelationshipPath, [
-          {
-            from: factSheetPayload,
-            to: null,
-          },
-        ]);
-      } else if (fs.existsSync(factSheetRelationshipPath)) {
+      if (fs.existsSync(addressRelationshipPath)) {
+        fs.unlinkSync(addressRelationshipPath);
+      }
+      if (fs.existsSync(factSheetRelationshipPath)) {
         fs.unlinkSync(factSheetRelationshipPath);
       }
     } else {
