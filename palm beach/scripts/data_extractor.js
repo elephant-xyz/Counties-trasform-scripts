@@ -519,6 +519,10 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
+const RAW_ADDRESS_FIELDS = ADDRESS_SCHEMA_FIELDS.filter(
+  (field) => field !== "unnormalized_address",
+);
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -581,7 +585,12 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
+  const rawAddress = collectAddressFields(address, RAW_ADDRESS_FIELDS, {
+    preserveNulls: true,
+  });
+
   return {
+    ...rawAddress,
     unnormalized_address: unnormalizedValue,
   };
 }
@@ -1813,6 +1822,7 @@ function main() {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
+        { preserveNulls: true },
       );
       finalAddress = normalizedAddress;
     } else if (hasUnnormalizedAddress) {
