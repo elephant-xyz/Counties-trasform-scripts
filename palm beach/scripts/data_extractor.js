@@ -538,6 +538,8 @@ const RAW_ADDRESS_FIELDS = [
   "lot",
 ];
 
+const FACT_SHEET_NORMALIZED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+
 function collectAddressFields(source, fields, options = {}) {
   const { preserveNulls = false } = options;
   const result = {};
@@ -1780,7 +1782,8 @@ function main() {
     const shouldUseNormalized = hasNormalizedCoreStrings && hasNormalizedCoordinates;
 
     let finalAddress = null;
-    let addressFlavor = null;
+    let normalizedFactSheetCandidate = null;
+    let rawFactSheetCandidate = null;
 
     if (shouldUseNormalized) {
       finalAddress = collectAddressFields(
@@ -1788,7 +1791,10 @@ function main() {
         NORMALIZED_ADDRESS_FIELDS,
         { preserveNulls: true },
       );
-      addressFlavor = "normalized";
+      normalizedFactSheetCandidate = collectAddressFields(
+        address,
+        FACT_SHEET_NORMALIZED_FIELDS,
+      );
     } else if (hasUnnormalizedAddress) {
       const rawAddress = collectAddressFields(
         address,
@@ -1797,15 +1803,34 @@ function main() {
       );
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-      addressFlavor = "raw";
+      rawFactSheetCandidate = {
+        unnormalized_address: trimmedUnnormalized,
+      };
+      if (Number.isFinite(address.latitude)) {
+        rawFactSheetCandidate.latitude = address.latitude;
+      }
+      if (Number.isFinite(address.longitude)) {
+        rawFactSheetCandidate.longitude = address.longitude;
+      }
     } else if (hasNormalizedCoordinates) {
       finalAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_REQUIRED_NUMBERS,
         { preserveNulls: true },
       );
-      addressFlavor = "coordinates-only";
     }
+
+    const factSheetPayload = (() => {
+      if (
+        normalizedFactSheetCandidate &&
+        FACT_SHEET_NORMALIZED_FIELDS.every((field) =>
+          Object.prototype.hasOwnProperty.call(normalizedFactSheetCandidate, field),
+        )
+      ) {
+        return normalizedFactSheetCandidate;
+      }
+      return rawFactSheetCandidate || null;
+    })();
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
@@ -1820,11 +1845,10 @@ function main() {
         fs.unlinkSync(addressRelationshipPath);
       }
 
-      if (addressFlavor === "normalized") {
-        const addressForFactSheet = JSON.parse(JSON.stringify(finalAddress));
+      if (factSheetPayload) {
         writeJSON(factSheetRelationshipPath, [
           {
-            from: addressForFactSheet,
+            from: factSheetPayload,
             to: null,
           },
         ]);
