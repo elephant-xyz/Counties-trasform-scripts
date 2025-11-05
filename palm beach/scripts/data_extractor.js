@@ -1767,39 +1767,44 @@ function main() {
     );
 
     let finalAddress = null;
+    let addressFlavor = null;
 
     if (hasNormalizedCoreStrings && hasNormalizedCoordinates) {
       finalAddress = collectAddressFieldsAllowNulls(
         address,
         NORMALIZED_ADDRESS_FIELDS,
       );
+      addressFlavor = "normalized";
     } else if (hasUnnormalizedAddress) {
       const rawAddress = collectAddressFieldsAllowNulls(address, RAW_ADDRESS_FIELDS);
       rawAddress.unnormalized_address = trimmedUnnormalized;
       finalAddress = rawAddress;
-    } else if (hasNormalizedCoreStrings) {
-      finalAddress = collectAddressFieldsAllowNulls(
-        address,
-        NORMALIZED_ADDRESS_FIELDS,
-      );
+      addressFlavor = "raw";
     } else if (hasNormalizedCoordinates) {
-      finalAddress = collectAddressFields(address, NORMALIZED_ADDRESS_REQUIRED_NUMBERS);
-    }
-
-    if (fs.existsSync(addressRelationshipPath)) {
-      fs.unlinkSync(addressRelationshipPath);
+      finalAddress = collectAddressFields(
+        address,
+        NORMALIZED_ADDRESS_REQUIRED_NUMBERS,
+      );
+      addressFlavor = "coordinates-only";
     }
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
+      if (fs.existsSync(addressRelationshipPath)) {
+        fs.unlinkSync(addressRelationshipPath);
+      }
 
       const addressRef = ref("./address.json");
-      writeJSON(factSheetRelationshipPath, [
-        {
-          from: addressRef,
-          to: null,
-        },
-      ]);
+      if (addressFlavor === "normalized") {
+        writeJSON(factSheetRelationshipPath, [
+          {
+            from: addressRef,
+            to: null,
+          },
+        ]);
+      } else if (fs.existsSync(factSheetRelationshipPath)) {
+        fs.unlinkSync(factSheetRelationshipPath);
+      }
     } else {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
