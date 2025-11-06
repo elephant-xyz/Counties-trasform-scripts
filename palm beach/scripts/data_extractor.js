@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { fetch } = require("undici");
 
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -54,6 +55,50 @@ function padGridValue(value, length) {
     return alphanumeric.padStart(length, "0");
   }
   return alphanumeric;
+}
+
+async function fetchParcelCentroid(parcelId) {
+  const normalized = typeof parcelId === "string" ? parcelId.replace(/\D/g, "") : "";
+  if (!normalized) return null;
+
+  const body = new URLSearchParams({
+    functionName: "getPolyByPCN",
+    parameters: JSON.stringify({ pcn: normalized }),
+  });
+
+  try {
+    const response = await fetch("https://maps.co.palm-beach.fl.us/giswebapi/gisdata", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+    if (!response.ok) return null;
+
+    const text = await response.text();
+    if (!text) return null;
+
+    let payload;
+    try {
+      payload = JSON.parse(text);
+      if (typeof payload === "string") {
+        payload = JSON.parse(payload);
+      }
+    } catch (err) {
+      return null;
+    }
+    if (!payload || typeof payload.point !== "string") return null;
+
+    const [lonStr, latStr] = payload.point.split(",").map((segment) => segment.trim());
+    const latitude = Number(latStr);
+    const longitude = Number(lonStr);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+    return { latitude, longitude };
+  } catch (err) {
+    return null;
+  }
 }
 
 function extractUnitIdentifierFromAddressLines(lines = []) {
@@ -1199,7 +1244,7 @@ function formatNamePart(part) {
   return PERSON_NAME_PATTERN.test(cleaned) ? cleaned : null;
 }
 
-function main() {
+async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
@@ -1223,6 +1268,12 @@ function main() {
 
   const parcelId = seed && seed.parcel_id ? String(seed.parcel_id) : null;
   const ownersKey = parcelId ? `property_${parcelId}` : null;
+  const initialLatitude = parseCoordinate(unAddr && unAddr.latitude);
+  const initialLongitude = parseCoordinate(unAddr && unAddr.longitude);
+  const parcelCentroid =
+    Number.isFinite(initialLatitude) && Number.isFinite(initialLongitude)
+      ? null
+      : await fetchParcelCentroid(parcelId);
 
   // Parse embedded model first (robust source inside HTML)
   const model = parseModelJSONFromHTML(inputHTML);
@@ -1687,8 +1738,14 @@ function main() {
     const parsedAddress = parseLocationAddress(locationLineForParsing);
     const resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
     const inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
-    const sanitizedPostalCode = sanitizePostalCode(postalCode);
-    const sanitizedPlus4 = sanitizePlus4(plus4);
+    const sanitizedPostalCode =
+      sanitizePostalCode(postalCode) ||
+      sanitizePostalCode(fullAddrInput) ||
+      sanitizePostalCode(fullAddr);
+    const sanitizedPlus4 =
+      sanitizePlus4(plus4) ||
+      sanitizePlus4(fullAddrInput) ||
+      sanitizePlus4(fullAddr);
     const stateMismatch =
       countyInferredStateCode &&
       resolvedStateUpper &&
@@ -1710,8 +1767,20 @@ function main() {
       address.city_name = null;
     }
     address.county_name = safeNullIfEmpty(formattedCountyName);
-    address.latitude = parseCoordinate(unAddr && unAddr.latitude);
-    address.longitude = parseCoordinate(unAddr && unAddr.longitude);
+    const resolvedLatitude =
+      Number.isFinite(initialLatitude)
+        ? initialLatitude
+        : parcelCentroid && Number.isFinite(parcelCentroid.latitude)
+          ? parcelCentroid.latitude
+          : null;
+    const resolvedLongitude =
+      Number.isFinite(initialLongitude)
+        ? initialLongitude
+        : parcelCentroid && Number.isFinite(parcelCentroid.longitude)
+          ? parcelCentroid.longitude
+          : null;
+    address.latitude = resolvedLatitude;
+    address.longitude = resolvedLongitude;
     address.plus_four_postal_code = stateMismatch ? null : sanitizedPlus4;
     address.postal_code = stateMismatch ? null : sanitizedPostalCode;
     address.state_code = inferredStateCode;
@@ -2875,4 +2944,7 @@ function main() {
   console.log("All mapping scripts completed successfully");
 }
 
-main();
+main().catch((error) => {
+  console.error("Fatal error during data extraction:", error);
+  process.exitCode = 1;
+});
