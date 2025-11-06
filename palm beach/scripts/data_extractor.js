@@ -535,7 +535,21 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 // Fields that may be propagated into the raw-address branch when they have usable values.
 const RAW_ADDRESS_ALLOWED_FIELDS = [
-  ...ADDRESS_SCHEMA_FIELDS,
+  "latitude",
+  "longitude",
+  "country_code",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "city_name",
+  "county_name",
+  "municipality_name",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
   "request_identifier",
 ];
 
@@ -636,12 +650,28 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     }
   }
 
-  if (!rawAddress.country_code && rawAddress.state_code) {
-    rawAddress.country_code = "US";
-  }
-
   if (rawAddress.city_name && /\d/.test(rawAddress.city_name)) {
     delete rawAddress.city_name;
+  }
+
+  const hasCity =
+    typeof rawAddress.city_name === "string" && rawAddress.city_name.length > 0;
+  const hasState =
+    typeof rawAddress.state_code === "string" && rawAddress.state_code.length > 0;
+  const hasPostal =
+    typeof rawAddress.postal_code === "string" &&
+    rawAddress.postal_code.length > 0;
+
+  if (hasCity && hasState && hasPostal) {
+    if (!rawAddress.country_code) {
+      rawAddress.country_code = "US";
+    }
+  } else {
+    delete rawAddress.city_name;
+    delete rawAddress.state_code;
+    delete rawAddress.postal_code;
+    delete rawAddress.plus_four_postal_code;
+    delete rawAddress.country_code;
   }
 
   return rawAddress;
