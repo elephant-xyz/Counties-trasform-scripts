@@ -533,9 +533,7 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// The raw-address branch of the schema still expects all standard address fields to be present
-// (even when null) so the oneOf discriminator can succeed. Mirror the full set here and inject
-// request_identifier so callers can propagate it when available.
+// Fields that may be propagated into the raw-address branch when they have usable values.
 const RAW_ADDRESS_ALLOWED_FIELDS = [
   ...ADDRESS_SCHEMA_FIELDS,
   "request_identifier",
@@ -608,58 +606,42 @@ function collectAddressFields(source, fields, options = {}) {
 }
 
 function buildRawAddressPayload(address, unnormalizedValue) {
-  if (!unnormalizedValue) return null;
-
   const trimmedValue =
-    typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : null;
+    typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : "";
   if (!trimmedValue) return null;
 
+  const rawAddress = { unnormalized_address: trimmedValue };
   const sourceAddress =
     address && typeof address === "object" ? address : {};
-  const collectedFields = collectAddressFields(
-    sourceAddress,
-    RAW_ADDRESS_ALLOWED_FIELDS,
-    { preserveNulls: true },
-  );
-
-  const rawAddress = { unnormalized_address: trimmedValue };
 
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
     if (field === "unnormalized_address") continue;
-    if (Object.prototype.hasOwnProperty.call(collectedFields, field)) {
-      rawAddress[field] = collectedFields[field];
-    } else {
-      rawAddress[field] = null;
-    }
-  }
+    if (!Object.prototype.hasOwnProperty.call(sourceAddress, field)) continue;
 
-  if (
-    (RAW_ADDRESS_ALLOWED_FIELDS.includes("country_code") ||
-      RAW_ADDRESS_ALLOWED_FIELDS.includes("state_code")) &&
-    typeof sourceAddress.state_code === "string" &&
-    sourceAddress.state_code.trim()
-  ) {
-    const fallbackState = sourceAddress.state_code.trim().toUpperCase();
-    if (RAW_ADDRESS_ALLOWED_FIELDS.includes("country_code") &&
-        (rawAddress.country_code == null || rawAddress.country_code === "")) {
-      rawAddress.country_code = "US";
-    }
-    if (RAW_ADDRESS_ALLOWED_FIELDS.includes("state_code") && !rawAddress.state_code) {
-      rawAddress.state_code = fallbackState;
-    }
-  }
+    const value = sourceAddress[field];
+    if (value == null) continue;
 
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (field === "unnormalized_address") continue;
-    const value = rawAddress[field];
-    if (value == null) {
-      rawAddress[field] = null;
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        rawAddress[field] = value;
+      }
       continue;
     }
+
     if (typeof value === "string") {
       const trimmed = value.trim();
-      rawAddress[field] = trimmed.length ? trimmed : null;
+      if (!trimmed.length) continue;
+      rawAddress[field] = trimmed;
+      continue;
     }
+  }
+
+  if (!rawAddress.country_code && rawAddress.state_code) {
+    rawAddress.country_code = "US";
+  }
+
+  if (rawAddress.city_name && /\d/.test(rawAddress.city_name)) {
+    delete rawAddress.city_name;
   }
 
   return rawAddress;
@@ -1910,18 +1892,12 @@ async function main() {
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
     const normalizedAddressIsComplete = hasCompleteNormalizedAddress(address);
 
-    const rawAddressCandidate = hasUnnormalizedAddress
-      ? buildRawAddressPayload(address, trimmedUnnormalized)
-      : null;
-    const rawAddressIsValid =
-      rawAddressCandidate && Object.keys(rawAddressCandidate).length >= 1;
-
     let normalizedAddress = null;
     if (normalizedAddressIsComplete) {
       const candidate = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { preserveNulls: true },
+        { omitNulls: true },
       );
       const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
         (key) =>
@@ -1931,6 +1907,12 @@ async function main() {
         normalizedAddress = candidate;
       }
     }
+
+    const rawAddressCandidate = !normalizedAddress && hasUnnormalizedAddress
+      ? buildRawAddressPayload(address, trimmedUnnormalized)
+      : null;
+    const rawAddressIsValid =
+      rawAddressCandidate && Object.keys(rawAddressCandidate).length > 1;
 
     let finalAddress = normalizedAddress;
 
