@@ -488,26 +488,9 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// When working with the address schema, the validator enforces a oneOf branch:
-//  • normalized addresses require the full normalized field set (including coordinates)
-//  • raw addresses hinge on supplying an unnormalized_address without the incomplete normalized payload
-// To keep the raw branch valid, only surface contextual fields that we can actually populate.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "unnormalized_address",
-  "county_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "latitude",
-  "longitude",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+// Raw addresses rely on the unnormalized payload but must still expose the schema's optional
+// fields (even when null) so oneOf validation can succeed without demanding a fully normalized set.
+const RAW_ADDRESS_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -582,33 +565,47 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : null;
   if (!trimmedValue) return null;
 
+  const sourceAddress =
+    address && typeof address === "object" ? address : {};
+  const collectedFields = collectAddressFields(
+    sourceAddress,
+    RAW_ADDRESS_ALLOWED_FIELDS,
+    { preserveNulls: true },
+  );
+
   const rawAddress = { unnormalized_address: trimmedValue };
 
-  if (address && typeof address === "object") {
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-      if (field === "unnormalized_address") continue;
-      if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-      const value = address[field];
-      if (value == null) continue;
-      if (typeof value === "number") {
-        if (Number.isFinite(value)) rawAddress[field] = value;
-        continue;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        if (trimmed.length) rawAddress[field] = trimmed;
-      }
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (field === "unnormalized_address") continue;
+    if (Object.prototype.hasOwnProperty.call(collectedFields, field)) {
+      rawAddress[field] = collectedFields[field];
+    } else {
+      rawAddress[field] = null;
     }
   }
 
-  if (!rawAddress.country_code) {
-    const fallbackState =
-      address && typeof address.state_code === "string"
-        ? address.state_code.trim()
-        : null;
-    if (fallbackState) {
-      rawAddress.country_code = "US";
-      if (!rawAddress.state_code) rawAddress.state_code = fallbackState.toUpperCase();
+  if (
+    (rawAddress.country_code == null || rawAddress.country_code === "") &&
+    typeof sourceAddress.state_code === "string" &&
+    sourceAddress.state_code.trim()
+  ) {
+    const fallbackState = sourceAddress.state_code.trim().toUpperCase();
+    rawAddress.country_code = "US";
+    if (!rawAddress.state_code) {
+      rawAddress.state_code = fallbackState;
+    }
+  }
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (field === "unnormalized_address") continue;
+    const value = rawAddress[field];
+    if (value == null) {
+      rawAddress[field] = null;
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawAddress[field] = trimmed.length ? trimmed : null;
     }
   }
 
