@@ -579,11 +579,16 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   const rawAddress = {};
   for (const field of ADDRESS_SCHEMA_FIELDS) {
     if (field === "unnormalized_address") continue;
-    if (address && Object.prototype.hasOwnProperty.call(address, field)) {
-      rawAddress[field] = address[field] == null ? null : address[field];
-    } else {
-      rawAddress[field] = null;
+    if (!address || !Object.prototype.hasOwnProperty.call(address, field)) continue;
+    const value = address[field];
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) continue;
+      rawAddress[field] = trimmed;
+      continue;
     }
+    rawAddress[field] = value;
   }
   rawAddress.unnormalized_address = trimmedValue;
 
