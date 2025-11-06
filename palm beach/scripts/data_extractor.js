@@ -512,26 +512,12 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-// Fields that can accompany an unnormalized address without triggering the
-// normalized branch of the schema.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
-  "municipality_name",
-];
+// Fields that can accompany an unnormalized address while still satisfying the
+// address schema. This intentionally mirrors the address field list to ensure
+// required properties are always present, even when their values are null.
+const RAW_ADDRESS_ALLOWED_FIELDS = ADDRESS_SCHEMA_FIELDS.filter(
+  (field) => field !== "unnormalized_address",
+);
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -596,7 +582,7 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
   const rawAddress = collectAddressFields(address, RAW_ADDRESS_ALLOWED_FIELDS, {
-    omitNulls: true,
+    preserveNulls: true,
   });
 
   rawAddress.unnormalized_address = unnormalizedValue;
