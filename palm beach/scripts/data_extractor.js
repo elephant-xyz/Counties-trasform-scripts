@@ -486,8 +486,6 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
-const COORDINATE_ADDRESS_REQUIRED_NUMBERS = ["latitude", "longitude"];
-
 const NORMALIZED_ADDRESS_FIELDS = [
   "latitude",
   "longitude",
@@ -1809,9 +1807,6 @@ function main() {
     const hasSourceProvidedUnnormalized =
       typeof fullAddrInput === "string" && fullAddrInput.trim().length > 0;
     const normalizedAddressIsComplete = hasCompleteNormalizedAddress(address);
-    const hasNormalizedCoordinates = COORDINATE_ADDRESS_REQUIRED_NUMBERS.every((field) =>
-      Number.isFinite(address[field]),
-    );
 
     const rawAddressCandidate = hasUnnormalizedAddress
       ? buildRawAddressPayload(address, trimmedUnnormalized)
@@ -1844,17 +1839,6 @@ function main() {
 
     if (!finalAddress && rawAddressIsValid) {
       finalAddress = rawAddressCandidate;
-    }
-
-    if (!finalAddress && hasNormalizedCoordinates) {
-      const coordinateAddress = collectAddressFields(
-        address,
-        COORDINATE_ADDRESS_REQUIRED_NUMBERS,
-        { omitNulls: true },
-      );
-      if (COORDINATE_ADDRESS_REQUIRED_NUMBERS.every((key) => Number.isFinite(coordinateAddress[key]))) {
-        finalAddress = coordinateAddress;
-      }
     }
 
     const propertyFilePath = path.join(dataDir, "property.json");
