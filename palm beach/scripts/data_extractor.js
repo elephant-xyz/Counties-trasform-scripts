@@ -488,19 +488,9 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = new Set([
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "route_number",
-  "unit_identifier",
-]);
+const RAW_ADDRESS_ALLOWED_FIELDS = new Set(
+  ADDRESS_SCHEMA_FIELDS.filter((field) => field !== "unnormalized_address"),
+);
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -581,19 +571,26 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
       if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
       const value = address[field];
-      if (value == null) continue;
+      if (value == null) {
+        rawAddress[field] = null;
+        continue;
+      }
       if (typeof value === "number") {
-        if (Number.isFinite(value)) {
-          rawAddress[field] = value;
-        }
+        rawAddress[field] = Number.isFinite(value) ? value : null;
         continue;
       }
       if (typeof value === "string") {
         const trimmed = value.trim();
-        if (trimmed.length > 0) {
-          rawAddress[field] = trimmed;
-        }
+        rawAddress[field] = trimmed.length > 0 ? trimmed : null;
+        continue;
       }
+      rawAddress[field] = value;
+    }
+  }
+
+  for (const field of ADDRESS_SCHEMA_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(rawAddress, field)) {
+      rawAddress[field] = null;
     }
   }
 
