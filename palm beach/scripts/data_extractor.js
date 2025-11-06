@@ -488,19 +488,11 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Raw addresses should only include the limited subset of properties that the
-// schema permits alongside the unnormalized value so the oneOf branches stay exclusive.
+// The raw-address branch of the schema still expects all standard address fields to be present
+// (even when null) so the oneOf discriminator can succeed. Mirror the full set here and inject
+// request_identifier so callers can propagate it when available.
 const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "unnormalized_address",
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...ADDRESS_SCHEMA_FIELDS,
   "request_identifier",
 ];
 
