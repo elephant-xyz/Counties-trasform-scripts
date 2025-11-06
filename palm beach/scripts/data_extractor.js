@@ -587,15 +587,8 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   copyNumericField("longitude");
 
   const OPTIONAL_STRING_FIELDS = [
-    "city_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "country_code",
     "county_name",
     "municipality_name",
-    "unit_identifier",
-    "route_number",
     "township",
     "range",
     "section",
@@ -1806,14 +1799,11 @@ function main() {
     }
 
     const addressFilePath = path.join(dataDir, "address.json");
-    const addressRelationshipPath = path.join(
-      dataDir,
-      "relationship_property_has_address.json",
-    );
-    const factSheetRelationshipPath = path.join(
-      dataDir,
-      "relationship_address_has_fact_sheet.json",
-    );
+    const legacyRelationshipPaths = [
+      // Relationships are populated downstream; remove local artifacts so validation sees nulls.
+      path.join(dataDir, "relationship_property_has_address.json"),
+      path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    ];
 
     for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -1856,39 +1846,18 @@ function main() {
       finalAddress = rawAddressCandidate;
     }
 
-    const propertyFilePath = path.join(dataDir, "property.json");
-    const factSheetFilePath = path.join(dataDir, "fact_sheet.json");
-
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
-
-      if (fs.existsSync(propertyFilePath)) {
-        writeJSON(addressRelationshipPath, {
-          from: "./property.json",
-          to: "./address.json",
-        });
-      } else if (fs.existsSync(addressRelationshipPath)) {
-        fs.unlinkSync(addressRelationshipPath);
-      }
-
-      if (fs.existsSync(factSheetFilePath)) {
-        writeJSON(factSheetRelationshipPath, {
-          from: "./address.json",
-          to: "./fact_sheet.json",
-        });
-      } else if (fs.existsSync(factSheetRelationshipPath)) {
-        fs.unlinkSync(factSheetRelationshipPath);
-      }
     } else {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
       }
-      if (fs.existsSync(addressRelationshipPath)) {
-        fs.unlinkSync(addressRelationshipPath);
-      }
-      if (fs.existsSync(factSheetRelationshipPath)) {
-        fs.unlinkSync(factSheetRelationshipPath);
+    }
+
+    for (const legacyRelationshipPath of legacyRelationshipPaths) {
+      if (fs.existsSync(legacyRelationshipPath)) {
+        fs.unlinkSync(legacyRelationshipPath);
       }
     }
   }
