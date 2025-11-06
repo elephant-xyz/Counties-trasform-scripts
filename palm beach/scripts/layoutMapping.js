@@ -9,7 +9,7 @@ function createReference(relativePath) {
   if (typeof relativePath !== "string") return null;
   const trimmed = relativePath.trim();
   if (!trimmed) return null;
-  return { "/": trimmed };
+  return trimmed;
 }
 
 function readInputHtml() {

@@ -1857,8 +1857,8 @@ function main() {
 
       if (fs.existsSync(propertyFilePath)) {
         writeJSON(addressRelationshipPath, {
-          from: { "/": "./property.json" },
-          to: { "/": "./address.json" },
+          from: "./property.json",
+          to: "./address.json",
         });
       } else if (fs.existsSync(addressRelationshipPath)) {
         fs.unlinkSync(addressRelationshipPath);
@@ -1866,8 +1866,8 @@ function main() {
 
       if (fs.existsSync(factSheetFilePath)) {
         writeJSON(factSheetRelationshipPath, {
-          from: { "/": "./address.json" },
-          to: { "/": "./fact_sheet.json" },
+          from: "./address.json",
+          to: "./fact_sheet.json",
         });
       } else if (fs.existsSync(factSheetRelationshipPath)) {
         fs.unlinkSync(factSheetRelationshipPath);
