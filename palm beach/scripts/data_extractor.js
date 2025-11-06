@@ -595,8 +595,8 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = collectAddressFields(address, ADDRESS_SCHEMA_FIELDS, {
-    preserveNulls: true,
+  const rawAddress = collectAddressFields(address, RAW_ADDRESS_ALLOWED_FIELDS, {
+    omitNulls: true,
   });
 
   rawAddress.unnormalized_address = unnormalizedValue;
