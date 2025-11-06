@@ -571,26 +571,20 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
       if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
       const value = address[field];
-      if (value == null) {
-        rawAddress[field] = null;
-        continue;
-      }
+      if (value == null) continue;
+
       if (typeof value === "number") {
-        rawAddress[field] = Number.isFinite(value) ? value : null;
+        if (Number.isFinite(value)) rawAddress[field] = value;
         continue;
       }
+
       if (typeof value === "string") {
         const trimmed = value.trim();
-        rawAddress[field] = trimmed.length > 0 ? trimmed : null;
+        if (trimmed.length > 0) rawAddress[field] = trimmed;
         continue;
       }
-      rawAddress[field] = value;
-    }
-  }
 
-  for (const field of ADDRESS_SCHEMA_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(rawAddress, field)) {
-      rawAddress[field] = null;
+      rawAddress[field] = value;
     }
   }
 
