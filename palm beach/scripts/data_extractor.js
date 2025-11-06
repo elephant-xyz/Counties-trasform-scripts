@@ -488,17 +488,7 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -580,10 +570,14 @@ function buildRawAddressPayload(address, unnormalizedValue) {
           acc[key] = null;
           return acc;
         }, {});
-  const rawAddress = collectAddressFields(source, RAW_ADDRESS_ALLOWED_FIELDS, {
-    preserveNulls: false,
-    omitNulls: true,
-  });
+  const rawAddress = collectAddressFields(
+    source,
+    RAW_ADDRESS_ALLOWED_FIELDS,
+    {
+      preserveNulls: true,
+      omitNulls: false,
+    },
+  );
 
   rawAddress.unnormalized_address = trimmedValue;
 
