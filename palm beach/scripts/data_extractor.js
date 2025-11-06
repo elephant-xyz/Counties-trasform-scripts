@@ -589,8 +589,8 @@ function buildRawAddressPayload(address, unnormalizedValue) {
         }, {});
 
   const rawAddress = collectAddressFields(source, RAW_ADDRESS_ALLOWED_FIELDS, {
-    preserveNulls: false,
-    omitNulls: true,
+    preserveNulls: true,
+    omitNulls: false,
   });
 
   if (!rawAddress.country_code) {
