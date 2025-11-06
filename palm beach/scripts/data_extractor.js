@@ -591,11 +591,20 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     address,
     RAW_ADDRESS_OPTIONAL_FIELDS,
     {
-      // Only include fields we can actually populate so the unnormalized branch
-      // of the address schema remains the single matching option in the oneOf.
-      omitNulls: true,
+      // Preserve null-valued fields so the schema's required properties remain present
+      // while still excluding the normalized street component fields.
+      preserveNulls: true,
     },
   );
+  for (const normalizedComponent of [
+    "street_name",
+    "street_post_directional_text",
+    "street_pre_directional_text",
+    "street_number",
+    "street_suffix_type",
+  ]) {
+    rawAddress[normalizedComponent] = null;
+  }
   rawAddress.unnormalized_address = unnormalizedValue;
 
   return rawAddress;
