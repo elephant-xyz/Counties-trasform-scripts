@@ -569,22 +569,34 @@ function buildRawAddressPayload(address, unnormalizedValue) {
 
   if (address && typeof address === "object") {
     for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-      const value = address[field];
-      if (value == null) continue;
+      let value;
+      if (Object.prototype.hasOwnProperty.call(address, field)) {
+        value = address[field];
+      } else {
+        value = null;
+      }
 
       if (typeof value === "number") {
-        if (Number.isFinite(value)) rawAddress[field] = value;
+        rawAddress[field] = Number.isFinite(value) ? value : null;
         continue;
       }
 
       if (typeof value === "string") {
         const trimmed = value.trim();
-        if (trimmed.length > 0) rawAddress[field] = trimmed;
+        rawAddress[field] = trimmed.length > 0 ? trimmed : null;
+        continue;
+      }
+
+      if (value === undefined) {
+        rawAddress[field] = null;
         continue;
       }
 
       rawAddress[field] = value;
+    }
+  } else {
+    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+      rawAddress[field] = null;
     }
   }
 
