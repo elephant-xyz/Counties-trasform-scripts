@@ -1873,11 +1873,16 @@ async function main() {
     }
 
     const addressFilePath = path.join(dataDir, "address.json");
-    const legacyRelationshipPaths = [
-      // Relationships are populated downstream; remove local artifacts so validation sees nulls.
-      path.join(dataDir, "relationship_property_has_address.json"),
-      path.join(dataDir, "relationship_address_has_fact_sheet.json"),
-    ];
+    const propertyFilePath = path.join(dataDir, "property.json");
+    const propertyAddressRelationshipPath = path.join(
+      dataDir,
+      "relationship_property_has_address.json",
+    );
+    const addressFactSheetRelationshipPath = path.join(
+      dataDir,
+      "relationship_address_has_fact_sheet.json",
+    );
+    const factSheetFilePath = path.join(dataDir, "fact_sheet.json");
 
     for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -1922,16 +1927,34 @@ async function main() {
 
     if (finalAddress && Object.keys(finalAddress).length) {
       writeJSON(addressFilePath, finalAddress);
+
+      if (fs.existsSync(propertyFilePath)) {
+        writeJSON(propertyAddressRelationshipPath, {
+          from: { "/": "./property.json" },
+          to: { "/": "./address.json" },
+        });
+      } else if (fs.existsSync(propertyAddressRelationshipPath)) {
+        fs.unlinkSync(propertyAddressRelationshipPath);
+      }
+
+      if (fs.existsSync(factSheetFilePath)) {
+        writeJSON(addressFactSheetRelationshipPath, {
+          from: { "/": "./address.json" },
+          to: { "/": "./fact_sheet.json" },
+        });
+      } else if (fs.existsSync(addressFactSheetRelationshipPath)) {
+        fs.unlinkSync(addressFactSheetRelationshipPath);
+      }
     } else {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
       }
-    }
-
-    for (const legacyRelationshipPath of legacyRelationshipPaths) {
-      if (fs.existsSync(legacyRelationshipPath)) {
-        fs.unlinkSync(legacyRelationshipPath);
+      if (fs.existsSync(propertyAddressRelationshipPath)) {
+        fs.unlinkSync(propertyAddressRelationshipPath);
+      }
+      if (fs.existsSync(addressFactSheetRelationshipPath)) {
+        fs.unlinkSync(addressFactSheetRelationshipPath);
       }
     }
   }
