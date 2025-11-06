@@ -488,8 +488,6 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_GRID_FIELDS = ["section", "township", "range"];
-
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -560,32 +558,53 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
   const trimmedValue =
-    typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : unnormalizedValue;
+    typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : null;
   if (!trimmedValue) return null;
 
-  const rawAddress = ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
-    acc[key] = null;
-    return acc;
-  }, {});
-  rawAddress.unnormalized_address = trimmedValue;
+  const rawAddress = {
+    unnormalized_address: trimmedValue,
+  };
 
-  if (address && typeof address === "object") {
-    const normalizedSnapshot = collectAddressFields(
-      address,
-      NORMALIZED_ADDRESS_FIELDS,
-      { preserveNulls: true },
-    );
-    Object.assign(rawAddress, normalizedSnapshot);
+  if (!address || typeof address !== "object") {
+    return rawAddress;
+  }
 
-    const hasCompleteGrid = RAW_ADDRESS_GRID_FIELDS.every((field) => {
-      const value = rawAddress[field];
-      return typeof value === "string" && value.trim().length > 0;
-    });
-    if (!hasCompleteGrid) {
-      for (const field of RAW_ADDRESS_GRID_FIELDS) {
-        rawAddress[field] = null;
-      }
+  const copyNumericField = (field) => {
+    const value = address[field];
+    if (Number.isFinite(value)) {
+      rawAddress[field] = value;
     }
+  };
+
+  const copyStringField = (field) => {
+    const value = safeNullIfEmpty(address[field]);
+    if (value) {
+      rawAddress[field] = value;
+    }
+  };
+
+  copyNumericField("latitude");
+  copyNumericField("longitude");
+
+  const OPTIONAL_STRING_FIELDS = [
+    "city_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "country_code",
+    "county_name",
+    "municipality_name",
+    "unit_identifier",
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+  ];
+
+  for (const field of OPTIONAL_STRING_FIELDS) {
+    copyStringField(field);
   }
 
   return rawAddress;
