@@ -595,28 +595,11 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = {
-    unnormalized_address: unnormalizedValue,
-  };
+  const rawAddress = collectAddressFields(address, ADDRESS_SCHEMA_FIELDS, {
+    preserveNulls: true,
+  });
 
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    const value = address[field];
-    if (value == null) continue;
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed) continue;
-      rawAddress[field] = trimmed;
-      continue;
-    }
-    if (typeof value === "number") {
-      if (Number.isFinite(value)) {
-        rawAddress[field] = value;
-      }
-      continue;
-    }
-    rawAddress[field] = value;
-  }
+  rawAddress.unnormalized_address = unnormalizedValue;
 
   return rawAddress;
 }
