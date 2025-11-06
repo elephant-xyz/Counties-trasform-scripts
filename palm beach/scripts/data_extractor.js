@@ -488,6 +488,18 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
+
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -568,20 +580,12 @@ function buildRawAddressPayload(address, unnormalizedValue) {
           acc[key] = null;
           return acc;
         }, {});
-
-  const rawAddress = collectAddressFields(
-    source,
-    NORMALIZED_ADDRESS_FIELDS,
-    { preserveNulls: true },
-  );
+  const rawAddress = collectAddressFields(source, RAW_ADDRESS_ALLOWED_FIELDS, {
+    preserveNulls: false,
+    omitNulls: true,
+  });
 
   rawAddress.unnormalized_address = trimmedValue;
-
-  for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(rawAddress, coordinateField)) {
-      rawAddress[coordinateField] = null;
-    }
-  }
 
   return rawAddress;
 }
