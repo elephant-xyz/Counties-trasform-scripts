@@ -459,45 +459,6 @@ const STREET_SUFFIX_ENUM = [
   "Crk",
 ];
 
-const ADDRESS_SCHEMA_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
-  "municipality_name",
-  "unnormalized_address",
-];
-
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
-
-const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
-
 const NORMALIZED_ADDRESS_FIELDS = [
   "latitude",
   "longitude",
@@ -521,6 +482,25 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "county_name",
   "municipality_name",
 ];
+
+const ADDRESS_SCHEMA_FIELDS = [
+  ...NORMALIZED_ADDRESS_FIELDS,
+  "unnormalized_address",
+];
+
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
+
+const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -589,7 +569,7 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   if (!trimmedValue) return null;
 
   const baseFields = collectAddressFields(address || {}, RAW_ADDRESS_ALLOWED_FIELDS, {
-    omitNulls: true,
+    preserveNulls: true,
   });
 
   const rawAddress = { ...baseFields, unnormalized_address: trimmedValue };
