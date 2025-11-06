@@ -488,9 +488,13 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = new Set(
-  ADDRESS_SCHEMA_FIELDS.filter((field) => field !== "unnormalized_address"),
-);
+const RAW_ADDRESS_SAFE_STRING_FIELDS = [
+  "county_name",
+  "municipality_name",
+  "block",
+  "lot",
+];
+const RAW_ADDRESS_GRID_FIELDS = ["section", "township", "range"];
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -568,35 +572,26 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   const rawAddress = { unnormalized_address: trimmedValue };
 
   if (address && typeof address === "object") {
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-      let value;
-      if (Object.prototype.hasOwnProperty.call(address, field)) {
-        value = address[field];
-      } else {
-        value = null;
-      }
-
-      if (typeof value === "number") {
-        rawAddress[field] = Number.isFinite(value) ? value : null;
-        continue;
-      }
-
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        rawAddress[field] = trimmed.length > 0 ? trimmed : null;
-        continue;
-      }
-
-      if (value === undefined) {
-        rawAddress[field] = null;
-        continue;
-      }
-
-      rawAddress[field] = value;
+    const latitude = Number.isFinite(address.latitude) ? address.latitude : null;
+    const longitude = Number.isFinite(address.longitude) ? address.longitude : null;
+    if (latitude != null && longitude != null) {
+      rawAddress.latitude = latitude;
+      rawAddress.longitude = longitude;
     }
-  } else {
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-      rawAddress[field] = null;
+
+    for (const field of RAW_ADDRESS_SAFE_STRING_FIELDS) {
+      const value = safeNullIfEmpty(address[field]);
+      if (value) rawAddress[field] = value;
+    }
+
+    const gridValues = RAW_ADDRESS_GRID_FIELDS.map((field) =>
+      safeNullIfEmpty(address[field]),
+    );
+    const hasCompleteGrid = gridValues.every(Boolean);
+    if (hasCompleteGrid) {
+      RAW_ADDRESS_GRID_FIELDS.forEach((field, index) => {
+        rawAddress[field] = gridValues[index];
+      });
     }
   }
 
