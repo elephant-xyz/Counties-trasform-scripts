@@ -512,18 +512,26 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-// When falling back to an unnormalized address we must avoid including the
-// normalized street components, otherwise the schema's oneOf cannot resolve.
-const RAW_ADDRESS_OPTIONAL_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
-  (field) =>
-    ![
-      "street_name",
-      "street_post_directional_text",
-      "street_pre_directional_text",
-      "street_number",
-      "street_suffix_type",
-    ].includes(field),
-);
+// Fields that can accompany an unnormalized address without triggering the
+// normalized branch of the schema.
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "country_code",
+  "plus_four_postal_code",
+  "postal_code",
+  "state_code",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "county_name",
+  "municipality_name",
+];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -587,25 +595,28 @@ function collectAddressFields(source, fields, options = {}) {
 function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
-  const rawAddress = collectAddressFields(
-    address,
-    RAW_ADDRESS_OPTIONAL_FIELDS,
-    {
-      // Preserve null-valued fields so the schema's required properties remain present
-      // while still excluding the normalized street component fields.
-      preserveNulls: true,
-    },
-  );
-  for (const normalizedComponent of [
-    "street_name",
-    "street_post_directional_text",
-    "street_pre_directional_text",
-    "street_number",
-    "street_suffix_type",
-  ]) {
-    rawAddress[normalizedComponent] = null;
+  const rawAddress = {
+    unnormalized_address: unnormalizedValue,
+  };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    const value = address[field];
+    if (value == null) continue;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      rawAddress[field] = trimmed;
+      continue;
+    }
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        rawAddress[field] = value;
+      }
+      continue;
+    }
+    rawAddress[field] = value;
   }
-  rawAddress.unnormalized_address = unnormalizedValue;
 
   return rawAddress;
 }
