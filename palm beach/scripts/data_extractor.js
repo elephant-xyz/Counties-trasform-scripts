@@ -510,10 +510,20 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-// Fields that are allowed alongside an unnormalized address. The schema still
-// expects the normalized shape (keys present) even when the values are null, so
-// we mirror the normalized field list when emitting the raw payload.
-const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+// Fields that can accompany an unnormalized address without forcing the schema
+// into the normalized branch. Keep this list intentionally small so the raw
+// address shape remains compliant with the corresponding `oneOf`.
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -578,16 +588,15 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   if (!unnormalizedValue) return null;
 
   const rawAddress = collectAddressFields(address, RAW_ADDRESS_ALLOWED_FIELDS, {
-    preserveNulls: true,
+    omitNulls: true,
   });
 
-  for (const key of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(rawAddress, key)) {
-      rawAddress[key] = null;
-    }
-  }
+  rawAddress.unnormalized_address =
+    typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : unnormalizedValue;
 
-  rawAddress.unnormalized_address = unnormalizedValue;
+  if (!rawAddress.unnormalized_address) {
+    return null;
+  }
 
   return rawAddress;
 }
