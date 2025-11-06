@@ -580,7 +580,7 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     (field) => field !== "unnormalized_address",
   );
   const rawAddress = collectAddressFields(address || {}, schemaFields, {
-    preserveNulls: true,
+    omitNulls: true,
   });
   rawAddress.unnormalized_address = trimmedValue;
 
