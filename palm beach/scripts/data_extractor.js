@@ -1820,33 +1820,44 @@ function main() {
         ? fallbackUnnormalizedValue.trim()
         : "";
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
+    const hasSourceProvidedUnnormalized =
+      typeof fullAddrInput === "string" && fullAddrInput.trim().length > 0;
     const normalizedAddressIsComplete = hasCompleteNormalizedAddress(address);
     const hasNormalizedCoordinates = COORDINATE_ADDRESS_REQUIRED_NUMBERS.every((field) =>
       Number.isFinite(address[field]),
     );
 
+    const rawAddressCandidate = hasUnnormalizedAddress
+      ? buildRawAddressPayload(address, trimmedUnnormalized)
+      : null;
+    const rawAddressIsValid =
+      rawAddressCandidate && Object.keys(rawAddressCandidate).length >= 1;
+
     let finalAddress = null;
 
-    if (normalizedAddressIsComplete) {
+    if (hasSourceProvidedUnnormalized && rawAddressIsValid) {
+      finalAddress = rawAddressCandidate;
+    }
+
+    if (!finalAddress && normalizedAddressIsComplete) {
       const normalizedAddress = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { omitNulls: true },
+        { preserveNulls: true },
       );
       if (
         NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-          (key) => typeof normalizedAddress[key] === "string" && normalizedAddress[key].trim().length,
+          (key) =>
+            typeof normalizedAddress[key] === "string" &&
+            normalizedAddress[key].trim().length,
         )
       ) {
         finalAddress = normalizedAddress;
       }
     }
 
-    if (!finalAddress && hasUnnormalizedAddress) {
-      const rawAddress = buildRawAddressPayload(address, trimmedUnnormalized);
-      if (rawAddress && Object.keys(rawAddress).length >= 1) {
-        finalAddress = rawAddress;
-      }
+    if (!finalAddress && rawAddressIsValid) {
+      finalAddress = rawAddressCandidate;
     }
 
     if (!finalAddress && hasNormalizedCoordinates) {
