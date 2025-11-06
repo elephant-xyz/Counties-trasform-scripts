@@ -488,8 +488,8 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Raw schema expects the same shape as normalized with null fallbacks so include every field.
-const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+// Raw schema accepts unnormalized addresses with any subset of normalized fields when available.
+const RAW_ADDRESS_OPTIONAL_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -508,6 +508,11 @@ function hasCompleteNormalizedAddress(address) {
   for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
     const value = address[field];
     if (typeof value !== "string" || value.trim().length === 0) {
+      return false;
+    }
+  }
+  for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+    if (!Number.isFinite(address[coordinateField])) {
       return false;
     }
   }
@@ -559,11 +564,31 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : unnormalizedValue;
   if (!trimmedValue) return null;
 
-  const baseFields = collectAddressFields(address || {}, RAW_ADDRESS_ALLOWED_FIELDS, {
-    preserveNulls: true,
-  });
+  const rawAddress = { unnormalized_address: trimmedValue };
+  if (!address || typeof address !== "object") {
+    return rawAddress;
+  }
 
-  const rawAddress = { ...baseFields, unnormalized_address: trimmedValue };
+  for (const field of RAW_ADDRESS_OPTIONAL_FIELDS) {
+    if (field === "unnormalized_address") continue;
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    const value = address[field];
+    if (value == null) continue;
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        rawAddress[field] = value;
+      }
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length) {
+        rawAddress[field] = trimmed;
+      }
+      continue;
+    }
+    rawAddress[field] = value;
+  }
   return rawAddress;
 }
 
