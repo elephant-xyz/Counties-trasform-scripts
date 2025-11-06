@@ -488,7 +488,26 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
+// When working with the address schema, the validator enforces a oneOf branch:
+//  • normalized addresses require the full normalized field set (including coordinates)
+//  • raw addresses hinge on supplying an unnormalized_address without the incomplete normalized payload
+// To keep the raw branch valid, only surface contextual fields that we can actually populate.
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "unnormalized_address",
+  "county_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "latitude",
+  "longitude",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -563,33 +582,35 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : null;
   if (!trimmedValue) return null;
 
-  const source =
-    address && typeof address === "object"
-      ? address
-      : RAW_ADDRESS_ALLOWED_FIELDS.reduce((acc, key) => {
-          acc[key] = null;
-          return acc;
-        }, {});
+  const rawAddress = { unnormalized_address: trimmedValue };
 
-  const rawAddress = collectAddressFields(source, RAW_ADDRESS_ALLOWED_FIELDS, {
-    preserveNulls: true,
-    omitNulls: false,
-  });
-
-  if (!rawAddress.country_code) {
-    const fallbackState =
-      source && typeof source.state_code === "string"
-        ? source.state_code.trim()
-        : null;
-    if (fallbackState) {
-      rawAddress.country_code = "US";
-      if (!rawAddress.state_code) {
-        rawAddress.state_code = fallbackState.toUpperCase();
+  if (address && typeof address === "object") {
+    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+      if (field === "unnormalized_address") continue;
+      if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+      const value = address[field];
+      if (value == null) continue;
+      if (typeof value === "number") {
+        if (Number.isFinite(value)) rawAddress[field] = value;
+        continue;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length) rawAddress[field] = trimmed;
       }
     }
   }
 
-  rawAddress.unnormalized_address = trimmedValue;
+  if (!rawAddress.country_code) {
+    const fallbackState =
+      address && typeof address.state_code === "string"
+        ? address.state_code.trim()
+        : null;
+    if (fallbackState) {
+      rawAddress.country_code = "US";
+      if (!rawAddress.state_code) rawAddress.state_code = fallbackState.toUpperCase();
+    }
+  }
 
   return rawAddress;
 }
