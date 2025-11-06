@@ -561,43 +561,26 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : null;
   if (!trimmedValue) return null;
 
-  const rawAddress = {
-    unnormalized_address: trimmedValue,
-  };
+  const source =
+    address && typeof address === "object"
+      ? address
+      : ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
+          acc[key] = null;
+          return acc;
+        }, {});
 
-  if (!address || typeof address !== "object") {
-    return rawAddress;
-  }
+  const rawAddress = collectAddressFields(
+    source,
+    NORMALIZED_ADDRESS_FIELDS,
+    { preserveNulls: true },
+  );
 
-  const copyNumericField = (field) => {
-    const value = address[field];
-    if (Number.isFinite(value)) {
-      rawAddress[field] = value;
+  rawAddress.unnormalized_address = trimmedValue;
+
+  for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(rawAddress, coordinateField)) {
+      rawAddress[coordinateField] = null;
     }
-  };
-
-  const copyStringField = (field) => {
-    const value = safeNullIfEmpty(address[field]);
-    if (value) {
-      rawAddress[field] = value;
-    }
-  };
-
-  copyNumericField("latitude");
-  copyNumericField("longitude");
-
-  const OPTIONAL_STRING_FIELDS = [
-    "county_name",
-    "municipality_name",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-  ];
-
-  for (const field of OPTIONAL_STRING_FIELDS) {
-    copyStringField(field);
   }
 
   return rawAddress;
