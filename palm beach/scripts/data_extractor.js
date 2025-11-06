@@ -488,9 +488,21 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Raw addresses rely on the unnormalized payload but must still expose the schema's optional
-// fields (even when null) so oneOf validation can succeed without demanding a fully normalized set.
-const RAW_ADDRESS_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
+// Raw addresses should only include the limited subset of properties that the
+// schema permits alongside the unnormalized value so the oneOf branches stay exclusive.
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "unnormalized_address",
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "request_identifier",
+];
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -585,13 +597,17 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   }
 
   if (
-    (rawAddress.country_code == null || rawAddress.country_code === "") &&
+    (RAW_ADDRESS_ALLOWED_FIELDS.includes("country_code") ||
+      RAW_ADDRESS_ALLOWED_FIELDS.includes("state_code")) &&
     typeof sourceAddress.state_code === "string" &&
     sourceAddress.state_code.trim()
   ) {
     const fallbackState = sourceAddress.state_code.trim().toUpperCase();
-    rawAddress.country_code = "US";
-    if (!rawAddress.state_code) {
+    if (RAW_ADDRESS_ALLOWED_FIELDS.includes("country_code") &&
+        (rawAddress.country_code == null || rawAddress.country_code === "")) {
+      rawAddress.country_code = "US";
+    }
+    if (RAW_ADDRESS_ALLOWED_FIELDS.includes("state_code") && !rawAddress.state_code) {
       rawAddress.state_code = fallbackState;
     }
   }
@@ -1690,6 +1706,12 @@ function main() {
       acc[key] = null;
       return acc;
     }, {});
+
+    if (seed && typeof seed.request_identifier === "string" && seed.request_identifier.trim()) {
+      address.request_identifier = seed.request_identifier.trim();
+    } else if (seed && typeof seed.parcel_id === "string" && seed.parcel_id.trim()) {
+      address.request_identifier = seed.parcel_id.trim();
+    }
 
     address.city_name = normalizedCity ? normalizedCity.toUpperCase() : null;
     if (address.city_name && /\d/.test(address.city_name)) {
