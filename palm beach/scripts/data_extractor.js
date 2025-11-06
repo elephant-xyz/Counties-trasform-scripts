@@ -576,20 +576,12 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : unnormalizedValue;
   if (!trimmedValue) return null;
 
-  const rawAddress = {};
-  for (const field of ADDRESS_SCHEMA_FIELDS) {
-    if (field === "unnormalized_address") continue;
-    if (!address || !Object.prototype.hasOwnProperty.call(address, field)) continue;
-    const value = address[field];
-    if (value === null || value === undefined) continue;
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) continue;
-      rawAddress[field] = trimmed;
-      continue;
-    }
-    rawAddress[field] = value;
-  }
+  const schemaFields = ADDRESS_SCHEMA_FIELDS.filter(
+    (field) => field !== "unnormalized_address",
+  );
+  const rawAddress = collectAddressFields(address || {}, schemaFields, {
+    preserveNulls: true,
+  });
   rawAddress.unnormalized_address = trimmedValue;
 
   return rawAddress;
@@ -1811,8 +1803,6 @@ function main() {
         ? fallbackUnnormalizedValue.trim()
         : "";
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
-    const hasSourceProvidedUnnormalized =
-      typeof fullAddrInput === "string" && fullAddrInput.trim().length > 0;
     const normalizedAddressIsComplete = hasCompleteNormalizedAddress(address);
 
     const rawAddressCandidate = hasUnnormalizedAddress
@@ -1821,28 +1811,26 @@ function main() {
     const rawAddressIsValid =
       rawAddressCandidate && Object.keys(rawAddressCandidate).length >= 1;
 
-    let finalAddress = null;
-
-    if (hasSourceProvidedUnnormalized && rawAddressIsValid) {
-      finalAddress = rawAddressCandidate;
-    }
-
-    if (!finalAddress && normalizedAddressIsComplete) {
-      const normalizedAddress = collectAddressFields(
+    let normalizedAddress = null;
+    if (normalizedAddressIsComplete) {
+      const candidate = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
         { preserveNulls: true },
       );
-      if (
-        NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-          (key) =>
-            typeof normalizedAddress[key] === "string" &&
-            normalizedAddress[key].trim().length,
-        )
-      ) {
-        finalAddress = normalizedAddress;
+      const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+        (key) =>
+          typeof candidate[key] === "string" && candidate[key].trim().length,
+      );
+      if (hasRequiredStrings) {
+        normalizedAddress = candidate;
+        if (trimmedUnnormalized.length && !normalizedAddress.unnormalized_address) {
+          normalizedAddress.unnormalized_address = trimmedUnnormalized;
+        }
       }
     }
+
+    let finalAddress = normalizedAddress;
 
     if (!finalAddress && rawAddressIsValid) {
       finalAddress = rawAddressCandidate;
