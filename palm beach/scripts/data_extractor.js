@@ -488,7 +488,24 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+  "municipality_name",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -566,18 +583,28 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   const source =
     address && typeof address === "object"
       ? address
-      : ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
+      : RAW_ADDRESS_ALLOWED_FIELDS.reduce((acc, key) => {
           acc[key] = null;
           return acc;
         }, {});
-  const rawAddress = collectAddressFields(
-    source,
-    RAW_ADDRESS_ALLOWED_FIELDS,
-    {
-      preserveNulls: true,
-      omitNulls: false,
-    },
-  );
+
+  const rawAddress = collectAddressFields(source, RAW_ADDRESS_ALLOWED_FIELDS, {
+    preserveNulls: false,
+    omitNulls: true,
+  });
+
+  if (!rawAddress.country_code) {
+    const fallbackState =
+      source && typeof source.state_code === "string"
+        ? source.state_code.trim()
+        : null;
+    if (fallbackState) {
+      rawAddress.country_code = "US";
+      if (!rawAddress.state_code) {
+        rawAddress.state_code = fallbackState.toUpperCase();
+      }
+    }
+  }
 
   rawAddress.unnormalized_address = trimmedValue;
 
