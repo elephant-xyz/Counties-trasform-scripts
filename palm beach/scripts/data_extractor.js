@@ -620,27 +620,10 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Fields that can safely accompany the unnormalized address variant.
-// Keep this list aligned with the raw-address branch of the schema so the oneOf guard
-// does not mistake a raw payload for a partially-normalized address.
-// Raw address payload can only carry high-level metadata alongside the unnormalized string.
-// Exclude detailed street component fields so the schema's oneOf selects the raw branch.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+// Fields that may accompany the raw (unnormalized) address payload.
+// Keep the list aligned with the schema requirements so every nullable property is present,
+// even when we only have an unnormalized string available.
+const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
