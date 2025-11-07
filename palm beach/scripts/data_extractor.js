@@ -662,16 +662,15 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     typeof rawAddress.postal_code === "string" &&
     rawAddress.postal_code.length > 0;
 
-  if (hasCity && hasState && hasPostal) {
-    if (!rawAddress.country_code) {
-      rawAddress.country_code = "US";
-    }
-  } else {
+  if (hasState && !rawAddress.country_code) {
+    rawAddress.country_code = "US";
+  }
+
+  if (!hasCity) {
     delete rawAddress.city_name;
-    delete rawAddress.state_code;
-    delete rawAddress.postal_code;
+  }
+  if (!hasPostal) {
     delete rawAddress.plus_four_postal_code;
-    delete rawAddress.country_code;
   }
 
   return rawAddress;
@@ -1985,9 +1984,12 @@ async function main() {
       }
       finalAddress = normalizedOutput;
     } else if (rawAddressIsValid) {
-      const rawOutput = {
-        unnormalized_address: rawAddressCandidate.unnormalized_address.trim(),
-      };
+      const rawOutput = ADDRESS_SCHEMA_FIELDS.reduce((accumulator, field) => {
+        accumulator[field] = null;
+        return accumulator;
+      }, {});
+
+      rawOutput.unnormalized_address = rawAddressCandidate.unnormalized_address.trim();
 
       for (const key of RAW_ADDRESS_ALLOWED_FIELDS) {
         if (key === "unnormalized_address") continue;
@@ -2004,6 +2006,17 @@ async function main() {
         } else {
           rawOutput[key] = value;
         }
+      }
+
+      const hasCountryCode =
+        typeof rawOutput.country_code === "string" &&
+        rawOutput.country_code.trim().length > 0;
+      const hasStateCode =
+        typeof rawOutput.state_code === "string" &&
+        rawOutput.state_code.trim().length > 0;
+
+      if (!hasCountryCode && hasStateCode) {
+        rawOutput.country_code = "US";
       }
 
       finalAddress = rawOutput;
