@@ -554,8 +554,8 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Fields that can safely accompany the unnormalized address variant. These exclude the normalized
-// street components so the payload aligns with the raw branch of the County schema's `oneOf`.
+// Fields that can safely accompany the unnormalized address variant. We include the normalized street
+// components so the payload satisfies the County schema's `oneOf` branch that still expects their presence.
 const RAW_ADDRESS_ALLOWED_FIELDS = [
   "latitude",
   "longitude",
@@ -565,6 +565,11 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "postal_code",
   "plus_four_postal_code",
   "unit_identifier",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
   "route_number",
   "township",
   "range",
