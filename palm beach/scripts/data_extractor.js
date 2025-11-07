@@ -26,12 +26,10 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  const payload = [
-    {
-      from: { "/": fromRelative },
-      to: { "/": toRelative },
-    },
-  ];
+  const payload = {
+    from: { "/": fromRelative },
+    to: { "/": toRelative },
+  };
   writeJSON(filePath, payload);
 }
 
@@ -2021,28 +2019,24 @@ async function main() {
 
       for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
         let value = pickCandidateValue(field);
-        if (value == null) continue;
 
         if (typeof value === "string") {
           const trimmed = value.trim();
-          if (!trimmed) continue;
           value = trimmed;
         } else if (typeof value === "number") {
-          if (!Number.isFinite(value)) continue;
+          if (!Number.isFinite(value)) value = null;
         } else {
-          continue;
+          value = null;
         }
 
         if (field === "postal_code") {
           const sanitizedPostal = sanitizePostalCode(value);
-          if (!sanitizedPostal) continue;
-          value = sanitizedPostal;
+          value = sanitizedPostal || null;
         } else if (field === "plus_four_postal_code") {
           const sanitizedPlus4 = sanitizePlus4(value);
-          if (!sanitizedPlus4) continue;
-          value = sanitizedPlus4;
-        } else if (field === "city_name" && /\d/.test(value)) {
-          continue;
+          value = sanitizedPlus4 || null;
+        } else if (field === "city_name" && typeof value === "string" && /\d/.test(value)) {
+          value = null;
         } else if (field === "state_code" && typeof value === "string") {
           value = value.toUpperCase();
         } else if (field === "country_code" && typeof value === "string") {
@@ -2056,8 +2050,8 @@ async function main() {
         rawOutput.country_code = "US";
       }
 
-      if (!rawOutput.postal_code && Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")) {
-        delete rawOutput.plus_four_postal_code;
+      if (!rawOutput.postal_code) {
+        rawOutput.plus_four_postal_code = null;
       }
 
       if (rawOutput.city_name && /\d/.test(rawOutput.city_name)) {
@@ -2073,6 +2067,54 @@ async function main() {
       }
 
       rawOutput.unnormalized_address = rawAddressCandidate.unnormalized_address.trim();
+
+      for (const field of NORMALIZED_ADDRESS_FIELDS) {
+        if (field === "latitude" || field === "longitude") {
+          if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
+            rawOutput[field] = null;
+          }
+          continue;
+        }
+        if (Object.prototype.hasOwnProperty.call(rawOutput, field)) continue;
+
+        let candidate = pickCandidateValue(field);
+        if (typeof candidate === "string") {
+          const trimmed = candidate.trim();
+          candidate = trimmed.length ? trimmed : null;
+        } else if (typeof candidate === "number") {
+          candidate = Number.isFinite(candidate) ? candidate : null;
+        } else {
+          candidate = null;
+        }
+
+        if (field === "postal_code") {
+          candidate = sanitizePostalCode(candidate) || null;
+        } else if (field === "plus_four_postal_code") {
+          candidate = sanitizePlus4(candidate) || null;
+        } else if (field === "city_name" && typeof candidate === "string" && /\d/.test(candidate)) {
+          candidate = null;
+        } else if (field === "state_code" && typeof candidate === "string") {
+          candidate = candidate.toUpperCase();
+        } else if (field === "country_code" && typeof candidate === "string") {
+          candidate = candidate.toUpperCase();
+        }
+
+        rawOutput[field] = candidate;
+      }
+
+      for (const field of ADDRESS_SCHEMA_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
+          rawOutput[field] = null;
+        }
+      }
+
+      if (!rawOutput.postal_code) {
+        rawOutput.plus_four_postal_code = null;
+      }
+
+      if (rawOutput.city_name && /\d/.test(rawOutput.city_name)) {
+        rawOutput.city_name = null;
+      }
 
       finalAddress = rawOutput;
     }
