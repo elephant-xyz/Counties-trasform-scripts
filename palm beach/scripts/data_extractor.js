@@ -623,22 +623,7 @@ const ADDRESS_SCHEMA_FIELDS = [
 // Fields that can safely accompany the unnormalized address variant.
 // Keep this list aligned with the raw-address branch of the schema so the oneOf guard
 // does not mistake a raw payload for a partially-normalized address.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -791,36 +776,50 @@ function prepareRawAddressForSchema(rawAddress) {
       ? rawAddress[field]
       : null;
 
-    if (typeof value === "number") {
-      value = Number.isFinite(value) ? value : null;
-    } else if (typeof value === "string") {
+    if (typeof value === "string") {
       value = value.trim();
       if (!value.length) value = null;
-    } else {
+    } else if (typeof value === "number") {
+      value = Number.isFinite(value) ? value : null;
+    } else if (typeof value !== "boolean") {
       value = null;
     }
 
-    if (isCoordinateField && value == null) {
+    if (field === "city_name") {
+      value = sanitizeCityName(value);
+    } else if (field === "postal_code") {
+      value = sanitizePostalCode(value) || null;
+    } else if (field === "plus_four_postal_code") {
+      value = sanitizePlus4(value) || null;
+    } else if (field === "state_code" || field === "country_code") {
+      value = value ? value.toUpperCase() : null;
+    }
+
+    if (isCoordinateField) {
+      if (value == null) {
+        prepared[field] = null;
+        continue;
+      }
+      if (typeof value === "number") {
+        prepared[field] = Number.isFinite(value) ? value : null;
+        continue;
+      }
+      if (typeof value === "string") {
+        const numeric = Number(value.trim());
+        prepared[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
       prepared[field] = null;
       continue;
     }
 
-    if (value == null) continue;
-
-    if (field === "city_name") {
-      value = sanitizeCityName(value);
-      if (!value) continue;
-    } else if (field === "postal_code") {
-      value = sanitizePostalCode(value) || null;
-      if (!value) continue;
-    } else if (field === "plus_four_postal_code") {
-      value = sanitizePlus4(value) || null;
-      if (!value) continue;
-    } else if (field === "state_code" || field === "country_code") {
-      value = value.toUpperCase();
+    if (value == null) {
+      prepared[field] = null;
+      continue;
     }
 
-    prepared[field] = value;
+    prepared[field] =
+      typeof value === "boolean" || typeof value === "number" ? value : String(value);
   }
 
   if (
@@ -835,31 +834,7 @@ function prepareRawAddressForSchema(rawAddress) {
     !prepared.postal_code &&
     Object.prototype.hasOwnProperty.call(prepared, "plus_four_postal_code")
   ) {
-    delete prepared.plus_four_postal_code;
-  }
-
-  for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(prepared, coordinateField)) {
-      prepared[coordinateField] = null;
-      continue;
-    }
-    const coordinate = prepared[coordinateField];
-    if (coordinate == null) {
-      prepared[coordinateField] = null;
-      continue;
-    }
-    if (typeof coordinate === "number") {
-      if (!Number.isFinite(coordinate)) {
-        prepared[coordinateField] = null;
-      }
-      continue;
-    }
-    if (typeof coordinate === "string") {
-      const numeric = Number(coordinate.trim());
-      prepared[coordinateField] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-    prepared[coordinateField] = null;
+    prepared.plus_four_postal_code = null;
   }
 
   return prepared;
