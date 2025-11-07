@@ -1977,14 +1977,20 @@ async function main() {
         }
         return false;
       });
-    const canEmitNormalizedAddress =
-      normalizedRequiredStringsPresent && normalizedRequiredCoordinatesPresent;
+    const canEmitNormalizedAddress = normalizedRequiredStringsPresent;
 
     let finalAddress = null;
     let finalAddressVariant = null;
 
     if (canEmitNormalizedAddress) {
-      finalAddress = { ...schemaReadyAddress };
+      const normalizedOutput = { ...schemaReadyAddress };
+      for (const coordField of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+        const coordValue = normalizedOutput[coordField];
+        if (typeof coordValue !== "number" || !Number.isFinite(coordValue)) {
+          normalizedOutput[coordField] = null;
+        }
+      }
+      finalAddress = normalizedOutput;
       finalAddressVariant = "normalized";
     } else if (hasUnnormalizedAddress) {
       finalAddress = { unnormalized_address: trimmedUnnormalized };

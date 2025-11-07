@@ -646,15 +646,20 @@ function hasCompleteNormalizedAddress(address) {
   }
   for (const field of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     const value = address[field];
-    if (typeof value === "number" && Number.isFinite(value)) continue;
+    if (value == null) {
+      address[field] = null;
+      continue;
+    }
+    if (typeof value === "number") {
+      address[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
     if (typeof value === "string") {
       const numeric = Number(value.trim());
-      if (Number.isFinite(numeric)) {
-        address[field] = numeric;
-        continue;
-      }
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
     }
-    return false;
+    address[field] = null;
   }
   return true;
 }
