@@ -2000,10 +2000,13 @@ async function main() {
       }
       finalAddress = normalizedOutput;
     } else if (rawAddressIsValid) {
-      const rawOutput = {};
+      const rawOutput = ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
+        acc[key] = null;
+        return acc;
+      }, {});
 
-      for (const key of RAW_ADDRESS_ALLOWED_FIELDS) {
-        let value = undefined;
+      for (const key of NORMALIZED_ADDRESS_FIELDS) {
+        let value;
 
         if (
           rawAddressCandidate &&
@@ -2015,14 +2018,13 @@ async function main() {
           Object.prototype.hasOwnProperty.call(normalizedSnapshot, key)
         ) {
           value = normalizedSnapshot[key];
+        } else {
+          value = undefined;
         }
 
         if (value === undefined || value === null) {
           rawOutput[key] = null;
-          continue;
-        }
-
-        if (typeof value === "string") {
+        } else if (typeof value === "string") {
           const trimmed = value.trim();
           rawOutput[key] = trimmed.length ? trimmed : null;
         } else if (typeof value === "number") {
