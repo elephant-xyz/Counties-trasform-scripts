@@ -2322,8 +2322,30 @@ async function main() {
     if (hasMeaningfulAddress) {
       writeJSON(addressFilePath, finalAddress);
 
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
+      const propertyJsonPath = path.join(dataDir, "property.json");
+      const factSheetJsonPath = path.join(dataDir, "fact_sheet.json");
+      const hasPropertyFile = fs.existsSync(propertyJsonPath);
+      const hasFactSheetFile = fs.existsSync(factSheetJsonPath);
+
+      if (hasPropertyFile) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          "./property.json",
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
+
+      if (hasFactSheetFile) {
+        writeRelationshipFile(
+          addressFactSheetRelationshipPath,
+          "./address.json",
+          "./fact_sheet.json",
+        );
+      } else {
+        removeFileIfExists(addressFactSheetRelationshipPath);
+      }
     } else {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
