@@ -630,6 +630,8 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "country_code",
 ];
 
+const NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
+
 function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
   for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
@@ -638,10 +640,15 @@ function hasCompleteNormalizedAddress(address) {
       return false;
     }
   }
+  for (const coordinateField of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+    if (!Number.isFinite(address[coordinateField])) {
+      return false;
+    }
+  }
   return true;
 }
 
-const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
+const ADDRESS_REQUIRED_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS];
 
 // Utility helper that builds an object containing only the requested fields from the source.
 // When preserveNulls is true the returned object explicitly includes null-valued fields so
@@ -2114,7 +2121,7 @@ async function main() {
         Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code") &&
         (!rawOutput.postal_code || rawOutput.postal_code.length === 0)
       ) {
-        rawOutput.plus_four_postal_code = null;
+        delete rawOutput.plus_four_postal_code;
       }
 
       const trimmedUnnormalized =
@@ -2162,7 +2169,7 @@ async function main() {
           typeof finalAddress.unnormalized_address === "string" &&
           finalAddress.unnormalized_address.trim().length === 0
         ) {
-          finalAddress.unnormalized_address = null;
+          delete finalAddress.unnormalized_address;
         }
 
         const allowedRawFields = new Set([
@@ -2185,7 +2192,7 @@ async function main() {
 
         for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
           if (!Number.isFinite(finalAddress[coordinateField])) {
-            finalAddress[coordinateField] = null;
+            delete finalAddress[coordinateField];
           }
         }
 
@@ -2193,14 +2200,14 @@ async function main() {
           Object.prototype.hasOwnProperty.call(finalAddress, "plus_four_postal_code") &&
           (!finalAddress.postal_code || finalAddress.postal_code.length === 0)
         ) {
-          finalAddress.plus_four_postal_code = null;
+          delete finalAddress.plus_four_postal_code;
         }
 
         if (
           typeof finalAddress.city_name === "string" &&
           /\d/.test(finalAddress.city_name)
         ) {
-          finalAddress.city_name = null;
+          delete finalAddress.city_name;
         }
       }
 
@@ -2230,19 +2237,26 @@ async function main() {
           const value = finalAddress[key];
           if (typeof value === "string") {
             const trimmed = value.trim();
-            finalAddress[key] = trimmed.length ? trimmed : null;
+            if (trimmed.length) {
+              finalAddress[key] = trimmed;
+            } else {
+              delete finalAddress[key];
+            }
           } else if (
             typeof value === "number" &&
             !Number.isFinite(value)
           ) {
-            finalAddress[key] = null;
+            delete finalAddress[key];
           }
         }
 
-        for (const field of NORMALIZED_ADDRESS_FIELDS) {
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            finalAddress[field] = null;
-          }
+        if (
+          !finalAddress.unnormalized_address ||
+          typeof finalAddress.unnormalized_address !== "string" ||
+          finalAddress.unnormalized_address.trim().length === 0
+        ) {
+          finalAddress = null;
+          finalAddressVariant = null;
         }
       }
     }
