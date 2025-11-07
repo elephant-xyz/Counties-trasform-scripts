@@ -633,6 +633,13 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "township",
   "range",
   "section",
@@ -828,12 +835,18 @@ function prepareRawAddressForSchema(rawAddress) {
   }
 
   if (!prepared.postal_code) {
-    delete prepared.plus_four_postal_code;
+    prepared.plus_four_postal_code = null;
   }
 
   for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     const coordinate = prepared[coordinateField];
     prepared[coordinateField] = Number.isFinite(coordinate) ? coordinate : null;
+  }
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(prepared, field)) {
+      prepared[field] = null;
+    }
   }
 
   return prepared;
@@ -2207,10 +2220,7 @@ async function main() {
     let finalAddress = null;
     let finalAddressVariant = null;
 
-    if (materializedRawAddress && hasUnnormalizedAddress) {
-      finalAddress = materializedRawAddress;
-      finalAddressVariant = "raw";
-    } else if (normalizedAddress) {
+    if (normalizedAddress) {
       const normalizedOutput = {};
       for (const key of NORMALIZED_ADDRESS_FIELDS) {
         let value = null;
@@ -2241,6 +2251,9 @@ async function main() {
       }
       finalAddress = normalizedOutput;
       finalAddressVariant = "normalized";
+    } else if (materializedRawAddress && hasUnnormalizedAddress) {
+      finalAddress = materializedRawAddress;
+      finalAddressVariant = "raw";
     } else if (materializedRawAddress) {
       finalAddress = materializedRawAddress;
       finalAddressVariant = "raw";
