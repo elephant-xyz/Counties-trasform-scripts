@@ -2000,82 +2000,79 @@ async function main() {
       }
       finalAddress = normalizedOutput;
     } else if (rawAddressIsValid) {
-      const rawOutput = ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
-        acc[key] = null;
-        return acc;
-      }, {});
-
-      for (const key of NORMALIZED_ADDRESS_FIELDS) {
-        let value;
-
+      const rawOutput = {};
+      const pickCandidateValue = (field) => {
         if (
           rawAddressCandidate &&
-          Object.prototype.hasOwnProperty.call(rawAddressCandidate, key)
+          Object.prototype.hasOwnProperty.call(rawAddressCandidate, field) &&
+          rawAddressCandidate[field] != null
         ) {
-          value = rawAddressCandidate[key];
-        } else if (
+          return rawAddressCandidate[field];
+        }
+        if (
           normalizedSnapshot &&
-          Object.prototype.hasOwnProperty.call(normalizedSnapshot, key)
+          Object.prototype.hasOwnProperty.call(normalizedSnapshot, field) &&
+          normalizedSnapshot[field] != null
         ) {
-          value = normalizedSnapshot[key];
-        } else {
-          value = undefined;
+          return normalizedSnapshot[field];
         }
+        return null;
+      };
 
-        if (value === undefined || value === null) {
-          rawOutput[key] = null;
-        } else if (typeof value === "string") {
+      for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+        let value = pickCandidateValue(field);
+        if (value == null) continue;
+
+        if (typeof value === "string") {
           const trimmed = value.trim();
-          rawOutput[key] = trimmed.length ? trimmed : null;
+          if (!trimmed) continue;
+          value = trimmed;
         } else if (typeof value === "number") {
-          rawOutput[key] = Number.isFinite(value) ? value : null;
+          if (!Number.isFinite(value)) continue;
         } else {
-          rawOutput[key] = null;
+          continue;
         }
-      }
 
-      rawOutput.unnormalized_address =
-        rawAddressCandidate.unnormalized_address.trim() || null;
+        if (field === "postal_code") {
+          const sanitizedPostal = sanitizePostalCode(value);
+          if (!sanitizedPostal) continue;
+          value = sanitizedPostal;
+        } else if (field === "plus_four_postal_code") {
+          const sanitizedPlus4 = sanitizePlus4(value);
+          if (!sanitizedPlus4) continue;
+          value = sanitizedPlus4;
+        } else if (field === "city_name" && /\d/.test(value)) {
+          continue;
+        } else if (field === "state_code" && typeof value === "string") {
+          value = value.toUpperCase();
+        } else if (field === "country_code" && typeof value === "string") {
+          value = value.toUpperCase();
+        }
 
-      let requestIdentifier = null;
-      if (
-        rawAddressCandidate &&
-        Object.prototype.hasOwnProperty.call(
-          rawAddressCandidate,
-          "request_identifier",
-        )
-      ) {
-        requestIdentifier = rawAddressCandidate.request_identifier;
-      } else if (
-        normalizedSnapshot &&
-        Object.prototype.hasOwnProperty.call(
-          normalizedSnapshot,
-          "request_identifier",
-        )
-      ) {
-        requestIdentifier = normalizedSnapshot.request_identifier;
-      }
-
-      if (typeof requestIdentifier === "string") {
-        const trimmed = requestIdentifier.trim();
-        rawOutput.request_identifier = trimmed.length ? trimmed : null;
-      } else if (Number.isFinite(requestIdentifier)) {
-        rawOutput.request_identifier = requestIdentifier;
-      } else {
-        rawOutput.request_identifier = null;
+        rawOutput[field] = value;
       }
 
       if (!rawOutput.country_code && rawOutput.state_code) {
         rawOutput.country_code = "US";
       }
 
-      if (!rawOutput.postal_code) {
-        rawOutput.plus_four_postal_code = null;
+      if (!rawOutput.postal_code && Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")) {
+        delete rawOutput.plus_four_postal_code;
       }
 
       if (rawOutput.city_name && /\d/.test(rawOutput.city_name)) {
-        rawOutput.city_name = null;
+        delete rawOutput.city_name;
       }
+
+      const requestIdentifier = pickCandidateValue("request_identifier");
+      if (typeof requestIdentifier === "string") {
+        const trimmed = requestIdentifier.trim();
+        if (trimmed) rawOutput.request_identifier = trimmed;
+      } else if (Number.isFinite(requestIdentifier)) {
+        rawOutput.request_identifier = requestIdentifier;
+      }
+
+      rawOutput.unnormalized_address = rawAddressCandidate.unnormalized_address.trim();
 
       finalAddress = rawOutput;
     }
