@@ -633,6 +633,13 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "township",
   "range",
   "section",
@@ -2132,83 +2139,88 @@ async function main() {
       typeof rawAddressCandidate.unnormalized_address === "string" &&
       rawAddressCandidate.unnormalized_address.trim().length > 0;
 
-    const materializedRawAddress =
-      rawAddressIsValid
-        ? (() => {
-            const rawOutput = {};
-            const pickCandidateValue = (field) => {
-              if (
-                rawAddressCandidate &&
-                Object.prototype.hasOwnProperty.call(rawAddressCandidate, field) &&
-                rawAddressCandidate[field] != null
-              ) {
-                return rawAddressCandidate[field];
-              }
-              if (
-                normalizedSnapshot &&
-                Object.prototype.hasOwnProperty.call(normalizedSnapshot, field) &&
-                normalizedSnapshot[field] != null
-              ) {
-                return normalizedSnapshot[field];
-              }
-              return null;
-            };
+    let materializedRawAddress = null;
+    if (rawAddressIsValid) {
+      const rawOutput = {};
+      const pickCandidateValue = (field) => {
+        if (
+          rawAddressCandidate &&
+          Object.prototype.hasOwnProperty.call(rawAddressCandidate, field) &&
+          rawAddressCandidate[field] != null
+        ) {
+          return rawAddressCandidate[field];
+        }
+        if (
+          normalizedSnapshot &&
+          Object.prototype.hasOwnProperty.call(normalizedSnapshot, field) &&
+          normalizedSnapshot[field] != null
+        ) {
+          return normalizedSnapshot[field];
+        }
+        return null;
+      };
 
-            const setIfValid = (field, value) => {
-              if (value == null) return;
-              if (typeof value === "string") {
-                const trimmed = value.trim();
-                if (!trimmed.length) return;
-                if (field === "city_name" && /\d/.test(trimmed)) return;
-                rawOutput[field] = trimmed;
-                return;
-              }
-              if (typeof value === "number") {
-                if (!Number.isFinite(value)) return;
-                rawOutput[field] = value;
-                return;
-              }
-              if (typeof value === "boolean") {
-                rawOutput[field] = value;
-              }
-            };
+      const setIfValid = (field, value) => {
+        if (value == null) return;
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (!trimmed.length) return;
+          if (field === "city_name" && /\d/.test(trimmed)) return;
+          rawOutput[field] = trimmed;
+          return;
+        }
+        if (typeof value === "number") {
+          if (!Number.isFinite(value)) return;
+          rawOutput[field] = value;
+          return;
+        }
+        if (typeof value === "boolean") {
+          rawOutput[field] = value;
+        }
+      };
 
-            for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-              let value = pickCandidateValue(field);
-              if (field === "city_name") {
-                value = sanitizeCityName(value);
-              } else if (field === "postal_code") {
-                value = sanitizePostalCode(value) || null;
-              } else if (field === "plus_four_postal_code") {
-                value = sanitizePlus4(value) || null;
-              } else if (field === "state_code" && typeof value === "string") {
-                value = value.toUpperCase();
-              } else if (field === "country_code" && typeof value === "string") {
-                value = value.toUpperCase();
-              }
-              setIfValid(field, value);
-            }
+      for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+        let value = pickCandidateValue(field);
+        if (field === "city_name") {
+          value = sanitizeCityName(value);
+        } else if (field === "postal_code") {
+          value = sanitizePostalCode(value) || null;
+        } else if (field === "plus_four_postal_code") {
+          value = sanitizePlus4(value) || null;
+        } else if (field === "state_code" && typeof value === "string") {
+          value = value.toUpperCase();
+        } else if (field === "country_code" && typeof value === "string") {
+          value = value.toUpperCase();
+        }
+        setIfValid(field, value);
+      }
 
-            if (!rawOutput.country_code && rawOutput.state_code) {
-              rawOutput.country_code = "US";
-            }
+      if (!rawOutput.country_code && rawOutput.state_code) {
+        rawOutput.country_code = "US";
+      }
 
-            if (
-              Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code") &&
-              (!rawOutput.postal_code || rawOutput.postal_code.length === 0)
-            ) {
-              delete rawOutput.plus_four_postal_code;
-            }
+      if (
+        Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code") &&
+        (!rawOutput.postal_code || rawOutput.postal_code.length === 0)
+      ) {
+        delete rawOutput.plus_four_postal_code;
+      }
 
-            const trimmedRawUnnormalized =
-              rawAddressCandidate.unnormalized_address.trim();
-            if (trimmedRawUnnormalized.length) {
-              rawOutput.unnormalized_address = trimmedRawUnnormalized;
-            }
+      const trimmedRawUnnormalized =
+        rawAddressCandidate.unnormalized_address.trim();
+      if (trimmedRawUnnormalized.length) {
+        rawOutput.unnormalized_address = trimmedRawUnnormalized;
+      }
 
-            return prepareRawAddressForSchema(rawOutput);
-          })()
-        : null;
+      const candidate = prepareRawAddressForSchema(rawOutput);
+      const hasCoordinates =
+        candidate &&
+        Number.isFinite(candidate.latitude) &&
+        Number.isFinite(candidate.longitude);
+      if (hasCoordinates) {
+        materializedRawAddress = candidate;
+      }
+    }
 
     let finalAddress = null;
     let finalAddressVariant = null;
