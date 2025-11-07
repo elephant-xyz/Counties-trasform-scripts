@@ -1948,55 +1948,65 @@ async function main() {
         ? buildRawAddressPayload(address, trimmedUnnormalized)
         : null;
     const rawAddressIsValid =
-      rawAddressCandidate && Object.keys(rawAddressCandidate).length > 1;
+      rawAddressCandidate &&
+      typeof rawAddressCandidate.unnormalized_address === "string" &&
+      rawAddressCandidate.unnormalized_address.trim().length > 0;
 
     let finalAddress = null;
-    let finalAddressBranch = null;
 
     if (normalizedAddress) {
-      finalAddressBranch = "normalized";
-    } else if (rawAddressIsValid) {
-      finalAddressBranch = "raw";
-    }
+      const normalizedOutput = {};
+      for (const key of NORMALIZED_ADDRESS_FIELDS) {
+        let value = null;
 
-    if (finalAddressBranch) {
-      const baseAddress = ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
-        acc[key] = null;
-        return acc;
-      }, {});
-
-      const assignFromSource = (source, keys) => {
-        if (!source || typeof source !== "object") return;
-        for (const key of keys) {
-          if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
-          const value = source[key];
-          if (value === undefined) continue;
-          if (value === null) {
-            baseAddress[key] = null;
-            continue;
-          }
-          if (typeof value === "string") {
-            const trimmed = value.trim();
-            baseAddress[key] = trimmed.length ? trimmed : null;
-            continue;
-          }
-          baseAddress[key] = value;
+        if (
+          normalizedAddress &&
+          Object.prototype.hasOwnProperty.call(normalizedAddress, key)
+        ) {
+          value = normalizedAddress[key];
+        } else if (
+          normalizedSnapshot &&
+          Object.prototype.hasOwnProperty.call(normalizedSnapshot, key)
+        ) {
+          value = normalizedSnapshot[key];
         }
+
+        if (value === undefined || value === null) {
+          normalizedOutput[key] = null;
+          continue;
+        }
+
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          normalizedOutput[key] = trimmed.length ? trimmed : null;
+        } else {
+          normalizedOutput[key] = value;
+        }
+      }
+      finalAddress = normalizedOutput;
+    } else if (rawAddressIsValid) {
+      const rawOutput = {
+        unnormalized_address: rawAddressCandidate.unnormalized_address.trim(),
       };
 
-      assignFromSource(normalizedSnapshot, NORMALIZED_ADDRESS_FIELDS);
+      for (const key of RAW_ADDRESS_ALLOWED_FIELDS) {
+        if (key === "unnormalized_address") continue;
+        if (!Object.prototype.hasOwnProperty.call(rawAddressCandidate, key))
+          continue;
 
-      if (finalAddressBranch === "normalized") {
-        assignFromSource(normalizedAddress, NORMALIZED_ADDRESS_FIELDS);
-        delete baseAddress.unnormalized_address;
-      } else {
-        assignFromSource(
-          rawAddressCandidate,
-          Object.keys(rawAddressCandidate || {}),
-        );
+        const value = rawAddressCandidate[key];
+        if (value === undefined || value === null) continue;
+
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (!trimmed.length) continue;
+          rawOutput[key] = trimmed;
+        } else {
+          rawOutput[key] = value;
+        }
       }
 
-      finalAddress = baseAddress;
+      finalAddress = rawOutput;
     }
 
     const hasMeaningfulAddress =
