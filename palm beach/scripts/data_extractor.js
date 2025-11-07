@@ -555,23 +555,8 @@ const ADDRESS_SCHEMA_FIELDS = [
 ];
 
 // Fields that can safely accompany the unnormalized address variant without triggering the normalized branch.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "country_code",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "unit_identifier",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
-  "municipality_name",
-];
+// Use the full normalized field list so required keys are always present (null when unavailable).
+const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -2062,10 +2047,10 @@ async function main() {
       }
 
       if (
-        rawOutput.plus_four_postal_code &&
+        Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code") &&
         (!rawOutput.postal_code || rawOutput.postal_code.length === 0)
       ) {
-        delete rawOutput.plus_four_postal_code;
+        rawOutput.plus_four_postal_code = null;
       }
 
       const trimmedUnnormalized =
@@ -2135,28 +2120,23 @@ async function main() {
         }
 
         for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-          if (
-            Object.prototype.hasOwnProperty.call(finalAddress, coordinateField) &&
-            !Number.isFinite(finalAddress[coordinateField])
-          ) {
-            delete finalAddress[coordinateField];
+          if (!Number.isFinite(finalAddress[coordinateField])) {
+            finalAddress[coordinateField] = null;
           }
         }
 
         if (
-          Object.prototype.hasOwnProperty.call(finalAddress, "postal_code") &&
-          !finalAddress.postal_code &&
-          Object.prototype.hasOwnProperty.call(finalAddress, "plus_four_postal_code")
+          Object.prototype.hasOwnProperty.call(finalAddress, "plus_four_postal_code") &&
+          (!finalAddress.postal_code || finalAddress.postal_code.length === 0)
         ) {
-          delete finalAddress.plus_four_postal_code;
+          finalAddress.plus_four_postal_code = null;
         }
 
         if (
-          Object.prototype.hasOwnProperty.call(finalAddress, "city_name") &&
           typeof finalAddress.city_name === "string" &&
           /\d/.test(finalAddress.city_name)
         ) {
-          delete finalAddress.city_name;
+          finalAddress.city_name = null;
         }
       }
 
@@ -2186,16 +2166,18 @@ async function main() {
           const value = finalAddress[key];
           if (typeof value === "string") {
             const trimmed = value.trim();
-            if (trimmed.length) {
-              finalAddress[key] = trimmed;
-            } else {
-              delete finalAddress[key];
-            }
+            finalAddress[key] = trimmed.length ? trimmed : null;
           } else if (
             typeof value === "number" &&
             !Number.isFinite(value)
           ) {
-            delete finalAddress[key];
+            finalAddress[key] = null;
+          }
+        }
+
+        for (const field of NORMALIZED_ADDRESS_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
           }
         }
       }
