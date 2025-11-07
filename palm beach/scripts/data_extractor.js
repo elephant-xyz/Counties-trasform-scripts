@@ -633,13 +633,6 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
   "township",
   "range",
   "section",
@@ -2333,16 +2326,7 @@ async function main() {
     if (hasMeaningfulAddress) {
       writeJSON(addressFilePath, finalAddress);
 
-      const propertyPath = path.join(dataDir, "property.json");
-      if (fs.existsSync(propertyPath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
+      removeFileIfExists(propertyAddressRelationshipPath);
       removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       // No usable address content, ensure previous outputs are removed
