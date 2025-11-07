@@ -624,53 +624,59 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : "";
   if (!trimmedValue) return null;
 
-  const rawAddress = { unnormalized_address: trimmedValue };
   const sourceAddress =
     address && typeof address === "object" ? address : {};
+  const rawAddress = { unnormalized_address: trimmedValue };
 
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (field === "unnormalized_address") continue;
-    if (!Object.prototype.hasOwnProperty.call(sourceAddress, field)) continue;
-
-    const value = sourceAddress[field];
-    if (value == null) continue;
+    let value = Object.prototype.hasOwnProperty.call(sourceAddress, field)
+      ? sourceAddress[field]
+      : null;
 
     if (typeof value === "number") {
-      if (Number.isFinite(value)) {
-        rawAddress[field] = value;
-      }
-      continue;
-    }
-
-    if (typeof value === "string") {
+      value = Number.isFinite(value) ? value : null;
+    } else if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed.length) continue;
-      rawAddress[field] = trimmed;
-      continue;
+      value = trimmed.length ? trimmed : null;
+    } else if (value == null) {
+      value = null;
+    } else {
+      value = null;
     }
+
+    if (field === "postal_code" && value) {
+      value = sanitizePostalCode(value) || null;
+    }
+
+    if (field === "plus_four_postal_code" && value) {
+      value = sanitizePlus4(value) || null;
+    }
+
+    if (field === "city_name" && value && /\d/.test(value)) {
+      value = null;
+    }
+
+    if (field === "state_code" && typeof value === "string") {
+      value = value.toUpperCase();
+    }
+
+    if (field === "country_code" && typeof value === "string") {
+      value = value.toUpperCase();
+    }
+
+    rawAddress[field] = value;
   }
 
-  if (rawAddress.city_name && /\d/.test(rawAddress.city_name)) {
-    delete rawAddress.city_name;
-  }
-
-  const hasCity =
-    typeof rawAddress.city_name === "string" && rawAddress.city_name.length > 0;
-  const hasState =
-    typeof rawAddress.state_code === "string" && rawAddress.state_code.length > 0;
-  const hasPostal =
-    typeof rawAddress.postal_code === "string" &&
-    rawAddress.postal_code.length > 0;
-
-  if (hasState && !rawAddress.country_code) {
+  if (!rawAddress.country_code && rawAddress.state_code) {
     rawAddress.country_code = "US";
   }
 
-  if (!hasCity) {
-    delete rawAddress.city_name;
+  if (!rawAddress.postal_code) {
+    rawAddress.plus_four_postal_code = null;
   }
-  if (!hasPostal) {
-    delete rawAddress.plus_four_postal_code;
+
+  if (rawAddress.city_name && /\d/.test(rawAddress.city_name)) {
+    rawAddress.city_name = null;
   }
 
   return rawAddress;
@@ -1982,36 +1988,79 @@ async function main() {
       }
       finalAddress = normalizedOutput;
     } else if (rawAddressIsValid) {
-      const rawOutput = {
-        unnormalized_address: rawAddressCandidate.unnormalized_address.trim(),
-      };
+      const rawOutput = {};
 
-      for (const key of RAW_ADDRESS_ALLOWED_FIELDS) {
-        if (key === "unnormalized_address") continue;
-        if (!Object.prototype.hasOwnProperty.call(rawAddressCandidate, key))
+      for (const key of NORMALIZED_ADDRESS_FIELDS) {
+        let value = null;
+
+        if (
+          rawAddressCandidate &&
+          Object.prototype.hasOwnProperty.call(rawAddressCandidate, key)
+        ) {
+          value = rawAddressCandidate[key];
+        } else if (
+          normalizedSnapshot &&
+          Object.prototype.hasOwnProperty.call(normalizedSnapshot, key)
+        ) {
+          value = normalizedSnapshot[key];
+        }
+
+        if (value === undefined || value === null) {
+          rawOutput[key] = null;
           continue;
-
-        const value = rawAddressCandidate[key];
-        if (value === undefined || value === null) continue;
+        }
 
         if (typeof value === "string") {
           const trimmed = value.trim();
-          if (!trimmed.length) continue;
-          rawOutput[key] = trimmed;
+          rawOutput[key] = trimmed.length ? trimmed : null;
+        } else if (typeof value === "number") {
+          rawOutput[key] = Number.isFinite(value) ? value : null;
         } else {
-          rawOutput[key] = value;
+          rawOutput[key] = null;
         }
       }
 
-      const hasCountryCode =
-        typeof rawOutput.country_code === "string" &&
-        rawOutput.country_code.trim().length > 0;
-      const hasStateCode =
-        typeof rawOutput.state_code === "string" &&
-        rawOutput.state_code.trim().length > 0;
+      rawOutput.unnormalized_address =
+        rawAddressCandidate.unnormalized_address.trim() || null;
 
-      if (!hasCountryCode && hasStateCode) {
+      let requestIdentifier = null;
+      if (
+        rawAddressCandidate &&
+        Object.prototype.hasOwnProperty.call(
+          rawAddressCandidate,
+          "request_identifier",
+        )
+      ) {
+        requestIdentifier = rawAddressCandidate.request_identifier;
+      } else if (
+        normalizedSnapshot &&
+        Object.prototype.hasOwnProperty.call(
+          normalizedSnapshot,
+          "request_identifier",
+        )
+      ) {
+        requestIdentifier = normalizedSnapshot.request_identifier;
+      }
+
+      if (typeof requestIdentifier === "string") {
+        const trimmed = requestIdentifier.trim();
+        rawOutput.request_identifier = trimmed.length ? trimmed : null;
+      } else if (Number.isFinite(requestIdentifier)) {
+        rawOutput.request_identifier = requestIdentifier;
+      } else {
+        rawOutput.request_identifier = null;
+      }
+
+      if (!rawOutput.country_code && rawOutput.state_code) {
         rawOutput.country_code = "US";
+      }
+
+      if (!rawOutput.postal_code) {
+        rawOutput.plus_four_postal_code = null;
+      }
+
+      if (rawOutput.city_name && /\d/.test(rawOutput.city_name)) {
+        rawOutput.city_name = null;
       }
 
       finalAddress = rawOutput;
