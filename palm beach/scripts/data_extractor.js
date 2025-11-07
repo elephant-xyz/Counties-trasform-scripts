@@ -629,6 +629,8 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "country_code",
 ];
 
+const NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
+
 const STREET_SUFFIX_SYNONYMS = {
   RD: "Rd",
   ROAD: "Rd",
@@ -1960,18 +1962,32 @@ async function main() {
         const value = schemaReadyAddress[field];
         return typeof value === "string" && value.trim().length > 0;
       });
+    const normalizedRequiredCoordinatesPresent =
+      NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) => {
+        const value = schemaReadyAddress[field];
+        if (typeof value === "number") {
+          return Number.isFinite(value);
+        }
+        if (typeof value === "string") {
+          const numeric = Number(value.trim());
+          if (Number.isFinite(numeric)) {
+            schemaReadyAddress[field] = numeric;
+            return true;
+          }
+        }
+        return false;
+      });
+    const canEmitNormalizedAddress =
+      normalizedRequiredStringsPresent && normalizedRequiredCoordinatesPresent;
 
     let finalAddress = null;
     let finalAddressVariant = null;
 
-    if (normalizedRequiredStringsPresent) {
+    if (canEmitNormalizedAddress) {
       finalAddress = { ...schemaReadyAddress };
       finalAddressVariant = "normalized";
     } else if (hasUnnormalizedAddress) {
-      finalAddress = {
-        ...schemaReadyAddress,
-        unnormalized_address: trimmedUnnormalized,
-      };
+      finalAddress = { unnormalized_address: trimmedUnnormalized };
       finalAddressVariant = "raw";
     }
 
@@ -1984,7 +2000,7 @@ async function main() {
     }
 
     if (finalAddressVariant === "raw" && finalAddress) {
-      finalAddress.unnormalized_address = trimmedUnnormalized;
+      finalAddress = { unnormalized_address: trimmedUnnormalized };
     }
 
     const hasMeaningfulAddress =
