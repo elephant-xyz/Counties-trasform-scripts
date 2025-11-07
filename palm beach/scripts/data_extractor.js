@@ -554,8 +554,7 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Fields that can safely accompany the unnormalized address variant. We include the normalized street
-// components so the payload satisfies the County schema's `oneOf` branch that still expects their presence.
+// Fields that can safely accompany the unnormalized address variant without triggering the normalized branch.
 const RAW_ADDRESS_ALLOWED_FIELDS = [
   "latitude",
   "longitude",
@@ -565,12 +564,6 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "postal_code",
   "plus_four_postal_code",
   "unit_identifier",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "route_number",
   "township",
   "range",
   "section",
@@ -1949,7 +1942,11 @@ async function main() {
         ? fallbackUnnormalizedValue.trim()
         : "";
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
-    const normalizedAddressIsComplete = hasCompleteNormalizedAddress(address);
+    const normalizedAddressIsComplete =
+      hasCompleteNormalizedAddress(address) &&
+      ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
+        Number.isFinite(address[field]),
+      );
 
     let normalizedAddress = null;
     if (normalizedAddressIsComplete) {
@@ -2030,31 +2027,37 @@ async function main() {
         return null;
       };
 
-      for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-        let value = pickCandidateValue(field);
-
+      const setIfValid = (field, value) => {
+        if (value == null) return;
         if (typeof value === "string") {
           const trimmed = value.trim();
-          value = trimmed.length ? trimmed : null;
-        } else if (typeof value === "number") {
-          value = Number.isFinite(value) ? value : null;
-        } else {
-          value = null;
+          if (!trimmed.length) return;
+          if (field === "city_name" && /\d/.test(trimmed)) return;
+          rawOutput[field] = trimmed;
+          return;
         }
+        if (typeof value === "number") {
+          if (!Number.isFinite(value)) return;
+          rawOutput[field] = value;
+          return;
+        }
+        if (typeof value === "boolean") {
+          rawOutput[field] = value;
+        }
+      };
 
+      for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+        let value = pickCandidateValue(field);
         if (field === "postal_code") {
           value = sanitizePostalCode(value) || null;
         } else if (field === "plus_four_postal_code") {
           value = sanitizePlus4(value) || null;
-        } else if (field === "city_name" && typeof value === "string" && /\d/.test(value)) {
-          value = null;
         } else if (field === "state_code" && typeof value === "string") {
           value = value.toUpperCase();
         } else if (field === "country_code" && typeof value === "string") {
           value = value.toUpperCase();
         }
-
-        rawOutput[field] = value;
+        setIfValid(field, value);
       }
 
       if (!rawOutput.country_code && rawOutput.state_code) {
@@ -2065,11 +2068,14 @@ async function main() {
         rawOutput.plus_four_postal_code &&
         (!rawOutput.postal_code || rawOutput.postal_code.length === 0)
       ) {
-        rawOutput.plus_four_postal_code = null;
+        delete rawOutput.plus_four_postal_code;
       }
 
-      rawOutput.unnormalized_address =
+      const trimmedUnnormalized =
         rawAddressCandidate.unnormalized_address.trim();
+      if (trimmedUnnormalized.length) {
+        rawOutput.unnormalized_address = trimmedUnnormalized;
+      }
 
       finalAddress = rawOutput;
       finalAddressVariant = "raw";
@@ -2136,7 +2142,7 @@ async function main() {
             Object.prototype.hasOwnProperty.call(finalAddress, coordinateField) &&
             !Number.isFinite(finalAddress[coordinateField])
           ) {
-            finalAddress[coordinateField] = null;
+            delete finalAddress[coordinateField];
           }
         }
 
@@ -2145,7 +2151,7 @@ async function main() {
           !finalAddress.postal_code &&
           Object.prototype.hasOwnProperty.call(finalAddress, "plus_four_postal_code")
         ) {
-          finalAddress.plus_four_postal_code = null;
+          delete finalAddress.plus_four_postal_code;
         }
 
         if (
@@ -2153,48 +2159,46 @@ async function main() {
           typeof finalAddress.city_name === "string" &&
           /\d/.test(finalAddress.city_name)
         ) {
-          finalAddress.city_name = null;
-        }
-
-        for (const field of NORMALIZED_ADDRESS_FIELDS) {
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            finalAddress[field] = null;
-          }
+          delete finalAddress.city_name;
         }
       }
 
-      const fieldsToEnsure =
-        finalAddressVariant === "normalized"
-          ? NORMALIZED_ADDRESS_FIELDS
-          : ADDRESS_SCHEMA_FIELDS;
-
-      for (const field of fieldsToEnsure) {
-        const hasField = Object.prototype.hasOwnProperty.call(
-          finalAddress,
-          field,
-        );
-        if (!hasField) {
-          finalAddress[field] = null;
-          continue;
-        }
-        const currentValue = finalAddress[field];
-        if (typeof currentValue === "string") {
-          const trimmed = currentValue.trim();
-          if (trimmed.length) {
-            finalAddress[field] = trimmed;
-          } else if (finalAddressVariant === "normalized") {
+      if (finalAddressVariant === "normalized") {
+        for (const field of NORMALIZED_ADDRESS_FIELDS) {
+          const hasField = Object.prototype.hasOwnProperty.call(
+            finalAddress,
+            field,
+          );
+          if (!hasField) {
             finalAddress[field] = null;
-          } else {
-            delete finalAddress[field];
+            continue;
           }
-        } else if (
-          typeof currentValue === "number" &&
-          !Number.isFinite(currentValue)
-        ) {
-          if (finalAddressVariant === "normalized") {
+          const currentValue = finalAddress[field];
+          if (typeof currentValue === "string") {
+            const trimmed = currentValue.trim();
+            finalAddress[field] = trimmed.length ? trimmed : null;
+          } else if (
+            typeof currentValue === "number" &&
+            !Number.isFinite(currentValue)
+          ) {
             finalAddress[field] = null;
-          } else {
-            delete finalAddress[field];
+          }
+        }
+      } else if (finalAddressVariant === "raw") {
+        for (const key of Object.keys(finalAddress)) {
+          const value = finalAddress[key];
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (trimmed.length) {
+              finalAddress[key] = trimmed;
+            } else {
+              delete finalAddress[key];
+            }
+          } else if (
+            typeof value === "number" &&
+            !Number.isFinite(value)
+          ) {
+            delete finalAddress[key];
           }
         }
       }
