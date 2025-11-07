@@ -554,12 +554,26 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Fields that may be propagated into the raw-address branch when they have usable values.
-// The County schema still expects the normalized street-level keys to be present (even when only
-// the unnormalized line survives), so mirror the normalized field set here.
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...NORMALIZED_ADDRESS_FIELDS]),
-);
+// Fields that can safely accompany the unnormalized address variant. These exclude the normalized
+// street components so the payload aligns with the raw branch of the County schema's `oneOf`.
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "country_code",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "county_name",
+  "municipality_name",
+];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -667,19 +681,24 @@ function buildRawAddressPayload(address, unnormalizedValue) {
       value = value.toUpperCase();
     }
 
-    rawAddress[field] = value;
+    if (value != null) {
+      rawAddress[field] = value;
+    }
   }
 
   if (!rawAddress.country_code && rawAddress.state_code) {
     rawAddress.country_code = "US";
   }
 
-  if (!rawAddress.postal_code) {
-    rawAddress.plus_four_postal_code = null;
+  if (
+    Object.prototype.hasOwnProperty.call(rawAddress, "plus_four_postal_code") &&
+    !rawAddress.postal_code
+  ) {
+    delete rawAddress.plus_four_postal_code;
   }
 
   if (rawAddress.city_name && /\d/.test(rawAddress.city_name)) {
-    rawAddress.city_name = null;
+    delete rawAddress.city_name;
   }
 
   return rawAddress;
@@ -2099,12 +2118,20 @@ async function main() {
           }
         }
 
+        if (
+          !finalAddress.country_code &&
+          typeof finalAddress.state_code === "string" &&
+          finalAddress.state_code.trim().length > 0
+        ) {
+          finalAddress.country_code = "US";
+        }
+
         for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
           if (
             Object.prototype.hasOwnProperty.call(finalAddress, coordinateField) &&
             !Number.isFinite(finalAddress[coordinateField])
           ) {
-            finalAddress[coordinateField] = null;
+            delete finalAddress[coordinateField];
           }
         }
 
@@ -2113,7 +2140,7 @@ async function main() {
           !finalAddress.postal_code &&
           Object.prototype.hasOwnProperty.call(finalAddress, "plus_four_postal_code")
         ) {
-          finalAddress.plus_four_postal_code = null;
+          delete finalAddress.plus_four_postal_code;
         }
 
         if (
@@ -2121,35 +2148,45 @@ async function main() {
           typeof finalAddress.city_name === "string" &&
           /\d/.test(finalAddress.city_name)
         ) {
-          finalAddress.city_name = null;
-        }
-
-        for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            finalAddress[field] = null;
-          }
+          delete finalAddress.city_name;
         }
       }
 
       const fieldsToEnsure =
         finalAddressVariant === "normalized"
           ? NORMALIZED_ADDRESS_FIELDS
-          : ADDRESS_SCHEMA_FIELDS;
+          : Object.keys(finalAddress);
 
       for (const field of fieldsToEnsure) {
-        if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-          finalAddress[field] = null;
+        const hasField = Object.prototype.hasOwnProperty.call(
+          finalAddress,
+          field,
+        );
+        if (!hasField) {
+          if (finalAddressVariant === "normalized") {
+            finalAddress[field] = null;
+          }
           continue;
         }
         const currentValue = finalAddress[field];
         if (typeof currentValue === "string") {
           const trimmed = currentValue.trim();
-          finalAddress[field] = trimmed.length ? trimmed : null;
+          if (trimmed.length) {
+            finalAddress[field] = trimmed;
+          } else if (finalAddressVariant === "normalized") {
+            finalAddress[field] = null;
+          } else {
+            delete finalAddress[field];
+          }
         } else if (
           typeof currentValue === "number" &&
           !Number.isFinite(currentValue)
         ) {
-          finalAddress[field] = null;
+          if (finalAddressVariant === "normalized") {
+            finalAddress[field] = null;
+          } else {
+            delete finalAddress[field];
+          }
         }
       }
     }
