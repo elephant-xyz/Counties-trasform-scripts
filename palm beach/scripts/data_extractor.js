@@ -18,6 +18,23 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+function writeRelationshipFile(filePath, fromRelative, toRelative) {
+  if (!fromRelative || !toRelative) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    return;
+  }
+
+  const payload = [
+    {
+      from: { "/": fromRelative },
+      to: { "/": toRelative },
+    },
+  ];
+  writeJSON(filePath, payload);
+}
+
 function extractBetween(html, regex, idx = 1) {
   const m = html.match(regex);
   return m ? (m[idx] || "").trim() : null;
@@ -2068,13 +2085,26 @@ async function main() {
     if (hasMeaningfulAddress) {
       writeJSON(addressFilePath, finalAddress);
 
-      for (const relationshipPath of [
-        propertyAddressRelationshipPath,
-        addressFactSheetRelationshipPath,
-      ]) {
-        if (fs.existsSync(relationshipPath)) {
-          fs.unlinkSync(relationshipPath);
-        }
+      const propertyFilePath = path.join(dataDir, "property.json");
+      if (fs.existsSync(propertyFilePath)) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          "./property.json",
+          "./address.json",
+        );
+      } else if (fs.existsSync(propertyAddressRelationshipPath)) {
+        fs.unlinkSync(propertyAddressRelationshipPath);
+      }
+
+      const factSheetFilePath = path.join(dataDir, "fact_sheet.json");
+      if (fs.existsSync(factSheetFilePath)) {
+        writeRelationshipFile(
+          addressFactSheetRelationshipPath,
+          "./address.json",
+          "./fact_sheet.json",
+        );
+      } else if (fs.existsSync(addressFactSheetRelationshipPath)) {
+        fs.unlinkSync(addressFactSheetRelationshipPath);
       }
     } else {
       // No usable address content, ensure previous outputs are removed
@@ -2738,24 +2768,21 @@ async function main() {
   for (const [sIndex, dIndex] of deedMap.entries()) {
     const fIndex = fileIndexBySale.get(sIndex);
     if (!fIndex) continue;
-    const rel = {
-      from: null,
-      to: null,
-    };
-    writeJSON(path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`), rel);
+    writeRelationshipFile(
+      path.join(dataDir, `relationship_deed_file_${rdfIdx}.json`),
+      `./deed_${dIndex}.json`,
+      `./file_${fIndex}.json`,
+    );
     rdfIdx++;
   }
 
   // relationship_sales_deed (sales → deed)
   let relSDIdx = 1;
   for (const [sIndex, dIndex] of deedMap.entries()) {
-    const rel = {
-      from: null,
-      to: null,
-    };
-    writeJSON(
+    writeRelationshipFile(
       path.join(dataDir, `relationship_sales_deed_${relSDIdx}.json`),
-      rel,
+      `./sales_${sIndex}.json`,
+      `./deed_${dIndex}.json`,
     );
     relSDIdx++;
   }
@@ -2765,6 +2792,9 @@ async function main() {
   let companyIdx = 1;
   let relIdx = 1;
   const processedNames = new Set(); // Track processed names to avoid duplicates
+  const propertyFilePath = path.join(dataDir, "property.json");
+  const propertyFileExists = fs.existsSync(propertyFilePath);
+  const propertyFileRelative = "./property.json";
 
   // Company detection keywords (case-insensitive)
   const companyRegex =
@@ -2868,6 +2898,10 @@ async function main() {
   if (model && Array.isArray(model.salesInfo)) {
     for (let i = 0; i < model.salesInfo.length; i++) {
       const sale = model.salesInfo[i];
+      const saleIndex = i + 1;
+      const saleFileRelative = `./sales_${saleIndex}.json`;
+      const saleFilePath = path.join(dataDir, `sales_${saleIndex}.json`);
+      const saleFileExists = fs.existsSync(saleFilePath);
       if (sale.OwnerName) {
         const ownerName = sale.OwnerName.trim();
         if (ownerName && !processedNames.has(ownerName)) {
@@ -2887,14 +2921,12 @@ async function main() {
                 company,
               );
 
-              // Create relationship to sales record
-              const rel = {
-                to: null,
-                from: null,
-              };
-              writeJSON(
+              const companyFileRelative = `./company_${companyIdx}.json`;
+
+              writeRelationshipFile(
                 path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
-                rel,
+                saleFileExists ? saleFileRelative : null,
+                companyFileRelative,
               );
               relIdx++;
               companyIdx++;
@@ -2920,14 +2952,12 @@ async function main() {
 
               writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
 
-              // Create relationship to sales record
-              const rel = {
-                to: null,
-                from: null,
-              };
-              writeJSON(
+              const personFileRelative = `./person_${personIdx}.json`;
+
+              writeRelationshipFile(
                 path.join(dataDir, `relationship_sales_person_${relIdx}.json`),
-                rel,
+                saleFileExists ? saleFileRelative : null,
+                personFileRelative,
               );
               relIdx++;
               personIdx++;
@@ -2958,17 +2988,15 @@ async function main() {
               company,
             );
 
-            // Create relationship from property to company
-            const propRel = {
-              to: null,
-              from: null,
-            };
-            writeJSON(
+            const companyFileRelative = `./company_${companyIdx}.json`;
+
+            writeRelationshipFile(
               path.join(
                 dataDir,
                 `relationship_company_${companyIdx}_property.json`,
               ),
-              propRel,
+              companyFileRelative,
+              propertyFileExists ? propertyFileRelative : null,
             );
             companyIdx++;
           } else {
@@ -2993,17 +3021,15 @@ async function main() {
 
             writeJSON(path.join(dataDir, `person_${personIdx}.json`), person);
 
-            // Create relationship from property to person
-            const propRel = {
-              to: null,
-              from: null,
-            };
-            writeJSON(
+            const personFileRelative = `./person_${personIdx}.json`;
+
+            writeRelationshipFile(
               path.join(
                 dataDir,
                 `relationship_person_${personIdx}_property.json`,
               ),
-              propRel,
+              personFileRelative,
+              propertyFileExists ? propertyFileRelative : null,
             );
             personIdx++;
           }
