@@ -1943,19 +1943,67 @@ async function main() {
       }
     }
 
-    const rawAddressCandidate = !normalizedAddress && hasUnnormalizedAddress
-      ? buildRawAddressPayload(address, trimmedUnnormalized)
-      : null;
+    const rawAddressCandidate =
+      !normalizedAddress && hasUnnormalizedAddress
+        ? buildRawAddressPayload(address, trimmedUnnormalized)
+        : null;
     const rawAddressIsValid =
       rawAddressCandidate && Object.keys(rawAddressCandidate).length > 1;
 
-    let finalAddress = normalizedAddress;
+    let finalAddress = null;
+    let finalAddressBranch = null;
 
-    if (!finalAddress && rawAddressIsValid) {
-      finalAddress = rawAddressCandidate;
+    if (normalizedAddress) {
+      finalAddressBranch = "normalized";
+    } else if (rawAddressIsValid) {
+      finalAddressBranch = "raw";
     }
 
-    if (finalAddress && Object.keys(finalAddress).length) {
+    if (finalAddressBranch) {
+      const baseAddress = ADDRESS_SCHEMA_FIELDS.reduce((acc, key) => {
+        acc[key] = null;
+        return acc;
+      }, {});
+
+      const assignFromSource = (source, keys) => {
+        if (!source || typeof source !== "object") return;
+        for (const key of keys) {
+          if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+          const value = source[key];
+          if (value === undefined) continue;
+          if (value === null) {
+            baseAddress[key] = null;
+            continue;
+          }
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            baseAddress[key] = trimmed.length ? trimmed : null;
+            continue;
+          }
+          baseAddress[key] = value;
+        }
+      };
+
+      assignFromSource(normalizedSnapshot, NORMALIZED_ADDRESS_FIELDS);
+
+      if (finalAddressBranch === "normalized") {
+        assignFromSource(normalizedAddress, NORMALIZED_ADDRESS_FIELDS);
+        delete baseAddress.unnormalized_address;
+      } else {
+        assignFromSource(
+          rawAddressCandidate,
+          Object.keys(rawAddressCandidate || {}),
+        );
+      }
+
+      finalAddress = baseAddress;
+    }
+
+    const hasMeaningfulAddress =
+      finalAddress &&
+      Object.values(finalAddress).some((value) => value !== null);
+
+    if (hasMeaningfulAddress) {
       writeJSON(addressFilePath, finalAddress);
 
       if (fs.existsSync(propertyFilePath)) {
