@@ -2102,21 +2102,39 @@ async function main() {
         rawOutput[field] = candidate;
       }
 
+      finalAddress = rawOutput;
+    }
+
+    if (finalAddress) {
+      if (
+        typeof finalAddress.unnormalized_address === "string" &&
+        finalAddress.unnormalized_address.trim().length === 0
+      ) {
+        finalAddress.unnormalized_address = null;
+      }
+
       for (const field of ADDRESS_SCHEMA_FIELDS) {
-        if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
-          rawOutput[field] = null;
+        if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+          finalAddress[field] = null;
         }
       }
 
-      if (!rawOutput.postal_code) {
-        rawOutput.plus_four_postal_code = null;
+      for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+        if (!Number.isFinite(finalAddress[coordinateField])) {
+          finalAddress[coordinateField] = null;
+        }
       }
 
-      if (rawOutput.city_name && /\d/.test(rawOutput.city_name)) {
-        rawOutput.city_name = null;
+      if (!finalAddress.postal_code) {
+        finalAddress.plus_four_postal_code = null;
       }
 
-      finalAddress = rawOutput;
+      if (
+        typeof finalAddress.city_name === "string" &&
+        /\d/.test(finalAddress.city_name)
+      ) {
+        finalAddress.city_name = null;
+      }
     }
 
     const hasMeaningfulAddress =
