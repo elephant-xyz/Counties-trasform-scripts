@@ -33,6 +33,12 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
   writeJSON(filePath, payload);
 }
 
+function removeFileIfExists(filePath) {
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
 function extractBetween(html, regex, idx = 1) {
   const m = html.match(regex);
   return m ? (m[idx] || "").trim() : null;
@@ -2147,39 +2153,15 @@ async function main() {
 
     if (hasMeaningfulAddress) {
       writeJSON(addressFilePath, finalAddress);
-
-      const propertyFilePath = path.join(dataDir, "property.json");
-      if (fs.existsSync(propertyFilePath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else if (fs.existsSync(propertyAddressRelationshipPath)) {
-        fs.unlinkSync(propertyAddressRelationshipPath);
-      }
-
-      const factSheetFilePath = path.join(dataDir, "fact_sheet.json");
-      if (fs.existsSync(factSheetFilePath)) {
-        writeRelationshipFile(
-          addressFactSheetRelationshipPath,
-          "./address.json",
-          "./fact_sheet.json",
-        );
-      } else if (fs.existsSync(addressFactSheetRelationshipPath)) {
-        fs.unlinkSync(addressFactSheetRelationshipPath);
-      }
+      removeFileIfExists(propertyAddressRelationshipPath);
+      removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       // No usable address content, ensure previous outputs are removed
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
       }
-      if (fs.existsSync(propertyAddressRelationshipPath)) {
-        fs.unlinkSync(propertyAddressRelationshipPath);
-      }
-      if (fs.existsSync(addressFactSheetRelationshipPath)) {
-        fs.unlinkSync(addressFactSheetRelationshipPath);
-      }
+      removeFileIfExists(propertyAddressRelationshipPath);
+      removeFileIfExists(addressFactSheetRelationshipPath);
     }
   }
 
