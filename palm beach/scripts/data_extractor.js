@@ -2002,8 +2002,8 @@ async function main() {
     } else if (rawAddressIsValid) {
       const rawOutput = {};
 
-      for (const key of NORMALIZED_ADDRESS_FIELDS) {
-        let value = null;
+      for (const key of RAW_ADDRESS_ALLOWED_FIELDS) {
+        let value = undefined;
 
         if (
           rawAddressCandidate &&
