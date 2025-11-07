@@ -1942,14 +1942,11 @@ async function main() {
         ? fallbackUnnormalizedValue.trim()
         : "";
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
-    const normalizedAddressIsComplete =
-      hasCompleteNormalizedAddress(address) &&
-      ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-        Number.isFinite(address[field]),
-      );
+    const normalizedAddressHasRequiredStrings =
+      hasCompleteNormalizedAddress(address);
 
     let normalizedAddress = null;
-    if (normalizedAddressIsComplete) {
+    if (normalizedAddressHasRequiredStrings) {
       const candidate = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
