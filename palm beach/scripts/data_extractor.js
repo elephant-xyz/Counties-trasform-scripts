@@ -739,23 +739,15 @@ function buildRawAddressPayload(address, unnormalizedValue) {
       value = null;
     }
 
-    if (field === "postal_code" && value) {
+    if (field === "city_name") {
+      value = sanitizeCityName(value);
+    } else if (field === "postal_code" && value) {
       value = sanitizePostalCode(value) || null;
-    }
-
-    if (field === "plus_four_postal_code" && value) {
+    } else if (field === "plus_four_postal_code" && value) {
       value = sanitizePlus4(value) || null;
-    }
-
-    if (field === "city_name" && value && /\d/.test(value)) {
-      value = null;
-    }
-
-    if (field === "state_code" && typeof value === "string") {
+    } else if (field === "state_code" && typeof value === "string") {
       value = value.toUpperCase();
-    }
-
-    if (field === "country_code" && typeof value === "string") {
+    } else if (field === "country_code" && typeof value === "string") {
       value = value.toUpperCase();
     }
 
@@ -811,7 +803,10 @@ function prepareRawAddressForSchema(rawAddress) {
 
     if (value == null) continue;
 
-    if (field === "postal_code") {
+    if (field === "city_name") {
+      value = sanitizeCityName(value);
+      if (!value) continue;
+    } else if (field === "postal_code") {
       value = sanitizePostalCode(value) || null;
       if (!value) continue;
     } else if (field === "plus_four_postal_code") {
@@ -819,8 +814,6 @@ function prepareRawAddressForSchema(rawAddress) {
       if (!value) continue;
     } else if (field === "state_code" || field === "country_code") {
       value = value.toUpperCase();
-    } else if (field === "city_name" && /\d/.test(value)) {
-      continue;
     }
 
     prepared[field] = value;
@@ -840,11 +833,7 @@ function prepareRawAddressForSchema(rawAddress) {
 
   for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     const coordinate = prepared[coordinateField];
-    if (Number.isFinite(coordinate)) {
-      prepared[coordinateField] = coordinate;
-    } else {
-      delete prepared[coordinateField];
-    }
+    prepared[coordinateField] = Number.isFinite(coordinate) ? coordinate : null;
   }
 
   return prepared;
@@ -1110,6 +1099,14 @@ function sanitizePlus4(value) {
   const cleaned = String(value).replace(/\D/g, "");
   if (cleaned.length >= 4) return cleaned.slice(0, 4);
   return null;
+}
+
+function sanitizeCityName(value) {
+  if (value == null) return null;
+  const upper = String(value).toUpperCase();
+  const cleaned = upper.replace(/[^A-Z\s\-']/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned.length) return null;
+  return cleaned;
 }
 
 function deriveGridPartsFromPcn(rawPcn) {
@@ -2172,7 +2169,9 @@ async function main() {
 
             for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
               let value = pickCandidateValue(field);
-              if (field === "postal_code") {
+              if (field === "city_name") {
+                value = sanitizeCityName(value);
+              } else if (field === "postal_code") {
                 value = sanitizePostalCode(value) || null;
               } else if (field === "plus_four_postal_code") {
                 value = sanitizePlus4(value) || null;
@@ -2248,6 +2247,9 @@ async function main() {
     }
 
     if (finalAddress) {
+      if (Object.prototype.hasOwnProperty.call(finalAddress, "city_name")) {
+        finalAddress.city_name = sanitizeCityName(finalAddress.city_name);
+      }
       if (finalAddressVariant === "normalized") {
         for (const field of NORMALIZED_ADDRESS_FIELDS) {
           if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
