@@ -1977,7 +1977,8 @@ async function main() {
         }
         return false;
       });
-    const canEmitNormalizedAddress = normalizedRequiredStringsPresent;
+    const canEmitNormalizedAddress =
+      normalizedRequiredStringsPresent && normalizedRequiredCoordinatesPresent;
 
     let finalAddress = null;
     let finalAddressVariant = null;
