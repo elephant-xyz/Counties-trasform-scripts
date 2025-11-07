@@ -1902,7 +1902,6 @@ async function main() {
     }
 
     const addressFilePath = path.join(dataDir, "address.json");
-    const propertyFilePath = path.join(dataDir, "property.json");
     const propertyAddressRelationshipPath = path.join(
       dataDir,
       "relationship_property_has_address.json",
@@ -1911,7 +1910,6 @@ async function main() {
       dataDir,
       "relationship_address_has_fact_sheet.json",
     );
-    const factSheetFilePath = path.join(dataDir, "fact_sheet.json");
 
     for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -1984,12 +1982,9 @@ async function main() {
       }
       finalAddress = normalizedOutput;
     } else if (rawAddressIsValid) {
-      const rawOutput = ADDRESS_SCHEMA_FIELDS.reduce((accumulator, field) => {
-        accumulator[field] = null;
-        return accumulator;
-      }, {});
-
-      rawOutput.unnormalized_address = rawAddressCandidate.unnormalized_address.trim();
+      const rawOutput = {
+        unnormalized_address: rawAddressCandidate.unnormalized_address.trim(),
+      };
 
       for (const key of RAW_ADDRESS_ALLOWED_FIELDS) {
         if (key === "unnormalized_address") continue;
@@ -2029,22 +2024,13 @@ async function main() {
     if (hasMeaningfulAddress) {
       writeJSON(addressFilePath, finalAddress);
 
-      if (fs.existsSync(propertyFilePath)) {
-        writeJSON(propertyAddressRelationshipPath, {
-          from: { "/": "./property.json" },
-          to: { "/": "./address.json" },
-        });
-      } else if (fs.existsSync(propertyAddressRelationshipPath)) {
-        fs.unlinkSync(propertyAddressRelationshipPath);
-      }
-
-      if (fs.existsSync(factSheetFilePath)) {
-        writeJSON(addressFactSheetRelationshipPath, {
-          from: { "/": "./address.json" },
-          to: { "/": "./fact_sheet.json" },
-        });
-      } else if (fs.existsSync(addressFactSheetRelationshipPath)) {
-        fs.unlinkSync(addressFactSheetRelationshipPath);
+      for (const relationshipPath of [
+        propertyAddressRelationshipPath,
+        addressFactSheetRelationshipPath,
+      ]) {
+        if (fs.existsSync(relationshipPath)) {
+          fs.unlinkSync(relationshipPath);
+        }
       }
     } else {
       // No usable address content, ensure previous outputs are removed
