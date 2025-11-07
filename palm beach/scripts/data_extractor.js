@@ -2213,11 +2213,7 @@ async function main() {
       }
 
       const candidate = prepareRawAddressForSchema(rawOutput);
-      const hasCoordinates =
-        candidate &&
-        Number.isFinite(candidate.latitude) &&
-        Number.isFinite(candidate.longitude);
-      if (hasCoordinates) {
+      if (candidate) {
         materializedRawAddress = candidate;
       }
     }
