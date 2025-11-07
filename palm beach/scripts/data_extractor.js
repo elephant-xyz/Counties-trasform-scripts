@@ -556,21 +556,7 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 // Fields that may be propagated into the raw-address branch when they have usable values.
 const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "country_code",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "city_name",
-  "county_name",
-  "municipality_name",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
 ];
 
@@ -2049,9 +2035,7 @@ async function main() {
           value = value.toUpperCase();
         }
 
-        if (value !== null) {
-          rawOutput[field] = value;
-        }
+        rawOutput[field] = value;
       }
 
       if (!rawOutput.country_code && rawOutput.state_code) {
@@ -2062,7 +2046,7 @@ async function main() {
         rawOutput.plus_four_postal_code &&
         (!rawOutput.postal_code || rawOutput.postal_code.length === 0)
       ) {
-        delete rawOutput.plus_four_postal_code;
+        rawOutput.plus_four_postal_code = null;
       }
 
       rawOutput.unnormalized_address =
@@ -2125,7 +2109,7 @@ async function main() {
             Object.prototype.hasOwnProperty.call(finalAddress, coordinateField) &&
             !Number.isFinite(finalAddress[coordinateField])
           ) {
-            delete finalAddress[coordinateField];
+            finalAddress[coordinateField] = null;
           }
         }
 
@@ -2134,7 +2118,7 @@ async function main() {
           !finalAddress.postal_code &&
           Object.prototype.hasOwnProperty.call(finalAddress, "plus_four_postal_code")
         ) {
-          delete finalAddress.plus_four_postal_code;
+          finalAddress.plus_four_postal_code = null;
         }
 
         if (
@@ -2142,7 +2126,13 @@ async function main() {
           typeof finalAddress.city_name === "string" &&
           /\d/.test(finalAddress.city_name)
         ) {
-          delete finalAddress.city_name;
+          finalAddress.city_name = null;
+        }
+
+        for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
         }
       }
     }
