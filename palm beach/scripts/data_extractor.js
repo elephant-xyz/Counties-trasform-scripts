@@ -656,11 +656,6 @@ function hasCompleteNormalizedAddress(address) {
       return false;
     }
   }
-  for (const coordinateField of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-    if (!Number.isFinite(address[coordinateField])) {
-      return false;
-    }
-  }
   return true;
 }
 
@@ -943,7 +938,7 @@ function parseLocationAddress(raw) {
   const tokens = normalized
     .toUpperCase()
     .split(/\s+/)
-    .map((token) => token.replace(/[.,/]/g, ""));
+    .map((token) => token.replace(/[.,]/g, ""));
   if (!tokens.length) return result;
 
   const numberPattern = /^\d+[A-Z]?$/i;
@@ -968,6 +963,16 @@ function parseLocationAddress(raw) {
   if (numberPattern.test(first)) {
     result.streetNumber = first;
     tokens.shift();
+
+    if (
+      tokens.length &&
+      /^\d+\s*\/\s*\d+$/.test(tokens[0])
+    ) {
+      const fractionToken = tokens.shift().replace(/\s*/g, "");
+      if (fractionToken.length) {
+        result.streetNumber = `${result.streetNumber} ${fractionToken}`;
+      }
+    }
   }
 
   if (!tokens.length) return result;
