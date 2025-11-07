@@ -2131,7 +2131,7 @@ async function main() {
             Object.prototype.hasOwnProperty.call(finalAddress, coordinateField) &&
             !Number.isFinite(finalAddress[coordinateField])
           ) {
-            delete finalAddress[coordinateField];
+            finalAddress[coordinateField] = null;
           }
         }
 
@@ -2140,7 +2140,7 @@ async function main() {
           !finalAddress.postal_code &&
           Object.prototype.hasOwnProperty.call(finalAddress, "plus_four_postal_code")
         ) {
-          delete finalAddress.plus_four_postal_code;
+          finalAddress.plus_four_postal_code = null;
         }
 
         if (
@@ -2148,14 +2148,20 @@ async function main() {
           typeof finalAddress.city_name === "string" &&
           /\d/.test(finalAddress.city_name)
         ) {
-          delete finalAddress.city_name;
+          finalAddress.city_name = null;
+        }
+
+        for (const field of NORMALIZED_ADDRESS_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
         }
       }
 
       const fieldsToEnsure =
         finalAddressVariant === "normalized"
           ? NORMALIZED_ADDRESS_FIELDS
-          : Object.keys(finalAddress);
+          : ADDRESS_SCHEMA_FIELDS;
 
       for (const field of fieldsToEnsure) {
         const hasField = Object.prototype.hasOwnProperty.call(
@@ -2163,9 +2169,7 @@ async function main() {
           field,
         );
         if (!hasField) {
-          if (finalAddressVariant === "normalized") {
-            finalAddress[field] = null;
-          }
+          finalAddress[field] = null;
           continue;
         }
         const currentValue = finalAddress[field];
