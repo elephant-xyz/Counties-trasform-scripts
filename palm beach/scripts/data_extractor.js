@@ -19,7 +19,10 @@ function writeJSON(p, obj) {
 }
 
 function writeRelationshipFile(filePath, fromRelative, toRelative) {
-  if (!fromRelative || !toRelative) {
+  const fromRef = typeof fromRelative === "string" ? fromRelative.trim() : "";
+  const toRef = typeof toRelative === "string" ? toRelative.trim() : "";
+
+  if (!fromRef || !toRef) {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -27,8 +30,8 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
   }
 
   const payload = {
-    from: { relative_path: fromRelative },
-    to: { relative_path: toRelative },
+    from: { "/": fromRef },
+    to: { "/": toRef },
   };
   writeJSON(filePath, payload);
 }
@@ -2291,7 +2294,17 @@ async function main() {
 
     if (hasMeaningfulAddress) {
       writeJSON(addressFilePath, finalAddress);
-      removeFileIfExists(propertyAddressRelationshipPath);
+
+      const propertyPath = path.join(dataDir, "property.json");
+      if (fs.existsSync(propertyPath)) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          "./property.json",
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
       removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       // No usable address content, ensure previous outputs are removed
