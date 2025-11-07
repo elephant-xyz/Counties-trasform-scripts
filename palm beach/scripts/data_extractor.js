@@ -555,10 +555,10 @@ const ADDRESS_SCHEMA_FIELDS = [
 ];
 
 // Fields that may be propagated into the raw-address branch when they have usable values.
-// The County schema requires the normalized street-level components even when we provide an
-// unnormalized line, so mirror the normalized field set and tack on the request identifier.
+// The County schema still expects the normalized street-level keys to be present (even when only
+// the unnormalized line survives), so mirror the normalized field set here.
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...NORMALIZED_ADDRESS_FIELDS, "request_identifier"]),
+  new Set([...NORMALIZED_ADDRESS_FIELDS]),
 );
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -1776,12 +1776,6 @@ async function main() {
       return acc;
     }, {});
 
-    if (seed && typeof seed.request_identifier === "string" && seed.request_identifier.trim()) {
-      address.request_identifier = seed.request_identifier.trim();
-    } else if (seed && typeof seed.parcel_id === "string" && seed.parcel_id.trim()) {
-      address.request_identifier = seed.parcel_id.trim();
-    }
-
     address.city_name = normalizedCity ? normalizedCity.toUpperCase() : null;
     if (address.city_name && /\d/.test(address.city_name)) {
       address.city_name = null;
@@ -2134,6 +2128,28 @@ async function main() {
           if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
             finalAddress[field] = null;
           }
+        }
+      }
+
+      const fieldsToEnsure =
+        finalAddressVariant === "normalized"
+          ? NORMALIZED_ADDRESS_FIELDS
+          : ADDRESS_SCHEMA_FIELDS;
+
+      for (const field of fieldsToEnsure) {
+        if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+          finalAddress[field] = null;
+          continue;
+        }
+        const currentValue = finalAddress[field];
+        if (typeof currentValue === "string") {
+          const trimmed = currentValue.trim();
+          finalAddress[field] = trimmed.length ? trimmed : null;
+        } else if (
+          typeof currentValue === "number" &&
+          !Number.isFinite(currentValue)
+        ) {
+          finalAddress[field] = null;
         }
       }
     }
