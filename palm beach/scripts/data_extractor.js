@@ -553,8 +553,6 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "request_identifier",
 ];
 
-const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
-
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -573,13 +571,10 @@ function hasCompleteNormalizedAddress(address) {
       return false;
     }
   }
-  for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-    if (!Number.isFinite(address[coordinateField])) {
-      return false;
-    }
-  }
   return true;
 }
+
+const ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 // Utility helper that builds an object containing only the requested fields from the source.
 // When preserveNulls is true the returned object explicitly includes null-valued fields so
