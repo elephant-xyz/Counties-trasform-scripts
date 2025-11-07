@@ -786,6 +786,7 @@ function prepareRawAddressForSchema(rawAddress) {
   const prepared = { unnormalized_address: rawUnnormalized };
 
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    const isCoordinateField = ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field);
     let value = Object.prototype.hasOwnProperty.call(rawAddress, field)
       ? rawAddress[field]
       : null;
@@ -797,6 +798,11 @@ function prepareRawAddressForSchema(rawAddress) {
       if (!value.length) value = null;
     } else {
       value = null;
+    }
+
+    if (isCoordinateField && value == null) {
+      prepared[field] = null;
+      continue;
     }
 
     if (value == null) continue;
@@ -834,12 +840,26 @@ function prepareRawAddressForSchema(rawAddress) {
 
   for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(prepared, coordinateField)) {
+      prepared[coordinateField] = null;
       continue;
     }
     const coordinate = prepared[coordinateField];
-    if (!Number.isFinite(coordinate)) {
-      delete prepared[coordinateField];
+    if (coordinate == null) {
+      prepared[coordinateField] = null;
+      continue;
     }
+    if (typeof coordinate === "number") {
+      if (!Number.isFinite(coordinate)) {
+        prepared[coordinateField] = null;
+      }
+      continue;
+    }
+    if (typeof coordinate === "string") {
+      const numeric = Number(coordinate.trim());
+      prepared[coordinateField] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    prepared[coordinateField] = null;
   }
 
   return prepared;
