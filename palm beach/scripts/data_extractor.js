@@ -555,25 +555,11 @@ const ADDRESS_SCHEMA_FIELDS = [
 ];
 
 // Fields that may be propagated into the raw-address branch when they have usable values.
-// Do NOT include the street-level normalization fields here; the raw-address schema branch
-// expects only the coarse location context together with the unnormalized line.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "request_identifier",
-];
+// The County schema requires the normalized street-level components even when we provide an
+// unnormalized line, so mirror the normalized field set and tack on the request identifier.
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...NORMALIZED_ADDRESS_FIELDS, "request_identifier"]),
+);
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
