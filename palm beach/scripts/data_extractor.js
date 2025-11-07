@@ -659,6 +659,18 @@ function hasCompleteNormalizedAddress(address) {
       return false;
     }
   }
+  for (const field of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+    const value = address[field];
+    if (typeof value === "number" && Number.isFinite(value)) continue;
+    if (typeof value === "string") {
+      const numeric = Number(value.trim());
+      if (Number.isFinite(numeric)) {
+        address[field] = numeric;
+        continue;
+      }
+    }
+    return false;
+  }
   return true;
 }
 
@@ -826,7 +838,11 @@ function prepareRawAddressForSchema(rawAddress) {
 
   for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     const coordinate = prepared[coordinateField];
-    prepared[coordinateField] = Number.isFinite(coordinate) ? coordinate : null;
+    if (Number.isFinite(coordinate)) {
+      prepared[coordinateField] = coordinate;
+    } else {
+      delete prepared[coordinateField];
+    }
   }
 
   return prepared;
