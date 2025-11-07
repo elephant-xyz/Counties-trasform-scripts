@@ -234,6 +234,69 @@ function composeUnnormalizedAddress(address) {
   return segments.join(", ");
 }
 
+function enrichAddressFromUnnormalized(address, unnormalizedValue) {
+  if (!address || typeof address !== "object") return;
+  const normalizedSource = normalizeWhitespace(unnormalizedValue);
+  if (!normalizedSource) return;
+
+  const segments = normalizedSource
+    .split(",")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (!segments.length) return;
+
+  const streetSegment = segments[0];
+  if (streetSegment) {
+    const parsedStreet = parseLocationAddress(streetSegment);
+    if (parsedStreet.streetNumber && !address.street_number) {
+      address.street_number = safeNullIfEmpty(parsedStreet.streetNumber);
+    }
+    if (parsedStreet.streetName && !address.street_name) {
+      const formatted = formatStreetNameCase(parsedStreet.streetName);
+      address.street_name = formatted ? formatted.toUpperCase() : null;
+    }
+    if (parsedStreet.streetPreDirectional && !address.street_pre_directional_text) {
+      address.street_pre_directional_text = parsedStreet.streetPreDirectional.toUpperCase();
+    }
+    if (parsedStreet.streetPostDirectional && !address.street_post_directional_text) {
+      address.street_post_directional_text = parsedStreet.streetPostDirectional.toUpperCase();
+    }
+    if (parsedStreet.streetSuffix && !address.street_suffix_type) {
+      const mappedSuffix = mapStreetSuffixType(parsedStreet.streetSuffix);
+      if (mappedSuffix) {
+        address.street_suffix_type = mappedSuffix;
+      }
+    }
+    if (parsedStreet.unitIdentifier && !address.unit_identifier) {
+      address.unit_identifier = safeNullIfEmpty(parsedStreet.unitIdentifier);
+    }
+    if (parsedStreet.routeNumber && !address.route_number) {
+      address.route_number = safeNullIfEmpty(parsedStreet.routeNumber);
+    }
+  }
+
+  if (segments.length > 1) {
+    const cityStateSegment = segments.slice(1).join(" ");
+    const parsedCityState = parseCityStatePostal(cityStateSegment);
+    if (parsedCityState.city && !address.city_name) {
+      const cityCandidate = parsedCityState.city.toUpperCase();
+      if (!/\d/.test(cityCandidate)) {
+        address.city_name = cityCandidate;
+      }
+    }
+    if (parsedCityState.state && !address.state_code) {
+      address.state_code = parsedCityState.state.toUpperCase();
+    }
+    if (parsedCityState.postal && !address.postal_code) {
+      address.postal_code = parsedCityState.postal;
+    }
+    if (parsedCityState.plus4 && !address.plus_four_postal_code) {
+      address.plus_four_postal_code = parsedCityState.plus4;
+    }
+  }
+}
+
 function titleCaseCounty(county) {
   if (!county) return null;
   const lc = String(county).toLowerCase();
@@ -561,7 +624,6 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
-  "street_suffix_type",
   "city_name",
   "state_code",
   "postal_code",
@@ -1866,6 +1928,8 @@ async function main() {
       formattedPcn: fallbackPcnSource,
       legalDescription: legalDesc,
     });
+
+    enrichAddressFromUnnormalized(address, unnormalizedAddressCandidate);
 
     const normalizedSnapshot = { ...address };
     const fallbackUnnormalizedValue =
