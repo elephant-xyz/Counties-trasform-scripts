@@ -804,6 +804,123 @@ function ensureAddressVariantIsSchemaCompliant(address, variant) {
   return null;
 }
 
+function finalizeAddressForOutput(address, variant) {
+  if (!address || typeof address !== "object") return null;
+
+  const cloned = deepClone(address);
+  if (!cloned || typeof cloned !== "object") return null;
+
+  const isRawVariant = variant === "raw";
+  const baseFields = isRawVariant
+    ? [...RAW_ADDRESS_ALLOWED_FIELDS, "unnormalized_address"]
+    : [...NORMALIZED_ADDRESS_FIELDS];
+
+  const requiredFields = new Set([
+    ...baseFields,
+    ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
+    ...NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS,
+    "county_name",
+    "municipality_name",
+  ]);
+
+  const result = {};
+
+  for (const field of requiredFields) {
+    let value = Object.prototype.hasOwnProperty.call(cloned, field)
+      ? cloned[field]
+      : null;
+
+    if (value === undefined || value === null) {
+      result[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        result[field] = null;
+        continue;
+      }
+
+      if (field === "unnormalized_address") {
+        result[field] = trimmed;
+        continue;
+      }
+
+      if (field === "city_name") {
+        const sanitizedCity = sanitizeCityName(trimmed);
+        result[field] = sanitizedCity || null;
+        continue;
+      }
+
+      if (field === "postal_code") {
+        result[field] = sanitizePostalCode(trimmed) || null;
+        continue;
+      }
+
+      if (field === "plus_four_postal_code") {
+        result[field] = sanitizePlus4(trimmed) || null;
+        continue;
+      }
+
+      if (field === "state_code" || field === "country_code") {
+        result[field] = trimmed.toUpperCase();
+        continue;
+      }
+
+      if (
+        field === "street_pre_directional_text" ||
+        field === "street_post_directional_text"
+      ) {
+        result[field] = trimmed.toUpperCase();
+        continue;
+      }
+
+      if (field === "street_suffix_type") {
+        const mappedSuffix = mapStreetSuffixType(trimmed);
+        result[field] = mappedSuffix || trimmed;
+        continue;
+      }
+
+      result[field] = trimmed;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      result[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    result[field] = value;
+  }
+
+  if (!result.country_code && result.state_code) {
+    result.country_code = "US";
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+
+  if (!isRawVariant) {
+    delete result.unnormalized_address;
+  } else {
+    const unnormalized = result.unnormalized_address;
+    if (typeof unnormalized !== "string" || !unnormalized.trim().length) {
+      return null;
+    }
+    result.unnormalized_address = unnormalized.trim();
+  }
+
+  for (const [key, value] of Object.entries(cloned)) {
+    if (!Object.prototype.hasOwnProperty.call(result, key)) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
 function collectAddressFields(source, fields, options = {}) {
   const { preserveNulls = false, omitNulls = false } = options;
   const result = {};
@@ -2758,26 +2875,22 @@ async function main() {
       }
     }
 
-    if (
-      finalAddressVariant === "normalized" &&
-      finalAddress &&
-      !finalAddress.country_code &&
-      finalAddress.state_code
-    ) {
-      finalAddress.country_code = "US";
-    }
-
-    if (
-      finalAddressVariant === "normalized" &&
-      finalAddress &&
-      Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
-    ) {
-      delete finalAddress.unnormalized_address;
+    if (finalAddress) {
+      finalAddress = finalizeAddressForOutput(
+        finalAddress,
+        finalAddressVariant,
+      );
     }
 
     const hasMeaningfulAddress =
       finalAddress &&
-      Object.values(finalAddress).some((value) => value !== null);
+      Object.entries(finalAddress).some(([key, value]) => {
+        if (value === null || value === undefined) return false;
+        if (typeof value === "string") {
+          return value.trim().length > 0;
+        }
+        return true;
+      });
 
     if (hasMeaningfulAddress && finalAddress) {
       writeJSON(addressFilePath, finalAddress);
