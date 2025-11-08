@@ -2767,6 +2767,14 @@ async function main() {
       finalAddress.country_code = "US";
     }
 
+    if (
+      finalAddressVariant === "normalized" &&
+      finalAddress &&
+      Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+    ) {
+      delete finalAddress.unnormalized_address;
+    }
+
     const hasMeaningfulAddress =
       finalAddress &&
       Object.values(finalAddress).some((value) => value !== null);

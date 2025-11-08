@@ -2525,8 +2525,14 @@ async function main() {
       const sanitizedRaw = pruneRawAddressForSchema(finalAddress);
       const unnormalized =
         sanitizedRaw && sanitizedRaw.unnormalized_address;
+      const hasCoordinates =
+        sanitizedRaw &&
+        Number.isFinite(sanitizedRaw.latitude) &&
+        Number.isFinite(sanitizedRaw.longitude);
       hasMeaningfulAddress =
-        typeof unnormalized === "string" && unnormalized.length > 0;
+        typeof unnormalized === "string" &&
+        unnormalized.length > 0 &&
+        hasCoordinates;
       if (hasMeaningfulAddress) {
         finalAddress = sanitizedRaw;
       } else {
@@ -2536,6 +2542,11 @@ async function main() {
     }
 
     if (hasMeaningfulAddress && finalAddressVariant === "normalized") {
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
       for (const field of NORMALIZED_ADDRESS_FIELDS) {
         if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
           finalAddress[field] = null;
