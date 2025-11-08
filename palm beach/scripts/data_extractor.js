@@ -831,15 +831,43 @@ function finalizeAddressForOutput(address, variant) {
     const orderedFields = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
     for (const field of orderedFields) {
       if (!Object.prototype.hasOwnProperty.call(sanitized, field)) continue;
-      const value = sanitized[field];
-      if (value === null || value === undefined) continue;
+      let value = sanitized[field];
+
+      if (field === "unnormalized_address") {
+        if (typeof value !== "string") return null;
+        const trimmed = value.trim();
+        if (!trimmed.length) return null;
+        result[field] = trimmed;
+        continue;
+      }
+
       if (typeof value === "string") {
         const trimmed = value.trim();
-        if (!trimmed.length) continue;
-        result[field] = trimmed;
-      } else {
-        result[field] = value;
+        value = trimmed.length ? trimmed : null;
       }
+
+      if (value === undefined) {
+        value = null;
+      }
+
+      if (value !== null) {
+        result[field] = value;
+        continue;
+      }
+
+      if (RAW_SCHEMA_REQUIRED_FIELDS.includes(field)) {
+        result[field] = null;
+      }
+    }
+
+    for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(result, field)) {
+        result[field] = null;
+      }
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
+      return null;
     }
 
     if (!result.postal_code && result.plus_four_postal_code) {
@@ -847,24 +875,6 @@ function finalizeAddressForOutput(address, variant) {
     }
     if (!result.country_code && result.state_code) {
       result.country_code = "US";
-    }
-
-    const hasCoreFields =
-      typeof result.unnormalized_address === "string" &&
-      result.unnormalized_address.trim().length > 0 &&
-      RAW_SCHEMA_REQUIRED_FIELDS.every((field) => {
-        if (field === "latitude" || field === "longitude") {
-          return Number.isFinite(result[field]);
-        }
-        const candidate = result[field];
-        if (typeof candidate === "string") {
-          return candidate.trim().length > 0;
-        }
-        return candidate !== null && candidate !== undefined;
-      });
-
-    if (!hasCoreFields) {
-      return null;
     }
 
     return result;
@@ -1065,15 +1075,22 @@ function prepareRawAddressForSchema(rawAddress) {
     if (!Object.prototype.hasOwnProperty.call(rawAddress, field)) continue;
 
     const isCoordinateField = ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field);
+    const isRequiredField = RAW_SCHEMA_REQUIRED_FIELDS.includes(field);
     let value = rawAddress[field];
 
     if (value == null) {
+      if (isRequiredField) {
+        prepared[field] = null;
+      }
       continue;
     }
 
     if (typeof value === "string") {
       value = value.trim();
       if (!value.length) {
+        if (isRequiredField) {
+          prepared[field] = null;
+        }
         continue;
       }
     }
@@ -1081,11 +1098,24 @@ function prepareRawAddressForSchema(rawAddress) {
     if (isCoordinateField) {
       if (typeof value === "string") {
         const numeric = Number(value);
-        if (!Number.isFinite(numeric)) continue;
+        if (!Number.isFinite(numeric)) {
+          if (isRequiredField) {
+            prepared[field] = null;
+          }
+          continue;
+        }
         value = numeric;
       } else if (typeof value === "number") {
-        if (!Number.isFinite(value)) continue;
+        if (!Number.isFinite(value)) {
+          if (isRequiredField) {
+            prepared[field] = null;
+          }
+          continue;
+        }
       } else {
+        if (isRequiredField) {
+          prepared[field] = null;
+        }
         continue;
       }
       prepared[field] = value;
@@ -1094,19 +1124,39 @@ function prepareRawAddressForSchema(rawAddress) {
 
     if (field === "country_code") {
       value = String(value).trim().toUpperCase();
-      if (!value.trim().length) continue;
+      if (!value.trim().length) {
+        if (isRequiredField) {
+          prepared[field] = null;
+        }
+        continue;
+      }
     } else if (field === "city_name") {
       value = sanitizeCityName(value);
-      if (!value) continue;
+      if (!value) {
+        if (isRequiredField) {
+          prepared[field] = null;
+        }
+        continue;
+      }
     } else if (field === "postal_code") {
       value = sanitizePostalCode(value) || null;
-      if (!value) continue;
+      if (!value) {
+        if (isRequiredField) {
+          prepared[field] = null;
+        }
+        continue;
+      }
     } else if (field === "plus_four_postal_code") {
       value = sanitizePlus4(value) || null;
       if (!value) continue;
     } else if (field === "state_code") {
       value = String(value).trim().toUpperCase();
-      if (!value.length) continue;
+      if (!value.length) {
+        if (isRequiredField) {
+          prepared[field] = null;
+        }
+        continue;
+      }
     } else if (
       typeof value !== "boolean" &&
       typeof value !== "number"
@@ -1118,6 +1168,12 @@ function prepareRawAddressForSchema(rawAddress) {
     }
 
     prepared[field] = value;
+  }
+
+  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(prepared, field)) {
+      prepared[field] = null;
+    }
   }
 
   if (prepared.state_code && !prepared.country_code) {
