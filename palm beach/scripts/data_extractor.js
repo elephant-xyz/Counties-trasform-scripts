@@ -751,76 +751,25 @@ function ensureAddressVariantIsSchemaCompliant(address, variant) {
   if (!cloned || typeof cloned !== "object") return null;
 
   if (variant === "normalized") {
-    const normalizedCandidate = deepClone(cloned);
+    const normalizedCandidate = createSchemaReadyAddress(cloned, "normalized");
     if (!normalizedCandidate) return null;
     if (!isNormalizedAddressSchemaReady(normalizedCandidate)) {
       return null;
-    }
-    if (normalizedCandidate.city_name) {
-      const sanitizedCity = sanitizeCityName(normalizedCandidate.city_name);
-      if (!sanitizedCity) return null;
-      normalizedCandidate.city_name = sanitizedCity;
     }
     return normalizedCandidate;
   }
 
   if (variant === "raw") {
-    const rawCandidate = deepClone(cloned);
-    if (!rawCandidate || typeof rawCandidate !== "object") return null;
-
-    const rawValue =
-      typeof rawCandidate.unnormalized_address === "string"
-        ? rawCandidate.unnormalized_address.trim()
-        : "";
-    if (!rawValue.length) {
+    const rawCandidate = createSchemaReadyAddress(cloned, "raw", {
+      fallbackUnnormalized: cloned.unnormalized_address || null,
+    });
+    if (
+      !rawCandidate ||
+      typeof rawCandidate !== "object" ||
+      typeof rawCandidate.unnormalized_address !== "string"
+    ) {
       return null;
     }
-    rawCandidate.unnormalized_address = rawValue;
-
-    const allowedRawFields = new Set([
-      ...RAW_ADDRESS_ALLOWED_FIELDS,
-      "unnormalized_address",
-    ]);
-    for (const key of Object.keys(rawCandidate)) {
-      if (!allowedRawFields.has(key)) {
-        delete rawCandidate[key];
-      }
-    }
-
-    if (
-      Object.prototype.hasOwnProperty.call(rawCandidate, "city_name") &&
-      rawCandidate.city_name != null
-    ) {
-      const sanitizedCity = sanitizeCityName(rawCandidate.city_name);
-      rawCandidate.city_name = sanitizedCity || null;
-    }
-
-    if (
-      Object.prototype.hasOwnProperty.call(
-        rawCandidate,
-        "plus_four_postal_code",
-      ) &&
-      !rawCandidate.postal_code
-    ) {
-      rawCandidate.plus_four_postal_code = null;
-    }
-
-    for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-      if (rawCandidate[field] != null) {
-        const numeric =
-          typeof rawCandidate[field] === "number"
-            ? rawCandidate[field]
-            : Number(String(rawCandidate[field]).trim());
-        rawCandidate[field] = Number.isFinite(numeric) ? numeric : null;
-      }
-    }
-
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(rawCandidate, field)) {
-        rawCandidate[field] = null;
-      }
-    }
-
     return rawCandidate;
   }
 
