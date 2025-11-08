@@ -5,13 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function createReference(relativePath) {
-  if (typeof relativePath !== "string") return null;
-  const trimmed = relativePath.trim();
-  if (!trimmed) return null;
-  return trimmed;
-}
-
 function readInputHtml() {
   const inputPath = path.resolve("input.html");
   return fs.readFileSync(inputPath, "utf8");
@@ -289,15 +282,16 @@ function run() {
     );
 
     // Create relationship file for each layout
-    const layoutRel = {
-      from: createReference("./property.json"),
-      to: createReference(`./${layoutFileName}`),
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_property_layout_${layoutIndex}.json`),
-      JSON.stringify(layoutRel, null, 2),
-      "utf8",
+    const relationshipPath = path.join(
+      dataDir,
+      `relationship_property_layout_${layoutIndex}.json`,
     );
+    const propertyPath = path.join(dataDir, "property.json");
+    if (fs.existsSync(propertyPath)) {
+      fs.writeFileSync(relationshipPath, "null", "utf8");
+    } else if (fs.existsSync(relationshipPath)) {
+      fs.unlinkSync(relationshipPath);
+    }
   });
 
   console.log(

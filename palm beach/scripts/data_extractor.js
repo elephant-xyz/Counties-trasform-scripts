@@ -2645,33 +2645,34 @@ async function main() {
     let finalAddress = null;
     let finalAddressVariant = null;
 
-    if (normalizedOutput) {
+    if (hasUnnormalizedAddress) {
+      if (materializedRawAddress) {
+        finalAddress = materializedRawAddress;
+      } else {
+        const fallbackRaw = {
+          unnormalized_address: trimmedUnnormalized,
+        };
+
+        const fallbackLatitude = parseCoordinate(address.latitude);
+        const fallbackLongitude = parseCoordinate(address.longitude);
+        if (fallbackLatitude != null) {
+          fallbackRaw.latitude = fallbackLatitude;
+        }
+        if (fallbackLongitude != null) {
+          fallbackRaw.longitude = fallbackLongitude;
+        }
+        if (address.county_name) {
+          fallbackRaw.county_name = address.county_name;
+        }
+        if (address.municipality_name) {
+          fallbackRaw.municipality_name = address.municipality_name;
+        }
+        finalAddress = fallbackRaw;
+      }
+      finalAddressVariant = "raw";
+    } else if (normalizedOutput) {
       finalAddress = normalizedOutput;
       finalAddressVariant = "normalized";
-    } else if (materializedRawAddress) {
-      finalAddress = materializedRawAddress;
-      finalAddressVariant = "raw";
-    } else if (hasUnnormalizedAddress) {
-      const fallbackRaw = {
-        unnormalized_address: trimmedUnnormalized,
-      };
-
-      const fallbackLatitude = parseCoordinate(address.latitude);
-      const fallbackLongitude = parseCoordinate(address.longitude);
-      if (fallbackLatitude != null) {
-        fallbackRaw.latitude = fallbackLatitude;
-      }
-      if (fallbackLongitude != null) {
-        fallbackRaw.longitude = fallbackLongitude;
-      }
-      if (address.county_name) {
-        fallbackRaw.county_name = address.county_name;
-      }
-      if (address.municipality_name) {
-        fallbackRaw.municipality_name = address.municipality_name;
-      }
-      finalAddress = fallbackRaw;
-      finalAddressVariant = "raw";
     }
 
     if (finalAddress) {
@@ -2718,8 +2719,14 @@ async function main() {
         const sanitizedRaw = pruneRawAddressForSchema(finalAddress);
         const rawUnnormalized =
           sanitizedRaw && sanitizedRaw.unnormalized_address;
+        const hasCoordinates =
+          sanitizedRaw &&
+          Number.isFinite(sanitizedRaw.latitude) &&
+          Number.isFinite(sanitizedRaw.longitude);
         hasMeaningfulAddress =
-          typeof rawUnnormalized === "string" && rawUnnormalized.length > 0;
+          typeof rawUnnormalized === "string" &&
+          rawUnnormalized.length > 0 &&
+          hasCoordinates;
         if (hasMeaningfulAddress) {
           finalAddress = sanitizedRaw;
         } else {
@@ -2743,7 +2750,9 @@ async function main() {
     }
 
     if (hasMeaningfulAddress && finalAddress) {
-      if (finalAddressVariant === "raw") {
+      const shouldAttemptNormalization =
+        finalAddressVariant === "raw" && !hasUnnormalizedAddress;
+      if (shouldAttemptNormalization) {
         const normalizedFromRaw = ensureAddressVariantIsSchemaCompliant(
           finalAddress,
           "normalized",
@@ -2775,7 +2784,21 @@ async function main() {
           "raw",
         );
         if (rawCompliant) {
-          compliantAddress = rawCompliant;
+          const preparedRaw = pruneRawAddressForSchema(rawCompliant);
+          const rawUnnormalized =
+            preparedRaw && preparedRaw.unnormalized_address;
+          const hasCoordinates =
+            preparedRaw &&
+            Number.isFinite(preparedRaw.latitude) &&
+            Number.isFinite(preparedRaw.longitude);
+          if (
+            preparedRaw &&
+            typeof rawUnnormalized === "string" &&
+            rawUnnormalized.length > 0 &&
+            hasCoordinates
+          ) {
+            compliantAddress = preparedRaw;
+          }
         }
       }
 
