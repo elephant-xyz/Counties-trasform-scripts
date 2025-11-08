@@ -665,21 +665,24 @@ function hasCompleteNormalizedAddress(address) {
     }
   }
   for (const field of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-    const value = address[field];
-    if (value == null) {
-      address[field] = null;
-      continue;
+    const rawValue = address[field];
+    if (rawValue == null) {
+      return false;
     }
-    if (typeof value === "number") {
-      address[field] = Number.isFinite(value) ? value : null;
-      continue;
+
+    let numericValue = null;
+    if (typeof rawValue === "number") {
+      numericValue = Number.isFinite(rawValue) ? rawValue : null;
+    } else if (typeof rawValue === "string") {
+      const parsed = Number(rawValue.trim());
+      numericValue = Number.isFinite(parsed) ? parsed : null;
     }
-    if (typeof value === "string") {
-      const numeric = Number(value.trim());
-      address[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
+
+    if (numericValue == null) {
+      return false;
     }
-    address[field] = null;
+
+    address[field] = numericValue;
   }
   return true;
 }
