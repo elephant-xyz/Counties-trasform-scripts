@@ -914,6 +914,9 @@ function finalizeAddressForOutput(address, variant) {
 
   for (const [key, value] of Object.entries(cloned)) {
     if (!Object.prototype.hasOwnProperty.call(result, key)) {
+      if (!isRawVariant && key === "unnormalized_address") {
+        continue;
+      }
       result[key] = value;
     }
   }
@@ -2821,16 +2824,11 @@ async function main() {
       const preparedRaw = pruneRawAddressForSchema(schemaReadyRaw);
       const rawUnnormalized =
         preparedRaw && preparedRaw.unnormalized_address;
-      const hasCoordinates =
-        preparedRaw &&
-        Number.isFinite(preparedRaw.latitude) &&
-        Number.isFinite(preparedRaw.longitude);
 
       if (
         preparedRaw &&
         typeof rawUnnormalized === "string" &&
-        rawUnnormalized.length > 0 &&
-        hasCoordinates
+        rawUnnormalized.length > 0
       ) {
         return preparedRaw;
       }
@@ -2859,15 +2857,10 @@ async function main() {
         const preparedRaw = pruneRawAddressForSchema(minimalRaw);
         const rawUnnormalized =
           preparedRaw && preparedRaw.unnormalized_address;
-        const hasCoordinates =
-          preparedRaw &&
-          Number.isFinite(preparedRaw.latitude) &&
-          Number.isFinite(preparedRaw.longitude);
         if (
           preparedRaw &&
           typeof rawUnnormalized === "string" &&
-          rawUnnormalized.length > 0 &&
-          hasCoordinates
+          rawUnnormalized.length > 0
         ) {
           finalAddress = preparedRaw;
           finalAddressVariant = "raw";
