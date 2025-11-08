@@ -23,14 +23,12 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
   const hasTo = typeof toRelative === "string" && toRelative.trim().length > 0;
 
   if (!hasFrom || !hasTo) {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    removeFileIfExists(filePath);
     return;
   }
 
-  // Downstream packaging is responsible for creating the final relationship payload.
-  writeJSON(filePath, null);
+  // Relationship UR payloads are populated downstream; avoid emitting placeholders here.
+  removeFileIfExists(filePath);
 }
 
 function removeFileIfExists(filePath) {
@@ -844,23 +842,19 @@ function finalizeAddressForOutput(address, variant) {
       if (typeof value === "string") {
         const trimmed = value.trim();
         value = trimmed.length ? trimmed : null;
-      }
-
-      if (value === undefined) {
+      } else if (typeof value === "number") {
+        value = Number.isFinite(value) ? value : null;
+      } else if (value === undefined || value === null) {
         value = null;
+      } else {
+        const stringified = String(value).trim();
+        value = stringified.length ? stringified : null;
       }
 
-      if (value !== null) {
-        result[field] = value;
-        continue;
-      }
-
-      if (RAW_SCHEMA_REQUIRED_FIELDS.includes(field)) {
-        result[field] = null;
-      }
+      result[field] = value !== undefined ? value : null;
     }
 
-    for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
       if (!Object.prototype.hasOwnProperty.call(result, field)) {
         result[field] = null;
       }
@@ -871,7 +865,7 @@ function finalizeAddressForOutput(address, variant) {
     }
 
     if (!result.postal_code && result.plus_four_postal_code) {
-      delete result.plus_four_postal_code;
+      result.plus_four_postal_code = null;
     }
     if (!result.country_code && result.state_code) {
       result.country_code = "US";
