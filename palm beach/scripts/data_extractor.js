@@ -666,6 +666,19 @@ const ADDRESS_REQUIRED_COORDINATE_FIELDS = [
   ...NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS,
 ];
 
+const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
+];
+
 function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
   for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
@@ -693,6 +706,30 @@ function hasCompleteNormalizedAddress(address) {
     }
 
     address[field] = numericValue;
+  }
+  return true;
+}
+
+function isNormalizedAddressSchemaReady(address) {
+  if (!address || typeof address !== "object") return false;
+  for (const field of NORMALIZED_SCHEMA_REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      return false;
+    }
+    const value = address[field];
+    if (value == null) {
+      return false;
+    }
+    if (typeof value === "string") {
+      if (!value.trim().length) return false;
+    }
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric =
+        typeof value === "number" ? value : Number(String(value).trim());
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -2281,13 +2318,16 @@ async function main() {
     const hasUnnormalizedAddress = trimmedUnnormalized.length > 0;
     const normalizedAddressHasRequiredStrings =
       hasCompleteNormalizedAddress(address);
+    const normalizedAddressHasSchemaCoverage =
+      normalizedAddressHasRequiredStrings &&
+      isNormalizedAddressSchemaReady(address);
 
     let normalizedAddress = null;
-    if (normalizedAddressHasRequiredStrings) {
+    if (normalizedAddressHasSchemaCoverage) {
       const candidate = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
-        { omitNulls: true },
+        { preserveNulls: true },
       );
       const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
         (key) =>
