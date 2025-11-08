@@ -649,16 +649,6 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_VARIANT_NORMALIZED_ONLY_FIELDS = new Set([
-  "street_name",
-  "street_number",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "route_number",
-  "unit_identifier",
-]);
-
 const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -2398,7 +2388,10 @@ async function main() {
     let finalAddress = null;
     let finalAddressVariant = null;
 
-    if (normalizedAddress) {
+    if (materializedRawAddress) {
+      finalAddress = materializedRawAddress;
+      finalAddressVariant = "raw";
+    } else if (normalizedAddress) {
       const normalizedOutput = {};
       for (const key of NORMALIZED_ADDRESS_FIELDS) {
         let value = null;
@@ -2429,12 +2422,6 @@ async function main() {
       }
       finalAddress = normalizedOutput;
       finalAddressVariant = "normalized";
-    } else if (materializedRawAddress && hasUnnormalizedAddress) {
-      finalAddress = materializedRawAddress;
-      finalAddressVariant = "raw";
-    } else if (materializedRawAddress) {
-      finalAddress = materializedRawAddress;
-      finalAddressVariant = "raw";
     }
 
     if (finalAddress) {
@@ -2467,20 +2454,11 @@ async function main() {
 
     if (hasMeaningfulAddress && finalAddress) {
       if (finalAddressVariant === "raw") {
-        for (const key of RAW_VARIANT_NORMALIZED_ONLY_FIELDS) {
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, key)) {
-            continue;
-          }
-          const value = finalAddress[key];
-          if (value === null) {
-            delete finalAddress[key];
-            continue;
-          }
-          if (typeof value === "string" && !value.trim().length) {
-            delete finalAddress[key];
+        for (const field of NORMALIZED_ADDRESS_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
           }
         }
-
         hasMeaningfulAddress =
           Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address") &&
           typeof finalAddress.unnormalized_address === "string" &&
