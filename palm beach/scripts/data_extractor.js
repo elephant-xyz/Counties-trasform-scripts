@@ -98,6 +98,9 @@ function deepClone(value) {
 }
 
 async function fetchParcelCentroid(parcelId) {
+  if (process && process.env && process.env.DISABLE_PARCEL_CENTROID === "1") {
+    return null;
+  }
   const normalized = typeof parcelId === "string" ? parcelId.replace(/\D/g, "") : "";
   if (!normalized) return null;
 
@@ -2873,6 +2876,146 @@ async function main() {
         finalAddress,
         finalAddressVariant,
       );
+
+      if (finalAddress && finalAddressVariant === "raw") {
+        const REQUIRED_RAW_COORDINATE_FIELDS = ["latitude", "longitude"];
+        const REQUIRED_RAW_STRING_FIELDS = [
+          "street_number",
+          "street_name",
+          "street_suffix_type",
+          "city_name",
+          "state_code",
+          "postal_code",
+          "county_name",
+        ];
+        const OPTIONAL_STRING_FIELDS = [
+          "street_pre_directional_text",
+          "street_post_directional_text",
+          "unit_identifier",
+          "route_number",
+          "township",
+          "range",
+          "section",
+          "block",
+          "lot",
+          "plus_four_postal_code",
+          "municipality_name",
+          "country_code",
+        ];
+
+        const sourceBuckets = [
+          finalAddress,
+          normalizedSnapshot,
+          address,
+        ].filter(Boolean);
+
+        const pickFirstAvailable = (field) => {
+          for (const bucket of sourceBuckets) {
+            if (
+              bucket &&
+              Object.prototype.hasOwnProperty.call(bucket, field)
+            ) {
+              const candidate = bucket[field];
+              if (candidate === undefined || candidate === null) continue;
+              if (typeof candidate === "string") {
+                if (!candidate.trim().length) continue;
+                return candidate.trim();
+              }
+              return candidate;
+            }
+          }
+          return null;
+        };
+
+        let rawValid = true;
+
+        for (const coordField of REQUIRED_RAW_COORDINATE_FIELDS) {
+          const candidate = pickFirstAvailable(coordField);
+          const numeric = parseCoordinate(candidate);
+          if (numeric == null) {
+            rawValid = false;
+            break;
+          }
+          finalAddress[coordField] = numeric;
+        }
+
+        const applyStringValue = (field) => {
+          let candidate = pickFirstAvailable(field);
+          if (candidate == null) return null;
+          if (typeof candidate === "string") {
+            candidate = candidate.trim();
+            if (!candidate.length) return null;
+          }
+
+          switch (field) {
+            case "city_name": {
+              const sanitized = sanitizeCityName(candidate);
+              return sanitized || null;
+            }
+            case "state_code":
+            case "country_code":
+              return String(candidate).toUpperCase();
+            case "postal_code":
+              return sanitizePostalCode(candidate) || null;
+            case "plus_four_postal_code":
+              return sanitizePlus4(candidate) || null;
+            case "street_suffix_type": {
+              const mapped = mapStreetSuffixType(candidate);
+              return mapped || null;
+            }
+            case "street_pre_directional_text":
+            case "street_post_directional_text":
+              return String(candidate).toUpperCase();
+            case "county_name":
+              return toTitleCase(candidate);
+            case "municipality_name":
+              return toTitleCase(candidate);
+            default:
+              return typeof candidate === "string" ? candidate : String(candidate);
+          }
+        };
+
+        if (rawValid) {
+          for (const field of REQUIRED_RAW_STRING_FIELDS) {
+            const value = applyStringValue(field);
+            if (value == null) {
+              rawValid = false;
+              break;
+            }
+            finalAddress[field] = value;
+          }
+        }
+
+        if (rawValid) {
+          for (const optionalField of OPTIONAL_STRING_FIELDS) {
+            const value = applyStringValue(optionalField);
+            if (value !== null && value !== undefined) {
+              finalAddress[optionalField] = value;
+            }
+          }
+        }
+
+        if (rawValid) {
+          let unnormalizedValue = finalAddress.unnormalized_address;
+          if (
+            (!unnormalizedValue || !String(unnormalizedValue).trim().length) &&
+            typeof trimmedUnnormalized === "string" &&
+            trimmedUnnormalized.trim().length
+          ) {
+            unnormalizedValue = trimmedUnnormalized.trim();
+          }
+          if (!unnormalizedValue || !String(unnormalizedValue).trim().length) {
+            rawValid = false;
+          } else {
+            finalAddress.unnormalized_address = String(unnormalizedValue).trim();
+          }
+        }
+
+        if (!rawValid) {
+          finalAddress = null;
+          finalAddressVariant = null;
+        }
+      }
     }
 
     const hasMeaningfulAddress =
