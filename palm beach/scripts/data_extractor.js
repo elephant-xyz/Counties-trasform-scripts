@@ -1051,25 +1051,31 @@ function createSchemaReadyAddress(address, variant, options = {}) {
     return normalized;
   }
 
-  const payload = {};
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    const candidate = address[field];
-    const normalizedValue = normalizeFieldValue(field, candidate);
-    if (normalizedValue != null) {
-      payload[field] = normalizedValue;
-    }
-  }
+  const shouldBuildRaw =
+    variant === "raw" || (!variant && resolvedUnnormalized.length);
 
-  if (variant === "raw" || resolvedUnnormalized.length) {
+  if (shouldBuildRaw) {
     if (!resolvedUnnormalized.length) {
       return null;
     }
 
-    const rawPayload = {
-      ...payload,
-      unnormalized_address: resolvedUnnormalized,
-    };
+    const rawPayload = {};
+    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+      const candidate = Object.prototype.hasOwnProperty.call(address, field)
+        ? address[field]
+        : null;
+      const normalizedValue = normalizeFieldValue(field, candidate);
+      rawPayload[field] = normalizedValue != null ? normalizedValue : null;
+    }
+
+    if (rawPayload.state_code && !rawPayload.country_code) {
+      rawPayload.country_code = "US";
+    }
+    if (!rawPayload.postal_code) {
+      rawPayload.plus_four_postal_code = null;
+    }
+
+    rawPayload.unnormalized_address = resolvedUnnormalized;
     const sanitizedRaw = pruneRawAddressForSchema(rawPayload);
     if (sanitizedRaw && Object.keys(sanitizedRaw).length) {
       return sanitizedRaw;
@@ -1077,7 +1083,7 @@ function createSchemaReadyAddress(address, variant, options = {}) {
     return null;
   }
 
-  return Object.keys(payload).length ? payload : null;
+  return null;
 }
 
 const STREET_SUFFIX_SYNONYMS = {
