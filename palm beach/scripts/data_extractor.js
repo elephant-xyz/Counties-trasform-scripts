@@ -881,17 +881,42 @@ function buildRawAddressPayload(address, unnormalizedValue) {
     } else if (typeof value === "string") {
       const trimmed = value.trim();
       value = trimmed.length ? trimmed : null;
+    } else if (value == null) {
+      value = null;
     } else {
       value = null;
     }
 
-    if (field === "country_code" && typeof value === "string") {
+    if (field === "city_name") {
+      value = sanitizeCityName(value);
+    } else if (field === "postal_code" && value) {
+      value = sanitizePostalCode(value) || null;
+    } else if (field === "plus_four_postal_code" && value) {
+      value = sanitizePlus4(value) || null;
+    } else if (field === "state_code" && typeof value === "string") {
+      value = value.toUpperCase();
+    } else if (field === "country_code" && typeof value === "string") {
       value = value.toUpperCase();
     }
 
     if (value != null) {
       rawAddress[field] = value;
     }
+  }
+
+  if (!rawAddress.country_code && rawAddress.state_code) {
+    rawAddress.country_code = "US";
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(rawAddress, "plus_four_postal_code") &&
+    !rawAddress.postal_code
+  ) {
+    rawAddress.plus_four_postal_code = null;
+  }
+
+  if (rawAddress.city_name && /\d/.test(rawAddress.city_name)) {
+    delete rawAddress.city_name;
   }
 
   return rawAddress;
@@ -940,9 +965,19 @@ function prepareRawAddressForSchema(rawAddress) {
 
     if (field === "country_code") {
       value = String(value).trim().toUpperCase();
-      if (!value.trim().length) {
-        continue;
-      }
+      if (!value.trim().length) continue;
+    } else if (field === "city_name") {
+      value = sanitizeCityName(value);
+      if (!value) continue;
+    } else if (field === "postal_code") {
+      value = sanitizePostalCode(value) || null;
+      if (!value) continue;
+    } else if (field === "plus_four_postal_code") {
+      value = sanitizePlus4(value) || null;
+      if (!value) continue;
+    } else if (field === "state_code") {
+      value = String(value).trim().toUpperCase();
+      if (!value.length) continue;
     } else if (
       typeof value !== "boolean" &&
       typeof value !== "number"
@@ -954,6 +989,14 @@ function prepareRawAddressForSchema(rawAddress) {
     }
 
     prepared[field] = value;
+  }
+
+  if (prepared.state_code && !prepared.country_code) {
+    prepared.country_code = "US";
+  }
+
+  if (!prepared.postal_code && prepared.plus_four_postal_code) {
+    prepared.plus_four_postal_code = null;
   }
 
   return prepared;

@@ -623,22 +623,9 @@ const ADDRESS_SCHEMA_FIELDS = [
 // Fields that may accompany the raw (unnormalized) address payload.
 // Keep the list aligned with the schema requirements so every nullable property is present,
 // even when we only have an unnormalized string available.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "county_name",
-  "country_code",
-  "municipality_name",
-  "postal_code",
-  "plus_four_postal_code",
-  "state_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...NORMALIZED_ADDRESS_FIELDS]),
+);
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
