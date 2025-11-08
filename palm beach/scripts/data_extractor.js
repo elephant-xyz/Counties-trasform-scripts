@@ -661,12 +661,6 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
   "route_number",
   "township",
   "range",
@@ -1658,6 +1652,93 @@ function pruneRawAddressForSchema(address) {
   }
 
   return pruned;
+}
+
+function formatRawAddressForOutput(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const rawUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawUnnormalized.length) {
+    return null;
+  }
+
+  const result = { unnormalized_address: rawUnnormalized };
+
+  const setNumericField = (field) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) return;
+    const rawValue = address[field];
+    if (rawValue == null) return;
+    const numeric =
+      typeof rawValue === "number" ? rawValue : Number(String(rawValue).trim());
+    if (Number.isFinite(numeric)) {
+      result[field] = numeric;
+    }
+  };
+
+  setNumericField("latitude");
+  setNumericField("longitude");
+
+  const setStringField = (field, transform) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) return;
+    let value = address[field];
+    if (value == null) return;
+    if (typeof value !== "string") {
+      if (typeof value === "number" || typeof value === "boolean") {
+        value = String(value);
+      } else {
+        return;
+      }
+    }
+    const trimmed = value.trim();
+    if (!trimmed.length) return;
+    const transformed = transform ? transform(trimmed) : trimmed;
+    if (transformed == null) return;
+    if (typeof transformed === "string") {
+      const cleaned = transformed.trim();
+      if (!cleaned.length) return;
+      result[field] = cleaned;
+      return;
+    }
+    result[field] = transformed;
+  };
+
+  setStringField("county_name", toTitleCase);
+  setStringField("municipality_name", toTitleCase);
+  setStringField("state_code", (value) => value.toUpperCase());
+  setStringField("country_code", (value) => value.toUpperCase());
+  setStringField("postal_code", (value) => sanitizePostalCode(value) || null);
+  setStringField(
+    "plus_four_postal_code",
+    (value) => sanitizePlus4(value) || null,
+  );
+  setStringField("city_name", sanitizeCityName);
+  setStringField("route_number", (value) => value.toUpperCase());
+
+  for (const field of ["township", "range", "section", "block", "lot"]) {
+    setStringField(field, (value) => value);
+  }
+
+  if (result.city_name && !/^[A-Z\s\-']+$/.test(result.city_name)) {
+    const sanitizedCity = sanitizeCityName(result.city_name);
+    if (sanitizedCity) {
+      result.city_name = sanitizedCity;
+    } else {
+      delete result.city_name;
+    }
+  }
+
+  if (!result.postal_code && result.plus_four_postal_code) {
+    delete result.plus_four_postal_code;
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  return result;
 }
 
 function deriveGridPartsFromPcn(rawPcn) {
@@ -3088,6 +3169,16 @@ async function main() {
         finalAddressVariant,
       );
       if (!finalAddress) {
+        finalAddressVariant = null;
+      }
+    }
+
+    if (finalAddress && finalAddressVariant === "raw") {
+      const formattedRaw = formatRawAddressForOutput(finalAddress);
+      if (formattedRaw) {
+        finalAddress = formattedRaw;
+      } else {
+        finalAddress = null;
         finalAddressVariant = null;
       }
     }
