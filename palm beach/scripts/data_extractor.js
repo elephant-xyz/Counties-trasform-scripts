@@ -674,6 +674,14 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "lot",
 ];
 
+const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+]);
+
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
     ...NORMALIZED_ADDRESS_FIELDS,
@@ -1457,29 +1465,18 @@ function pruneRawAddressForSchema(address) {
   if (pruned.state_code && !pruned.country_code) {
     pruned.country_code = "US";
   }
-  return pruned;
-}
-
-function ensureRawAddressFieldCoverage(address) {
-  if (!address || typeof address !== "object") return address;
-  const expanded = {};
 
   if (
-    Object.prototype.hasOwnProperty.call(address, "unnormalized_address") &&
-    address.unnormalized_address != null
+    Object.prototype.hasOwnProperty.call(pruned, "unnormalized_address") &&
+    typeof pruned.unnormalized_address === "string"
   ) {
-    expanded.unnormalized_address = address.unnormalized_address;
-  }
-
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      expanded[field] = address[field];
-    } else {
-      expanded[field] = null;
+    for (const field of RAW_ADDRESS_NORMALIZED_ONLY_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(pruned, field)) {
+        delete pruned[field];
+      }
     }
   }
-
-  return expanded;
+  return pruned;
 }
 
 function deriveGridPartsFromPcn(rawPcn) {
@@ -2745,7 +2742,7 @@ async function main() {
         hasMeaningfulAddress =
           typeof rawUnnormalized === "string" && rawUnnormalized.length > 0;
         if (hasMeaningfulAddress) {
-          finalAddress = ensureRawAddressFieldCoverage(sanitizedRaw);
+          finalAddress = sanitizedRaw;
         } else {
           finalAddress = null;
           finalAddressVariant = null;
@@ -2799,7 +2796,7 @@ async function main() {
           "raw",
         );
         if (rawCompliant) {
-          compliantAddress = ensureRawAddressFieldCoverage(rawCompliant);
+          compliantAddress = rawCompliant;
         }
       }
 

@@ -627,6 +627,14 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
   new Set([...NORMALIZED_ADDRESS_FIELDS]),
 );
 
+const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+]);
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -1356,18 +1364,18 @@ function pruneRawAddressForSchema(address) {
     pruned.country_code = "US";
   }
 
-  return pruned;
-}
-
-function ensureRawAddressFieldCoverage(address) {
-  if (!address || typeof address !== "object") return address;
-  const expanded = { ...address };
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(expanded, field)) {
-      expanded[field] = null;
+  if (
+    Object.prototype.hasOwnProperty.call(pruned, "unnormalized_address") &&
+    typeof pruned.unnormalized_address === "string"
+  ) {
+    for (const field of RAW_ADDRESS_NORMALIZED_ONLY_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(pruned, field)) {
+        delete pruned[field];
+      }
     }
   }
-  return expanded;
+
+  return pruned;
 }
 
 function deriveGridPartsFromPcn(rawPcn) {
@@ -2547,7 +2555,7 @@ async function main() {
       hasMeaningfulAddress =
         typeof unnormalized === "string" && unnormalized.length > 0;
       if (hasMeaningfulAddress) {
-        finalAddress = ensureRawAddressFieldCoverage(sanitizedRaw);
+        finalAddress = sanitizedRaw;
       } else {
         finalAddress = null;
         finalAddressVariant = null;
