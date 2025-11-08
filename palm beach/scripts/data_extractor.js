@@ -765,27 +765,57 @@ function ensureAddressVariantIsSchemaCompliant(address, variant) {
   }
 
   if (variant === "raw") {
+    const rawCandidate = deepClone(cloned);
+    if (!rawCandidate || typeof rawCandidate !== "object") return null;
+
     const rawValue =
-      typeof cloned.unnormalized_address === "string"
-        ? cloned.unnormalized_address.trim()
+      typeof rawCandidate.unnormalized_address === "string"
+        ? rawCandidate.unnormalized_address.trim()
         : "";
     if (!rawValue.length) {
       return null;
     }
+    rawCandidate.unnormalized_address = rawValue;
 
-    const normalizedCandidate = deepClone(cloned);
-    if (!normalizedCandidate) return null;
-    normalizedCandidate.unnormalized_address = rawValue;
+    const allowedRawFields = new Set([
+      ...RAW_ADDRESS_ALLOWED_FIELDS,
+      "unnormalized_address",
+    ]);
+    for (const key of Object.keys(rawCandidate)) {
+      if (!allowedRawFields.has(key)) {
+        delete rawCandidate[key];
+      }
+    }
 
-    if (!isNormalizedAddressSchemaReady(normalizedCandidate)) {
-      return null;
+    if (
+      Object.prototype.hasOwnProperty.call(rawCandidate, "city_name") &&
+      rawCandidate.city_name != null
+    ) {
+      const sanitizedCity = sanitizeCityName(rawCandidate.city_name);
+      rawCandidate.city_name = sanitizedCity || null;
     }
-    if (normalizedCandidate.city_name) {
-      const sanitizedCity = sanitizeCityName(normalizedCandidate.city_name);
-      if (!sanitizedCity) return null;
-      normalizedCandidate.city_name = sanitizedCity;
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        rawCandidate,
+        "plus_four_postal_code",
+      ) &&
+      !rawCandidate.postal_code
+    ) {
+      delete rawCandidate.plus_four_postal_code;
     }
-    return normalizedCandidate;
+
+    for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+      if (rawCandidate[field] != null) {
+        const numeric =
+          typeof rawCandidate[field] === "number"
+            ? rawCandidate[field]
+            : Number(String(rawCandidate[field]).trim());
+        rawCandidate[field] = Number.isFinite(numeric) ? numeric : null;
+      }
+    }
+
+    return rawCandidate;
   }
 
   return null;
