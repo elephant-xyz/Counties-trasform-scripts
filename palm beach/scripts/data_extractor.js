@@ -1440,6 +1440,17 @@ function pruneRawAddressForSchema(address) {
   return pruned;
 }
 
+function ensureRawAddressFieldCoverage(address) {
+  if (!address || typeof address !== "object") return address;
+  const expanded = { ...address };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(expanded, field)) {
+      expanded[field] = null;
+    }
+  }
+  return expanded;
+}
+
 function deriveGridPartsFromPcn(rawPcn) {
   if (!rawPcn) return {};
   const normalized = normalizeWhitespace(String(rawPcn));
@@ -2637,7 +2648,7 @@ async function main() {
         hasMeaningfulAddress =
           typeof rawUnnormalized === "string" && rawUnnormalized.length > 0;
         if (hasMeaningfulAddress) {
-          finalAddress = sanitizedRaw;
+          finalAddress = ensureRawAddressFieldCoverage(sanitizedRaw);
         } else {
           finalAddress = null;
           finalAddressVariant = null;
@@ -2686,10 +2697,13 @@ async function main() {
           delete compliantAddress.unnormalized_address;
         }
       } else if (finalAddressVariant === "raw") {
-        compliantAddress = ensureAddressVariantIsSchemaCompliant(
+        const rawCompliant = ensureAddressVariantIsSchemaCompliant(
           finalAddress,
           "raw",
         );
+        if (rawCompliant) {
+          compliantAddress = ensureRawAddressFieldCoverage(rawCompliant);
+        }
       }
 
       if (!compliantAddress) {
