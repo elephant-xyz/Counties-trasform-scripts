@@ -1667,74 +1667,103 @@ function formatRawAddressForOutput(address) {
 
   const result = { unnormalized_address: rawUnnormalized };
 
-  const setNumericField = (field) => {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) return;
-    const rawValue = address[field];
-    if (rawValue == null) return;
-    const numeric =
-      typeof rawValue === "number" ? rawValue : Number(String(rawValue).trim());
-    if (Number.isFinite(numeric)) {
-      result[field] = numeric;
-    }
-  };
-
-  setNumericField("latitude");
-  setNumericField("longitude");
-
-  const setStringField = (field, transform) => {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) return;
-    let value = address[field];
-    if (value == null) return;
-    if (typeof value !== "string") {
-      if (typeof value === "number" || typeof value === "boolean") {
-        value = String(value);
-      } else {
-        return;
-      }
-    }
-    const trimmed = value.trim();
-    if (!trimmed.length) return;
-    const transformed = transform ? transform(trimmed) : trimmed;
-    if (transformed == null) return;
-    if (typeof transformed === "string") {
-      const cleaned = transformed.trim();
-      if (!cleaned.length) return;
-      result[field] = cleaned;
+  const assignField = (field) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      result[field] = null;
       return;
     }
-    result[field] = transformed;
+
+    let value = address[field];
+
+    if (value === undefined || value === null) {
+      result[field] = null;
+      return;
+    }
+
+    if (typeof value === "string") {
+      value = value.trim();
+    }
+
+    if (value === "") {
+      result[field] = null;
+      return;
+    }
+
+    switch (field) {
+      case "latitude":
+      case "longitude": {
+        const numeric =
+          typeof value === "number" ? value : Number(value);
+        result[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      case "postal_code":
+        result[field] = sanitizePostalCode(value) || null;
+        return;
+      case "plus_four_postal_code":
+        result[field] = sanitizePlus4(value) || null;
+        return;
+      case "city_name":
+        result[field] = sanitizeCityName(value);
+        return;
+      case "state_code":
+      case "country_code":
+        result[field] =
+          typeof value === "string" && value.length
+            ? value.toUpperCase()
+            : null;
+        return;
+      case "street_pre_directional_text":
+      case "street_post_directional_text":
+        result[field] =
+          typeof value === "string" && value.length
+            ? value.toUpperCase()
+            : null;
+        return;
+      case "street_suffix_type": {
+        const mapped =
+          typeof value === "string" && value.length
+            ? mapStreetSuffixType(value) || value
+            : null;
+        result[field] = mapped || null;
+        return;
+      }
+      case "route_number":
+        result[field] =
+          typeof value === "string" && value.length
+            ? value.toUpperCase()
+            : null;
+        return;
+      case "county_name":
+      case "municipality_name": {
+        const titled = toTitleCase(String(value));
+        result[field] = titled && titled.trim().length ? titled : null;
+        return;
+      }
+      default:
+        if (typeof value === "number") {
+          result[field] = Number.isFinite(value) ? value : null;
+          return;
+        }
+        if (typeof value === "boolean") {
+          result[field] = value;
+          return;
+        }
+        result[field] =
+          typeof value === "string" && value.length ? value : null;
+        return;
+    }
   };
 
-  setStringField("county_name", toTitleCase);
-  setStringField("municipality_name", toTitleCase);
-  setStringField("state_code", (value) => value.toUpperCase());
-  setStringField("country_code", (value) => value.toUpperCase());
-  setStringField("postal_code", (value) => sanitizePostalCode(value) || null);
-  setStringField(
-    "plus_four_postal_code",
-    (value) => sanitizePlus4(value) || null,
-  );
-  setStringField("city_name", sanitizeCityName);
-  setStringField("route_number", (value) => value.toUpperCase());
-
-  for (const field of ["township", "range", "section", "block", "lot"]) {
-    setStringField(field, (value) => value);
-  }
-
-  if (result.city_name && !/^[A-Z\s\-']+$/.test(result.city_name)) {
-    const sanitizedCity = sanitizeCityName(result.city_name);
-    if (sanitizedCity) {
-      result.city_name = sanitizedCity;
-    } else {
-      delete result.city_name;
-    }
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    assignField(field);
   }
 
   if (!result.postal_code && result.plus_four_postal_code) {
-    delete result.plus_four_postal_code;
+    result.plus_four_postal_code = null;
   }
 
-  if (result.state_code && !result.country_code) {
+  if (!result.country_code && result.state_code) {
     result.country_code = "US";
   }
 
