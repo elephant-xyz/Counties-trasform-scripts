@@ -650,9 +650,24 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...NORMALIZED_ADDRESS_FIELDS]),
-);
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+  "municipality_name",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
@@ -1442,12 +1457,18 @@ function pruneRawAddressForSchema(address) {
 
 function ensureRawAddressFieldCoverage(address) {
   if (!address || typeof address !== "object") return address;
-  const expanded = { ...address };
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(expanded, field)) {
-      expanded[field] = null;
+  const expanded = {};
+
+  if (Object.prototype.hasOwnProperty.call(address, "unnormalized_address")) {
+    expanded.unnormalized_address = address.unnormalized_address;
+  }
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      expanded[field] = address[field];
     }
   }
+
   return expanded;
 }
 
