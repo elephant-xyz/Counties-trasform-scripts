@@ -1384,98 +1384,77 @@ function sanitizeCityName(value) {
 function pruneRawAddressForSchema(address) {
   if (!address || typeof address !== "object") return null;
 
-  const allowedFields = new Set([
-    ...RAW_ADDRESS_ALLOWED_FIELDS,
-    "unnormalized_address",
-  ]);
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
 
-  const pruned = {};
-  for (const [key, rawValue] of Object.entries(address)) {
-    if (!allowedFields.has(key)) continue;
-
-    if (key === "unnormalized_address") {
-      if (typeof rawValue === "string") {
-        const trimmed = rawValue.trim();
-        if (trimmed.length) {
-          pruned.unnormalized_address = trimmed;
-        }
-      }
-      continue;
-    }
-
-    if (rawValue == null) continue;
-
-    if (typeof rawValue === "number") {
-      if (Number.isFinite(rawValue)) {
-        pruned[key] = rawValue;
-      }
-      continue;
-    }
+  const sanitizeField = (field, rawValue) => {
+    if (rawValue == null) return null;
 
     if (typeof rawValue === "boolean") {
-      pruned[key] = rawValue;
-      continue;
+      return rawValue;
     }
 
-    if (typeof rawValue !== "string") continue;
+    if (typeof rawValue === "number") {
+      return Number.isFinite(rawValue) ? rawValue : null;
+    }
+
+    if (typeof rawValue !== "string") {
+      return null;
+    }
 
     const trimmed = rawValue.trim();
-    if (!trimmed.length) continue;
+    if (!trimmed.length) {
+      return null;
+    }
 
-    switch (key) {
-      case "city_name": {
-        const sanitized = sanitizeCityName(trimmed);
-        if (sanitized) pruned.city_name = sanitized;
-        break;
+    switch (field) {
+      case "latitude":
+      case "longitude": {
+        const numeric = Number(trimmed);
+        return Number.isFinite(numeric) ? numeric : null;
       }
-      case "postal_code": {
-        const sanitizedPostal = sanitizePostalCode(trimmed);
-        if (sanitizedPostal) pruned.postal_code = sanitizedPostal;
-        break;
-      }
-      case "plus_four_postal_code": {
-        const sanitizedPlus4 = sanitizePlus4(trimmed);
-        if (sanitizedPlus4) pruned.plus_four_postal_code = sanitizedPlus4;
-        break;
-      }
+      case "city_name":
+        return sanitizeCityName(trimmed);
+      case "postal_code":
+        return sanitizePostalCode(trimmed);
+      case "plus_four_postal_code":
+        return sanitizePlus4(trimmed);
       case "state_code":
       case "country_code":
       case "street_pre_directional_text":
-      case "street_post_directional_text": {
-        pruned[key] = trimmed.toUpperCase();
-        break;
-      }
+      case "street_post_directional_text":
+        return trimmed.toUpperCase();
       case "street_suffix_type": {
         const mapped = mapStreetSuffixType(trimmed);
-        if (mapped) pruned.street_suffix_type = mapped;
-        break;
+        return mapped || trimmed;
       }
       default:
-        pruned[key] = trimmed;
+        return trimmed;
     }
+  };
+
+  const pruned = { unnormalized_address: unnormalized };
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    const value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    const sanitized = sanitizeField(field, value);
+    pruned[field] = sanitized != null ? sanitized : null;
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(pruned, "plus_four_postal_code") &&
-    !pruned.postal_code
-  ) {
-    delete pruned.plus_four_postal_code;
+  if (!pruned.postal_code && pruned.plus_four_postal_code) {
+    pruned.plus_four_postal_code = null;
   }
 
   if (pruned.state_code && !pruned.country_code) {
     pruned.country_code = "US";
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(pruned, "unnormalized_address") &&
-    typeof pruned.unnormalized_address === "string"
-  ) {
-    for (const field of RAW_ADDRESS_NORMALIZED_ONLY_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(pruned, field)) {
-        delete pruned[field];
-      }
-    }
-  }
   return pruned;
 }
 
