@@ -2461,30 +2461,30 @@ async function main() {
         finalAddressVariant = null;
       }
     }
-
     let hasMeaningfulAddress =
       finalAddress &&
       Object.values(finalAddress).some((value) => value !== null);
 
     if (hasMeaningfulAddress) {
-      finalAddress = removeNullishFields(finalAddress);
       if (finalAddressVariant === "raw") {
         for (const key of RAW_VARIANT_NORMALIZED_ONLY_FIELDS) {
           if (Object.prototype.hasOwnProperty.call(finalAddress, key)) {
             delete finalAddress[key];
           }
         }
+      } else {
+        finalAddress = removeNullishFields(finalAddress);
       }
-      if (
-        !finalAddress ||
-        Object.keys(finalAddress).length === 0
-      ) {
-        hasMeaningfulAddress = false;
-      }
+
+      hasMeaningfulAddress =
+        finalAddress &&
+        Object.values(finalAddress).some((value) => value !== null);
+
       if (
         hasMeaningfulAddress &&
         finalAddressVariant === "raw" &&
-        typeof finalAddress.unnormalized_address !== "string"
+        (typeof finalAddress.unnormalized_address !== "string" ||
+          !finalAddress.unnormalized_address.trim().length)
       ) {
         hasMeaningfulAddress = false;
       }
