@@ -1488,14 +1488,6 @@ function pruneRawAddressForSchema(address) {
   if (pruned.state_code && !pruned.country_code) {
     pruned.country_code = "US";
   }
-  // Ensure every schema field is present so the raw branch of the address oneOf
-  // always has the properties it expects. Null values are acceptable per schema.
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(pruned, field)) {
-      pruned[field] = null;
-    }
-  }
-
   return pruned;
 }
 
