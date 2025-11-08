@@ -2534,6 +2534,7 @@ async function main() {
     }
     return null;
   })();
+  const parsedUnnormalizedCityState = parseCityStatePostal(unnormalizedAddressCandidate);
 
   const tailSegments = [
     fullAddr && fullAddr.includes(",")
@@ -2648,7 +2649,7 @@ async function main() {
     locationLine = streetCandidates[0];
   }
 
-  if (locationLine || normalizedCity || resolvedState || postalCode) {
+  if (locationLine || normalizedCity || resolvedState || postalCode || unnormalizedAddressCandidate) {
     const locationLineForParsing = (() => {
       if (!locationLine) return locationLine;
       const firstSegment = locationLine.split(",")[0].trim();
@@ -2724,6 +2725,33 @@ async function main() {
     address.municipality_name = normalizedMunicipality
       ? toTitleCase(normalizedMunicipality)
       : null;
+    if (parsedUnnormalizedCityState.city && !address.city_name) {
+      const fallbackCity = sanitizeCityName(parsedUnnormalizedCityState.city);
+      if (fallbackCity) {
+        address.city_name = fallbackCity;
+      }
+    }
+    if (parsedUnnormalizedCityState.state && !address.state_code) {
+      const fallbackState = String(parsedUnnormalizedCityState.state).trim().toUpperCase();
+      if (fallbackState.length) {
+        address.state_code = fallbackState;
+      }
+    }
+    if (parsedUnnormalizedCityState.postal && !address.postal_code) {
+      const fallbackPostal = sanitizePostalCode(parsedUnnormalizedCityState.postal);
+      if (fallbackPostal) {
+        address.postal_code = fallbackPostal;
+      }
+    }
+    if (parsedUnnormalizedCityState.plus4 && !address.plus_four_postal_code) {
+      const fallbackPlus4 = sanitizePlus4(parsedUnnormalizedCityState.plus4);
+      if (fallbackPlus4) {
+        address.plus_four_postal_code = fallbackPlus4;
+      }
+    }
+    if (!address.country_code && address.state_code) {
+      address.country_code = "US";
+    }
     const baseStreetCandidates = [
       locationLine,
       ...streetCandidates.filter((candidate) => candidate !== locationLine),
