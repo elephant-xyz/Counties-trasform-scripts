@@ -866,19 +866,17 @@ function buildRawAddressPayload(address, unnormalizedValue) {
 
     if (field === "city_name") {
       value = sanitizeCityName(value);
-    } else if (field === "postal_code" && value) {
-      value = sanitizePostalCode(value) || null;
-    } else if (field === "plus_four_postal_code" && value) {
-      value = sanitizePlus4(value) || null;
+    } else if (field === "postal_code") {
+      value = value ? sanitizePostalCode(value) || null : null;
+    } else if (field === "plus_four_postal_code") {
+      value = value ? sanitizePlus4(value) || null : null;
     } else if (field === "state_code" && typeof value === "string") {
       value = value.toUpperCase();
     } else if (field === "country_code" && typeof value === "string") {
       value = value.toUpperCase();
     }
 
-    if (value != null) {
-      rawAddress[field] = value;
-    }
+    rawAddress[field] = value != null ? value : null;
   }
 
   if (!rawAddress.country_code && rawAddress.state_code) {
@@ -893,7 +891,7 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   }
 
   if (rawAddress.city_name && /\d/.test(rawAddress.city_name)) {
-    delete rawAddress.city_name;
+    rawAddress.city_name = null;
   }
 
   return rawAddress;
