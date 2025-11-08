@@ -721,6 +721,20 @@ const RAW_ADDRESS_OUTPUT_FIELDS = [
   "lot",
 ];
 
+const RAW_ADDRESS_MINIMAL_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+  "municipality_name",
+];
+
+const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -804,7 +818,7 @@ function isNormalizedAddressSchemaReady(address) {
   return true;
 }
 
-function ensureAddressVariantIsSchemaCompliant(address, variant) {
+function ensureAddressVariantIsSchemaCompliant(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
   const cloned = deepClone(address);
   if (!cloned || typeof cloned !== "object") return null;
@@ -821,6 +835,7 @@ function ensureAddressVariantIsSchemaCompliant(address, variant) {
   if (variant === "raw") {
     const rawCandidate = createSchemaReadyAddress(cloned, "raw", {
       fallbackUnnormalized: cloned.unnormalized_address || null,
+      allowedRawFields: options.allowedRawFields,
     });
     if (
       !rawCandidate ||
@@ -835,18 +850,24 @@ function ensureAddressVariantIsSchemaCompliant(address, variant) {
   return null;
 }
 
-function finalizeAddressForOutput(address, variant) {
+function finalizeAddressForOutput(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
   const cloned = deepClone(address);
   if (!cloned || typeof cloned !== "object") return null;
 
   if (variant === "raw") {
-    const sanitized = pruneRawAddressForSchema(cloned);
+    const allowedRawFields =
+      (options && Array.isArray(options.allowedRawFields) && options.allowedRawFields.length
+        ? options.allowedRawFields
+        : RAW_ADDRESS_ALLOWED_FIELDS);
+    const sanitized = pruneRawAddressForSchema(cloned, {
+      allowedFields: allowedRawFields,
+    });
     if (!sanitized) return null;
 
     const result = {};
-    const orderedFields = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
+    const orderedFields = ["unnormalized_address", ...allowedRawFields];
     for (const field of orderedFields) {
       if (!Object.prototype.hasOwnProperty.call(sanitized, field)) continue;
       let value = sanitized[field];
@@ -874,7 +895,7 @@ function finalizeAddressForOutput(address, variant) {
       result[field] = value !== undefined ? value : null;
     }
 
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    for (const field of allowedRawFields) {
       if (!Object.prototype.hasOwnProperty.call(result, field)) {
         result[field] = null;
       }
@@ -1017,7 +1038,7 @@ function collectAddressFields(source, fields, options = {}) {
   return result;
 }
 
-function buildRawAddressPayload(address, unnormalizedValue) {
+function buildRawAddressPayload(address, unnormalizedValue, options = {}) {
   const trimmedValue =
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : "";
   if (!trimmedValue) return null;
@@ -1025,8 +1046,12 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   const sourceAddress =
     address && typeof address === "object" ? address : {};
   const rawAddress = { unnormalized_address: trimmedValue };
+  const allowedFields =
+    (options && Array.isArray(options.allowedFields) && options.allowedFields.length
+      ? options.allowedFields
+      : RAW_ADDRESS_ALLOWED_FIELDS);
 
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+  for (const field of allowedFields) {
     let value = Object.prototype.hasOwnProperty.call(sourceAddress, field)
       ? sourceAddress[field]
       : null;
@@ -1075,7 +1100,7 @@ function buildRawAddressPayload(address, unnormalizedValue) {
   return rawAddress;
 }
 
-function prepareRawAddressForSchema(rawAddress) {
+function prepareRawAddressForSchema(rawAddress, options = {}) {
   if (!rawAddress || typeof rawAddress !== "object") return null;
 
   const rawUnnormalized =
@@ -1084,8 +1109,13 @@ function prepareRawAddressForSchema(rawAddress) {
       : "";
   if (!rawUnnormalized.length) return null;
 
+  const allowedFields =
+    (options && Array.isArray(options.allowedFields) && options.allowedFields.length
+      ? options.allowedFields
+      : RAW_ADDRESS_ALLOWED_FIELDS);
+
   const prepared = { unnormalized_address: rawUnnormalized };
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+  for (const field of allowedFields) {
     if (!Object.prototype.hasOwnProperty.call(rawAddress, field)) continue;
 
     const isCoordinateField = ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field);
@@ -1159,7 +1189,10 @@ function prepareRawAddressForSchema(rawAddress) {
 function createSchemaReadyAddress(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
-  const { fallbackUnnormalized = null } = options;
+  const {
+    fallbackUnnormalized = null,
+    allowedRawFields = RAW_ADDRESS_ALLOWED_FIELDS,
+  } = options;
 
   const normalizeFieldValue = (field, value) => {
     if (value == null) return null;
@@ -1257,7 +1290,11 @@ function createSchemaReadyAddress(address, variant, options = {}) {
     }
 
     const rawPayload = {};
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    const fieldsToUse =
+      Array.isArray(allowedRawFields) && allowedRawFields.length
+        ? allowedRawFields
+        : RAW_ADDRESS_ALLOWED_FIELDS;
+    for (const field of fieldsToUse) {
       const candidate = Object.prototype.hasOwnProperty.call(address, field)
         ? address[field]
         : null;
@@ -1273,7 +1310,9 @@ function createSchemaReadyAddress(address, variant, options = {}) {
     }
 
     rawPayload.unnormalized_address = resolvedUnnormalized;
-    const sanitizedRaw = pruneRawAddressForSchema(rawPayload);
+    const sanitizedRaw = pruneRawAddressForSchema(rawPayload, {
+      allowedFields: fieldsToUse,
+    });
     if (sanitizedRaw && Object.keys(sanitizedRaw).length) {
       return sanitizedRaw;
     }
@@ -1558,7 +1597,7 @@ function sanitizeCityName(value) {
   return cleaned;
 }
 
-function pruneRawAddressForSchema(address) {
+function pruneRawAddressForSchema(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
   const unnormalized =
@@ -1615,8 +1654,13 @@ function pruneRawAddressForSchema(address) {
     }
   };
 
+  const allowedFields =
+    (options && Array.isArray(options.allowedFields) && options.allowedFields.length
+      ? options.allowedFields
+      : RAW_ADDRESS_ALLOWED_FIELDS);
+
   const pruned = { unnormalized_address: unnormalized };
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+  for (const field of allowedFields) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
     const sanitized = sanitizeField(field, address[field]);
     if (sanitized != null) {
@@ -1641,7 +1685,7 @@ function pruneRawAddressForSchema(address) {
   return pruned;
 }
 
-function formatRawAddressForOutput(address) {
+function formatRawAddressForOutput(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
   const rawUnnormalized =
@@ -1717,7 +1761,12 @@ function formatRawAddressForOutput(address) {
     lot: (value) => padGridValue(value, 4),
   };
 
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+  const allowedFields =
+    (options && Array.isArray(options.allowedFields) && options.allowedFields.length
+      ? options.allowedFields
+      : RAW_ADDRESS_OUTPUT_FIELDS);
+
+  for (const field of allowedFields) {
     const transformer =
       Object.prototype.hasOwnProperty.call(transformers, field)
         ? transformers[field]
@@ -2844,6 +2893,13 @@ async function main() {
       normalizedAddressHasRequiredStrings &&
       isNormalizedAddressSchemaReady(address);
 
+    const rawAllowedFields = normalizedAddressHasSchemaCoverage
+      ? RAW_ADDRESS_ALLOWED_FIELDS
+      : RAW_ADDRESS_MINIMAL_FIELDS;
+    const rawOutputFields = normalizedAddressHasSchemaCoverage
+      ? RAW_ADDRESS_OUTPUT_FIELDS
+      : RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS;
+
     let normalizedAddress = null;
     if (normalizedAddressHasSchemaCoverage) {
       const candidate = collectAddressFields(
@@ -2861,7 +2917,9 @@ async function main() {
     }
 
     const rawAddressCandidate = hasUnnormalizedAddress
-      ? buildRawAddressPayload(address, trimmedUnnormalized)
+      ? buildRawAddressPayload(address, trimmedUnnormalized, {
+          allowedFields: rawAllowedFields,
+        })
       : null;
     const rawAddressIsValid =
       rawAddressCandidate &&
@@ -2914,7 +2972,7 @@ async function main() {
         }
       };
 
-      for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+      for (const field of rawAllowedFields) {
         let value = pickCandidateValue(field);
         if (field === "country_code" && typeof value === "string") {
           value = value.toUpperCase();
@@ -2928,7 +2986,9 @@ async function main() {
         rawOutput.unnormalized_address = trimmedRawUnnormalized;
       }
 
-      const candidate = prepareRawAddressForSchema(rawOutput);
+      const candidate = prepareRawAddressForSchema(rawOutput, {
+        allowedFields: rawAllowedFields,
+      });
       if (candidate) {
         materializedRawAddress = candidate;
       }
@@ -3024,10 +3084,13 @@ async function main() {
       const schemaReadyRaw = ensureAddressVariantIsSchemaCompliant(
         rawBaseCandidate,
         "raw",
+        { allowedRawFields: rawAllowedFields },
       );
       if (!schemaReadyRaw) return null;
 
-      const preparedRaw = pruneRawAddressForSchema(schemaReadyRaw);
+      const preparedRaw = pruneRawAddressForSchema(schemaReadyRaw, {
+        allowedFields: rawAllowedFields,
+      });
       const rawUnnormalized =
         preparedRaw && preparedRaw.unnormalized_address;
 
@@ -3058,9 +3121,12 @@ async function main() {
       const minimalRaw = ensureAddressVariantIsSchemaCompliant(
         { unnormalized_address: trimmedUnnormalized },
         "raw",
+        { allowedRawFields: rawAllowedFields },
       );
       if (minimalRaw) {
-        const preparedRaw = pruneRawAddressForSchema(minimalRaw);
+        const preparedRaw = pruneRawAddressForSchema(minimalRaw, {
+          allowedFields: rawAllowedFields,
+        });
         const rawUnnormalized =
           preparedRaw && preparedRaw.unnormalized_address;
         if (
@@ -3082,6 +3148,7 @@ async function main() {
         normalizedSnapshot,
         address,
       ].filter(Boolean);
+      const allowedRawFieldSet = new Set(rawAllowedFields);
 
       const pickValue = (field) => {
         for (const bucket of sources) {
@@ -3131,6 +3198,7 @@ async function main() {
       }
 
       const assignCoordinate = (field) => {
+        if (!allowedRawFieldSet.has(field)) return;
         const numeric = pickCoordinate(field);
         if (numeric != null) {
           rawCandidate[field] = numeric;
@@ -3141,6 +3209,7 @@ async function main() {
       assignCoordinate("longitude");
 
       const setField = (field, transform) => {
+        if (!allowedRawFieldSet.has(field)) return;
         const candidate = pickValue(field);
         if (candidate === null || candidate === undefined) return;
         let value =
@@ -3166,7 +3235,7 @@ async function main() {
       setField("county_name", toTitleCase);
       setField("country_code", (value) => String(value).trim().toUpperCase());
 
-      const optionalFields = RAW_ADDRESS_ALLOWED_FIELDS.filter(
+      const optionalFields = rawAllowedFields.filter(
         (field) =>
           !RAW_SCHEMA_REQUIRED_FIELDS.includes(field) &&
           field !== "latitude" &&
@@ -3205,9 +3274,14 @@ async function main() {
     }
 
     if (finalAddress) {
+      const finalizeOptions =
+        finalAddressVariant === "raw"
+          ? { allowedRawFields: rawAllowedFields }
+          : undefined;
       finalAddress = finalizeAddressForOutput(
         finalAddress,
         finalAddressVariant,
+        finalizeOptions,
       );
       if (!finalAddress) {
         finalAddressVariant = null;
@@ -3215,7 +3289,9 @@ async function main() {
     }
 
     if (finalAddress && finalAddressVariant === "raw") {
-      const formattedRaw = formatRawAddressForOutput(finalAddress);
+      const formattedRaw = formatRawAddressForOutput(finalAddress, {
+        allowedFields: rawOutputFields,
+      });
       if (formattedRaw) {
         finalAddress = formattedRaw;
       } else {
