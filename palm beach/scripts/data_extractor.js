@@ -639,22 +639,7 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "county_name",
-  "country_code",
-  "municipality_name",
-  "postal_code",
-  "plus_four_postal_code",
-  "state_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -772,6 +757,12 @@ function buildRawAddressPayload(address, unnormalizedValue) {
       value = value.toUpperCase();
     } else if (field === "country_code" && typeof value === "string") {
       value = value.toUpperCase();
+    } else if (
+      (field === "street_pre_directional_text" ||
+        field === "street_post_directional_text") &&
+      typeof value === "string"
+    ) {
+      value = value.toUpperCase();
     }
 
     if (value != null) {
@@ -808,17 +799,27 @@ function prepareRawAddressForSchema(rawAddress) {
 
   const prepared = { unnormalized_address: rawUnnormalized };
 
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    prepared[field] = null;
+  }
+
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(rawAddress, field)) continue;
 
     const isCoordinateField = ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field);
     let value = rawAddress[field];
 
-    if (value == null) continue;
+    if (value == null) {
+      prepared[field] = null;
+      continue;
+    }
 
     if (typeof value === "string") {
       value = value.trim();
-      if (!value.length) continue;
+      if (!value.length) {
+        prepared[field] = null;
+        continue;
+      }
     }
 
     if (isCoordinateField) {
@@ -840,19 +841,37 @@ function prepareRawAddressForSchema(rawAddress) {
       if (!value) continue;
     } else if (field === "postal_code") {
       value = sanitizePostalCode(value) || null;
-      if (!value) continue;
+      if (!value) {
+        prepared[field] = null;
+        continue;
+      }
     } else if (field === "plus_four_postal_code") {
       value = sanitizePlus4(value) || null;
-      if (!value) continue;
+      if (!value) {
+        prepared[field] = null;
+        continue;
+      }
     } else if (field === "state_code" || field === "country_code") {
       value = String(value).toUpperCase();
-      if (!value.trim().length) continue;
+      if (!value.trim().length) {
+        prepared[field] = null;
+        continue;
+      }
+    } else if (field === "street_post_directional_text" || field === "street_pre_directional_text") {
+      value = String(value).toUpperCase();
+      if (!value.trim().length) {
+        prepared[field] = null;
+        continue;
+      }
     } else if (
       typeof value !== "boolean" &&
       typeof value !== "number"
     ) {
       value = String(value).trim();
-      if (!value.length) continue;
+      if (!value.length) {
+        prepared[field] = null;
+        continue;
+      }
     }
 
     prepared[field] = value;
