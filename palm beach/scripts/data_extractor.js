@@ -1459,13 +1459,18 @@ function ensureRawAddressFieldCoverage(address) {
   if (!address || typeof address !== "object") return address;
   const expanded = {};
 
-  if (Object.prototype.hasOwnProperty.call(address, "unnormalized_address")) {
+  if (
+    Object.prototype.hasOwnProperty.call(address, "unnormalized_address") &&
+    address.unnormalized_address != null
+  ) {
     expanded.unnormalized_address = address.unnormalized_address;
   }
 
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(address, field)) {
       expanded[field] = address[field];
+    } else {
+      expanded[field] = null;
     }
   }
 
@@ -1695,6 +1700,26 @@ function parseCoordinate(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeParcelIdentifier(value) {
+  if (value === null || value === undefined) return null;
+  const digits = String(value).replace(/[^0-9]/g, "");
+  return digits.length ? digits : null;
+}
+
+function pickFirstParcelIdentifier(...candidates) {
+  const queue = [...candidates];
+  while (queue.length) {
+    const candidate = queue.shift();
+    if (Array.isArray(candidate)) {
+      queue.unshift(...candidate);
+      continue;
+    }
+    const normalized = normalizeParcelIdentifier(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 const MIDDLE_NAME_PLACEHOLDERS = new Set([
   "nmi",
   "n m i",
@@ -1821,14 +1846,39 @@ async function main() {
     layoutData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) { }
 
-  const parcelId = seed && seed.parcel_id ? String(seed.parcel_id) : null;
-  const ownersKey = parcelId ? `property_${parcelId}` : null;
+  const parcelIdCandidates = [];
+  if (seed && seed.parcel_id) parcelIdCandidates.push(seed.parcel_id);
+  if (seed && seed.request_identifier)
+    parcelIdCandidates.push(seed.request_identifier);
+  if (
+    seed &&
+    seed.source_http_request &&
+    seed.source_http_request.multiValueQueryString &&
+    Array.isArray(seed.source_http_request.multiValueQueryString.parcelId)
+  ) {
+    parcelIdCandidates.push(
+      ...seed.source_http_request.multiValueQueryString.parcelId,
+    );
+  }
+  if (unAddr && unAddr.parcel_id) parcelIdCandidates.push(unAddr.parcel_id);
+  if (unAddr && unAddr.request_identifier)
+    parcelIdCandidates.push(unAddr.request_identifier);
+  if (
+    unAddr &&
+    unAddr.source_http_request &&
+    unAddr.source_http_request.multiValueQueryString &&
+    Array.isArray(unAddr.source_http_request.multiValueQueryString.parcelId)
+  ) {
+    parcelIdCandidates.push(
+      ...unAddr.source_http_request.multiValueQueryString.parcelId,
+    );
+  }
+
+  let parcelId = pickFirstParcelIdentifier(parcelIdCandidates);
+  let ownersKey = parcelId ? `property_${parcelId}` : null;
   const initialLatitude = parseCoordinate(unAddr && unAddr.latitude);
   const initialLongitude = parseCoordinate(unAddr && unAddr.longitude);
-  const parcelCentroid =
-    Number.isFinite(initialLatitude) && Number.isFinite(initialLongitude)
-      ? null
-      : await fetchParcelCentroid(parcelId);
+  let parcelCentroid = null;
 
   // Parse embedded model first (robust source inside HTML)
   const model = parseModelJSONFromHTML(inputHTML);
@@ -1876,6 +1926,27 @@ async function main() {
         /<span id="MainContent_lblLegalDesc">([\s\S]*?)<\/span>/i,
       ),
     ) || safeNullIfEmpty(modelDetail && modelDetail.LegalDesc);
+
+  if (modelDetail && modelDetail.FormattedPCN) {
+    parcelIdCandidates.push(modelDetail.FormattedPCN);
+  }
+  if (modelDetail && modelDetail.PCN) {
+    parcelIdCandidates.push(modelDetail.PCN);
+  }
+  if (pcnHyphen) {
+    parcelIdCandidates.push(pcnHyphen);
+  }
+
+  parcelId = pickFirstParcelIdentifier(parcelId, parcelIdCandidates);
+  ownersKey = parcelId ? `property_${parcelId}` : null;
+
+  if (
+    (!Number.isFinite(initialLatitude) || !Number.isFinite(initialLongitude)) &&
+    parcelId &&
+    !parcelCentroid
+  ) {
+    parcelCentroid = await fetchParcelCentroid(parcelId);
+  }
 
   // Property metrics from model.structuralDetails if available
   let areaUnderAir = null;
