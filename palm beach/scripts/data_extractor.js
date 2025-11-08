@@ -88,6 +88,15 @@ function removeNullishFields(obj) {
   return pruned;
 }
 
+function deepClone(value) {
+  if (value === null || value === undefined) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (err) {
+    return null;
+  }
+}
+
 async function fetchParcelCentroid(parcelId) {
   const normalized = typeof parcelId === "string" ? parcelId.replace(/\D/g, "") : "";
   if (!normalized) return null;
@@ -734,6 +743,52 @@ function isNormalizedAddressSchemaReady(address) {
     }
   }
   return true;
+}
+
+function ensureAddressVariantIsSchemaCompliant(address, variant) {
+  if (!address || typeof address !== "object") return null;
+  const cloned = deepClone(address);
+  if (!cloned || typeof cloned !== "object") return null;
+
+  if (variant === "normalized") {
+    const normalizedCandidate = deepClone(cloned);
+    if (!normalizedCandidate) return null;
+    if (!isNormalizedAddressSchemaReady(normalizedCandidate)) {
+      return null;
+    }
+    if (normalizedCandidate.city_name) {
+      const sanitizedCity = sanitizeCityName(normalizedCandidate.city_name);
+      if (!sanitizedCity) return null;
+      normalizedCandidate.city_name = sanitizedCity;
+    }
+    return normalizedCandidate;
+  }
+
+  if (variant === "raw") {
+    const rawValue =
+      typeof cloned.unnormalized_address === "string"
+        ? cloned.unnormalized_address.trim()
+        : "";
+    if (!rawValue.length) {
+      return null;
+    }
+
+    const normalizedCandidate = deepClone(cloned);
+    if (!normalizedCandidate) return null;
+    normalizedCandidate.unnormalized_address = rawValue;
+
+    if (!isNormalizedAddressSchemaReady(normalizedCandidate)) {
+      return null;
+    }
+    if (normalizedCandidate.city_name) {
+      const sanitizedCity = sanitizeCityName(normalizedCandidate.city_name);
+      if (!sanitizedCity) return null;
+      normalizedCandidate.city_name = sanitizedCity;
+    }
+    return normalizedCandidate;
+  }
+
+  return null;
 }
 
 function collectAddressFields(source, fields, options = {}) {
@@ -2574,6 +2629,49 @@ async function main() {
         hasMeaningfulAddress = Object.values(finalAddress).some(
           (value) => value !== null,
         );
+      }
+    }
+
+    if (hasMeaningfulAddress && finalAddress) {
+      if (finalAddressVariant === "raw") {
+        const normalizedFromRaw = ensureAddressVariantIsSchemaCompliant(
+          finalAddress,
+          "normalized",
+        );
+        if (normalizedFromRaw) {
+          finalAddress = normalizedFromRaw;
+          finalAddressVariant = "normalized";
+        }
+      }
+
+      let compliantAddress = null;
+      if (finalAddressVariant === "normalized") {
+        compliantAddress = ensureAddressVariantIsSchemaCompliant(
+          finalAddress,
+          "normalized",
+        );
+        if (
+          compliantAddress &&
+          Object.prototype.hasOwnProperty.call(
+            compliantAddress,
+            "unnormalized_address",
+          )
+        ) {
+          delete compliantAddress.unnormalized_address;
+        }
+      } else if (finalAddressVariant === "raw") {
+        compliantAddress = ensureAddressVariantIsSchemaCompliant(
+          finalAddress,
+          "raw",
+        );
+      }
+
+      if (!compliantAddress) {
+        hasMeaningfulAddress = false;
+        finalAddress = null;
+        finalAddressVariant = null;
+      } else {
+        finalAddress = compliantAddress;
       }
     }
 
