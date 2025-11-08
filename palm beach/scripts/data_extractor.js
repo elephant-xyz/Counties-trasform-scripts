@@ -19,19 +19,20 @@ function writeJSON(p, obj) {
 }
 
 function writeRelationshipFile(filePath, fromRelative, toRelative) {
-  const fromRef = typeof fromRelative === "string" ? fromRelative.trim() : "";
-  const toRef = typeof toRelative === "string" ? toRelative.trim() : "";
+  const hasFrom = typeof fromRelative === "string" && fromRelative.trim().length > 0;
+  const hasTo = typeof toRelative === "string" && toRelative.trim().length > 0;
 
-  if (!fromRef || !toRef) {
+  if (!hasFrom || !hasTo) {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
     return;
   }
 
+  // Leave the CID fields null so downstream packaging can populate stable URs.
   const payload = {
-    from: { "/": fromRef },
-    to: { "/": toRef },
+    from: null,
+    to: null,
   };
   writeJSON(filePath, payload);
 }
@@ -2466,20 +2467,46 @@ async function main() {
     } else if (materializedRawAddress) {
       finalAddress = materializedRawAddress;
       finalAddressVariant = "raw";
+    } else if (hasUnnormalizedAddress) {
+      const fallbackRaw = {
+        unnormalized_address: trimmedUnnormalized,
+      };
+
+      const fallbackLatitude = parseCoordinate(address.latitude);
+      const fallbackLongitude = parseCoordinate(address.longitude);
+      if (fallbackLatitude != null) {
+        fallbackRaw.latitude = fallbackLatitude;
+      }
+      if (fallbackLongitude != null) {
+        fallbackRaw.longitude = fallbackLongitude;
+      }
+      if (address.county_name) {
+        fallbackRaw.county_name = address.county_name;
+      }
+      if (address.municipality_name) {
+        fallbackRaw.municipality_name = address.municipality_name;
+      }
+      finalAddress = fallbackRaw;
+      finalAddressVariant = "raw";
     }
 
     if (finalAddress) {
-      let schemaReady = null;
-      if (finalAddressVariant === "normalized") {
-        schemaReady = createSchemaReadyAddress(finalAddress, "normalized");
-      } else if (finalAddressVariant === "raw") {
-        schemaReady = createSchemaReadyAddress(finalAddress, "raw", {
-          fallbackUnnormalized: trimmedUnnormalized,
-        });
-      } else {
-        schemaReady = createSchemaReadyAddress(finalAddress, null, {
-          fallbackUnnormalized: trimmedUnnormalized,
-        });
+      const schemaVariant =
+        finalAddressVariant === "normalized"
+          ? "normalized"
+          : finalAddressVariant === "raw"
+            ? "raw"
+            : null;
+
+      let schemaReady = createSchemaReadyAddress(finalAddress, schemaVariant, {
+        fallbackUnnormalized: trimmedUnnormalized,
+      });
+
+      if (!schemaReady && schemaVariant === "raw" && hasUnnormalizedAddress) {
+        schemaReady = createSchemaReadyAddress(
+          { unnormalized_address: trimmedUnnormalized },
+          "raw",
+        );
       }
 
       finalAddress = schemaReady;
@@ -2490,6 +2517,12 @@ async function main() {
       ) {
         finalAddress = null;
         finalAddressVariant = null;
+      } else if (
+        finalAddress &&
+        finalAddress.unnormalized_address &&
+        finalAddressVariant !== "normalized"
+      ) {
+        finalAddressVariant = "raw";
       }
     }
     let hasMeaningfulAddress =
