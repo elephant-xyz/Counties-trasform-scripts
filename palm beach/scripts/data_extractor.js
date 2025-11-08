@@ -639,7 +639,22 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "county_name",
+  "country_code",
+  "municipality_name",
+  "postal_code",
+  "plus_four_postal_code",
+  "state_code",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
