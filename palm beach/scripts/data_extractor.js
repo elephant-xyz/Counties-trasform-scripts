@@ -641,18 +641,9 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "country_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...NORMALIZED_ADDRESS_FIELDS]),
+);
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
@@ -2331,7 +2322,13 @@ async function main() {
         if (typeof value === "string") {
           const trimmed = value.trim();
           if (!trimmed.length) return;
-          if (field === "city_name" && /\d/.test(trimmed)) return;
+          if (field === "city_name") {
+            if (/\d/.test(trimmed)) return;
+            const sanitizedCity = sanitizeCityName(trimmed);
+            if (!sanitizedCity) return;
+            rawOutput[field] = sanitizedCity;
+            return;
+          }
           rawOutput[field] = trimmed;
           return;
         }
