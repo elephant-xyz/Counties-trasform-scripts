@@ -989,29 +989,20 @@ function createSchemaReadyAddress(address, variant, options = {}) {
     }
   }
 
-  if (variant === "raw") {
+  if (variant === "raw" || resolvedUnnormalized.length) {
     if (!resolvedUnnormalized.length) {
       return null;
     }
-    payload.unnormalized_address = resolvedUnnormalized;
-    if (payload.state_code && !payload.country_code) {
-      payload.country_code = "US";
-    }
-    if (payload.plus_four_postal_code && !payload.postal_code) {
-      delete payload.plus_four_postal_code;
-    }
-    return payload;
-  }
 
-  if (resolvedUnnormalized.length) {
-    payload.unnormalized_address = resolvedUnnormalized;
-  }
-
-  if (payload.state_code && !payload.country_code) {
-    payload.country_code = "US";
-  }
-  if (payload.plus_four_postal_code && !payload.postal_code) {
-    delete payload.plus_four_postal_code;
+    const rawPayload = {
+      ...payload,
+      unnormalized_address: resolvedUnnormalized,
+    };
+    const sanitizedRaw = pruneRawAddressForSchema(rawPayload);
+    if (sanitizedRaw && Object.keys(sanitizedRaw).length) {
+      return sanitizedRaw;
+    }
+    return null;
   }
 
   return Object.keys(payload).length ? payload : null;
