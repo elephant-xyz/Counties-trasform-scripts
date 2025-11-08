@@ -802,7 +802,7 @@ function ensureAddressVariantIsSchemaCompliant(address, variant) {
       ) &&
       !rawCandidate.postal_code
     ) {
-      delete rawCandidate.plus_four_postal_code;
+      rawCandidate.plus_four_postal_code = null;
     }
 
     for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
@@ -812,6 +812,12 @@ function ensureAddressVariantIsSchemaCompliant(address, variant) {
             ? rawCandidate[field]
             : Number(String(rawCandidate[field]).trim());
         rawCandidate[field] = Number.isFinite(numeric) ? numeric : null;
+      }
+    }
+
+    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(rawCandidate, field)) {
+        rawCandidate[field] = null;
       }
     }
 
