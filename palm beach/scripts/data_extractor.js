@@ -669,15 +669,11 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "lot",
 ];
 
-const RAW_SCHEMA_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-];
+// Keep raw address handling flexible so we can emit the minimal variant that
+// satisfies the address schema oneOf when only an unnormalized string is
+// available. Downstream validation strips nullish fields, so we only treat
+// fields as required when we can provide real values.
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   "street_number",
@@ -1063,116 +1059,71 @@ function prepareRawAddressForSchema(rawAddress) {
     if (!Object.prototype.hasOwnProperty.call(rawAddress, field)) continue;
 
     const isCoordinateField = ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field);
-    const isRequiredField = RAW_SCHEMA_REQUIRED_FIELDS.includes(field);
     let value = rawAddress[field];
 
-    if (value == null) {
-      if (isRequiredField) {
-        prepared[field] = null;
-      }
-      continue;
-    }
+    if (value == null) continue;
 
     if (typeof value === "string") {
       value = value.trim();
-      if (!value.length) {
-        if (isRequiredField) {
-          prepared[field] = null;
-        }
-        continue;
-      }
+      if (!value.length) continue;
     }
 
     if (isCoordinateField) {
-      if (typeof value === "string") {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) {
-          if (isRequiredField) {
-            prepared[field] = null;
-          }
-          continue;
-        }
-        value = numeric;
-      } else if (typeof value === "number") {
-        if (!Number.isFinite(value)) {
-          if (isRequiredField) {
-            prepared[field] = null;
-          }
-          continue;
-        }
-      } else {
-        if (isRequiredField) {
-          prepared[field] = null;
-        }
-        continue;
-      }
-      prepared[field] = value;
+      const numeric =
+        typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(numeric)) continue;
+      prepared[field] = numeric;
       continue;
     }
 
     if (field === "country_code") {
-      value = String(value).trim().toUpperCase();
-      if (!value.trim().length) {
-        if (isRequiredField) {
-          prepared[field] = null;
-        }
-        continue;
-      }
+      const trimmed = String(value).trim().toUpperCase();
+      if (!trimmed.length) continue;
+      value = trimmed;
     } else if (field === "city_name") {
       value = sanitizeCityName(value);
-      if (!value) {
-        if (isRequiredField) {
-          prepared[field] = null;
-        }
-        continue;
-      }
+      if (!value) continue;
     } else if (field === "postal_code") {
       value = sanitizePostalCode(value) || null;
-      if (!value) {
-        if (isRequiredField) {
-          prepared[field] = null;
-        }
-        continue;
-      }
+      if (!value) continue;
     } else if (field === "plus_four_postal_code") {
       value = sanitizePlus4(value) || null;
       if (!value) continue;
     } else if (field === "state_code") {
-      value = String(value).trim().toUpperCase();
-      if (!value.length) {
-        if (isRequiredField) {
-          prepared[field] = null;
-        }
-        continue;
-      }
+      const trimmed = String(value).trim().toUpperCase();
+      if (!trimmed.length) continue;
+      value = trimmed;
+    } else if (field === "county_name" || field === "municipality_name") {
+      const titled = toTitleCase(String(value));
+      value = titled && titled.trim().length ? titled : null;
+      if (!value) continue;
     } else if (
       typeof value !== "boolean" &&
       typeof value !== "number"
     ) {
-      value = String(value).trim();
-      if (!value.length) {
-        continue;
-      }
+      const trimmed = String(value).trim();
+      if (!trimmed.length) continue;
+      value = trimmed;
     }
 
     prepared[field] = value;
   }
 
-  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(prepared, field)) {
-      prepared[field] = null;
-    }
-  }
-
-  if (prepared.state_code && !prepared.country_code) {
+  if (
+    Object.prototype.hasOwnProperty.call(prepared, "state_code") &&
+    !Object.prototype.hasOwnProperty.call(prepared, "country_code")
+  ) {
     prepared.country_code = "US";
   }
 
-  if (!prepared.postal_code && prepared.plus_four_postal_code) {
-    prepared.plus_four_postal_code = null;
+  if (
+    !Object.prototype.hasOwnProperty.call(prepared, "postal_code") &&
+    Object.prototype.hasOwnProperty.call(prepared, "plus_four_postal_code")
+  ) {
+    delete prepared.plus_four_postal_code;
   }
 
-  return prepared;
+  return Object.keys(prepared).length ? prepared : null;
 }
 
 function createSchemaReadyAddress(address, variant, options = {}) {
@@ -1636,18 +1587,24 @@ function pruneRawAddressForSchema(address) {
 
   const pruned = { unnormalized_address: unnormalized };
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    const value = Object.prototype.hasOwnProperty.call(address, field)
-      ? address[field]
-      : null;
-    const sanitized = sanitizeField(field, value);
-    pruned[field] = sanitized != null ? sanitized : null;
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    const sanitized = sanitizeField(field, address[field]);
+    if (sanitized != null) {
+      pruned[field] = sanitized;
+    }
   }
 
-  if (!pruned.postal_code && pruned.plus_four_postal_code) {
-    pruned.plus_four_postal_code = null;
+  if (
+    !Object.prototype.hasOwnProperty.call(pruned, "postal_code") &&
+    Object.prototype.hasOwnProperty.call(pruned, "plus_four_postal_code")
+  ) {
+    delete pruned.plus_four_postal_code;
   }
 
-  if (pruned.state_code && !pruned.country_code) {
+  if (
+    Object.prototype.hasOwnProperty.call(pruned, "state_code") &&
+    !Object.prototype.hasOwnProperty.call(pruned, "country_code")
+  ) {
     pruned.country_code = "US";
   }
 
@@ -1667,103 +1624,89 @@ function formatRawAddressForOutput(address) {
 
   const result = { unnormalized_address: rawUnnormalized };
 
-  const assignField = (field) => {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      result[field] = null;
-      return;
-    }
-
+  const copyField = (field, transform) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) return;
     let value = address[field];
+    value = typeof transform === "function" ? transform(value) : value;
 
-    if (value === undefined || value === null) {
-      result[field] = null;
-      return;
-    }
+    if (value === null || value === undefined) return;
 
     if (typeof value === "string") {
-      value = value.trim();
-    }
-
-    if (value === "") {
-      result[field] = null;
+      const trimmed = value.trim();
+      if (!trimmed.length) return;
+      result[field] = trimmed;
       return;
     }
 
-    switch (field) {
-      case "latitude":
-      case "longitude": {
-        const numeric =
-          typeof value === "number" ? value : Number(value);
-        result[field] = Number.isFinite(numeric) ? numeric : null;
-        return;
-      }
-      case "postal_code":
-        result[field] = sanitizePostalCode(value) || null;
-        return;
-      case "plus_four_postal_code":
-        result[field] = sanitizePlus4(value) || null;
-        return;
-      case "city_name":
-        result[field] = sanitizeCityName(value);
-        return;
-      case "state_code":
-      case "country_code":
-        result[field] =
-          typeof value === "string" && value.length
-            ? value.toUpperCase()
-            : null;
-        return;
-      case "street_pre_directional_text":
-      case "street_post_directional_text":
-        result[field] =
-          typeof value === "string" && value.length
-            ? value.toUpperCase()
-            : null;
-        return;
-      case "street_suffix_type": {
-        const mapped =
-          typeof value === "string" && value.length
-            ? mapStreetSuffixType(value) || value
-            : null;
-        result[field] = mapped || null;
-        return;
-      }
-      case "route_number":
-        result[field] =
-          typeof value === "string" && value.length
-            ? value.toUpperCase()
-            : null;
-        return;
-      case "county_name":
-      case "municipality_name": {
-        const titled = toTitleCase(String(value));
-        result[field] = titled && titled.trim().length ? titled : null;
-        return;
-      }
-      default:
-        if (typeof value === "number") {
-          result[field] = Number.isFinite(value) ? value : null;
-          return;
-        }
-        if (typeof value === "boolean") {
-          result[field] = value;
-          return;
-        }
-        result[field] =
-          typeof value === "string" && value.length ? value : null;
-        return;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return;
+      result[field] = value;
+      return;
     }
+
+    if (typeof value === "boolean") {
+      result[field] = value;
+      return;
+    }
+
+    const stringified = String(value).trim();
+    if (!stringified.length) return;
+    result[field] = stringified;
   };
 
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    assignField(field);
+  copyField("latitude", (value) => parseCoordinate(value));
+  copyField("longitude", (value) => parseCoordinate(value));
+  copyField("city_name", (value) => sanitizeCityName(value));
+  copyField("state_code", (value) =>
+    value ? String(value).trim().toUpperCase() : null,
+  );
+  copyField("postal_code", (value) => sanitizePostalCode(value));
+  copyField("plus_four_postal_code", (value) => sanitizePlus4(value));
+  copyField("country_code", (value) =>
+    value ? String(value).trim().toUpperCase() : null,
+  );
+  copyField("county_name", (value) => {
+    const titled = toTitleCase(String(value));
+    return titled && titled.trim().length ? titled : null;
+  });
+  copyField("municipality_name", (value) => {
+    const titled = toTitleCase(String(value));
+    return titled && titled.trim().length ? titled : null;
+  });
+
+  const optionalGridFields = [
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+  ];
+  for (const field of optionalGridFields) {
+    copyField(field, (value) => {
+      if (value == null) return null;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : null;
+      }
+      if (typeof value === "number") {
+        return Number.isFinite(value) ? String(value) : null;
+      }
+      return null;
+    });
   }
 
-  if (!result.postal_code && result.plus_four_postal_code) {
-    result.plus_four_postal_code = null;
+  if (
+    !Object.prototype.hasOwnProperty.call(result, "postal_code") &&
+    Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
+  ) {
+    delete result.plus_four_postal_code;
   }
 
-  if (!result.country_code && result.state_code) {
+  if (
+    Object.prototype.hasOwnProperty.call(result, "state_code") &&
+    !Object.prototype.hasOwnProperty.call(result, "country_code")
+  ) {
     result.country_code = "US";
   }
 
