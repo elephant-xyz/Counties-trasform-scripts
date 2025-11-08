@@ -81,6 +81,16 @@ function padGridValue(value, length) {
   return alphanumeric;
 }
 
+function removeNullishFields(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  const pruned = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) continue;
+    pruned[key] = value;
+  }
+  return pruned;
+}
+
 async function fetchParcelCentroid(parcelId) {
   const normalized = typeof parcelId === "string" ? parcelId.replace(/\D/g, "") : "";
   if (!normalized) return null;
@@ -638,6 +648,16 @@ const ADDRESS_SCHEMA_FIELDS = [
   ...NORMALIZED_ADDRESS_FIELDS,
   "unnormalized_address",
 ];
+
+const RAW_VARIANT_NORMALIZED_ONLY_FIELDS = new Set([
+  "street_name",
+  "street_number",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "route_number",
+  "unit_identifier",
+]);
 
 const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
@@ -2442,11 +2462,35 @@ async function main() {
       }
     }
 
-    const hasMeaningfulAddress =
+    let hasMeaningfulAddress =
       finalAddress &&
       Object.values(finalAddress).some((value) => value !== null);
 
     if (hasMeaningfulAddress) {
+      finalAddress = removeNullishFields(finalAddress);
+      if (finalAddressVariant === "raw") {
+        for (const key of RAW_VARIANT_NORMALIZED_ONLY_FIELDS) {
+          if (Object.prototype.hasOwnProperty.call(finalAddress, key)) {
+            delete finalAddress[key];
+          }
+        }
+      }
+      if (
+        !finalAddress ||
+        Object.keys(finalAddress).length === 0
+      ) {
+        hasMeaningfulAddress = false;
+      }
+      if (
+        hasMeaningfulAddress &&
+        finalAddressVariant === "raw" &&
+        typeof finalAddress.unnormalized_address !== "string"
+      ) {
+        hasMeaningfulAddress = false;
+      }
+    }
+
+    if (hasMeaningfulAddress && finalAddress) {
       writeJSON(addressFilePath, finalAddress);
 
       const propertyJsonPath = path.join(dataDir, "property.json");
