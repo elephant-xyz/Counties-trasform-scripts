@@ -386,6 +386,25 @@ const STREET_DIRECTIONS = new Set([
   "SW",
 ]);
 
+const UNIT_KEYWORDS = new Set([
+  "APT",
+  "UNIT",
+  "STE",
+  "SUITE",
+  "BLDG",
+  "BUILDING",
+  "FL",
+  "FLOOR",
+  "LOT",
+  "RM",
+  "ROOM",
+  "TRLR",
+  "TRAILER",
+  "SPC",
+  "SPACE",
+  "#",
+]);
+
 const STREET_SUFFIX_ENUM = [
   "Rds",
   "Blvd",
@@ -782,10 +801,15 @@ function parseLocationAddress(raw) {
   const consumePostDirectional = () => {
     if (!tokens.length) return;
     const candidate = tokens[tokens.length - 1].toUpperCase();
-    if (STREET_DIRECTIONS.has(candidate)) {
-      result.streetPostDirectional = candidate;
-      tokens.pop();
+    if (!STREET_DIRECTIONS.has(candidate)) return;
+    if (tokens.length >= 2) {
+      const previousToken = tokens[tokens.length - 2].toUpperCase();
+      if (UNIT_KEYWORDS.has(previousToken)) {
+        return;
+      }
     }
+    result.streetPostDirectional = candidate;
+    tokens.pop();
   };
 
   const maybePre = tokens[0].toUpperCase();
@@ -802,7 +826,7 @@ function parseLocationAddress(raw) {
   // Handle explicit unit keywords (UNIT 5, APT B, STE 2, etc.)
   if (tokens.length >= 2) {
     const keyword = tokens[tokens.length - 2].toUpperCase();
-    if (/^(APT|UNIT|STE|SUITE|BLDG|BUILDING|FL|FLOOR|LOT|RM|ROOM|TRLR|SPC|SPACE)$/.test(keyword)) {
+    if (UNIT_KEYWORDS.has(keyword)) {
       if (!result.unitIdentifier) {
         result.unitIdentifier = tokens[tokens.length - 1];
       }
@@ -1994,7 +2018,10 @@ async function main() {
       finalAddress = normalizedOutput;
       finalAddressVariant = "normalized";
     } else if (hasUnnormalizedAddress) {
-      finalAddress = { unnormalized_address: trimmedUnnormalized };
+      finalAddress = {
+        ...schemaReadyAddress,
+        unnormalized_address: trimmedUnnormalized,
+      };
       finalAddressVariant = "raw";
     }
 
@@ -2004,10 +2031,6 @@ async function main() {
       ) {
         delete finalAddress.unnormalized_address;
       }
-    }
-
-    if (finalAddressVariant === "raw" && finalAddress) {
-      finalAddress = { unnormalized_address: trimmedUnnormalized };
     }
 
     const hasMeaningfulAddress =
