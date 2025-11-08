@@ -2465,28 +2465,39 @@ async function main() {
       finalAddress &&
       Object.values(finalAddress).some((value) => value !== null);
 
-    if (hasMeaningfulAddress) {
+    if (hasMeaningfulAddress && finalAddress) {
       if (finalAddressVariant === "raw") {
         for (const key of RAW_VARIANT_NORMALIZED_ONLY_FIELDS) {
-          if (Object.prototype.hasOwnProperty.call(finalAddress, key)) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, key)) {
+            continue;
+          }
+          const value = finalAddress[key];
+          if (value === null) {
+            delete finalAddress[key];
+            continue;
+          }
+          if (typeof value === "string" && !value.trim().length) {
             delete finalAddress[key];
           }
         }
+
+        hasMeaningfulAddress =
+          Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address") &&
+          typeof finalAddress.unnormalized_address === "string" &&
+          finalAddress.unnormalized_address.trim().length > 0;
+      } else if (finalAddressVariant === "normalized") {
+        for (const field of NORMALIZED_ADDRESS_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        }
+        hasMeaningfulAddress = Object.values(finalAddress).some(
+          (value) => value !== null,
+        );
       } else {
-        finalAddress = removeNullishFields(finalAddress);
-      }
-
-      hasMeaningfulAddress =
-        finalAddress &&
-        Object.values(finalAddress).some((value) => value !== null);
-
-      if (
-        hasMeaningfulAddress &&
-        finalAddressVariant === "raw" &&
-        (typeof finalAddress.unnormalized_address !== "string" ||
-          !finalAddress.unnormalized_address.trim().length)
-      ) {
-        hasMeaningfulAddress = false;
+        hasMeaningfulAddress = Object.values(finalAddress).some(
+          (value) => value !== null,
+        );
       }
     }
 
