@@ -2986,6 +2986,11 @@ async function main() {
   const addressLine1 = safeNullIfEmpty(modelDetail && modelDetail.AddressLine1);
   const addressLine2 = safeNullIfEmpty(modelDetail && modelDetail.AddressLine2);
   const addressLine3 = safeNullIfEmpty(modelDetail && modelDetail.AddressLine3);
+  const hasStructuredAddressInput = Boolean(
+    (addressLine1 && addressLine1.length) ||
+      (addressLine2 && addressLine2.length) ||
+      (addressLine3 && addressLine3.length),
+  );
 
   const rawLocAddr = extractBetween(
     inputHTML,
@@ -3697,7 +3702,7 @@ async function main() {
     const effectiveRawOutputFields = RAW_ADDRESS_OUTPUT_FIELDS;
 
     let normalizedAddress = null;
-    if (normalizedAddressHasSchemaCoverage) {
+    if (hasStructuredAddressInput && normalizedAddressHasSchemaCoverage) {
       const candidate = collectAddressFields(
         address,
         NORMALIZED_ADDRESS_FIELDS,
@@ -4004,7 +4009,15 @@ async function main() {
             allowedFields: effectiveRawOutputFields,
           });
           if (formattedRaw) {
-            finalAddress = formattedRaw;
+            const filteredRaw = filterRawAddressFields(formattedRaw, {
+              allowedFields: effectiveRawOutputFields,
+            });
+            if (filteredRaw) {
+              finalAddress = filteredRaw;
+            } else {
+              finalAddress = null;
+              finalAddressVariant = null;
+            }
           } else {
             finalAddress = null;
             finalAddressVariant = null;
@@ -4013,18 +4026,6 @@ async function main() {
           finalAddress = null;
           finalAddressVariant = null;
         }
-      }
-    }
-    if (finalAddress && finalAddressVariant === "raw") {
-      const ensuredRaw = ensureRawAddressFieldCoverage(
-        finalAddress,
-        effectiveRawOutputFields,
-      );
-      if (ensuredRaw) {
-        finalAddress = ensuredRaw;
-      } else {
-        finalAddress = null;
-        finalAddressVariant = null;
       }
     }
 
