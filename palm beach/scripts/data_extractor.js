@@ -2512,7 +2512,7 @@ function buildRawAddressOutput(address, options = {}) {
     !result.postal_code &&
     Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
   ) {
-    result.plus_four_postal_code = null;
+    delete result.plus_four_postal_code;
   }
 
   if (
@@ -2521,12 +2521,6 @@ function buildRawAddressOutput(address, options = {}) {
     /\d/.test(result.city_name)
   ) {
     result.city_name = sanitizeCityName(result.city_name) || null;
-  }
-
-  for (const field of allowedFields) {
-    if (!Object.prototype.hasOwnProperty.call(result, field)) {
-      result[field] = null;
-    }
   }
 
   return result;
@@ -2652,13 +2646,7 @@ function filterRawAddressFields(address, options = {}) {
     !result.postal_code &&
     Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
   ) {
-    result.plus_four_postal_code = null;
-  }
-
-  for (const field of allowedFields) {
-    if (!Object.prototype.hasOwnProperty.call(result, field)) {
-      result[field] = null;
-    }
+    delete result.plus_four_postal_code;
   }
 
   return result;
