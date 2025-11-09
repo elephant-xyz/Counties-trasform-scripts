@@ -719,11 +719,21 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-// The County address schema oneOf expects the full field set to exist
-// (nullable when unknown), even when we only have an unnormalized string.
-// Use the full allowlist for the "minimal" sets so every required key is
-// emitted with a null placeholder instead of being omitted entirely.
-const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
+
+// When only an unnormalized address is available we limit the emitted keys
+// to the subset explicitly supported by the raw branch of the schema.
+const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_RAW_VARIANT_FIELDS];
 
 const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
 
@@ -3503,56 +3513,12 @@ async function main() {
       normalizedAddressHasRequiredStrings &&
       isNormalizedAddressSchemaReady(address);
 
-    const hasMeaningfulValue = (value) => {
-      if (value === null || value === undefined) return false;
-      if (typeof value === "string") return value.trim().length > 0;
-      if (typeof value === "number") return Number.isFinite(value);
-      return false;
-    };
-
-    const shouldIncludeGridFields = RAW_ADDRESS_GRID_FIELDS.some((field) =>
-      hasMeaningfulValue(address[field]),
-    );
-    const shouldIncludeOptionalGridFields = RAW_ADDRESS_OPTIONAL_GRID_FIELDS.some(
-      (field) => hasMeaningfulValue(address[field]),
-    );
-    const shouldIncludeStreetFields =
-      ["street_number", "street_name", "street_suffix_type"].every((field) =>
-        hasMeaningfulValue(address[field]),
-      ) &&
-      RAW_ADDRESS_STREET_FIELDS.some((field) =>
-        hasMeaningfulValue(address[field]),
-      );
-
-    const dynamicAdditionalFields = new Set();
-    if (!normalizedAddressHasSchemaCoverage) {
-      if (shouldIncludeGridFields) {
-        RAW_ADDRESS_GRID_FIELDS.forEach((field) =>
-          dynamicAdditionalFields.add(field),
-        );
-      }
-      if (shouldIncludeOptionalGridFields) {
-        RAW_ADDRESS_OPTIONAL_GRID_FIELDS.forEach((field) =>
-          dynamicAdditionalFields.add(field),
-        );
-      }
-      if (shouldIncludeStreetFields) {
-        RAW_ADDRESS_STREET_FIELDS.forEach((field) =>
-          dynamicAdditionalFields.add(field),
-        );
-      }
-    }
-
     const rawAllowedFields = normalizedAddressHasSchemaCoverage
       ? RAW_ADDRESS_ALLOWED_FIELDS
-      : Array.from(
-          new Set([...RAW_ADDRESS_MINIMAL_FIELDS, ...dynamicAdditionalFields]),
-        );
+      : RAW_ADDRESS_MINIMAL_FIELDS;
     const rawOutputFields = normalizedAddressHasSchemaCoverage
       ? RAW_ADDRESS_OUTPUT_FIELDS
-      : Array.from(
-          new Set([...RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS, ...dynamicAdditionalFields]),
-        );
+      : RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS;
 
     let normalizedAddress = null;
     if (normalizedAddressHasSchemaCoverage) {
@@ -3819,30 +3785,35 @@ async function main() {
         finalAddress = null;
         finalAddressVariant = null;
       } else {
-        finalAddress.unnormalized_address = trimmed;
-        for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            finalAddress[field] = null;
-          }
-        }
-        finalAddress.latitude = parseCoordinate(finalAddress.latitude);
-        finalAddress.longitude = parseCoordinate(finalAddress.longitude);
-        finalAddress.city_name = sanitizeCityName(finalAddress.city_name) || null;
-        finalAddress.postal_code = sanitizePostalCode(finalAddress.postal_code) || null;
-        finalAddress.plus_four_postal_code =
-          sanitizePlus4(finalAddress.plus_four_postal_code) || null;
-        finalAddress.state_code = finalAddress.state_code
-          ? String(finalAddress.state_code).trim().toUpperCase() || null
-          : null;
-        finalAddress.country_code = finalAddress.country_code
-          ? String(finalAddress.country_code).trim().toUpperCase() || null
-          : null;
-        if (!finalAddress.country_code && finalAddress.state_code) {
-          finalAddress.country_code = "US";
-        }
-        if (!finalAddress.postal_code) {
-          finalAddress.plus_four_postal_code = null;
-        }
+        const assign = (target, key, value) => {
+          target[key] =
+            value === undefined || value === null ? null : value;
+        };
+
+        const rawOutput = { unnormalized_address: trimmed };
+        assign(rawOutput, "latitude", parseCoordinate(finalAddress.latitude));
+        assign(rawOutput, "longitude", parseCoordinate(finalAddress.longitude));
+        assign(
+          rawOutput,
+          "county_name",
+          finalAddress.county_name
+            ? toTitleCase(String(finalAddress.county_name))
+            : null,
+        );
+        assign(
+          rawOutput,
+          "municipality_name",
+          finalAddress.municipality_name
+            ? toTitleCase(String(finalAddress.municipality_name))
+            : null,
+        );
+        assign(rawOutput, "township", padGridValue(finalAddress.township, 2));
+        assign(rawOutput, "range", padGridValue(finalAddress.range, 2));
+        assign(rawOutput, "section", padGridValue(finalAddress.section, 2));
+        assign(rawOutput, "block", padGridValue(finalAddress.block, 3));
+        assign(rawOutput, "lot", padGridValue(finalAddress.lot, 4));
+
+        finalAddress = rawOutput;
       }
     }
 

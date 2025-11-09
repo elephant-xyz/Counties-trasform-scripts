@@ -636,6 +636,18 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
   new Set([...NORMALIZED_ADDRESS_FIELDS]),
 );
 
+const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
+
 const RAW_SCHEMA_REQUIRED_FIELDS = [
   "latitude",
   "longitude",
@@ -2846,100 +2858,33 @@ async function main() {
     }
 
     if (finalAddress && finalAddressVariant === "raw") {
-      const rawFieldSet = new Set([
-        ...RAW_ADDRESS_ALLOWED_FIELDS,
-        "unnormalized_address",
-      ]);
-      finalAddress.unnormalized_address = resolvedRawUnnormalized;
-      for (const field of rawFieldSet) {
-        if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-          finalAddress[field] =
-            field === "unnormalized_address"
-              ? finalAddress.unnormalized_address
-              : null;
-        }
-      }
-      finalAddress.latitude = parseCoordinate(finalAddress.latitude);
-      finalAddress.longitude = parseCoordinate(finalAddress.longitude);
-      finalAddress.city_name = sanitizeCityName(finalAddress.city_name) || null;
-
-      const normalizeCode = (value) => {
-        if (value === null || value === undefined) return null;
-        const trimmed = String(value).trim().toUpperCase();
-        return trimmed.length ? trimmed : null;
+      const rawOutput = { unnormalized_address: resolvedRawUnnormalized };
+      const assign = (key, value) => {
+        rawOutput[key] =
+          value === undefined || value === null ? null : value;
       };
 
-      finalAddress.state_code = normalizeCode(finalAddress.state_code);
-      finalAddress.country_code =
-        normalizeCode(finalAddress.country_code) ||
-        (finalAddress.state_code ? "US" : null);
-
-      finalAddress.postal_code = sanitizePostalCode(finalAddress.postal_code);
-      finalAddress.plus_four_postal_code = finalAddress.postal_code
-        ? sanitizePlus4(finalAddress.plus_four_postal_code)
-        : null;
-
-      const normalizeDirectional = (value) => {
-        if (value === null || value === undefined) return null;
-        const trimmed = String(value).trim().toUpperCase();
-        return trimmed.length ? trimmed : null;
-      };
-
-      finalAddress.street_pre_directional_text = normalizeDirectional(
-        finalAddress.street_pre_directional_text,
+      assign("latitude", parseCoordinate(finalAddress.latitude));
+      assign("longitude", parseCoordinate(finalAddress.longitude));
+      assign(
+        "county_name",
+        finalAddress.county_name
+          ? toTitleCase(String(finalAddress.county_name))
+          : null,
       );
-      finalAddress.street_post_directional_text = normalizeDirectional(
-        finalAddress.street_post_directional_text,
+      assign(
+        "municipality_name",
+        finalAddress.municipality_name
+          ? toTitleCase(String(finalAddress.municipality_name))
+          : null,
       );
+      assign("township", padGridValue(finalAddress.township, 2));
+      assign("range", padGridValue(finalAddress.range, 2));
+      assign("section", padGridValue(finalAddress.section, 2));
+      assign("block", padGridValue(finalAddress.block, 3));
+      assign("lot", padGridValue(finalAddress.lot, 4));
 
-      if (finalAddress.street_suffix_type !== null && finalAddress.street_suffix_type !== undefined) {
-        const trimmedSuffix = String(finalAddress.street_suffix_type).trim();
-        if (trimmedSuffix.length) {
-          const mappedSuffix = mapStreetSuffixType(trimmedSuffix);
-          finalAddress.street_suffix_type = mappedSuffix || trimmedSuffix;
-        } else {
-          finalAddress.street_suffix_type = null;
-        }
-      } else {
-        finalAddress.street_suffix_type = null;
-      }
-
-      if (finalAddress.street_name !== null && finalAddress.street_name !== undefined) {
-        const trimmedName = String(finalAddress.street_name).trim().toUpperCase();
-        finalAddress.street_name = trimmedName.length ? trimmedName : null;
-      } else {
-        finalAddress.street_name = null;
-      }
-
-      const normalizeSimple = (value) => {
-        if (value === null || value === undefined) return null;
-        const trimmed = String(value).trim();
-        return trimmed.length ? trimmed : null;
-      };
-
-      finalAddress.street_number = normalizeSimple(finalAddress.street_number);
-      finalAddress.unit_identifier = normalizeSimple(finalAddress.unit_identifier);
-      finalAddress.route_number = normalizeSimple(finalAddress.route_number);
-
-      const titleOrNull = (value) => {
-        if (value === null || value === undefined) return null;
-        const titled = toTitleCase(String(value));
-        return titled && titled.trim().length ? titled : null;
-      };
-
-      finalAddress.county_name = titleOrNull(finalAddress.county_name);
-      finalAddress.municipality_name = titleOrNull(finalAddress.municipality_name);
-
-      finalAddress.township = padGridValue(finalAddress.township, 2);
-      finalAddress.range = padGridValue(finalAddress.range, 2);
-      finalAddress.section = padGridValue(finalAddress.section, 2);
-      finalAddress.block = padGridValue(finalAddress.block, 3);
-      finalAddress.lot = padGridValue(finalAddress.lot, 4);
-
-      coerceEmptyStringsToNull(finalAddress, [
-        ...RAW_ADDRESS_ALLOWED_FIELDS,
-        "unnormalized_address",
-      ]);
+      finalAddress = rawOutput;
     } else if (
       finalAddress &&
       finalAddressVariant === "normalized" &&
