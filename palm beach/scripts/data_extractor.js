@@ -720,23 +720,12 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+// Even when we only have an unnormalized address string the schema still
+// expects the normalized keys to be present (they may be null). Emit the
+// full allowed field list so the raw branch of the oneOf validates cleanly.
+const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-// When only an unnormalized address is available we limit the emitted keys
-// to the subset explicitly supported by the raw branch of the schema.
-const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_RAW_VARIANT_FIELDS];
-
-const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
+const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_OUTPUT_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
