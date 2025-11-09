@@ -651,7 +651,7 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
+const RAW_ADDRESS_CORE_FIELDS = [
   "latitude",
   "longitude",
   "city_name",
@@ -661,6 +661,10 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
+];
+
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  ...RAW_ADDRESS_CORE_FIELDS,
   "street_number",
   "street_name",
   "street_suffix_type",
@@ -687,6 +691,13 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   "street_suffix_type",
   "street_pre_directional_text",
   "street_post_directional_text",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
 ]);
 
 const ADDRESS_SCHEMA_FIELDS = [
@@ -697,33 +708,11 @@ const ADDRESS_SCHEMA_FIELDS = [
   ]),
 ];
 
-const RAW_ADDRESS_OUTPUT_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
 
-const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_OUTPUT_FIELDS];
+const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -883,12 +872,6 @@ function finalizeAddressForOutput(address, variant, options = {}) {
       }
 
       result[field] = value !== undefined ? value : null;
-    }
-
-    for (const field of allowedRawFields) {
-      if (!Object.prototype.hasOwnProperty.call(result, field)) {
-        result[field] = null;
-      }
     }
 
     if (!Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
@@ -1757,40 +1740,55 @@ function formatRawAddressForOutput(address, options = {}) {
       : RAW_ADDRESS_OUTPUT_FIELDS);
 
   for (const field of allowedFields) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+
     const transformer =
       Object.prototype.hasOwnProperty.call(transformers, field)
         ? transformers[field]
         : null;
-    const rawValue = Object.prototype.hasOwnProperty.call(address, field)
-      ? address[field]
-      : null;
+    const rawValue = address[field];
     let transformed =
       typeof transformer === "function" ? transformer(rawValue) : rawValue;
 
-    if (transformed === undefined) {
-      transformed = null;
+    if (transformed === undefined || transformed === null) {
+      continue;
     }
 
     if (typeof transformed === "number") {
-      result[field] = Number.isFinite(transformed) ? transformed : null;
-    } else if (typeof transformed === "boolean") {
+      if (!Number.isFinite(transformed)) continue;
       result[field] = transformed;
-    } else if (typeof transformed === "string") {
-      const trimmed = transformed.trim();
-      result[field] = trimmed.length ? trimmed : null;
-    } else {
-      result[field] = transformed != null ? transformed : null;
+      continue;
     }
+
+    if (typeof transformed === "boolean") {
+      result[field] = transformed;
+      continue;
+    }
+
+    if (typeof transformed === "string") {
+      const trimmed = transformed.trim();
+      if (!trimmed.length) continue;
+      result[field] = trimmed;
+      continue;
+    }
+
+    result[field] = transformed;
   }
 
   if (result.state_code && !result.country_code) {
     result.country_code = "US";
   }
-  if (!result.postal_code) {
-    result.plus_four_postal_code = null;
+
+  if (
+    Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code") &&
+    !result.postal_code
+  ) {
+    delete result.plus_four_postal_code;
   }
 
-  return result;
+  return Object.keys(result).length ? result : null;
 }
 
 function deriveGridPartsFromPcn(rawPcn) {
