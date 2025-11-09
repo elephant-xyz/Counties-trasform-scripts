@@ -3832,6 +3832,16 @@ async function main() {
       }
     }
 
+    if (finalAddress && finalAddressVariant) {
+      if (finalAddressVariant === "raw") {
+        finalAddress = ensureAddressFieldsForOutput(finalAddress, "raw", {
+          allowedFields: effectiveRawOutputFields,
+        });
+      } else if (finalAddressVariant === "normalized") {
+        finalAddress = ensureAddressFieldsForOutput(finalAddress, "normalized");
+      }
+    }
+
     const hasMeaningfulAddress =
       finalAddress &&
       Object.entries(finalAddress).some(([key, value]) => {
