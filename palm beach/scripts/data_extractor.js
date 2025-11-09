@@ -720,12 +720,16 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-// Even when we only have an unnormalized address string the schema still
-// expects the normalized keys to be present (they may be null). Emit the
-// full allowed field list so the raw branch of the oneOf validates cleanly.
-const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+// When we can only satisfy the raw branch, avoid normalized street components
+// so we don't accidentally trigger the stricter normalized variant of the
+// oneOf. These lists also drive the output formatting logic.
+const RAW_ADDRESS_MINIMAL_FIELDS = [
+  ...RAW_ADDRESS_CORE_FIELDS,
+  ...RAW_ADDRESS_GRID_FIELDS,
+  ...RAW_ADDRESS_OPTIONAL_GRID_FIELDS,
+];
 
-const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_OUTPUT_FIELDS];
+const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
