@@ -655,8 +655,20 @@ function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
   for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
     const value = address[field];
-    if (typeof value !== "string" || value.trim().length === 0) {
+    if (typeof value !== "string") {
       return false;
+    }
+    const trimmed = value.trim();
+    if (!trimmed.length) {
+      return false;
+    }
+    if (field === "street_suffix_type") {
+      const mappedSuffix = mapStreetSuffixType(trimmed);
+      if (!mappedSuffix) {
+        return false;
+      }
+      address[field] = mappedSuffix;
+      continue;
     }
   }
   for (const field of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
@@ -1480,7 +1492,8 @@ function finalizeAddressForOutput(address, variant) {
 
       if (field === "street_suffix_type") {
         const mapped = mapStreetSuffixType(trimmed);
-        result[field] = mapped || null;
+        const normalizedSuffix = mapped || trimmed;
+        result[field] = normalizedSuffix && normalizedSuffix.length ? normalizedSuffix : null;
         continue;
       }
 

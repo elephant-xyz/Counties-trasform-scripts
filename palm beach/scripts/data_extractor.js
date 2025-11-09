@@ -758,6 +758,15 @@ function hasCompleteNormalizedAddress(address) {
       return false;
     }
 
+    if (field === "street_suffix_type") {
+      const normalizedSuffix = mapStreetSuffixType(trimmed);
+      if (!normalizedSuffix) {
+        return false;
+      }
+      address[field] = normalizedSuffix;
+      continue;
+    }
+
     if (field === "city_name") {
       const sanitizedCity = sanitizeCityName(trimmed);
       if (!sanitizedCity) return false;
@@ -1001,7 +1010,8 @@ function finalizeAddressForOutput(address, variant, options = {}) {
 
       if (field === "street_suffix_type") {
         const mapped = mapStreetSuffixType(trimmed);
-        result[field] = mapped || null;
+        const normalizedSuffix = mapped || trimmed;
+        result[field] = normalizedSuffix && normalizedSuffix.length ? normalizedSuffix : null;
         continue;
       }
 
