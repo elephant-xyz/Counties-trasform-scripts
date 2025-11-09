@@ -3530,9 +3530,6 @@ async function main() {
       });
       if (formattedRaw) {
         for (const field of allowedRawFieldSet) {
-          if (prunedFields && prunedFields.has(field)) {
-            continue;
-          }
           if (!Object.prototype.hasOwnProperty.call(formattedRaw, field)) {
             formattedRaw[field] = null;
           }
@@ -3545,14 +3542,9 @@ async function main() {
     }
 
     if (finalAddress && finalAddressVariant) {
-      const ensureOptions =
-        finalAddressVariant === "raw" && prunedFields instanceof Set
-          ? { skipFields: prunedFields }
-          : undefined;
       finalAddress = ensureAddressFieldsForOutput(
         finalAddress,
         finalAddressVariant,
-        ensureOptions,
       );
     }
 
