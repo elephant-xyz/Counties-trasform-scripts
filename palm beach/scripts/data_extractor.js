@@ -4013,7 +4013,11 @@ async function main() {
               allowedFields: effectiveRawOutputFields,
             });
             if (filteredRaw) {
-              finalAddress = filteredRaw;
+              const ensuredRaw = ensureRawAddressFieldCoverage(
+                filteredRaw,
+                effectiveRawOutputFields,
+              );
+              finalAddress = ensuredRaw || filteredRaw;
             } else {
               finalAddress = null;
               finalAddressVariant = null;
