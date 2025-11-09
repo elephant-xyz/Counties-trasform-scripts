@@ -704,10 +704,8 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   ...RAW_ADDRESS_STREET_FIELDS,
 ];
 
-// Keep raw address handling flexible so we can emit the minimal variant that
-// satisfies the address schema oneOf when only an unnormalized string is
-// available. Downstream validation strips nullish fields, so we only treat
-// fields as required when we can provide real values.
+// Downstream validation expects the raw branch to carry the full field surface
+// (nulls allowed), so we always retain the complete schema field list.
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const ADDRESS_SCHEMA_FIELDS = [
@@ -719,17 +717,6 @@ const ADDRESS_SCHEMA_FIELDS = [
 ];
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
-
-// When we can only satisfy the raw branch, avoid normalized street components
-// so we don't accidentally trigger the stricter normalized variant of the
-// oneOf. These lists also drive the output formatting logic.
-const RAW_ADDRESS_MINIMAL_FIELDS = [
-  ...RAW_ADDRESS_CORE_FIELDS,
-  ...RAW_ADDRESS_GRID_FIELDS,
-  ...RAW_ADDRESS_OPTIONAL_GRID_FIELDS,
-];
-
-const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -3552,15 +3539,10 @@ async function main() {
       normalizedAddressHasRequiredStrings &&
       isNormalizedAddressSchemaReady(address);
 
-    // When only an unnormalized address is available emit the lean raw schema
-    // variant so we do not introduce fields that belong to the normalized branch.
-    const shouldUseMinimalRawFields = !normalizedAddressHasSchemaCoverage;
-    const effectiveRawAllowedFields = shouldUseMinimalRawFields
-      ? RAW_ADDRESS_MINIMAL_FIELDS
-      : RAW_ADDRESS_ALLOWED_FIELDS;
-    const effectiveRawOutputFields = shouldUseMinimalRawFields
-      ? RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS
-      : RAW_ADDRESS_OUTPUT_FIELDS;
+    // Always expose the entire raw schema field set so validation sees the
+    // expected keys even when values are missing (null placeholders).
+    const effectiveRawAllowedFields = RAW_ADDRESS_ALLOWED_FIELDS;
+    const effectiveRawOutputFields = RAW_ADDRESS_OUTPUT_FIELDS;
 
     let normalizedAddress = null;
     if (normalizedAddressHasSchemaCoverage) {
@@ -3812,6 +3794,7 @@ async function main() {
         finalAddress = buildRawAddressOutput(finalAddress, {
           allowedFields: effectiveRawOutputFields,
           trimmedUnnormalized,
+          preserveNulls: true,
         });
       } else if (finalAddressVariant === "normalized") {
         finalAddress = buildNormalizedAddressOutput(finalAddress);
@@ -3838,6 +3821,7 @@ async function main() {
         const canonicalRaw = buildRawAddressOutput(rawCandidateForOutput, {
           allowedFields: effectiveRawOutputFields,
           trimmedUnnormalized: trimmed,
+          preserveNulls: true,
         });
         if (canonicalRaw) {
           finalAddress = canonicalRaw;
