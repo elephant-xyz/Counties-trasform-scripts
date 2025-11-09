@@ -677,8 +677,10 @@ const RAW_ADDRESS_CORE_FIELDS = [
   "municipality_name",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  ...RAW_ADDRESS_CORE_FIELDS,
+const RAW_ADDRESS_GRID_FIELDS = ["township", "range", "section"];
+const RAW_ADDRESS_OPTIONAL_GRID_FIELDS = ["block", "lot"];
+
+const RAW_ADDRESS_STREET_FIELDS = [
   "street_number",
   "street_name",
   "street_suffix_type",
@@ -686,11 +688,13 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "street_post_directional_text",
   "unit_identifier",
   "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+];
+
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  ...RAW_ADDRESS_CORE_FIELDS,
+  ...RAW_ADDRESS_GRID_FIELDS,
+  ...RAW_ADDRESS_OPTIONAL_GRID_FIELDS,
+  ...RAW_ADDRESS_STREET_FIELDS,
 ];
 
 // Keep raw address handling flexible so we can emit the minimal variant that
@@ -700,18 +704,8 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...RAW_ADDRESS_STREET_FIELDS,
+  ...RAW_ADDRESS_OPTIONAL_GRID_FIELDS,
 ]);
 
 const ADDRESS_SCHEMA_FIELDS = [
@@ -725,10 +719,11 @@ const ADDRESS_SCHEMA_FIELDS = [
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
 // The schema expects every address field to be present (nullable when unknown),
-// so keep the minimal field lists aligned with the full allowlist.
-const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+// so keep the minimal field lists aligned with the full allowlist when we can
+// confidently satisfy them. Otherwise, fall back to the core/grid subsets.
+const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
 
-const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -3506,12 +3501,56 @@ async function main() {
       normalizedAddressHasRequiredStrings &&
       isNormalizedAddressSchemaReady(address);
 
+    const hasMeaningfulValue = (value) => {
+      if (value === null || value === undefined) return false;
+      if (typeof value === "string") return value.trim().length > 0;
+      if (typeof value === "number") return Number.isFinite(value);
+      return false;
+    };
+
+    const shouldIncludeGridFields = RAW_ADDRESS_GRID_FIELDS.some((field) =>
+      hasMeaningfulValue(address[field]),
+    );
+    const shouldIncludeOptionalGridFields = RAW_ADDRESS_OPTIONAL_GRID_FIELDS.some(
+      (field) => hasMeaningfulValue(address[field]),
+    );
+    const shouldIncludeStreetFields =
+      ["street_number", "street_name", "street_suffix_type"].every((field) =>
+        hasMeaningfulValue(address[field]),
+      ) &&
+      RAW_ADDRESS_STREET_FIELDS.some((field) =>
+        hasMeaningfulValue(address[field]),
+      );
+
+    const dynamicAdditionalFields = new Set();
+    if (!normalizedAddressHasSchemaCoverage) {
+      if (shouldIncludeGridFields) {
+        RAW_ADDRESS_GRID_FIELDS.forEach((field) =>
+          dynamicAdditionalFields.add(field),
+        );
+      }
+      if (shouldIncludeOptionalGridFields) {
+        RAW_ADDRESS_OPTIONAL_GRID_FIELDS.forEach((field) =>
+          dynamicAdditionalFields.add(field),
+        );
+      }
+      if (shouldIncludeStreetFields) {
+        RAW_ADDRESS_STREET_FIELDS.forEach((field) =>
+          dynamicAdditionalFields.add(field),
+        );
+      }
+    }
+
     const rawAllowedFields = normalizedAddressHasSchemaCoverage
       ? RAW_ADDRESS_ALLOWED_FIELDS
-      : RAW_ADDRESS_MINIMAL_FIELDS;
+      : Array.from(
+          new Set([...RAW_ADDRESS_MINIMAL_FIELDS, ...dynamicAdditionalFields]),
+        );
     const rawOutputFields = normalizedAddressHasSchemaCoverage
       ? RAW_ADDRESS_OUTPUT_FIELDS
-      : RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS;
+      : Array.from(
+          new Set([...RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS, ...dynamicAdditionalFields]),
+        );
 
     let normalizedAddress = null;
     if (normalizedAddressHasSchemaCoverage) {
