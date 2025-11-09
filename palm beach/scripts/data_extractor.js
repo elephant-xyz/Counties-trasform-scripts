@@ -710,9 +710,11 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
+// The schema expects every address field to be present (nullable when unknown),
+// so keep the minimal field lists aligned with the full allowlist.
+const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
+const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -3277,10 +3279,19 @@ async function main() {
     }
 
     if (finalAddress && finalAddressVariant === "raw") {
+      const allowedRawFieldSet =
+        Array.isArray(rawOutputFields) && rawOutputFields.length
+          ? rawOutputFields
+          : RAW_ADDRESS_ALLOWED_FIELDS;
       const formattedRaw = formatRawAddressForOutput(finalAddress, {
-        allowedFields: rawOutputFields,
+        allowedFields: allowedRawFieldSet,
       });
       if (formattedRaw) {
+        for (const field of allowedRawFieldSet) {
+          if (!Object.prototype.hasOwnProperty.call(formattedRaw, field)) {
+            formattedRaw[field] = null;
+          }
+        }
         finalAddress = formattedRaw;
       } else {
         finalAddress = null;
