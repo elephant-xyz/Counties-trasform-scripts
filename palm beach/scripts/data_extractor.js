@@ -1034,7 +1034,7 @@ function finalizeAddressForOutput(address, variant, options = {}) {
   return result;
 }
 
-function ensureAddressFieldsForOutput(address, variant) {
+function ensureAddressFieldsForOutput(address, variant, options = {}) {
   if (!address || typeof address !== "object") return address;
 
   const clone = { ...address };
@@ -1042,6 +1042,12 @@ function ensureAddressFieldsForOutput(address, variant) {
     variant === "normalized"
       ? NORMALIZED_ADDRESS_FIELDS
       : RAW_ADDRESS_ALLOWED_FIELDS;
+  const skipFieldsSet =
+    options && options.skipFields instanceof Set
+      ? options.skipFields
+      : new Set(
+          Array.isArray(options.skipFields) ? options.skipFields : [],
+        );
 
   if (variant === "normalized") {
     if (Object.prototype.hasOwnProperty.call(clone, "unnormalized_address")) {
@@ -1055,6 +1061,14 @@ function ensureAddressFieldsForOutput(address, variant) {
   }
 
   for (const field of fieldList) {
+    if (
+      skipFieldsSet.size &&
+      skipFieldsSet.has(field) &&
+      !Object.prototype.hasOwnProperty.call(clone, field)
+    ) {
+      continue;
+    }
+
     if (!Object.prototype.hasOwnProperty.call(clone, field)) {
       clone[field] = null;
     }
@@ -1733,6 +1747,69 @@ function sanitizeCityName(value) {
   const cleaned = upper.replace(/[^A-Z\s\-']/g, " ").replace(/\s+/g, " ").trim();
   if (!cleaned.length) return null;
   return cleaned;
+}
+
+function pruneAddressComponentsForSchema(address) {
+  if (!address || typeof address !== "object") return;
+  const removedFields = new Set();
+  const hasMeaningfulValue = (value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (typeof value === "number") return Number.isFinite(value);
+    return true;
+  };
+
+  if (hasMeaningfulValue(address.city_name)) {
+    const sanitizedCity = sanitizeCityName(address.city_name);
+    address.city_name = sanitizedCity || null;
+  }
+
+  if (
+    hasMeaningfulValue(address.plus_four_postal_code) &&
+    !hasMeaningfulValue(address.postal_code)
+  ) {
+    delete address.plus_four_postal_code;
+    removedFields.add("plus_four_postal_code");
+  }
+
+  const streetFields = [
+    "street_number",
+    "street_name",
+    "street_suffix_type",
+    "street_pre_directional_text",
+    "street_post_directional_text",
+    "unit_identifier",
+    "route_number",
+  ];
+  const streetRequired = ["street_number", "street_name", "street_suffix_type"];
+  const hasStreetData = streetFields.some((field) =>
+    hasMeaningfulValue(address[field]),
+  );
+  const missingStreetRequired = streetRequired.some(
+    (field) => !hasMeaningfulValue(address[field]),
+  );
+  if (hasStreetData && missingStreetRequired) {
+    for (const field of streetFields) {
+      delete address[field];
+      removedFields.add(field);
+    }
+  }
+
+  const gridFields = ["township", "range", "section", "block"];
+  const hasGridData = gridFields.some((field) =>
+    hasMeaningfulValue(address[field]),
+  );
+  const missingGridField = gridFields.some(
+    (field) => !hasMeaningfulValue(address[field]),
+  );
+  if (hasGridData && missingGridField) {
+    for (const field of [...gridFields, "lot"]) {
+      delete address[field];
+      removedFields.add(field);
+    }
+  }
+
+  return removedFields;
 }
 
 function pruneRawAddressForSchema(address, options = {}) {
@@ -2980,6 +3057,8 @@ async function main() {
 
     enrichAddressFromUnnormalized(address, unnormalizedAddressCandidate);
 
+    const prunedFields = pruneAddressComponentsForSchema(address);
+
     const normalizedSnapshot = { ...address };
     const fallbackUnnormalizedValue =
       unnormalizedAddressCandidate || composeUnnormalizedAddress(normalizedSnapshot);
@@ -3451,6 +3530,9 @@ async function main() {
       });
       if (formattedRaw) {
         for (const field of allowedRawFieldSet) {
+          if (prunedFields && prunedFields.has(field)) {
+            continue;
+          }
           if (!Object.prototype.hasOwnProperty.call(formattedRaw, field)) {
             formattedRaw[field] = null;
           }
@@ -3463,9 +3545,14 @@ async function main() {
     }
 
     if (finalAddress && finalAddressVariant) {
+      const ensureOptions =
+        finalAddressVariant === "raw" && prunedFields instanceof Set
+          ? { skipFields: prunedFields }
+          : undefined;
       finalAddress = ensureAddressFieldsForOutput(
         finalAddress,
         finalAddressVariant,
+        ensureOptions,
       );
     }
 
