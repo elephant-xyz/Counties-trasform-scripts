@@ -718,10 +718,11 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-// The schema expects every address field to be present (nullable when unknown),
-// so keep the minimal field lists aligned with the full allowlist when we can
-// confidently satisfy them. Otherwise, fall back to the core/grid subsets.
-const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
+// The County address schema oneOf expects the full field set to exist
+// (nullable when unknown), even when we only have an unnormalized string.
+// Use the full allowlist for the "minimal" sets so every required key is
+// emitted with a null placeholder instead of being omitted entirely.
+const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
 const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
 
