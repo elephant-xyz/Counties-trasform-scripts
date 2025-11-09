@@ -926,6 +926,7 @@ function finalizeAddressForOutput(address, variant, options = {}) {
         : RAW_ADDRESS_ALLOWED_FIELDS);
     const sanitized = pruneRawAddressForSchema(cloned, {
       allowedFields: allowedRawFields,
+      preserveNulls: true,
     });
     if (!sanitized) return null;
 
@@ -1584,6 +1585,7 @@ function createSchemaReadyAddress(address, variant, options = {}) {
     rawPayload.unnormalized_address = resolvedUnnormalized;
     const sanitizedRaw = pruneRawAddressForSchema(rawPayload, {
       allowedFields: fieldsToUse,
+      preserveNulls: true,
     });
     if (sanitizedRaw && Object.keys(sanitizedRaw).length) {
       return sanitizedRaw;
@@ -1994,12 +1996,33 @@ function pruneRawAddressForSchema(address, options = {}) {
       ? options.allowedFields
       : RAW_ADDRESS_ALLOWED_FIELDS);
 
+  const preserveNulls =
+    options && Object.prototype.hasOwnProperty.call(options, "preserveNulls")
+      ? Boolean(options.preserveNulls)
+      : false;
+
   const pruned = { unnormalized_address: unnormalized };
   for (const field of allowedFields) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    if (!hasField) {
+      if (preserveNulls) {
+        pruned[field] = null;
+      }
+      continue;
+    }
     const sanitized = sanitizeField(field, address[field]);
     if (sanitized != null) {
       pruned[field] = sanitized;
+    } else if (preserveNulls) {
+      pruned[field] = null;
+    }
+  }
+
+  if (preserveNulls) {
+    for (const field of allowedFields) {
+      if (!Object.prototype.hasOwnProperty.call(pruned, field)) {
+        pruned[field] = null;
+      }
     }
   }
 
@@ -2007,7 +2030,11 @@ function pruneRawAddressForSchema(address, options = {}) {
     !Object.prototype.hasOwnProperty.call(pruned, "postal_code") &&
     Object.prototype.hasOwnProperty.call(pruned, "plus_four_postal_code")
   ) {
-    delete pruned.plus_four_postal_code;
+    if (preserveNulls) {
+      pruned.plus_four_postal_code = null;
+    } else {
+      delete pruned.plus_four_postal_code;
+    }
   }
 
   if (
@@ -3436,6 +3463,7 @@ async function main() {
 
       const preparedRaw = pruneRawAddressForSchema(schemaReadyRaw, {
         allowedFields: rawAllowedFields,
+        preserveNulls: true,
       });
       const rawUnnormalized =
         preparedRaw && preparedRaw.unnormalized_address;
@@ -3472,6 +3500,7 @@ async function main() {
       if (minimalRaw) {
         const preparedRaw = pruneRawAddressForSchema(minimalRaw, {
           allowedFields: rawAllowedFields,
+          preserveNulls: true,
         });
         const rawUnnormalized =
           preparedRaw && preparedRaw.unnormalized_address;
