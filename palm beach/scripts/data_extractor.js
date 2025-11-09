@@ -3559,13 +3559,15 @@ async function main() {
       normalizedAddressHasRequiredStrings &&
       isNormalizedAddressSchemaReady(address);
 
-    // Always retain the full field set so the raw branch still satisfies the
-    // schema's oneOf requirements that expect the normalized keys to be present
-    // (they may be null when the source only provides an unnormalized string).
-    const rawAllowedFields = RAW_ADDRESS_ALLOWED_FIELDS;
-    const rawOutputFields = RAW_ADDRESS_OUTPUT_FIELDS;
-    const effectiveRawAllowedFields = rawAllowedFields;
-    const effectiveRawOutputFields = rawOutputFields;
+    // When only an unnormalized address is available emit the lean raw schema
+    // variant so we do not introduce fields that belong to the normalized branch.
+    const shouldUseMinimalRawFields = !normalizedAddressHasSchemaCoverage;
+    const effectiveRawAllowedFields = shouldUseMinimalRawFields
+      ? RAW_ADDRESS_MINIMAL_FIELDS
+      : RAW_ADDRESS_ALLOWED_FIELDS;
+    const effectiveRawOutputFields = shouldUseMinimalRawFields
+      ? RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS
+      : RAW_ADDRESS_OUTPUT_FIELDS;
 
     let normalizedAddress = null;
     if (normalizedAddressHasSchemaCoverage) {
@@ -3639,7 +3641,7 @@ async function main() {
         }
       };
 
-      for (const field of rawAllowedFields) {
+      for (const field of effectiveRawAllowedFields) {
         let value = pickCandidateValue(field);
         if (field === "country_code" && typeof value === "string") {
           value = value.toUpperCase();
@@ -3841,7 +3843,7 @@ async function main() {
           unnormalized_address: trimmed,
         };
         const canonicalRaw = buildRawAddressOutput(rawCandidateForOutput, {
-          allowedFields: RAW_ADDRESS_OUTPUT_FIELDS,
+          allowedFields: effectiveRawOutputFields,
           trimmedUnnormalized: trimmed,
         });
         if (canonicalRaw) {
