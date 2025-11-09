@@ -2733,11 +2733,9 @@ async function main() {
       }
     }
 
-    let finalAddress = null;
-    let finalAddressVariant = null;
-
+    let normalizedOutput = null;
     if (normalizedAddress) {
-      const normalizedOutput = {};
+      normalizedOutput = {};
       for (const key of NORMALIZED_ADDRESS_FIELDS) {
         let value = null;
 
@@ -2765,11 +2763,17 @@ async function main() {
           normalizedOutput[key] = value;
         }
       }
-      finalAddress = normalizedOutput;
-      finalAddressVariant = "normalized";
-    } else if (materializedRawAddress && hasUnnormalizedAddress) {
+    }
+
+    let finalAddress = null;
+    let finalAddressVariant = null;
+
+    if (materializedRawAddress && hasUnnormalizedAddress) {
       finalAddress = materializedRawAddress;
       finalAddressVariant = "raw";
+    } else if (normalizedOutput) {
+      finalAddress = normalizedOutput;
+      finalAddressVariant = "normalized";
     } else if (materializedRawAddress) {
       finalAddress = materializedRawAddress;
       finalAddressVariant = "raw";

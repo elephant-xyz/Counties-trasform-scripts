@@ -3906,7 +3906,10 @@ async function main() {
     let finalAddress = null;
     let finalAddressVariant = null;
 
-    if (normalizedCandidate) {
+    if (rawCandidate && hasUnnormalizedAddress) {
+      finalAddress = rawCandidate;
+      finalAddressVariant = "raw";
+    } else if (normalizedCandidate) {
       finalAddress = normalizedCandidate;
       finalAddressVariant = "normalized";
     } else if (rawCandidate) {
