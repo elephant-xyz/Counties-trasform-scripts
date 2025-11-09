@@ -719,6 +719,7 @@ const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
+  "street_suffix_type",
   "city_name",
   "state_code",
   "postal_code",
@@ -822,9 +823,8 @@ function isNormalizedAddressSchemaReady(address) {
     }
 
     if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
-      if (value == null || value === "") {
-        address[field] = null;
-        continue;
+      if (value === null || value === undefined || value === "") {
+        return false;
       }
       const numeric =
         typeof value === "number" ? value : Number(String(value).trim());
@@ -836,12 +836,15 @@ function isNormalizedAddressSchemaReady(address) {
     }
 
     if (field === "street_suffix_type") {
-      if (value == null) {
-        address[field] = null;
-        continue;
+      if (value === null || value === undefined) {
+        return false;
       }
       if (typeof value !== "string" || !value.trim().length) {
         return false;
+      }
+      const mappedSuffix = mapStreetSuffixType(value);
+      if (mappedSuffix) {
+        address[field] = mappedSuffix;
       }
       continue;
     }
