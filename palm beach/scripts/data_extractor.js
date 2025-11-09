@@ -704,10 +704,6 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
 // fields as required when we can provide real values.
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
-const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
-  ...RAW_ADDRESS_STREET_FIELDS,
-]);
-
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
     ...NORMALIZED_ADDRESS_FIELDS,
@@ -2054,12 +2050,9 @@ function pruneRawAddressForSchema(address, options = {}) {
 }
 
 function stripNormalizedFieldsFromRaw(address) {
+  // No-op: the schema expects the normalized keys even on the raw branch when
+  // they are available, so we intentionally retain them (they may be null).
   if (!address || typeof address !== "object") return;
-  for (const field of RAW_ADDRESS_NORMALIZED_ONLY_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      delete address[field];
-    }
-  }
 }
 
 function formatRawAddressForOutput(address, options = {}) {
@@ -3521,18 +3514,13 @@ async function main() {
       normalizedAddressHasRequiredStrings &&
       isNormalizedAddressSchemaReady(address);
 
-    const rawAllowedFields = normalizedAddressHasSchemaCoverage
-      ? RAW_ADDRESS_ALLOWED_FIELDS
-      : RAW_ADDRESS_MINIMAL_FIELDS;
-    const rawOutputFields = normalizedAddressHasSchemaCoverage
-      ? RAW_ADDRESS_OUTPUT_FIELDS
-      : RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS;
-    const effectiveRawAllowedFields = rawAllowedFields.filter(
-      (field) => !RAW_ADDRESS_NORMALIZED_ONLY_FIELDS.has(field),
-    );
-    const effectiveRawOutputFields = rawOutputFields.filter(
-      (field) => !RAW_ADDRESS_NORMALIZED_ONLY_FIELDS.has(field),
-    );
+    // Always retain the full field set so the raw branch still satisfies the
+    // schema's oneOf requirements that expect the normalized keys to be present
+    // (they may be null when the source only provides an unnormalized string).
+    const rawAllowedFields = RAW_ADDRESS_ALLOWED_FIELDS;
+    const rawOutputFields = RAW_ADDRESS_OUTPUT_FIELDS;
+    const effectiveRawAllowedFields = rawAllowedFields;
+    const effectiveRawOutputFields = rawOutputFields;
 
     let normalizedAddress = null;
     if (normalizedAddressHasSchemaCoverage) {
@@ -3795,43 +3783,28 @@ async function main() {
     }
 
     if (finalAddress && finalAddressVariant === "raw") {
-      const trimmed = typeof finalAddress.unnormalized_address === "string"
-        ? finalAddress.unnormalized_address.trim()
-        : "";
+      const trimmed =
+        typeof finalAddress.unnormalized_address === "string"
+          ? finalAddress.unnormalized_address.trim()
+          : "";
       if (!trimmed.length) {
         finalAddress = null;
         finalAddressVariant = null;
       } else {
-        const assign = (target, key, value) => {
-          target[key] =
-            value === undefined || value === null ? null : value;
+        const rawCandidateForOutput = {
+          ...finalAddress,
+          unnormalized_address: trimmed,
         };
-
-        const rawOutput = { unnormalized_address: trimmed };
-        assign(rawOutput, "latitude", parseCoordinate(finalAddress.latitude));
-        assign(rawOutput, "longitude", parseCoordinate(finalAddress.longitude));
-        assign(
-          rawOutput,
-          "county_name",
-          finalAddress.county_name
-            ? toTitleCase(String(finalAddress.county_name))
-            : null,
-        );
-        assign(
-          rawOutput,
-          "municipality_name",
-          finalAddress.municipality_name
-            ? toTitleCase(String(finalAddress.municipality_name))
-            : null,
-        );
-        assign(rawOutput, "township", padGridValue(finalAddress.township, 2));
-        assign(rawOutput, "range", padGridValue(finalAddress.range, 2));
-        assign(rawOutput, "section", padGridValue(finalAddress.section, 2));
-        assign(rawOutput, "block", padGridValue(finalAddress.block, 3));
-        assign(rawOutput, "lot", padGridValue(finalAddress.lot, 4));
-
-        stripNormalizedFieldsFromRaw(rawOutput);
-        finalAddress = rawOutput;
+        const canonicalRaw = buildRawAddressOutput(rawCandidateForOutput, {
+          allowedFields: RAW_ADDRESS_OUTPUT_FIELDS,
+          trimmedUnnormalized: trimmed,
+        });
+        if (canonicalRaw) {
+          finalAddress = canonicalRaw;
+        } else {
+          finalAddress = null;
+          finalAddressVariant = null;
+        }
       }
     }
 
