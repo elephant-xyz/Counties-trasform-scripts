@@ -723,6 +723,7 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "state_code",
   "postal_code",
   "country_code",
+  "county_name",
 ];
 
 const NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
@@ -748,14 +749,49 @@ function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
   for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
     const value = address[field];
-    if (typeof value !== "string" || value.trim().length === 0) {
+    if (typeof value !== "string") {
       return false;
     }
+    const trimmed = value.trim();
+    if (!trimmed.length) {
+      return false;
+    }
+
+    if (field === "city_name") {
+      const sanitizedCity = sanitizeCityName(trimmed);
+      if (!sanitizedCity) return false;
+      address[field] = sanitizedCity;
+      continue;
+    }
+
+    if (field === "state_code" || field === "country_code") {
+      address[field] = trimmed.toUpperCase();
+      continue;
+    }
+
+    if (field === "postal_code") {
+      const sanitizedPostal = sanitizePostalCode(trimmed);
+      if (!sanitizedPostal) return false;
+      address[field] = sanitizedPostal;
+      continue;
+    }
+
+    if (field === "county_name") {
+      const titledCounty = toTitleCase(trimmed);
+      if (!titledCounty || !titledCounty.trim().length) {
+        return false;
+      }
+      address[field] = titledCounty;
+      continue;
+    }
+
+    address[field] = trimmed;
   }
   for (const field of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     const rawValue = address[field];
-    if (rawValue == null) {
-      return false;
+    if (rawValue == null || rawValue === "") {
+      address[field] = null;
+      continue;
     }
 
     let numericValue = null;
@@ -766,11 +802,7 @@ function hasCompleteNormalizedAddress(address) {
       numericValue = Number.isFinite(parsed) ? parsed : null;
     }
 
-    if (numericValue == null) {
-      return false;
-    }
-
-    address[field] = numericValue;
+    address[field] = numericValue != null ? numericValue : null;
   }
   return true;
 }
@@ -782,16 +814,40 @@ function isNormalizedAddressSchemaReady(address) {
       return false;
     }
     const value = address[field];
-    if (value == null) {
-      return false;
+    if (NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.includes(field)) {
+      if (typeof value !== "string" || !value.trim().length) {
+        return false;
+      }
+      continue;
     }
-    if (typeof value === "string") {
-      if (!value.trim().length) return false;
-    }
+
     if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      if (value == null || value === "") {
+        address[field] = null;
+        continue;
+      }
       const numeric =
         typeof value === "number" ? value : Number(String(value).trim());
       if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      address[field] = numeric;
+      continue;
+    }
+
+    if (field === "street_suffix_type") {
+      if (value == null) {
+        address[field] = null;
+        continue;
+      }
+      if (typeof value !== "string" || !value.trim().length) {
+        return false;
+      }
+      continue;
+    }
+
+    if (field === "county_name") {
+      if (typeof value !== "string" || !value.trim().length) {
         return false;
       }
     }
@@ -976,6 +1032,113 @@ function finalizeAddressForOutput(address, variant, options = {}) {
   }
 
   return result;
+}
+
+function ensureAddressFieldsForOutput(address, variant) {
+  if (!address || typeof address !== "object") return address;
+
+  const clone = { ...address };
+  const fieldList =
+    variant === "normalized"
+      ? NORMALIZED_ADDRESS_FIELDS
+      : RAW_ADDRESS_ALLOWED_FIELDS;
+
+  if (variant === "normalized") {
+    if (Object.prototype.hasOwnProperty.call(clone, "unnormalized_address")) {
+      delete clone.unnormalized_address;
+    }
+  } else if (
+    variant === "raw" &&
+    !Object.prototype.hasOwnProperty.call(clone, "unnormalized_address")
+  ) {
+    clone.unnormalized_address = null;
+  }
+
+  for (const field of fieldList) {
+    if (!Object.prototype.hasOwnProperty.call(clone, field)) {
+      clone[field] = null;
+    }
+
+    let value = clone[field];
+    if (value === undefined || value === null) {
+      clone[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      value = value.trim();
+      if (!value.length) {
+        clone[field] = null;
+        continue;
+      }
+    }
+
+    switch (field) {
+      case "city_name":
+        clone[field] = sanitizeCityName(value) || null;
+        break;
+      case "state_code":
+      case "country_code":
+      case "street_pre_directional_text":
+      case "street_post_directional_text":
+        clone[field] = String(value).trim().toUpperCase() || null;
+        break;
+      case "postal_code":
+        clone[field] = sanitizePostalCode(value) || null;
+        break;
+      case "plus_four_postal_code":
+        clone[field] = sanitizePlus4(value) || null;
+        break;
+      case "street_suffix_type": {
+        const mapped = mapStreetSuffixType(value);
+        clone[field] =
+          mapped ||
+          (typeof value === "string" ? value.trim() || null : null);
+        break;
+      }
+      case "street_name":
+        clone[field] =
+          typeof value === "string" ? value.trim().toUpperCase() || null : null;
+        break;
+      case "unit_identifier":
+      case "route_number":
+        clone[field] =
+          typeof value === "string" ? value.trim() || null : null;
+        break;
+      case "county_name":
+      case "municipality_name": {
+        const titled = toTitleCase(String(value));
+        clone[field] = titled && titled.trim().length ? titled : null;
+        break;
+      }
+      case "latitude":
+      case "longitude": {
+        const numeric =
+          typeof value === "number" ? value : Number(String(value).trim());
+        clone[field] = Number.isFinite(numeric) ? numeric : null;
+        break;
+      }
+      case "township":
+        clone[field] = padGridValue(value, 2);
+        break;
+      case "range":
+        clone[field] = padGridValue(value, 2);
+        break;
+      case "section":
+        clone[field] = padGridValue(value, 2);
+        break;
+      case "block":
+        clone[field] = padGridValue(value, 3);
+        break;
+      case "lot":
+        clone[field] = padGridValue(value, 4);
+        break;
+      default:
+        clone[field] = value;
+    }
+  }
+
+  return clone;
 }
 
 function collectAddressFields(source, fields, options = {}) {
@@ -3297,6 +3460,13 @@ async function main() {
         finalAddress = null;
         finalAddressVariant = null;
       }
+    }
+
+    if (finalAddress && finalAddressVariant) {
+      finalAddress = ensureAddressFieldsForOutput(
+        finalAddress,
+        finalAddressVariant,
+      );
     }
 
     const hasMeaningfulAddress =
