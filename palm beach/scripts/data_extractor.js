@@ -721,19 +721,9 @@ const RAW_ADDRESS_OUTPUT_FIELDS = [
   "lot",
 ];
 
-const RAW_ADDRESS_MINIMAL_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-];
+const RAW_ADDRESS_MINIMAL_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
-const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_MINIMAL_FIELDS];
+const RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS = [...RAW_ADDRESS_OUTPUT_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
