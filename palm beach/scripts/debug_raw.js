@@ -1044,7 +1044,10 @@ function createSchemaReadyAddress(address, variant, options = {}) {
     }
 
     rawPayload.unnormalized_address = resolvedUnnormalized;
-    const sanitizedRaw = pruneRawAddressForSchema(rawPayload);
+    const sanitizedRaw = pruneRawAddressForSchema(rawPayload, {
+      allowedFields: RAW_ADDRESS_ALLOWED_FIELDS,
+      preserveNulls: true,
+    });
     if (sanitizedRaw && Object.keys(sanitizedRaw).length) {
       return sanitizedRaw;
     }
@@ -1324,7 +1327,7 @@ function sanitizeCityName(value) {
   return cleaned;
 }
 
-function pruneRawAddressForSchema(address) {
+function pruneRawAddressForSchema(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
   const unnormalized =
@@ -1381,20 +1384,56 @@ function pruneRawAddressForSchema(address) {
     }
   };
 
+  const allowedFields =
+    (options && Array.isArray(options.allowedFields) && options.allowedFields.length
+      ? options.allowedFields
+      : RAW_ADDRESS_ALLOWED_FIELDS);
+
+  const preserveNulls =
+    options && Object.prototype.hasOwnProperty.call(options, "preserveNulls")
+      ? Boolean(options.preserveNulls)
+      : false;
+
   const pruned = { unnormalized_address: unnormalized };
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    const value = Object.prototype.hasOwnProperty.call(address, field)
-      ? address[field]
-      : null;
-    const sanitized = sanitizeField(field, value);
-    pruned[field] = sanitized != null ? sanitized : null;
+  for (const field of allowedFields) {
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    if (!hasField) {
+      if (preserveNulls) {
+        pruned[field] = null;
+      }
+      continue;
+    }
+    const sanitized = sanitizeField(field, address[field]);
+    if (sanitized != null) {
+      pruned[field] = sanitized;
+    } else if (preserveNulls) {
+      pruned[field] = null;
+    }
   }
 
-  if (!pruned.postal_code && pruned.plus_four_postal_code) {
-    pruned.plus_four_postal_code = null;
+  if (preserveNulls) {
+    for (const field of allowedFields) {
+      if (!Object.prototype.hasOwnProperty.call(pruned, field)) {
+        pruned[field] = null;
+      }
+    }
   }
 
-  if (pruned.state_code && !pruned.country_code) {
+  if (
+    !Object.prototype.hasOwnProperty.call(pruned, "postal_code") &&
+    Object.prototype.hasOwnProperty.call(pruned, "plus_four_postal_code")
+  ) {
+    if (preserveNulls) {
+      pruned.plus_four_postal_code = null;
+    } else {
+      delete pruned.plus_four_postal_code;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(pruned, "state_code") &&
+    !Object.prototype.hasOwnProperty.call(pruned, "country_code")
+  ) {
     pruned.country_code = "US";
   }
 
@@ -1417,7 +1456,10 @@ function finalizeAddressForOutput(address, variant) {
   if (!cloned || typeof cloned !== "object") return null;
 
   if (variant === "raw") {
-    const sanitized = pruneRawAddressForSchema(cloned);
+    const sanitized = pruneRawAddressForSchema(cloned, {
+      allowedFields: RAW_ADDRESS_ALLOWED_FIELDS,
+      preserveNulls: true,
+    });
     if (!sanitized) return null;
 
     const result = {};
@@ -1554,6 +1596,39 @@ function finalizeAddressForOutput(address, variant) {
 
   if (Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
     delete result.unnormalized_address;
+  }
+
+  return result;
+}
+
+function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
+  if (!address || typeof address !== "object") return null;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const fields =
+    Array.isArray(allowedFields) && allowedFields.length
+      ? allowedFields
+      : RAW_ADDRESS_ALLOWED_FIELDS;
+  const allowedSet = new Set(fields);
+  const result = { unnormalized_address: unnormalized };
+
+  for (const field of fields) {
+    const hasValue = Object.prototype.hasOwnProperty.call(address, field);
+    const value = hasValue ? address[field] : null;
+    result[field] = value === undefined ? null : value;
+  }
+
+  for (const [key, value] of Object.entries(address)) {
+    if (key === "unnormalized_address") continue;
+    if (allowedSet.has(key)) continue;
+    result[key] = value;
   }
 
   return result;
@@ -2948,6 +3023,17 @@ async function main() {
         if (finalAddress.state_code && !finalAddress.country_code) {
           finalAddress.country_code = "US";
         }
+
+        const ensuredRaw = ensureRawAddressFieldCoverage(
+          finalAddress,
+          RAW_ADDRESS_ALLOWED_FIELDS,
+        );
+        if (ensuredRaw) {
+          finalAddress = ensuredRaw;
+        } else {
+          finalAddress = null;
+          finalAddressVariant = null;
+        }
       }
     } else if (
       finalAddress &&
@@ -2972,18 +3058,9 @@ async function main() {
 
       const propertyJsonPath = path.join(dataDir, "property.json");
       const factSheetJsonPath = path.join(dataDir, "fact_sheet.json");
-      const hasPropertyFile = fs.existsSync(propertyJsonPath);
       const hasFactSheetFile = fs.existsSync(factSheetJsonPath);
 
-      if (hasPropertyFile) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
+      removeFileIfExists(propertyAddressRelationshipPath);
 
       if (hasFactSheetFile) {
         writeRelationshipFile(
