@@ -4372,6 +4372,47 @@ async function main() {
       }
     }
 
+    if (finalAddress && finalAddressVariant === "raw") {
+      const coverageReady =
+        ensureRawAddressFieldCoverage(
+          finalAddress,
+          RAW_ADDRESS_OUTPUT_FIELDS,
+        ) || finalAddress;
+      const finalizedRaw = finalizeAddressForOutput(
+        coverageReady,
+        "raw",
+        {
+          allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
+        },
+      );
+      if (finalizedRaw) {
+        finalAddress = finalizedRaw;
+      } else {
+        finalAddress = coverageReady;
+      }
+      for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+          finalAddress[field] = null;
+        }
+      }
+      if (
+        !Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address") &&
+        typeof trimmedUnnormalized === "string" &&
+        trimmedUnnormalized.length
+      ) {
+        finalAddress.unnormalized_address = trimmedUnnormalized;
+      }
+    } else if (finalAddress && finalAddressVariant === "normalized") {
+      const finalizedNormalized = finalizeAddressForOutput(
+        finalAddress,
+        "normalized",
+      );
+      if (finalizedNormalized) {
+        finalAddress = finalizedNormalized;
+      }
+      finalAddress = ensureAddressFieldsForOutput(finalAddress, "normalized");
+    }
+
     const hasMeaningfulAddress =
       finalAddress &&
       Object.entries(finalAddress).some(([key, value]) => {
