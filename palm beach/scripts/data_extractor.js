@@ -27,8 +27,9 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, "null\n");
+  // Relationships are published by the platform; avoid emitting placeholders that
+  // can fail schema validation when downstream UR minting runs.
+  removeFileIfExists(filePath);
 }
 
 function removeFileIfExists(filePath) {
@@ -3807,6 +3808,41 @@ async function main() {
 
       if (!finalAddress) {
         finalAddressVariant = null;
+      }
+    }
+
+    if (finalAddress && finalAddressVariant === "raw") {
+      const trimmed = typeof finalAddress.unnormalized_address === "string"
+        ? finalAddress.unnormalized_address.trim()
+        : "";
+      if (!trimmed.length) {
+        finalAddress = null;
+        finalAddressVariant = null;
+      } else {
+        finalAddress.unnormalized_address = trimmed;
+        for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        }
+        finalAddress.latitude = parseCoordinate(finalAddress.latitude);
+        finalAddress.longitude = parseCoordinate(finalAddress.longitude);
+        finalAddress.city_name = sanitizeCityName(finalAddress.city_name) || null;
+        finalAddress.postal_code = sanitizePostalCode(finalAddress.postal_code) || null;
+        finalAddress.plus_four_postal_code =
+          sanitizePlus4(finalAddress.plus_four_postal_code) || null;
+        finalAddress.state_code = finalAddress.state_code
+          ? String(finalAddress.state_code).trim().toUpperCase() || null
+          : null;
+        finalAddress.country_code = finalAddress.country_code
+          ? String(finalAddress.country_code).trim().toUpperCase() || null
+          : null;
+        if (!finalAddress.country_code && finalAddress.state_code) {
+          finalAddress.country_code = "US";
+        }
+        if (!finalAddress.postal_code) {
+          finalAddress.plus_four_postal_code = null;
+        }
       }
     }
 

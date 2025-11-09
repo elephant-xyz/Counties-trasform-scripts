@@ -27,8 +27,8 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, "null\n");
+  // Relationships are generated later in the pipeline; avoid writing placeholders.
+  removeFileIfExists(filePath);
 }
 
 function removeFileIfExists(filePath) {
@@ -2824,15 +2824,39 @@ async function main() {
       }
     }
 
+    let resolvedRawUnnormalized = null;
+
+    if (finalAddress && finalAddressVariant === "raw") {
+      const existingUnnormalized =
+        typeof finalAddress.unnormalized_address === "string"
+          ? finalAddress.unnormalized_address.trim()
+          : "";
+      const fallbackUnnormalized =
+        typeof trimmedUnnormalized === "string" ? trimmedUnnormalized.trim() : "";
+      resolvedRawUnnormalized =
+        existingUnnormalized.length > 0
+          ? existingUnnormalized
+          : fallbackUnnormalized.length > 0
+            ? fallbackUnnormalized
+            : "";
+      if (!resolvedRawUnnormalized.length) {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    }
+
     if (finalAddress && finalAddressVariant === "raw") {
       const rawFieldSet = new Set([
         ...RAW_ADDRESS_ALLOWED_FIELDS,
         "unnormalized_address",
       ]);
+      finalAddress.unnormalized_address = resolvedRawUnnormalized;
       for (const field of rawFieldSet) {
         if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
           finalAddress[field] =
-            field === "unnormalized_address" ? trimmedUnnormalized || null : null;
+            field === "unnormalized_address"
+              ? finalAddress.unnormalized_address
+              : null;
         }
       }
       finalAddress.latitude = parseCoordinate(finalAddress.latitude);
