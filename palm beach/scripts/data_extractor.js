@@ -114,7 +114,10 @@ async function fetchParcelCentroid(parcelId) {
   if (process && process.env && process.env.DISABLE_PARCEL_CENTROID === "1") {
     return null;
   }
-  const normalized = typeof parcelId === "string" ? parcelId.replace(/\D/g, "") : "";
+  const normalized =
+    typeof parcelId === "string"
+      ? normalizeParcelIdentifierForFetch(parcelId)
+      : null;
   if (!normalized) return null;
 
   const body = new URLSearchParams({
@@ -2651,6 +2654,12 @@ function normalizeParcelIdentifier(value) {
   return digits.length ? digits : null;
 }
 
+function normalizeParcelIdentifierForFetch(value) {
+  if (value === null || value === undefined) return null;
+  const alphanumeric = String(value).replace(/[^0-9A-Za-z]/g, "");
+  return alphanumeric.length ? alphanumeric : null;
+}
+
 function pickFirstParcelIdentifier(...candidates) {
   const queue = [...candidates];
   while (queue.length) {
@@ -2792,35 +2801,43 @@ async function main() {
   } catch (e) { }
 
   const parcelIdCandidates = [];
-  if (seed && seed.parcel_id) parcelIdCandidates.push(seed.parcel_id);
+  const parcelIdRawCandidates = [];
+  const enqueueParcelCandidate = (value) => {
+    const candidate = safeNullIfEmpty(value);
+    if (!candidate) return;
+    parcelIdCandidates.push(candidate);
+    parcelIdRawCandidates.push(candidate);
+  };
+
+  if (seed && seed.parcel_id) enqueueParcelCandidate(seed.parcel_id);
   if (seed && seed.request_identifier)
-    parcelIdCandidates.push(seed.request_identifier);
+    enqueueParcelCandidate(seed.request_identifier);
   if (
     seed &&
     seed.source_http_request &&
     seed.source_http_request.multiValueQueryString &&
     Array.isArray(seed.source_http_request.multiValueQueryString.parcelId)
   ) {
-    parcelIdCandidates.push(
-      ...seed.source_http_request.multiValueQueryString.parcelId,
-    );
+    for (const pid of seed.source_http_request.multiValueQueryString.parcelId) {
+      enqueueParcelCandidate(pid);
+    }
   }
-  if (unAddr && unAddr.parcel_id) parcelIdCandidates.push(unAddr.parcel_id);
+  if (unAddr && unAddr.parcel_id) enqueueParcelCandidate(unAddr.parcel_id);
   if (unAddr && unAddr.request_identifier)
-    parcelIdCandidates.push(unAddr.request_identifier);
+    enqueueParcelCandidate(unAddr.request_identifier);
   if (
     unAddr &&
     unAddr.source_http_request &&
     unAddr.source_http_request.multiValueQueryString &&
     Array.isArray(unAddr.source_http_request.multiValueQueryString.parcelId)
   ) {
-    parcelIdCandidates.push(
-      ...unAddr.source_http_request.multiValueQueryString.parcelId,
-    );
+    for (const pid of unAddr.source_http_request.multiValueQueryString.parcelId) {
+      enqueueParcelCandidate(pid);
+    }
   }
 
-  let parcelId = pickFirstParcelIdentifier(parcelIdCandidates);
-  let ownersKey = parcelId ? `property_${parcelId}` : null;
+  let parcelId = null;
+  let ownersKey = null;
   const initialLatitude = parseCoordinate(unAddr && unAddr.latitude);
   const initialLongitude = parseCoordinate(unAddr && unAddr.longitude);
   let parcelCentroid = null;
@@ -2873,24 +2890,49 @@ async function main() {
     ) || safeNullIfEmpty(modelDetail && modelDetail.LegalDesc);
 
   if (modelDetail && modelDetail.FormattedPCN) {
-    parcelIdCandidates.push(modelDetail.FormattedPCN);
+    enqueueParcelCandidate(modelDetail.FormattedPCN);
   }
   if (modelDetail && modelDetail.PCN) {
-    parcelIdCandidates.push(modelDetail.PCN);
+    enqueueParcelCandidate(modelDetail.PCN);
   }
   if (pcnHyphen) {
-    parcelIdCandidates.push(pcnHyphen);
+    enqueueParcelCandidate(pcnHyphen);
   }
 
-  parcelId = pickFirstParcelIdentifier(parcelId, parcelIdCandidates);
+  parcelId = pickFirstParcelIdentifier(parcelIdCandidates);
   ownersKey = parcelId ? `property_${parcelId}` : null;
+
+  const parcelIdForCentroid = (() => {
+    if (parcelId) {
+      for (const rawCandidate of parcelIdRawCandidates) {
+        const normalized = normalizeParcelIdentifier(rawCandidate);
+        if (normalized && normalized === parcelId) {
+          const canonical = normalizeParcelIdentifierForFetch(rawCandidate);
+          if (canonical) {
+            return canonical;
+          }
+        }
+      }
+    }
+    for (const rawCandidate of parcelIdRawCandidates) {
+      const canonical = normalizeParcelIdentifierForFetch(rawCandidate);
+      if (canonical) {
+        return canonical;
+      }
+    }
+    if (parcelId) {
+      return normalizeParcelIdentifierForFetch(parcelId);
+    }
+    return null;
+  })();
 
   if (
     (!Number.isFinite(initialLatitude) || !Number.isFinite(initialLongitude)) &&
-    parcelId &&
+    (parcelIdForCentroid || parcelId) &&
     !parcelCentroid
   ) {
-    parcelCentroid = await fetchParcelCentroid(parcelId);
+    const centroidParcelId = parcelIdForCentroid || parcelId;
+    parcelCentroid = await fetchParcelCentroid(centroidParcelId);
   }
 
   // Property metrics from model.structuralDetails if available
