@@ -1227,7 +1227,7 @@ function prepareRawAddressForSchema(rawAddress, options = {}) {
     !Object.prototype.hasOwnProperty.call(prepared, "postal_code") &&
     Object.prototype.hasOwnProperty.call(prepared, "plus_four_postal_code")
   ) {
-    delete prepared.plus_four_postal_code;
+    prepared.plus_four_postal_code = null;
   }
 
   return Object.keys(prepared).length ? prepared : null;
@@ -2544,7 +2544,7 @@ function buildRawAddressOutput(address, options = {}) {
     !result.postal_code &&
     Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
   ) {
-    delete result.plus_four_postal_code;
+    result.plus_four_postal_code = null;
   }
 
   if (
@@ -2678,7 +2678,7 @@ function filterRawAddressFields(address, options = {}) {
     !result.postal_code &&
     Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
   ) {
-    delete result.plus_four_postal_code;
+    result.plus_four_postal_code = null;
   }
 
   return result;
@@ -3906,12 +3906,12 @@ async function main() {
     let finalAddress = null;
     let finalAddressVariant = null;
 
-    if (rawCandidate && hasUnnormalizedAddress) {
-      finalAddress = rawCandidate;
-      finalAddressVariant = "raw";
-    } else if (normalizedCandidate) {
+    if (normalizedCandidate) {
       finalAddress = normalizedCandidate;
       finalAddressVariant = "normalized";
+    } else if (rawCandidate && hasUnnormalizedAddress) {
+      finalAddress = rawCandidate;
+      finalAddressVariant = "raw";
     } else if (rawCandidate) {
       finalAddress = rawCandidate;
       finalAddressVariant = "raw";
