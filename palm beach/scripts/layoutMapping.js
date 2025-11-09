@@ -281,15 +281,12 @@ function run() {
       "utf8",
     );
 
-    // Create relationship file for each layout
+    // Relationships are materialized downstream; ensure local stub does not linger.
     const relationshipPath = path.join(
       dataDir,
       `relationship_property_layout_${layoutIndex}.json`,
     );
-    const propertyPath = path.join(dataDir, "property.json");
-    if (fs.existsSync(propertyPath)) {
-      fs.writeFileSync(relationshipPath, "null", "utf8");
-    } else if (fs.existsSync(relationshipPath)) {
+    if (fs.existsSync(relationshipPath)) {
       fs.unlinkSync(relationshipPath);
     }
   });

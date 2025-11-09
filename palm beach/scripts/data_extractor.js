@@ -706,7 +706,6 @@ const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   ...RAW_ADDRESS_STREET_FIELDS,
-  ...RAW_ADDRESS_OPTIONAL_GRID_FIELDS,
 ]);
 
 const ADDRESS_SCHEMA_FIELDS = [
@@ -2052,6 +2051,15 @@ function pruneRawAddressForSchema(address, options = {}) {
   }
 
   return pruned;
+}
+
+function stripNormalizedFieldsFromRaw(address) {
+  if (!address || typeof address !== "object") return;
+  for (const field of RAW_ADDRESS_NORMALIZED_ONLY_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      delete address[field];
+    }
+  }
 }
 
 function formatRawAddressForOutput(address, options = {}) {
@@ -3519,6 +3527,12 @@ async function main() {
     const rawOutputFields = normalizedAddressHasSchemaCoverage
       ? RAW_ADDRESS_OUTPUT_FIELDS
       : RAW_ADDRESS_MINIMAL_OUTPUT_FIELDS;
+    const effectiveRawAllowedFields = rawAllowedFields.filter(
+      (field) => !RAW_ADDRESS_NORMALIZED_ONLY_FIELDS.has(field),
+    );
+    const effectiveRawOutputFields = rawOutputFields.filter(
+      (field) => !RAW_ADDRESS_NORMALIZED_ONLY_FIELDS.has(field),
+    );
 
     let normalizedAddress = null;
     if (normalizedAddressHasSchemaCoverage) {
@@ -3538,7 +3552,7 @@ async function main() {
 
     const rawAddressCandidate = hasUnnormalizedAddress
       ? buildRawAddressPayload(address, trimmedUnnormalized, {
-          allowedFields: rawAllowedFields,
+          allowedFields: effectiveRawAllowedFields,
         })
       : null;
     const rawAddressIsValid =
@@ -3607,9 +3621,10 @@ async function main() {
       }
 
       const candidate = prepareRawAddressForSchema(rawOutput, {
-        allowedFields: rawAllowedFields,
+        allowedFields: effectiveRawAllowedFields,
       });
       if (candidate) {
+        stripNormalizedFieldsFromRaw(candidate);
         materializedRawAddress = candidate;
       }
     }
@@ -3704,12 +3719,13 @@ async function main() {
       const schemaReadyRaw = ensureAddressVariantIsSchemaCompliant(
         rawBaseCandidate,
         "raw",
-        { allowedRawFields: rawAllowedFields },
+        { allowedRawFields: effectiveRawAllowedFields },
       );
       if (!schemaReadyRaw) return null;
 
+      stripNormalizedFieldsFromRaw(schemaReadyRaw);
       const preparedRaw = pruneRawAddressForSchema(schemaReadyRaw, {
-        allowedFields: rawAllowedFields,
+        allowedFields: effectiveRawAllowedFields,
         preserveNulls: true,
       });
       const rawUnnormalized =
@@ -3742,11 +3758,12 @@ async function main() {
       const minimalRaw = ensureAddressVariantIsSchemaCompliant(
         { unnormalized_address: trimmedUnnormalized },
         "raw",
-        { allowedRawFields: rawAllowedFields },
+        { allowedRawFields: effectiveRawAllowedFields },
       );
       if (minimalRaw) {
+        stripNormalizedFieldsFromRaw(minimalRaw);
         const preparedRaw = pruneRawAddressForSchema(minimalRaw, {
-          allowedFields: rawAllowedFields,
+          allowedFields: effectiveRawAllowedFields,
           preserveNulls: true,
         });
         const rawUnnormalized =
@@ -3765,7 +3782,7 @@ async function main() {
     if (finalAddress && finalAddressVariant) {
       if (finalAddressVariant === "raw") {
         finalAddress = buildRawAddressOutput(finalAddress, {
-          allowedFields: rawOutputFields,
+          allowedFields: effectiveRawOutputFields,
           trimmedUnnormalized,
         });
       } else if (finalAddressVariant === "normalized") {
@@ -3813,6 +3830,7 @@ async function main() {
         assign(rawOutput, "block", padGridValue(finalAddress.block, 3));
         assign(rawOutput, "lot", padGridValue(finalAddress.lot, 4));
 
+        stripNormalizedFieldsFromRaw(rawOutput);
         finalAddress = rawOutput;
       }
     }
