@@ -1383,41 +1383,48 @@ function finalizeAddressForOutput(address, variant) {
     const result = {};
     const orderedFields = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
     for (const field of orderedFields) {
-      if (!Object.prototype.hasOwnProperty.call(sanitized, field)) continue;
+      if (!Object.prototype.hasOwnProperty.call(sanitized, field)) {
+        result[field] = null;
+        continue;
+      }
+
       const value = sanitized[field];
-      if (value === null || value === undefined) continue;
+      if (field === "unnormalized_address") {
+        if (typeof value !== "string") {
+          return null;
+        }
+        const trimmed = value.trim();
+        if (!trimmed.length) {
+          return null;
+        }
+        result[field] = trimmed;
+        continue;
+      }
+
+      if (value === null || value === undefined) {
+        result[field] = null;
+        continue;
+      }
+
       if (typeof value === "string") {
         const trimmed = value.trim();
-        if (!trimmed.length) continue;
-        result[field] = trimmed;
-      } else {
-        result[field] = value;
+        result[field] = trimmed.length ? trimmed : null;
+        continue;
       }
+
+      if (typeof value === "number") {
+        result[field] = Number.isFinite(value) ? value : null;
+        continue;
+      }
+
+      result[field] = value;
     }
 
     if (!result.postal_code && result.plus_four_postal_code) {
-      delete result.plus_four_postal_code;
+      result.plus_four_postal_code = null;
     }
     if (!result.country_code && result.state_code) {
       result.country_code = "US";
-    }
-
-    const hasCoreFields =
-      typeof result.unnormalized_address === "string" &&
-      result.unnormalized_address.trim().length > 0 &&
-      RAW_SCHEMA_REQUIRED_FIELDS.every((field) => {
-        if (field === "latitude" || field === "longitude") {
-          return Number.isFinite(result[field]);
-        }
-        const candidate = result[field];
-        if (typeof candidate === "string") {
-          return candidate.trim().length > 0;
-        }
-        return candidate !== null && candidate !== undefined;
-      });
-
-    if (!hasCoreFields) {
-      return null;
     }
 
     return result;
