@@ -3954,7 +3954,7 @@ async function main() {
       } else {
         const rawSeed = {
           ...collectAddressFields(address, effectiveRawOutputFields, {
-            preserveNulls: false,
+            preserveNulls: true,
           }),
           ...finalAddress,
           unnormalized_address: resolvedRawUnnormalized,
@@ -3965,11 +3965,11 @@ async function main() {
         });
 
         if (canonicalRaw) {
-          const filteredRaw = filterRawAddressFields(canonicalRaw, {
+          const formattedRaw = formatRawAddressForOutput(canonicalRaw, {
             allowedFields: effectiveRawOutputFields,
           });
-          if (filteredRaw) {
-            finalAddress = filteredRaw;
+          if (formattedRaw) {
+            finalAddress = formattedRaw;
           } else {
             finalAddress = null;
             finalAddressVariant = null;
