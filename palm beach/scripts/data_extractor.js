@@ -27,9 +27,12 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  // Relationships are published by the platform; avoid emitting placeholders that
-  // can fail schema validation when downstream UR minting runs.
-  removeFileIfExists(filePath);
+  const payload = {
+    from: { "/": fromRelative.trim() },
+    to: { "/": toRelative.trim() },
+  };
+
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
 }
 
 function removeFileIfExists(filePath) {

@@ -27,8 +27,12 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  // Relationships are generated later in the pipeline; avoid writing placeholders.
-  removeFileIfExists(filePath);
+  const payload = {
+    from: { "/": fromRelative.trim() },
+    to: { "/": toRelative.trim() },
+  };
+
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
 }
 
 function removeFileIfExists(filePath) {
