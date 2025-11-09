@@ -3546,6 +3546,34 @@ async function main() {
         finalAddress,
         finalAddressVariant,
       );
+
+      if (finalAddressVariant === "raw") {
+        const rawFieldSet = new Set([
+          ...RAW_ADDRESS_ALLOWED_FIELDS,
+          "unnormalized_address",
+        ]);
+        for (const field of rawFieldSet) {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] =
+              field === "unnormalized_address" ? trimmedUnnormalized || null : null;
+          }
+        }
+        finalAddress.latitude = parseCoordinate(finalAddress.latitude);
+        finalAddress.longitude = parseCoordinate(finalAddress.longitude);
+        const sanitizedCity = sanitizeCityName(finalAddress.city_name);
+        finalAddress.city_name = sanitizedCity || null;
+        if (!finalAddress.postal_code && finalAddress.plus_four_postal_code) {
+          finalAddress.plus_four_postal_code = null;
+        }
+        if (!finalAddress.country_code && finalAddress.state_code) {
+          finalAddress.country_code = "US";
+        }
+      } else if (
+        finalAddressVariant === "normalized" &&
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
     }
 
     const hasMeaningfulAddress =
