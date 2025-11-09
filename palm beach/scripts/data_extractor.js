@@ -2532,6 +2532,129 @@ function buildRawAddressOutput(address, options = {}) {
   return result;
 }
 
+function filterRawAddressFields(address, options = {}) {
+  if (!address || typeof address !== "object") return null;
+
+  const allowedFields =
+    Array.isArray(options.allowedFields) && options.allowedFields.length
+      ? options.allowedFields
+      : RAW_ADDRESS_ALLOWED_FIELDS;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const result = {
+    unnormalized_address: unnormalized,
+  };
+
+  const GRID_NORMALIZATION = {
+    township: 2,
+    range: 2,
+    section: 2,
+    block: 3,
+    lot: 4,
+  };
+
+  for (const field of allowedFields) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+
+    let value = address[field];
+    if (value === undefined || value === null) continue;
+
+    if (field === "latitude" || field === "longitude") {
+      const numeric =
+        typeof value === "number" ? value : Number(String(value).trim());
+      if (!Number.isFinite(numeric)) continue;
+      result[field] = numeric;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) continue;
+      result[field] = value;
+      continue;
+    }
+
+    if (typeof value !== "string") continue;
+
+    const trimmed = value.trim();
+    if (!trimmed.length) continue;
+
+    switch (field) {
+      case "city_name": {
+        const sanitized = sanitizeCityName(trimmed);
+        if (sanitized) result[field] = sanitized;
+        break;
+      }
+      case "postal_code": {
+        const postal = sanitizePostalCode(trimmed);
+        if (postal) result[field] = postal;
+        break;
+      }
+      case "plus_four_postal_code": {
+        const plus4 = sanitizePlus4(trimmed);
+        if (plus4) result[field] = plus4;
+        break;
+      }
+      case "state_code":
+      case "country_code":
+      case "street_pre_directional_text":
+      case "street_post_directional_text":
+        result[field] = trimmed.toUpperCase();
+        break;
+      case "street_suffix_type": {
+        const mapped = mapStreetSuffixType(trimmed);
+        if (mapped) {
+          result[field] = mapped;
+        } else {
+          result[field] = trimmed;
+        }
+        break;
+      }
+      case "street_name":
+        result[field] = trimmed.toUpperCase();
+        break;
+      case "unit_identifier":
+      case "route_number":
+        result[field] = trimmed;
+        break;
+      case "county_name":
+      case "municipality_name": {
+        const titled = toTitleCase(trimmed);
+        if (titled && titled.trim().length) {
+          result[field] = titled;
+        }
+        break;
+      }
+      default: {
+        if (Object.prototype.hasOwnProperty.call(GRID_NORMALIZATION, field)) {
+          const normalized = padGridValue(trimmed, GRID_NORMALIZATION[field]);
+          if (normalized) {
+            result[field] = normalized;
+          }
+        } else {
+          result[field] = trimmed;
+        }
+        break;
+      }
+    }
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+  if (!result.postal_code && Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")) {
+    delete result.plus_four_postal_code;
+  }
+
+  return result;
+}
+
 function buildNormalizedAddressOutput(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -3834,7 +3957,7 @@ async function main() {
       } else {
         const rawSeed = {
           ...collectAddressFields(address, effectiveRawOutputFields, {
-            preserveNulls: true,
+            preserveNulls: false,
           }),
           ...finalAddress,
           unnormalized_address: resolvedRawUnnormalized,
@@ -3845,26 +3968,11 @@ async function main() {
         });
 
         if (canonicalRaw) {
-          const ensuredRaw = ensureAddressFieldsForOutput(canonicalRaw, "raw", {
+          const filteredRaw = filterRawAddressFields(canonicalRaw, {
             allowedFields: effectiveRawOutputFields,
           });
-          if (ensuredRaw) {
-            for (const field of effectiveRawOutputFields) {
-              if (!Object.prototype.hasOwnProperty.call(ensuredRaw, field)) {
-                ensuredRaw[field] = null;
-              }
-            }
-            ensuredRaw.unnormalized_address = resolvedRawUnnormalized;
-            if (!ensuredRaw.country_code && ensuredRaw.state_code) {
-              ensuredRaw.country_code = "US";
-            }
-            if (
-              !ensuredRaw.postal_code &&
-              Object.prototype.hasOwnProperty.call(ensuredRaw, "plus_four_postal_code")
-            ) {
-              ensuredRaw.plus_four_postal_code = null;
-            }
-            finalAddress = ensuredRaw;
+          if (filteredRaw) {
+            finalAddress = filteredRaw;
           } else {
             finalAddress = null;
             finalAddressVariant = null;
