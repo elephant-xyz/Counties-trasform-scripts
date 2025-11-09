@@ -2648,8 +2648,17 @@ function filterRawAddressFields(address, options = {}) {
   if (result.state_code && !result.country_code) {
     result.country_code = "US";
   }
-  if (!result.postal_code && Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")) {
-    delete result.plus_four_postal_code;
+  if (
+    !result.postal_code &&
+    Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
+  ) {
+    result.plus_four_postal_code = null;
+  }
+
+  for (const field of allowedFields) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+    }
   }
 
   return result;
