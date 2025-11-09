@@ -2102,25 +2102,18 @@ function formatRawAddressForOutput(address, options = {}) {
       : RAW_ADDRESS_OUTPUT_FIELDS);
 
   for (const field of allowedFields) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
-    }
-
     const transformer =
       Object.prototype.hasOwnProperty.call(transformers, field)
         ? transformers[field]
         : null;
-    const rawValue = address[field];
+
+    const hasRawValue = Object.prototype.hasOwnProperty.call(address, field);
+    const rawValue = hasRawValue ? address[field] : null;
     let transformed =
       typeof transformer === "function" ? transformer(rawValue) : rawValue;
 
-    if (transformed === undefined || transformed === null) {
-      continue;
-    }
-
     if (typeof transformed === "number") {
-      if (!Number.isFinite(transformed)) continue;
-      result[field] = transformed;
+      result[field] = Number.isFinite(transformed) ? transformed : null;
       continue;
     }
 
@@ -2131,23 +2124,24 @@ function formatRawAddressForOutput(address, options = {}) {
 
     if (typeof transformed === "string") {
       const trimmed = transformed.trim();
-      if (!trimmed.length) continue;
-      result[field] = trimmed;
+      result[field] = trimmed.length ? trimmed : null;
       continue;
     }
 
-    result[field] = transformed;
+    if (transformed === undefined) {
+      transformed = null;
+    }
+
+    result[field] =
+      transformed !== null && transformed !== undefined ? transformed : null;
   }
 
   if (result.state_code && !result.country_code) {
     result.country_code = "US";
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code") &&
-    !result.postal_code
-  ) {
-    delete result.plus_four_postal_code;
+  if (!result.postal_code && Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")) {
+    result.plus_four_postal_code = null;
   }
 
   return Object.keys(result).length ? result : null;
