@@ -27,8 +27,8 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  // Relationship UR payloads are populated downstream; avoid emitting placeholders here.
-  removeFileIfExists(filePath);
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, "null\n");
 }
 
 function removeFileIfExists(filePath) {
@@ -74,6 +74,20 @@ function padGridValue(value, length) {
     return alphanumeric.padStart(length, "0");
   }
   return alphanumeric;
+}
+
+function coerceEmptyStringsToNull(obj, fields) {
+  if (!obj || typeof obj !== "object") return;
+  const keys =
+    Array.isArray(fields) && fields.length ? fields : Object.keys(obj);
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+    const value = obj[key];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      obj[key] = trimmed.length ? trimmed : null;
+    }
+  }
 }
 
 async function fetchParcelCentroid(parcelId) {
@@ -2897,6 +2911,11 @@ async function main() {
       finalAddress.section = padGridValue(finalAddress.section, 2);
       finalAddress.block = padGridValue(finalAddress.block, 3);
       finalAddress.lot = padGridValue(finalAddress.lot, 4);
+
+      coerceEmptyStringsToNull(finalAddress, [
+        ...RAW_ADDRESS_ALLOWED_FIELDS,
+        "unnormalized_address",
+      ]);
     } else if (
       finalAddress &&
       finalAddressVariant === "normalized" &&

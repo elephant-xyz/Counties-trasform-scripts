@@ -27,8 +27,8 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  // Relationship UR payloads are populated downstream; avoid emitting placeholders here.
-  removeFileIfExists(filePath);
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, "null\n");
 }
 
 function removeFileIfExists(filePath) {
@@ -84,6 +84,20 @@ function removeNullishFields(obj) {
     pruned[key] = value;
   }
   return pruned;
+}
+
+function coerceEmptyStringsToNull(obj, fields) {
+  if (!obj || typeof obj !== "object") return;
+  const keys =
+    Array.isArray(fields) && fields.length ? fields : Object.keys(obj);
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+    const value = obj[key];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      obj[key] = trimmed.length ? trimmed : null;
+    }
+  }
 }
 
 function deepClone(value) {
@@ -3821,6 +3835,11 @@ async function main() {
         assignGrid("section", 2);
         assignGrid("block", 3);
         assignGrid("lot", 4);
+
+        coerceEmptyStringsToNull(finalAddress, [
+          ...RAW_ADDRESS_ALLOWED_FIELDS,
+          "unnormalized_address",
+        ]);
 
         const rawUnnormalized =
           typeof finalAddress.unnormalized_address === "string"
