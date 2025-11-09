@@ -163,6 +163,332 @@ async function fetchParcelCentroid(parcelId) {
   }
 }
 
+function getGeocodeUserAgent() {
+  const fromEnv =
+    process &&
+    process.env &&
+    typeof process.env.NOMINATIM_USER_AGENT === "string" &&
+    process.env.NOMINATIM_USER_AGENT.trim().length
+      ? process.env.NOMINATIM_USER_AGENT.trim()
+      : null;
+  if (fromEnv) return fromEnv;
+  return "ElephantCountyTransform/1.0 (transform@elephant.ai)";
+}
+
+async function geocodeAddress(addressText) {
+  const query =
+    typeof addressText === "string" ? addressText.trim() : "";
+  if (!query.length) {
+    return null;
+  }
+
+  const nominatimResult = await geocodeAddressWithNominatim(query);
+  if (nominatimResult) {
+    return nominatimResult;
+  }
+
+  return geocodeAddressWithCensus(query);
+}
+
+async function geocodeAddressWithNominatim(query) {
+  const searchParams = new URLSearchParams({
+    q: query,
+    format: "jsonv2",
+    addressdetails: "1",
+    limit: "1",
+  });
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?${searchParams.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          "user-agent": getGeocodeUserAgent(),
+          accept: "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    if (!Array.isArray(payload) || payload.length === 0) {
+      return null;
+    }
+
+    const first = payload[0];
+    if (!first) return null;
+    const latitude = Number(first.lat);
+    const longitude = Number(first.lon);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    const components =
+      first.address && typeof first.address === "object"
+        ? first.address
+        : {};
+
+    const postalCandidate =
+      typeof first.postcode === "string" && first.postcode.trim().length
+        ? first.postcode.trim()
+        : typeof components.postcode === "string" && components.postcode.trim().length
+          ? components.postcode.trim()
+          : null;
+
+    return {
+      latitude,
+      longitude,
+      components,
+      postalCode: postalCandidate,
+      displayName:
+        typeof first.display_name === "string" ? first.display_name.trim() : null,
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+async function geocodeAddressWithCensus(query) {
+  const params = new URLSearchParams({
+    address: query,
+    benchmark: "2020",
+    format: "json",
+  });
+
+  try {
+    const response = await fetch(
+      `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?${params.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          "user-agent": getGeocodeUserAgent(),
+          accept: "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    const matches =
+      payload &&
+      payload.result &&
+      Array.isArray(payload.result.addressMatches)
+        ? payload.result.addressMatches
+        : [];
+
+    if (!matches.length) {
+      return null;
+    }
+
+    const match = matches[0];
+    if (!match || !match.coordinates) return null;
+
+    const longitude = Number(match.coordinates.x);
+    const latitude = Number(match.coordinates.y);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+
+    const components =
+      match.addressComponents && typeof match.addressComponents === "object"
+        ? {
+            ...match.addressComponents,
+            // Align naming with Nominatim style for downstream handling
+            city: match.addressComponents.city || match.addressComponents.placeName || "",
+            state_code: match.addressComponents.state || "",
+            road: [
+              match.addressComponents.preDirection,
+              match.addressComponents.streetName,
+              match.addressComponents.suffixType,
+              match.addressComponents.suffixDirection,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .trim(),
+            house_number:
+              match.addressComponents.fromAddress ||
+              match.addressComponents.toAddress ||
+              match.addressComponents.houseNumber ||
+              "",
+          }
+        : {};
+
+    const postal =
+      match.addressComponents && match.addressComponents.zip
+        ? match.addressComponents.zip
+        : null;
+
+    return {
+      latitude,
+      longitude,
+      components,
+      postalCode: postal,
+      displayName: match.matchedAddress || null,
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function applyGeocodeEnhancements(address, geocodeResult) {
+  if (!address || typeof address !== "object") return;
+  if (!geocodeResult || typeof geocodeResult !== "object") return;
+
+  const { latitude, longitude, components, postalCode } = geocodeResult;
+
+  if (Number.isFinite(latitude) && !Number.isFinite(address.latitude)) {
+    address.latitude = latitude;
+  }
+  if (Number.isFinite(longitude) && !Number.isFinite(address.longitude)) {
+    address.longitude = longitude;
+  }
+
+  const componentValue = (keys) => {
+    if (!components || typeof components !== "object") return null;
+    for (const key of keys) {
+      if (
+        Object.prototype.hasOwnProperty.call(components, key) &&
+        typeof components[key] === "string"
+      ) {
+        const trimmed = components[key].trim();
+        if (trimmed.length) return trimmed;
+      }
+    }
+    return null;
+  };
+
+  if (!address.city_name) {
+    const cityCandidate = componentValue([
+      "city",
+      "town",
+      "village",
+      "hamlet",
+      "municipality",
+      "locality",
+    ]);
+    if (cityCandidate) {
+      const sanitized = sanitizeCityName(cityCandidate);
+      if (sanitized) address.city_name = sanitized;
+    }
+  }
+
+  if (!address.municipality_name) {
+    const municipality =
+      componentValue(["municipality", "city", "town", "village"]) || null;
+    if (municipality) {
+      const titled = toTitleCase(municipality);
+      if (titled) address.municipality_name = titled;
+    }
+  }
+
+  if (!address.state_code) {
+    const stateCode = componentValue(["state_code", "ISO3166-2-lvl4"]);
+    if (stateCode) {
+      address.state_code = stateCode.toUpperCase();
+    } else {
+      const stateName = componentValue(["state"]);
+      if (stateName) {
+        const abbrev = stateName.length === 2 ? stateName : null;
+        if (abbrev) {
+          address.state_code = abbrev.toUpperCase();
+        }
+      }
+    }
+  }
+
+  if (!address.country_code) {
+    const countryCode = componentValue(["country_code"]);
+    if (countryCode) {
+      address.country_code = countryCode.toUpperCase();
+    }
+  }
+
+  if (!address.county_name) {
+    const county = componentValue(["county"]);
+    if (county) {
+      const titled = toTitleCase(county);
+      if (titled) address.county_name = titled;
+    }
+  }
+
+  const normalizedPostal =
+    typeof postalCode === "string" ? postalCode.replace(/\s+/g, "") : null;
+  if (normalizedPostal && normalizedPostal.length >= 5) {
+    if (!address.postal_code) {
+      address.postal_code = sanitizePostalCode(normalizedPostal);
+    }
+    if (!address.plus_four_postal_code && normalizedPostal.includes("-")) {
+      const plusMatch = normalizedPostal.split("-")[1];
+      const sanitized = sanitizePlus4(plusMatch);
+      if (sanitized) address.plus_four_postal_code = sanitized;
+    }
+    if (
+      !address.plus_four_postal_code &&
+      normalizedPostal.length === 9
+    ) {
+      const plusCandidate = sanitizePlus4(normalizedPostal.slice(5));
+      if (plusCandidate) address.plus_four_postal_code = plusCandidate;
+      const base = sanitizePostalCode(normalizedPostal.slice(0, 5));
+      if (base && !address.postal_code) address.postal_code = base;
+    }
+  }
+
+  if (!address.street_number) {
+    const houseNumber = componentValue(["house_number"]);
+    if (houseNumber) {
+      const trimmed = String(houseNumber).trim();
+      if (trimmed.length) address.street_number = trimmed;
+    }
+  }
+
+  if (!address.street_name) {
+    const road = componentValue(["road", "residential", "pedestrian", "footway"]);
+    if (road) {
+      const formatted = formatStreetNameCase(road);
+      if (formatted) address.street_name = formatted.toUpperCase();
+    }
+  }
+
+  if (!address.street_suffix_type && address.street_name) {
+    const parts = address.street_name.split(/\s+/).filter(Boolean);
+    if (parts.length > 1) {
+      const suffixCandidate = parts[parts.length - 1];
+      const mapped = mapStreetSuffixType(suffixCandidate);
+      if (mapped) {
+        address.street_suffix_type = mapped;
+        address.street_name = parts.slice(0, -1).join(" ");
+      }
+    }
+  }
+
+  if (!address.street_pre_directional_text) {
+    const directional = componentValue(["road_direction"]);
+    if (directional) {
+      const normalized = directional.trim().toUpperCase();
+      if (normalized.length) address.street_pre_directional_text = normalized;
+    }
+  }
+
+  if (!address.unit_identifier) {
+    const unit =
+      componentValue(["unit", "house"]) ||
+      (geocodeResult.displayName &&
+        geocodeResult.displayName.includes("#")
+        ? geocodeResult.displayName.split("#").pop()
+        : null);
+    if (unit) {
+      const trimmed = String(unit).trim();
+      if (trimmed.length) address.unit_identifier = trimmed;
+    }
+  }
+}
+
 function extractUnitIdentifierFromAddressLines(lines = []) {
   for (const raw of lines) {
     const candidate = safeNullIfEmpty(raw);
@@ -3606,6 +3932,20 @@ async function main() {
           : null;
     address.latitude = resolvedLatitude;
     address.longitude = resolvedLongitude;
+
+    if (
+      (!Number.isFinite(address.latitude) ||
+        !Number.isFinite(address.longitude)) &&
+      unnormalizedAddressCandidate
+    ) {
+      const geocodeResult = await geocodeAddress(
+        unnormalizedAddressCandidate,
+      );
+      if (geocodeResult) {
+        applyGeocodeEnhancements(address, geocodeResult);
+      }
+    }
+
     address.plus_four_postal_code = stateMismatch ? null : sanitizedPlus4;
     address.postal_code = stateMismatch ? null : sanitizedPostalCode;
     address.state_code = inferredStateCode;
