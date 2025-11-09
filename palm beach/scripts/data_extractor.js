@@ -2168,6 +2168,38 @@ function formatRawAddressForOutput(address, options = {}) {
   return Object.keys(result).length ? result : null;
 }
 
+function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_OUTPUT_FIELDS) {
+  if (!address || typeof address !== "object") return null;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const fields = Array.isArray(allowedFields) && allowedFields.length
+    ? allowedFields
+    : RAW_ADDRESS_OUTPUT_FIELDS;
+  const allowedSet = new Set(fields);
+  const result = { unnormalized_address: unnormalized };
+
+  for (const field of fields) {
+    const hasValue = Object.prototype.hasOwnProperty.call(address, field);
+    const value = hasValue ? address[field] : null;
+    result[field] = value === undefined ? null : value;
+  }
+
+  for (const [key, value] of Object.entries(address)) {
+    if (key === "unnormalized_address") continue;
+    if (allowedSet.has(key)) continue;
+    result[key] = value;
+  }
+
+  return result;
+}
+
 function deriveGridPartsFromPcn(rawPcn) {
   if (!rawPcn) return {};
   const normalized = normalizeWhitespace(String(rawPcn));
@@ -3980,6 +4012,18 @@ async function main() {
         }
       }
     }
+    if (finalAddress && finalAddressVariant === "raw") {
+      const ensuredRaw = ensureRawAddressFieldCoverage(
+        finalAddress,
+        effectiveRawOutputFields,
+      );
+      if (ensuredRaw) {
+        finalAddress = ensuredRaw;
+      } else {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    }
 
     if (finalAddress && finalAddressVariant === "normalized") {
       if (!finalAddress.country_code && finalAddress.state_code) {
@@ -4011,16 +4055,6 @@ async function main() {
       const hasPropertyFile = fs.existsSync(propertyJsonPath);
       const hasFactSheetFile = fs.existsSync(factSheetJsonPath);
 
-      if (hasPropertyFile) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
-
       if (hasFactSheetFile) {
         writeRelationshipFile(
           addressFactSheetRelationshipPath,
@@ -4030,6 +4064,7 @@ async function main() {
       } else {
         removeFileIfExists(addressFactSheetRelationshipPath);
       }
+      removeFileIfExists(propertyAddressRelationshipPath);
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
