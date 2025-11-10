@@ -2956,6 +2956,118 @@ function projectRawAddressForOneOf(address) {
   return projected;
 }
 
+function buildRawAddressOutputForSchema(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const result = { unnormalized_address: unnormalized };
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    let value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      value = parseCoordinate(value);
+      result[field] = value != null ? value : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    }
+
+    switch (field) {
+      case "city_name":
+        value = sanitizeCityName(value) || null;
+        break;
+      case "postal_code":
+        value = sanitizePostalCode(value) || null;
+        break;
+      case "plus_four_postal_code":
+        value = sanitizePlus4(value) || null;
+        break;
+      case "state_code":
+      case "country_code":
+      case "street_pre_directional_text":
+      case "street_post_directional_text":
+        if (value != null) {
+          const upper = String(value).trim().toUpperCase();
+          value = upper.length ? upper : null;
+        }
+        break;
+      case "street_suffix_type": {
+        if (value != null) {
+          const mapped = mapStreetSuffixType(value);
+          if (mapped) {
+            value = mapped;
+          } else if (typeof value === "string") {
+            const trimmed = value.trim();
+            value = trimmed.length ? trimmed : null;
+          }
+        }
+        break;
+      }
+      case "street_name":
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed.toUpperCase() : null;
+        }
+        break;
+      case "unit_identifier":
+      case "route_number":
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        }
+        break;
+      case "county_name":
+      case "municipality_name":
+        if (value != null) {
+          const titled = toTitleCase(String(value));
+          value = titled && titled.trim().length ? titled : null;
+        }
+        break;
+      case "township":
+        value = padGridValue(value, 2);
+        break;
+      case "range":
+        value = padGridValue(value, 2);
+        break;
+      case "section":
+        value = padGridValue(value, 2);
+        break;
+      case "block":
+        value = padGridValue(value, 3);
+        break;
+      case "lot":
+        value = padGridValue(value, 4);
+        break;
+      default:
+        break;
+    }
+
+    result[field] = value != null ? value : null;
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  return result;
+}
+
 function hydrateRawAddressForSchema(source, options = {}) {
   if (!source || typeof source !== "object") return null;
 
@@ -4994,8 +5106,11 @@ async function main() {
       rawSurface && trimmedUnnormalized.length > 0
         ? prepareAddressForSchema(rawSurface, "raw")
         : null;
-    const rawFinal = rawPrepared
+    const rawFinalCandidate = rawPrepared
       ? finalizeAddressForOutput(rawPrepared, "raw")
+      : null;
+    const rawFinal = rawFinalCandidate
+      ? buildRawAddressOutputForSchema(rawFinalCandidate)
       : null;
 
     let finalAddressPayload = null;
