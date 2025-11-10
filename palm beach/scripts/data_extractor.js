@@ -2105,24 +2105,39 @@ function parseLocationAddress(raw) {
     if (STREET_DIRECTIONS.has(normalizedLast)) return false;
     if (mapStreetSuffixType(lastToken)) return false;
 
-    const ordinalRegex = /^\d+(ST|ND|RD|TH)$/;
-    const hasHashPrefix = lastToken.startsWith("#");
-    const hasDigits = /\d/.test(lastToken);
-    const looksOrdinal = ordinalRegex.test(lastToken);
-    const isCompactToken = /^[#A-Z0-9-]+$/.test(lastToken) && lastToken.length <= 6;
+  const ordinalRegex = /^\d+(ST|ND|RD|TH)$/;
+  const hasHashPrefix = lastToken.startsWith("#");
+  const hasDigits = /\d/.test(lastToken);
+  const looksOrdinal = ordinalRegex.test(lastToken);
+  const isCompactToken = /^[#A-Z0-9-]+$/.test(lastToken) && lastToken.length <= 6;
 
-    if (isCompactToken && (hasHashPrefix || (hasDigits && !looksOrdinal))) {
+  if (isCompactToken && (hasHashPrefix || (hasDigits && !looksOrdinal))) {
+    if (!result.unitIdentifier) {
+      result.unitIdentifier = lastToken.replace(/^#/, "");
+    }
+    tokens.pop();
+    return true;
+  }
+
+  const isAlphaToken = /^[A-Z]{1,4}$/.test(normalizedLast);
+  if (isCompactToken && !hasDigits && isAlphaToken) {
+    const prevToken = tokens.length > 1 ? tokens[tokens.length - 2].toUpperCase() : null;
+    const prevIsDirectional = prevToken ? STREET_DIRECTIONS.has(prevToken) : false;
+    const prevIsSuffix = prevToken ? mapStreetSuffixType(prevToken) : null;
+    const prevIsUnitKeyword = prevToken ? UNIT_KEYWORDS.has(prevToken) : false;
+    if (prevIsDirectional || prevIsSuffix || prevIsUnitKeyword) {
       if (!result.unitIdentifier) {
-        result.unitIdentifier = lastToken.replace(/^#/, "");
+        result.unitIdentifier = lastToken;
       }
       tokens.pop();
       return true;
     }
-    return false;
-  };
+  }
+  return false;
+};
 
-  removeTrailingUnitToken();
-  consumePostDirectional();
+removeTrailingUnitToken();
+consumePostDirectional();
 
   if (!tokens.length) return result;
 
