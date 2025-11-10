@@ -1044,6 +1044,13 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
+const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
+  RAW_ADDRESS_OUTPUT_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {}),
+);
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -2607,6 +2614,26 @@ function buildRawSchemaAlignedAddress(address) {
   }
 
   return aligned;
+}
+
+function ensureRawAddressSchemaDefaults(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...address,
+  };
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (
+      !Object.prototype.hasOwnProperty.call(result, field) ||
+      result[field] === undefined
+    ) {
+      result[field] = null;
+    }
+  }
+
+  return result;
 }
 
 function prepareAddressForSchema(address, variant) {
@@ -4611,7 +4638,7 @@ async function main() {
     if (finalAddress && finalAddressVariant === "raw") {
       const schemaAlignedRaw = buildRawSchemaAlignedAddress(finalAddress);
       if (schemaAlignedRaw) {
-        finalAddress = schemaAlignedRaw;
+        finalAddress = ensureRawAddressSchemaDefaults(schemaAlignedRaw);
       } else {
         finalAddress = null;
         finalAddressVariant = null;
