@@ -1030,6 +1030,23 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   ...RAW_ADDRESS_STREET_FIELDS,
 ];
 
+const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+];
+
 // The raw address schema expects the full field surface to be present, but it
 // tolerates null values when the source cannot provide a component. These are
 // the high-priority fields we try to hydrate whenever possible.
@@ -1179,6 +1196,16 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
   }
 
   return candidate;
+}
+
+function ensureAddressFieldSurface(target, fields) {
+  if (!target || typeof target !== "object") return;
+  if (!Array.isArray(fields) || !fields.length) return;
+  for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(target, field)) {
+      target[field] = null;
+    }
+  }
 }
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -4763,6 +4790,33 @@ async function main() {
       }
 
       if (sanitizedAddress) {
+        if (finalAddressVariant === "raw") {
+          if (
+            (!sanitizedAddress.unnormalized_address ||
+              !String(sanitizedAddress.unnormalized_address).trim().length) &&
+            resolvedUnnormalized
+          ) {
+            sanitizedAddress.unnormalized_address = resolvedUnnormalized;
+          }
+          ensureAddressFieldSurface(
+            sanitizedAddress,
+            RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
+          );
+          if (!sanitizedAddress.postal_code) {
+            sanitizedAddress.plus_four_postal_code = null;
+          }
+          if (
+            sanitizedAddress.state_code &&
+            !sanitizedAddress.country_code
+          ) {
+            sanitizedAddress.country_code = "US";
+          }
+        } else {
+          ensureAddressFieldSurface(
+            sanitizedAddress,
+            RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
+          );
+        }
         writeJSON(addressFilePath, sanitizedAddress);
         finalAddressVariant = sanitizedVariant;
         // Relationships are generated downstream; ensure no stale files remain.
