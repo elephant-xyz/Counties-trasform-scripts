@@ -169,6 +169,14 @@ const propertyTypeMapping=[
     "property_type": "Building"
   },
   {
+    "property_usecode": "0111 SINGLE FAMILY COMMUNITY LAND TRUST",
+    "ownership_estate_type": "OtherEstate",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
     "property_usecode": "0133 PLANNED UNIT DEVELOPMENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -2936,23 +2944,30 @@ function extract() {
   // const buildingType = structuralElementsBuilding1["Building Type"] || null;
 
   // console.log("usecode",useCodeText);
-  const property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
+  let property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
   // console.log("property_type>>",property_type);
-  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUseText || "");
-  const build_status= mapBuildStatusFromUseCode(propertyUseText || "");
+  const ownership_estate_type = mapOwnershipEstateTypeFromUseCode(propertyUseText || "");
+  let build_status = mapBuildStatusFromUseCode(propertyUseText || "");
   const structure_form = mapStructureFormFromUseCode(propertyUseText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUseText || "");
 
+  const hasImprovementIndicators =
+    (livable_floor_area && Number(livable_floor_area) > 0) ||
+    (total_area && Number(total_area) > 0) ||
+    (typeof number_of_units === "number" && number_of_units > 0);
 
+  if (!property_type) {
+    property_type = hasImprovementIndicators ? "Building" : "LandParcel";
+  }
+
+  if (!build_status) {
+    const isLikelyLand = property_type === "LandParcel" && !hasImprovementIndicators;
+    build_status = isLikelyLand ? "VacantLand" : "Improved";
+  }
 
   // For aquaculture/submerged land, default to VacantLand if no type determined
   // if (!property_type && property_legal_description_text && 
   //     property_legal_description_text.toLowerCase().includes('aquaculture')) {
-  //   property_type = 'VacantLand';
-  // }
-  
-  // Ensure property_type is never null - default to VacantLand
-  // if (!property_type) {
   //   property_type = 'VacantLand';
   // }
 
