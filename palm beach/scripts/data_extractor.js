@@ -1247,30 +1247,46 @@ function finalizeAddressForOutput(address, variant, options = {}) {
     const result = {};
     const orderedFields = ["unnormalized_address", ...allowedRawFields];
     for (const field of orderedFields) {
-      if (!Object.prototype.hasOwnProperty.call(sanitized, field)) continue;
-      let value = sanitized[field];
+      const hasValue = Object.prototype.hasOwnProperty.call(sanitized, field);
+      let value = hasValue ? sanitized[field] : null;
 
       if (field === "unnormalized_address") {
-        if (typeof value !== "string") return null;
-        const trimmed = value.trim();
-        if (!trimmed.length) return null;
-        result[field] = trimmed;
+        const resolved =
+          typeof value === "string" && value.trim().length
+            ? value.trim()
+            : typeof cloned.unnormalized_address === "string"
+              ? cloned.unnormalized_address.trim()
+              : "";
+        if (!resolved.length) {
+          return null;
+        }
+        result[field] = resolved;
+        continue;
+      }
+
+      if (value === undefined || value === null) {
+        result[field] = null;
         continue;
       }
 
       if (typeof value === "string") {
         const trimmed = value.trim();
-        value = trimmed.length ? trimmed : null;
-      } else if (typeof value === "number") {
-        value = Number.isFinite(value) ? value : null;
-      } else if (value === undefined || value === null) {
-        value = null;
-      } else {
-        const stringified = String(value).trim();
-        value = stringified.length ? stringified : null;
+        result[field] = trimmed.length ? trimmed : null;
+        continue;
       }
 
-      result[field] = value !== undefined ? value : null;
+      if (typeof value === "number") {
+        result[field] = Number.isFinite(value) ? value : null;
+        continue;
+      }
+
+      if (typeof value === "boolean") {
+        result[field] = value;
+        continue;
+      }
+
+      const stringified = String(value).trim();
+      result[field] = stringified.length ? stringified : null;
     }
 
     if (!Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
