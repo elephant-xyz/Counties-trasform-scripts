@@ -5116,7 +5116,7 @@ async function main() {
     let finalAddressPayload = null;
     let finalAddressVariant = null;
 
-    if (hasStructuredAddressInput && hasNormalizedSurface) {
+    if (hasNormalizedSurface) {
       finalAddressPayload = normalizedFinal;
       finalAddressVariant = "normalized";
     } else if (rawFinal) {
@@ -5128,7 +5128,19 @@ async function main() {
       if (finalAddressVariant === "raw") {
         const coveredRaw = ensureRawAddressFieldCoverage(finalAddressPayload);
         if (coveredRaw && typeof coveredRaw === "object") {
-          finalAddressPayload = coveredRaw;
+          finalAddressPayload = {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...coveredRaw,
+          };
+          if (!hasMeaningfulAddressValue(finalAddressPayload.postal_code)) {
+            finalAddressPayload.plus_four_postal_code = null;
+          }
+          if (
+            hasMeaningfulAddressValue(finalAddressPayload.state_code) &&
+            !hasMeaningfulAddressValue(finalAddressPayload.country_code)
+          ) {
+            finalAddressPayload.country_code = "US";
+          }
         }
       } else if (finalAddressVariant === "normalized") {
         const coveredNormalized = ensureAddressFieldsForOutput(
