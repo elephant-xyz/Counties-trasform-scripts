@@ -1260,6 +1260,56 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
   return candidate;
 }
 
+function enforceRawAddressSchemaSurface(address, allowedFields = RAW_ADDRESS_OUTPUT_FIELDS) {
+  if (!address || typeof address !== "object") return null;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const fields =
+    Array.isArray(allowedFields) && allowedFields.length
+      ? allowedFields
+      : RAW_ADDRESS_OUTPUT_FIELDS;
+
+  const normalized = { unnormalized_address: unnormalized };
+  for (const field of fields) {
+    let value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      value = parseCoordinate(value);
+    } else if (value === undefined) {
+      value = null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    }
+
+    normalized[field] = value != null ? value : null;
+  }
+
+  if (!normalized.postal_code) {
+    normalized.plus_four_postal_code = null;
+  }
+  if (normalized.state_code && !normalized.country_code) {
+    normalized.country_code = "US";
+  }
+
+  for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(normalized, field)) {
+      normalized[field] = null;
+    }
+  }
+
+  return normalized;
+}
+
 function ensureAddressFieldSurface(target, fields) {
   if (!target || typeof target !== "object") return;
   if (!Array.isArray(fields) || !fields.length) return;
@@ -4969,7 +5019,12 @@ async function main() {
         const withCoverage =
           ensureRawAddressFieldCoverage(finalAddressPayload, RAW_ADDRESS_OUTPUT_FIELDS) ||
           finalAddressPayload;
-        finalAddressPayload = projectRawAddressForOneOf(withCoverage);
+        const projected = projectRawAddressForOneOf(withCoverage);
+        finalAddressPayload =
+          enforceRawAddressSchemaSurface(projected, RAW_ADDRESS_OUTPUT_FIELDS) ||
+          projected ||
+          enforceRawAddressSchemaSurface(withCoverage, RAW_ADDRESS_OUTPUT_FIELDS) ||
+          withCoverage;
       }
 
       if (finalAddressPayload) {
