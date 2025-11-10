@@ -1077,6 +1077,7 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+
 function ensureRawAddressSchemaSurface(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -4791,57 +4792,77 @@ async function main() {
 
       if (sanitizedAddress) {
         const resolvedVariant = sanitizedVariant || finalAddressVariant || inferVariant;
-        if (resolvedVariant === "raw") {
-          if (
-            (!sanitizedAddress.unnormalized_address ||
-              !String(sanitizedAddress.unnormalized_address).trim().length) &&
-            resolvedUnnormalized
-          ) {
-            sanitizedAddress.unnormalized_address = resolvedUnnormalized;
-          }
-          const ensuredRaw = ensureRawAddressFieldCoverage(
-            sanitizedAddress,
-            complianceOptions.allowedRawFields,
-          );
-          sanitizedAddress = ensuredRaw || null;
-          if (sanitizedAddress) {
-            ensureAddressFieldSurface(
-              sanitizedAddress,
-              RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
-            );
-            if (!sanitizedAddress.postal_code) {
-              sanitizedAddress.plus_four_postal_code = null;
-            }
-            if (
-              sanitizedAddress.state_code &&
-              !sanitizedAddress.country_code
-            ) {
-              sanitizedAddress.country_code = "US";
-            }
-          }
-        } else if (
-          resolvedVariant === "normalized" &&
-          Object.prototype.hasOwnProperty.call(sanitizedAddress, "unnormalized_address")
-        ) {
-          delete sanitizedAddress.unnormalized_address;
-          ensureAddressFieldSurface(
-            sanitizedAddress,
-            RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
-          );
-        } else if (sanitizedAddress) {
-          ensureAddressFieldSurface(
-            sanitizedAddress,
-            RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
-          );
-        }
-      }
+        let preparedAddress = ensureAddressFieldsForOutput(
+          sanitizedAddress,
+          resolvedVariant,
+          {
+            allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
+          },
+        );
 
-      if (sanitizedAddress) {
-        writeJSON(addressFilePath, sanitizedAddress);
-        finalAddressVariant = sanitizedVariant;
-        // Relationships are generated downstream; ensure no stale files remain.
-        removeFileIfExists(propertyAddressRelationshipPath);
-        removeFileIfExists(addressFactSheetRelationshipPath);
+        if (preparedAddress) {
+          if (resolvedVariant === "raw") {
+            const currentUnnormalized =
+              typeof preparedAddress.unnormalized_address === "string" &&
+              preparedAddress.unnormalized_address.trim().length
+                ? preparedAddress.unnormalized_address.trim()
+                : null;
+            const resolvedUnnormalizedAddress =
+              currentUnnormalized ||
+              resolveFirstNonEmptyString([
+                resolvedUnnormalized,
+                unnormalizedAddressCandidate,
+                fallbackUnnormalizedValue,
+              ]);
+
+            if (resolvedUnnormalizedAddress) {
+              preparedAddress.unnormalized_address = resolvedUnnormalizedAddress;
+            }
+
+            preparedAddress = ensureRawAddressFieldCoverage(
+              preparedAddress,
+              preparedAddress.unnormalized_address,
+            );
+
+            if (preparedAddress) {
+              preparedAddress = ensureAddressFieldsForOutput(
+                preparedAddress,
+                "raw",
+                {
+                  allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
+                },
+              );
+            }
+          } else if (resolvedVariant === "normalized") {
+            preparedAddress = ensureAddressFieldsForOutput(
+              preparedAddress,
+              "normalized",
+            );
+          }
+        }
+
+        if (preparedAddress) {
+          if (
+            resolvedVariant !== "normalized" &&
+            resolvedUnnormalized &&
+            (!preparedAddress.unnormalized_address ||
+              !String(preparedAddress.unnormalized_address).trim().length)
+          ) {
+            preparedAddress.unnormalized_address = resolvedUnnormalized;
+          }
+
+          writeJSON(addressFilePath, preparedAddress);
+          finalAddressVariant = resolvedVariant;
+          // Relationships are generated downstream; ensure no stale files remain.
+          removeFileIfExists(propertyAddressRelationshipPath);
+          removeFileIfExists(addressFactSheetRelationshipPath);
+        } else {
+          if (fs.existsSync(addressFilePath)) {
+            fs.unlinkSync(addressFilePath);
+          }
+          removeFileIfExists(propertyAddressRelationshipPath);
+          removeFileIfExists(addressFactSheetRelationshipPath);
+        }
       } else {
         if (fs.existsSync(addressFilePath)) {
           fs.unlinkSync(addressFilePath);
