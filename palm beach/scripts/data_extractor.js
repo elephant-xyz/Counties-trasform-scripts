@@ -4821,8 +4821,12 @@ async function main() {
 
             preparedAddress = ensureRawAddressFieldCoverage(
               preparedAddress,
-              preparedAddress.unnormalized_address,
+              RAW_ADDRESS_OUTPUT_FIELDS,
             );
+
+            if (preparedAddress) {
+              preparedAddress = ensureRawAddressSchemaDefaults(preparedAddress);
+            }
 
             if (preparedAddress) {
               preparedAddress = ensureAddressFieldsForOutput(

@@ -1691,6 +1691,56 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLO
   return result;
 }
 
+function ensureRawAddressSchemaDefaults(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const result = {
+    ...address,
+    unnormalized_address: unnormalized,
+  };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+      continue;
+    }
+
+    if (result[field] === undefined) {
+      result[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(result[field]);
+      result[field] = numeric != null ? numeric : null;
+      continue;
+    }
+
+    if (typeof result[field] === "string") {
+      const trimmed = result[field].trim();
+      result[field] = trimmed.length ? trimmed : null;
+    }
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  return result;
+}
+
 function deriveGridPartsFromPcn(rawPcn) {
   if (!rawPcn) return {};
   const normalized = normalizeWhitespace(String(rawPcn));
@@ -3090,7 +3140,13 @@ async function main() {
           RAW_ADDRESS_ALLOWED_FIELDS,
         );
         if (ensuredRaw) {
-          finalAddress = ensuredRaw;
+          const defaultedRaw = ensureRawAddressSchemaDefaults(ensuredRaw);
+          if (defaultedRaw) {
+            finalAddress = defaultedRaw;
+          } else {
+            finalAddress = null;
+            finalAddressVariant = null;
+          }
         } else {
           finalAddress = null;
           finalAddressVariant = null;
