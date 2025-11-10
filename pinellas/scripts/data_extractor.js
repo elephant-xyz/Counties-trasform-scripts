@@ -169,14 +169,6 @@ const propertyTypeMapping=[
     "property_type": "Building"
   },
   {
-    "property_usecode": "0111 SINGLE FAMILY COMMUNITY LAND TRUST",
-    "ownership_estate_type": "OtherEstate",
-    "build_status": "Improved",
-    "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "Residential",
-    "property_type": "Building"
-  },
-  {
     "property_usecode": "0133 PLANNED UNIT DEVELOPMENT",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
@@ -1542,9 +1534,6 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
   lookup[normalizedUseCode] = entry.property_usage_type ?? null;
   return lookup;
 }, {});
-
-const PROPERTY_TYPE_ENUM = new Set(["Building", "LandParcel", "Unit", "ManufacturedHome"]);
-const BUILD_STATUS_ENUM = new Set(["VacantLand", "Improved", "UnderConstruction"]);
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
@@ -1922,106 +1911,6 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
-function pointerPath(fileName) {
-  if (!fileName) return null;
-  return fileName.startsWith("./") ? fileName : `./${fileName}`;
-}
-
-function createRelationshipFile(dataDir, outputName, fromFile, toFile) {
-  const fromPointer = pointerPath(fromFile);
-  const toPointer = pointerPath(toFile);
-  if (!fromPointer || !toPointer) return;
-  const relationship = {
-    from: { "/": fromPointer },
-    to: { "/": toPointer },
-  };
-  writeJSON(path.join(dataDir, outputName), relationship);
-}
-
-function createPropertyRelationships(dataDir) {
-  const propertyFile = "property.json";
-  const propertyPath = path.join(dataDir, propertyFile);
-  if (!fs.existsSync(propertyPath)) return;
-
-  let entries;
-  try {
-    entries = fs.readdirSync(dataDir);
-  } catch (e) {
-    return;
-  }
-
-  if (entries.includes("address.json")) {
-    createRelationshipFile(
-      dataDir,
-      "relationship_property_has_address.json",
-      propertyFile,
-      "address.json",
-    );
-  }
-
-  const factSheetEntries = entries
-    .map((name) => {
-      const match = name.match(/^fact_sheet(?:_(\d+))?\.json$/i);
-      if (!match) return null;
-      const suffix = match[1] ? parseInt(match[1], 10) : null;
-      return { name, suffix };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const aSuffix = a.suffix ?? Number.MAX_SAFE_INTEGER;
-      const bSuffix = b.suffix ?? Number.MAX_SAFE_INTEGER;
-      if (aSuffix !== bSuffix) return aSuffix - bSuffix;
-      return a.name.localeCompare(b.name);
-    });
-
-  factSheetEntries.forEach((entry, idx) => {
-    const suffix =
-      entry.suffix != null ? entry.suffix : idx + 1;
-    createRelationshipFile(
-      dataDir,
-      `relationship_property_has_fact_sheet_${suffix}.json`,
-      propertyFile,
-      entry.name,
-    );
-  });
-
-  const fileEntries = entries
-    .map((name) => {
-      const match = name.match(/^file_(\d+)\.json$/);
-      if (!match) return null;
-      return { name, index: parseInt(match[1], 10) };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.index - b.index);
-
-  fileEntries.forEach(({ name, index }) => {
-    createRelationshipFile(
-      dataDir,
-      `relationship_property_has_file_${index}.json`,
-      propertyFile,
-      name,
-    );
-  });
-
-  const taxEntries = entries
-    .map((name) => {
-      const match = name.match(/^tax_(\d+)\.json$/);
-      if (!match) return null;
-      return { name, year: match[1] };
-    })
-    .filter(Boolean)
-    .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
-
-  taxEntries.forEach(({ name, year }) => {
-    createRelationshipFile(
-      dataDir,
-      `relationship_property_has_tax_${year}.json`,
-      propertyFile,
-      name,
-    );
-  });
-}
-
 // --- HELPER FUNCTIONS FOR HTML EXTRACTION ---
 
 /**
@@ -2295,6 +2184,8 @@ function extractSalesHistoryFiles($, dataDir, requestIdentifier, sourceHttpReque
       document_type: null,
       file_format: null,
       name: item.name || null,
+      original_url: item.url || null,
+      ipfs_url: null,
     };
     writeJSON(path.join(dataDir, fileName), payload);
   });
@@ -3045,32 +2936,23 @@ function extract() {
   // const buildingType = structuralElementsBuilding1["Building Type"] || null;
 
   // console.log("usecode",useCodeText);
-  let property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
+  const property_type = mapPropertyTypeFromUseCode(propertyUseText || "");
   // console.log("property_type>>",property_type);
-  const ownership_estate_type = mapOwnershipEstateTypeFromUseCode(propertyUseText || "");
-  let build_status = mapBuildStatusFromUseCode(propertyUseText || "");
+  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(propertyUseText || "");
+  const build_status= mapBuildStatusFromUseCode(propertyUseText || "");
   const structure_form = mapStructureFormFromUseCode(propertyUseText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(propertyUseText || "");
 
-  const hasImprovementIndicators =
-    (livable_floor_area && Number(livable_floor_area) > 0) ||
-    (total_area && Number(total_area) > 0) ||
-    (typeof number_of_units === "number" && number_of_units > 0);
 
-  const defaultPropertyType = hasImprovementIndicators ? "Building" : "LandParcel";
-  if (typeof property_type !== "string" || !PROPERTY_TYPE_ENUM.has(property_type)) {
-    property_type = defaultPropertyType;
-  }
-
-  const defaultBuildStatus = hasImprovementIndicators ? "Improved" : "VacantLand";
-  if (typeof build_status !== "string" || !BUILD_STATUS_ENUM.has(build_status)) {
-    const isLikelyLand = property_type === "LandParcel" && !hasImprovementIndicators;
-    build_status = isLikelyLand ? "VacantLand" : defaultBuildStatus;
-  }
 
   // For aquaculture/submerged land, default to VacantLand if no type determined
   // if (!property_type && property_legal_description_text && 
   //     property_legal_description_text.toLowerCase().includes('aquaculture')) {
+  //   property_type = 'VacantLand';
+  // }
+  
+  // Ensure property_type is never null - default to VacantLand
+  // if (!property_type) {
   //   property_type = 'VacantLand';
   // }
 
@@ -3738,8 +3620,6 @@ function extract() {
       );
     });
   }
-
-  createPropertyRelationships(dataDir);
 
 
   // Remove relationships that should be null according to schema
