@@ -4954,10 +4954,13 @@ async function main() {
       baseAddressSeed.municipality_name = normalizedMunicipality;
     }
 
-    const normalizedPrepared = ensureAddressFieldsForOutput(
+    const normalizedSurface = buildAddressSchemaSurface(
       { ...baseAddressSeed },
       "normalized",
     );
+    const normalizedPrepared = normalizedSurface
+      ? prepareAddressForSchema(normalizedSurface, "normalized")
+      : null;
     const normalizedMustHave = [
       "latitude",
       "longitude",
@@ -4974,36 +4977,27 @@ async function main() {
       normalizedPrepared &&
       normalizedMustHave.every((field) => hasMeaningfulAddressValue(normalizedPrepared[field]));
 
-    let finalVariant = null;
+    const trimmedUnnormalized =
+      typeof resolvedUnnormalized === "string" ? resolvedUnnormalized.trim() : "";
+    const rawSurface =
+      trimmedUnnormalized.length > 0
+        ? buildAddressSchemaSurface(
+            { ...baseAddressSeed, unnormalized_address: trimmedUnnormalized },
+            "raw",
+            { fallbackUnnormalized: trimmedUnnormalized },
+          )
+        : null;
+    const rawPrepared =
+      rawSurface && trimmedUnnormalized.length > 0
+        ? prepareAddressForSchema(rawSurface, "raw")
+        : null;
+
     let finalAddressPayload = null;
 
     if (hasStructuredAddressInput && hasNormalizedSurface) {
-      finalVariant = "normalized";
       finalAddressPayload = normalizedPrepared;
-      if (Object.prototype.hasOwnProperty.call(finalAddressPayload, "unnormalized_address")) {
-        delete finalAddressPayload.unnormalized_address;
-      }
-    } else if (hasMeaningfulAddressValue(resolvedUnnormalized)) {
-      const rawSeed = {
-        ...baseAddressSeed,
-        unnormalized_address: resolvedUnnormalized,
-      };
-
-      const preparedRaw = ensureAddressFieldsForOutput(rawSeed, "raw", {
-        allowedFields: RAW_ADDRESS_OUTPUT_FIELDS,
-      });
-
-      if (preparedRaw && hasMeaningfulAddressValue(preparedRaw.unnormalized_address)) {
-        const withCoverage =
-          ensureRawAddressFieldCoverage(preparedRaw, RAW_ADDRESS_OUTPUT_FIELDS) ||
-          preparedRaw;
-        const projected = projectRawAddressForOneOf(withCoverage) || withCoverage;
-        const enforced =
-          enforceRawAddressSchemaSurface(projected, RAW_ADDRESS_OUTPUT_FIELDS) ||
-          projected;
-        finalVariant = "raw";
-        finalAddressPayload = ensureRawAddressSchemaDefaults(enforced) || enforced;
-      }
+    } else if (rawPrepared) {
+      finalAddressPayload = rawPrepared;
     }
 
     if (finalAddressPayload) {
