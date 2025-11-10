@@ -2636,6 +2636,33 @@ function ensureRawAddressSchemaDefaults(address) {
   return result;
 }
 
+function buildAddressSchemaSurface(address, variant) {
+  if (!address || typeof address !== "object") return null;
+
+  if (variant === "raw") {
+    const schemaAlignedRaw = buildRawSchemaAlignedAddress(address);
+    if (!schemaAlignedRaw) return null;
+    return ensureRawAddressSchemaDefaults(schemaAlignedRaw);
+  }
+
+  if (variant === "normalized") {
+    const prepared = ensureAddressFieldsForOutput(address, "normalized");
+    if (!prepared) return null;
+
+    const surface = {};
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(prepared, field)) {
+        surface[field] = prepared[field];
+      } else {
+        surface[field] = null;
+      }
+    }
+    return surface;
+  }
+
+  return null;
+}
+
 function prepareAddressForSchema(address, variant) {
   if (!address || typeof address !== "object") return null;
 
@@ -4645,6 +4672,16 @@ async function main() {
       }
     }
 
+    if (finalAddress) {
+      const schemaSurface = buildAddressSchemaSurface(finalAddress, finalAddressVariant);
+      if (schemaSurface) {
+        finalAddress = schemaSurface;
+      } else {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    }
+
     const hasMeaningfulAddress =
       finalAddress &&
       Object.entries(finalAddress).some(([key, value]) => {
@@ -4658,20 +4695,7 @@ async function main() {
     if (hasMeaningfulAddress && finalAddress) {
       writeJSON(addressFilePath, finalAddress);
 
-      const propertyJsonPath = path.join(dataDir, "property.json");
-      const factSheetJsonPath = path.join(dataDir, "fact_sheet.json");
-      const hasPropertyFile = fs.existsSync(propertyJsonPath);
-      const hasFactSheetFile = fs.existsSync(factSheetJsonPath);
-
-      if (hasFactSheetFile) {
-        writeRelationshipFile(
-          addressFactSheetRelationshipPath,
-          "./address.json",
-          "./fact_sheet.json",
-        );
-      } else {
-        removeFileIfExists(addressFactSheetRelationshipPath);
-      }
+      removeFileIfExists(addressFactSheetRelationshipPath);
       removeFileIfExists(propertyAddressRelationshipPath);
     } else {
       if (fs.existsSync(addressFilePath)) {
