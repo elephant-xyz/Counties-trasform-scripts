@@ -641,8 +641,14 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
 );
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
+  "unnormalized_address",
   "latitude",
   "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
   "county_name",
   "municipality_name",
   "township",
@@ -1739,6 +1745,41 @@ function ensureRawAddressSchemaDefaults(address) {
   }
 
   return result;
+}
+
+function projectRawAddressForOneOf(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const projected = {};
+  for (const field of RAW_ADDRESS_RAW_VARIANT_FIELDS) {
+    if (field === "unnormalized_address") {
+      const raw =
+        typeof address.unnormalized_address === "string"
+          ? address.unnormalized_address.trim()
+          : "";
+      if (!raw.length) {
+        return null;
+      }
+      projected.unnormalized_address = raw;
+      continue;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      projected[field] = address[field];
+    } else {
+      projected[field] = null;
+    }
+  }
+
+  if (!projected.postal_code) {
+    projected.plus_four_postal_code = null;
+  }
+
+  if (projected.state_code && !projected.country_code) {
+    projected.country_code = "US";
+  }
+
+  return projected;
 }
 
 function hydrateRawAddressForSchema(source, options = {}) {
@@ -3189,7 +3230,13 @@ async function main() {
         if (ensuredRaw) {
           const defaultedRaw = ensureRawAddressSchemaDefaults(ensuredRaw);
           if (defaultedRaw) {
-            finalAddress = defaultedRaw;
+            const projectedRaw = projectRawAddressForOneOf(defaultedRaw);
+            if (projectedRaw) {
+              finalAddress = projectedRaw;
+            } else {
+              finalAddress = null;
+              finalAddressVariant = null;
+            }
           } else {
             finalAddress = null;
             finalAddressVariant = null;

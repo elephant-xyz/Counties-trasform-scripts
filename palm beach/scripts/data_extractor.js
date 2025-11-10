@@ -1030,6 +1030,24 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   ...RAW_ADDRESS_STREET_FIELDS,
 ];
 
+const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
+  "unnormalized_address",
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
+
 const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
   "latitude",
   "longitude",
@@ -2768,6 +2786,41 @@ function ensureRawAddressSchemaDefaults(address) {
   }
 
   return result;
+}
+
+function projectRawAddressForOneOf(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const projected = {};
+  for (const field of RAW_ADDRESS_RAW_VARIANT_FIELDS) {
+    if (field === "unnormalized_address") {
+      const rawUnnormalized =
+        typeof address.unnormalized_address === "string"
+          ? address.unnormalized_address.trim()
+          : "";
+      if (!rawUnnormalized.length) {
+        return null;
+      }
+      projected.unnormalized_address = rawUnnormalized;
+      continue;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      projected[field] = address[field];
+    } else {
+      projected[field] = null;
+    }
+  }
+
+  if (!projected.postal_code) {
+    projected.plus_four_postal_code = null;
+  }
+
+  if (projected.state_code && !projected.country_code) {
+    projected.country_code = "US";
+  }
+
+  return projected;
 }
 
 function hydrateRawAddressForSchema(source, options = {}) {
@@ -4804,18 +4857,30 @@ async function main() {
     }
 
     if (finalAddressPayload) {
-      if (
-        finalVariant !== "normalized" &&
-        resolvedUnnormalized &&
-        (!finalAddressPayload.unnormalized_address ||
-          !String(finalAddressPayload.unnormalized_address).trim().length)
-      ) {
-        finalAddressPayload.unnormalized_address = resolvedUnnormalized;
+      if (finalVariant === "raw") {
+        finalAddressPayload = projectRawAddressForOneOf(finalAddressPayload);
       }
 
-      writeJSON(addressFilePath, finalAddressPayload);
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
+      if (finalAddressPayload) {
+        if (
+          finalVariant !== "normalized" &&
+          resolvedUnnormalized &&
+          (!finalAddressPayload.unnormalized_address ||
+            !String(finalAddressPayload.unnormalized_address).trim().length)
+        ) {
+          finalAddressPayload.unnormalized_address = resolvedUnnormalized;
+        }
+
+        writeJSON(addressFilePath, finalAddressPayload);
+        removeFileIfExists(propertyAddressRelationshipPath);
+        removeFileIfExists(addressFactSheetRelationshipPath);
+      } else {
+        if (fs.existsSync(addressFilePath)) {
+          fs.unlinkSync(addressFilePath);
+        }
+        removeFileIfExists(propertyAddressRelationshipPath);
+        removeFileIfExists(addressFactSheetRelationshipPath);
+      }
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
