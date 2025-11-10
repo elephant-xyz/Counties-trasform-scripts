@@ -809,6 +809,22 @@ function mapSectionFinishDescriptor(rawDescriptor) {
   const normalized = cleanText(descriptor).toLowerCase();
   if (!normalized) return null;
 
+  if (normalized.includes("office")) {
+    return { spaceType: "Office Room", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("conference")) {
+    return { spaceType: "Conference Room", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("class")) {
+    return { spaceType: "Class Room", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("lobby") || normalized.includes("entry")) {
+    return { spaceType: "Lobby / Entry Hall", isExterior: false, isFinished: true };
+  }
+
   if (normalized.includes("laundry")) {
     return { spaceType: "Laundry Room", isExterior: false, isFinished: true };
   }
@@ -883,7 +899,7 @@ function convertSectionRowsToLayouts(sectionRows, buildingNumber) {
 
     const index = (typeCounters.get(metadata.spaceType) ?? 0) + 1;
     typeCounters.set(metadata.spaceType, index);
-    clonedLayout.space_type_index = index;
+    clonedLayout.space_type_index = `${buildingNumber}.${index}`;
 
     mappedLayouts.push(clonedLayout);
   });
@@ -972,6 +988,15 @@ function buildBuildingLayoutGroups($) {
       sectionLayouts,
       card.buildingIndex,
     );
+    
+    // Apply building-prefixed indexing to addition layouts
+    const typeCounters = new Map();
+    additionLayouts.forEach(layout => {
+      const index = (typeCounters.get(layout.space_type) ?? 0) + 1;
+      typeCounters.set(layout.space_type, index);
+      layout.space_type_index = `${card.buildingIndex}.${index}`;
+    });
+    
     const combinedInteriorLayouts = [
       ...sectionInteriorLayouts,
       ...additionLayouts,
@@ -1112,22 +1137,19 @@ function main() {
   /** @type {LayoutEntry[]} */
   let layoutsToPersist = [];
   
+  // Always try to generate default layouts first
+  // const defaultLayouts = buildDefaultRoomLayouts($);
+  // layoutsToPersist = defaultLayouts;
+  
   if (!buildingCards.length) {
-    console.warn("No building cards detected; writing empty layouts array.");
+    console.warn("No building cards detected; using default layouts.");
   } else {
     const buildingCount = extractBuildingCount($);
-    const buildingGroupsCandidate =
-      buildingCount != null && buildingCount > 1
-        ? buildBuildingLayoutGroups($)
-        : [];
+    const buildingGroupsCandidate = buildBuildingLayoutGroups($);
     const hasMultipleBuildings =
       (buildingCount != null && buildingCount > 1) ||
       buildingGroupsCandidate.length > 1;
-    const useBuildingGroups =
-      hasMultipleBuildings && buildingGroupsCandidate.length > 0;
-
-    const defaultLayouts = buildDefaultRoomLayouts($);
-    layoutsToPersist = defaultLayouts;
+    const useBuildingGroups = buildingGroupsCandidate.length > 0;
 
     if (useBuildingGroups) {
       buildingGroupsCandidate.forEach((group) => {
