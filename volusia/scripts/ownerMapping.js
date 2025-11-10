@@ -12,6 +12,204 @@ const toTitle = (s) =>
 const cleanWhitespace = (s) => s.replace(/\s+/g, " ").trim();
 const normalizeName = (s) => cleanWhitespace(s).toLowerCase();
 
+// Elephant Person prefix/suffix enums
+const PERSON_PREFIX_ENUM_VALUES = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Miss",
+  "Mx.",
+  "Dr.",
+  "Prof.",
+  "Rev.",
+  "Fr.",
+  "Sr.",
+  "Br.",
+  "Capt.",
+  "Col.",
+  "Maj.",
+  "Lt.",
+  "Sgt.",
+  "Hon.",
+  "Judge",
+  "Rabbi",
+  "Imam",
+  "Sheikh",
+  "Sir",
+  "Dame",
+];
+
+const PERSON_SUFFIX_ENUM_VALUES = [
+  "Jr.",
+  "Sr.",
+  "II",
+  "III",
+  "IV",
+  "PhD",
+  "MD",
+  "Esq.",
+  "JD",
+  "LLM",
+  "MBA",
+  "RN",
+  "DDS",
+  "DVM",
+  "CFA",
+  "CPA",
+  "PE",
+  "PMP",
+  "Emeritus",
+  "Ret.",
+];
+
+function normalizeEnumToken(token) {
+  return token.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function buildEnumLookup(values) {
+  const map = new Map();
+  for (const value of values) {
+    if (!value) continue;
+    const normalized = normalizeEnumToken(value);
+    if (!map.has(normalized)) map.set(normalized, value);
+  }
+  return map;
+}
+
+const PREFIX_LOOKUP = buildEnumLookup(PERSON_PREFIX_ENUM_VALUES);
+const SUFFIX_LOOKUP = buildEnumLookup(PERSON_SUFFIX_ENUM_VALUES);
+
+function mapEnumValue(rawToken, lookup) {
+  if (!rawToken) return null;
+  const normalized = normalizeEnumToken(rawToken);
+  if (!normalized) return null;
+  if (lookup.has(normalized)) return lookup.get(normalized);
+  return null;
+}
+
+function extractPrefixSuffix(tokens) {
+  const working = [...tokens];
+  let prefix = null;
+  let suffix = null;
+
+  if (working.length) {
+    const candidatePrefix = mapEnumValue(working[0], PREFIX_LOOKUP);
+    if (candidatePrefix) {
+      prefix = candidatePrefix;
+      working.shift();
+    }
+  }
+
+  if (working.length) {
+    const candidateSuffix = mapEnumValue(
+      working[working.length - 1],
+      SUFFIX_LOOKUP,
+    );
+    if (candidateSuffix) {
+      suffix = candidateSuffix;
+      working.pop();
+    }
+  }
+
+  return {
+    tokens: working,
+    prefix_name: prefix,
+    suffix_name: suffix,
+  };
+}
+
+function escapeForRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildAcronymPattern(acronym) {
+  const letters = acronym.replace(/[^a-z]/gi, "").split("");
+  if (!letters.length) return null;
+  const body = letters.map((ch) => `${escapeForRegex(ch)}\\.?`).join("\\s*");
+  return new RegExp(`\\b${body}\\b`, "i");
+}
+
+const COMPANY_PATTERNS = [
+  /\bINCORPORATED\b/i,
+  /\bINC\b/i,
+  /\bCORPORATION\b/i,
+  /\bCORP\b/i,
+  /\bCOMPANIES\b/i,
+  /\bCOMPANY\b/i,
+  /\bCO\b/i,
+  /\bCO\.\b/i,
+  /\bLIMITED\b/i,
+  /\bLTD\b/i,
+  /\bHOLDINGS?\b/i,
+  /\bHOLDING\b/i,
+  /\bGROUP\b/i,
+  /\bPARTNERSHIP\b/i,
+  /\bPARTNERS?\b/i,
+  /\bASSOCIATES?\b/i,
+  /\bASSOC\b/i,
+  /\bASSN\b/i,
+  /\bASSOCIATION\b/i,
+  /\bFOUNDATION\b/i,
+  /\bFUND\b/i,
+  /\bTRUSTE?E?\b/i,
+  /\bTRUST\b/i,
+  /\bESTATE\b/i,
+  /\bHOLDCO\b/i,
+  /\bINVESTMENTS?\b/i,
+  /\bVENTURES?\b/i,
+  /\bENTERPRISES?\b/i,
+  /\bPROPERT(?:Y|IES)\b/i,
+  /\bREALTY\b/i,
+  /\bREAL\s+ESTATE\b/i,
+  /\bMANAGEMENT\b/i,
+  /\bMGMT\b/i,
+  /\bSERVICES?\b/i,
+  /\bSOLUTIONS?\b/i,
+  /\bDEVELOPMENT\b/i,
+  /\bDEVELOPERS?\b/i,
+  /\bCONSTRUCTION\b/i,
+  /\bINDUSTRIES\b/i,
+  /\bBANK\b/i,
+  /\bN\.?A\.?\b/i,
+  /\bCREDIT\s+UNION\b/i,
+  /\bCHURCH\b/i,
+  /\bMINISTRIES\b/i,
+  /\bMISSION\b/i,
+  /\bHOSPITAL\b/i,
+  /\bAUTHORITY\b/i,
+  /\bBOARD\b/i,
+  /\bSCHOOL\b/i,
+  /\bUNIVERSITY\b/i,
+  /\bCOLLEGE\b/i,
+  /\bCLUB\b/i,
+  /\bDEPARTMENT\b/i,
+  /\bAGENCY\b/i,
+]
+  .concat(
+    [
+      "LLC",
+      "PLLC",
+      "LLP",
+      "LLLP",
+      "LP",
+      "PLC",
+      "PC",
+      "PA",
+      "PPLC",
+      "REIT",
+      "FBO",
+    ]
+      .map(buildAcronymPattern)
+      .filter(Boolean),
+  )
+  .concat([
+    /\bL\.?\s*L\.?\s*C\.?\b/i,
+    /\bL\.?\s*L\.?\s*P\.?\b/i,
+    /\bL\.?\s*P\.?\b/i,
+    /\bP\.?\s*C\.?\b/i,
+    /\bP\.?\s*A\.?\b/i,
+  ]);
+
 // Property ID extraction (prefer "Parcel ID", fallback to hidden #altkey, then "Alternate Key")
 function extractPropertyId($) {
   let id = null;
@@ -41,34 +239,10 @@ function extractPropertyId($) {
   return id;
 }
 
-// Detect company by tokens
+// Detect companies using expanded indicator patterns
 function isCompany(name) {
-  const tokens = [
-    "inc",
-    "llc",
-    "l.l.c",
-    "ltd",
-    "foundation",
-    "alliance",
-    "solutions",
-    "corp",
-    "corporation",
-    "co",
-    "company",
-    "services",
-    "trust",
-    "tr",
-    "pllc",
-    "pc",
-    "lp",
-    "llp",
-    "partners",
-    "bank",
-    "na",
-    "associates",
-  ];
-  const n = name.toLowerCase();
-  return tokens.some((t) => new RegExp(`(^|\\b)${t}(\\b|\.$)`, "i").test(n));
+  if (!name) return false;
+  return COMPANY_PATTERNS.some((pattern) => pattern.test(name));
 }
 
 // Basic address-like line filter
@@ -141,15 +315,32 @@ function splitAmpersandPersons(raw) {
   if (!lastName) return null;
   const people = [];
   for (const p of parts) {
-    const toks = p.split(" ").filter(Boolean);
+    let toks = p.split(" ").filter(Boolean);
+    if (toks.length === 0) continue;
+    const extracted = extractPrefixSuffix(toks);
+    toks = extracted.tokens;
+    if (toks.length > 1 && lastName) {
+      const maybeLast = toks[toks.length - 1];
+      if (
+        maybeLast &&
+        maybeLast.toLowerCase() === lastName.toLowerCase()
+      ) {
+        toks = toks.slice(0, -1);
+      }
+    }
     if (toks.length === 0) continue;
     const first = toks[0];
     const middle = toks.slice(1).join(" ") || null;
+    if (!first || !lastName) {
+      throw new Error(`Missing required name parts in owner "${raw}"`);
+    }
     people.push({
       type: "person",
       first_name: toTitle(first),
       last_name: toTitle(lastName),
       middle_name: middle ? toTitle(middle) : null,
+      prefix_name: extracted.prefix_name,
+      suffix_name: extracted.suffix_name,
     });
   }
   return people.length ? people : null;
@@ -329,7 +520,10 @@ function buildOwnersFromRaw(raw, invalidOut) {
 
   // Remove commas
   const plain = name.replace(/,/g, " ");
-  const toks = plain.split(/\s+/).filter(Boolean);
+  let toks = plain.split(/\s+/).filter(Boolean);
+  const { tokens: coreTokens, prefix_name, suffix_name } =
+    extractPrefixSuffix(toks);
+  toks = coreTokens;
   if (toks.length < 2) {
     invalidOut.push({ raw: name, reason: "insufficient_name_parts" });
     return owners;
@@ -339,7 +533,8 @@ function buildOwnersFromRaw(raw, invalidOut) {
   let middle = null;
   let last = toks[toks.length - 1];
 
-  if (toks.length === 2 && isLikelyLastFirstTwoTokens(name)) {
+  const candidateForOrderCheck = toks.join(" ");
+  if (toks.length === 2 && isLikelyLastFirstTwoTokens(candidateForOrderCheck)) {
     // Swap
     first = toks[1];
     last = toks[0];
@@ -356,11 +551,17 @@ function buildOwnersFromRaw(raw, invalidOut) {
     }
   }
 
+  if (!first || !last) {
+    throw new Error(`Missing required name parts in owner "${name}"`);
+  }
+
   owners.push({
     type: "person",
     first_name: toTitle(first),
     last_name: toTitle(last),
     middle_name: middle ? toTitle(middle) : null,
+    prefix_name: prefix_name || null,
+    suffix_name: suffix_name || null,
   });
   return owners;
 }
