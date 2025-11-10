@@ -1031,8 +1031,20 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
 ];
 
 // Downstream validation expects the raw branch to carry the full field surface
-// (nulls allowed), so we always retain the complete schema field list.
-const RAW_SCHEMA_REQUIRED_FIELDS = [];
+// with key pieces populated. These required fields mirror the normalized branch
+// so that either variant satisfies the address oneOf contract.
+const RAW_SCHEMA_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
+];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
@@ -1050,6 +1062,94 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
     return acc;
   }, {}),
 );
+
+function hasMeaningfulAddressValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  return true;
+}
+
+function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
+  if (!rawAddress || typeof rawAddress !== "object") return null;
+
+  const normalizedUnnormalized =
+    typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : "";
+
+  const candidate = {
+    ...rawAddress,
+  };
+
+  if (
+    normalizedUnnormalized.length &&
+    (!Object.prototype.hasOwnProperty.call(candidate, "unnormalized_address") ||
+      !hasMeaningfulAddressValue(candidate.unnormalized_address))
+  ) {
+    candidate.unnormalized_address = normalizedUnnormalized;
+  }
+
+  if (normalizedUnnormalized.length) {
+    enrichAddressFromUnnormalized(candidate, normalizedUnnormalized);
+  }
+
+  if (
+    hasMeaningfulAddressValue(candidate.state_code) &&
+    !hasMeaningfulAddressValue(candidate.country_code)
+  ) {
+    candidate.country_code = "US";
+  }
+
+  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+    const value = candidate[field];
+    if (!hasMeaningfulAddressValue(value)) {
+      return null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        return null;
+      }
+      switch (field) {
+        case "city_name": {
+          const sanitized = sanitizeCityName(trimmed);
+          if (!sanitized) return null;
+          candidate[field] = sanitized;
+          break;
+        }
+        case "postal_code": {
+          const postal = sanitizePostalCode(trimmed);
+          if (!postal) return null;
+          candidate[field] = postal;
+          break;
+        }
+        case "state_code":
+        case "country_code":
+          candidate[field] = trimmed.toUpperCase();
+          break;
+        case "county_name": {
+          const titled = toTitleCase(trimmed);
+          if (!titled) return null;
+          candidate[field] = titled;
+          break;
+        }
+        case "street_suffix_type": {
+          const mapped = mapStreetSuffixType(trimmed);
+          candidate[field] = mapped || trimmed;
+          if (!hasMeaningfulAddressValue(candidate[field])) {
+            return null;
+          }
+          break;
+        }
+        default:
+          candidate[field] = trimmed;
+      }
+    }
+  }
+
+  return candidate;
+}
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -1924,8 +2024,24 @@ function createSchemaReadyAddress(address, variant, options = {}) {
       allowedFields: fieldsToUse,
       preserveNulls: true,
     });
-    if (sanitizedRaw && Object.keys(sanitizedRaw).length) {
-      return sanitizedRaw;
+    if (!sanitizedRaw || !Object.keys(sanitizedRaw).length) {
+      return null;
+    }
+
+    const coverageReady = ensureRawAddressRequiredCoverage(
+      sanitizedRaw,
+      resolvedUnnormalized,
+    );
+    if (!coverageReady) {
+      return null;
+    }
+
+    const normalizedRaw = pruneRawAddressForSchema(coverageReady, {
+      allowedFields: fieldsToUse,
+      preserveNulls: true,
+    });
+    if (normalizedRaw && Object.keys(normalizedRaw).length) {
+      return normalizedRaw;
     }
     return null;
   }
