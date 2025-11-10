@@ -4973,9 +4973,12 @@ async function main() {
       "country_code",
       "county_name",
     ];
+    const normalizedFinal = normalizedPrepared
+      ? finalizeAddressForOutput(normalizedPrepared, "normalized")
+      : null;
     const hasNormalizedSurface =
-      normalizedPrepared &&
-      normalizedMustHave.every((field) => hasMeaningfulAddressValue(normalizedPrepared[field]));
+      normalizedFinal &&
+      normalizedMustHave.every((field) => hasMeaningfulAddressValue(normalizedFinal[field]));
 
     const trimmedUnnormalized =
       typeof resolvedUnnormalized === "string" ? resolvedUnnormalized.trim() : "";
@@ -4991,13 +4994,16 @@ async function main() {
       rawSurface && trimmedUnnormalized.length > 0
         ? prepareAddressForSchema(rawSurface, "raw")
         : null;
+    const rawFinal = rawPrepared
+      ? finalizeAddressForOutput(rawPrepared, "raw")
+      : null;
 
     let finalAddressPayload = null;
 
     if (hasStructuredAddressInput && hasNormalizedSurface) {
-      finalAddressPayload = normalizedPrepared;
-    } else if (rawPrepared) {
-      finalAddressPayload = rawPrepared;
+      finalAddressPayload = normalizedFinal;
+    } else if (rawFinal) {
+      finalAddressPayload = rawFinal;
     }
 
     if (finalAddressPayload) {
