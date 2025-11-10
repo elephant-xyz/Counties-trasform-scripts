@@ -4753,6 +4753,106 @@ async function main() {
       }
     }
 
+    if (finalAddress) {
+      const normalizedTrimmedUnnormalized =
+        typeof trimmedUnnormalized === "string" ? trimmedUnnormalized : "";
+      const enforceVariant =
+        finalAddressVariant === "normalized" || finalAddressVariant === "raw"
+          ? finalAddressVariant
+          : null;
+
+      let schemaReadyAddress =
+        enforceVariant !== null
+          ? ensureAddressVariantIsSchemaCompliant(finalAddress, enforceVariant, {
+              allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
+            })
+          : null;
+
+      if (!schemaReadyAddress && hasUnnormalizedAddress) {
+        const rawFallbackSeed = {
+          ...collectAddressFields(address, RAW_ADDRESS_OUTPUT_FIELDS, {
+            preserveNulls: true,
+          }),
+          unnormalized_address: normalizedTrimmedUnnormalized,
+        };
+        schemaReadyAddress = ensureAddressVariantIsSchemaCompliant(
+          rawFallbackSeed,
+          "raw",
+          { allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS },
+        );
+        if (schemaReadyAddress) {
+          finalAddressVariant = "raw";
+        }
+      }
+
+      if (!schemaReadyAddress && enforceVariant === "normalized") {
+        const normalizedFallbackSeed = collectAddressFields(
+          address,
+          NORMALIZED_ADDRESS_FIELDS,
+          { preserveNulls: true },
+        );
+        schemaReadyAddress = ensureAddressVariantIsSchemaCompliant(
+          normalizedFallbackSeed,
+          "normalized",
+        );
+        if (schemaReadyAddress) {
+          finalAddressVariant = "normalized";
+        }
+      }
+
+      if (schemaReadyAddress) {
+        const expectedFields =
+          finalAddressVariant === "normalized"
+            ? NORMALIZED_ADDRESS_FIELDS
+            : RAW_ADDRESS_OUTPUT_FIELDS;
+
+        for (const field of expectedFields) {
+          if (!Object.prototype.hasOwnProperty.call(schemaReadyAddress, field)) {
+            schemaReadyAddress[field] = null;
+          }
+        }
+
+        if (finalAddressVariant === "raw") {
+          if (
+            !Object.prototype.hasOwnProperty.call(
+              schemaReadyAddress,
+              "unnormalized_address",
+            ) &&
+            normalizedTrimmedUnnormalized.length
+          ) {
+            schemaReadyAddress.unnormalized_address = normalizedTrimmedUnnormalized;
+          }
+        }
+
+        for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+          const numeric = parseCoordinate(schemaReadyAddress[coordinateField]);
+          schemaReadyAddress[coordinateField] =
+            numeric != null ? numeric : null;
+        }
+
+        if (
+          schemaReadyAddress.state_code &&
+          !schemaReadyAddress.country_code
+        ) {
+          schemaReadyAddress.country_code = "US";
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            schemaReadyAddress,
+            "plus_four_postal_code",
+          ) &&
+          !schemaReadyAddress.postal_code
+        ) {
+          schemaReadyAddress.plus_four_postal_code = null;
+        }
+
+        finalAddress = schemaReadyAddress;
+      } else {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    }
+
     const hasMeaningfulAddress =
       finalAddress &&
       Object.entries(finalAddress).some(([key, value]) => {
