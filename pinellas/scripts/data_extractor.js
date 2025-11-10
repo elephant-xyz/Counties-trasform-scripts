@@ -1919,6 +1919,106 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+function pointerPath(fileName) {
+  if (!fileName) return null;
+  return fileName.startsWith("./") ? fileName : `./${fileName}`;
+}
+
+function createRelationshipFile(dataDir, outputName, fromFile, toFile) {
+  const fromPointer = pointerPath(fromFile);
+  const toPointer = pointerPath(toFile);
+  if (!fromPointer || !toPointer) return;
+  const relationship = {
+    from: { "/": fromPointer },
+    to: { "/": toPointer },
+  };
+  writeJSON(path.join(dataDir, outputName), relationship);
+}
+
+function createPropertyRelationships(dataDir) {
+  const propertyFile = "property.json";
+  const propertyPath = path.join(dataDir, propertyFile);
+  if (!fs.existsSync(propertyPath)) return;
+
+  let entries;
+  try {
+    entries = fs.readdirSync(dataDir);
+  } catch (e) {
+    return;
+  }
+
+  if (entries.includes("address.json")) {
+    createRelationshipFile(
+      dataDir,
+      "relationship_property_has_address.json",
+      propertyFile,
+      "address.json",
+    );
+  }
+
+  const factSheetEntries = entries
+    .map((name) => {
+      const match = name.match(/^fact_sheet(?:_(\d+))?\.json$/i);
+      if (!match) return null;
+      const suffix = match[1] ? parseInt(match[1], 10) : null;
+      return { name, suffix };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const aSuffix = a.suffix ?? Number.MAX_SAFE_INTEGER;
+      const bSuffix = b.suffix ?? Number.MAX_SAFE_INTEGER;
+      if (aSuffix !== bSuffix) return aSuffix - bSuffix;
+      return a.name.localeCompare(b.name);
+    });
+
+  factSheetEntries.forEach((entry, idx) => {
+    const suffix =
+      entry.suffix != null ? entry.suffix : idx + 1;
+    createRelationshipFile(
+      dataDir,
+      `relationship_property_has_fact_sheet_${suffix}.json`,
+      propertyFile,
+      entry.name,
+    );
+  });
+
+  const fileEntries = entries
+    .map((name) => {
+      const match = name.match(/^file_(\d+)\.json$/);
+      if (!match) return null;
+      return { name, index: parseInt(match[1], 10) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.index - b.index);
+
+  fileEntries.forEach(({ name, index }) => {
+    createRelationshipFile(
+      dataDir,
+      `relationship_property_has_file_${index}.json`,
+      propertyFile,
+      name,
+    );
+  });
+
+  const taxEntries = entries
+    .map((name) => {
+      const match = name.match(/^tax_(\d+)\.json$/);
+      if (!match) return null;
+      return { name, year: match[1] };
+    })
+    .filter(Boolean)
+    .sort((a, b) => parseInt(a.year, 10) - parseInt(b.year, 10));
+
+  taxEntries.forEach(({ name, year }) => {
+    createRelationshipFile(
+      dataDir,
+      `relationship_property_has_tax_${year}.json`,
+      propertyFile,
+      name,
+    );
+  });
+}
+
 // --- HELPER FUNCTIONS FOR HTML EXTRACTION ---
 
 /**
@@ -3635,6 +3735,8 @@ function extract() {
       );
     });
   }
+
+  createPropertyRelationships(dataDir);
 
 
   // Remove relationships that should be null according to schema
