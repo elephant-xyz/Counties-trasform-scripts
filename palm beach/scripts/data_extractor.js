@@ -3722,6 +3722,14 @@ async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
+  const staleRelationshipFiles = [
+    path.join(dataDir, "relationship_property_has_address.json"),
+    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+  ];
+  for (const staleFile of staleRelationshipFiles) {
+    removeFileIfExists(staleFile);
+  }
+
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
@@ -5098,6 +5106,55 @@ async function main() {
         finalAddress = null;
         finalAddressVariant = null;
       }
+    }
+
+    if (finalAddress && finalAddressVariant === "raw") {
+      const schemaSurface = ensureRawAddressSchemaSurface(finalAddress);
+      if (schemaSurface) {
+        for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(schemaSurface, field)) {
+            schemaSurface[field] = null;
+          }
+        }
+        for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(schemaSurface, field)) {
+            schemaSurface[field] = null;
+          }
+        }
+        if (
+          schemaSurface.state_code &&
+          !schemaSurface.country_code
+        ) {
+          schemaSurface.country_code = "US";
+        }
+        if (
+          !schemaSurface.postal_code &&
+          Object.prototype.hasOwnProperty.call(schemaSurface, "plus_four_postal_code")
+        ) {
+          schemaSurface.plus_four_postal_code = null;
+        }
+        if (typeof schemaSurface.unnormalized_address === "string") {
+          const trimmedUnnormalized = schemaSurface.unnormalized_address.trim();
+          schemaSurface.unnormalized_address = trimmedUnnormalized.length
+            ? trimmedUnnormalized
+            : null;
+        }
+        finalAddress = schemaSurface;
+      }
+      if (
+        !finalAddress ||
+        typeof finalAddress.unnormalized_address !== "string" ||
+        !finalAddress.unnormalized_address.trim().length
+      ) {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    } else if (
+      finalAddress &&
+      finalAddressVariant === "normalized" &&
+      Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+    ) {
+      delete finalAddress.unnormalized_address;
     }
 
     const hasMeaningfulAddress =
