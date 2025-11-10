@@ -4790,7 +4790,8 @@ async function main() {
       }
 
       if (sanitizedAddress) {
-        if (finalAddressVariant === "raw") {
+        const resolvedVariant = sanitizedVariant || finalAddressVariant || inferVariant;
+        if (resolvedVariant === "raw") {
           if (
             (!sanitizedAddress.unnormalized_address ||
               !String(sanitizedAddress.unnormalized_address).trim().length) &&
@@ -4798,25 +4799,44 @@ async function main() {
           ) {
             sanitizedAddress.unnormalized_address = resolvedUnnormalized;
           }
+          const ensuredRaw = ensureRawAddressFieldCoverage(
+            sanitizedAddress,
+            complianceOptions.allowedRawFields,
+          );
+          sanitizedAddress = ensuredRaw || null;
+          if (sanitizedAddress) {
+            ensureAddressFieldSurface(
+              sanitizedAddress,
+              RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
+            );
+            if (!sanitizedAddress.postal_code) {
+              sanitizedAddress.plus_four_postal_code = null;
+            }
+            if (
+              sanitizedAddress.state_code &&
+              !sanitizedAddress.country_code
+            ) {
+              sanitizedAddress.country_code = "US";
+            }
+          }
+        } else if (
+          resolvedVariant === "normalized" &&
+          Object.prototype.hasOwnProperty.call(sanitizedAddress, "unnormalized_address")
+        ) {
+          delete sanitizedAddress.unnormalized_address;
           ensureAddressFieldSurface(
             sanitizedAddress,
             RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
           );
-          if (!sanitizedAddress.postal_code) {
-            sanitizedAddress.plus_four_postal_code = null;
-          }
-          if (
-            sanitizedAddress.state_code &&
-            !sanitizedAddress.country_code
-          ) {
-            sanitizedAddress.country_code = "US";
-          }
-        } else {
+        } else if (sanitizedAddress) {
           ensureAddressFieldSurface(
             sanitizedAddress,
             RAW_ADDRESS_REQUIRED_FIELD_SURFACE,
           );
         }
+      }
+
+      if (sanitizedAddress) {
         writeJSON(addressFilePath, sanitizedAddress);
         finalAddressVariant = sanitizedVariant;
         // Relationships are generated downstream; ensure no stale files remain.
