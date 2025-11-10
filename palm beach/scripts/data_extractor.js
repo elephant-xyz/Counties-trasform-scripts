@@ -4865,28 +4865,9 @@ async function main() {
 
     if (hasMeaningfulAddress && finalAddress) {
       writeJSON(addressFilePath, finalAddress);
-
-      const propertyJsonPath = path.join(dataDir, "property.json");
-      if (fs.existsSync(propertyJsonPath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
-
-      const factSheetJsonPath = path.join(dataDir, "fact_sheet.json");
-      if (fs.existsSync(factSheetJsonPath)) {
-        writeRelationshipFile(
-          addressFactSheetRelationshipPath,
-          "./address.json",
-          "./fact_sheet.json",
-        );
-      } else {
-        removeFileIfExists(addressFactSheetRelationshipPath);
-      }
+      // Relationships are generated downstream; ensure no stale files remain.
+      removeFileIfExists(propertyAddressRelationshipPath);
+      removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
