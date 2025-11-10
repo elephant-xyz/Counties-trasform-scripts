@@ -5078,6 +5078,7 @@ async function main() {
       typeof resolvedUnnormalized === "string" ? resolvedUnnormalized.trim() : "";
 
     let finalAddressPayload = null;
+    let finalAddressVariant = null;
 
     const normalizedCandidate = ensureAddressVariantIsSchemaCompliant(
       { ...baseAddressSeed },
@@ -5096,6 +5097,7 @@ async function main() {
         );
         if (coveredNormalized && typeof coveredNormalized === "object") {
           finalAddressPayload = coveredNormalized;
+          finalAddressVariant = "normalized";
         }
       }
     }
@@ -5145,22 +5147,60 @@ async function main() {
           surfacedRaw.country_code = "US";
         }
         finalAddressPayload = surfacedRaw;
+        finalAddressVariant = "raw";
+      }
+    }
+
+    if (finalAddressPayload && finalAddressVariant === "raw") {
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          finalAddressPayload,
+          "unnormalized_address",
+        ) &&
+        trimmedUnnormalized.length
+      ) {
+        finalAddressPayload.unnormalized_address = trimmedUnnormalized;
+      }
+      for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(finalAddressPayload, field)) {
+          finalAddressPayload[field] = null;
+          continue;
+        }
+        const value = finalAddressPayload[field];
+        if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          finalAddressPayload[field] = numeric != null ? numeric : null;
+          continue;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          finalAddressPayload[field] = trimmed.length ? trimmed : null;
+        }
+      }
+      if (!finalAddressPayload.postal_code) {
+        finalAddressPayload.plus_four_postal_code = null;
+      }
+      if (
+        finalAddressPayload.state_code &&
+        !finalAddressPayload.country_code
+      ) {
+        finalAddressPayload.country_code = "US";
+      }
+    } else if (finalAddressPayload && finalAddressVariant === "normalized") {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          finalAddressPayload,
+          "unnormalized_address",
+        )
+      ) {
+        delete finalAddressPayload.unnormalized_address;
       }
     }
 
     if (finalAddressPayload) {
       writeJSON(addressFilePath, finalAddressPayload);
 
-      if (fs.existsSync(path.join(dataDir, "property.json"))) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
-
+      removeFileIfExists(propertyAddressRelationshipPath);
       removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       removeFileIfExists(addressFilePath);
