@@ -1118,15 +1118,20 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLO
       ? allowedFields
       : RAW_ADDRESS_ALLOWED_FIELDS;
   const allowedSet = new Set(fields);
-  const result = { unnormalized_address: unnormalized };
+  const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: unnormalized,
+  };
 
   for (const field of fields) {
     const hasValue = Object.prototype.hasOwnProperty.call(address, field);
     const value = hasValue ? address[field] : null;
     result[field] =
-      value === undefined ? null : ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)
-        ? parseCoordinate(value)
-        : value;
+      value === undefined
+        ? null
+        : ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)
+          ? parseCoordinate(value)
+          : value;
   }
 
   for (const [key, value] of Object.entries(address)) {
@@ -2967,7 +2972,10 @@ function buildRawAddressOutputForSchema(address) {
     return null;
   }
 
-  const result = { unnormalized_address: unnormalized };
+  const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: unnormalized,
+  };
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     let value = Object.prototype.hasOwnProperty.call(address, field)
       ? address[field]
