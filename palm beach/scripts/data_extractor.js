@@ -5110,30 +5110,41 @@ async function main() {
         allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
       });
 
-      if (compliantRaw) {
-        const finalizedRaw = finalizeAddressForOutput(compliantRaw, "raw", {
-          allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
-        });
+      const finalizedRaw = compliantRaw
+        ? finalizeAddressForOutput(compliantRaw, "raw", {
+            allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
+          })
+        : null;
 
-        if (finalizedRaw) {
-          const coveredRaw = ensureRawAddressFieldCoverage(finalizedRaw);
-          if (coveredRaw && typeof coveredRaw === "object") {
-            finalAddressPayload = {
-              ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-              ...coveredRaw,
-            };
+      let surfacedRaw = null;
+      if (finalizedRaw) {
+        surfacedRaw = ensureRawAddressSchemaSurface(finalizedRaw);
+      }
 
-            if (!hasMeaningfulAddressValue(finalAddressPayload.postal_code)) {
-              finalAddressPayload.plus_four_postal_code = null;
-            }
-            if (
-              hasMeaningfulAddressValue(finalAddressPayload.state_code) &&
-              !hasMeaningfulAddressValue(finalAddressPayload.country_code)
-            ) {
-              finalAddressPayload.country_code = "US";
-            }
-          }
+      if (!surfacedRaw) {
+        const fallbackSurfaceInput = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...collectAddressFields(
+            finalizedRaw || rawSeed,
+            RAW_ADDRESS_OUTPUT_FIELDS,
+            { preserveNulls: true },
+          ),
+          unnormalized_address: trimmedUnnormalized,
+        };
+        surfacedRaw = ensureRawAddressSchemaSurface(fallbackSurfaceInput);
+      }
+
+      if (surfacedRaw && typeof surfacedRaw === "object") {
+        if (!hasMeaningfulAddressValue(surfacedRaw.postal_code)) {
+          surfacedRaw.plus_four_postal_code = null;
         }
+        if (
+          hasMeaningfulAddressValue(surfacedRaw.state_code) &&
+          !hasMeaningfulAddressValue(surfacedRaw.country_code)
+        ) {
+          surfacedRaw.country_code = "US";
+        }
+        finalAddressPayload = surfacedRaw;
       }
     }
 
