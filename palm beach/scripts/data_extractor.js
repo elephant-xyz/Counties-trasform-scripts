@@ -2384,14 +2384,6 @@ function pruneAddressComponentsForSchema(address) {
     address.city_name = sanitizedCity || null;
   }
 
-  if (
-    hasMeaningfulValue(address.plus_four_postal_code) &&
-    !hasMeaningfulValue(address.postal_code)
-  ) {
-    delete address.plus_four_postal_code;
-    removedFields.add("plus_four_postal_code");
-  }
-
   const streetFields = [
     "street_number",
     "street_name",
@@ -2401,14 +2393,14 @@ function pruneAddressComponentsForSchema(address) {
     "unit_identifier",
     "route_number",
   ];
-  const streetRequired = ["street_number", "street_name", "street_suffix_type"];
-  const hasStreetData = streetFields.some((field) =>
+  const streetCoreFields = ["street_number", "street_name"];
+  const hasAnyStreetValue = streetFields.some((field) =>
     hasMeaningfulValue(address[field]),
   );
-  const missingStreetRequired = streetRequired.some(
-    (field) => !hasMeaningfulValue(address[field]),
+  const hasStreetCoreValue = streetCoreFields.some((field) =>
+    hasMeaningfulValue(address[field]),
   );
-  if (hasStreetData && missingStreetRequired) {
+  if (hasAnyStreetValue && !hasStreetCoreValue) {
     for (const field of streetFields) {
       delete address[field];
       removedFields.add(field);
