@@ -5157,6 +5157,115 @@ async function main() {
       delete finalAddress.unnormalized_address;
     }
 
+    if (!finalAddress) {
+      const fallbackUnnormalizedCandidates = [
+        typeof trimmedUnnormalized === "string" ? trimmedUnnormalized : null,
+        typeof fallbackUnnormalizedValue === "string"
+          ? fallbackUnnormalizedValue
+          : null,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        fullAddr,
+        fullAddrInput,
+      ];
+      const fallbackUnnormalized = fallbackUnnormalizedCandidates.find(
+        (candidate) =>
+          typeof candidate === "string" && candidate.trim().length > 0,
+      );
+
+      if (fallbackUnnormalized) {
+        const fallbackFields = collectAddressFields(
+          address,
+          RAW_ADDRESS_OUTPUT_FIELDS,
+          { preserveNulls: true },
+        );
+
+        const resolvedFallbackLatitude = Number.isFinite(fallbackFields.latitude)
+          ? fallbackFields.latitude
+          : Number.isFinite(resolvedLatitude)
+            ? resolvedLatitude
+            : Number.isFinite(initialLatitude)
+              ? initialLatitude
+              : parcelCentroid && Number.isFinite(parcelCentroid.latitude)
+                ? parcelCentroid.latitude
+                : null;
+        const resolvedFallbackLongitude =
+          Number.isFinite(fallbackFields.longitude)
+            ? fallbackFields.longitude
+            : Number.isFinite(resolvedLongitude)
+              ? resolvedLongitude
+              : Number.isFinite(initialLongitude)
+                ? initialLongitude
+                : parcelCentroid && Number.isFinite(parcelCentroid.longitude)
+                  ? parcelCentroid.longitude
+                  : null;
+        fallbackFields.latitude = parseCoordinate(resolvedFallbackLatitude);
+        fallbackFields.longitude = parseCoordinate(resolvedFallbackLongitude);
+
+        if (!fallbackFields.city_name && parsedUnnormalizedCityState.city) {
+          const fallbackCity = sanitizeCityName(
+            parsedUnnormalizedCityState.city,
+          );
+          if (fallbackCity) fallbackFields.city_name = fallbackCity;
+        }
+        if (!fallbackFields.state_code && parsedUnnormalizedCityState.state) {
+          const fallbackState = String(
+            parsedUnnormalizedCityState.state,
+          ).trim();
+          if (fallbackState.length) {
+            fallbackFields.state_code = fallbackState.toUpperCase();
+          }
+        }
+        if (
+          !fallbackFields.postal_code &&
+          parsedUnnormalizedCityState.postal
+        ) {
+          const fallbackPostal = sanitizePostalCode(
+            parsedUnnormalizedCityState.postal,
+          );
+          if (fallbackPostal) fallbackFields.postal_code = fallbackPostal;
+        }
+        if (
+          !fallbackFields.plus_four_postal_code &&
+          parsedUnnormalizedCityState.plus4
+        ) {
+          const fallbackPlus4 = sanitizePlus4(
+            parsedUnnormalizedCityState.plus4,
+          );
+          if (fallbackPlus4) fallbackFields.plus_four_postal_code = fallbackPlus4;
+        }
+        if (!fallbackFields.state_code && inferredStateCode) {
+          fallbackFields.state_code = inferredStateCode;
+        }
+        if (!fallbackFields.county_name && formattedCountyName) {
+          fallbackFields.county_name = formattedCountyName;
+        }
+        if (!fallbackFields.municipality_name && normalizedMunicipality) {
+          fallbackFields.municipality_name = toTitleCase(
+            normalizedMunicipality,
+          );
+        }
+        if (fallbackFields.state_code && !fallbackFields.country_code) {
+          fallbackFields.country_code = "US";
+        }
+
+        const fallbackSurface =
+          ensureRawAddressSchemaSurface({
+            ...fallbackFields,
+            unnormalized_address: fallbackUnnormalized.trim(),
+          }) ||
+          ensureRawAddressSchemaSurface({
+            unnormalized_address: fallbackUnnormalized.trim(),
+          });
+
+        if (fallbackSurface) {
+          finalAddress = fallbackSurface;
+          finalAddressVariant = "raw";
+        }
+      }
+    }
+
     const hasMeaningfulAddress =
       finalAddress &&
       Object.entries(finalAddress).some(([key, value]) => {
