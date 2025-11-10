@@ -4503,6 +4503,59 @@ async function main() {
         prepareAddressForSchema(finalAddress, "normalized") || finalAddress;
     }
 
+    if (finalAddress && finalAddressVariant === "raw") {
+      const coverageReady = ensureRawAddressFieldCoverage(
+        finalAddress,
+        RAW_ADDRESS_OUTPUT_FIELDS,
+      );
+      if (coverageReady) {
+        finalAddress = coverageReady;
+      }
+
+      for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+          finalAddress[field] = null;
+        }
+      }
+
+      const resolveUnnormalized = () => {
+        if (
+          Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address") &&
+          typeof finalAddress.unnormalized_address === "string"
+        ) {
+          const trimmed = finalAddress.unnormalized_address.trim();
+          if (trimmed.length) {
+            return trimmed;
+          }
+        }
+        if (typeof trimmedUnnormalized === "string" && trimmedUnnormalized.length) {
+          return trimmedUnnormalized;
+        }
+        if (
+          rawAddressCandidate &&
+          typeof rawAddressCandidate.unnormalized_address === "string" &&
+          rawAddressCandidate.unnormalized_address.trim().length
+        ) {
+          return rawAddressCandidate.unnormalized_address.trim();
+        }
+        if (
+          typeof fallbackUnnormalizedValue === "string" &&
+          fallbackUnnormalizedValue.trim().length
+        ) {
+          return fallbackUnnormalizedValue.trim();
+        }
+        return "";
+      };
+
+      const resolvedUnnormalized = resolveUnnormalized();
+      if (resolvedUnnormalized.length) {
+        finalAddress.unnormalized_address = resolvedUnnormalized;
+      } else {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    }
+
     const hasMeaningfulAddress =
       finalAddress &&
       Object.entries(finalAddress).some(([key, value]) => {
