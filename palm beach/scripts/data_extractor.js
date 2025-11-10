@@ -1102,6 +1102,42 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
+  if (!address || typeof address !== "object") return null;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const fields =
+    Array.isArray(allowedFields) && allowedFields.length
+      ? allowedFields
+      : RAW_ADDRESS_ALLOWED_FIELDS;
+  const allowedSet = new Set(fields);
+  const result = { unnormalized_address: unnormalized };
+
+  for (const field of fields) {
+    const hasValue = Object.prototype.hasOwnProperty.call(address, field);
+    const value = hasValue ? address[field] : null;
+    result[field] =
+      value === undefined ? null : ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)
+        ? parseCoordinate(value)
+        : value;
+  }
+
+  for (const [key, value] of Object.entries(address)) {
+    if (key === "unnormalized_address") continue;
+    if (allowedSet.has(key)) continue;
+    result[key] = value;
+  }
+
+  return result;
+}
+
 
 function ensureRawAddressSchemaSurface(address, options = {}) {
   if (!address || typeof address !== "object") return null;
@@ -4883,7 +4919,18 @@ async function main() {
         }
 
         if (finalizedRaw) {
-          const defaultedRaw = ensureRawAddressSchemaDefaults(finalizedRaw);
+          const coveredRaw =
+            ensureRawAddressFieldCoverage(finalizedRaw, RAW_ADDRESS_OUTPUT_FIELDS) ||
+            ensureRawAddressFieldCoverage(
+              {
+                ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+                ...finalizedRaw,
+              },
+              RAW_ADDRESS_OUTPUT_FIELDS,
+            );
+
+          const rawForDefaults = coveredRaw || finalizedRaw;
+          const defaultedRaw = ensureRawAddressSchemaDefaults(rawForDefaults);
           const preparedRaw = ensureAddressFieldsForOutput(defaultedRaw, "raw", {
             allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
           });
@@ -4897,7 +4944,10 @@ async function main() {
 
     if (finalAddressPayload) {
       if (finalVariant === "raw") {
-        finalAddressPayload = projectRawAddressForOneOf(finalAddressPayload);
+        const withCoverage =
+          ensureRawAddressFieldCoverage(finalAddressPayload, RAW_ADDRESS_OUTPUT_FIELDS) ||
+          finalAddressPayload;
+        finalAddressPayload = projectRawAddressForOneOf(withCoverage);
       }
 
       if (finalAddressPayload) {
