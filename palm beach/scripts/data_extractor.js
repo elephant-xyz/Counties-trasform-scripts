@@ -4901,52 +4901,147 @@ async function main() {
       }
 
       if (schemaReadyAddress) {
-        const expectedFields =
-          finalAddressVariant === "normalized"
-            ? NORMALIZED_ADDRESS_FIELDS
-            : RAW_ADDRESS_OUTPUT_FIELDS;
+        const normalizedTrimmedUnnormalizedValue =
+          typeof trimmedUnnormalized === "string"
+            ? trimmedUnnormalized.trim()
+            : "";
+        const fallbackTrimmedUnnormalized =
+          typeof fallbackUnnormalizedValue === "string"
+            ? fallbackUnnormalizedValue.trim()
+            : "";
+        const schemaUnnormalized =
+          schemaReadyAddress &&
+          typeof schemaReadyAddress.unnormalized_address === "string"
+            ? schemaReadyAddress.unnormalized_address.trim()
+            : "";
+        const resolvedRawUnnormalized =
+          schemaUnnormalized ||
+          normalizedTrimmedUnnormalizedValue ||
+          fallbackTrimmedUnnormalized ||
+          "";
 
-        for (const field of expectedFields) {
-          if (!Object.prototype.hasOwnProperty.call(schemaReadyAddress, field)) {
-            schemaReadyAddress[field] = null;
-          }
-        }
+        let canonicalAddress = null;
 
-        if (finalAddressVariant === "raw") {
-          if (
-            !Object.prototype.hasOwnProperty.call(
-              schemaReadyAddress,
-              "unnormalized_address",
-            ) &&
-            normalizedTrimmedUnnormalized.length
-          ) {
-            schemaReadyAddress.unnormalized_address = normalizedTrimmedUnnormalized;
-          }
-        }
-
-        for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
-          const numeric = parseCoordinate(schemaReadyAddress[coordinateField]);
-          schemaReadyAddress[coordinateField] =
-            numeric != null ? numeric : null;
-        }
-
-        if (
-          schemaReadyAddress.state_code &&
-          !schemaReadyAddress.country_code
-        ) {
-          schemaReadyAddress.country_code = "US";
-        }
-        if (
-          Object.prototype.hasOwnProperty.call(
+        if (finalAddressVariant === "normalized") {
+          const normalizedCandidates = [
             schemaReadyAddress,
-            "plus_four_postal_code",
-          ) &&
-          !schemaReadyAddress.postal_code
-        ) {
-          schemaReadyAddress.plus_four_postal_code = null;
+            collectAddressFields(address, NORMALIZED_ADDRESS_FIELDS, {
+              preserveNulls: true,
+            }),
+            collectAddressFields(normalizedSnapshot, NORMALIZED_ADDRESS_FIELDS, {
+              preserveNulls: true,
+            }),
+          ];
+          for (const candidate of normalizedCandidates) {
+            if (!candidate) continue;
+            const built = buildNormalizedAddressOutput(candidate);
+            if (built) {
+              canonicalAddress = built;
+              break;
+            }
+          }
+
+          if (canonicalAddress) {
+            for (const field of NORMALIZED_ADDRESS_FIELDS) {
+              if (
+                !Object.prototype.hasOwnProperty.call(canonicalAddress, field)
+              ) {
+                canonicalAddress[field] = null;
+              }
+            }
+            if (
+              Object.prototype.hasOwnProperty.call(
+                canonicalAddress,
+                "unnormalized_address",
+              )
+            ) {
+              delete canonicalAddress.unnormalized_address;
+            }
+          }
+        } else {
+          const rawCandidates = [
+            {
+              ...schemaReadyAddress,
+              unnormalized_address: resolvedRawUnnormalized || null,
+            },
+            {
+              ...collectAddressFields(address, RAW_ADDRESS_OUTPUT_FIELDS, {
+                preserveNulls: true,
+              }),
+              unnormalized_address: resolvedRawUnnormalized || null,
+            },
+            {
+              ...collectAddressFields(
+                normalizedSnapshot,
+                RAW_ADDRESS_OUTPUT_FIELDS,
+                { preserveNulls: true },
+              ),
+              unnormalized_address: resolvedRawUnnormalized || null,
+            },
+          ];
+
+          for (const candidate of rawCandidates) {
+            if (!candidate) continue;
+            const built = buildRawAddressOutput(candidate, {
+              allowedFields: RAW_ADDRESS_OUTPUT_FIELDS,
+              trimmedUnnormalized: resolvedRawUnnormalized,
+            });
+            if (built) {
+              canonicalAddress = built;
+              break;
+            }
+          }
+
+          if (canonicalAddress) {
+            for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+              if (
+                !Object.prototype.hasOwnProperty.call(canonicalAddress, field)
+              ) {
+                canonicalAddress[field] = null;
+              }
+            }
+            if (
+              !Object.prototype.hasOwnProperty.call(
+                canonicalAddress,
+                "unnormalized_address",
+              ) ||
+              !canonicalAddress.unnormalized_address
+            ) {
+              if (resolvedRawUnnormalized) {
+                canonicalAddress.unnormalized_address = resolvedRawUnnormalized;
+              }
+            }
+            finalAddressVariant = "raw";
+          }
         }
 
-        finalAddress = schemaReadyAddress;
+        if (canonicalAddress) {
+          for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+            canonicalAddress[coordinateField] =
+              parseCoordinate(canonicalAddress[coordinateField]);
+          }
+
+          if (
+            canonicalAddress.state_code &&
+            !canonicalAddress.country_code
+          ) {
+            canonicalAddress.country_code = "US";
+          }
+          if (
+            Object.prototype.hasOwnProperty.call(
+              canonicalAddress,
+              "plus_four_postal_code",
+            ) &&
+            !canonicalAddress.postal_code
+          ) {
+            canonicalAddress.plus_four_postal_code = null;
+          }
+
+          finalAddress = canonicalAddress;
+        } else {
+          finalAddress = null;
+          finalAddressVariant = null;
+        }
       } else {
         finalAddress = null;
         finalAddressVariant = null;
