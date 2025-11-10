@@ -1542,6 +1542,9 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
   lookup[normalizedUseCode] = entry.property_usage_type ?? null;
   return lookup;
 }, {});
+
+const PROPERTY_TYPE_ENUM = new Set(["Building", "LandParcel", "Unit", "ManufacturedHome"]);
+const BUILD_STATUS_ENUM = new Set(["VacantLand", "Improved", "UnderConstruction"]);
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
   const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
@@ -2292,8 +2295,6 @@ function extractSalesHistoryFiles($, dataDir, requestIdentifier, sourceHttpReque
       document_type: null,
       file_format: null,
       name: item.name || null,
-      original_url: item.url || null,
-      ipfs_url: null,
     };
     writeJSON(path.join(dataDir, fileName), payload);
   });
@@ -3056,13 +3057,15 @@ function extract() {
     (total_area && Number(total_area) > 0) ||
     (typeof number_of_units === "number" && number_of_units > 0);
 
-  if (!property_type) {
-    property_type = hasImprovementIndicators ? "Building" : "LandParcel";
+  const defaultPropertyType = hasImprovementIndicators ? "Building" : "LandParcel";
+  if (typeof property_type !== "string" || !PROPERTY_TYPE_ENUM.has(property_type)) {
+    property_type = defaultPropertyType;
   }
 
-  if (!build_status) {
+  const defaultBuildStatus = hasImprovementIndicators ? "Improved" : "VacantLand";
+  if (typeof build_status !== "string" || !BUILD_STATUS_ENUM.has(build_status)) {
     const isLikelyLand = property_type === "LandParcel" && !hasImprovementIndicators;
-    build_status = isLikelyLand ? "VacantLand" : "Improved";
+    build_status = isLikelyLand ? "VacantLand" : defaultBuildStatus;
   }
 
   // For aquaculture/submerged land, default to VacantLand if no type determined
