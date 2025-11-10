@@ -1041,6 +1041,13 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "unit_identifier",
+  "route_number",
   "township",
   "range",
   "section",
@@ -2395,15 +2402,33 @@ consumePostDirectional();
 
 function sanitizePostalCode(value) {
   if (!value) return null;
-  const cleaned = String(value).replace(/\D/g, "");
-  if (cleaned.length >= 5) return cleaned.slice(0, 5);
+  const stringValue = String(value);
+
+  const explicitMatches = stringValue.match(/\b(\d{5})(?:-\d{4})?\b/g);
+  if (explicitMatches && explicitMatches.length) {
+    const lastExplicit = explicitMatches[explicitMatches.length - 1];
+    const zipMatch = lastExplicit.match(/\d{5}/);
+    if (zipMatch) {
+      return zipMatch[0];
+    }
+  }
+
+  const digits = stringValue.replace(/\D/g, "");
+  if (digits.length >= 5) {
+    return digits.slice(-5);
+  }
   return null;
 }
 
 function sanitizePlus4(value) {
   if (!value) return null;
-  const cleaned = String(value).replace(/\D/g, "");
-  if (cleaned.length >= 4) return cleaned.slice(0, 4);
+  const stringValue = String(value);
+
+  const hyphenatedMatch = stringValue.match(/\b\d{5}[-\s]*(\d{4})\b/);
+  if (hyphenatedMatch && hyphenatedMatch[1]) {
+    return hyphenatedMatch[1];
+  }
+
   return null;
 }
 
@@ -4540,13 +4565,25 @@ async function main() {
     const resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
     const inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
     const sanitizedPostalCode =
-      sanitizePostalCode(postalCode) ||
-      sanitizePostalCode(fullAddrInput) ||
-      sanitizePostalCode(fullAddr);
+      [
+        postalCode,
+        fullAddrInput,
+        fullAddr,
+        unnormalizedAddressCandidate,
+      ]
+        .map((candidate) => sanitizePostalCode(candidate))
+        .filter(Boolean)
+        .pop() || null;
     const sanitizedPlus4 =
-      sanitizePlus4(plus4) ||
-      sanitizePlus4(fullAddrInput) ||
-      sanitizePlus4(fullAddr);
+      [
+        plus4,
+        fullAddrInput,
+        fullAddr,
+        unnormalizedAddressCandidate,
+      ]
+        .map((candidate) => sanitizePlus4(candidate))
+        .filter(Boolean)
+        .pop() || null;
     const stateMismatch =
       countyInferredStateCode &&
       resolvedStateUpper &&
@@ -4782,23 +4819,25 @@ async function main() {
     let finalVariant = null;
     let finalAddressPayload = null;
 
-    const normalizedCandidate = ensureAddressVariantIsSchemaCompliant(
-      address,
-      "normalized",
-    );
-    if (normalizedCandidate) {
-      const normalizedOutput = finalizeAddressForOutput(
-        normalizedCandidate,
+    if (hasStructuredAddressInput) {
+      const normalizedCandidate = ensureAddressVariantIsSchemaCompliant(
+        address,
         "normalized",
       );
-      if (normalizedOutput) {
-        const preparedNormalized = ensureAddressFieldsForOutput(
-          normalizedOutput,
+      if (normalizedCandidate) {
+        const normalizedOutput = finalizeAddressForOutput(
+          normalizedCandidate,
           "normalized",
         );
-        if (preparedNormalized) {
-          finalVariant = "normalized";
-          finalAddressPayload = preparedNormalized;
+        if (normalizedOutput) {
+          const preparedNormalized = ensureAddressFieldsForOutput(
+            normalizedOutput,
+            "normalized",
+          );
+          if (preparedNormalized) {
+            finalVariant = "normalized";
+            finalAddressPayload = preparedNormalized;
+          }
         }
       }
     }
