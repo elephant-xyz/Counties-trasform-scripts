@@ -1741,6 +1741,53 @@ function ensureRawAddressSchemaDefaults(address) {
   return result;
 }
 
+function hydrateRawAddressForSchema(source, options = {}) {
+  if (!source || typeof source !== "object") return null;
+
+  const allowedRawFields =
+    Array.isArray(options.allowedRawFields) && options.allowedRawFields.length
+      ? options.allowedRawFields
+      : RAW_ADDRESS_ALLOWED_FIELDS;
+
+  const trimmedUnnormalized =
+    typeof source.unnormalized_address === "string"
+      ? source.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const hydrated = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of allowedRawFields) {
+    let value = Object.prototype.hasOwnProperty.call(source, field)
+      ? source[field]
+      : null;
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      value = parseCoordinate(value);
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    } else if (value === undefined) {
+      value = null;
+    }
+
+    hydrated[field] = value;
+  }
+
+  if (!hydrated.postal_code) {
+    hydrated.plus_four_postal_code = null;
+  }
+  if (hydrated.state_code && !hydrated.country_code) {
+    hydrated.country_code = "US";
+  }
+
+  return hydrated;
+}
+
 function deriveGridPartsFromPcn(rawPcn) {
   if (!rawPcn) return {};
   const normalized = normalizeWhitespace(String(rawPcn));
