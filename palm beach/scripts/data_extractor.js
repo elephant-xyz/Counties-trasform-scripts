@@ -5114,14 +5114,32 @@ async function main() {
       : null;
 
     let finalAddressPayload = null;
+    let finalAddressVariant = null;
 
     if (hasStructuredAddressInput && hasNormalizedSurface) {
       finalAddressPayload = normalizedFinal;
+      finalAddressVariant = "normalized";
     } else if (rawFinal) {
       finalAddressPayload = rawFinal;
+      finalAddressVariant = "raw";
     }
 
     if (finalAddressPayload) {
+      if (finalAddressVariant === "raw") {
+        const coveredRaw = ensureRawAddressFieldCoverage(finalAddressPayload);
+        if (coveredRaw && typeof coveredRaw === "object") {
+          finalAddressPayload = coveredRaw;
+        }
+      } else if (finalAddressVariant === "normalized") {
+        const coveredNormalized = ensureAddressFieldsForOutput(
+          finalAddressPayload,
+          "normalized",
+        );
+        if (coveredNormalized && typeof coveredNormalized === "object") {
+          finalAddressPayload = coveredNormalized;
+        }
+      }
+
       writeJSON(addressFilePath, finalAddressPayload);
       removeFileIfExists(propertyAddressRelationshipPath);
       removeFileIfExists(addressFactSheetRelationshipPath);
