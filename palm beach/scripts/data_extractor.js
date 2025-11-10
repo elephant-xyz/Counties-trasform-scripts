@@ -2564,7 +2564,7 @@ function pruneAddressComponentsForSchema(address) {
   );
   if (hasAnyStreetValue && !hasStreetCoreValue) {
     for (const field of streetFields) {
-      delete address[field];
+      address[field] = null;
       removedFields.add(field);
     }
   }
@@ -2578,7 +2578,7 @@ function pruneAddressComponentsForSchema(address) {
   );
   if (hasGridData && missingGridField) {
     for (const field of [...gridFields, "lot"]) {
-      delete address[field];
+      address[field] = null;
       removedFields.add(field);
     }
   }
@@ -5264,6 +5264,10 @@ async function main() {
           finalAddressPayload.plus_four_postal_code,
           fallbackPlus4Value,
           parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4,
+          trimmedUnnormalized,
+          combinedModelAddress,
+          fullAddr,
+          fullAddrInput,
         ],
         (value) => sanitizePlus4(value),
       );
