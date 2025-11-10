@@ -5175,6 +5175,7 @@ async function main() {
       );
 
       if (fallbackUnnormalized) {
+        const trimmedFallbackUnnormalized = fallbackUnnormalized.trim();
         const fallbackFields = collectAddressFields(
           address,
           RAW_ADDRESS_OUTPUT_FIELDS,
@@ -5246,17 +5247,142 @@ async function main() {
             normalizedMunicipality,
           );
         }
-        if (fallbackFields.state_code && !fallbackFields.country_code) {
+        if (!fallbackFields.city_name && normalizedCity) {
+          const normalizedCityFallback = sanitizeCityName(normalizedCity);
+          if (normalizedCityFallback) {
+            fallbackFields.city_name = normalizedCityFallback;
+          }
+        }
+        if (
+          !fallbackFields.city_name &&
+          typeof normalizedMunicipality === "string" &&
+          normalizedMunicipality.trim().length
+        ) {
+          const municipalityAsCity = sanitizeCityName(normalizedMunicipality);
+          if (municipalityAsCity) {
+            fallbackFields.city_name = municipalityAsCity;
+          }
+        }
+        if (!fallbackFields.state_code && countyInferredStateCode) {
+          fallbackFields.state_code = countyInferredStateCode;
+        }
+        if (!fallbackFields.postal_code && fallbackPostalValue) {
+          const sanitizedFallbackPostal = sanitizePostalCode(fallbackPostalValue);
+          if (sanitizedFallbackPostal) {
+            fallbackFields.postal_code = sanitizedFallbackPostal;
+          }
+        }
+        if (
+          !fallbackFields.plus_four_postal_code &&
+          fallbackPlus4Value
+        ) {
+          const sanitizedFallbackPlus4 = sanitizePlus4(fallbackPlus4Value);
+          if (sanitizedFallbackPlus4) {
+            fallbackFields.plus_four_postal_code = sanitizedFallbackPlus4;
+          }
+        }
+        if (!fallbackFields.country_code) {
           fallbackFields.country_code = "US";
+        }
+        const ensureUpper = (value) =>
+          typeof value === "string" ? value.trim().toUpperCase() || null : value;
+        if (fallbackFields.state_code) {
+          fallbackFields.state_code = ensureUpper(fallbackFields.state_code);
+        }
+        if (fallbackFields.country_code) {
+          fallbackFields.country_code = ensureUpper(fallbackFields.country_code);
+        }
+        if (fallbackFields.street_pre_directional_text) {
+          fallbackFields.street_pre_directional_text = ensureUpper(
+            fallbackFields.street_pre_directional_text,
+          );
+        }
+        if (fallbackFields.street_post_directional_text) {
+          fallbackFields.street_post_directional_text = ensureUpper(
+            fallbackFields.street_post_directional_text,
+          );
+        }
+
+        if (trimmedFallbackUnnormalized.length) {
+          const [streetSegment] = trimmedFallbackUnnormalized.split(",");
+          if (streetSegment && streetSegment.trim().length) {
+            fillAddressStreetComponents(fallbackFields, [streetSegment]);
+          }
+          if (!fallbackFields.postal_code) {
+            const postalMatch =
+              streetSegment.match(/\b(\d{5})(?:[-\s](\d{4}))?\b/) ||
+              trimmedFallbackUnnormalized.match(/\b(\d{5})(?:[-\s](\d{4}))?\b/);
+            if (postalMatch && postalMatch[1]) {
+              const parsedPostal = sanitizePostalCode(postalMatch[1]);
+              if (parsedPostal) {
+                fallbackFields.postal_code = parsedPostal;
+              }
+              if (
+                !fallbackFields.plus_four_postal_code &&
+                postalMatch[2]
+              ) {
+                const parsedPlus4 = sanitizePlus4(postalMatch[2]);
+                if (parsedPlus4) {
+                  fallbackFields.plus_four_postal_code = parsedPlus4;
+                }
+              }
+            }
+          }
+        }
+
+        if (
+          fallbackFields.street_suffix_type &&
+          typeof fallbackFields.street_suffix_type === "string"
+        ) {
+          const normalizedSuffix = mapStreetSuffixType(
+            fallbackFields.street_suffix_type,
+          );
+          if (normalizedSuffix) {
+            fallbackFields.street_suffix_type = normalizedSuffix;
+          }
+        }
+
+        if (fallbackPcnSource) {
+          const gridParts = deriveGridPartsFromPcn(fallbackPcnSource);
+          if (gridParts.township && !fallbackFields.township) {
+            fallbackFields.township = padGridValue(gridParts.township, 2);
+          }
+          if (gridParts.range && !fallbackFields.range) {
+            fallbackFields.range = padGridValue(gridParts.range, 2);
+          }
+          if (gridParts.section && !fallbackFields.section) {
+            fallbackFields.section = padGridValue(gridParts.section, 2);
+          }
+          if (gridParts.block && !fallbackFields.block) {
+            fallbackFields.block = padGridValue(gridParts.block, 3);
+          }
+          if (gridParts.lot && !fallbackFields.lot) {
+            fallbackFields.lot = padGridValue(gridParts.lot, 4);
+          }
+        }
+
+        if (
+          (!Number.isFinite(fallbackFields.latitude) ||
+            !Number.isFinite(fallbackFields.longitude)) &&
+          trimmedFallbackUnnormalized.length
+        ) {
+          const geocodeFallback = await geocodeAddress(
+            trimmedFallbackUnnormalized,
+          );
+          if (geocodeFallback) {
+            applyGeocodeEnhancements(fallbackFields, geocodeFallback);
+          }
+          fallbackFields.latitude = parseCoordinate(fallbackFields.latitude);
+          fallbackFields.longitude = parseCoordinate(fallbackFields.longitude);
         }
 
         const fallbackSurface =
           ensureRawAddressSchemaSurface({
             ...fallbackFields,
-            unnormalized_address: fallbackUnnormalized.trim(),
+            unnormalized_address: trimmedFallbackUnnormalized,
           }) ||
           ensureRawAddressSchemaSurface({
-            unnormalized_address: fallbackUnnormalized.trim(),
+            unnormalized_address: trimmedFallbackUnnormalized,
           });
 
         if (fallbackSurface) {
