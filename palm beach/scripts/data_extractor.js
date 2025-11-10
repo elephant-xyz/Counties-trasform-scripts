@@ -5320,6 +5320,52 @@ async function main() {
     }
 
     if (finalAddressPayload) {
+      const coverageFields =
+        finalAddressVariant === "normalized"
+          ? NORMALIZED_ADDRESS_FIELDS
+          : RAW_ADDRESS_OUTPUT_FIELDS;
+
+      ensureAddressFieldSurface(finalAddressPayload, coverageFields);
+      coerceEmptyStringsToNull(finalAddressPayload, coverageFields);
+
+      for (const field of coverageFields) {
+        if (!Object.prototype.hasOwnProperty.call(finalAddressPayload, field)) {
+          finalAddressPayload[field] = null;
+          continue;
+        }
+
+        if (finalAddressPayload[field] === undefined) {
+          finalAddressPayload[field] = null;
+          continue;
+        }
+
+        if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(finalAddressPayload[field]);
+          finalAddressPayload[field] = numeric != null ? numeric : null;
+        }
+      }
+
+      if (
+        finalAddressVariant === "raw" &&
+        Object.prototype.hasOwnProperty.call(
+          finalAddressPayload,
+          "unnormalized_address",
+        )
+      ) {
+        const trimmed = String(finalAddressPayload.unnormalized_address || "").trim();
+        finalAddressPayload.unnormalized_address = trimmed.length ? trimmed : null;
+      }
+
+      if (
+        finalAddressVariant === "raw" &&
+        !hasMeaningfulAddressValue(finalAddressPayload.unnormalized_address)
+      ) {
+        finalAddressPayload = null;
+        finalAddressVariant = null;
+      }
+    }
+
+    if (finalAddressPayload) {
       writeJSON(addressFilePath, finalAddressPayload);
 
       removeFileIfExists(propertyAddressRelationshipPath);
