@@ -2852,25 +2852,47 @@ function ensureRawAddressSchemaDefaults(address) {
 function projectRawAddressForOneOf(address) {
   if (!address || typeof address !== "object") return null;
 
-  const projected = {};
-  for (const field of RAW_ADDRESS_RAW_VARIANT_FIELDS) {
-    if (field === "unnormalized_address") {
-      const rawUnnormalized =
-        typeof address.unnormalized_address === "string"
-          ? address.unnormalized_address.trim()
-          : "";
-      if (!rawUnnormalized.length) {
-        return null;
-      }
-      projected.unnormalized_address = rawUnnormalized;
+  const rawUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawUnnormalized.length) {
+    return null;
+  }
+
+  const projected = {
+    unnormalized_address: rawUnnormalized,
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+  };
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
       continue;
     }
 
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      projected[field] = address[field];
-    } else {
+    let value = address[field];
+    if (value === undefined) {
       projected[field] = null;
+      continue;
     }
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      projected[field] = parseCoordinate(value);
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      projected[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      projected[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    projected[field] = value === null ? null : value;
   }
 
   if (!projected.postal_code) {
