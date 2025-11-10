@@ -868,60 +868,102 @@ function prepareRawAddressForSchema(rawAddress) {
   const prepared = { unnormalized_address: rawUnnormalized };
 
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(rawAddress, field)) continue;
+    const rawValue = Object.prototype.hasOwnProperty.call(rawAddress, field)
+      ? rawAddress[field]
+      : null;
 
-    const isCoordinateField = ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field);
-    let value = rawAddress[field];
+    let value = rawValue;
 
-    if (value == null) continue;
-
-    if (typeof value === "string") {
-      value = value.trim();
-      if (!value.length) continue;
-    }
-
-    if (isCoordinateField) {
-      if (typeof value === "string") {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) continue;
-        value = numeric;
-      } else if (typeof value === "number") {
-        if (!Number.isFinite(value)) continue;
-      } else {
-        continue;
-      }
-      prepared[field] = value;
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      prepared[field] = numeric != null ? numeric : null;
       continue;
     }
 
-    if (field === "city_name") {
-      value = sanitizeCityName(value);
-      if (!value) continue;
-    } else if (field === "postal_code") {
-      value = sanitizePostalCode(value) || null;
-      if (!value) continue;
-    } else if (field === "plus_four_postal_code") {
-      value = sanitizePlus4(value) || null;
-      if (!value) continue;
-    } else if (field === "state_code" || field === "country_code") {
-      value = String(value).toUpperCase();
-      if (!value.trim().length) continue;
-    } else if (
-      typeof value !== "boolean" &&
-      typeof value !== "number"
-    ) {
-      value = String(value).trim();
-      if (!value.length) continue;
+    if (value === undefined || value === null) {
+      prepared[field] = null;
+      continue;
     }
 
-    prepared[field] = value;
+    if (typeof value === "string") {
+      value = value.trim();
+      if (!value.length) {
+        prepared[field] = null;
+        continue;
+      }
+    }
+
+    switch (field) {
+      case "city_name":
+        prepared[field] = sanitizeCityName(value) || null;
+        break;
+      case "postal_code":
+        prepared[field] = sanitizePostalCode(value) || null;
+        break;
+      case "plus_four_postal_code":
+        prepared[field] = sanitizePlus4(value) || null;
+        break;
+      case "state_code":
+      case "country_code":
+      case "street_pre_directional_text":
+      case "street_post_directional_text":
+        prepared[field] = String(value).trim().toUpperCase() || null;
+        break;
+      case "street_suffix_type": {
+        const mapped = mapStreetSuffixType(value);
+        prepared[field] =
+          mapped ||
+          (typeof value === "string" ? value.trim() || null : null);
+        break;
+      }
+      case "street_name":
+        prepared[field] =
+          typeof value === "string" ? value.trim().toUpperCase() || null : null;
+        break;
+      case "unit_identifier":
+      case "route_number": {
+        const trimmed = String(value).trim();
+        prepared[field] = trimmed.length ? trimmed : null;
+        break;
+      }
+      case "county_name":
+      case "municipality_name": {
+        const titled = toTitleCase(String(value));
+        prepared[field] = titled && titled.trim().length ? titled : null;
+        break;
+      }
+      case "township":
+        prepared[field] = padGridValue(value, 2);
+        break;
+      case "range":
+        prepared[field] = padGridValue(value, 2);
+        break;
+      case "section":
+        prepared[field] = padGridValue(value, 2);
+        break;
+      case "block":
+        prepared[field] = padGridValue(value, 3);
+        break;
+      case "lot":
+        prepared[field] = padGridValue(value, 4);
+        break;
+      default:
+        prepared[field] = value;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(prepared, field)) {
+      prepared[field] = null;
+    }
+    if (prepared[field] === undefined) {
+      prepared[field] = null;
+    }
   }
 
   if (prepared.state_code && !prepared.country_code) {
     prepared.country_code = "US";
   }
 
-  if (!prepared.postal_code && prepared.plus_four_postal_code) {
+  if (!prepared.postal_code) {
     prepared.plus_four_postal_code = null;
   }
 
@@ -2783,12 +2825,12 @@ async function main() {
     let finalAddress = null;
     let finalAddressVariant = null;
 
-    if (materializedRawAddress && hasUnnormalizedAddress) {
-      finalAddress = materializedRawAddress;
-      finalAddressVariant = "raw";
-    } else if (normalizedOutput) {
+    if (normalizedOutput) {
       finalAddress = normalizedOutput;
       finalAddressVariant = "normalized";
+    } else if (materializedRawAddress && hasUnnormalizedAddress) {
+      finalAddress = materializedRawAddress;
+      finalAddressVariant = "raw";
     } else if (materializedRawAddress) {
       finalAddress = materializedRawAddress;
       finalAddressVariant = "raw";
