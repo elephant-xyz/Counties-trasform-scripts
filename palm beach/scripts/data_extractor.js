@@ -1030,15 +1030,12 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   ...RAW_ADDRESS_STREET_FIELDS,
 ];
 
-// Downstream validation expects the raw branch to carry the full field surface
-// with key pieces populated. These required fields mirror the normalized branch
-// so that either variant satisfies the address oneOf contract.
+// The raw address schema expects the full field surface to be present, but it
+// tolerates null values when the source cannot provide a component. These are
+// the high-priority fields we try to hydrate whenever possible.
 const RAW_SCHEMA_REQUIRED_FIELDS = [
   "latitude",
   "longitude",
-  "street_number",
-  "street_name",
-  "street_suffix_type",
   "city_name",
   "state_code",
   "postal_code",
@@ -1079,6 +1076,7 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
     typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : "";
 
   const candidate = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     ...rawAddress,
   };
 
@@ -1090,9 +1088,14 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
     candidate.unnormalized_address = normalizedUnnormalized;
   }
 
-  if (normalizedUnnormalized.length) {
-    enrichAddressFromUnnormalized(candidate, normalizedUnnormalized);
+  const trimmedUnnormalized =
+    typeof candidate.unnormalized_address === "string"
+      ? candidate.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
   }
+  candidate.unnormalized_address = trimmedUnnormalized;
 
   if (
     hasMeaningfulAddressValue(candidate.state_code) &&
@@ -1101,51 +1104,32 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
     candidate.country_code = "US";
   }
 
-  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
-    const value = candidate[field];
-    if (!hasMeaningfulAddressValue(value)) {
-      return null;
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(candidate, field)) {
+      candidate[field] = null;
+      continue;
     }
+
+    const value = candidate[field];
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      candidate[field] = numeric != null ? numeric : null;
+      continue;
+    }
+
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed.length) {
-        return null;
-      }
-      switch (field) {
-        case "city_name": {
-          const sanitized = sanitizeCityName(trimmed);
-          if (!sanitized) return null;
-          candidate[field] = sanitized;
-          break;
-        }
-        case "postal_code": {
-          const postal = sanitizePostalCode(trimmed);
-          if (!postal) return null;
-          candidate[field] = postal;
-          break;
-        }
-        case "state_code":
-        case "country_code":
-          candidate[field] = trimmed.toUpperCase();
-          break;
-        case "county_name": {
-          const titled = toTitleCase(trimmed);
-          if (!titled) return null;
-          candidate[field] = titled;
-          break;
-        }
-        case "street_suffix_type": {
-          const mapped = mapStreetSuffixType(trimmed);
-          candidate[field] = mapped || trimmed;
-          if (!hasMeaningfulAddressValue(candidate[field])) {
-            return null;
-          }
-          break;
-        }
-        default:
-          candidate[field] = trimmed;
-      }
+      candidate[field] = trimmed.length ? trimmed : null;
+      continue;
     }
+
+    if (value === undefined) {
+      candidate[field] = null;
+    }
+  }
+
+  if (!candidate.postal_code) {
+    candidate.plus_four_postal_code = null;
   }
 
   return candidate;
