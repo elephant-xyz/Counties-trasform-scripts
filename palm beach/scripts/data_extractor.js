@@ -4679,6 +4679,8 @@ async function main() {
       parcelCentroid ? parcelCentroid.longitude : null,
     ];
 
+    const resolvedUnnormalized = resolveFirstNonEmptyString(unnormalizedCandidates);
+
     const normalizedSources = [address, normalizedSnapshot, prunedFields].filter(Boolean);
     const rawSources = [address, normalizedSnapshot, prunedFields].filter(Boolean);
 
@@ -4696,17 +4698,14 @@ async function main() {
       }
     }
 
-    if (!finalAddress) {
-      const resolvedUnnormalized = resolveFirstNonEmptyString(unnormalizedCandidates);
-      if (resolvedUnnormalized) {
-        finalAddress = buildRawAddressFromSources([], {
-          unnormalizedCandidates: [resolvedUnnormalized],
-          latitudeCandidates,
-          longitudeCandidates,
-        });
-        if (finalAddress) {
-          finalAddressVariant = "raw";
-        }
+    if (!finalAddress && resolvedUnnormalized) {
+      finalAddress = buildRawAddressFromSources([], {
+        unnormalizedCandidates: [resolvedUnnormalized],
+        latitudeCandidates,
+        longitudeCandidates,
+      });
+      if (finalAddress) {
+        finalAddressVariant = "raw";
       }
     }
 
@@ -4721,10 +4720,61 @@ async function main() {
       });
 
     if (hasMeaningfulAddress && finalAddress) {
-      writeJSON(addressFilePath, finalAddress);
-      // Relationships are generated downstream; ensure no stale files remain.
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
+      const complianceOptions = { allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS };
+      const inferVariant =
+        finalAddressVariant ||
+        (Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+          ? "raw"
+          : "normalized");
+
+      const attemptFinalize = (candidate, variant) => {
+        if (!candidate || !variant) return null;
+        const compliant = ensureAddressVariantIsSchemaCompliant(
+          candidate,
+          variant,
+          complianceOptions,
+        );
+        if (!compliant) return null;
+        return finalizeAddressForOutput(compliant, variant, complianceOptions);
+      };
+
+      let sanitizedAddress = attemptFinalize(finalAddress, inferVariant);
+      let sanitizedVariant = sanitizedAddress ? inferVariant : null;
+
+      if (!sanitizedAddress) {
+        const rebuildRaw =
+          buildRawAddressFromSources(rawSources, {
+            unnormalizedCandidates,
+            latitudeCandidates,
+            longitudeCandidates,
+          }) ||
+          (resolvedUnnormalized
+            ? buildRawAddressFromSources([], {
+                unnormalizedCandidates: [resolvedUnnormalized],
+                latitudeCandidates,
+                longitudeCandidates,
+              })
+            : null);
+
+        if (rebuildRaw) {
+          sanitizedAddress = attemptFinalize(rebuildRaw, "raw");
+          sanitizedVariant = sanitizedAddress ? "raw" : null;
+        }
+      }
+
+      if (sanitizedAddress) {
+        writeJSON(addressFilePath, sanitizedAddress);
+        finalAddressVariant = sanitizedVariant;
+        // Relationships are generated downstream; ensure no stale files remain.
+        removeFileIfExists(propertyAddressRelationshipPath);
+        removeFileIfExists(addressFactSheetRelationshipPath);
+      } else {
+        if (fs.existsSync(addressFilePath)) {
+          fs.unlinkSync(addressFilePath);
+        }
+        removeFileIfExists(propertyAddressRelationshipPath);
+        removeFileIfExists(addressFactSheetRelationshipPath);
+      }
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
