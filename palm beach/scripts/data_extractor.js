@@ -2557,6 +2557,58 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_OUTP
   return result;
 }
 
+function buildRawSchemaAlignedAddress(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return null;
+  }
+
+  const aligned = { unnormalized_address: unnormalized };
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : undefined;
+
+    if (value === undefined || value === null) {
+      aligned[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      aligned[field] = numeric != null ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      aligned[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      aligned[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    aligned[field] = value;
+  }
+
+  if (aligned.state_code && !aligned.country_code) {
+    aligned.country_code = "US";
+  }
+  if (!aligned.postal_code) {
+    aligned.plus_four_postal_code = null;
+  }
+
+  return aligned;
+}
+
 function prepareAddressForSchema(address, variant) {
   if (!address || typeof address !== "object") return null;
 
@@ -4550,6 +4602,16 @@ async function main() {
       const resolvedUnnormalized = resolveUnnormalized();
       if (resolvedUnnormalized.length) {
         finalAddress.unnormalized_address = resolvedUnnormalized;
+      } else {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    }
+
+    if (finalAddress && finalAddressVariant === "raw") {
+      const schemaAlignedRaw = buildRawSchemaAlignedAddress(finalAddress);
+      if (schemaAlignedRaw) {
+        finalAddress = schemaAlignedRaw;
       } else {
         finalAddress = null;
         finalAddressVariant = null;
