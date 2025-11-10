@@ -2698,38 +2698,6 @@ function formatRawAddressForOutput(address, options = {}) {
   return Object.keys(result).length ? result : null;
 }
 
-function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_OUTPUT_FIELDS) {
-  if (!address || typeof address !== "object") return null;
-
-  const unnormalized =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!unnormalized.length) {
-    return null;
-  }
-
-  const fields = Array.isArray(allowedFields) && allowedFields.length
-    ? allowedFields
-    : RAW_ADDRESS_OUTPUT_FIELDS;
-  const allowedSet = new Set(fields);
-  const result = { unnormalized_address: unnormalized };
-
-  for (const field of fields) {
-    const hasValue = Object.prototype.hasOwnProperty.call(address, field);
-    const value = hasValue ? address[field] : null;
-    result[field] = value === undefined ? null : value;
-  }
-
-  for (const [key, value] of Object.entries(address)) {
-    if (key === "unnormalized_address") continue;
-    if (allowedSet.has(key)) continue;
-    result[key] = value;
-  }
-
-  return result;
-}
-
 function buildRawSchemaAlignedAddress(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -4819,16 +4787,14 @@ async function main() {
               preparedAddress.unnormalized_address = resolvedUnnormalizedAddress;
             }
 
-            preparedAddress = ensureRawAddressFieldCoverage(
+            const alignedRawAddress = buildRawSchemaAlignedAddress(
               preparedAddress,
-              RAW_ADDRESS_OUTPUT_FIELDS,
             );
 
-            if (preparedAddress) {
-              preparedAddress = ensureRawAddressSchemaDefaults(preparedAddress);
-            }
-
-            if (preparedAddress) {
+            if (alignedRawAddress) {
+              preparedAddress = ensureRawAddressSchemaDefaults(
+                alignedRawAddress,
+              );
               preparedAddress = ensureAddressFieldsForOutput(
                 preparedAddress,
                 "raw",
@@ -4836,6 +4802,8 @@ async function main() {
                   allowedRawFields: RAW_ADDRESS_OUTPUT_FIELDS,
                 },
               );
+            } else {
+              preparedAddress = null;
             }
           } else if (resolvedVariant === "normalized") {
             preparedAddress = ensureAddressFieldsForOutput(
