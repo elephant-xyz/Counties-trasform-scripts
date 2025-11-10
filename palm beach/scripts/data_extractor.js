@@ -2636,16 +2636,33 @@ function ensureRawAddressSchemaDefaults(address) {
   return result;
 }
 
-function buildAddressSchemaSurface(address, variant) {
+function buildAddressSchemaSurface(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
-  if (variant === "raw") {
-    const schemaAlignedRaw = buildRawSchemaAlignedAddress(address);
-    if (!schemaAlignedRaw) return null;
-    return ensureRawAddressSchemaDefaults(schemaAlignedRaw);
-  }
+  const unnormalizedFromAddress =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  const unnormalizedFromOptions =
+    options && typeof options.trimmedUnnormalized === "string"
+      ? options.trimmedUnnormalized.trim()
+      : "";
+  const fallbackOption =
+    options && typeof options.fallbackUnnormalized === "string"
+      ? options.fallbackUnnormalized.trim()
+      : "";
+  const fallbackUnnormalized =
+    unnormalizedFromAddress.length
+      ? unnormalizedFromAddress
+      : unnormalizedFromOptions.length
+        ? unnormalizedFromOptions
+        : fallbackOption;
 
-  if (variant === "normalized") {
+  const normalizedRequested = variant === "normalized";
+  const rawRequested =
+    variant === "raw" || (!normalizedRequested && fallbackUnnormalized);
+
+  if (normalizedRequested) {
     const prepared = ensureAddressFieldsForOutput(address, "normalized");
     if (!prepared) return null;
 
@@ -2657,6 +2674,57 @@ function buildAddressSchemaSurface(address, variant) {
         surface[field] = null;
       }
     }
+
+    if (surface.state_code && !surface.country_code) {
+      surface.country_code = "US";
+    }
+    if (!surface.postal_code) {
+      surface.plus_four_postal_code = null;
+    }
+
+    return surface;
+  }
+
+  if (rawRequested) {
+    const seed = {
+      ...address,
+      unnormalized_address: fallbackUnnormalized,
+    };
+
+    const prepared = ensureAddressFieldsForOutput(seed, "raw", {
+      allowedFields: RAW_ADDRESS_OUTPUT_FIELDS,
+    });
+    if (!prepared) return null;
+
+    const trimmedUnnormalized =
+      typeof prepared.unnormalized_address === "string"
+        ? prepared.unnormalized_address.trim()
+        : "";
+    if (!trimmedUnnormalized.length) return null;
+
+    const surface = { unnormalized_address: trimmedUnnormalized };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      const hasValue = Object.prototype.hasOwnProperty.call(prepared, field);
+      let value = hasValue ? prepared[field] : null;
+
+      if (field === "latitude" || field === "longitude") {
+        const numeric = parseCoordinate(value);
+        value = numeric != null ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      }
+
+      surface[field] = value === undefined ? null : value;
+    }
+
+    if (surface.state_code && !surface.country_code) {
+      surface.country_code = "US";
+    }
+    if (!surface.postal_code) {
+      surface.plus_four_postal_code = null;
+    }
+
     return surface;
   }
 
@@ -4673,7 +4741,10 @@ async function main() {
     }
 
     if (finalAddress) {
-      const schemaSurface = buildAddressSchemaSurface(finalAddress, finalAddressVariant);
+      const schemaSurface = buildAddressSchemaSurface(finalAddress, finalAddressVariant, {
+        trimmedUnnormalized,
+        fallbackUnnormalized: fallbackUnnormalizedValue,
+      });
       if (schemaSurface) {
         finalAddress = schemaSurface;
       } else {
@@ -4695,8 +4766,27 @@ async function main() {
     if (hasMeaningfulAddress && finalAddress) {
       writeJSON(addressFilePath, finalAddress);
 
-      removeFileIfExists(addressFactSheetRelationshipPath);
-      removeFileIfExists(propertyAddressRelationshipPath);
+      const propertyJsonPath = path.join(dataDir, "property.json");
+      if (fs.existsSync(propertyJsonPath)) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          "./property.json",
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
+
+      const factSheetJsonPath = path.join(dataDir, "fact_sheet.json");
+      if (fs.existsSync(factSheetJsonPath)) {
+        writeRelationshipFile(
+          addressFactSheetRelationshipPath,
+          "./address.json",
+          "./fact_sheet.json",
+        );
+      } else {
+        removeFileIfExists(addressFactSheetRelationshipPath);
+      }
     } else {
       if (fs.existsSync(addressFilePath)) {
         fs.unlinkSync(addressFilePath);
