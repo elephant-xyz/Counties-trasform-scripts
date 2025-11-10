@@ -3372,6 +3372,130 @@ async function main() {
           finalAddress.country_code = "US";
         }
 
+        const hasRawValue = (value) => {
+          if (value === null || value === undefined) return false;
+          if (typeof value === "number") return Number.isFinite(value);
+          if (typeof value === "string") return value.trim().length > 0;
+          return true;
+        };
+
+        const applyFallback = (field, candidates, transform) => {
+          if (hasRawValue(finalAddress[field])) {
+            return;
+          }
+          for (const candidate of candidates) {
+            if (!hasRawValue(candidate)) continue;
+            let value = candidate;
+            if (typeof transform === "function") {
+              value = transform(candidate);
+            }
+            if (!hasRawValue(value)) continue;
+            finalAddress[field] = value;
+            break;
+          }
+        };
+
+        applyFallback(
+          "latitude",
+          [
+            finalAddress.latitude,
+            parcelCentroid && parcelCentroid.latitude,
+            normalizedSnapshot && normalizedSnapshot.latitude,
+            address && address.latitude,
+          ],
+          (value) => {
+            const numeric = parseCoordinate(value);
+            return Number.isFinite(numeric) ? numeric : null;
+          },
+        );
+        applyFallback(
+          "longitude",
+          [
+            finalAddress.longitude,
+            parcelCentroid && parcelCentroid.longitude,
+            normalizedSnapshot && normalizedSnapshot.longitude,
+            address && address.longitude,
+          ],
+          (value) => {
+            const numeric = parseCoordinate(value);
+            return Number.isFinite(numeric) ? numeric : null;
+          },
+        );
+        applyFallback(
+          "city_name",
+          [finalAddress.city_name, normalizedCity, resolvedCity, normalizedSnapshot && normalizedSnapshot.city_name, normalizedMunicipality],
+          (value) => sanitizeCityName(value),
+        );
+        applyFallback(
+          "state_code",
+          [
+            finalAddress.state_code,
+            inferredStateCode,
+            resolvedState,
+            normalizedSnapshot && normalizedSnapshot.state_code,
+          ],
+          (value) => {
+            const trimmed = String(value).trim().toUpperCase();
+            return trimmed.length ? trimmed : null;
+          },
+        );
+        applyFallback(
+          "postal_code",
+          [
+            finalAddress.postal_code,
+            fallbackPostalValue,
+            postalCode,
+            normalizedSnapshot && normalizedSnapshot.postal_code,
+          ],
+          (value) => sanitizePostalCode(value),
+        );
+        applyFallback(
+          "plus_four_postal_code",
+          [
+            finalAddress.plus_four_postal_code,
+            fallbackPlus4Value,
+            plus4,
+          ],
+          (value) => sanitizePlus4(value),
+        );
+        applyFallback(
+          "county_name",
+          [
+            finalAddress.county_name,
+            formattedCountyName,
+            normalizedSnapshot && normalizedSnapshot.county_name,
+            countyName,
+          ],
+          (value) => {
+            const titled = toTitleCase(String(value));
+            return titled && titled.trim().length ? titled : null;
+          },
+        );
+        applyFallback(
+          "country_code",
+          [
+            finalAddress.country_code,
+            normalizedSnapshot && normalizedSnapshot.country_code,
+            "US",
+          ],
+          (value) => {
+            const trimmed = String(value).trim().toUpperCase();
+            return trimmed.length ? trimmed : null;
+          },
+        );
+
+        if (!finalAddress.postal_code && finalAddress.plus_four_postal_code) {
+          finalAddress.plus_four_postal_code = null;
+        }
+
+        const missingRequired = RAW_SCHEMA_REQUIRED_FIELDS.filter(
+          (field) => !hasRawValue(finalAddress[field]),
+        );
+        if (missingRequired.length) {
+          finalAddress = null;
+          finalAddressVariant = null;
+        }
+
         const ensuredRaw = ensureRawAddressFieldCoverage(
           finalAddress,
           RAW_ADDRESS_ALLOWED_FIELDS,

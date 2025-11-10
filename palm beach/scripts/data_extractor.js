@@ -5186,6 +5186,124 @@ async function main() {
       ) {
         finalAddressPayload.country_code = "US";
       }
+
+      const applyRawFallback = (field, candidates, transform) => {
+        if (hasMeaningfulAddressValue(finalAddressPayload[field])) {
+          return;
+        }
+        for (const candidate of candidates) {
+          if (!hasMeaningfulAddressValue(candidate)) continue;
+          let value = candidate;
+          if (typeof transform === "function") {
+            value = transform(candidate);
+          }
+          if (!hasMeaningfulAddressValue(value)) continue;
+          finalAddressPayload[field] = value;
+          break;
+        }
+      };
+
+      applyRawFallback(
+        "latitude",
+        [preferredLatitude, fallbackLatitude, parcelCentroid && parcelCentroid.latitude],
+        (value) => {
+          const numeric = parseCoordinate(value);
+          return Number.isFinite(numeric) ? numeric : null;
+        },
+      );
+      applyRawFallback(
+        "longitude",
+        [preferredLongitude, fallbackLongitude, parcelCentroid && parcelCentroid.longitude],
+        (value) => {
+          const numeric = parseCoordinate(value);
+          return Number.isFinite(numeric) ? numeric : null;
+        },
+      );
+      applyRawFallback(
+        "city_name",
+        [
+          finalAddressPayload.city_name,
+          normalizedCity,
+          parsedUnnormalizedCityState && parsedUnnormalizedCityState.city,
+          normalizedSnapshot && normalizedSnapshot.city_name,
+          normalizedMunicipality,
+        ],
+        (value) => sanitizeCityName(value),
+      );
+      applyRawFallback(
+        "state_code",
+        [
+          finalAddressPayload.state_code,
+          inferredStateCode,
+          parsedUnnormalizedCityState && parsedUnnormalizedCityState.state,
+          normalizedSnapshot && normalizedSnapshot.state_code,
+        ],
+        (value) => {
+          const trimmed = String(value).trim().toUpperCase();
+          return trimmed.length ? trimmed : null;
+        },
+      );
+      applyRawFallback(
+        "postal_code",
+        [
+          finalAddressPayload.postal_code,
+          fallbackPostalValue,
+          parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal,
+          normalizedSnapshot && normalizedSnapshot.postal_code,
+          resolveFirstNonEmptyString([
+            fullAddrInput,
+            unnormalizedAddressCandidate,
+            fullAddr,
+          ]),
+        ],
+        (value) => sanitizePostalCode(value),
+      );
+      applyRawFallback(
+        "plus_four_postal_code",
+        [
+          finalAddressPayload.plus_four_postal_code,
+          fallbackPlus4Value,
+          parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4,
+        ],
+        (value) => sanitizePlus4(value),
+      );
+      applyRawFallback(
+        "county_name",
+        [
+          finalAddressPayload.county_name,
+          formattedCountyName,
+          normalizedSnapshot && normalizedSnapshot.county_name,
+          unAddr && unAddr.county_jurisdiction,
+        ],
+        (value) => {
+          const titled = toTitleCase(String(value));
+          return titled && titled.trim().length ? titled : null;
+        },
+      );
+      applyRawFallback(
+        "country_code",
+        [
+          finalAddressPayload.country_code,
+          normalizedSnapshot && normalizedSnapshot.country_code,
+          "US",
+        ],
+        (value) => {
+          const trimmed = String(value).trim().toUpperCase();
+          return trimmed.length ? trimmed : null;
+        },
+      );
+
+      if (!finalAddressPayload.postal_code && finalAddressPayload.plus_four_postal_code) {
+        finalAddressPayload.plus_four_postal_code = null;
+      }
+
+      const missingRawRequired = RAW_SCHEMA_REQUIRED_FIELDS.filter(
+        (field) => !hasMeaningfulAddressValue(finalAddressPayload[field]),
+      );
+      if (missingRawRequired.length) {
+        finalAddressPayload = null;
+        finalAddressVariant = null;
+      }
     } else if (finalAddressPayload && finalAddressVariant === "normalized") {
       if (
         Object.prototype.hasOwnProperty.call(
