@@ -1060,6 +1060,52 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+function ensureRawAddressSchemaSurface(address, options = {}) {
+  if (!address || typeof address !== "object") return null;
+
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const normalized = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      normalized[field] = null;
+      continue;
+    }
+
+    let value = address[field];
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      value = parseCoordinate(value);
+    } else if (typeof value === "string") {
+      value = value.trim();
+      if (!value.length) {
+        value = null;
+      }
+    }
+
+    normalized[field] =
+      value === undefined || value === "" ? null : value;
+  }
+
+  if (!normalized.postal_code) {
+    normalized.plus_four_postal_code = null;
+  }
+  if (normalized.state_code && !normalized.country_code) {
+    normalized.country_code = "US";
+  }
+
+  return normalized;
+}
+
 function hasMeaningfulAddressValue(value) {
   if (value === null || value === undefined) return false;
   if (typeof value === "number") return Number.isFinite(value);
@@ -5011,7 +5057,13 @@ async function main() {
                 canonicalAddress.unnormalized_address = resolvedRawUnnormalized;
               }
             }
-            finalAddressVariant = "raw";
+            const ensuredRaw = ensureRawAddressSchemaSurface(canonicalAddress);
+            if (ensuredRaw) {
+              canonicalAddress = ensuredRaw;
+              finalAddressVariant = "raw";
+            } else {
+              canonicalAddress = null;
+            }
           }
         }
 
