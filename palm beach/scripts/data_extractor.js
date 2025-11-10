@@ -5078,7 +5078,6 @@ async function main() {
       "longitude",
       "street_number",
       "street_name",
-      "street_suffix_type",
       "city_name",
       "state_code",
       "postal_code",
