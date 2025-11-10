@@ -640,6 +640,24 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
   new Set([...NORMALIZED_ADDRESS_FIELDS]),
 );
 
+const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
+  NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {}),
+);
+
+const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
+  RAW_ADDRESS_ALLOWED_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {}),
+);
+
+const RAW_ADDRESS_SURFACE_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
+const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
+const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
+
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
   "latitude",
@@ -3531,6 +3549,52 @@ async function main() {
       Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
     ) {
       delete finalAddress.unnormalized_address;
+    }
+
+    if (finalAddress && finalAddressVariant === "raw") {
+      const trimmed =
+        typeof finalAddress.unnormalized_address === "string"
+          ? finalAddress.unnormalized_address.trim()
+          : "";
+      finalAddress = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...finalAddress,
+      };
+      for (const key of Object.keys(finalAddress)) {
+        if (!RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET.has(key)) {
+          delete finalAddress[key];
+        }
+      }
+      finalAddress.unnormalized_address = trimmed.length ? trimmed : null;
+      if (finalAddress.state_code && !finalAddress.country_code) {
+        finalAddress.country_code = "US";
+      }
+      if (!finalAddress.postal_code) {
+        finalAddress.plus_four_postal_code = null;
+      }
+      if (!finalAddress.unnormalized_address) {
+        finalAddress = null;
+        finalAddressVariant = null;
+      }
+    } else if (finalAddress && finalAddressVariant === "normalized") {
+      finalAddress = {
+        ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+        ...finalAddress,
+      };
+      for (const key of Object.keys(finalAddress)) {
+        if (!NORMALIZED_ADDRESS_ALLOWED_KEY_SET.has(key)) {
+          delete finalAddress[key];
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")) {
+        delete finalAddress.unnormalized_address;
+      }
+      if (finalAddress.state_code && !finalAddress.country_code) {
+        finalAddress.country_code = "US";
+      }
+      if (!finalAddress.postal_code) {
+        finalAddress.plus_four_postal_code = null;
+      }
     }
 
     const hasMeaningfulAddress =

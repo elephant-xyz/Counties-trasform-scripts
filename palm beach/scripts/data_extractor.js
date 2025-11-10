@@ -998,6 +998,13 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
+const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
+  NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {}),
+);
+
 const RAW_ADDRESS_CORE_FIELDS = [
   "latitude",
   "longitude",
@@ -1101,6 +1108,10 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
     return acc;
   }, {}),
 );
+
+const RAW_ADDRESS_SURFACE_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_OUTPUT_FIELDS];
+const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
+const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
 function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
   if (!address || typeof address !== "object") return null;
@@ -5152,15 +5163,30 @@ async function main() {
     }
 
     if (finalAddressPayload && finalAddressVariant === "raw") {
-      if (
-        !Object.prototype.hasOwnProperty.call(
-          finalAddressPayload,
-          "unnormalized_address",
-        ) &&
-        trimmedUnnormalized.length
-      ) {
-        finalAddressPayload.unnormalized_address = trimmedUnnormalized;
+      const existingUnnormalized =
+        typeof finalAddressPayload.unnormalized_address === "string"
+          ? finalAddressPayload.unnormalized_address.trim()
+          : "";
+      const fallbackUnnormalized =
+        existingUnnormalized.length > 0
+          ? existingUnnormalized
+          : trimmedUnnormalized;
+
+      finalAddressPayload = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...finalAddressPayload,
+      };
+      finalAddressPayload.unnormalized_address =
+        fallbackUnnormalized && fallbackUnnormalized.length
+          ? fallbackUnnormalized
+          : null;
+
+      for (const key of Object.keys(finalAddressPayload)) {
+        if (!RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET.has(key)) {
+          delete finalAddressPayload[key];
+        }
       }
+
       for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
         if (!Object.prototype.hasOwnProperty.call(finalAddressPayload, field)) {
           finalAddressPayload[field] = null;
@@ -5309,6 +5335,24 @@ async function main() {
         finalAddressVariant = null;
       }
     } else if (finalAddressPayload && finalAddressVariant === "normalized") {
+      finalAddressPayload = {
+        ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+        ...finalAddressPayload,
+      };
+      for (const key of Object.keys(finalAddressPayload)) {
+        if (!NORMALIZED_ADDRESS_ALLOWED_KEY_SET.has(key)) {
+          delete finalAddressPayload[key];
+        }
+      }
+      if (!finalAddressPayload.postal_code) {
+        finalAddressPayload.plus_four_postal_code = null;
+      }
+      if (
+        finalAddressPayload.state_code &&
+        !finalAddressPayload.country_code
+      ) {
+        finalAddressPayload.country_code = "US";
+      }
       if (
         Object.prototype.hasOwnProperty.call(
           finalAddressPayload,
