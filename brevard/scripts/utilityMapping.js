@@ -504,6 +504,7 @@ function buildUtility($, panel) {
     plumbing_system_type: plumbingSystem.type,
     plumbing_system_type_other_description: plumbingSystem.other,
     public_utility_type: extractPublicUtilityType(map),
+    request_identifier: null,
     sewer_connection_date: extractSewerConnectionDate(map),
     sewer_type: extractSewerType(map),
     smart_home_features: smartHome.features,

@@ -577,6 +577,7 @@ function createStructureTemplate() {
     number_of_buildings: null,
     number_of_stories: null,
     primary_framing_material: null,
+    request_identifier: null,
     roof_age_years: null,
     roof_condition: null,
     roof_covering_material: null,

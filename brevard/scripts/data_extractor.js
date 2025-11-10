@@ -2776,473 +2776,103 @@ const propertyTypeMapping=[
 
 const extraFeaturesCodeListMapping=[]
 
-function deriveUseCodeKeys(rawValue) {
-  if (rawValue === null || rawValue === undefined) return [];
-  const raw = String(rawValue).trim();
-  if (!raw) return [];
-  const keys = [];
-  const firstTokenMatch = raw.match(/^[A-Za-z0-9]+/);
-  if (firstTokenMatch) {
-    const token = firstTokenMatch[0].replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-    if (token && !keys.includes(token)) keys.push(token);
-  }
-  const numericMatch = raw.match(/\d{3,4}/);
-  if (numericMatch) {
-    const digits = numericMatch[0];
-    if (digits && !keys.includes(digits)) keys.push(digits);
-  }
-  const sanitized = raw.replace(/[-\s:()]+/g, "").toUpperCase();
-  if (sanitized && !keys.includes(sanitized)) keys.push(sanitized);
-  return keys;
-}
-
 const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
   if (!entry || !entry.property_usecode) {
     return lookup;
   }
-  const keys = deriveUseCodeKeys(entry.property_usecode);
-  keys.forEach((key) => {
-    if (key) {
-      lookup[key] = entry.property_type ?? null;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) {
+    return lookup;
     }
-  });
+  lookup[normalizedUseCode] = entry.property_type ?? null;
   return lookup;
 }, {});
 
 
 const ownershipEstateTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
   if (!entry || !entry.property_usecode) return lookup;
-  const keys = deriveUseCodeKeys(entry.property_usecode);
-  keys.forEach((key) => {
-    if (key) {
-      lookup[key] = entry.ownership_estate_type ?? null;
-    }
-  });
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.ownership_estate_type ?? null;
   return lookup;
 }, {});
 
 const buildStatusByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
   if (!entry || !entry.property_usecode) return lookup;
-  const keys = deriveUseCodeKeys(entry.property_usecode);
-  keys.forEach((key) => {
-    if (key) {
-      lookup[key] = entry.build_status ?? null;
-    }
-  });
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.build_status ?? null;
   return lookup;
 }, {});
 
 const structureFormByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
   if (!entry || !entry.property_usecode) return lookup;
-  const keys = deriveUseCodeKeys(entry.property_usecode);
-  keys.forEach((key) => {
-    if (key) {
-      lookup[key] = entry.structure_form ?? null;
-    }
-  });
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.structure_form ?? null;
   return lookup;
 }, {});
 
 const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
   if (!entry || !entry.property_usecode) return lookup;
-  const keys = deriveUseCodeKeys(entry.property_usecode);
-  keys.forEach((key) => {
-    if (key) {
-      lookup[key] = entry.property_usage_type ?? null;
-    }
-  });
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.property_usage_type ?? null;
   return lookup;
 }, {});
 
-const PROPERTY_TYPE_VALUES = new Set([
-  "LandParcel",
-  "Building",
-  "Unit",
-  "ManufacturedHome",
-  "VacantLand",
-  "SingleFamily",
-  "Duplex",
-  "2Units",
-  "3Units",
-  "4Units",
-  "MultipleFamily",
-  "MultiFamilyMoreThan10",
-  "MultiFamilyLessThan10",
-  "Apartment",
-  "Townhouse",
-  "Condominium",
-  "DetachedCondominium",
-  "Cooperative",
-  "Modular",
-  "ManufacturedHousing",
-  "ManufacturedHousingSingleWide",
-  "ManufacturedHousingMultiWide",
-  "MobileHome",
-  "Timeshare",
-  "Pud",
-  "Retirement",
-  "MiscellaneousResidential",
-  "ResidentialCommonElementsAreas",
-  "NonWarrantableCondo",
-]);
-
-const BUILD_STATUS_VALUES = new Set([
-  "VacantLand",
-  "Improved",
-  "UnderConstruction",
-]);
-
-function appendSourceInfo() {
-  // Downstream ingestion populates source request metadata.
-  return {};
-}
-
-function normalizeUseCodeString(code) {
-  if (code == null) return "";
-  return String(code).replace(/\s+/g, " ").trim().toUpperCase();
-}
-
-const USE_CODE_PATTERNS = {
-  vacant: /\b(VACANT|UNIMPROVED|UNDEVELOP|RAW\s*LAND)\b/,
-  underConstruction: /UNDER\s*(CONSTR|CONST|CONSTRUCTION)/,
-  manufactured: /\b(MANUFACT(?:URED)?|MOBILE\s*HOME|MH\b|TRAILER)\b/,
-  mobileHomePark: /(MOBILE\s*HOME\s*(RENTAL\s*)?LOT|TRAILER\s*PARK|MOBILE\s*HOME\s*PARK)/,
-  condo: /\b(CONDO(MINIUM)?|CONDOM)\b/,
-  cooperative: /\b(CO-?OP|COOP|COOPERATIVE)\b/,
-  timeshare: /\bTIME\s*SHARE\b/,
-  townhouse: /\b(TOWN\s*HOUSE|TOWNHOUSE|TWNH|TWH)\b/,
-  duplex: /\b(DUPLEX|2\s*UNIT|TWO\s*UNIT|HALF[-\s]*DUPLEX)\b/,
-  triplex: /\b(TRIPLEX|3\s*UNIT|THREE\s*UNIT)\b/,
-  quadplex: /\b(QUAD(?:RAPLEX)?|4\s*UNIT|FOUR\s*(PLEX|UNIT))\b/,
-  multiFamily: /\b(APARTMENT|MULTI\s*FAM|MULTI-FAM|MFR|APT|APTS|LOW\s*RISE|HIGH\s*RISE|GARDEN\s*APT)\b/,
-  singleFamily: /\b(SINGLE\s*FAMILY|SFR|RESIDENCE)\b/,
-  modular: /\bMODULAR\b/,
-  retirement: /\b(RETIREMENT|ASSISTED\s*LIV|NURSING\s*HOME|CONVALESCENT)\b/,
-  agricultural: /\b(AGRIC|FARM|PASTURE|CROP|FIELD|RANCH)\b/,
-  timber: /\bTIMBER\b/,
-  grazing: /\bGRAZING|RANGE(LAND)?|PASTURE\b/,
-  orchard: /\b(CITRUS|GROVE|ORCHARD)\b/,
-  poultry: /\bPOULTRY\b/,
-  nursery: /\bNURSERY|GREEN\s*HOUSE|GREENHOUSE\b/,
-  livestock: /\b(LIVESTOCK|DAIRY|FEED\s*LOT|RANCH)\b/,
-  aquaculture: /\b(AQUA|FISH\s*FARM|MARICULTURE)\b/,
-  vineyard: /\b(VINEYARD|WINERY)\b/,
-  commercial: /\b(COMM(ERCIAL)?|RETAIL|STORE|SHOP|STRIP\s*CENTER|SHOPPING\s*CENTER|SUPERMARKET|HOTEL|MOTEL|RESTAURANT|GAS\s*STATION|SERVICE\s*STATION|AUTO\s*SALES|BANK|OFFICE|CLUB|THEATER|ARENA)\b/,
-  industrial: /\b(INDUSTR|MANUFACT|PLANT|FACTORY|WAREHOUSE|PACKING\s*PLANT|LUMBER|MILL|MINE|PROCESSING)\b/,
-  utility: /\b(UTILITY|POWER\s*PLANT|SUBSTATION|ELECTRIC|WATER\s*TREATMENT|SEWAGE|TELECOM|DATA\s*CENTER)\b/,
-  church: /\b(CHURCH|RELIG|MINISTR|TEMPLE|MOSQUE|SYNAGOGUE)\b/,
-  school: /\bSCHOOL\b/,
-  hospital: /\b(HOSPITAL|MEDICAL\s*CENTER|CLINIC)\b/,
-  government: /\b(GOVERNMENT|GOVT|STATE|FEDERAL|COUNTY|MUNICIPAL|CITY\s*HALL|COURT(HOUSE)?)\b/,
-  mortuary: /\b(MORTUARY|CEMETERY|FUNERAL)\b/,
-  forestPark: /\b(FOREST|PARK|RECREATION|REC\s*AREA)\b/,
-  golf: /\bGOLF\s*COURSE\b/,
-};
-
-function extractUnitCountRange(text) {
-  const rangeMatch = text.match(/(\d+)\s*(?:TO|-)?\s*(\d+)?\s*UNIT/);
-  if (!rangeMatch) return null;
-  const first = parseInt(rangeMatch[1], 10);
-  const second = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : first;
-  if (Number.isNaN(first)) return null;
-  const maxVal = Number.isNaN(second) ? first : Math.max(first, second);
-  return { min: Math.min(first, second || first), max: maxVal };
-}
-
-function computeFallbackAttributes(code) {
-  const normalized = normalizeUseCodeString(code);
-  if (!normalized) return {};
-
-  const attr = {};
-  const unitRange = extractUnitCountRange(normalized);
-  const isVacant = USE_CODE_PATTERNS.vacant.test(normalized);
-  const isUnderConstruction = USE_CODE_PATTERNS.underConstruction.test(normalized);
-  const isManufactured = USE_CODE_PATTERNS.manufactured.test(normalized);
-  const isMobileHomePark = USE_CODE_PATTERNS.mobileHomePark.test(normalized);
-  const isCondo = USE_CODE_PATTERNS.condo.test(normalized);
-  const isCoop = USE_CODE_PATTERNS.cooperative.test(normalized);
-  const isTimeshare = USE_CODE_PATTERNS.timeshare.test(normalized);
-  const isTownhouse = USE_CODE_PATTERNS.townhouse.test(normalized);
-  const isDuplex = USE_CODE_PATTERNS.duplex.test(normalized);
-  const isTriplex = USE_CODE_PATTERNS.triplex.test(normalized);
-  const isQuadplex = USE_CODE_PATTERNS.quadplex.test(normalized);
-  const isMultiFamily = USE_CODE_PATTERNS.multiFamily.test(normalized);
-  const isSingleFamily = USE_CODE_PATTERNS.singleFamily.test(normalized);
-  const isModular = USE_CODE_PATTERNS.modular.test(normalized);
-
-  if (isManufactured) {
-    attr.property_type = "ManufacturedHome";
-  } else if (isCondo || isCoop || (isMultiFamily && /\bUNIT\b/.test(normalized))) {
-    attr.property_type = "Unit";
-  } else if (isVacant) {
-    attr.property_type = "LandParcel";
-  } else {
-    attr.property_type = "Building";
-  }
-
-  if (isUnderConstruction) {
-    attr.build_status = "UnderConstruction";
-  } else if (isVacant && attr.property_type === "LandParcel") {
-    attr.build_status = "VacantLand";
-  } else {
-    attr.build_status = "Improved";
-  }
-
-  if (isCondo) {
-    attr.ownership_estate_type = "Condominium";
-  } else if (isCoop) {
-    attr.ownership_estate_type = "Cooperative";
-  } else if (isTimeshare) {
-    attr.ownership_estate_type = "Timeshare";
-  } else {
-    attr.ownership_estate_type = "FeeSimple";
-  }
-
-  if (isManufactured) {
-    if (/\bSINGLE\b/.test(normalized) && /\bWIDE\b/.test(normalized)) {
-      attr.structure_form = "ManufacturedHousingSingleWide";
-    } else if (/\bDOUBLE\b|\bTRIPLE\b|\bMULTI\b/.test(normalized)) {
-      attr.structure_form = "ManufacturedHousingMultiWide";
-    } else if (isMobileHomePark) {
-      attr.structure_form = "ManufacturedHomeInPark";
-    } else if (isModular) {
-      attr.structure_form = "Modular";
-    } else {
-      attr.structure_form = "ManufacturedHousing";
-    }
-  } else if (isTownhouse) {
-    attr.structure_form = "TownhouseRowhouse";
-  } else if (isDuplex) {
-    attr.structure_form = "Duplex";
-  } else if (isTriplex) {
-    attr.structure_form = "Triplex";
-  } else if (isQuadplex) {
-    attr.structure_form = "Quadplex";
-  } else if (isMultiFamily) {
-    if (unitRange) {
-      if (unitRange.max >= 10) {
-        attr.structure_form = "MultiFamilyMoreThan10";
-      } else if (unitRange.max >= 5) {
-        attr.structure_form = "MultiFamilyLessThan10";
-      }
-    }
-    if (!attr.structure_form) {
-      attr.structure_form =
-        /HIGH\s*RISE|TOWER|GARDEN|50\s*UNIT|APARTMENT/.test(normalized)
-          ? "MultiFamilyMoreThan10"
-          : "MultiFamilyLessThan10";
-    }
-  } else if (isSingleFamily) {
-    attr.structure_form = "SingleFamilyDetached";
-  } else if (isModular) {
-    attr.structure_form = "Modular";
-  }
-
-  if (USE_CODE_PATTERNS.mobileHomePark.test(normalized)) {
-    attr.property_usage_type = "MobileHomePark";
-  } else if (USE_CODE_PATTERNS.timber.test(normalized)) {
-    attr.property_usage_type = "TimberLand";
-  } else if (USE_CODE_PATTERNS.grazing.test(normalized)) {
-    attr.property_usage_type = "GrazingLand";
-  } else if (USE_CODE_PATTERNS.orchard.test(normalized)) {
-    attr.property_usage_type = "OrchardGroves";
-  } else if (USE_CODE_PATTERNS.poultry.test(normalized)) {
-    attr.property_usage_type = "Poultry";
-  } else if (USE_CODE_PATTERNS.nursery.test(normalized)) {
-    attr.property_usage_type = "NurseryGreenhouse";
-  } else if (USE_CODE_PATTERNS.livestock.test(normalized)) {
-    attr.property_usage_type = "LivestockFacility";
-  } else if (USE_CODE_PATTERNS.aquaculture.test(normalized)) {
-    attr.property_usage_type = "Aquaculture";
-  } else if (USE_CODE_PATTERNS.vineyard.test(normalized)) {
-    attr.property_usage_type = "VineyardWinery";
-  } else if (USE_CODE_PATTERNS.agricultural.test(normalized)) {
-    attr.property_usage_type = "Agricultural";
-  } else if (USE_CODE_PATTERNS.commercial.test(normalized)) {
-    attr.property_usage_type = "Commercial";
-  } else if (USE_CODE_PATTERNS.industrial.test(normalized)) {
-    attr.property_usage_type = "Industrial";
-  } else if (USE_CODE_PATTERNS.utility.test(normalized)) {
-    attr.property_usage_type = "Utility";
-  } else if (USE_CODE_PATTERNS.church.test(normalized)) {
-    attr.property_usage_type = "Church";
-  } else if (USE_CODE_PATTERNS.school.test(normalized)) {
-    attr.property_usage_type = normalized.includes("PRIVATE")
-      ? "PrivateSchool"
-      : "PublicSchool";
-  } else if (USE_CODE_PATTERNS.hospital.test(normalized)) {
-    attr.property_usage_type = "PrivateHospital";
-  } else if (USE_CODE_PATTERNS.retirement.test(normalized)) {
-    attr.property_usage_type = "Retirement";
-  } else if (USE_CODE_PATTERNS.government.test(normalized)) {
-    attr.property_usage_type = "GovernmentProperty";
-  } else if (USE_CODE_PATTERNS.mortuary.test(normalized)) {
-    attr.property_usage_type = "MortuaryCemetery";
-  } else if (USE_CODE_PATTERNS.forestPark.test(normalized)) {
-    attr.property_usage_type = "ForestParkRecreation";
-  } else if (USE_CODE_PATTERNS.golf.test(normalized)) {
-    attr.property_usage_type = "GolfCourse";
-  } else if (USE_CODE_PATTERNS.singleFamily.test(normalized) || isMultiFamily || isTownhouse || isDuplex || isTriplex || isQuadplex || isCondo || isCoop || isManufactured) {
-    attr.property_usage_type = "Residential";
-  } else if (isVacant && attr.property_type === "LandParcel") {
-    attr.property_usage_type = "Unknown";
-  }
-
-  return attr;
-}
-
-function derivePropertyTypeFromUseText(rawUseText, fallbackType, options = {}) {
-  const normalized = normalizeUseCodeString(rawUseText);
-  const {
-    numberOfUnits = null,
-    unitRange = null,
-  } = options;
-  const unitsEstimate =
-    (unitRange && unitRange.max != null ? unitRange.max : null) ??
-    (typeof numberOfUnits === "number" && numberOfUnits >= 0
-      ? numberOfUnits
-      : null);
-
-  if (!normalized) {
-    return PROPERTY_TYPE_VALUES.has(fallbackType) ? fallbackType : "LandParcel";
-  }
-
-  const has = (regex) => regex.test(normalized);
-
-  if (has(/\bVACANT\b/)) {
-    if (has(/COMMON\s+(AREA|ELEMENT)/) || has(/AMENITY/)) {
-      return "ResidentialCommonElementsAreas";
-    }
-    return "VacantLand";
-  }
-
-  if (has(/COMMON\s+(AREA|ELEMENT)/) || has(/AMENITY/)) {
-    return "ResidentialCommonElementsAreas";
-  }
-
-  if (has(/MISC(?:ELLANEOUS)?\s*RESIDENTIAL/) || has(/MIGRANT\s*CAMP/)) {
-    return "MiscellaneousResidential";
-  }
-
-  if (has(/\bRETIREMENT\b/)) return "Retirement";
-  if (has(/\bPUD\b/)) return "Pud";
-  if (has(/TIMESHARE/)) return "Timeshare";
-  if (has(/NON\s*WARRANTABLE/)) return "NonWarrantableCondo";
-  if (has(/CO-?OP/)) return "Cooperative";
-  if (has(/DETACHED/) && has(/CONDO/)) return "DetachedCondominium";
-  if (has(/CONDO/)) return "Condominium";
-  if (has(/MODULAR/)) return "Modular";
-
-  if (has(/SINGLE\s+FAMILY/)) return "SingleFamily";
-  if (has(/HALF\s*-?\s*DUPLEX/)) return "Duplex";
-
-  if (has(/\bTWO\s+(?:OR\s+MORE\s+)?RESIDENTIAL\s+UNITS\b/) || has(/\b2\s*UNIT\b/)) {
-    return "2Units";
-  }
-  if (has(/DUPLEX/)) return "Duplex";
-  if (has(/TRIPLEX/)) return "3Units";
-  if (has(/QUAD|FOURPLEX|4\s*UNIT/)) return "4Units";
-  if (has(/TOWN(HOUSE|HOME)/)) return "Townhouse";
-
-  const multiFamilyLike = has(/MULTI[\s-]*FAM/);
-  const apartmentLike = has(/APARTMENT|APT/);
-
-  if (multiFamilyLike || apartmentLike) {
-    if (unitsEstimate != null) {
-      if (unitsEstimate >= 10) return "MultiFamilyMoreThan10";
-      if (unitsEstimate >= 5) return "MultiFamilyLessThan10";
-      if (unitsEstimate === 4) return "4Units";
-      if (unitsEstimate === 3) return "3Units";
-      if (unitsEstimate === 2) return "2Units";
-    }
-    if (has(/\b(10|12|20|30|40|50|60|70|80|90|100)\b/) && has(/UNIT/)) {
-      return "MultiFamilyMoreThan10";
-    }
-    if (has(/\bLESS\s+THAN\s+5\b/) || has(/\bUNDER\s+10\b/) || has(/<\s*10\s*UNIT/)) {
-      return "MultiFamilyLessThan10";
-    }
-    if (apartmentLike) return "Apartment";
-    return "MultipleFamily";
-  }
-
-  const manufacturedLike =
-    has(/MANUFACT/) || has(/MOBILE\s+HOME/) || has(/\bMH\b/) || has(/TRAILER/);
-  if (manufacturedLike) {
-    const isSingleWide = has(/\bSINGLE\b/) && has(/\bWIDE\b/);
-    const isMultiWide =
-      has(/\bDOUBLE\b/) || has(/\bTRIPLE\b/) || has(/\bMULTI\b/);
-    if (isSingleWide) return "ManufacturedHousingSingleWide";
-    if (isMultiWide) return "ManufacturedHousingMultiWide";
-    if (has(/PARK/) || has(/RENTAL\s+LOT/)) return "MobileHome";
-    return "ManufacturedHome";
-  }
-
-  if (has(/MOBILE\s+HOME/)) return "MobileHome";
-
-  if (PROPERTY_TYPE_VALUES.has(fallbackType)) return fallbackType;
-  return "LandParcel";
-}
-
 function mapPropertyTypeFromUseCode(code) {
-  const keys = deriveUseCodeKeys(code);
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, key)) {
-      const mapped = propertyTypeByUseCode[key];
-      if (mapped) return mapped;
-    }
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  // console.log("1",normalizedInput)
+  // console.log(propertyTypeByUseCode)
+  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+    return propertyTypeByUseCode[normalizedInput];
   }
-  const fallback = computeFallbackAttributes(code);
-  return fallback.property_type ?? null;
+  return null;
 }
 
 
 
 function mapOwnershipEstateTypeFromUseCode(code) {
-  const keys = deriveUseCodeKeys(code);
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, key)) {
-      const mapped = ownershipEstateTypeByUseCode[key];
-      if (mapped) return mapped;
-    }
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
+    return ownershipEstateTypeByUseCode[normalizedInput];
   }
-  const fallback = computeFallbackAttributes(code);
-  return fallback.ownership_estate_type ?? null;
+  return null;
 }
 
 function mapBuildStatusFromUseCode(code) {
-  const keys = deriveUseCodeKeys(code);
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, key)) {
-      const mapped = buildStatusByUseCode[key];
-      if (mapped) return mapped;
-    }
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
+    return buildStatusByUseCode[normalizedInput];
   }
-  const fallback = computeFallbackAttributes(code);
-  return fallback.build_status ?? null;
+  return null;
 }
 
 function mapStructureFormFromUseCode(code) {
-  const keys = deriveUseCodeKeys(code);
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, key)) {
-      const mapped = structureFormByUseCode[key];
-      if (mapped) return mapped;
-    }
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
+    return structureFormByUseCode[normalizedInput];
   }
-  const fallback = computeFallbackAttributes(code);
-  return fallback.structure_form ?? null;
+  return null;
 }
 
 function mapPropertyUsageTypeFromUseCode(code) {
-  const keys = deriveUseCodeKeys(code);
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, key)) {
-      const mapped = propertyUsageTypeByUseCode[key];
-      if (mapped) return mapped;
-    }
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
+    return propertyUsageTypeByUseCode[normalizedInput];
   }
-  const fallback = computeFallbackAttributes(code);
-  return fallback.property_usage_type ?? null;
+  return null;
 }
 
 
@@ -3890,17 +3520,6 @@ function writeJSON(filePath, obj) {
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2));
 }
 
-function writeRelationshipFile(filePath, fromPath, toPath, relationshipType) {
-  const relationship = {
-    from: { "/": fromPath },
-    to: { "/": toPath },
-  };
-  if (relationshipType) {
-    relationship.type = relationshipType;
-  }
-  writeJSON(filePath, relationship);
-}
-
 function normalizeOwnerKey(o) {
   if (!o) return null;
   const fn = (o.first_name || "").trim().toLowerCase();
@@ -3915,6 +3534,33 @@ function normalizeCompanyKey(o) {
   return name || null;
 }
 
+
+// const utilitiesPath = path.join("owners", "utilities_data.json");
+const layoutsPath = path.join("owners", "layout_data.json");
+// const structuresPath = path.join("owners", "structure_data.json");
+// const utilitiesData = null;
+// const layoutsData = null;
+// const structuresData = null;
+const seed = readJSON("property_seed.json");
+const appendSourceInfo = (seed) => ({
+  source_http_request: {
+    method: "GET",
+    url: seed?.source_http_request?.url || null,
+  },
+  request_identifier: seed?.request_identifier || seed?.parcel_id || "",
+  });
+
+// try {
+//   structuresData = readJSON(structuresPath);
+// } catch (e) {}
+// try {
+//   utilitiesData = readJSON(utilitiesPath);
+// } catch (e) {}
+try {
+  layoutsData = readJSON(layoutsPath);
+} catch (e) {}
+
+
 function createStructureFiles(seed,parcelIdentifier) {
   // Create structures for each building
   let structuresData = null;
@@ -3927,6 +3573,7 @@ function createStructureFiles(seed,parcelIdentifier) {
   } catch (e) {}
   
   if (structuresData && parcelIdentifier) {
+    console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
     structures.forEach((struct, idx) => {
@@ -4097,7 +3744,6 @@ function createLayoutFiles(seed,parcelIdentifier){
     const key = `property_${parcelIdentifier}`;
     const layouts = layoutsData[key]?.layouts || [];
     layouts.forEach((layout, idx) => {
-      const layoutFileName = `layout_${idx + 1}.json`;
       const out = {
         ...appendSourceInfo(seed),
         space_type: layout.space_type ?? null,
@@ -4142,15 +3788,9 @@ function createLayoutFiles(seed,parcelIdentifier){
         flooring_installation_date: layout.flooring_installation_date ?? null,
         building_number: layout.building_number ?? null
       };
-      writeJSON(path.join("data", layoutFileName), out);
-      writeRelationshipFile(
-        path.join("data", `relationship_property_has_layout_${idx + 1}.json`),
-        "./property.json",
-        `./${layoutFileName}`,
-        "property_has_layout",
-      );
+      writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
     });
-
+    
     // Create layout relationships
     layouts.forEach((layout, idx) => {
       if (layout.space_type === "Building") {
@@ -4207,6 +3847,17 @@ function main() {
     ? readJSON(layoutsJsonPath)
     : {};
 
+  const appendSourceInfo = (seed) => ({
+  source_http_request: {
+    method: "GET",
+    url: seed?.source_http_request?.url || null,
+  },
+  request_identifier: seed?.request_identifier || seed?.parcel_id || "",
+  });
+
+
+
+
   // ---------- Parse Property ----------
   const parcelId = $("#divDetails_Pid").text().trim() || null;
 
@@ -4247,6 +3898,14 @@ function main() {
   // const cleanedUseCodeText = useText.replace(/-/g, '').replace(/\s+/g, ' ').trim();
   // console.log(cleanedUseCodeText)
   
+  const property_type = mapPropertyTypeFromUseCode(useText || "");
+  // console.log("property_type>>",property_type);
+  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(useText || "");
+  const build_status= mapBuildStatusFromUseCode(useText || "");
+  const structure_form = mapStructureFormFromUseCode(useText || "");
+  const property_usage_type = mapPropertyUsageTypeFromUseCode(useText || "");
+  console.log(useText,property_type,ownership_estate_type,build_status,structure_form,property_usage_type)
+
   // Acres
   const acresText = $("#divInfo_Description .cssDetails_Top_Row")
     .filter((i, el) => {
@@ -4278,55 +3937,7 @@ function main() {
   });
   bldgDetails.numberOfUnits = totalResidentialUnits + totalCommercialUnits;
 
-  const normalizedUseCodeText = normalizeUseCodeString(useText || "");
-  const useCodeUnitRange = extractUnitCountRange(normalizedUseCodeText);
-  const propertyTypeCandidate = mapPropertyTypeFromUseCode(useText || "");
-  const fallbackPropertyType =
-    bldgDetails.numberOfUnits && bldgDetails.numberOfUnits > 0
-      ? "Building"
-      : "LandParcel";
-  const resolvedPropertyType = PROPERTY_TYPE_VALUES.has(propertyTypeCandidate)
-    ? propertyTypeCandidate
-    : fallbackPropertyType;
-  const property_type = derivePropertyTypeFromUseText(
-    useText || "",
-    PROPERTY_TYPE_VALUES.has(resolvedPropertyType)
-      ? resolvedPropertyType
-      : "LandParcel",
-    {
-      numberOfUnits: bldgDetails.numberOfUnits,
-      unitRange: useCodeUnitRange,
-    },
-  );
 
-  const buildStatusCandidate = mapBuildStatusFromUseCode(useText || "");
-  const defaultBuildStatus =
-    property_type === "LandParcel" || property_type === "VacantLand"
-      ? "VacantLand"
-      : "Improved";
-  const build_status = BUILD_STATUS_VALUES.has(buildStatusCandidate)
-    ? buildStatusCandidate
-    : defaultBuildStatus;
-
-  const ownership_estate_type_candidate =
-    mapOwnershipEstateTypeFromUseCode(useText || "") ||
-    (property_type === "Unit" ? "Condominium" : "FeeSimple");
-  const ownership_estate_type =
-    typeof ownership_estate_type_candidate === "string"
-      ? ownership_estate_type_candidate
-      : null;
-
-  const structure_form_candidate =
-    mapStructureFormFromUseCode(useText || "") || null;
-  const structure_form =
-    typeof structure_form_candidate === "string"
-      ? structure_form_candidate
-      : null;
-
-  const propertyUsageCandidate =
-    mapPropertyUsageTypeFromUseCode(useText || "") || null;
-  const property_usage_type =
-    typeof propertyUsageCandidate === "string" ? propertyUsageCandidate : null;
 
   // Sub-areas: Total Base Area, Total Sub Area
 
@@ -4337,36 +3948,24 @@ function main() {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDesc || null,
     property_structure_built_year: bldgDetails.yearBuilt ?? null,
-    subdivision,
+    property_type: property_type || null, // Now extracted from Property Use
+    subdivision: subdivision,
     zoning: null,
-    property_type,
-    build_status,
+    ownership_estate_type: ownership_estate_type,
+    build_status: build_status,
+    structure_form:structure_form,
+    property_usage_type:property_usage_type    
   };
-  if (ownership_estate_type) {
-    property.ownership_estate_type = ownership_estate_type;
-  }
-  if (structure_form) {
-    property.structure_form = structure_form;
-  }
-  if (property_usage_type !== null && property_usage_type !== undefined) {
-    property.property_usage_type = property_usage_type;
-  }
   writeJSON(path.join(dataDir, "property.json"), property);
-  const propertyRef = "./property.json";
 
   // ---------- Address parsing and files creation logic ----------
-  const siteAddrRaw = $(
+  const siteAddr = $(
     "#divDetails_Top_SiteAddressContainer .cssDetails_Top_SiteAddress",
   )
     .first()
     .text()
     .replace(/\s+/g, " ")
     .trim();
-  const siteAddr =
-    siteAddrRaw && !/^(-{2}|none|n\/a|null|unknown)$/i.test(siteAddrRaw)
-      ? siteAddrRaw
-      : null;
-  const hasSiteAddress = Boolean(siteAddr);
   const mailingAddressRaw = extractMailingAddress($);
   // console.log("MAILING address",mailingAddressRaw)
 
@@ -4380,7 +3979,7 @@ function main() {
     state_code = null,
     postal_code = null;
 
-  if (hasSiteAddress) {
+  if (siteAddr) {
     // Match pattern: "1910 N COCOA BLVD COCOA FL 32922"
     const addrMatch = siteAddr.match(
       /^(\d+)\s+(?:(N|S|E|W|NE|NW|SE|SW)\s+)?(.+?)\s+(?:(N|S|E|W|NE|NW|SE|SW)\s+)?([A-Z]+)\s+([A-Z\s]+)\s+([A-Z]{2})\s+(\d{5})$/i,
@@ -4458,20 +4057,9 @@ function main() {
     range: range || null,
     section: section || null,
     township: township || null,
-    unnormalized_address: hasSiteAddress ? siteAddr : null,
+    unnormalized_address: siteAddr || null
   };
-  if (hasSiteAddress) {
-    writeJSON(path.join(dataDir, "address.json"), address);
-    writeRelationshipFile(
-      path.join(dataDir, "relationship_property_has_address.json"),
-      propertyRef,
-      "./address.json",
-      "property_has_address",
-    );
-  } else {
-    // Still persist address shell to capture available metadata without invalid relationships.
-    writeJSON(path.join(dataDir, "address.json"), address);
-  }
+  writeJSON(path.join(dataDir, "address.json"), address);
 
 
   //MAILING ADDRESS FILES.
@@ -4515,15 +4103,6 @@ function main() {
       sale.purchase_price_amount = purchasePrice;
     }
     writeJSON(path.join(dataDir, `sales_${salesFileIndex}.json`), sale);
-    writeRelationshipFile(
-      path.join(
-        dataDir,
-        `relationship_property_has_sales_history_${salesFileIndex}.json`,
-      ),
-      propertyRef,
-      `./sales_${salesFileIndex}.json`,
-      "property_has_sales_history",
-    );
 
     // Map deed code/title to deed_type
     // console.log(deedCode)
@@ -4544,20 +4123,13 @@ function main() {
     }
     writeJSON(path.join(dataDir, `deed_${salesFileIndex}.json`), deed);
 
-    const fileName = `file_${salesFileIndex}.json`;
-    const filePath = path.join(dataDir, fileName);
     const fileObj = {
       ...appendSourceInfo(seed),
-      document_type: "Title", //document type for deed.
+      document_type: "Title", //document_Type for deed.
       name: null,
+      original_url: deedLink || null,
     };
-    writeJSON(filePath, fileObj);
-    writeRelationshipFile(
-      path.join(dataDir, `relationship_property_has_file_${salesFileIndex}.json`),
-      propertyRef,
-      `./${fileName}`,
-      "property_has_file",
-    );
+    writeJSON(path.join(dataDir, `file_${salesFileIndex}.json`), fileObj);
 
     const relSalesDeed = {
       from: { "/": `./sales_${salesFileIndex}.json` },
@@ -4771,12 +4343,6 @@ function main() {
           yearly_tax_amount: null,
         };
         writeJSON(path.join(dataDir, `tax_${yr}.json`), tax);
-        writeRelationshipFile(
-          path.join(dataDir, `relationship_property_has_tax_${yr}.json`),
-          propertyRef,
-          `./tax_${yr}.json`,
-          "property_has_tax",
-        );
       }
     });
   }
@@ -4816,12 +4382,6 @@ function main() {
   };
 
   writeJSON(path.join(dataDir, "lot.json"), lotOut);
-  writeRelationshipFile(
-    path.join(dataDir, "relationship_property_has_lot.json"),
-    propertyRef,
-    "./lot.json",
-    "property_has_lot",
-  );
 }
 
 main();
