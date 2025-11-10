@@ -2557,6 +2557,57 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_OUTP
   return result;
 }
 
+function prepareAddressForSchema(address, variant) {
+  if (!address || typeof address !== "object") return null;
+
+  const clone = { ...address };
+  const targetFields =
+    variant === "normalized" ? NORMALIZED_ADDRESS_FIELDS : RAW_ADDRESS_OUTPUT_FIELDS;
+
+  for (const field of targetFields) {
+    if (!Object.prototype.hasOwnProperty.call(clone, field)) {
+      clone[field] = null;
+    }
+  }
+
+  if (variant === "normalized") {
+    if (Object.prototype.hasOwnProperty.call(clone, "unnormalized_address")) {
+      delete clone.unnormalized_address;
+    }
+  } else if (variant === "raw") {
+    if (
+      typeof clone.unnormalized_address !== "string" ||
+      !clone.unnormalized_address.trim().length
+    ) {
+      return null;
+    }
+    clone.unnormalized_address = clone.unnormalized_address.trim();
+  }
+
+  for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(clone, field)) {
+      clone[field] = null;
+      continue;
+    }
+
+    const numeric = parseCoordinate(clone[field]);
+    clone[field] = numeric != null ? numeric : null;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(clone, "plus_four_postal_code") &&
+    !clone.postal_code
+  ) {
+    clone.plus_four_postal_code = null;
+  }
+
+  if (clone.state_code && !clone.country_code) {
+    clone.country_code = "US";
+  }
+
+  return clone;
+}
+
 function deriveGridPartsFromPcn(rawPcn) {
   if (!rawPcn) return {};
   const normalized = normalizeWhitespace(String(rawPcn));
@@ -4442,6 +4493,14 @@ async function main() {
         finalAddress = finalizedNormalized;
       }
       finalAddress = ensureAddressFieldsForOutput(finalAddress, "normalized");
+    }
+
+    if (finalAddress && finalAddressVariant === "raw") {
+      finalAddress =
+        prepareAddressForSchema(finalAddress, "raw") || finalAddress;
+    } else if (finalAddress && finalAddressVariant === "normalized") {
+      finalAddress =
+        prepareAddressForSchema(finalAddress, "normalized") || finalAddress;
     }
 
     const hasMeaningfulAddress =
