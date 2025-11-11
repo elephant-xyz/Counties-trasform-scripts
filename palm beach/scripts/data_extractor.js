@@ -6073,22 +6073,71 @@ async function main() {
     }
 
     if (schemaReadyAddress) {
-      writeJSON(addressFilePath, schemaReadyAddress);
-      if (fs.existsSync(propertyFilePath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          propertyFileRelative,
-          "./address.json",
-        );
+      let preparedAddressOutput = schemaReadyAddress;
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          preparedAddressOutput,
+          "unnormalized_address",
+        )
+      ) {
+        const trimmedUnnormalized =
+          typeof preparedAddressOutput.unnormalized_address === "string"
+            ? preparedAddressOutput.unnormalized_address.trim()
+            : "";
+        if (!trimmedUnnormalized.length) {
+          preparedAddressOutput = null;
+        } else {
+          preparedAddressOutput = {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...preparedAddressOutput,
+            unnormalized_address: trimmedUnnormalized,
+          };
+          ensureAddressFieldSurface(
+            preparedAddressOutput,
+            RAW_ADDRESS_OUTPUT_FIELDS,
+          );
+        }
       } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
+        preparedAddressOutput = {
+          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+          ...preparedAddressOutput,
+        };
+        ensureAddressFieldSurface(
+          preparedAddressOutput,
+          NORMALIZED_ADDRESS_FIELDS,
+        );
       }
-      removeFileIfExists(addressFactSheetRelationshipPath);
+
+      if (preparedAddressOutput) {
+        for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+          const numeric = parseCoordinate(
+            preparedAddressOutput[coordinateField],
+          );
+          preparedAddressOutput[coordinateField] = Number.isFinite(numeric)
+            ? numeric
+            : null;
+        }
+
+        if (!hasMeaningfulAddressValue(preparedAddressOutput.postal_code)) {
+          preparedAddressOutput.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(preparedAddressOutput.state_code) &&
+          !hasMeaningfulAddressValue(preparedAddressOutput.country_code)
+        ) {
+          preparedAddressOutput.country_code = "US";
+        }
+
+        writeJSON(addressFilePath, preparedAddressOutput);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
     }
+    removeFileIfExists(propertyAddressRelationshipPath);
+    removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
 
