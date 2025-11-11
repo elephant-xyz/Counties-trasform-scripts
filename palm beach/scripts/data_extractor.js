@@ -5137,10 +5137,14 @@ async function main() {
     let finalAddressPayload = null;
     let finalAddressVariant = null;
 
-    const normalizedCandidate = ensureAddressVariantIsSchemaCompliant(
-      { ...baseAddressSeed },
-      "normalized",
-    );
+    const normalizedSeedProbe = { ...baseAddressSeed };
+    let normalizedCandidate = null;
+    if (hasStructuredAddressInput) {
+      normalizedCandidate = ensureAddressVariantIsSchemaCompliant(
+        normalizedSeedProbe,
+        "normalized",
+      );
+    }
 
     if (normalizedCandidate) {
       const finalizedNormalized = finalizeAddressForOutput(
