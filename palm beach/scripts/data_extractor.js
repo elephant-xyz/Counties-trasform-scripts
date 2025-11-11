@@ -5326,14 +5326,6 @@ async function main() {
       if (!finalAddressPayload.postal_code && finalAddressPayload.plus_four_postal_code) {
         finalAddressPayload.plus_four_postal_code = null;
       }
-
-      const missingRawRequired = RAW_SCHEMA_REQUIRED_FIELDS.filter(
-        (field) => !hasMeaningfulAddressValue(finalAddressPayload[field]),
-      );
-      if (missingRawRequired.length) {
-        finalAddressPayload = null;
-        finalAddressVariant = null;
-      }
     } else if (finalAddressPayload && finalAddressVariant === "normalized") {
       finalAddressPayload = {
         ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
@@ -5411,9 +5403,8 @@ async function main() {
 
     if (finalAddressPayload) {
       writeJSON(addressFilePath, finalAddressPayload);
-
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
+      writeJSON(propertyAddressRelationshipPath, null);
+      writeJSON(addressFactSheetRelationshipPath, null);
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
