@@ -2397,7 +2397,10 @@ function buildRawAddressOutput(address) {
     return null;
   }
 
-  const result = { unnormalized_address: rawUnnormalized };
+  const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: rawUnnormalized,
+  };
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     const hasField = Object.prototype.hasOwnProperty.call(address, field);
@@ -6304,6 +6307,62 @@ async function main() {
           coercedRaw.country_code = "US";
         }
         rawPrepared = coercedRaw;
+        enrichAddressFromUnnormalized(rawPrepared, trimmedUnnormalized);
+        if (!Number.isFinite(rawPrepared.latitude) && Number.isFinite(preferredLatitude)) {
+          rawPrepared.latitude = preferredLatitude;
+        }
+        if (!Number.isFinite(rawPrepared.longitude) && Number.isFinite(preferredLongitude)) {
+          rawPrepared.longitude = preferredLongitude;
+        }
+        if (!hasMeaningfulAddressValue(rawPrepared.city_name) && normalizedCity) {
+          rawPrepared.city_name = normalizedCity.toUpperCase();
+        }
+        if (
+          parsedUnnormalizedCityState.city &&
+          !hasMeaningfulAddressValue(rawPrepared.city_name)
+        ) {
+          const fallbackCity = sanitizeCityName(parsedUnnormalizedCityState.city);
+          if (fallbackCity) {
+            rawPrepared.city_name = fallbackCity;
+          }
+        }
+        if (
+          parsedUnnormalizedCityState.state &&
+          !hasMeaningfulAddressValue(rawPrepared.state_code)
+        ) {
+          rawPrepared.state_code = parsedUnnormalizedCityState.state.toUpperCase();
+        }
+        if (
+          !hasMeaningfulAddressValue(rawPrepared.postal_code) &&
+          (parsedUnnormalizedCityState.postal || fallbackPostalValue)
+        ) {
+          rawPrepared.postal_code =
+            sanitizePostalCode(parsedUnnormalizedCityState.postal) ||
+            fallbackPostalValue ||
+            rawPrepared.postal_code;
+        }
+        if (
+          !hasMeaningfulAddressValue(rawPrepared.plus_four_postal_code) &&
+          (parsedUnnormalizedCityState.plus4 || fallbackPlus4Value)
+        ) {
+          rawPrepared.plus_four_postal_code =
+            sanitizePlus4(parsedUnnormalizedCityState.plus4) ||
+            fallbackPlus4Value ||
+            null;
+        }
+        if (!hasMeaningfulAddressValue(rawPrepared.country_code) && rawPrepared.state_code) {
+          rawPrepared.country_code = "US";
+        }
+        if (!hasMeaningfulAddressValue(rawPrepared.county_name) && formattedCountyName) {
+          rawPrepared.county_name = formattedCountyName;
+        }
+        if (
+          !hasMeaningfulAddressValue(rawPrepared.municipality_name) &&
+          normalizedMunicipality
+        ) {
+          rawPrepared.municipality_name = toTitleCase(normalizedMunicipality);
+        }
+        rawPrepared = ensureRawAddressFieldCoverage(rawPrepared);
       }
     }
 

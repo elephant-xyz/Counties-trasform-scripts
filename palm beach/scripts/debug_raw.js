@@ -2191,7 +2191,7 @@ function buildRawAddressOutputForSchema(address) {
     return null;
   }
 
-  const result = { unnormalized_address: unnormalized };
+  const result = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: unnormalized };
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
     let value = Object.prototype.hasOwnProperty.call(address, field)
       ? address[field]
@@ -3448,7 +3448,39 @@ async function main() {
 
       const candidate = prepareRawAddressForSchema(rawOutput);
       if (candidate) {
-        materializedRawAddress = candidate;
+        enrichAddressFromUnnormalized(candidate, trimmedRawUnnormalized);
+        const parsedRawCityState = parseCityStatePostal(trimmedRawUnnormalized);
+        if (
+          !hasMeaningfulAddressValue(candidate.city_name) &&
+          parsedRawCityState.city
+        ) {
+          const cityCandidate = sanitizeCityName(parsedRawCityState.city);
+          if (cityCandidate) {
+            candidate.city_name = cityCandidate;
+          }
+        }
+        if (
+          !hasMeaningfulAddressValue(candidate.state_code) &&
+          parsedRawCityState.state
+        ) {
+          candidate.state_code = parsedRawCityState.state.toUpperCase();
+        }
+        if (
+          !hasMeaningfulAddressValue(candidate.postal_code) &&
+          parsedRawCityState.postal
+        ) {
+          candidate.postal_code = sanitizePostalCode(parsedRawCityState.postal);
+        }
+        if (
+          !hasMeaningfulAddressValue(candidate.plus_four_postal_code) &&
+          parsedRawCityState.plus4
+        ) {
+          candidate.plus_four_postal_code = sanitizePlus4(parsedRawCityState.plus4);
+        }
+        if (!hasMeaningfulAddressValue(candidate.country_code) && candidate.state_code) {
+          candidate.country_code = "US";
+        }
+        materializedRawAddress = ensureRawAddressFieldCoverage(candidate);
       }
     }
 
