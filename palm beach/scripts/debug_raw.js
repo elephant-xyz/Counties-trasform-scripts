@@ -774,6 +774,23 @@ function isNormalizedAddressSchemaReady(address) {
       return false;
     }
     const value = address[field];
+    if (field === "street_suffix_type") {
+      if (value == null) {
+        address[field] = null;
+        continue;
+      }
+      if (typeof value !== "string") {
+        return false;
+      }
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        address[field] = null;
+        continue;
+      }
+      const mappedSuffix = mapStreetSuffixType(trimmed);
+      address[field] = mappedSuffix || trimmed;
+      continue;
+    }
     if (value == null) {
       return false;
     }

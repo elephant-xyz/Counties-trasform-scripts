@@ -1339,7 +1339,6 @@ function ensureAddressFieldSurface(target, fields) {
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
-  "street_suffix_type",
   "city_name",
   "state_code",
   "postal_code",
@@ -1466,15 +1465,19 @@ function isNormalizedAddressSchemaReady(address) {
 
     if (field === "street_suffix_type") {
       if (value === null || value === undefined) {
+        address[field] = null;
+        continue;
+      }
+      if (typeof value !== "string") {
         return false;
       }
-      if (typeof value !== "string" || !value.trim().length) {
-        return false;
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        address[field] = null;
+        continue;
       }
-      const mappedSuffix = mapStreetSuffixType(value);
-      if (mappedSuffix) {
-        address[field] = mappedSuffix;
-      }
+      const mappedSuffix = mapStreetSuffixType(trimmed);
+      address[field] = mappedSuffix || trimmed;
       continue;
     }
 
