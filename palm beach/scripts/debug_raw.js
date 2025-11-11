@@ -1176,14 +1176,20 @@ function hasMeaningfulAddressValue(value) {
 
 function isRawAddressSchemaReady(address) {
   if (!address || typeof address !== "object") return false;
-  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return false;
+  }
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
       return false;
     }
-    if (!hasMeaningfulAddressValue(address[field])) {
-      return false;
-    }
   }
+
   return true;
 }
 
