@@ -1149,6 +1149,7 @@ const RAW_ADDRESS_SURFACE_FIELDS = [
   "source_http_request",
 ];
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
+const RAW_ADDRESS_OUTPUT_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
@@ -3185,6 +3186,59 @@ function ensureRawAddressSchemaDefaults(address) {
   }
 
   return result;
+}
+
+function ensureRawAddressOutputSurface(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const base = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  const hasOwn = (key) =>
+    Object.prototype.hasOwnProperty.call(address, key);
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    let value = hasOwn(field) ? address[field] : null;
+    if (value === undefined) value = null;
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      base[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      base[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    base[field] = value === null ? null : value;
+  }
+
+  if (hasOwn("unnormalized_address")) {
+    const unnormalized =
+      typeof address.unnormalized_address === "string"
+        ? address.unnormalized_address.trim()
+        : address.unnormalized_address;
+    base.unnormalized_address =
+      typeof unnormalized === "string" && unnormalized.length
+        ? unnormalized
+        : null;
+  }
+
+  for (const [key, value] of Object.entries(address)) {
+    if (key === "unnormalized_address") continue;
+    if (RAW_ADDRESS_OUTPUT_FIELD_SET.has(key)) continue;
+    base[key] = value;
+  }
+
+  if (!base.postal_code) {
+    base.plus_four_postal_code = null;
+  }
+  if (base.state_code && !base.country_code) {
+    base.country_code = "US";
+  }
+
+  return base;
 }
 
 function ensureNormalizedAddressSchemaSurface(address) {
@@ -6145,9 +6199,21 @@ async function main() {
       delete finalAddressOutput.request_identifier;
       delete finalAddressOutput.source_http_request;
 
-      const preparedAddress = coerceAddressForSchemaOutput(finalAddressOutput);
+      let preparedAddress = coerceAddressForSchemaOutput(finalAddressOutput);
 
       if (preparedAddress) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            preparedAddress,
+            "unnormalized_address",
+          )
+        ) {
+          const ensuredRawSurface =
+            ensureRawAddressOutputSurface(preparedAddress);
+          if (ensuredRawSurface) {
+            preparedAddress = ensuredRawSurface;
+          }
+        }
         writeJSON(addressFilePath, preparedAddress);
 
         const propertyFileExists = fs.existsSync(propertyFilePath);
