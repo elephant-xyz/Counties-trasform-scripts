@@ -2501,6 +2501,34 @@ function enforceAddressSchemaSurfaceForOutput(address) {
   return result;
 }
 
+function finalizeAddressForOutput(address) {
+  if (!address || typeof address !== "object") return null;
+
+  let prepared = enforceAddressOneOfSurface(address);
+  if (!prepared || typeof prepared !== "object") {
+    return null;
+  }
+
+  prepared = coerceAddressForSchemaOutput(prepared);
+  if (!prepared || typeof prepared !== "object") {
+    return null;
+  }
+
+  const hasUnnormalized =
+    typeof prepared.unnormalized_address === "string" &&
+    prepared.unnormalized_address.trim().length > 0;
+
+  if (hasUnnormalized) {
+    const rawSurface = ensureRawAddressFieldCoverage(prepared);
+    if (!rawSurface || typeof rawSurface !== "object") {
+      return null;
+    }
+    return enforceAddressSchemaSurfaceForOutput(rawSurface);
+  }
+
+  return enforceAddressSchemaSurfaceForOutput(prepared);
+}
+
 function createSchemaReadyAddress(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -6512,7 +6540,7 @@ async function main() {
       finalAddress = buildRawAddressOutput(rawPrepared);
     }
 
-    const enforcedAddress = enforceAddressSchemaSurfaceForOutput(finalAddress);
+    const enforcedAddress = finalizeAddressForOutput(finalAddress);
 
     if (enforcedAddress) {
       writeJSON(addressFilePath, enforcedAddress);
