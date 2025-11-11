@@ -172,7 +172,11 @@ function materializeAddressForSchema(payload, variant, options = {}) {
       const candidate = Object.prototype.hasOwnProperty.call(payload, field)
         ? payload[field]
         : null;
-      normalizedOutput[field] = normalizeAddressFieldForSchema(field, candidate);
+      const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+      normalizedOutput[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
     }
 
     if (!normalizedOutput.postal_code) {
@@ -223,7 +227,11 @@ function materializeAddressForSchema(payload, variant, options = {}) {
       const candidate = Object.prototype.hasOwnProperty.call(payload, field)
         ? payload[field]
         : null;
-      rawOutput[field] = normalizeAddressFieldForSchema(field, candidate);
+      const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+      rawOutput[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
     }
 
     if (!rawOutput.postal_code) {
