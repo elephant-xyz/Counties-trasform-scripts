@@ -3446,6 +3446,75 @@ function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
   return raw;
 }
 
+function prepareAddressOutputForWrite(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+
+  if (trimmedUnnormalized.length > 0) {
+    const surfaced =
+      ensureRawAddressSchemaSurface(address) ||
+      ensureRawAddressSchemaDefaults(address) ||
+      enforceRawAddressSchemaSurface(address);
+
+    if (!surfaced || typeof surfaced !== "object") {
+      return null;
+    }
+
+    const prepared = ensureAddressFieldsForOutput(surfaced, "raw", {
+      allowedFields: RAW_ADDRESS_OUTPUT_FIELDS,
+    });
+    if (!prepared || typeof prepared !== "object") {
+      return null;
+    }
+
+    const enforced = enforceAddressOneOfSurface(prepared);
+    if (enforced && typeof enforced === "object") {
+      return ensureRawAddressSchemaDefaults(enforced) || enforced;
+    }
+
+    const defaulted = ensureRawAddressSchemaDefaults(prepared);
+    if (!defaulted) {
+      return null;
+    }
+    return enforceAddressOneOfSurface(defaulted);
+  }
+
+  const surfaced = ensureNormalizedAddressSchemaSurface(address);
+  if (!surfaced || typeof surfaced !== "object") {
+    return null;
+  }
+
+  const prepared = ensureAddressFieldsForOutput(surfaced, "normalized");
+  if (!prepared || typeof prepared !== "object") {
+    return null;
+  }
+
+  const enforced = enforceAddressOneOfSurface(prepared);
+  if (enforced && typeof enforced === "object") {
+    const normalized = {
+      ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+      ...enforced,
+    };
+    if (normalized.state_code && !normalized.country_code) {
+      normalized.country_code = "US";
+    }
+    if (!normalized.postal_code) {
+      normalized.plus_four_postal_code = null;
+    }
+    return normalized;
+  }
+
+  const defaultedNormalized = {
+    ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+    ...prepared,
+  };
+  return enforceAddressOneOfSurface(defaultedNormalized);
+}
+
 function buildSchemaCompliantAddressPayload(address, options = {}) {
   if (!address || typeof address !== "object") {
     return { variant: null, payload: null };
@@ -6310,7 +6379,7 @@ async function main() {
     const [primaryAddressCandidate, ...fallbackAddressCandidates] =
       dedupedAddressSources;
 
-    const finalAddressOutput = coerceAddressOutputForSchema(
+    let finalAddressOutput = coerceAddressOutputForSchema(
       primaryAddressCandidate,
       {
         fallbackSources: fallbackAddressCandidates,
@@ -6318,6 +6387,16 @@ async function main() {
         requestIdentifier: resolvedRequestIdentifier,
       },
     );
+
+    if (finalAddressOutput) {
+      const preparedFinalAddressOutput = prepareAddressOutputForWrite(
+        finalAddressOutput,
+      );
+      finalAddressOutput =
+        preparedFinalAddressOutput && typeof preparedFinalAddressOutput === "object"
+          ? preparedFinalAddressOutput
+          : null;
+    }
 
     if (finalAddressOutput) {
       writeJSON(addressFilePath, finalAddressOutput);
