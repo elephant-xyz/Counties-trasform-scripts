@@ -3308,6 +3308,69 @@ function enforceAddressOneOfSurface(address) {
   return normalizedOutput;
 }
 
+function coerceAddressForSchemaOutput(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const cloned = deepClone(address) || { ...address };
+  if (!cloned || typeof cloned !== "object") return null;
+
+  const hasUnnormalized =
+    typeof cloned.unnormalized_address === "string" &&
+    cloned.unnormalized_address.trim().length > 0;
+
+  if (hasUnnormalized) {
+    cloned.unnormalized_address = cloned.unnormalized_address.trim();
+    if (!cloned.unnormalized_address.length) {
+      delete cloned.unnormalized_address;
+      return coerceAddressForSchemaOutput(cloned);
+    }
+  } else if (Object.prototype.hasOwnProperty.call(cloned, "unnormalized_address")) {
+    delete cloned.unnormalized_address;
+  }
+
+  const surfaceFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasUnnormalized
+    ? RAW_ADDRESS_SCHEMA_TEMPLATE
+    : NORMALIZED_ADDRESS_SCHEMA_TEMPLATE;
+
+  const result = { ...template };
+
+  for (const field of surfaceFields) {
+    let value = Object.prototype.hasOwnProperty.call(cloned, field)
+      ? cloned[field]
+      : null;
+
+    if (value === undefined) {
+      value = null;
+    }
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      value = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    }
+
+    result[field] = value;
+  }
+
+  if (hasUnnormalized) {
+    result.unnormalized_address = cloned.unnormalized_address;
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  return result;
+}
+
 function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
   const fallbackSources = Array.isArray(options && options.fallbackSources)
     ? options.fallbackSources
@@ -6082,32 +6145,21 @@ async function main() {
       delete finalAddressOutput.request_identifier;
       delete finalAddressOutput.source_http_request;
 
-      if (
-        Object.prototype.hasOwnProperty.call(
-          finalAddressOutput,
-          "unnormalized_address",
-        )
-      ) {
-        const trimmed =
-          typeof finalAddressOutput.unnormalized_address === "string"
-            ? finalAddressOutput.unnormalized_address.trim()
-            : "";
-        const defaultedRaw = ensureRawAddressSchemaDefaults(finalAddressOutput);
-        if (defaultedRaw && trimmed.length) {
-          finalAddressOutput =
-            ensureRawAddressRequiredCoverage(defaultedRaw, trimmed) ||
-            defaultedRaw;
-        }
+      const preparedAddress = coerceAddressForSchemaOutput(finalAddressOutput);
+
+      if (preparedAddress) {
+        writeJSON(addressFilePath, preparedAddress);
+
+        const propertyFileExists = fs.existsSync(propertyFilePath);
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          propertyFileExists ? propertyFileRelative : null,
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(addressFilePath);
+        removeFileIfExists(propertyAddressRelationshipPath);
       }
-
-      writeJSON(addressFilePath, finalAddressOutput);
-
-      const propertyFileExists = fs.existsSync(propertyFilePath);
-      writeRelationshipFile(
-        propertyAddressRelationshipPath,
-        propertyFileExists ? propertyFileRelative : null,
-        "./address.json",
-      );
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);

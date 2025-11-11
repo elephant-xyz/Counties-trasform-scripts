@@ -2082,6 +2082,69 @@ function enforceAddressOneOfSurface(address) {
   return normalizedOutput;
 }
 
+function coerceAddressForSchemaOutput(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const cloned = deepClone(address) || { ...address };
+  if (!cloned || typeof cloned !== "object") return null;
+
+  const hasUnnormalized =
+    typeof cloned.unnormalized_address === "string" &&
+    cloned.unnormalized_address.trim().length > 0;
+
+  if (hasUnnormalized) {
+    cloned.unnormalized_address = cloned.unnormalized_address.trim();
+    if (!cloned.unnormalized_address.length) {
+      delete cloned.unnormalized_address;
+      return coerceAddressForSchemaOutput(cloned);
+    }
+  } else if (Object.prototype.hasOwnProperty.call(cloned, "unnormalized_address")) {
+    delete cloned.unnormalized_address;
+  }
+
+  const surfaceFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasUnnormalized
+    ? RAW_ADDRESS_SCHEMA_TEMPLATE
+    : NORMALIZED_ADDRESS_SCHEMA_TEMPLATE;
+
+  const result = { ...template };
+
+  for (const field of surfaceFields) {
+    let value = Object.prototype.hasOwnProperty.call(cloned, field)
+      ? cloned[field]
+      : null;
+
+    if (value === undefined) {
+      value = null;
+    }
+
+    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      value = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    }
+
+    result[field] = value;
+  }
+
+  if (hasUnnormalized) {
+    result.unnormalized_address = cloned.unnormalized_address;
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  return result;
+}
+
 function projectRawAddressForOneOf(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -3614,59 +3677,18 @@ async function main() {
       }
 
       if (preparedAddressOutput) {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            preparedAddressOutput,
-            "unnormalized_address",
-          )
-        ) {
-          const trimmedUnnormalized =
-            typeof preparedAddressOutput.unnormalized_address === "string"
-              ? preparedAddressOutput.unnormalized_address.trim()
-              : "";
-          if (!trimmedUnnormalized.length) {
-            preparedAddressOutput = null;
-          } else {
-            for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-              if (
-                !Object.prototype.hasOwnProperty.call(
-                  preparedAddressOutput,
-                  field,
-                )
-              ) {
-                preparedAddressOutput[field] = null;
-                continue;
-              }
+        delete preparedAddressOutput.request_identifier;
+        delete preparedAddressOutput.source_http_request;
 
-              if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
-                const numeric = parseCoordinate(preparedAddressOutput[field]);
-                preparedAddressOutput[field] = Number.isFinite(numeric)
-                  ? numeric
-                  : null;
-                continue;
-              }
+        const finalizedAddress = coerceAddressForSchemaOutput(
+          preparedAddressOutput,
+        );
 
-              if (typeof preparedAddressOutput[field] === "string") {
-                const trimmed = preparedAddressOutput[field].trim();
-                preparedAddressOutput[field] = trimmed.length ? trimmed : null;
-              }
-            }
-
-            if (!preparedAddressOutput.postal_code) {
-              preparedAddressOutput.plus_four_postal_code = null;
-            }
-            if (
-              preparedAddressOutput.state_code &&
-              !preparedAddressOutput.country_code
-            ) {
-              preparedAddressOutput.country_code = "US";
-            }
-            preparedAddressOutput.unnormalized_address =
-              trimmedUnnormalized;
-          }
+        if (finalizedAddress) {
+          writeJSON(addressFilePath, finalizedAddress);
+        } else {
+          removeFileIfExists(addressFilePath);
         }
-
-        writeJSON(addressFilePath, preparedAddressOutput);
       } else {
         removeFileIfExists(addressFilePath);
       }
