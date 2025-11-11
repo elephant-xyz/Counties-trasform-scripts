@@ -3315,7 +3315,15 @@ async function main() {
     if (address.city_name && /\d/.test(address.city_name)) {
       address.city_name = null;
     }
-    address.county_name = safeNullIfEmpty(formattedCountyName);
+    const normalizedCountyName =
+      safeNullIfEmpty(formattedCountyName) ||
+      (seed && safeNullIfEmpty(seed.county_name)) ||
+      (unAddr && safeNullIfEmpty(unAddr.county_jurisdiction)) ||
+      null;
+    const defaultCounty = titleCaseCounty("Palm Beach");
+    address.county_name = normalizedCountyName
+      ? titleCaseCounty(normalizedCountyName)
+      : defaultCounty;
     const resolvedLatitude =
       Number.isFinite(initialLatitude)
         ? initialLatitude
@@ -3332,7 +3340,7 @@ async function main() {
     address.longitude = resolvedLongitude;
     address.plus_four_postal_code = stateMismatch ? null : sanitizedPlus4;
     address.postal_code = stateMismatch ? null : sanitizedPostalCode;
-    address.state_code = inferredStateCode;
+    address.state_code = inferredStateCode || "FL";
     address.street_name = (() => {
       if (!parsedAddress.streetName) return null;
       const formatted = safeNullIfEmpty(formatStreetNameCase(parsedAddress.streetName));
@@ -3357,9 +3365,15 @@ async function main() {
     address.section = safeNullIfEmpty(section);
     address.block = safeNullIfEmpty(block);
     address.lot = safeNullIfEmpty(lotNo);
+    if (!address.city_name && normalizedMunicipality) {
+      const municipalityCity = sanitizeCityName(normalizedMunicipality);
+      if (municipalityCity) {
+        address.city_name = municipalityCity;
+      }
+    }
     address.municipality_name = normalizedMunicipality
       ? toTitleCase(normalizedMunicipality)
-      : null;
+      : (address.city_name ? toTitleCase(address.city_name) : null);
     const baseStreetCandidates = [
       locationLine,
       ...streetCandidates.filter((candidate) => candidate !== locationLine),

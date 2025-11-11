@@ -6201,7 +6201,15 @@ async function main() {
     if (address.city_name && /\d/.test(address.city_name)) {
       address.city_name = null;
     }
-    address.county_name = safeNullIfEmpty(formattedCountyName);
+    const normalizedCountyName =
+      safeNullIfEmpty(formattedCountyName) ||
+      (seed && safeNullIfEmpty(seed.county_name)) ||
+      (unAddr && safeNullIfEmpty(unAddr.county_jurisdiction)) ||
+      null;
+    const defaultCounty = titleCaseCounty("Palm Beach");
+    address.county_name = normalizedCountyName
+      ? titleCaseCounty(normalizedCountyName)
+      : defaultCounty;
     const resolvedLatitude =
       Number.isFinite(initialLatitude)
         ? initialLatitude
@@ -6232,7 +6240,7 @@ async function main() {
 
     address.plus_four_postal_code = stateMismatch ? null : sanitizedPlus4;
     address.postal_code = stateMismatch ? null : sanitizedPostalCode;
-    address.state_code = inferredStateCode;
+    address.state_code = inferredStateCode || "FL";
     address.street_name = (() => {
       if (!parsedAddress.streetName) return null;
       const formatted = safeNullIfEmpty(formatStreetNameCase(parsedAddress.streetName));
@@ -6257,9 +6265,15 @@ async function main() {
     address.section = safeNullIfEmpty(section);
     address.block = safeNullIfEmpty(block);
     address.lot = safeNullIfEmpty(lotNo);
+    if (!address.city_name && normalizedMunicipality) {
+      const municipalityCity = sanitizeCityName(normalizedMunicipality);
+      if (municipalityCity) {
+        address.city_name = municipalityCity;
+      }
+    }
     address.municipality_name = normalizedMunicipality
       ? toTitleCase(normalizedMunicipality)
-      : null;
+      : (address.city_name ? toTitleCase(address.city_name) : null);
     if (parsedUnnormalizedCityState.city && !address.city_name) {
       const fallbackCity = sanitizeCityName(parsedUnnormalizedCityState.city);
       if (fallbackCity) {
@@ -6638,8 +6652,9 @@ async function main() {
         if (!hasMeaningfulAddressValue(rawPrepared.country_code) && rawPrepared.state_code) {
           rawPrepared.country_code = "US";
         }
-        if (!hasMeaningfulAddressValue(rawPrepared.county_name) && formattedCountyName) {
-          rawPrepared.county_name = formattedCountyName;
+        if (!hasMeaningfulAddressValue(rawPrepared.county_name)) {
+          rawPrepared.county_name =
+            formattedCountyName || defaultCounty;
         }
         if (
           !hasMeaningfulAddressValue(rawPrepared.municipality_name) &&
@@ -6668,6 +6683,9 @@ async function main() {
         address.city_name,
         normalizedCity,
         resolvedCity,
+        normalizeWhitespace(normalizedMunicipality)
+          ? sanitizeCityName(normalizedMunicipality)
+          : null,
         parsedUnnormalizedCityState.city,
       ],
       state_code: [
@@ -6698,6 +6716,7 @@ async function main() {
         address.county_name,
         formattedCountyName,
         countyName,
+        defaultCounty,
       ],
       municipality_name: [
         normalizedSnapshot && normalizedSnapshot.municipality_name,
