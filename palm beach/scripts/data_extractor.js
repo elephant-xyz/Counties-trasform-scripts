@@ -6019,7 +6019,38 @@ async function main() {
 
     let finalAddressOutput = null;
 
-    if (trimmedUnnormalized.length) {
+    const normalizedSurface = ensureNormalizedAddressSchemaSurface(
+      baseAddressSeed,
+    );
+    if (!finalAddressOutput && normalizedSurface) {
+      const normalizedPrepared = ensureAddressFieldsForOutput(
+        normalizedSurface,
+        "normalized",
+      );
+      const enforcedNormalized = normalizedPrepared
+        ? enforceAddressOneOfSurface(normalizedPrepared)
+        : null;
+      if (enforcedNormalized) {
+        const normalizedDefaulted = {
+          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+          ...enforcedNormalized,
+        };
+        if (!normalizedDefaulted.postal_code) {
+          normalizedDefaulted.plus_four_postal_code = null;
+        }
+        if (
+          normalizedDefaulted.state_code &&
+          !normalizedDefaulted.country_code
+        ) {
+          normalizedDefaulted.country_code = "US";
+        }
+        if (isNormalizedAddressSchemaReady(normalizedDefaulted)) {
+          finalAddressOutput = normalizedDefaulted;
+        }
+      }
+    }
+
+    if (!finalAddressOutput && trimmedUnnormalized.length) {
       const rawSeed = {
         ...RAW_ADDRESS_SCHEMA_TEMPLATE,
         ...collectAddressFields(baseAddressSeed, RAW_ADDRESS_OUTPUT_FIELDS, {
@@ -6032,24 +6063,17 @@ async function main() {
         trimmedUnnormalized,
       );
       if (coveredRaw) {
-        finalAddressOutput = ensureRawAddressSchemaDefaults(coveredRaw);
-      }
-    }
-
-    if (!finalAddressOutput) {
-      const normalizedSurface = ensureNormalizedAddressSchemaSurface(
-        baseAddressSeed,
-      );
-      if (normalizedSurface) {
-        const normalizedPrepared = ensureAddressFieldsForOutput(
-          normalizedSurface,
-          "normalized",
-        );
-        const enforcedNormalized = normalizedPrepared
-          ? enforceAddressOneOfSurface(normalizedPrepared)
-          : null;
-        if (enforcedNormalized) {
-          finalAddressOutput = enforcedNormalized;
+        const defaultedRaw = ensureRawAddressSchemaDefaults(coveredRaw);
+        if (defaultedRaw) {
+          const enforcedRaw = enforceAddressOneOfSurface(defaultedRaw);
+          const preparedRaw = enforcedRaw || defaultedRaw;
+          const hydratedRaw =
+            ensureRawAddressRequiredCoverage(
+              preparedRaw,
+              trimmedUnnormalized,
+            ) || preparedRaw;
+          finalAddressOutput =
+            ensureRawAddressSchemaDefaults(hydratedRaw) || null;
         }
       }
     }
