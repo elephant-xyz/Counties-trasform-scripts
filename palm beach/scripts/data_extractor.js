@@ -1399,7 +1399,6 @@ const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "longitude",
   "street_number",
   "street_name",
-  "street_suffix_type",
   "city_name",
   "state_code",
   "postal_code",
@@ -1417,15 +1416,6 @@ function hasCompleteNormalizedAddress(address) {
     const trimmed = value.trim();
     if (!trimmed.length) {
       return false;
-    }
-
-    if (field === "street_suffix_type") {
-      const normalizedSuffix = mapStreetSuffixType(trimmed);
-      if (!normalizedSuffix) {
-        return false;
-      }
-      address[field] = normalizedSuffix;
-      continue;
     }
 
     if (field === "city_name") {
@@ -1475,6 +1465,14 @@ function hasCompleteNormalizedAddress(address) {
 
     address[field] = numericValue != null ? numericValue : null;
   }
+
+  if (hasMeaningfulAddressValue(address.street_suffix_type)) {
+    const normalizedSuffix = mapStreetSuffixType(String(address.street_suffix_type).trim());
+    if (normalizedSuffix) {
+      address.street_suffix_type = normalizedSuffix;
+    }
+  }
+
   return true;
 }
 
@@ -1502,24 +1500,6 @@ function isNormalizedAddressSchemaReady(address) {
         return false;
       }
       address[field] = numeric;
-      continue;
-    }
-
-    if (field === "street_suffix_type") {
-      if (value === null || value === undefined) {
-        address[field] = null;
-        continue;
-      }
-      if (typeof value !== "string") {
-        return false;
-      }
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        address[field] = null;
-        continue;
-      }
-      const mappedSuffix = mapStreetSuffixType(trimmed);
-      address[field] = mappedSuffix || trimmed;
       continue;
     }
 
@@ -5388,6 +5368,119 @@ async function main() {
           return trimmed.length ? trimmed : null;
         },
       );
+
+      if (trimmedUnnormalized.length) {
+        const [streetSegmentRaw, ...localitySegments] = trimmedUnnormalized.split(",");
+        const streetSegment = streetSegmentRaw ? streetSegmentRaw.trim() : "";
+
+        const assignIfMissing = (field, rawValue, transformer) => {
+          if (hasMeaningfulAddressValue(finalAddressPayload[field])) {
+            return;
+          }
+          if (rawValue == null) {
+            return;
+          }
+          let candidate =
+            typeof transformer === "function" ? transformer(rawValue) : rawValue;
+          if (candidate == null) {
+            return;
+          }
+          if (typeof candidate === "string") {
+            const trimmed = candidate.trim();
+            if (!trimmed.length) {
+              return;
+            }
+            candidate = trimmed;
+          }
+          finalAddressPayload[field] = candidate;
+        };
+
+        if (streetSegment.length) {
+          const parsedStreet = parseLocationAddress(streetSegment);
+          if (parsedStreet) {
+            assignIfMissing("street_number", parsedStreet.streetNumber, (value) => {
+              const trimmed = String(value).trim();
+              return trimmed.length ? trimmed : null;
+            });
+            assignIfMissing("street_name", parsedStreet.streetName, (value) => {
+              const formatted = formatStreetNameCase(value);
+              return formatted ? formatted.toUpperCase() : null;
+            });
+            assignIfMissing(
+              "street_pre_directional_text",
+              parsedStreet.streetPreDirectional,
+              (value) => {
+                const trimmed = String(value).trim().toUpperCase();
+                return trimmed.length ? trimmed : null;
+              },
+            );
+            assignIfMissing(
+              "street_post_directional_text",
+              parsedStreet.streetPostDirectional,
+              (value) => {
+                const trimmed = String(value).trim().toUpperCase();
+                return trimmed.length ? trimmed : null;
+              },
+            );
+            assignIfMissing(
+              "street_suffix_type",
+              parsedStreet.streetSuffix,
+              (value) => {
+                const trimmed = String(value).trim();
+                if (!trimmed.length) return null;
+                const mapped = mapStreetSuffixType(trimmed);
+                return mapped || trimmed;
+              },
+            );
+            assignIfMissing(
+              "unit_identifier",
+              parsedStreet.unitIdentifier,
+              (value) => {
+                const trimmed = String(value).trim();
+                return trimmed.length ? trimmed.toUpperCase() : null;
+              },
+            );
+            assignIfMissing(
+              "route_number",
+              parsedStreet.routeNumber,
+              (value) => {
+                const trimmed = String(value).trim();
+                return trimmed.length ? trimmed : null;
+              },
+            );
+          }
+        }
+
+        const localitySegment = localitySegments.join(",").trim();
+        if (localitySegment.length) {
+          const parsedCityStateFromUnnormalized = parseCityStatePostal(localitySegment);
+          if (parsedCityStateFromUnnormalized) {
+            assignIfMissing(
+              "city_name",
+              parsedCityStateFromUnnormalized.city,
+              (value) => sanitizeCityName(value),
+            );
+            assignIfMissing(
+              "state_code",
+              parsedCityStateFromUnnormalized.state,
+              (value) => {
+                const trimmed = String(value).trim().toUpperCase();
+                return trimmed.length ? trimmed : null;
+              },
+            );
+            assignIfMissing(
+              "postal_code",
+              parsedCityStateFromUnnormalized.postal,
+              (value) => sanitizePostalCode(value),
+            );
+            assignIfMissing(
+              "plus_four_postal_code",
+              parsedCityStateFromUnnormalized.plus4,
+              (value) => sanitizePlus4(value),
+            );
+          }
+        }
+      }
 
       if (!finalAddressPayload.postal_code && finalAddressPayload.plus_four_postal_code) {
         finalAddressPayload.plus_four_postal_code = null;

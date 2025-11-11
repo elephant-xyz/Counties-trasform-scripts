@@ -708,6 +708,7 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "state_code",
   "postal_code",
   "country_code",
+  "county_name",
 ];
 
 const NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
@@ -723,14 +724,15 @@ function hasCompleteNormalizedAddress(address) {
     if (!trimmed.length) {
       return false;
     }
-    if (field === "street_suffix_type") {
-      const mappedSuffix = mapStreetSuffixType(trimmed);
-      if (!mappedSuffix) {
+    if (field === "county_name") {
+      const titledCounty = toTitleCase(trimmed);
+      if (!titledCounty || !titledCounty.trim().length) {
         return false;
       }
-      address[field] = mappedSuffix;
+      address[field] = titledCounty;
       continue;
     }
+    address[field] = trimmed;
   }
   for (const field of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
     const value = address[field];
@@ -749,6 +751,18 @@ function hasCompleteNormalizedAddress(address) {
     }
     address[field] = null;
   }
+  if (
+    address.street_suffix_type != null &&
+    typeof address.street_suffix_type === "string"
+  ) {
+    const trimmedSuffix = address.street_suffix_type.trim();
+    if (trimmedSuffix.length) {
+      const mappedSuffix = mapStreetSuffixType(trimmedSuffix);
+      if (mappedSuffix) {
+        address.street_suffix_type = mappedSuffix;
+      }
+    }
+  }
   return true;
 }
 
@@ -759,7 +773,6 @@ const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "longitude",
   "street_number",
   "street_name",
-  "street_suffix_type",
   "city_name",
   "state_code",
   "postal_code",
@@ -774,23 +787,6 @@ function isNormalizedAddressSchemaReady(address) {
       return false;
     }
     const value = address[field];
-    if (field === "street_suffix_type") {
-      if (value == null) {
-        address[field] = null;
-        continue;
-      }
-      if (typeof value !== "string") {
-        return false;
-      }
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        address[field] = null;
-        continue;
-      }
-      const mappedSuffix = mapStreetSuffixType(trimmed);
-      address[field] = mappedSuffix || trimmed;
-      continue;
-    }
     if (value == null) {
       return false;
     }
