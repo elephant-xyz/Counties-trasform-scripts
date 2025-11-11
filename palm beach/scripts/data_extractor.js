@@ -5623,13 +5623,18 @@ async function main() {
       );
     }
 
-    if (preparedAddressPayload && !resolvedSourceHttpRequest) {
-      preparedAddressPayload = null;
-    }
-
     if (preparedAddressPayload) {
       writeJSON(addressFilePath, preparedAddressPayload);
-      removeFileIfExists(propertyAddressRelationshipPath);
+      const propertyFileAbsolute = path.join(dataDir, "property.json");
+      if (fs.existsSync(propertyFileAbsolute)) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          "./property.json",
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
       removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       removeFileIfExists(addressFilePath);

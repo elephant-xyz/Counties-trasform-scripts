@@ -3340,7 +3340,16 @@ async function main() {
 
     if (preparedAddress) {
       writeJSON(addressFilePath, preparedAddress);
-      removeFileIfExists(propertyAddressRelationshipPath);
+      const propertyFileAbsolute = path.join(dataDir, "property.json");
+      if (fs.existsSync(propertyFileAbsolute)) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          "./property.json",
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
       removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       if (fs.existsSync(addressFilePath)) {
