@@ -1165,6 +1165,28 @@ function prepareRawAddressForSchema(rawAddress) {
   return prepared;
 }
 
+function hasMeaningfulAddressValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  return true;
+}
+
+function isRawAddressSchemaReady(address) {
+  if (!address || typeof address !== "object") return false;
+  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      return false;
+    }
+    if (!hasMeaningfulAddressValue(address[field])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function createSchemaReadyAddress(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -2478,6 +2500,8 @@ function formatNamePart(part) {
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
+  const propertyFilePath = path.join(dataDir, "property.json");
+  const propertyFileRelative = "./property.json";
 
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
@@ -3309,6 +3333,7 @@ async function main() {
       sourceHttpRequest: null,
     };
 
+    let preparedAddressVariant = finalAddressVariant;
     let preparedAddress = materializeAddressForSchema(
       finalAddress,
       finalAddressVariant,
@@ -3336,15 +3361,43 @@ async function main() {
         "raw",
         addressOutputOptions,
       );
+      if (preparedAddress) {
+        preparedAddressVariant = "raw";
+      }
+    }
+
+    if (preparedAddress) {
+      if (!preparedAddressVariant) {
+        preparedAddressVariant = Object.prototype.hasOwnProperty.call(
+          preparedAddress,
+          "unnormalized_address",
+        )
+          ? "raw"
+          : "normalized";
+      } else if (
+        preparedAddressVariant === "normalized" &&
+        Object.prototype.hasOwnProperty.call(
+          preparedAddress,
+          "unnormalized_address",
+        )
+      ) {
+        preparedAddressVariant = "raw";
+      }
+
+      if (
+        preparedAddressVariant === "raw" &&
+        !isRawAddressSchemaReady(preparedAddress)
+      ) {
+        preparedAddress = null;
+      }
     }
 
     if (preparedAddress) {
       writeJSON(addressFilePath, preparedAddress);
-      const propertyFileAbsolute = path.join(dataDir, "property.json");
-      if (fs.existsSync(propertyFileAbsolute)) {
+      if (fs.existsSync(propertyFilePath)) {
         writeRelationshipFile(
           propertyAddressRelationshipPath,
-          "./property.json",
+          propertyFileRelative,
           "./address.json",
         );
       } else {
@@ -3352,9 +3405,7 @@ async function main() {
       }
       removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
-      if (fs.existsSync(addressFilePath)) {
-        fs.unlinkSync(addressFilePath);
-      }
+      removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
       removeFileIfExists(addressFactSheetRelationshipPath);
     }
@@ -4032,9 +4083,7 @@ async function main() {
   let companyIdx = 1;
   let relIdx = 1;
   const processedNames = new Set(); // Track processed names to avoid duplicates
-  const propertyFilePath = path.join(dataDir, "property.json");
   const propertyFileExists = fs.existsSync(propertyFilePath);
-  const propertyFileRelative = "./property.json";
 
   // Company detection keywords (case-insensitive)
   const companyRegex =
