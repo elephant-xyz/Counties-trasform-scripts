@@ -3378,6 +3378,34 @@ function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
     return null;
   };
 
+  const trimmedUnnormalized =
+    typeof resolvedUnnormalized === "string"
+      ? resolvedUnnormalized.trim()
+      : "";
+
+  if (trimmedUnnormalized.length) {
+    const raw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      const rawValue = pickFieldValue(field);
+      raw[field] = normalizeAddressFieldForSchema(field, rawValue);
+    }
+
+    if (!raw.postal_code) {
+      raw.plus_four_postal_code = null;
+    }
+    if (raw.state_code && !raw.country_code) {
+      raw.country_code = "US";
+    }
+
+    raw.unnormalized_address = trimmedUnnormalized;
+
+    if (resolvedRequestIdentifier) {
+      raw.request_identifier = resolvedRequestIdentifier;
+    }
+
+    return raw;
+  }
+
   const normalizedCandidate = (() => {
     const normalized = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
@@ -3416,34 +3444,7 @@ function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
     return normalizedCandidate;
   }
 
-  const trimmedUnnormalized =
-    typeof resolvedUnnormalized === "string"
-      ? resolvedUnnormalized.trim()
-      : "";
-  if (!trimmedUnnormalized.length) {
-    return null;
-  }
-
-  const raw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    const rawValue = pickFieldValue(field);
-    raw[field] = normalizeAddressFieldForSchema(field, rawValue);
-  }
-
-  if (!raw.postal_code) {
-    raw.plus_four_postal_code = null;
-  }
-  if (raw.state_code && !raw.country_code) {
-    raw.country_code = "US";
-  }
-
-  raw.unnormalized_address = trimmedUnnormalized;
-
-  if (resolvedRequestIdentifier) {
-    raw.request_identifier = resolvedRequestIdentifier;
-  }
-
-  return raw;
+  return null;
 }
 
 function prepareAddressOutputForWrite(address) {
@@ -3548,47 +3549,6 @@ function buildSchemaCompliantAddressPayload(address, options = {}) {
     ...sourceHttpRequestCandidates,
   );
 
-  const normalizedPayload = {};
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    const candidate = Object.prototype.hasOwnProperty.call(address, field)
-      ? address[field]
-      : null;
-    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
-    normalizedPayload[field] =
-      normalizedValue === undefined || normalizedValue === null
-        ? null
-        : normalizedValue;
-  }
-
-  const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedPayload[field] === "string" &&
-      normalizedPayload[field].trim().length > 0,
-  );
-  const hasRequiredCoordinates =
-    NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-      Number.isFinite(normalizedPayload[field]),
-    );
-  if (hasRequiredStrings && hasRequiredCoordinates) {
-    if (!normalizedPayload.postal_code) {
-      normalizedPayload.plus_four_postal_code = null;
-    }
-    if (normalizedPayload.state_code && !normalizedPayload.country_code) {
-      normalizedPayload.country_code = "US";
-    }
-
-    if (requestIdentifier) {
-      normalizedPayload.request_identifier = requestIdentifier;
-    }
-    if (preparedSourceHttpRequest) {
-      normalizedPayload.source_http_request = deepClone(
-        preparedSourceHttpRequest,
-      );
-    }
-
-    return { variant: "normalized", payload: normalizedPayload };
-  }
-
   const trimmedUnnormalized =
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
@@ -3633,6 +3593,47 @@ function buildSchemaCompliantAddressPayload(address, options = {}) {
     }
 
     return { variant: "raw", payload: rawPayload };
+  }
+
+  const normalizedPayload = {};
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    normalizedPayload[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedPayload[field] === "string" &&
+      normalizedPayload[field].trim().length > 0,
+  );
+  const hasRequiredCoordinates =
+    NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
+      Number.isFinite(normalizedPayload[field]),
+    );
+  if (hasRequiredStrings && hasRequiredCoordinates) {
+    if (!normalizedPayload.postal_code) {
+      normalizedPayload.plus_four_postal_code = null;
+    }
+    if (normalizedPayload.state_code && !normalizedPayload.country_code) {
+      normalizedPayload.country_code = "US";
+    }
+
+    if (requestIdentifier) {
+      normalizedPayload.request_identifier = requestIdentifier;
+    }
+    if (preparedSourceHttpRequest) {
+      normalizedPayload.source_http_request = deepClone(
+        preparedSourceHttpRequest,
+      );
+    }
+
+    return { variant: "normalized", payload: normalizedPayload };
   }
 
   return { variant: null, payload: null };
@@ -6005,6 +6006,7 @@ async function main() {
 
     const normalizedSeedProbe = { ...baseAddressSeed };
     let normalizedCandidate = null;
+    let normalizedFallbackPayload = null;
     if (hasStructuredAddressInput) {
       normalizedCandidate = ensureAddressVariantIsSchemaCompliant(
         normalizedSeedProbe,
@@ -6094,8 +6096,12 @@ async function main() {
           "normalized",
         );
         if (coveredNormalized && typeof coveredNormalized === "object") {
-          finalAddressPayload = coveredNormalized;
-          finalAddressVariant = "normalized";
+          if (trimmedUnnormalized.length === 0) {
+            finalAddressPayload = coveredNormalized;
+            finalAddressVariant = "normalized";
+          } else {
+            normalizedFallbackPayload = coveredNormalized;
+          }
         }
       }
     }
@@ -6148,6 +6154,11 @@ async function main() {
         finalAddressPayload = surfacedRaw;
         finalAddressVariant = "raw";
       }
+    }
+
+    if (!finalAddressPayload && normalizedFallbackPayload) {
+      finalAddressPayload = normalizedFallbackPayload;
+      finalAddressVariant = "normalized";
     }
 
     const addressOutputOptions = {
@@ -6361,6 +6372,7 @@ async function main() {
       finalizedAddressPayload,
       preparedAddressPayload,
       finalAddressPayload,
+      normalizedFallbackPayload,
       baseAddressSeed,
       normalizedSnapshot,
       address,
