@@ -5846,6 +5846,44 @@ async function main() {
         );
         if (defaultedRaw) {
           finalizedAddressPayload = defaultedRaw;
+
+          const rawCoverageSources = [
+            baseAddressSeed,
+            normalizedSnapshot,
+            address,
+            seed,
+            unAddr,
+          ].filter((source) => source && typeof source === "object");
+          const coverageCandidate = buildRawAddressFromSources(
+            rawCoverageSources,
+            {
+              unnormalizedCandidates,
+              latitudeCandidates,
+              longitudeCandidates,
+            },
+          );
+          if (coverageCandidate && typeof coverageCandidate === "object") {
+            for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+              const currentValue = finalizedAddressPayload[field];
+              const coverageValue = coverageCandidate[field];
+              if (
+                (!hasMeaningfulAddressValue(currentValue) ||
+                  currentValue === undefined) &&
+                hasMeaningfulAddressValue(coverageValue)
+              ) {
+                finalizedAddressPayload[field] = coverageValue;
+              }
+            }
+          }
+
+          const ensuredRawCoverage = ensureRawAddressRequiredCoverage(
+            finalizedAddressPayload,
+            trimmedUnnormalized,
+          );
+          if (ensuredRawCoverage) {
+            finalizedAddressPayload = ensuredRawCoverage;
+          }
+
           ensureAddressFieldSurface(
             finalizedAddressPayload,
             RAW_ADDRESS_OUTPUT_FIELDS,
