@@ -5623,6 +5623,28 @@ async function main() {
       );
     }
 
+    if (
+      preparedAddressPayload &&
+      typeof preparedAddressPayload === "object" &&
+      Object.prototype.hasOwnProperty.call(
+        preparedAddressPayload,
+        "unnormalized_address",
+      )
+    ) {
+      let surfacedRaw = ensureRawAddressSchemaSurface(preparedAddressPayload);
+      if (!surfacedRaw) {
+        surfacedRaw = ensureRawAddressSchemaDefaults(preparedAddressPayload);
+      }
+      if (surfacedRaw && typeof surfacedRaw === "object") {
+        for (const [key, value] of Object.entries(preparedAddressPayload)) {
+          if (Object.prototype.hasOwnProperty.call(surfacedRaw, key)) continue;
+          surfacedRaw[key] =
+            value && typeof value === "object" ? deepClone(value) : value;
+        }
+        preparedAddressPayload = surfacedRaw;
+      }
+    }
+
     if (preparedAddressPayload) {
       writeJSON(addressFilePath, preparedAddressPayload);
       const propertyFileAbsolute = path.join(dataDir, "property.json");
