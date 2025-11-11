@@ -6247,12 +6247,7 @@ async function main() {
       if (surfacedAddress) {
         writeJSON(addressFilePath, surfacedAddress);
 
-        const propertyFileExists = fs.existsSync(propertyFilePath);
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          propertyFileExists ? propertyFileRelative : null,
-          "./address.json",
-        );
+        removeFileIfExists(propertyAddressRelationshipPath);
       } else {
         removeFileIfExists(addressFilePath);
         removeFileIfExists(propertyAddressRelationshipPath);
