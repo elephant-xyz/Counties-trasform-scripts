@@ -5647,22 +5647,12 @@ async function main() {
 
     if (preparedAddressPayload) {
       writeJSON(addressFilePath, preparedAddressPayload);
-      const propertyFileAbsolute = path.join(dataDir, "property.json");
-      if (fs.existsSync(propertyFileAbsolute)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
-      removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       removeFileIfExists(addressFilePath);
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
     }
+
+    removeFileIfExists(propertyAddressRelationshipPath);
+    removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
 
