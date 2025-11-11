@@ -18,6 +18,39 @@ function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2));
 }
 
+function prepareSourceHttpRequest(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const allowedKeys = new Set([
+    "url",
+    "method",
+    "multiValueQueryString",
+    "headers",
+    "body",
+    "json",
+  ]);
+  const prepared = {};
+  for (const key of allowedKeys) {
+    if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
+    const value = raw[key];
+    if (value === undefined) continue;
+    prepared[key] = value;
+  }
+  if (!prepared.url || !prepared.method) {
+    return null;
+  }
+  return prepared;
+}
+
+function resolveSourceHttpRequest(...candidates) {
+  for (const candidate of candidates) {
+    const prepared = prepareSourceHttpRequest(candidate);
+    if (prepared) {
+      return prepared;
+    }
+  }
+  return null;
+}
+
 function writeRelationshipFile(filePath, fromRelative, toRelative) {
   const hasFrom = typeof fromRelative === "string" && fromRelative.trim().length > 0;
   const hasTo = typeof toRelative === "string" && toRelative.trim().length > 0;
@@ -1109,9 +1142,18 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ADDRESS_SURFACE_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_OUTPUT_FIELDS];
+const RAW_ADDRESS_SURFACE_FIELDS = [
+  "unnormalized_address",
+  ...RAW_ADDRESS_OUTPUT_FIELDS,
+  "request_identifier",
+  "source_http_request",
+];
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
-const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
+const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
+  ...NORMALIZED_ADDRESS_FIELDS,
+  "request_identifier",
+  "source_http_request",
+]);
 
 function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
   if (!address || typeof address !== "object") return null;
@@ -4970,6 +5012,27 @@ async function main() {
 
     const prunedFields = pruneAddressComponentsForSchema(address);
 
+    const resolvedRequestIdentifier = resolveFirstNonEmptyString([
+      address.request_identifier,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      parcelId,
+    ]);
+    address.request_identifier = resolvedRequestIdentifier
+      ? resolvedRequestIdentifier
+      : null;
+
+    const resolvedSourceHttpRequest = resolveSourceHttpRequest(
+      address.source_http_request,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    );
+    if (resolvedSourceHttpRequest) {
+      address.source_http_request = deepClone(resolvedSourceHttpRequest);
+    } else if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+      delete address.source_http_request;
+    }
+
     const normalizedSnapshot = { ...address };
     const fallbackUnnormalizedValue =
       unnormalizedAddressCandidate || composeUnnormalizedAddress(normalizedSnapshot);
@@ -5405,9 +5468,31 @@ async function main() {
     }
 
     if (finalAddressPayload) {
+      if (!resolvedSourceHttpRequest) {
+        finalAddressPayload = null;
+        finalAddressVariant = null;
+      } else {
+        finalAddressPayload.source_http_request = deepClone(resolvedSourceHttpRequest);
+        const existingRequestIdentifier =
+          typeof finalAddressPayload.request_identifier === "string" &&
+          finalAddressPayload.request_identifier.trim().length
+            ? finalAddressPayload.request_identifier.trim()
+            : null;
+        finalAddressPayload.request_identifier =
+          resolvedRequestIdentifier ||
+          existingRequestIdentifier ||
+          null;
+      }
+    }
+
+    if (finalAddressPayload) {
       writeJSON(addressFilePath, finalAddressPayload);
-      writeJSON(propertyAddressRelationshipPath, null);
-      writeJSON(addressFactSheetRelationshipPath, null);
+      writeRelationshipFile(
+        propertyAddressRelationshipPath,
+        "./property.json",
+        "./address.json",
+      );
+      removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
