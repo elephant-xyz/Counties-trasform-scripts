@@ -3232,6 +3232,129 @@ function enforceAddressOneOfSurface(address) {
   return normalizedOutput;
 }
 
+function buildSchemaCompliantAddressPayload(address, options = {}) {
+  if (!address || typeof address !== "object") {
+    return { variant: null, payload: null };
+  }
+
+  const requestIdentifierCandidates = [];
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "requestIdentifier")
+  ) {
+    requestIdentifierCandidates.push(options.requestIdentifier);
+  }
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    requestIdentifierCandidates.push(address.request_identifier);
+  }
+  const requestIdentifier = resolveFirstNonEmptyString(
+    requestIdentifierCandidates,
+  );
+
+  const sourceHttpRequestCandidates = [];
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "sourceHttpRequest")
+  ) {
+    sourceHttpRequestCandidates.push(options.sourceHttpRequest);
+  }
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    sourceHttpRequestCandidates.push(address.source_http_request);
+  }
+  const preparedSourceHttpRequest = resolveSourceHttpRequest(
+    ...sourceHttpRequestCandidates,
+  );
+
+  const normalizedPayload = {};
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    normalizedPayload[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedPayload[field] === "string" &&
+      normalizedPayload[field].trim().length > 0,
+  );
+  const hasRequiredCoordinates =
+    NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
+      Number.isFinite(normalizedPayload[field]),
+    );
+  if (hasRequiredStrings && hasRequiredCoordinates) {
+    if (!normalizedPayload.postal_code) {
+      normalizedPayload.plus_four_postal_code = null;
+    }
+    if (normalizedPayload.state_code && !normalizedPayload.country_code) {
+      normalizedPayload.country_code = "US";
+    }
+
+    if (requestIdentifier) {
+      normalizedPayload.request_identifier = requestIdentifier;
+    }
+    if (preparedSourceHttpRequest) {
+      normalizedPayload.source_http_request = deepClone(
+        preparedSourceHttpRequest,
+      );
+    }
+
+    return { variant: "normalized", payload: normalizedPayload };
+  }
+
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (trimmedUnnormalized.length) {
+    const rawPayload = { unnormalized_address: trimmedUnnormalized };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      const candidate = Object.prototype.hasOwnProperty.call(address, field)
+        ? address[field]
+        : null;
+      const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+      rawPayload[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
+    }
+
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(rawPayload, field)) {
+        rawPayload[field] = null;
+      }
+      if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+        rawPayload[field] = parseCoordinate(rawPayload[field]);
+        if (!Number.isFinite(rawPayload[field])) {
+          rawPayload[field] = null;
+        }
+      }
+    }
+
+    if (!rawPayload.postal_code) {
+      rawPayload.plus_four_postal_code = null;
+    }
+    if (rawPayload.state_code && !rawPayload.country_code) {
+      rawPayload.country_code = "US";
+    }
+
+    if (requestIdentifier) {
+      rawPayload.request_identifier = requestIdentifier;
+    }
+    if (preparedSourceHttpRequest) {
+      rawPayload.source_http_request = deepClone(preparedSourceHttpRequest);
+    }
+
+    return { variant: "raw", payload: rawPayload };
+  }
+
+  return { variant: null, payload: null };
+}
+
 function projectRawAddressForOneOf(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -5899,8 +6022,58 @@ async function main() {
       }
     }
 
+    let schemaReadyAddress = null;
+
     if (finalizedAddressPayload) {
-      writeJSON(addressFilePath, finalizedAddressPayload);
+      const primaryResult = buildSchemaCompliantAddressPayload(
+        finalizedAddressPayload,
+        {
+          requestIdentifier: address.request_identifier,
+          sourceHttpRequest: resolvedSourceHttpRequest,
+        },
+      );
+      if (primaryResult && primaryResult.payload) {
+        schemaReadyAddress = primaryResult.payload;
+      } else if (trimmedUnnormalized.length) {
+        const fallbackSurfaceInput = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...collectAddressFields(
+            finalizedAddressPayload,
+            RAW_ADDRESS_OUTPUT_FIELDS,
+            { preserveNulls: true },
+          ),
+          unnormalized_address: trimmedUnnormalized,
+        };
+        const fallbackResult = buildSchemaCompliantAddressPayload(
+          fallbackSurfaceInput,
+          {
+            requestIdentifier: address.request_identifier,
+            sourceHttpRequest: resolvedSourceHttpRequest,
+          },
+        );
+        if (fallbackResult && fallbackResult.payload) {
+          schemaReadyAddress = fallbackResult.payload;
+        } else {
+          const minimalFallbackInput = {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            unnormalized_address: trimmedUnnormalized,
+          };
+          const minimalResult = buildSchemaCompliantAddressPayload(
+            minimalFallbackInput,
+            {
+              requestIdentifier: address.request_identifier,
+              sourceHttpRequest: resolvedSourceHttpRequest,
+            },
+          );
+          if (minimalResult && minimalResult.payload) {
+            schemaReadyAddress = minimalResult.payload;
+          }
+        }
+      }
+    }
+
+    if (schemaReadyAddress) {
+      writeJSON(addressFilePath, schemaReadyAddress);
       if (fs.existsSync(propertyFilePath)) {
         writeRelationshipFile(
           propertyAddressRelationshipPath,
