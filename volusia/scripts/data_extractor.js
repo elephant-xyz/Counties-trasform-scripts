@@ -2450,13 +2450,41 @@ function main() {
     }
     
     // Extract Instrument Number from instLink or instText
+    let instrumentNumber = null;
+    
+    // Try multiple patterns for instLink
     if (row.instLink) {
-      const instMatch = row.instLink.match(/instno=([^&]+)/);
-      if (instMatch) {
-        deed.instrument_number = instMatch[1];
+      // Pattern 1: instno=value
+      let match = row.instLink.match(/instno=([^&]+)/);
+      if (match) {
+        instrumentNumber = match[1];
+      } else {
+        // Pattern 2: i=value (alternative parameter name)
+        match = row.instLink.match(/[?&]i=([^&]+)/);
+        if (match) {
+          instrumentNumber = match[1];
+        } else {
+          // Pattern 3: Extract number from URL path
+          match = row.instLink.match(/\/(\d+)(?:[?&]|$)/);
+          if (match) {
+            instrumentNumber = match[1];
+          }
+        }
       }
-    } else if (row.instText && /^\d+$/.test(row.instText)) {
-      deed.instrument_number = row.instText;
+    }
+    
+    // Fallback to instText if no number found in link
+    if (!instrumentNumber && row.instText) {
+      // Clean instText and check if it's numeric
+      const cleanText = row.instText.replace(/[^0-9]/g, '');
+      if (cleanText && /^\d+$/.test(cleanText)) {
+        instrumentNumber = cleanText;
+      }
+    }
+    
+    // Set instrument_number if found
+    if (instrumentNumber) {
+      deed.instrument_number = instrumentNumber;
     }
     
     writeJSON(path.join(dataDir, `deed_${i}.json`), deed);
