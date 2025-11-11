@@ -1113,18 +1113,8 @@ const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
   "block",
 ];
 
-// The raw address schema expects the full field surface to be present, but it
-// tolerates null values when the source cannot provide a component. These are
-// the high-priority fields we try to hydrate whenever possible.
-const RAW_SCHEMA_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-];
+// Raw variant only requires an unnormalized string; keep list empty so this stays permissive.
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
