@@ -6410,6 +6410,50 @@ async function main() {
           : null;
     }
 
+    if (
+      finalAddressOutput &&
+      typeof finalAddressOutput === "object" &&
+      Object.prototype.hasOwnProperty.call(
+        finalAddressOutput,
+        "unnormalized_address",
+      )
+    ) {
+      const trimmedUnnormalized =
+        typeof finalAddressOutput.unnormalized_address === "string"
+          ? finalAddressOutput.unnormalized_address.trim()
+          : "";
+      if (trimmedUnnormalized.length > 0) {
+        const coveredRaw =
+          ensureRawAddressRequiredCoverage(
+            finalAddressOutput,
+            trimmedUnnormalized,
+          ) ||
+          ensureRawAddressSchemaDefaults(finalAddressOutput) ||
+          finalAddressOutput;
+        if (coveredRaw && typeof coveredRaw === "object") {
+          for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+            if (!Object.prototype.hasOwnProperty.call(coveredRaw, field)) {
+              coveredRaw[field] = null;
+            }
+            if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+              const numeric = parseCoordinate(coveredRaw[field]);
+              coveredRaw[field] = Number.isFinite(numeric) ? numeric : null;
+            }
+          }
+          if (!coveredRaw.postal_code) {
+            coveredRaw.plus_four_postal_code = null;
+          }
+          if (coveredRaw.state_code && !coveredRaw.country_code) {
+            coveredRaw.country_code = "US";
+          }
+          coveredRaw.unnormalized_address = trimmedUnnormalized;
+          finalAddressOutput = coveredRaw;
+        }
+      } else {
+        finalAddressOutput = null;
+      }
+    }
+
     if (finalAddressOutput) {
       writeJSON(addressFilePath, finalAddressOutput);
     } else {

@@ -3614,6 +3614,58 @@ async function main() {
       }
 
       if (preparedAddressOutput) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            preparedAddressOutput,
+            "unnormalized_address",
+          )
+        ) {
+          const trimmedUnnormalized =
+            typeof preparedAddressOutput.unnormalized_address === "string"
+              ? preparedAddressOutput.unnormalized_address.trim()
+              : "";
+          if (!trimmedUnnormalized.length) {
+            preparedAddressOutput = null;
+          } else {
+            for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+              if (
+                !Object.prototype.hasOwnProperty.call(
+                  preparedAddressOutput,
+                  field,
+                )
+              ) {
+                preparedAddressOutput[field] = null;
+                continue;
+              }
+
+              if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+                const numeric = parseCoordinate(preparedAddressOutput[field]);
+                preparedAddressOutput[field] = Number.isFinite(numeric)
+                  ? numeric
+                  : null;
+                continue;
+              }
+
+              if (typeof preparedAddressOutput[field] === "string") {
+                const trimmed = preparedAddressOutput[field].trim();
+                preparedAddressOutput[field] = trimmed.length ? trimmed : null;
+              }
+            }
+
+            if (!preparedAddressOutput.postal_code) {
+              preparedAddressOutput.plus_four_postal_code = null;
+            }
+            if (
+              preparedAddressOutput.state_code &&
+              !preparedAddressOutput.country_code
+            ) {
+              preparedAddressOutput.country_code = "US";
+            }
+            preparedAddressOutput.unnormalized_address =
+              trimmedUnnormalized;
+          }
+        }
+
         writeJSON(addressFilePath, preparedAddressOutput);
       } else {
         removeFileIfExists(addressFilePath);
