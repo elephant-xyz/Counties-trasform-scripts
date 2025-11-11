@@ -1198,6 +1198,27 @@ function hasMeaningfulAddressValue(value) {
   return true;
 }
 
+function hasRawAddressRequiredFields(address) {
+  if (!address || typeof address !== "object") return false;
+  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(
+        Object.prototype.hasOwnProperty.call(address, field)
+          ? address[field]
+          : null,
+      );
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      continue;
+    }
+    if (!hasMeaningfulAddressValue(address[field])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isRawAddressSchemaReady(address) {
   if (!address || typeof address !== "object") return false;
   const unnormalized =
@@ -1212,6 +1233,10 @@ function isRawAddressSchemaReady(address) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
       return false;
     }
+  }
+
+  if (!hasRawAddressRequiredFields(address)) {
+    return false;
   }
 
   return true;
@@ -2375,6 +2400,9 @@ function finalizeAddressForOutput(address) {
   if (hasUnnormalized) {
     const rawSurface = ensureRawAddressSchemaDefaults(prepared);
     if (!rawSurface || typeof rawSurface !== "object") {
+      return null;
+    }
+    if (!hasRawAddressRequiredFields(rawSurface)) {
       return null;
     }
     return enforceAddressSchemaSurfaceForOutput(rawSurface);
@@ -3572,6 +3600,12 @@ async function main() {
           candidate.country_code = "US";
         }
         materializedRawAddress = ensureRawAddressFieldCoverage(candidate);
+        if (
+          materializedRawAddress &&
+          !hasRawAddressRequiredFields(materializedRawAddress)
+        ) {
+          materializedRawAddress = null;
+        }
       }
     }
 
