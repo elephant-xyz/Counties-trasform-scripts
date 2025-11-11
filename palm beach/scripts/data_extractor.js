@@ -5487,11 +5487,7 @@ async function main() {
 
     if (finalAddressPayload) {
       writeJSON(addressFilePath, finalAddressPayload);
-      writeRelationshipFile(
-        propertyAddressRelationshipPath,
-        "./property.json",
-        "./address.json",
-      );
+      removeFileIfExists(propertyAddressRelationshipPath);
       removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       removeFileIfExists(addressFilePath);
