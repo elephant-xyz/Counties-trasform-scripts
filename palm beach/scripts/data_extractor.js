@@ -60,10 +60,11 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  const payload = {
+  const relationship = {
     from: { "/": fromRelative.trim() },
     to: { "/": toRelative.trim() },
   };
+  const payload = [relationship];
 
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
 }
@@ -1183,7 +1184,7 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLO
     result[field] =
       value === undefined
         ? null
-        : ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)
+        : ADDRESS_COORDINATE_FIELDS.includes(field)
           ? parseCoordinate(value)
           : value;
   }
@@ -1221,7 +1222,7 @@ function ensureRawAddressSchemaSurface(address, options = {}) {
 
     let value = address[field];
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       value = parseCoordinate(value);
     } else if (typeof value === "string") {
       value = value.trim();
@@ -1295,7 +1296,7 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
     }
 
     const value = candidate[field];
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
       candidate[field] = numeric != null ? numeric : null;
       continue;
@@ -1360,7 +1361,7 @@ function enforceRawAddressSchemaSurface(address, allowedFields = RAW_ADDRESS_OUT
       ? address[field]
       : null;
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       value = parseCoordinate(value);
     } else if (value === undefined) {
       value = null;
@@ -1411,7 +1412,7 @@ function normalizeAddressFieldForSchema(field, value) {
     value = trimmed;
   }
 
-  if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+  if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
     const numeric = parseCoordinate(value);
     return Number.isFinite(numeric) ? numeric : null;
   }
@@ -1488,14 +1489,16 @@ function materializeAddressForSchema(payload, variant, options = {}) {
 
     for (const field of NORMALIZED_SCHEMA_REQUIRED_FIELDS) {
       const value = normalizedOutput[field];
-      if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
-        if (!Number.isFinite(value)) {
-          return null;
-        }
-        continue;
-      }
       if (typeof value !== "string" || !value.trim().length) {
         return null;
+      }
+    }
+    for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
+      if (
+        normalizedOutput[field] != null &&
+        !Number.isFinite(normalizedOutput[field])
+      ) {
+        normalizedOutput[field] = null;
       }
     }
 
@@ -1561,15 +1564,11 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "county_name",
 ];
 
-const NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS = ["latitude", "longitude"];
+const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
-const ADDRESS_REQUIRED_COORDINATE_FIELDS = [
-  ...NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS,
-];
+const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 
 const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
   "street_number",
   "street_name",
   "city_name",
@@ -1621,7 +1620,7 @@ function hasCompleteNormalizedAddress(address) {
 
     address[field] = trimmed;
   }
-  for (const field of NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+  for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
     const rawValue = address[field];
     if (rawValue == null || rawValue === "") {
       address[field] = null;
@@ -1662,25 +1661,32 @@ function isNormalizedAddressSchemaReady(address) {
       }
       continue;
     }
-
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
-      if (value === null || value === undefined || value === "") {
-        return false;
-      }
-      const numeric =
-        typeof value === "number" ? value : Number(String(value).trim());
-      if (!Number.isFinite(numeric)) {
-        return false;
-      }
-      address[field] = numeric;
-      continue;
-    }
-
     if (field === "county_name") {
       if (typeof value !== "string" || !value.trim().length) {
         return false;
       }
     }
+  }
+
+  for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+    const value = address[field];
+    if (value == null || value === "") {
+      address[field] = null;
+      continue;
+    }
+    if (typeof value === "number") {
+      address[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+    if (typeof value === "string") {
+      const numeric = Number(value.trim());
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    address[field] = null;
   }
   return true;
 }
@@ -2001,7 +2007,7 @@ function prepareRawAddressForSchema(rawAddress, options = {}) {
       ? rawAddress[field]
       : null;
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
       prepared[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
@@ -2453,7 +2459,7 @@ function createSchemaReadyAddress(address, variant, options = {}) {
       value = trimmed;
     }
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       if (typeof value === "string") {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return null;
@@ -3220,7 +3226,7 @@ function buildRawSchemaAlignedAddress(address) {
       continue;
     }
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
       aligned[field] = numeric != null ? numeric : null;
       continue;
@@ -3281,7 +3287,7 @@ function ensureRawAddressOutputSurface(address) {
     let value = hasOwn(field) ? address[field] : null;
     if (value === undefined) value = null;
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
       base[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
@@ -3482,7 +3488,7 @@ function coerceAddressForSchemaOutput(address) {
       value = null;
     }
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
       value = Number.isFinite(numeric) ? numeric : null;
     } else if (typeof value === "string") {
@@ -3623,12 +3629,11 @@ function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
         typeof normalized[field] === "string" &&
         normalized[field].trim().length > 0,
     );
-    const hasRequiredCoordinates =
-      NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
-        Number.isFinite(normalized[field]),
-      );
+    const hasValidCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+      (field) => normalized[field] == null || Number.isFinite(normalized[field]),
+    );
 
-    if (!hasRequiredStrings || !hasRequiredCoordinates) {
+    if (!hasRequiredStrings || !hasValidCoordinates) {
       return null;
     }
 
@@ -3694,10 +3699,10 @@ function materializeAddressForSchemaOutput(address) {
       (field) =>
         typeof surfaced[field] === "string" && surfaced[field].trim().length > 0,
     );
-    const hasRequiredCoordinates = NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every(
-      (field) => Number.isFinite(surfaced[field]),
+    const hasValidCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+      (field) => surfaced[field] == null || Number.isFinite(surfaced[field]),
     );
-    if (!hasRequiredStrings || !hasRequiredCoordinates) {
+    if (!hasRequiredStrings || !hasValidCoordinates) {
       return null;
     }
   }
@@ -3828,7 +3833,7 @@ function buildSchemaCompliantAddressPayload(address, options = {}) {
       if (!Object.prototype.hasOwnProperty.call(rawPayload, field)) {
         rawPayload[field] = null;
       }
-      if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
         rawPayload[field] = parseCoordinate(rawPayload[field]);
         if (!Number.isFinite(rawPayload[field])) {
           rawPayload[field] = null;
@@ -3870,11 +3875,12 @@ function buildSchemaCompliantAddressPayload(address, options = {}) {
       typeof normalizedPayload[field] === "string" &&
       normalizedPayload[field].trim().length > 0,
   );
-  const hasRequiredCoordinates =
-    NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every((field) =>
+  const hasValidCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (field) =>
+      normalizedPayload[field] == null ||
       Number.isFinite(normalizedPayload[field]),
-    );
-  if (hasRequiredStrings && hasRequiredCoordinates) {
+  );
+  if (hasRequiredStrings && hasValidCoordinates) {
     if (!normalizedPayload.postal_code) {
       normalizedPayload.plus_four_postal_code = null;
     }
@@ -3924,7 +3930,7 @@ function projectRawAddressForOneOf(address) {
       continue;
     }
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       projected[field] = parseCoordinate(value);
       continue;
     }
@@ -3974,7 +3980,7 @@ function buildRawAddressOutputForSchema(address) {
       ? address[field]
       : null;
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       value = parseCoordinate(value);
       result[field] = value != null ? value : null;
       continue;
@@ -4094,7 +4100,7 @@ function hydrateRawAddressForSchema(source, options = {}) {
       ? source[field]
       : null;
 
-    if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       value = parseCoordinate(value);
     } else if (typeof value === "string") {
       const trimmed = value.trim();
@@ -4238,7 +4244,7 @@ function prepareAddressForSchema(address, variant) {
     clone.unnormalized_address = clone.unnormalized_address.trim();
   }
 
-  for (const field of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+  for (const field of ADDRESS_COORDINATE_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(clone, field)) {
       clone[field] = null;
       continue;
@@ -6166,7 +6172,7 @@ async function main() {
       "relationship_address_has_fact_sheet.json",
     );
 
-    for (const coordinateField of ADDRESS_REQUIRED_COORDINATE_FIELDS) {
+    for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
         address[coordinateField] = null;
       }
