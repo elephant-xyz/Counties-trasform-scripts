@@ -6962,14 +6962,134 @@ async function main() {
       outputAddress = prepareRawAddressForOutput(baseRawSeed, rawFallbackContext);
     }
 
-    const schemaReadyAddress =
+    let schemaReadyAddress =
       outputAddress && typeof outputAddress === "object"
         ? enforceAddressSchemaSurfaceForOutput(outputAddress)
         : null;
 
+    if (!schemaReadyAddress && canonicalUnnormalized.length) {
+      const fallbackRawSeed = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...collectAddressFields(address, RAW_ADDRESS_OUTPUT_FIELDS, {
+          preserveNulls: true,
+        }),
+      };
+
+      fallbackRawSeed.latitude = Number.isFinite(preferredLatitude)
+        ? preferredLatitude
+        : fallbackRawSeed.latitude;
+      fallbackRawSeed.longitude = Number.isFinite(preferredLongitude)
+        ? preferredLongitude
+        : fallbackRawSeed.longitude;
+
+      const fallbackCity = resolveFieldFromCandidates("city_name", [
+        fallbackRawSeed.city_name,
+        normalizedSnapshot && normalizedSnapshot.city_name,
+        address.city_name,
+        normalizedCity,
+        resolvedCity,
+        parsedUnnormalizedCityState.city,
+      ]);
+      if (fallbackCity) {
+        fallbackRawSeed.city_name = fallbackCity;
+      }
+
+      const fallbackState = resolveFieldFromCandidates("state_code", [
+        fallbackRawSeed.state_code,
+        normalizedSnapshot && normalizedSnapshot.state_code,
+        address.state_code,
+        inferredStateCode,
+        resolvedState,
+        parsedUnnormalizedCityState.state,
+        countyInferredStateCode,
+      ]);
+      if (fallbackState) {
+        fallbackRawSeed.state_code = fallbackState;
+      }
+
+      const fallbackPostalCode = resolveFieldFromCandidates("postal_code", [
+        fallbackRawSeed.postal_code,
+        normalizedSnapshot && normalizedSnapshot.postal_code,
+        address.postal_code,
+        fallbackPostalValue,
+        postalCode,
+        parsedUnnormalizedCityState.postal,
+      ]);
+      if (fallbackPostalCode) {
+        fallbackRawSeed.postal_code = fallbackPostalCode;
+      }
+
+      const fallbackPlus4Code = resolveFieldFromCandidates("plus_four_postal_code", [
+        fallbackRawSeed.plus_four_postal_code,
+        normalizedSnapshot && normalizedSnapshot.plus_four_postal_code,
+        address.plus_four_postal_code,
+        fallbackPlus4Value,
+        plus4,
+        parsedUnnormalizedCityState.plus4,
+      ]);
+      if (fallbackPlus4Code) {
+        fallbackRawSeed.plus_four_postal_code = fallbackPlus4Code;
+      }
+
+      const fallbackCounty = resolveFieldFromCandidates("county_name", [
+        fallbackRawSeed.county_name,
+        normalizedSnapshot && normalizedSnapshot.county_name,
+        address.county_name,
+        formattedCountyName,
+        countyName,
+        defaultCounty,
+      ]);
+      if (fallbackCounty) {
+        fallbackRawSeed.county_name = fallbackCounty;
+      }
+
+      const fallbackMunicipality = resolveFieldFromCandidates("municipality_name", [
+        fallbackRawSeed.municipality_name,
+        normalizedSnapshot && normalizedSnapshot.municipality_name,
+        address.municipality_name,
+        normalizedMunicipality,
+      ]);
+      if (fallbackMunicipality) {
+        fallbackRawSeed.municipality_name = fallbackMunicipality;
+      }
+
+      if (!Number.isFinite(fallbackRawSeed.latitude)) {
+        fallbackRawSeed.latitude = null;
+      }
+      if (!Number.isFinite(fallbackRawSeed.longitude)) {
+        fallbackRawSeed.longitude = null;
+      }
+
+      if (!hasMeaningfulAddressValue(fallbackRawSeed.country_code) && fallbackRawSeed.state_code) {
+        fallbackRawSeed.country_code = "US";
+      }
+      if (!hasMeaningfulAddressValue(fallbackRawSeed.municipality_name) && normalizedMunicipality) {
+        fallbackRawSeed.municipality_name = toTitleCase(normalizedMunicipality);
+      }
+
+      enrichAddressFromUnnormalized(fallbackRawSeed, canonicalUnnormalized);
+
+      fallbackRawSeed.unnormalized_address = canonicalUnnormalized;
+
+      const enforcedFallback = enforceAddressSchemaSurfaceForOutput(fallbackRawSeed);
+      if (enforcedFallback) {
+        schemaReadyAddress = enforcedFallback;
+      }
+    }
+
+    const propertyFileExists = fs.existsSync(propertyFilePath);
+
     if (schemaReadyAddress) {
       writeJSON(addressFilePath, schemaReadyAddress);
-      removeFileIfExists(propertyAddressRelationshipPath);
+      if (propertyFileExists) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          propertyFileRelative,
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
