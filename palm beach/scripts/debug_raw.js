@@ -3515,22 +3515,115 @@ async function main() {
     }
 
     if (finalizedAddressPayload) {
-      writeJSON(addressFilePath, finalizedAddressPayload);
-      if (fs.existsSync(propertyFilePath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          propertyFileRelative,
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
+      let preparedAddressOutput = finalizedAddressPayload;
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          preparedAddressOutput,
+          "unnormalized_address",
+        )
+      ) {
+        const trimmedUnnormalized =
+          typeof preparedAddressOutput.unnormalized_address === "string"
+            ? preparedAddressOutput.unnormalized_address.trim()
+            : "";
+        if (!trimmedUnnormalized.length) {
+          preparedAddressOutput = null;
+        } else {
+          preparedAddressOutput = {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...preparedAddressOutput,
+            unnormalized_address: trimmedUnnormalized,
+          };
+
+          for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+            if (
+              !Object.prototype.hasOwnProperty.call(
+                preparedAddressOutput,
+                field,
+              ) ||
+              preparedAddressOutput[field] === undefined
+            ) {
+              preparedAddressOutput[field] = null;
+              continue;
+            }
+
+            if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+              const numeric = parseCoordinate(preparedAddressOutput[field]);
+              preparedAddressOutput[field] = Number.isFinite(numeric)
+                ? numeric
+                : null;
+              continue;
+            }
+
+            if (typeof preparedAddressOutput[field] === "string") {
+              const trimmed = preparedAddressOutput[field].trim();
+              preparedAddressOutput[field] = trimmed.length ? trimmed : null;
+            }
+          }
+
+          if (!preparedAddressOutput.postal_code) {
+            preparedAddressOutput.plus_four_postal_code = null;
+          }
+          if (
+            preparedAddressOutput.state_code &&
+            !preparedAddressOutput.country_code
+          ) {
+            preparedAddressOutput.country_code = "US";
+          }
+        }
+      } else if (preparedAddressOutput) {
+        preparedAddressOutput = {
+          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+          ...preparedAddressOutput,
+        };
+
+        for (const field of NORMALIZED_ADDRESS_FIELDS) {
+          if (
+            !Object.prototype.hasOwnProperty.call(
+              preparedAddressOutput,
+              field,
+            )
+          ) {
+            continue;
+          }
+
+          if (ADDRESS_REQUIRED_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(preparedAddressOutput[field]);
+            preparedAddressOutput[field] = Number.isFinite(numeric)
+              ? numeric
+              : null;
+            continue;
+          }
+
+          if (typeof preparedAddressOutput[field] === "string") {
+            const trimmed = preparedAddressOutput[field].trim();
+            preparedAddressOutput[field] = trimmed.length ? trimmed : null;
+          }
+        }
+
+        if (!preparedAddressOutput.postal_code) {
+          preparedAddressOutput.plus_four_postal_code = null;
+        }
+        if (
+          preparedAddressOutput.state_code &&
+          !preparedAddressOutput.country_code
+        ) {
+          preparedAddressOutput.country_code = "US";
+        }
       }
-      removeFileIfExists(addressFactSheetRelationshipPath);
+
+      if (preparedAddressOutput) {
+        writeJSON(addressFilePath, preparedAddressOutput);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
     }
+
+    removeFileIfExists(propertyAddressRelationshipPath);
+    removeFileIfExists(addressFactSheetRelationshipPath);
   }
 
 
