@@ -1113,8 +1113,15 @@ const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
   "block",
 ];
 
-// Raw variant only requires an unnormalized string; keep list empty so this stays permissive.
-const RAW_SCHEMA_REQUIRED_FIELDS = [];
+// Raw variant must include core location context so we only emit when we can satisfy the schema.
+const RAW_SCHEMA_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
@@ -7071,9 +7078,9 @@ async function main() {
 
       fallbackRawSeed.unnormalized_address = canonicalUnnormalized;
 
-      const enforcedFallback = enforceAddressSchemaSurfaceForOutput(fallbackRawSeed);
-      if (enforcedFallback) {
-        schemaReadyAddress = enforcedFallback;
+      const finalizedFallback = finalizeAddressForOutput(fallbackRawSeed);
+      if (finalizedFallback) {
+        schemaReadyAddress = finalizedFallback;
       }
     }
 

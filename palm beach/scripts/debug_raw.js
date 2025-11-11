@@ -931,7 +931,14 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "lot",
 ];
 
-const RAW_SCHEMA_REQUIRED_FIELDS = [];
+const RAW_SCHEMA_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   "street_number",
