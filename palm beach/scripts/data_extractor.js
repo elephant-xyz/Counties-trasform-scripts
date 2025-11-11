@@ -4905,6 +4905,89 @@ function buildNormalizedAddressFromUnnormalized(baseSeed, unnormalized, options 
   return candidate;
 }
 
+function deriveNormalizedAddressFromFullText(fullText, options = {}) {
+  const normalized = normalizeWhitespace(fullText);
+  if (!normalized) {
+    return null;
+  }
+
+  const [streetSegmentRaw, ...localitySegments] = normalized.split(",");
+  const streetSegment = streetSegmentRaw ? streetSegmentRaw.trim() : "";
+  if (!streetSegment) {
+    return null;
+  }
+
+  const parsedStreet = parseLocationAddress(streetSegment);
+  if (
+    !parsedStreet ||
+    !hasMeaningfulAddressValue(parsedStreet.streetNumber) ||
+    !hasMeaningfulAddressValue(parsedStreet.streetName)
+  ) {
+    return null;
+  }
+
+  const localitySegment = localitySegments.join(",").trim();
+  const parsedLocality = parseCityStatePostal(localitySegment);
+
+  const resolvedCity =
+    parsedLocality && hasMeaningfulAddressValue(parsedLocality.city)
+      ? parsedLocality.city
+      : options.cityFallback || null;
+  const resolvedState =
+    parsedLocality && hasMeaningfulAddressValue(parsedLocality.state)
+      ? parsedLocality.state
+      : options.stateFallback || null;
+  const resolvedPostal =
+    parsedLocality && hasMeaningfulAddressValue(parsedLocality.postal)
+      ? parsedLocality.postal
+      : options.postalFallback || null;
+  const resolvedPlus4 =
+    parsedLocality && hasMeaningfulAddressValue(parsedLocality.plus4)
+      ? parsedLocality.plus4
+      : options.plus4Fallback || null;
+
+  const result = {
+    street_number: parsedStreet.streetNumber,
+    street_name: parsedStreet.streetName,
+    street_pre_directional_text: parsedStreet.streetPreDirectional,
+    street_post_directional_text: parsedStreet.streetPostDirectional,
+    street_suffix_type: parsedStreet.streetSuffix,
+    unit_identifier: parsedStreet.unitIdentifier,
+    route_number: parsedStreet.routeNumber,
+    city_name: resolvedCity ? sanitizeCityName(resolvedCity) : null,
+    state_code: resolvedState ? String(resolvedState).trim().toUpperCase() : null,
+    postal_code: resolvedPostal ? sanitizePostalCode(resolvedPostal) : null,
+    plus_four_postal_code: resolvedPlus4 ? sanitizePlus4(resolvedPlus4) : null,
+    county_name: options.countyName ? toTitleCase(String(options.countyName)) : null,
+    municipality_name: options.municipalityName
+      ? toTitleCase(String(options.municipalityName))
+      : null,
+    country_code: options.countryCode || null,
+    latitude:
+      options.latitude !== undefined ? options.latitude : null,
+    longitude:
+      options.longitude !== undefined ? options.longitude : null,
+    township: options.township ?? null,
+    range: options.range ?? null,
+    section: options.section ?? null,
+    block: options.block ?? null,
+    lot: options.lot ?? null,
+  };
+
+  if (
+    hasMeaningfulAddressValue(result.state_code) &&
+    !hasMeaningfulAddressValue(result.country_code)
+  ) {
+    result.country_code = "US";
+  }
+
+  if (!hasCompleteNormalizedAddress({ ...result })) {
+    return null;
+  }
+
+  return result;
+}
+
 function resolveFirstNonEmptyString(candidates) {
   if (!Array.isArray(candidates)) return null;
   for (const candidate of candidates) {
@@ -6557,6 +6640,67 @@ async function main() {
           normalizedFromRaw,
           "normalized",
         );
+      }
+      if (!normalizedCandidate) {
+        const derivedNormalized = deriveNormalizedAddressFromFullText(
+          trimmedUnnormalized,
+          {
+            latitude: preferredLatitude,
+            longitude: preferredLongitude,
+            township: baseAddressSeed.township,
+            range: baseAddressSeed.range,
+            section: baseAddressSeed.section,
+            block: baseAddressSeed.block,
+            lot: baseAddressSeed.lot,
+            countyName:
+              hasMeaningfulAddressValue(baseAddressSeed.county_name)
+                ? baseAddressSeed.county_name
+                : formattedCountyName || countyName || defaultCounty,
+            municipalityName:
+              hasMeaningfulAddressValue(baseAddressSeed.municipality_name)
+                ? baseAddressSeed.municipality_name
+                : normalizedMunicipality
+                  ? toTitleCase(normalizedMunicipality)
+                  : null,
+            stateFallback:
+              inferredStateCode ||
+              resolvedState ||
+              parsedUnnormalizedCityState.state ||
+              countyInferredStateCode ||
+              "FL",
+            cityFallback:
+              hasMeaningfulAddressValue(baseAddressSeed.city_name)
+                ? baseAddressSeed.city_name
+                : normalizeWhitespace(normalizedMunicipality)
+                  ? sanitizeCityName(normalizedMunicipality)
+                  : resolvedCity ||
+                    parsedUnnormalizedCityState.city ||
+                    normalizedCity ||
+                    null,
+            postalFallback:
+              fallbackPostalValue ||
+              parsedUnnormalizedCityState.postal ||
+              postalCode ||
+              null,
+            plus4Fallback:
+              fallbackPlus4Value ||
+              parsedUnnormalizedCityState.plus4 ||
+              plus4 ||
+              null,
+            countryCode:
+              (baseAddressSeed.state_code || inferredStateCode || resolvedState)
+                ? "US"
+                : baseAddressSeed.country_code || null,
+          },
+        );
+        if (derivedNormalized) {
+          normalizedCandidate = ensureAddressFieldsForOutput(
+            {
+              ...derivedNormalized,
+            },
+            "normalized",
+          );
+        }
       }
     }
     let normalizedPrepared = normalizedCandidate
