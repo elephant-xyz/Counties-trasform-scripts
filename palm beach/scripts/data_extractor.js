@@ -3111,6 +3111,50 @@ function ensureRawAddressSchemaDefaults(address) {
   return result;
 }
 
+function ensureNormalizedAddressSchemaSurface(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const surfaced = {
+    ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+  };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    surfaced[field] =
+      normalizedValue === undefined ? null : normalizedValue;
+  }
+
+  if (!surfaced.postal_code) {
+    surfaced.plus_four_postal_code = null;
+  }
+
+  if (surfaced.state_code && !surfaced.country_code) {
+    surfaced.country_code = "US";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    surfaced.request_identifier = address.request_identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      surfaced.source_http_request = prepared;
+    }
+  }
+
+  for (const [key, value] of Object.entries(address)) {
+    if (NORMALIZED_ADDRESS_ALLOWED_KEY_SET.has(key)) continue;
+    surfaced[key] =
+      value && typeof value === "object" ? deepClone(value) : value;
+  }
+
+  return surfaced;
+}
+
 function enforceAddressOneOfSurface(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -5788,6 +5832,32 @@ async function main() {
       ) {
         const surfaced = ensureRawAddressSchemaDefaults(preparedAddressPayload);
         finalizedAddressPayload = enforceAddressOneOfSurface(surfaced);
+      }
+    }
+
+    if (finalizedAddressPayload) {
+      const includesUnnormalized = Object.prototype.hasOwnProperty.call(
+        finalizedAddressPayload,
+        "unnormalized_address",
+      );
+      if (includesUnnormalized) {
+        const defaultedRaw = ensureRawAddressSchemaDefaults(
+          finalizedAddressPayload,
+        );
+        if (defaultedRaw) {
+          finalizedAddressPayload = defaultedRaw;
+          ensureAddressFieldSurface(
+            finalizedAddressPayload,
+            RAW_ADDRESS_OUTPUT_FIELDS,
+          );
+        }
+      } else {
+        const normalizedSurface = ensureNormalizedAddressSchemaSurface(
+          finalizedAddressPayload,
+        );
+        if (normalizedSurface) {
+          finalizedAddressPayload = normalizedSurface;
+        }
       }
     }
 
