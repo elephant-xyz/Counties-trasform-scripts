@@ -2442,6 +2442,65 @@ function buildRawAddressOutput(address) {
   return result;
 }
 
+function enforceAddressSchemaSurfaceForOutput(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const hasUnnormalized =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+
+  const trimmedUnnormalized = hasUnnormalized
+    ? address.unnormalized_address.trim()
+    : null;
+
+  const surfaceFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasUnnormalized
+    ? RAW_ADDRESS_SCHEMA_TEMPLATE
+    : NORMALIZED_ADDRESS_SCHEMA_TEMPLATE;
+
+  const result = { ...template };
+
+  for (const field of surfaceFields) {
+    let value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+
+    if (value === undefined) {
+      value = null;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      value = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    }
+
+    result[field] = value;
+  }
+
+  if (hasUnnormalized) {
+    if (!trimmedUnnormalized.length) {
+      return null;
+    }
+    result.unnormalized_address = trimmedUnnormalized;
+  } else if (Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
+    delete result.unnormalized_address;
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  return result;
+}
+
 function createSchemaReadyAddress(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -6382,14 +6441,10 @@ async function main() {
       finalAddress = buildRawAddressOutput(rawPrepared);
     }
 
-    if (finalAddress) {
-      if (!finalAddress.postal_code) {
-        finalAddress.plus_four_postal_code = null;
-      }
-      if (finalAddress.state_code && !finalAddress.country_code) {
-        finalAddress.country_code = "US";
-      }
-      writeJSON(addressFilePath, finalAddress);
+    const enforcedAddress = enforceAddressSchemaSurfaceForOutput(finalAddress);
+
+    if (enforcedAddress) {
+      writeJSON(addressFilePath, enforcedAddress);
       writeRelationshipFile(
         propertyAddressRelationshipPath,
         fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
