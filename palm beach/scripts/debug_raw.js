@@ -1162,6 +1162,26 @@ function prepareRawAddressForSchema(rawAddress) {
     prepared.plus_four_postal_code = null;
   }
 
+  if (
+    Object.prototype.hasOwnProperty.call(rawAddress, "request_identifier")
+  ) {
+    const requestIdentifier = safeNullIfEmpty(rawAddress.request_identifier);
+    if (requestIdentifier) {
+      prepared.request_identifier = requestIdentifier;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(rawAddress, "source_http_request")
+  ) {
+    const preparedRequest = prepareSourceHttpRequest(
+      rawAddress.source_http_request,
+    );
+    if (preparedRequest) {
+      prepared.source_http_request = preparedRequest;
+    }
+  }
+
   return prepared;
 }
 
