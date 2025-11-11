@@ -3718,17 +3718,24 @@ async function main() {
 
         if (finalizedAddress) {
           writeJSON(addressFilePath, finalizedAddress);
+          writeRelationshipFile(
+            propertyAddressRelationshipPath,
+            fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
+            "./address.json",
+          );
         } else {
           removeFileIfExists(addressFilePath);
+          removeFileIfExists(propertyAddressRelationshipPath);
         }
       } else {
         removeFileIfExists(addressFilePath);
+        removeFileIfExists(propertyAddressRelationshipPath);
       }
     } else {
       removeFileIfExists(addressFilePath);
+      removeFileIfExists(propertyAddressRelationshipPath);
     }
 
-    removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
   }
 

@@ -6384,7 +6384,11 @@ async function main() {
         finalAddress.country_code = "US";
       }
       writeJSON(addressFilePath, finalAddress);
-      removeFileIfExists(propertyAddressRelationshipPath);
+      writeRelationshipFile(
+        propertyAddressRelationshipPath,
+        fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
+        "./address.json",
+      );
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
