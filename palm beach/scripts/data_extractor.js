@@ -1439,7 +1439,8 @@ function normalizeAddressFieldForSchema(field, value) {
       return typeof value === "string" ? value.toUpperCase() : null;
     case "unit_identifier":
     case "route_number":
-      return typeof value === "string" ? value : null;
+      if (typeof value !== "string") return null;
+      return value.trim().length ? value.trim() : null;
     case "county_name":
     case "municipality_name":
       return typeof value === "string" ? toTitleCase(value) : null;
@@ -3567,38 +3568,35 @@ function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
 function materializeAddressForSchemaOutput(address) {
   if (!address || typeof address !== "object") return null;
 
-  const hasUnnormalized =
-    typeof address.unnormalized_address === "string" &&
-    address.unnormalized_address.trim().length > 0;
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
 
-  const allowedFields = hasUnnormalized
+  const isRawVariant = trimmedUnnormalized.length > 0;
+  const surfaceFields = isRawVariant
     ? RAW_ADDRESS_OUTPUT_FIELDS
     : NORMALIZED_ADDRESS_FIELDS;
-  const template = hasUnnormalized
+  const template = isRawVariant
     ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE }
     : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
   const surfaced = { ...template };
 
-  for (const field of allowedFields) {
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      const value = address[field];
-      surfaced[field] =
-        value === undefined || value === "" ? null : value;
-    } else {
-      surfaced[field] = null;
-    }
+  for (const field of surfaceFields) {
+    const candidate = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    surfaced[field] =
+      normalizedValue === undefined ? null : normalizedValue;
   }
 
-  if (hasUnnormalized) {
-    const trimmed =
-      typeof address.unnormalized_address === "string"
-        ? address.unnormalized_address.trim()
-        : "";
-    if (!trimmed.length) {
+  if (isRawVariant) {
+    if (!trimmedUnnormalized.length) {
       return null;
     }
-    surfaced.unnormalized_address = trimmed;
+    surfaced.unnormalized_address = trimmedUnnormalized;
   } else if (Object.prototype.hasOwnProperty.call(surfaced, "unnormalized_address")) {
     delete surfaced.unnormalized_address;
   }
@@ -3608,6 +3606,19 @@ function materializeAddressForSchemaOutput(address) {
   }
   if (surfaced.state_code && !surfaced.country_code) {
     surfaced.country_code = "US";
+  }
+
+  if (!isRawVariant) {
+    const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof surfaced[field] === "string" && surfaced[field].trim().length > 0,
+    );
+    const hasRequiredCoordinates = NORMALIZED_ADDRESS_REQUIRED_COORDINATE_FIELDS.every(
+      (field) => Number.isFinite(surfaced[field]),
+    );
+    if (!hasRequiredStrings || !hasRequiredCoordinates) {
+      return null;
+    }
   }
 
   return surfaced;
