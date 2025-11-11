@@ -6322,9 +6322,80 @@ async function main() {
     const normalizedSurface = ensureNormalizedAddressSchemaSurface(
       baseAddressSeed,
     );
-    const normalizedCandidate = normalizedSurface
+    let normalizedCandidate = normalizedSurface
       ? ensureAddressFieldsForOutput(normalizedSurface, "normalized")
       : null;
+
+    if (!normalizedCandidate && trimmedUnnormalized.length) {
+      const normalizedFromRaw = buildNormalizedAddressFromUnnormalized(
+        baseAddressSeed,
+        trimmedUnnormalized,
+        {
+          seed: normalizedSnapshot,
+          streetCandidates: streetCandidatesForFallback,
+          cityCandidates: [
+            normalizedSnapshot && normalizedSnapshot.city_name,
+            address.city_name,
+            normalizedCity,
+            resolvedCity,
+            parsedUnnormalizedCityState.city,
+          ],
+          stateCandidates: [
+            normalizedSnapshot && normalizedSnapshot.state_code,
+            address.state_code,
+            inferredStateCode,
+            resolvedState,
+            parsedUnnormalizedCityState.state,
+            countyInferredStateCode,
+            "FL",
+          ],
+          postalCandidates: [
+            normalizedSnapshot && normalizedSnapshot.postal_code,
+            address.postal_code,
+            fallbackPostalValue,
+            postalCode,
+            parsedUnnormalizedCityState.postal,
+          ],
+          plus4Candidates: [
+            normalizedSnapshot && normalizedSnapshot.plus_four_postal_code,
+            address.plus_four_postal_code,
+            fallbackPlus4Value,
+            plus4,
+            parsedUnnormalizedCityState.plus4,
+          ],
+          countyCandidates: [
+            normalizedSnapshot && normalizedSnapshot.county_name,
+            address.county_name,
+            formattedCountyName,
+            countyName,
+          ],
+          municipalityCandidates: [
+            normalizedSnapshot && normalizedSnapshot.municipality_name,
+            address.municipality_name,
+            normalizedMunicipality,
+          ],
+          unitCandidates: [
+            normalizedSnapshot && normalizedSnapshot.unit_identifier,
+            address.unit_identifier,
+          ],
+          latitudeCandidates,
+          longitudeCandidates,
+          grid: {
+            township: baseAddressSeed.township,
+            range: baseAddressSeed.range,
+            section: baseAddressSeed.section,
+            block: baseAddressSeed.block,
+            lot: baseAddressSeed.lot,
+          },
+        },
+      );
+      if (normalizedFromRaw) {
+        normalizedCandidate = ensureAddressFieldsForOutput(
+          normalizedFromRaw,
+          "normalized",
+        );
+      }
+    }
     let normalizedPrepared = normalizedCandidate
       ? coerceAddressForSchemaOutput(normalizedCandidate)
       : null;
