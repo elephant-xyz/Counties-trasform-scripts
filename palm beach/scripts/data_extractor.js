@@ -7664,67 +7664,56 @@ async function main() {
       }
     }
 
-    const requestIdentifierCandidates = [
-      address.request_identifier,
-      addressForOutput.request_identifier,
-      baseAddressSeed.request_identifier,
-      normalizedSnapshot && normalizedSnapshot.request_identifier,
-      seed && seed.request_identifier,
-      unAddr && unAddr.request_identifier,
-    ];
-    const resolvedRequestIdentifier = resolveFirstNonEmptyString(
-      requestIdentifierCandidates,
-    );
-
-    const sourceHttpCandidates = [
-      address.source_http_request,
-      addressForOutput.source_http_request,
-      baseAddressSeed.source_http_request,
-      normalizedSnapshot && normalizedSnapshot.source_http_request,
-      seed && seed.source_http_request,
-      unAddr && unAddr.source_http_request,
-    ];
-    let preparedSourceHttp = null;
-    for (const candidate of sourceHttpCandidates) {
-      const prepared = prepareSourceHttpRequest(candidate);
-      if (prepared) {
-        preparedSourceHttp = prepared;
-        break;
-      }
-    }
-
     let addressPayload = normalizedPayload || rawPayload || null;
+    const usingNormalizedVariant = Boolean(normalizedPayload);
 
-    if (addressPayload) {
-      if (resolvedRequestIdentifier) {
-        addressPayload.request_identifier = resolvedRequestIdentifier;
-      } else if (Object.prototype.hasOwnProperty.call(addressPayload, "request_identifier")) {
-        const trimmed = safeNullIfEmpty(addressPayload.request_identifier);
-        if (!trimmed) {
-          delete addressPayload.request_identifier;
-        } else {
-          addressPayload.request_identifier = trimmed;
+    if (addressPayload && typeof addressPayload === "object") {
+      if (!usingNormalizedVariant) {
+        if (
+          canonicalUnnormalized.length &&
+          !Object.prototype.hasOwnProperty.call(addressPayload, "unnormalized_address")
+        ) {
+          addressPayload.unnormalized_address = canonicalUnnormalized;
         }
+      } else if (Object.prototype.hasOwnProperty.call(addressPayload, "unnormalized_address")) {
+        delete addressPayload.unnormalized_address;
       }
 
-      if (preparedSourceHttp) {
-        addressPayload.source_http_request = preparedSourceHttp;
-      } else if (Object.prototype.hasOwnProperty.call(addressPayload, "source_http_request")) {
-        const prepared = prepareSourceHttpRequest(addressPayload.source_http_request);
-        if (prepared) {
-          addressPayload.source_http_request = prepared;
-        } else {
-          delete addressPayload.source_http_request;
-        }
+      if (Object.prototype.hasOwnProperty.call(addressPayload, "request_identifier")) {
+        delete addressPayload.request_identifier;
+      }
+      if (Object.prototype.hasOwnProperty.call(addressPayload, "source_http_request")) {
+        delete addressPayload.source_http_request;
       }
 
       writeJSON(addressFilePath, addressPayload);
+
+      const propertyExists = fs.existsSync(propertyFilePath);
+      if (propertyExists) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          propertyFileRelative,
+          "./address.json",
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
+
+      const factSheetPath = path.join(dataDir, "fact_sheet.json");
+      if (fs.existsSync(factSheetPath)) {
+        writeRelationshipFile(
+          addressFactSheetRelationshipPath,
+          "./address.json",
+          "./fact_sheet.json",
+        );
+      } else {
+        removeFileIfExists(addressFactSheetRelationshipPath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
+      removeFileIfExists(propertyAddressRelationshipPath);
+      removeFileIfExists(addressFactSheetRelationshipPath);
     }
-
-    removeFileIfExists(propertyAddressRelationshipPath);
-    removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
 
