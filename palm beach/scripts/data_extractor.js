@@ -7775,18 +7775,38 @@ async function main() {
 
       writeJSON(addressFilePath, templatedOutput);
 
-      const propertyFileExists = fs.existsSync(propertyFilePath);
-      writeRelationshipFile(
-        propertyAddressRelationshipPath,
-        propertyFileExists ? propertyFileRelative : null,
-        "./address.json",
-      );
+      const addressPayloadForRelationships =
+        deepClone(templatedOutput) || { ...templatedOutput };
+
+      if (fs.existsSync(propertyFilePath)) {
+        const propertyRaw = readJSON(propertyFilePath);
+        const propertyPayload = deepClone(propertyRaw) || propertyRaw;
+        const propertyHasAddressRelationship = {
+          type: "property_has_address",
+          from: propertyPayload,
+          to: addressPayloadForRelationships,
+        };
+        writeJSON(
+          propertyAddressRelationshipPath,
+          propertyHasAddressRelationship,
+        );
+      } else {
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
 
       if (fs.existsSync(factSheetPath)) {
-        writeRelationshipFile(
+        const factSheetRaw = readJSON(factSheetPath);
+        const factSheetPayload = deepClone(factSheetRaw) || factSheetRaw;
+        const addressHasFactSheetRelationship = [
+          {
+            type: "address_has_fact_sheet",
+            from: addressPayloadForRelationships,
+            to: factSheetPayload,
+          },
+        ];
+        writeJSON(
           addressFactSheetRelationshipPath,
-          "./address.json",
-          "./fact_sheet.json",
+          addressHasFactSheetRelationship,
         );
       } else {
         removeFileIfExists(addressFactSheetRelationshipPath);

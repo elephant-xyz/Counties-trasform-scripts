@@ -3666,6 +3666,7 @@ async function main() {
       dataDir,
       "relationship_address_has_fact_sheet.json",
     );
+    const factSheetPath = path.join(dataDir, "fact_sheet.json");
 
     for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -3964,21 +3965,53 @@ async function main() {
 
       if (enforcedAddress) {
         writeJSON(addressFilePath, enforcedAddress);
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
-          "./address.json",
-        );
+
+        const addressPayloadForRelationships =
+          deepClone(enforcedAddress) || { ...enforcedAddress };
+
+        if (fs.existsSync(propertyFilePath)) {
+          const propertyRaw = readJSON(propertyFilePath);
+          const propertyPayload = deepClone(propertyRaw) || propertyRaw;
+          const propertyHasAddressRelationship = {
+            type: "property_has_address",
+            from: propertyPayload,
+            to: addressPayloadForRelationships,
+          };
+          writeJSON(
+            propertyAddressRelationshipPath,
+            propertyHasAddressRelationship,
+          );
+        } else {
+          removeFileIfExists(propertyAddressRelationshipPath);
+        }
+
+        if (fs.existsSync(factSheetPath)) {
+          const factSheetRaw = readJSON(factSheetPath);
+          const factSheetPayload = deepClone(factSheetRaw) || factSheetRaw;
+          const addressFactSheetRelationships = [
+            {
+              type: "address_has_fact_sheet",
+              from: addressPayloadForRelationships,
+              to: factSheetPayload,
+            },
+          ];
+          writeJSON(
+            addressFactSheetRelationshipPath,
+            addressFactSheetRelationships,
+          );
+        } else {
+          removeFileIfExists(addressFactSheetRelationshipPath);
+        }
       } else {
         removeFileIfExists(addressFilePath);
         removeFileIfExists(propertyAddressRelationshipPath);
+        removeFileIfExists(addressFactSheetRelationshipPath);
       }
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
+      removeFileIfExists(addressFactSheetRelationshipPath);
     }
-
-    removeFileIfExists(addressFactSheetRelationshipPath);
   }
 
 
