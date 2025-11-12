@@ -7326,6 +7326,7 @@ async function main() {
       dataDir,
       "relationship_address_has_fact_sheet.json",
     );
+    const factSheetPath = path.join(dataDir, "fact_sheet.json");
 
     for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -7665,41 +7666,49 @@ async function main() {
     }
 
     let addressPayload = normalizedPayload || rawPayload || null;
-    const usingNormalizedVariant = Boolean(normalizedPayload);
+    let addressVariant = normalizedPayload ? "normalized" : rawPayload ? "raw" : null;
 
-    if (addressPayload && typeof addressPayload === "object") {
-      if (!usingNormalizedVariant) {
-        if (
-          canonicalUnnormalized.length &&
-          !Object.prototype.hasOwnProperty.call(addressPayload, "unnormalized_address")
-        ) {
-          addressPayload.unnormalized_address = canonicalUnnormalized;
+    const materializeAddressVariant = (variant, payload) => {
+      if (!payload || typeof payload !== "object") return null;
+      if (variant === "normalized") {
+        return materializeAddressForSchema(payload, "normalized");
+      }
+      if (variant === "raw") {
+        const rawSource = { ...payload };
+        const existingUnnormalized =
+          typeof rawSource.unnormalized_address === "string"
+            ? rawSource.unnormalized_address.trim()
+            : "";
+        if (!existingUnnormalized.length && canonicalUnnormalized.length) {
+          rawSource.unnormalized_address = canonicalUnnormalized;
         }
-      } else if (Object.prototype.hasOwnProperty.call(addressPayload, "unnormalized_address")) {
-        delete addressPayload.unnormalized_address;
+        return materializeAddressForSchema(rawSource, "raw");
+      }
+      return null;
+    };
+
+    let finalizedAddress = materializeAddressVariant(addressVariant, addressPayload);
+    if (!finalizedAddress && canonicalUnnormalized.length) {
+      addressVariant = "raw";
+      const rawFallbackSource =
+        rawPayload && typeof rawPayload === "object"
+          ? rawPayload
+          : { unnormalized_address: canonicalUnnormalized };
+      finalizedAddress = materializeAddressVariant("raw", rawFallbackSource);
+    }
+
+    if (finalizedAddress) {
+      if (Object.prototype.hasOwnProperty.call(finalizedAddress, "request_identifier")) {
+        delete finalizedAddress.request_identifier;
+      }
+      if (Object.prototype.hasOwnProperty.call(finalizedAddress, "source_http_request")) {
+        delete finalizedAddress.source_http_request;
       }
 
-      if (Object.prototype.hasOwnProperty.call(addressPayload, "request_identifier")) {
-        delete addressPayload.request_identifier;
-      }
-      if (Object.prototype.hasOwnProperty.call(addressPayload, "source_http_request")) {
-        delete addressPayload.source_http_request;
-      }
+      writeJSON(addressFilePath, finalizedAddress);
 
-      writeJSON(addressFilePath, addressPayload);
+      removeFileIfExists(propertyAddressRelationshipPath);
 
-      const propertyExists = fs.existsSync(propertyFilePath);
-      if (propertyExists) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          propertyFileRelative,
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
-
-      const factSheetPath = path.join(dataDir, "fact_sheet.json");
       if (fs.existsSync(factSheetPath)) {
         writeRelationshipFile(
           addressFactSheetRelationshipPath,
