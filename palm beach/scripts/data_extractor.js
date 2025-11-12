@@ -51,19 +51,35 @@ function resolveSourceHttpRequest(...candidates) {
   return null;
 }
 
-function writeRelationshipFile(filePath, fromRelative, toRelative) {
-  const hasFrom = typeof fromRelative === "string" && fromRelative.trim().length > 0;
-  const hasTo = typeof toRelative === "string" && toRelative.trim().length > 0;
+function writeRelationshipFile(filePath, fromValue, toValue) {
+  const normalizeEndpoint = (value) => {
+    if (value == null) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed.length ? { "/": trimmed } : null;
+    }
+    if (typeof value === "object") {
+      try {
+        const cloned = JSON.parse(JSON.stringify(value));
+        if (!cloned || typeof cloned !== "object") return null;
+        if (!Object.keys(cloned).length) return null;
+        return cloned;
+      } catch (err) {
+        return null;
+      }
+    }
+    return null;
+  };
 
-  if (!hasFrom || !hasTo) {
+  const from = normalizeEndpoint(fromValue);
+  const to = normalizeEndpoint(toValue);
+
+  if (!from || !to) {
     removeFileIfExists(filePath);
     return;
   }
 
-  const relationship = {
-    from: { "/": fromRelative.trim() },
-    to: { "/": toRelative.trim() },
-  };
+  const relationship = { from, to };
 
   fs.writeFileSync(filePath, JSON.stringify(relationship, null, 2));
 }
@@ -7659,11 +7675,13 @@ async function main() {
 
       writeJSON(addressFilePath, finalizedAddress);
 
+      const addressEndpointPayload = deepClone(finalizedAddress);
+
       if (fs.existsSync(propertyFilePath)) {
         writeRelationshipFile(
           propertyAddressRelationshipPath,
           "./property.json",
-          "./address.json",
+          addressEndpointPayload,
         );
       } else {
         removeFileIfExists(propertyAddressRelationshipPath);
@@ -7672,7 +7690,7 @@ async function main() {
       if (fs.existsSync(factSheetPath)) {
         writeRelationshipFile(
           addressFactSheetRelationshipPath,
-          "./address.json",
+          deepClone(finalizedAddress),
           "./fact_sheet.json",
         );
       } else {
