@@ -64,9 +64,8 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     from: { "/": fromRelative.trim() },
     to: { "/": toRelative.trim() },
   };
-  const payload = [relationship];
 
-  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+  fs.writeFileSync(filePath, JSON.stringify(relationship, null, 2));
 }
 
 function removeFileIfExists(filePath) {
@@ -6727,6 +6726,7 @@ async function main() {
     }
 
     const addressFilePath = path.join(dataDir, "address.json");
+    const addressFileRelative = "./address.json";
     const propertyAddressRelationshipPath = path.join(
       dataDir,
       "relationship_property_has_address.json",
@@ -7367,14 +7367,117 @@ async function main() {
           schemaReadyAddress = minimalFinalized;
         }
       }
+
+      if (!schemaReadyAddress) {
+        const preparedFallbackRaw = prepareRawAddressForOutput(
+          {
+            unnormalized_address: canonicalUnnormalized,
+            latitude: preferredLatitude,
+            longitude: preferredLongitude,
+          },
+          rawFallbackContext,
+        );
+        if (preparedFallbackRaw) {
+          const enforcedFallback = enforceAddressSchemaSurfaceForOutput(
+            preparedFallbackRaw,
+          );
+          if (enforcedFallback) {
+            schemaReadyAddress = enforcedFallback;
+          }
+        }
+      }
+    }
+
+    if (schemaReadyAddress) {
+      const hasUnnormalized =
+        typeof schemaReadyAddress.unnormalized_address === "string" &&
+        schemaReadyAddress.unnormalized_address.trim().length > 0;
+
+      if (hasUnnormalized) {
+        const normalizedRaw = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...schemaReadyAddress,
+        };
+        normalizedRaw.unnormalized_address =
+          schemaReadyAddress.unnormalized_address.trim();
+
+        for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(normalizedRaw, field)) {
+            normalizedRaw[field] = null;
+          }
+          const value = normalizedRaw[field];
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            normalizedRaw[field] = Number.isFinite(numeric) ? numeric : null;
+            continue;
+          }
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            normalizedRaw[field] = trimmed.length ? trimmed : null;
+          }
+        }
+
+        if (!normalizedRaw.postal_code) {
+          normalizedRaw.plus_four_postal_code = null;
+        }
+        if (normalizedRaw.state_code && !normalizedRaw.country_code) {
+          normalizedRaw.country_code = "US";
+        }
+
+        schemaReadyAddress = normalizedRaw;
+      } else {
+        const normalizedAddress = {
+          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+          ...schemaReadyAddress,
+        };
+
+        for (const field of NORMALIZED_ADDRESS_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(normalizedAddress, field)) {
+            normalizedAddress[field] = null;
+          }
+          const value = normalizedAddress[field];
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            normalizedAddress[field] = Number.isFinite(numeric) ? numeric : null;
+            continue;
+          }
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            normalizedAddress[field] = trimmed.length ? trimmed : null;
+          }
+        }
+
+        if (!normalizedAddress.postal_code) {
+          normalizedAddress.plus_four_postal_code = null;
+        }
+        if (normalizedAddress.state_code && !normalizedAddress.country_code) {
+          normalizedAddress.country_code = "US";
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedAddress,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedAddress.unnormalized_address;
+        }
+
+        schemaReadyAddress = normalizedAddress;
+      }
     }
 
     if (schemaReadyAddress) {
       writeJSON(addressFilePath, schemaReadyAddress);
+      const propertyExists = fs.existsSync(propertyFilePath);
+      writeRelationshipFile(
+        propertyAddressRelationshipPath,
+        propertyExists ? propertyFileRelative : null,
+        addressFileRelative,
+      );
     } else {
       removeFileIfExists(addressFilePath);
+      removeFileIfExists(propertyAddressRelationshipPath);
     }
-    removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
