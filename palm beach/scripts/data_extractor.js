@@ -1274,6 +1274,16 @@ function hasRawAddressRequiredFields(address) {
   return true;
 }
 
+function hasRawAddressSurfaceCoverage(address) {
+  if (!address || typeof address !== "object") return false;
+  for (const field of RAW_ADDRESS_REQUIRED_FIELD_SURFACE) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
   if (!rawAddress || typeof rawAddress !== "object") return null;
 
@@ -2552,13 +2562,25 @@ function finalizeAddressForOutput(address) {
 
   if (hasUnnormalized) {
     const rawSurface = ensureRawAddressFieldCoverage(prepared);
-    if (!rawSurface || typeof rawSurface !== "object") {
-      return null;
+    const rawSurfaceReady =
+      rawSurface &&
+      typeof rawSurface === "object" &&
+      hasRawAddressRequiredFields(rawSurface) &&
+      hasRawAddressSurfaceCoverage(rawSurface);
+
+    if (rawSurfaceReady) {
+      return enforceAddressSchemaSurfaceForOutput(rawSurface);
     }
-    if (!hasRawAddressRequiredFields(rawSurface)) {
-      return null;
+
+    const normalizedFallback = ensureNormalizedAddressSchemaSurface(prepared);
+    if (
+      normalizedFallback &&
+      hasCompleteNormalizedAddress({ ...normalizedFallback })
+    ) {
+      return enforceAddressSchemaSurfaceForOutput(normalizedFallback);
     }
-    return enforceAddressSchemaSurfaceForOutput(rawSurface);
+
+    return null;
   }
 
   return enforceAddressSchemaSurfaceForOutput(prepared);
