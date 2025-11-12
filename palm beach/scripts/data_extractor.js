@@ -1113,11 +1113,30 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
 
 // The County schema's raw branch accepts just the original string; any normalized
 // fields we can safely produce are emitted opportunistically.
-const RAW_SCHEMA_REQUIRED_FIELDS = [];
+const RAW_SCHEMA_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+];
 
-const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [];
+const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+];
 
-const RAW_ADDRESS_STRICT_VALUE_FIELDS = [];
+const RAW_ADDRESS_STRICT_VALUE_FIELDS = [
+  "city_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+];
 
 const RAW_ADDRESS_STRICT_GRID_FIELDS = [];
 
