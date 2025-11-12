@@ -7174,6 +7174,119 @@ async function main() {
     }
 
     if (enforcedAddressOutput) {
+      if (canonicalUnnormalized.length) {
+        const rawAddressCandidate = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+        const candidateSources = [
+          enforcedAddressOutput,
+          addressForOutput,
+          baseAddressSeed,
+        ];
+        const coordinateFallbacks = {
+          latitude: Number.isFinite(preferredLatitude)
+            ? preferredLatitude
+            : null,
+          longitude: Number.isFinite(preferredLongitude)
+            ? preferredLongitude
+            : null,
+        };
+
+        for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+          let resolvedValue = null;
+          for (const source of candidateSources) {
+            if (!source || typeof source !== "object") continue;
+            if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+            const candidate = source[field];
+            const normalized = normalizeAddressFieldForSchema(
+              field,
+              candidate,
+            );
+            if (normalized !== undefined && normalized !== null) {
+              resolvedValue = normalized;
+              break;
+            }
+          }
+
+          if (
+            resolvedValue == null &&
+            Object.prototype.hasOwnProperty.call(coordinateFallbacks, field)
+          ) {
+            resolvedValue = coordinateFallbacks[field];
+          }
+
+          if (
+            resolvedValue == null &&
+            ADDRESS_COORDINATE_FIELDS.includes(field)
+          ) {
+            resolvedValue = null;
+          }
+
+          rawAddressCandidate[field] =
+            resolvedValue === undefined ? null : resolvedValue;
+        }
+
+        rawAddressCandidate.unnormalized_address = canonicalUnnormalized;
+
+        if (rawAddressCandidate.state_code && !rawAddressCandidate.country_code) {
+          rawAddressCandidate.country_code = "US";
+        }
+        if (!rawAddressCandidate.postal_code) {
+          rawAddressCandidate.plus_four_postal_code = null;
+        }
+
+        for (const requiredField of RAW_ADDRESS_REQUIRED_FIELD_SURFACE) {
+          if (!Object.prototype.hasOwnProperty.call(rawAddressCandidate, requiredField)) {
+            rawAddressCandidate[requiredField] = null;
+          }
+        }
+
+        const requestIdentifierCandidates = [
+          enforcedAddressOutput.request_identifier,
+          addressForOutput.request_identifier,
+          baseAddressSeed.request_identifier,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ];
+        const resolvedRequestIdentifier = resolveFirstNonEmptyString(
+          requestIdentifierCandidates,
+        );
+
+        const sourceHttpCandidates = [
+          enforcedAddressOutput.source_http_request,
+          addressForOutput.source_http_request,
+          baseAddressSeed.source_http_request,
+          seed && seed.source_http_request,
+          unAddr && unAddr.source_http_request,
+        ];
+        let resolvedSourceHttpRequest = null;
+        for (const candidate of sourceHttpCandidates) {
+          const prepared = prepareSourceHttpRequest(candidate);
+          if (prepared) {
+            resolvedSourceHttpRequest = prepared;
+            break;
+          }
+        }
+
+        const enforcedRaw =
+          enforceAddressSchemaSurfaceForOutput(rawAddressCandidate) ||
+          rawAddressCandidate;
+
+        if (resolvedRequestIdentifier) {
+          enforcedRaw.request_identifier = resolvedRequestIdentifier;
+        }
+        if (resolvedSourceHttpRequest) {
+          enforcedRaw.source_http_request = resolvedSourceHttpRequest;
+        }
+
+        enforcedAddressOutput = enforcedRaw;
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          enforcedAddressOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete enforcedAddressOutput.unnormalized_address;
+      }
+
       writeJSON(addressFilePath, enforcedAddressOutput);
       const propertyExists = fs.existsSync(propertyFilePath);
       writeRelationshipFile(
