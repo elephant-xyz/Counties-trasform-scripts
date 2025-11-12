@@ -4065,7 +4065,11 @@ function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
     const raw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
       const rawValue = pickFieldValue(field);
-      raw[field] = normalizeAddressFieldForSchema(field, rawValue);
+      const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+      raw[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
     }
 
     if (!raw.postal_code) {
@@ -4088,7 +4092,11 @@ function coerceAddressOutputForSchema(primaryCandidate, options = {}) {
     const normalized = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       const rawValue = pickFieldValue(field);
-      normalized[field] = normalizeAddressFieldForSchema(field, rawValue);
+      const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+      normalized[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
     }
     if (!normalized.postal_code) {
       normalized.plus_four_postal_code = null;
