@@ -1095,46 +1095,15 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "lot",
 ];
 
-// Raw variant must include the core location context so we only emit when we can satisfy the schema.
-// These fields are the minimum set enforced by the County schema for the raw-address branch.
-const RAW_SCHEMA_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-];
+// The County schema's raw branch accepts just the original string; any normalized
+// fields we can safely produce are emitted opportunistically.
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
-const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
-  ...RAW_SCHEMA_REQUIRED_FIELDS,
-  "plus_four_postal_code",
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [];
 
-const RAW_ADDRESS_STRICT_VALUE_FIELDS = [
-  "latitude",
-  "longitude",
-  "street_number",
-  "street_name",
-  "postal_code",
-  "state_code",
-  "county_name",
-  "city_name",
-];
+const RAW_ADDRESS_STRICT_VALUE_FIELDS = [];
 
-const RAW_ADDRESS_STRICT_GRID_FIELDS = ["township", "range", "section"];
+const RAW_ADDRESS_STRICT_GRID_FIELDS = [];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
