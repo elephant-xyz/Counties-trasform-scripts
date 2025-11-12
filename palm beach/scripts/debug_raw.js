@@ -298,6 +298,64 @@ function prepareAddressOutputForSchema(candidate, options = {}) {
   return materializeAddressForSchema(rawSeed, "raw");
 }
 
+function ensureAddressSchemaSurfaceCoverage(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const hasUnnormalized =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+
+  const surfaceFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasUnnormalized
+    ? RAW_ADDRESS_SCHEMA_TEMPLATE
+    : NORMALIZED_ADDRESS_SCHEMA_TEMPLATE;
+
+  const hydrated = { ...template };
+
+  for (const field of surfaceFields) {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      const value = address[field];
+      hydrated[field] = value === undefined ? null : value;
+    }
+  }
+
+  if (hasUnnormalized) {
+    const trimmed = address.unnormalized_address.trim();
+    if (!trimmed.length) {
+      return null;
+    }
+    hydrated.unnormalized_address = trimmed;
+  } else if (Object.prototype.hasOwnProperty.call(hydrated, "unnormalized_address")) {
+    delete hydrated.unnormalized_address;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier") &&
+    address.request_identifier != null
+  ) {
+    hydrated.request_identifier = address.request_identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      hydrated.source_http_request = prepared;
+    }
+  }
+
+  if (!hydrated.postal_code) {
+    hydrated.plus_four_postal_code = null;
+  }
+
+  if (hydrated.state_code && !hydrated.country_code) {
+    hydrated.country_code = "US";
+  }
+
+  return hydrated;
+}
+
 function deriveNormalizedAddressFromFullText(fullText, options = {}) {
   const normalized = normalizeWhitespace(fullText);
   if (!normalized) {
@@ -3884,9 +3942,12 @@ async function main() {
           fallbackUnnormalized: fallbackUnnormalizedValue,
         })
       : null;
+    const surfacedAddressOutput = preparedAddressOutput
+      ? ensureAddressSchemaSurfaceCoverage(preparedAddressOutput)
+      : null;
 
-    if (preparedAddressOutput) {
-      const enforcedAddress = finalizeAddressForOutput(preparedAddressOutput);
+    if (surfacedAddressOutput) {
+      const enforcedAddress = finalizeAddressForOutput(surfacedAddressOutput);
 
       if (enforcedAddress) {
         writeJSON(addressFilePath, enforcedAddress);

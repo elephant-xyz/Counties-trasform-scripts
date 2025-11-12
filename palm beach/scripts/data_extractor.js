@@ -1640,6 +1640,64 @@ function prepareAddressOutputForSchema(candidate, options = {}) {
   return materializeAddressForSchema(rawSeed, "raw");
 }
 
+function ensureAddressSchemaSurfaceCoverage(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const hasUnnormalized =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+
+  const surfaceFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasUnnormalized
+    ? RAW_ADDRESS_SCHEMA_TEMPLATE
+    : NORMALIZED_ADDRESS_SCHEMA_TEMPLATE;
+
+  const hydrated = { ...template };
+
+  for (const field of surfaceFields) {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      const value = address[field];
+      hydrated[field] = value === undefined ? null : value;
+    }
+  }
+
+  if (hasUnnormalized) {
+    const trimmed = address.unnormalized_address.trim();
+    if (!trimmed.length) {
+      return null;
+    }
+    hydrated.unnormalized_address = trimmed;
+  } else if (Object.prototype.hasOwnProperty.call(hydrated, "unnormalized_address")) {
+    delete hydrated.unnormalized_address;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier") &&
+    address.request_identifier != null
+  ) {
+    hydrated.request_identifier = address.request_identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      hydrated.source_http_request = prepared;
+    }
+  }
+
+  if (!hydrated.postal_code) {
+    hydrated.plus_four_postal_code = null;
+  }
+
+  if (hydrated.state_code && !hydrated.country_code) {
+    hydrated.country_code = "US";
+  }
+
+  return hydrated;
+}
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -7435,9 +7493,12 @@ async function main() {
           fallbackUnnormalized: canonicalUnnormalized,
         })
       : null;
+    const finalizedAddressOutput = preparedAddressOutput
+      ? ensureAddressSchemaSurfaceCoverage(preparedAddressOutput)
+      : null;
 
-    if (preparedAddressOutput) {
-      writeJSON(addressFilePath, preparedAddressOutput);
+    if (finalizedAddressOutput) {
+      writeJSON(addressFilePath, finalizedAddressOutput);
       const propertyExists = fs.existsSync(propertyFilePath);
       writeRelationshipFile(
         propertyAddressRelationshipPath,
