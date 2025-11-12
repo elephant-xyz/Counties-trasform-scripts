@@ -7339,13 +7339,19 @@ async function main() {
 
       if (finalAddressOutput) {
         writeJSON(addressFilePath, finalAddressOutput);
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
+          "./address.json",
+        );
       } else {
         removeFileIfExists(addressFilePath);
+        removeFileIfExists(propertyAddressRelationshipPath);
       }
     } else {
       removeFileIfExists(addressFilePath);
+      removeFileIfExists(propertyAddressRelationshipPath);
     }
-    removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
