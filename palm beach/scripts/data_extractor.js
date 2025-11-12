@@ -7523,11 +7523,22 @@ async function main() {
       addressForOutput.street_name,
     );
     if (hasStreetNumber !== hasStreetName) {
-      addressForOutput.street_number = null;
-      addressForOutput.street_name = null;
-      addressForOutput.street_suffix_type = null;
-      addressForOutput.street_pre_directional_text = null;
-      addressForOutput.street_post_directional_text = null;
+      const streetFieldsToClear = [
+        "street_number",
+        "street_name",
+        "street_suffix_type",
+        "street_pre_directional_text",
+        "street_post_directional_text",
+      ];
+      for (const field of streetFieldsToClear) {
+        addressForOutput[field] = null;
+        if (Object.prototype.hasOwnProperty.call(baseAddressSeed, field)) {
+          baseAddressSeed[field] = null;
+        }
+        if (normalizedSnapshot && Object.prototype.hasOwnProperty.call(normalizedSnapshot, field)) {
+          normalizedSnapshot[field] = null;
+        }
+      }
     }
 
     const hasGridCore = ["township", "range", "section"].every((field) =>
@@ -7537,8 +7548,15 @@ async function main() {
       (field) => hasMeaningfulAddressValue(addressForOutput[field]),
     );
     if (hasAnyGrid && !hasGridCore) {
-      for (const field of ["township", "range", "section", "block", "lot"]) {
+      const gridFieldsToClear = ["township", "range", "section", "block", "lot"];
+      for (const field of gridFieldsToClear) {
         addressForOutput[field] = null;
+        if (Object.prototype.hasOwnProperty.call(baseAddressSeed, field)) {
+          baseAddressSeed[field] = null;
+        }
+        if (normalizedSnapshot && Object.prototype.hasOwnProperty.call(normalizedSnapshot, field)) {
+          normalizedSnapshot[field] = null;
+        }
       }
     }
 
@@ -7671,6 +7689,13 @@ async function main() {
       }
       if (Object.prototype.hasOwnProperty.call(finalizedAddress, "source_http_request")) {
         delete finalizedAddress.source_http_request;
+      }
+      if (addressVariant === "raw") {
+        for (const key of Object.keys(finalizedAddress)) {
+          if (finalizedAddress[key] === null) {
+            delete finalizedAddress[key];
+          }
+        }
       }
 
       writeJSON(addressFilePath, finalizedAddress);
