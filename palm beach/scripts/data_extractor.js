@@ -3050,6 +3050,112 @@ function buildCompliantAddressOutput(candidate, options = {}) {
   return null;
 }
 
+function buildMinimalRawAddressOutput(unnormalizedValue, sources = [], options = {}) {
+  const trimmed =
+    typeof unnormalizedValue === "string" ? unnormalizedValue.trim() : "";
+  if (!trimmed.length) return null;
+
+  const sourceList = Array.isArray(sources)
+    ? sources.filter((source) => source && typeof source === "object")
+    : [];
+
+  const fieldCandidates =
+    options &&
+    options.fieldCandidates &&
+    typeof options.fieldCandidates === "object"
+      ? options.fieldCandidates
+      : {};
+
+  const coordinateFallbacks =
+    options &&
+    options.coordinateFallbacks &&
+    typeof options.coordinateFallbacks === "object"
+      ? options.coordinateFallbacks
+      : {};
+
+  const result = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+  const pushCandidate = (list, value) => {
+    if (value === undefined) return;
+    list.push(value);
+  };
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const candidates = [];
+
+    for (const source of sourceList) {
+      if (Object.prototype.hasOwnProperty.call(source, field)) {
+        pushCandidate(candidates, source[field]);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(fieldCandidates, field)) {
+      const fallback = fieldCandidates[field];
+      if (Array.isArray(fallback)) {
+        for (const value of fallback) {
+          pushCandidate(candidates, value);
+        }
+      } else {
+        pushCandidate(candidates, fallback);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(coordinateFallbacks, field)) {
+      pushCandidate(candidates, coordinateFallbacks[field]);
+    }
+
+    let resolved = null;
+    for (const candidate of candidates) {
+      const normalized = normalizeAddressFieldForSchema(field, candidate);
+      if (normalized !== null && normalized !== undefined) {
+        resolved = normalized;
+        break;
+      }
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(resolved);
+      resolved = Number.isFinite(numeric) ? numeric : null;
+    }
+
+    result[field] = resolved === undefined || resolved === null ? null : resolved;
+  }
+
+  result.unnormalized_address = trimmed;
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  let requestIdentifier = null;
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "requestIdentifier")
+  ) {
+    requestIdentifier = safeNullIfEmpty(options.requestIdentifier);
+  }
+  if (requestIdentifier) {
+    result.request_identifier = requestIdentifier;
+  }
+
+  let preparedSourceHttp = null;
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "sourceHttpRequest")
+  ) {
+    preparedSourceHttp = prepareSourceHttpRequest(options.sourceHttpRequest);
+  }
+  if (preparedSourceHttp) {
+    result.source_http_request = preparedSourceHttp;
+  }
+
+  return result;
+}
+
 function createSchemaReadyAddress(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -7685,13 +7791,35 @@ async function main() {
         }
       }
 
+      const fallbackSources = [
+        finalAddressOutput,
+        enforcedAddressOutput,
+        addressForOutput,
+        baseAddressSeed,
+        normalizedSnapshot,
+      ];
+
       if (compliantAddressOutput) {
         writeJSON(addressFilePath, compliantAddressOutput);
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
-          "./address.json",
+        removeFileIfExists(propertyAddressRelationshipPath);
+      } else if (canonicalUnnormalized.length) {
+        const minimalRaw = buildMinimalRawAddressOutput(
+          canonicalUnnormalized,
+          fallbackSources,
+          {
+            fieldCandidates: rawFieldFallbacks,
+            coordinateFallbacks,
+            requestIdentifier: resolvedRequestIdentifier,
+            sourceHttpRequest: preparedSourceHttp,
+          },
         );
+        if (minimalRaw) {
+          writeJSON(addressFilePath, minimalRaw);
+          removeFileIfExists(propertyAddressRelationshipPath);
+        } else {
+          removeFileIfExists(addressFilePath);
+          removeFileIfExists(propertyAddressRelationshipPath);
+        }
       } else {
         removeFileIfExists(addressFilePath);
         removeFileIfExists(propertyAddressRelationshipPath);
