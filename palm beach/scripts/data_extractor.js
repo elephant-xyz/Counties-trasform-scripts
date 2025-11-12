@@ -2698,6 +2698,140 @@ function finalizeAddressForOutput(address) {
   return enforceAddressSchemaSurfaceForOutput(prepared);
 }
 
+function materializeAddressVariantForOutput(address, options = {}) {
+  if (!address || typeof address !== "object") return null;
+
+  const fallbackUnnormalizedRaw =
+    options && typeof options.fallbackUnnormalized === "string"
+      ? options.fallbackUnnormalized.trim()
+      : "";
+
+  const requestIdentifier = resolveFirstNonEmptyString(
+    Array.isArray(options.requestIdentifierCandidates)
+      ? options.requestIdentifierCandidates
+      : [],
+  );
+
+  let sourceHttpRequest = null;
+  if (Array.isArray(options.sourceHttpRequestCandidates)) {
+    for (const candidate of options.sourceHttpRequestCandidates) {
+      const prepared = prepareSourceHttpRequest(candidate);
+      if (prepared) {
+        sourceHttpRequest = prepared;
+        break;
+      }
+    }
+  }
+
+  const normalizedCandidate = ensureNormalizedAddressSchemaSurface(address);
+  const hasNormalized =
+    normalizedCandidate &&
+    hasCompleteNormalizedAddress({ ...normalizedCandidate }) &&
+    isNormalizedAddressSchemaReady({ ...normalizedCandidate });
+
+  if (hasNormalized) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const normalizedValue = normalizeAddressFieldForSchema(
+        field,
+        normalizedCandidate[field],
+      );
+      normalizedOutput[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    }
+    if (sourceHttpRequest) {
+      normalizedOutput.source_http_request = sourceHttpRequest;
+    }
+    return normalizedOutput;
+  }
+
+  let trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length && fallbackUnnormalizedRaw.length) {
+    trimmedUnnormalized = fallbackUnnormalizedRaw;
+  }
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const rawSources = [address];
+  if (Array.isArray(options.extraSources)) {
+    for (const source of options.extraSources) {
+      if (source && typeof source === "object") {
+        rawSources.push(source);
+      }
+    }
+  }
+
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    let resolvedValue = null;
+
+    for (const source of rawSources) {
+      if (!source || typeof source !== "object") continue;
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      const candidate = source[field];
+      const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+      if (normalizedValue !== undefined && normalizedValue !== null) {
+        resolvedValue = normalizedValue;
+        break;
+      }
+      if (candidate === null) {
+        resolvedValue = null;
+        break;
+      }
+    }
+
+    if (
+      (resolvedValue === null || resolvedValue === undefined) &&
+      options.coordinateFallbacks &&
+      Object.prototype.hasOwnProperty.call(options.coordinateFallbacks, field)
+    ) {
+      const fallbackValue = normalizeAddressFieldForSchema(
+        field,
+        options.coordinateFallbacks[field],
+      );
+      if (fallbackValue !== undefined && fallbackValue !== null) {
+        resolvedValue = fallbackValue;
+      }
+    }
+
+    rawOutput[field] =
+      resolvedValue === undefined || resolvedValue === null
+        ? null
+        : resolvedValue;
+  }
+
+  rawOutput.unnormalized_address = trimmedUnnormalized;
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
+  }
+  if (sourceHttpRequest) {
+    rawOutput.source_http_request = sourceHttpRequest;
+  }
+
+  return rawOutput;
+}
+
 function createSchemaReadyAddress(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -6836,7 +6970,6 @@ async function main() {
     }
 
     const addressFilePath = path.join(dataDir, "address.json");
-    const addressFileRelative = "./address.json";
     const propertyAddressRelationshipPath = path.join(
       dataDir,
       "relationship_property_has_address.json",
@@ -7174,141 +7307,49 @@ async function main() {
     }
 
     if (enforcedAddressOutput) {
-      const hasCanonicalUnnormalized = canonicalUnnormalized.length > 0;
-      const currentlyRaw = Object.prototype.hasOwnProperty.call(
+      const requestIdentifierCandidates = [
+        enforcedAddressOutput.request_identifier,
+        addressForOutput.request_identifier,
+        baseAddressSeed.request_identifier,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ];
+      const sourceHttpCandidates = [
+        enforcedAddressOutput.source_http_request,
+        addressForOutput.source_http_request,
+        baseAddressSeed.source_http_request,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ];
+      const coordinateFallbacks = {
+        latitude: Number.isFinite(preferredLatitude)
+          ? preferredLatitude
+          : null,
+        longitude: Number.isFinite(preferredLongitude)
+          ? preferredLongitude
+          : null,
+      };
+
+      const finalAddressOutput = materializeAddressVariantForOutput(
         enforcedAddressOutput,
-        "unnormalized_address",
-      );
-      let normalizedSchemaReady = false;
-      if (enforcedAddressOutput && !currentlyRaw) {
-        const probe = deepClone(enforcedAddressOutput);
-        normalizedSchemaReady = probe
-          ? isNormalizedAddressSchemaReady(probe)
-          : false;
-      }
-
-      if (
-        hasCanonicalUnnormalized &&
-        (!normalizedSchemaReady || currentlyRaw)
-      ) {
-        const rawAddressCandidate = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-        const candidateSources = [
-          enforcedAddressOutput,
-          addressForOutput,
-          baseAddressSeed,
-        ];
-        const coordinateFallbacks = {
-          latitude: Number.isFinite(preferredLatitude)
-            ? preferredLatitude
-            : null,
-          longitude: Number.isFinite(preferredLongitude)
-            ? preferredLongitude
-            : null,
-        };
-
-        for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-          let resolvedValue = null;
-          for (const source of candidateSources) {
-            if (!source || typeof source !== "object") continue;
-            if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
-            const candidate = source[field];
-            const normalized = normalizeAddressFieldForSchema(
-              field,
-              candidate,
-            );
-            if (normalized !== undefined && normalized !== null) {
-              resolvedValue = normalized;
-              break;
-            }
-          }
-
-          if (
-            resolvedValue == null &&
-            Object.prototype.hasOwnProperty.call(coordinateFallbacks, field)
-          ) {
-            resolvedValue = coordinateFallbacks[field];
-          }
-
-          if (
-            resolvedValue == null &&
-            ADDRESS_COORDINATE_FIELDS.includes(field)
-          ) {
-            resolvedValue = null;
-          }
-
-          rawAddressCandidate[field] =
-            resolvedValue === undefined ? null : resolvedValue;
-        }
-
-        rawAddressCandidate.unnormalized_address = canonicalUnnormalized;
-
-        if (rawAddressCandidate.state_code && !rawAddressCandidate.country_code) {
-          rawAddressCandidate.country_code = "US";
-        }
-        if (!rawAddressCandidate.postal_code) {
-          rawAddressCandidate.plus_four_postal_code = null;
-        }
-
-        for (const requiredField of RAW_ADDRESS_REQUIRED_FIELD_SURFACE) {
-          if (!Object.prototype.hasOwnProperty.call(rawAddressCandidate, requiredField)) {
-            rawAddressCandidate[requiredField] = null;
-          }
-        }
-
-        const requestIdentifierCandidates = [
-          enforcedAddressOutput.request_identifier,
-          addressForOutput.request_identifier,
-          baseAddressSeed.request_identifier,
-          seed && seed.request_identifier,
-          unAddr && unAddr.request_identifier,
-        ];
-        const resolvedRequestIdentifier = resolveFirstNonEmptyString(
+        {
+          fallbackUnnormalized: canonicalUnnormalized,
+          extraSources: [addressForOutput, baseAddressSeed],
           requestIdentifierCandidates,
-        );
-
-        const sourceHttpCandidates = [
-          enforcedAddressOutput.source_http_request,
-          addressForOutput.source_http_request,
-          baseAddressSeed.source_http_request,
-          seed && seed.source_http_request,
-          unAddr && unAddr.source_http_request,
-        ];
-        let resolvedSourceHttpRequest = null;
-        for (const candidate of sourceHttpCandidates) {
-          const prepared = prepareSourceHttpRequest(candidate);
-          if (prepared) {
-            resolvedSourceHttpRequest = prepared;
-            break;
-          }
-        }
-
-        const enforcedRaw =
-          enforceAddressSchemaSurfaceForOutput(rawAddressCandidate) ||
-          rawAddressCandidate;
-
-        if (resolvedRequestIdentifier) {
-          enforcedRaw.request_identifier = resolvedRequestIdentifier;
-        }
-        if (resolvedSourceHttpRequest) {
-          enforcedRaw.source_http_request = resolvedSourceHttpRequest;
-        }
-
-        enforcedAddressOutput = enforcedRaw;
-      } else if (!hasCanonicalUnnormalized && currentlyRaw) {
-        delete enforcedAddressOutput.unnormalized_address;
-      }
-
-      writeJSON(addressFilePath, enforcedAddressOutput);
-      const propertyExists = fs.existsSync(propertyFilePath);
-      writeRelationshipFile(
-        propertyAddressRelationshipPath,
-        propertyExists ? propertyFileRelative : null,
-        addressFileRelative,
+          sourceHttpRequestCandidates: sourceHttpCandidates,
+          coordinateFallbacks,
+        },
       );
+
+      if (finalAddressOutput) {
+        writeJSON(addressFilePath, finalAddressOutput);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
-      removeFileIfExists(propertyAddressRelationshipPath);
     }
+    removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
