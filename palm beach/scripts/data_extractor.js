@@ -7675,13 +7675,11 @@ async function main() {
 
       writeJSON(addressFilePath, finalizedAddress);
 
-      const addressEndpointPayload = deepClone(finalizedAddress);
-
       if (fs.existsSync(propertyFilePath)) {
         writeRelationshipFile(
           propertyAddressRelationshipPath,
           "./property.json",
-          addressEndpointPayload,
+          "./address.json",
         );
       } else {
         removeFileIfExists(propertyAddressRelationshipPath);
@@ -7690,7 +7688,7 @@ async function main() {
       if (fs.existsSync(factSheetPath)) {
         writeRelationshipFile(
           addressFactSheetRelationshipPath,
-          deepClone(finalizedAddress),
+          "./address.json",
           "./fact_sheet.json",
         );
       } else {
