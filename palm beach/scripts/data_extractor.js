@@ -52,12 +52,28 @@ function resolveSourceHttpRequest(...candidates) {
 }
 
 function writeRelationshipFile(filePath, fromValue, toValue) {
-  const normalizeEndpoint = (value) => {
+  const relationshipDir = path.dirname(filePath);
+
+  const resolveEndpoint = (value) => {
     if (value == null) return null;
+
     if (typeof value === "string") {
       const trimmed = value.trim();
-      return trimmed.length ? { "/": trimmed } : null;
+      if (!trimmed.length) return null;
+
+      const resolvedPath = path.resolve(relationshipDir, trimmed);
+      if (!fs.existsSync(resolvedPath)) return null;
+
+      try {
+        const fileContents = fs.readFileSync(resolvedPath, "utf8");
+        const parsed = JSON.parse(fileContents);
+        if (!parsed || typeof parsed !== "object") return null;
+        return parsed;
+      } catch (err) {
+        return null;
+      }
     }
+
     if (typeof value === "object") {
       try {
         const cloned = JSON.parse(JSON.stringify(value));
@@ -68,11 +84,12 @@ function writeRelationshipFile(filePath, fromValue, toValue) {
         return null;
       }
     }
+
     return null;
   };
 
-  const from = normalizeEndpoint(fromValue);
-  const to = normalizeEndpoint(toValue);
+  const from = resolveEndpoint(fromValue);
+  const to = resolveEndpoint(toValue);
 
   if (!from || !to) {
     removeFileIfExists(filePath);
