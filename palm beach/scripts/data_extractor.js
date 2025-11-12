@@ -1121,6 +1121,8 @@ const RAW_SCHEMA_REQUIRED_FIELDS = [
   "state_code",
   "postal_code",
   "county_name",
+  "street_number",
+  "street_name",
 ];
 
 const ADDRESS_SCHEMA_FIELDS = [
@@ -7088,19 +7090,10 @@ async function main() {
 
     if (schemaReadyAddress) {
       writeJSON(addressFilePath, schemaReadyAddress);
-      if (propertyFileExists) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          propertyFileRelative,
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
     } else {
       removeFileIfExists(addressFilePath);
-      removeFileIfExists(propertyAddressRelationshipPath);
     }
+    removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
