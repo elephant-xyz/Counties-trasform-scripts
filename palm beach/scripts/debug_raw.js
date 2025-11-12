@@ -1030,14 +1030,7 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "lot",
 ];
 
-const RAW_SCHEMA_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-];
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   "street_number",
@@ -1389,6 +1382,13 @@ function hasMeaningfulAddressValue(value) {
 
 function hasRawAddressRequiredFields(address) {
   if (!address || typeof address !== "object") return false;
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return false;
+  }
   for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(
@@ -1404,6 +1404,19 @@ function hasRawAddressRequiredFields(address) {
     if (!hasMeaningfulAddressValue(address[field])) {
       return false;
     }
+  }
+  for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, coordinateField)) {
+      continue;
+    }
+    const numeric = parseCoordinate(address[coordinateField]);
+    address[coordinateField] = Number.isFinite(numeric) ? numeric : null;
+  }
+  if (
+    hasMeaningfulAddressValue(address.state_code) &&
+    !hasMeaningfulAddressValue(address.country_code)
+  ) {
+    address.country_code = "US";
   }
   return true;
 }

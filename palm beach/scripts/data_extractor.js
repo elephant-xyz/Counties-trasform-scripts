@@ -1114,30 +1114,11 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
 
 // The County schema's raw branch accepts just the original string; any normalized
 // fields we can safely produce are emitted opportunistically.
-const RAW_SCHEMA_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-];
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
-const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-];
+const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [];
 
-const RAW_ADDRESS_STRICT_VALUE_FIELDS = [
-  "city_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-];
+const RAW_ADDRESS_STRICT_VALUE_FIELDS = [];
 
 const RAW_ADDRESS_STRICT_GRID_FIELDS = [];
 
@@ -1287,15 +1268,6 @@ function hasRawAddressRequiredFields(address) {
 
     const value = address[field];
 
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      if (!Number.isFinite(numeric)) {
-        return false;
-      }
-      address[field] = numeric;
-      continue;
-    }
-
     if (!hasMeaningfulAddressValue(value)) {
       return false;
     }
@@ -1303,6 +1275,14 @@ function hasRawAddressRequiredFields(address) {
     if (typeof value === "string") {
       address[field] = value.trim();
     }
+  }
+
+  for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, coordinateField)) {
+      continue;
+    }
+    const numeric = parseCoordinate(address[coordinateField]);
+    address[coordinateField] = Number.isFinite(numeric) ? numeric : null;
   }
 
   if (
@@ -7707,7 +7687,61 @@ async function main() {
       : null;
 
     if (enforcedAddressForOutput) {
-      const cleanedAddress = { ...enforcedAddressForOutput };
+      let cleanedAddress = { ...enforcedAddressForOutput };
+
+      const hasRawBranchCandidate =
+        Object.prototype.hasOwnProperty.call(
+          cleanedAddress,
+          "unnormalized_address",
+        ) && typeof cleanedAddress.unnormalized_address === "string";
+
+      if (hasRawBranchCandidate) {
+        const trimmedUnnormalized = cleanedAddress.unnormalized_address.trim();
+        if (trimmedUnnormalized.length) {
+          cleanedAddress.unnormalized_address = trimmedUnnormalized;
+
+          const rawSurfaceCandidate =
+            ensureRawAddressSchemaSurface(cleanedAddress);
+          const rawSurfaceReady =
+            rawSurfaceCandidate &&
+            hasRawAddressRequiredFields({ ...rawSurfaceCandidate });
+
+          if (!rawSurfaceReady) {
+            const fallbackRequestIdentifier =
+              requestIdentifierCandidates.find((value) =>
+                hasMeaningfulAddressValue(value),
+              ) || null;
+            const fallbackSourceRequest =
+              sourceHttpRequestCandidates.find(
+                (candidate) => candidate && typeof candidate === "object",
+              ) || null;
+
+            const minimalRaw = buildMinimalRawAddressOutput(
+              trimmedUnnormalized,
+              [
+                cleanedAddress,
+                normalizedSnapshot,
+                baseAddressSeed,
+                addressForOutput,
+              ],
+              {
+                fieldCandidates: rawFieldFallbacks,
+                coordinateFallbacks,
+                requestIdentifier: fallbackRequestIdentifier,
+                sourceHttpRequest: fallbackSourceRequest,
+              },
+            );
+
+            if (minimalRaw && hasRawAddressRequiredFields({ ...minimalRaw })) {
+              cleanedAddress = minimalRaw;
+            } else {
+              delete cleanedAddress.unnormalized_address;
+            }
+          }
+        } else {
+          delete cleanedAddress.unnormalized_address;
+        }
+      }
 
       if (
         Object.prototype.hasOwnProperty.call(cleanedAddress, "request_identifier")
@@ -7718,48 +7752,6 @@ async function main() {
         Object.prototype.hasOwnProperty.call(cleanedAddress, "source_http_request")
       ) {
         delete cleanedAddress.source_http_request;
-      }
-
-      if (
-        Object.prototype.hasOwnProperty.call(
-          cleanedAddress,
-          "unnormalized_address",
-        ) &&
-        typeof cleanedAddress.unnormalized_address === "string"
-      ) {
-        const trimmed = cleanedAddress.unnormalized_address.trim();
-        if (trimmed.length) {
-          cleanedAddress.unnormalized_address = trimmed;
-        } else {
-          delete cleanedAddress.unnormalized_address;
-        }
-      }
-
-      if (
-        Object.prototype.hasOwnProperty.call(
-          cleanedAddress,
-          "unnormalized_address",
-        )
-      ) {
-        const rawRequiredFields = [
-          "latitude",
-          "longitude",
-          "city_name",
-          "state_code",
-          "postal_code",
-          "county_name",
-        ];
-
-        const hasRawRequirements = rawRequiredFields.every((field) => {
-          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-            return Number.isFinite(cleanedAddress[field]);
-          }
-          return hasMeaningfulAddressValue(cleanedAddress[field]);
-        });
-
-        if (!hasRawRequirements) {
-          delete cleanedAddress.unnormalized_address;
-        }
       }
 
       const finalVariant = Object.prototype.hasOwnProperty.call(
