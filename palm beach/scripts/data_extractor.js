@@ -1114,14 +1114,10 @@ const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
 ];
 
 // Raw variant must include core location context so we only emit when we can satisfy the schema.
-const RAW_SCHEMA_REQUIRED_FIELDS = [
-  "city_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-  "street_number",
-  "street_name",
-];
+// The raw address branch of the schema only requires the unnormalized text. All other
+// fields are optional and may be null, so keep the list empty and rely on the explicit
+// unnormalized check in hasRawAddressRequiredFields.
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
@@ -1253,6 +1249,15 @@ function hasMeaningfulAddressValue(value) {
 
 function hasRawAddressRequiredFields(address) {
   if (!address || typeof address !== "object") return false;
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return false;
+  }
+
   for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(
