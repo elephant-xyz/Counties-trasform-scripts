@@ -1263,21 +1263,26 @@ function hasRawAddressRequiredFields(address) {
   }
 
   for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+    }
+
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(
-        Object.prototype.hasOwnProperty.call(address, field)
-          ? address[field]
-          : null,
-      );
-      if (!Number.isFinite(numeric)) {
-        return false;
-      }
+      const numeric = parseCoordinate(address[field]);
+      address[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
-    if (!hasMeaningfulAddressValue(address[field])) {
-      return false;
+
+    if (address[field] === undefined) {
+      address[field] = null;
+      continue;
+    }
+
+    if (typeof address[field] === "string" && !address[field].trim().length) {
+      address[field] = null;
     }
   }
+
   return true;
 }
 
