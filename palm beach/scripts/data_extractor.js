@@ -54,50 +54,48 @@ function resolveSourceHttpRequest(...candidates) {
 function writeRelationshipFile(filePath, fromValue, toValue) {
   const relationshipDir = path.dirname(filePath);
 
-  const resolveEndpoint = (value) => {
+  const buildPointer = (value) => {
     if (value == null) return null;
 
-    if (typeof value === "string") {
-      const trimmed = value.trim();
+    const resolveStringPointer = (rawValue) => {
+      const trimmed = rawValue.trim();
       if (!trimmed.length) return null;
 
       const resolvedPath = path.resolve(relationshipDir, trimmed);
       if (!fs.existsSync(resolvedPath)) return null;
 
-      try {
-        const fileContents = fs.readFileSync(resolvedPath, "utf8");
-        const parsed = JSON.parse(fileContents);
-        if (!parsed || typeof parsed !== "object") return null;
-        return parsed;
-      } catch (err) {
-        return null;
-      }
+      return { "/": trimmed };
+    };
+
+    if (typeof value === "string") {
+      return resolveStringPointer(value);
     }
 
-    if (typeof value === "object") {
-      try {
-        const cloned = JSON.parse(JSON.stringify(value));
-        if (!cloned || typeof cloned !== "object") return null;
-        if (!Object.keys(cloned).length) return null;
-        return cloned;
-      } catch (err) {
-        return null;
-      }
+    if (
+      typeof value === "object" &&
+      Object.prototype.hasOwnProperty.call(value, "/") &&
+      typeof value["/"] === "string"
+    ) {
+      return resolveStringPointer(value["/"]);
     }
 
     return null;
   };
 
-  const from = resolveEndpoint(fromValue);
-  const to = resolveEndpoint(toValue);
+  const from = buildPointer(fromValue);
+  const to = buildPointer(toValue);
 
   if (!from || !to) {
     removeFileIfExists(filePath);
     return;
   }
 
-  const relationship = { from, to };
-  const payload = [relationship];
+  const payload = [
+    {
+      from,
+      to,
+    },
+  ];
 
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
 }
