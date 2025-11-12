@@ -6532,6 +6532,8 @@ async function main() {
   ensureDir(dataDir);
   const propertyFilePath = path.join(dataDir, "property.json");
   const propertyFileRelative = "./property.json";
+  const addressFileRelative = "./address.json";
+  const factSheetFileRelative = "./fact_sheet.json";
 
   const staleRelationshipFiles = [
     path.join(dataDir, "relationship_property_has_address.json"),
@@ -7775,38 +7777,21 @@ async function main() {
 
       writeJSON(addressFilePath, templatedOutput);
 
-      const addressPayloadForRelationships =
-        deepClone(templatedOutput) || { ...templatedOutput };
-
       if (fs.existsSync(propertyFilePath)) {
-        const propertyRaw = readJSON(propertyFilePath);
-        const propertyPayload = deepClone(propertyRaw) || propertyRaw;
-        const propertyHasAddressRelationship = {
-          type: "property_has_address",
-          from: propertyPayload,
-          to: addressPayloadForRelationships,
-        };
-        writeJSON(
+        writeRelationshipFile(
           propertyAddressRelationshipPath,
-          propertyHasAddressRelationship,
+          propertyFileRelative,
+          addressFileRelative,
         );
       } else {
         removeFileIfExists(propertyAddressRelationshipPath);
       }
 
       if (fs.existsSync(factSheetPath)) {
-        const factSheetRaw = readJSON(factSheetPath);
-        const factSheetPayload = deepClone(factSheetRaw) || factSheetRaw;
-        const addressHasFactSheetRelationship = [
-          {
-            type: "address_has_fact_sheet",
-            from: addressPayloadForRelationships,
-            to: factSheetPayload,
-          },
-        ];
-        writeJSON(
+        writeRelationshipFile(
           addressFactSheetRelationshipPath,
-          addressHasFactSheetRelationship,
+          addressFileRelative,
+          factSheetFileRelative,
         );
       } else {
         removeFileIfExists(addressFactSheetRelationshipPath);
