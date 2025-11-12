@@ -7705,10 +7705,13 @@ async function main() {
       } else {
         let templatedOutput;
         if (variant === "raw") {
-          templatedOutput = removeNullishFields({
+          templatedOutput = {
             ...RAW_ADDRESS_SCHEMA_TEMPLATE,
             ...clonedPayload,
-          });
+          };
+          if (!templatedOutput.postal_code) {
+            templatedOutput.plus_four_postal_code = null;
+          }
           if (templatedOutput.state_code && !templatedOutput.country_code) {
             templatedOutput.country_code = "US";
           }
