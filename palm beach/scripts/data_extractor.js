@@ -7781,15 +7781,52 @@ async function main() {
         removeFileIfExists(addressFactSheetRelationshipPath);
       } else {
         const templatedOutput = finalizeAddressPayload(variant, clonedPayload);
+        const preparedAddressOutput = templatedOutput
+          ? prepareAddressOutputForSchema(templatedOutput, {
+              fallbackUnnormalized: canonicalUnnormalized,
+            })
+          : null;
+        const surfacedAddressOutput = preparedAddressOutput
+          ? ensureAddressSchemaSurfaceCoverage(preparedAddressOutput)
+          : null;
 
-        if (templatedOutput) {
-          writeJSON(addressFilePath, templatedOutput);
+        if (surfacedAddressOutput) {
+          const enforcedAddress = finalizeAddressForOutput(
+            surfacedAddressOutput,
+          );
+
+          if (enforcedAddress) {
+            writeJSON(addressFilePath, enforcedAddress);
+
+            if (fs.existsSync(propertyFilePath)) {
+              writeRelationshipFile(
+                propertyAddressRelationshipPath,
+                propertyFileRelative,
+                addressFileRelative,
+              );
+            } else {
+              removeFileIfExists(propertyAddressRelationshipPath);
+            }
+
+            if (fs.existsSync(factSheetPath)) {
+              writeRelationshipFile(
+                addressFactSheetRelationshipPath,
+                addressFileRelative,
+                factSheetFileRelative,
+              );
+            } else {
+              removeFileIfExists(addressFactSheetRelationshipPath);
+            }
+          } else {
+            removeFileIfExists(addressFilePath);
+            removeFileIfExists(propertyAddressRelationshipPath);
+            removeFileIfExists(addressFactSheetRelationshipPath);
+          }
         } else {
           removeFileIfExists(addressFilePath);
+          removeFileIfExists(propertyAddressRelationshipPath);
+          removeFileIfExists(addressFactSheetRelationshipPath);
         }
-
-        removeFileIfExists(propertyAddressRelationshipPath);
-        removeFileIfExists(addressFactSheetRelationshipPath);
       }
     } else {
       removeFileIfExists(addressFilePath);
