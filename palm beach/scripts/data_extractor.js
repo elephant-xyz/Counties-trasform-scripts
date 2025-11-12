@@ -80,8 +80,9 @@ function writeRelationshipFile(filePath, fromValue, toValue) {
   }
 
   const relationship = { from, to };
+  const payload = [relationship];
 
-  fs.writeFileSync(filePath, JSON.stringify(relationship, null, 2));
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
 }
 
 function removeFileIfExists(filePath) {
@@ -7730,6 +7731,33 @@ async function main() {
         if (trimmed.length) {
           cleanedAddress.unnormalized_address = trimmed;
         } else {
+          delete cleanedAddress.unnormalized_address;
+        }
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          cleanedAddress,
+          "unnormalized_address",
+        )
+      ) {
+        const rawRequiredFields = [
+          "latitude",
+          "longitude",
+          "city_name",
+          "state_code",
+          "postal_code",
+          "county_name",
+        ];
+
+        const hasRawRequirements = rawRequiredFields.every((field) => {
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            return Number.isFinite(cleanedAddress[field]);
+          }
+          return hasMeaningfulAddressValue(cleanedAddress[field]);
+        });
+
+        if (!hasRawRequirements) {
           delete cleanedAddress.unnormalized_address;
         }
       }
