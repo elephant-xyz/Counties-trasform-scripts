@@ -3265,19 +3265,78 @@ function buildAddressPayloadForOutput(addressCandidate, options = {}) {
     };
   };
 
-  if (hasCanonicalUnnormalized) {
-    const rawFirst = buildRawPayload();
-    if (rawFirst) {
-      return rawFirst;
-    }
-    return buildNormalizedPayload();
-  }
-
   const normalizedFirst = buildNormalizedPayload();
   if (normalizedFirst) {
     return normalizedFirst;
   }
-  return buildRawPayload();
+
+  if (hasCanonicalUnnormalized) {
+    const rawFallback = buildRawPayload();
+    if (rawFallback) {
+      return rawFallback;
+    }
+  }
+
+  return null;
+}
+
+function finalizeAddressPayload(variant, payload) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const template =
+    variant === "normalized"
+      ? { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE }
+      : { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  const finalized = { ...template };
+
+  for (const field of Object.keys(template)) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      const value = payload[field];
+      finalized[field] =
+        value === undefined || value === null ? null : value;
+    }
+  }
+
+  if (variant === "raw") {
+    const trimmed =
+      typeof payload.unnormalized_address === "string"
+        ? payload.unnormalized_address.trim()
+        : "";
+    if (!trimmed.length) {
+      return null;
+    }
+    finalized.unnormalized_address = trimmed;
+  } else if (
+    Object.prototype.hasOwnProperty.call(finalized, "unnormalized_address")
+  ) {
+    delete finalized.unnormalized_address;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "request_identifier") &&
+    payload.request_identifier != null
+  ) {
+    finalized.request_identifier = payload.request_identifier;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request") &&
+    payload.source_http_request
+  ) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    if (prepared) {
+      finalized.source_http_request = prepared;
+    }
+  }
+
+  if (!finalized.postal_code) {
+    finalized.plus_four_postal_code = null;
+  }
+  if (finalized.state_code && !finalized.country_code) {
+    finalized.country_code = "US";
+  }
+
+  return finalized;
 }
 
 function createSchemaReadyAddress(address, variant, options = {}) {
@@ -7721,52 +7780,16 @@ async function main() {
         removeFileIfExists(propertyAddressRelationshipPath);
         removeFileIfExists(addressFactSheetRelationshipPath);
       } else {
-        let templatedOutput;
-        if (variant === "raw") {
-          templatedOutput = {
-            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-            ...clonedPayload,
-          };
-          if (!templatedOutput.postal_code) {
-            templatedOutput.plus_four_postal_code = null;
-          }
-          if (templatedOutput.state_code && !templatedOutput.country_code) {
-            templatedOutput.country_code = "US";
-          }
+        const templatedOutput = finalizeAddressPayload(variant, clonedPayload);
+
+        if (templatedOutput) {
+          writeJSON(addressFilePath, templatedOutput);
         } else {
-          templatedOutput = {
-            ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-            ...clonedPayload,
-          };
-          if (!templatedOutput.postal_code) {
-            templatedOutput.plus_four_postal_code = null;
-          }
-          if (templatedOutput.state_code && !templatedOutput.country_code) {
-            templatedOutput.country_code = "US";
-          }
+          removeFileIfExists(addressFilePath);
         }
 
-        writeJSON(addressFilePath, templatedOutput);
-
-        if (fs.existsSync(propertyFilePath)) {
-          writeRelationshipFile(
-            propertyAddressRelationshipPath,
-            propertyFileRelative,
-            addressFileRelative,
-          );
-        } else {
-          removeFileIfExists(propertyAddressRelationshipPath);
-        }
-
-        if (fs.existsSync(factSheetPath)) {
-          writeRelationshipFile(
-            addressFactSheetRelationshipPath,
-            addressFileRelative,
-            factSheetFileRelative,
-          );
-        } else {
-          removeFileIfExists(addressFactSheetRelationshipPath);
-        }
+        removeFileIfExists(propertyAddressRelationshipPath);
+        removeFileIfExists(addressFactSheetRelationshipPath);
       }
     } else {
       removeFileIfExists(addressFilePath);
