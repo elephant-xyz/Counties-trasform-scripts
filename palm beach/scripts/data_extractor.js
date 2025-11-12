@@ -3194,70 +3194,90 @@ function buildAddressPayloadForOutput(addressCandidate, options = {}) {
     typeof options.canonicalUnnormalized === "string"
       ? options.canonicalUnnormalized.trim()
       : "";
+  const hasCanonicalUnnormalized = canonicalUnnormalized.length > 0;
 
-  const normalizedSeed = { ...addressCandidate };
-  delete normalizedSeed.unnormalized_address;
-  delete normalizedSeed.request_identifier;
-  delete normalizedSeed.source_http_request;
+  const buildNormalizedPayload = () => {
+    const normalizedSeed = { ...addressCandidate };
+    delete normalizedSeed.unnormalized_address;
+    delete normalizedSeed.request_identifier;
+    delete normalizedSeed.source_http_request;
 
-  const normalizedCandidate = materializeAddressForSchema(
-    normalizedSeed,
-    "normalized",
-  );
-  if (normalizedCandidate) {
+    const normalizedCandidate = materializeAddressForSchema(
+      normalizedSeed,
+      "normalized",
+    );
+    if (!normalizedCandidate) {
+      return null;
+    }
     return {
       variant: "normalized",
       payload: normalizedCandidate,
     };
-  }
-
-  if (!canonicalUnnormalized.length) {
-    return null;
-  }
-
-  const rawSeed = {
-    ...addressCandidate,
-    unnormalized_address: canonicalUnnormalized,
   };
-  delete rawSeed.request_identifier;
-  delete rawSeed.source_http_request;
 
-  const rawCandidate = materializeAddressForSchema(rawSeed, "raw");
-  if (rawCandidate) {
+  const buildRawPayload = () => {
+    if (!hasCanonicalUnnormalized) {
+      return null;
+    }
+
+    const rawSeed = {
+      ...addressCandidate,
+      unnormalized_address: canonicalUnnormalized,
+    };
+    delete rawSeed.request_identifier;
+    delete rawSeed.source_http_request;
+
+    const rawCandidate = materializeAddressForSchema(rawSeed, "raw");
+    if (rawCandidate) {
+      return {
+        variant: "raw",
+        payload: rawCandidate,
+      };
+    }
+
+    const fallback = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      const candidateValue = Object.prototype.hasOwnProperty.call(rawSeed, field)
+        ? rawSeed[field]
+        : null;
+      const normalizedValue = normalizeAddressFieldForSchema(
+        field,
+        candidateValue,
+      );
+      fallback[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
+    }
+
+    fallback.unnormalized_address = canonicalUnnormalized;
+
+    if (!fallback.postal_code) {
+      fallback.plus_four_postal_code = null;
+    }
+    if (fallback.state_code && !fallback.country_code) {
+      fallback.country_code = "US";
+    }
+
     return {
       variant: "raw",
-      payload: rawCandidate,
+      payload: fallback,
     };
-  }
-
-  const fallback = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    const candidateValue = Object.prototype.hasOwnProperty.call(rawSeed, field)
-      ? rawSeed[field]
-      : null;
-    const normalizedValue = normalizeAddressFieldForSchema(
-      field,
-      candidateValue,
-    );
-    fallback[field] =
-      normalizedValue === undefined || normalizedValue === null
-        ? null
-        : normalizedValue;
-  }
-
-  fallback.unnormalized_address = canonicalUnnormalized;
-
-  if (!fallback.postal_code) {
-    fallback.plus_four_postal_code = null;
-  }
-  if (fallback.state_code && !fallback.country_code) {
-    fallback.country_code = "US";
-  }
-
-  return {
-    variant: "raw",
-    payload: fallback,
   };
+
+  if (hasCanonicalUnnormalized) {
+    const rawFirst = buildRawPayload();
+    if (rawFirst) {
+      return rawFirst;
+    }
+    return buildNormalizedPayload();
+  }
+
+  const normalizedFirst = buildNormalizedPayload();
+  if (normalizedFirst) {
+    return normalizedFirst;
+  }
+  return buildRawPayload();
 }
 
 function createSchemaReadyAddress(address, variant, options = {}) {
