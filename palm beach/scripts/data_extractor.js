@@ -7703,16 +7703,26 @@ async function main() {
         removeFileIfExists(propertyAddressRelationshipPath);
         removeFileIfExists(addressFactSheetRelationshipPath);
       } else {
-        const templatedOutput =
-          variant === "raw"
-            ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...clonedPayload }
-            : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE, ...clonedPayload };
-
-        if (!templatedOutput.postal_code) {
-          templatedOutput.plus_four_postal_code = null;
-        }
-        if (templatedOutput.state_code && !templatedOutput.country_code) {
-          templatedOutput.country_code = "US";
+        let templatedOutput;
+        if (variant === "raw") {
+          templatedOutput = removeNullishFields({
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...clonedPayload,
+          });
+          if (templatedOutput.state_code && !templatedOutput.country_code) {
+            templatedOutput.country_code = "US";
+          }
+        } else {
+          templatedOutput = {
+            ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+            ...clonedPayload,
+          };
+          if (!templatedOutput.postal_code) {
+            templatedOutput.plus_four_postal_code = null;
+          }
+          if (templatedOutput.state_code && !templatedOutput.country_code) {
+            templatedOutput.country_code = "US";
+          }
         }
 
         writeJSON(addressFilePath, templatedOutput);
