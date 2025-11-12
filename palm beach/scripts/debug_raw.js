@@ -257,6 +257,47 @@ function materializeAddressForSchema(payload, variant, options = {}) {
   return null;
 }
 
+function prepareAddressOutputForSchema(candidate, options = {}) {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const fallbackUnnormalized =
+    typeof options.fallbackUnnormalized === "string"
+      ? options.fallbackUnnormalized.trim()
+      : "";
+
+  const normalizedSeed = { ...candidate };
+  delete normalizedSeed.unnormalized_address;
+  delete normalizedSeed.request_identifier;
+  delete normalizedSeed.source_http_request;
+
+  const normalizedCandidate = materializeAddressForSchema(
+    normalizedSeed,
+    "normalized",
+  );
+  if (normalizedCandidate) {
+    return normalizedCandidate;
+  }
+
+  const candidateUnnormalized =
+    typeof candidate.unnormalized_address === "string"
+      ? candidate.unnormalized_address.trim()
+      : "";
+  const rawUnnormalized = candidateUnnormalized || fallbackUnnormalized;
+
+  if (!rawUnnormalized || !rawUnnormalized.trim().length) {
+    return null;
+  }
+
+  const rawSeed = {
+    ...candidate,
+    unnormalized_address: rawUnnormalized.trim(),
+  };
+  delete rawSeed.request_identifier;
+  delete rawSeed.source_http_request;
+
+  return materializeAddressForSchema(rawSeed, "raw");
+}
+
 function deriveNormalizedAddressFromFullText(fullText, options = {}) {
   const normalized = normalizeWhitespace(fullText);
   if (!normalized) {
@@ -3838,126 +3879,22 @@ async function main() {
       }
     }
 
-    if (finalizedAddressPayload) {
-      let preparedAddressOutput = finalizedAddressPayload;
+    const preparedAddressOutput = finalizedAddressPayload
+      ? prepareAddressOutputForSchema(finalizedAddressPayload, {
+          fallbackUnnormalized: fallbackUnnormalizedValue,
+        })
+      : null;
 
-      if (
-        Object.prototype.hasOwnProperty.call(
-          preparedAddressOutput,
-          "unnormalized_address",
-        )
-      ) {
-        const trimmedUnnormalized =
-          typeof preparedAddressOutput.unnormalized_address === "string"
-            ? preparedAddressOutput.unnormalized_address.trim()
-            : "";
-        if (!trimmedUnnormalized.length) {
-          preparedAddressOutput = null;
-        } else {
-          preparedAddressOutput = {
-            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-            ...preparedAddressOutput,
-            unnormalized_address: trimmedUnnormalized,
-          };
+    if (preparedAddressOutput) {
+      const enforcedAddress = finalizeAddressForOutput(preparedAddressOutput);
 
-          for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-            if (
-              !Object.prototype.hasOwnProperty.call(
-                preparedAddressOutput,
-                field,
-              ) ||
-              preparedAddressOutput[field] === undefined
-            ) {
-              preparedAddressOutput[field] = null;
-              continue;
-            }
-
-            if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-              const numeric = parseCoordinate(preparedAddressOutput[field]);
-              preparedAddressOutput[field] = Number.isFinite(numeric)
-                ? numeric
-                : null;
-              continue;
-            }
-
-            if (typeof preparedAddressOutput[field] === "string") {
-              const trimmed = preparedAddressOutput[field].trim();
-              preparedAddressOutput[field] = trimmed.length ? trimmed : null;
-            }
-          }
-
-          if (!preparedAddressOutput.postal_code) {
-            preparedAddressOutput.plus_four_postal_code = null;
-          }
-          if (
-            preparedAddressOutput.state_code &&
-            !preparedAddressOutput.country_code
-          ) {
-            preparedAddressOutput.country_code = "US";
-          }
-        }
-      } else if (preparedAddressOutput) {
-        preparedAddressOutput = {
-          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-          ...preparedAddressOutput,
-        };
-
-        for (const field of NORMALIZED_ADDRESS_FIELDS) {
-          if (
-            !Object.prototype.hasOwnProperty.call(
-              preparedAddressOutput,
-              field,
-            )
-          ) {
-            continue;
-          }
-
-          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-            const numeric = parseCoordinate(preparedAddressOutput[field]);
-            preparedAddressOutput[field] = Number.isFinite(numeric)
-              ? numeric
-              : null;
-            continue;
-          }
-
-          if (typeof preparedAddressOutput[field] === "string") {
-            const trimmed = preparedAddressOutput[field].trim();
-            preparedAddressOutput[field] = trimmed.length ? trimmed : null;
-          }
-        }
-
-        if (!preparedAddressOutput.postal_code) {
-          preparedAddressOutput.plus_four_postal_code = null;
-        }
-        if (
-          preparedAddressOutput.state_code &&
-          !preparedAddressOutput.country_code
-        ) {
-          preparedAddressOutput.country_code = "US";
-        }
-      }
-
-      if (preparedAddressOutput) {
-        delete preparedAddressOutput.request_identifier;
-        delete preparedAddressOutput.source_http_request;
-
-        const finalizedAddress = coerceAddressForSchemaOutput(
-          preparedAddressOutput,
+      if (enforcedAddress) {
+        writeJSON(addressFilePath, enforcedAddress);
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
+          "./address.json",
         );
-
-        const enforcedAddress = finalizeAddressForOutput(finalizedAddress);
-
-        if (enforcedAddress) {
-          writeJSON(addressFilePath, enforcedAddress);
-          writeRelationshipFile(
-            propertyAddressRelationshipPath,
-            fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
-            "./address.json",
-          );
-        } else {
-          removeFileIfExists(addressFilePath);
-          removeFileIfExists(propertyAddressRelationshipPath);
-        }
       } else {
         removeFileIfExists(addressFilePath);
         removeFileIfExists(propertyAddressRelationshipPath);

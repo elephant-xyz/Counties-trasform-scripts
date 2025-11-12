@@ -1598,6 +1598,48 @@ function materializeAddressForSchema(payload, variant, options = {}) {
   return null;
 }
 
+function prepareAddressOutputForSchema(candidate, options = {}) {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const fallbackUnnormalized =
+    typeof options.fallbackUnnormalized === "string"
+      ? options.fallbackUnnormalized.trim()
+      : "";
+
+  const normalizedSeed = { ...candidate };
+  delete normalizedSeed.unnormalized_address;
+  delete normalizedSeed.request_identifier;
+  delete normalizedSeed.source_http_request;
+
+  const normalizedCandidate = materializeAddressForSchema(
+    normalizedSeed,
+    "normalized",
+  );
+  if (normalizedCandidate) {
+    return normalizedCandidate;
+  }
+
+  const rawUnnormalized = resolveFirstNonEmptyString([
+    typeof candidate.unnormalized_address === "string"
+      ? candidate.unnormalized_address
+      : null,
+    fallbackUnnormalized,
+  ]);
+
+  if (!rawUnnormalized || !rawUnnormalized.trim().length) {
+    return null;
+  }
+
+  const rawSeed = {
+    ...candidate,
+    unnormalized_address: rawUnnormalized.trim(),
+  };
+  delete rawSeed.request_identifier;
+  delete rawSeed.source_http_request;
+
+  return materializeAddressForSchema(rawSeed, "raw");
+}
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -7388,86 +7430,14 @@ async function main() {
       }
     }
 
-    if (schemaReadyAddress) {
-      const hasUnnormalized =
-        typeof schemaReadyAddress.unnormalized_address === "string" &&
-        schemaReadyAddress.unnormalized_address.trim().length > 0;
+    const preparedAddressOutput = schemaReadyAddress
+      ? prepareAddressOutputForSchema(schemaReadyAddress, {
+          fallbackUnnormalized: canonicalUnnormalized,
+        })
+      : null;
 
-      if (hasUnnormalized) {
-        const normalizedRaw = {
-          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-          ...schemaReadyAddress,
-        };
-        normalizedRaw.unnormalized_address =
-          schemaReadyAddress.unnormalized_address.trim();
-
-        for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-          if (!Object.prototype.hasOwnProperty.call(normalizedRaw, field)) {
-            normalizedRaw[field] = null;
-          }
-          const value = normalizedRaw[field];
-          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-            const numeric = parseCoordinate(value);
-            normalizedRaw[field] = Number.isFinite(numeric) ? numeric : null;
-            continue;
-          }
-          if (typeof value === "string") {
-            const trimmed = value.trim();
-            normalizedRaw[field] = trimmed.length ? trimmed : null;
-          }
-        }
-
-        if (!normalizedRaw.postal_code) {
-          normalizedRaw.plus_four_postal_code = null;
-        }
-        if (normalizedRaw.state_code && !normalizedRaw.country_code) {
-          normalizedRaw.country_code = "US";
-        }
-
-        schemaReadyAddress = normalizedRaw;
-      } else {
-        const normalizedAddress = {
-          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-          ...schemaReadyAddress,
-        };
-
-        for (const field of NORMALIZED_ADDRESS_FIELDS) {
-          if (!Object.prototype.hasOwnProperty.call(normalizedAddress, field)) {
-            normalizedAddress[field] = null;
-          }
-          const value = normalizedAddress[field];
-          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-            const numeric = parseCoordinate(value);
-            normalizedAddress[field] = Number.isFinite(numeric) ? numeric : null;
-            continue;
-          }
-          if (typeof value === "string") {
-            const trimmed = value.trim();
-            normalizedAddress[field] = trimmed.length ? trimmed : null;
-          }
-        }
-
-        if (!normalizedAddress.postal_code) {
-          normalizedAddress.plus_four_postal_code = null;
-        }
-        if (normalizedAddress.state_code && !normalizedAddress.country_code) {
-          normalizedAddress.country_code = "US";
-        }
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedAddress,
-            "unnormalized_address",
-          )
-        ) {
-          delete normalizedAddress.unnormalized_address;
-        }
-
-        schemaReadyAddress = normalizedAddress;
-      }
-    }
-
-    if (schemaReadyAddress) {
-      writeJSON(addressFilePath, schemaReadyAddress);
+    if (preparedAddressOutput) {
+      writeJSON(addressFilePath, preparedAddressOutput);
       const propertyExists = fs.existsSync(propertyFilePath);
       writeRelationshipFile(
         propertyAddressRelationshipPath,
