@@ -7690,25 +7690,9 @@ async function main() {
       if (Object.prototype.hasOwnProperty.call(finalizedAddress, "source_http_request")) {
         delete finalizedAddress.source_http_request;
       }
-      if (addressVariant === "raw") {
-        for (const key of Object.keys(finalizedAddress)) {
-          if (finalizedAddress[key] === null) {
-            delete finalizedAddress[key];
-          }
-        }
-      }
-
       writeJSON(addressFilePath, finalizedAddress);
 
-      if (fs.existsSync(propertyFilePath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          "./property.json",
-          "./address.json",
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
+      removeFileIfExists(propertyAddressRelationshipPath);
 
       if (fs.existsSync(factSheetPath)) {
         writeRelationshipFile(
