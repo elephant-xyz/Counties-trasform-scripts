@@ -3508,12 +3508,6 @@ function ensureNormalizedAddressSchemaSurface(address) {
     }
   }
 
-  for (const [key, value] of Object.entries(address)) {
-    if (NORMALIZED_ADDRESS_ALLOWED_KEY_SET.has(key)) continue;
-    surfaced[key] =
-      value && typeof value === "object" ? deepClone(value) : value;
-  }
-
   return surfaced;
 }
 
