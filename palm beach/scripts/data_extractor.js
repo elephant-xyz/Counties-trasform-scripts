@@ -7187,14 +7187,7 @@ async function main() {
 
     let outputAddress = null;
 
-    if (normalizedPrepared) {
-      outputAddress = prepareNormalizedAddressForOutput(
-        normalizedPrepared,
-        normalizedFallbackContext,
-      );
-    }
-
-    if (!outputAddress && rawPrepared) {
+    if (rawPrepared) {
       const rawCandidate = {
         ...rawPrepared,
       };
@@ -7219,6 +7212,13 @@ async function main() {
         unnormalized_address: canonicalUnnormalized,
       };
       outputAddress = prepareRawAddressForOutput(baseRawSeed, rawFallbackContext);
+    }
+
+    if (!outputAddress && normalizedPrepared) {
+      outputAddress = prepareNormalizedAddressForOutput(
+        normalizedPrepared,
+        normalizedFallbackContext,
+      );
     }
 
     let schemaReadyAddress =
