@@ -1095,23 +1095,6 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "lot",
 ];
 
-const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
-  "latitude",
-  "longitude",
-  "plus_four_postal_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-];
-
 // Raw variant must include the core location context so we only emit when we can satisfy the schema.
 // These fields are the minimum set enforced by the County schema for the raw-address branch.
 const RAW_SCHEMA_REQUIRED_FIELDS = [
@@ -1122,6 +1105,8 @@ const RAW_SCHEMA_REQUIRED_FIELDS = [
   "postal_code",
   "county_name",
 ];
+
+const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [...RAW_SCHEMA_REQUIRED_FIELDS];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
@@ -1264,23 +1249,34 @@ function hasRawAddressRequiredFields(address) {
 
   for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      address[field] = null;
+      return false;
     }
+
+    const value = address[field];
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(address[field]);
-      address[field] = Number.isFinite(numeric) ? numeric : null;
+      const numeric = parseCoordinate(value);
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      address[field] = numeric;
       continue;
     }
 
-    if (address[field] === undefined) {
-      address[field] = null;
-      continue;
+    if (!hasMeaningfulAddressValue(value)) {
+      return false;
     }
 
-    if (typeof address[field] === "string" && !address[field].trim().length) {
-      address[field] = null;
+    if (typeof value === "string") {
+      address[field] = value.trim();
     }
+  }
+
+  if (
+    hasMeaningfulAddressValue(address.state_code) &&
+    !hasMeaningfulAddressValue(address.country_code)
+  ) {
+    address.country_code = "US";
   }
 
   return true;
