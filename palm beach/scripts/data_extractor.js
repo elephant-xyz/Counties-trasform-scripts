@@ -2989,6 +2989,98 @@ function materializeAddressVariantForOutput(address, options = {}) {
   return rawSurface;
 }
 
+function buildCompliantAddressOutput(candidate, options = {}) {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const cloned = deepClone(candidate);
+  if (!cloned || typeof cloned !== "object") return null;
+
+  const requestIdentifier =
+    Object.prototype.hasOwnProperty.call(options || {}, "requestIdentifier")
+      ? safeNullIfEmpty(options.requestIdentifier)
+      : safeNullIfEmpty(cloned.request_identifier);
+
+  const sourceHttpCandidate = Object.prototype.hasOwnProperty.call(options || {}, "sourceHttpRequest")
+    ? options.sourceHttpRequest
+    : cloned.source_http_request;
+  const preparedSourceHttp = prepareSourceHttpRequest(sourceHttpCandidate);
+
+  const attachMetadata = (addressLike) => {
+    if (!addressLike || typeof addressLike !== "object") return null;
+    const next = { ...addressLike };
+    if (requestIdentifier) {
+      next.request_identifier = requestIdentifier;
+    } else if (Object.prototype.hasOwnProperty.call(next, "request_identifier")) {
+      delete next.request_identifier;
+    }
+    if (preparedSourceHttp) {
+      next.source_http_request = preparedSourceHttp;
+    } else if (Object.prototype.hasOwnProperty.call(next, "source_http_request")) {
+      delete next.source_http_request;
+    }
+    return next;
+  };
+
+  const hasUnnormalized =
+    typeof cloned.unnormalized_address === "string" &&
+    cloned.unnormalized_address.trim().length > 0;
+
+  if (hasUnnormalized) {
+    const rawSurface = ensureRawAddressFieldCoverage(cloned);
+    if (rawSurface) {
+      const enforcedRaw = ensureRawAddressRequiredCoverage(
+        rawSurface,
+        cloned.unnormalized_address,
+      );
+      if (
+        enforcedRaw &&
+        hasRawAddressSurfaceCoverage(enforcedRaw) &&
+        hasRawAddressRequiredFields({ ...enforcedRaw })
+      ) {
+        const surfacedRaw = enforceAddressSchemaSurfaceForOutput(
+          attachMetadata(enforcedRaw),
+        );
+        if (surfacedRaw) {
+          return surfacedRaw;
+        }
+      }
+    }
+  }
+
+  const normalizedSurface = ensureNormalizedAddressSchemaSurface(cloned);
+  if (
+    normalizedSurface &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface }) &&
+    isNormalizedAddressSchemaReady({ ...normalizedSurface })
+  ) {
+    const surfacedNormalized = enforceAddressSchemaSurfaceForOutput(
+      attachMetadata(normalizedSurface),
+    );
+    if (surfacedNormalized) {
+      return surfacedNormalized;
+    }
+  }
+
+  if (hasUnnormalized) {
+    delete cloned.unnormalized_address;
+    const fallbackNormalized = ensureNormalizedAddressSchemaSurface(cloned);
+    if (
+      fallbackNormalized &&
+      hasCompleteNormalizedAddress({ ...fallbackNormalized }) &&
+      isNormalizedAddressSchemaReady({ ...fallbackNormalized })
+    ) {
+      const surfacedFallback = enforceAddressSchemaSurfaceForOutput(
+        attachMetadata(fallbackNormalized),
+      );
+      if (surfacedFallback) {
+        return surfacedFallback;
+      }
+    }
+  }
+
+  return null;
+}
+
 function createSchemaReadyAddress(address, variant, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -7582,8 +7674,50 @@ async function main() {
         },
       );
 
-      if (finalAddressOutput) {
-        writeJSON(addressFilePath, finalAddressOutput);
+      const resolvedRequestIdentifier = resolveFirstNonEmptyString(
+        requestIdentifierCandidates,
+      );
+
+      let preparedSourceHttp = null;
+      if (Array.isArray(sourceHttpCandidates)) {
+        for (const candidate of sourceHttpCandidates) {
+          const prepared = prepareSourceHttpRequest(candidate);
+          if (prepared) {
+            preparedSourceHttp = prepared;
+            break;
+          }
+        }
+      }
+
+      const metadataOptions = {};
+      if (resolvedRequestIdentifier) {
+        metadataOptions.requestIdentifier = resolvedRequestIdentifier;
+      }
+      if (preparedSourceHttp) {
+        metadataOptions.sourceHttpRequest = preparedSourceHttp;
+      }
+
+      const addressCandidates = [
+        finalAddressOutput,
+        enforcedAddressOutput,
+        addressForOutput,
+        baseAddressSeed,
+      ];
+
+      let compliantAddressOutput = null;
+      for (const candidate of addressCandidates) {
+        if (!candidate || typeof candidate !== "object") continue;
+        compliantAddressOutput = buildCompliantAddressOutput(
+          candidate,
+          metadataOptions,
+        );
+        if (compliantAddressOutput) {
+          break;
+        }
+      }
+
+      if (compliantAddressOutput) {
+        writeJSON(addressFilePath, compliantAddressOutput);
         writeRelationshipFile(
           propertyAddressRelationshipPath,
           fs.existsSync(propertyFilePath) ? propertyFileRelative : null,
