@@ -1112,11 +1112,16 @@ const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [
   "block",
 ];
 
-// Raw variant must include core location context so we only emit when we can satisfy the schema.
-// The raw address branch of the schema only requires the unnormalized text. All other
-// fields are optional and may be null, so keep the list empty and rely on the explicit
-// unnormalized check in hasRawAddressRequiredFields.
-const RAW_SCHEMA_REQUIRED_FIELDS = [];
+// Raw variant must include the core location context so we only emit when we can satisfy the schema.
+// These fields are the minimum set enforced by the County schema for the raw-address branch.
+const RAW_SCHEMA_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+];
 
 const ADDRESS_SCHEMA_FIELDS = [
   ...new Set([
@@ -7100,10 +7105,71 @@ async function main() {
       ? buildRawAddressOutput(addressForOutput, canonicalUnnormalized)
       : null;
 
-    const finalizedAddressOutput = normalizedOutput || rawOutput || null;
+    const candidateAddresses = [];
+    if (normalizedOutput) {
+      candidateAddresses.push({ ...normalizedOutput });
+    }
+    if (rawOutput) {
+      candidateAddresses.push({ ...rawOutput });
+    }
 
-    if (finalizedAddressOutput) {
-      writeJSON(addressFilePath, finalizedAddressOutput);
+    if (canonicalUnnormalized.length) {
+      const rawCandidate = buildRawAddressOutput(
+        addressForOutput,
+        canonicalUnnormalized,
+      );
+      if (rawCandidate) {
+        candidateAddresses.push({ ...rawCandidate });
+      }
+      candidateAddresses.push({
+        ...addressForOutput,
+        unnormalized_address: canonicalUnnormalized,
+      });
+    }
+
+    candidateAddresses.push({ ...addressForOutput });
+
+    const tryFinalizeAddress = (candidate) => {
+      if (!candidate || typeof candidate !== "object") return null;
+
+      const preparedForWrite = prepareAddressOutputForWrite(candidate);
+      if (preparedForWrite) {
+        const finalized = finalizeAddressForOutput(preparedForWrite);
+        if (finalized) {
+          return finalized;
+        }
+      }
+
+      const surfaced = ensureAddressSchemaSurfaceCoverage(candidate);
+      if (surfaced) {
+        const finalized = finalizeAddressForOutput(surfaced);
+        if (finalized) {
+          return finalized;
+        }
+      }
+
+      return finalizeAddressForOutput(candidate);
+    };
+
+    let enforcedAddressOutput = null;
+    for (const candidate of candidateAddresses) {
+      enforcedAddressOutput = tryFinalizeAddress(candidate);
+      if (enforcedAddressOutput) {
+        break;
+      }
+    }
+
+    if (!enforcedAddressOutput && canonicalUnnormalized.length) {
+      const fallbackRawTemplate = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...addressForOutput,
+        unnormalized_address: canonicalUnnormalized,
+      };
+      enforcedAddressOutput = tryFinalizeAddress(fallbackRawTemplate);
+    }
+
+    if (enforcedAddressOutput) {
+      writeJSON(addressFilePath, enforcedAddressOutput);
       const propertyExists = fs.existsSync(propertyFilePath);
       writeRelationshipFile(
         propertyAddressRelationshipPath,
@@ -7115,7 +7181,6 @@ async function main() {
       removeFileIfExists(propertyAddressRelationshipPath);
     }
     removeFileIfExists(addressFactSheetRelationshipPath);
-
 
   }
 
