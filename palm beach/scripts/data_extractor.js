@@ -7174,7 +7174,23 @@ async function main() {
     }
 
     if (enforcedAddressOutput) {
-      if (canonicalUnnormalized.length) {
+      const hasCanonicalUnnormalized = canonicalUnnormalized.length > 0;
+      const currentlyRaw = Object.prototype.hasOwnProperty.call(
+        enforcedAddressOutput,
+        "unnormalized_address",
+      );
+      let normalizedSchemaReady = false;
+      if (enforcedAddressOutput && !currentlyRaw) {
+        const probe = deepClone(enforcedAddressOutput);
+        normalizedSchemaReady = probe
+          ? isNormalizedAddressSchemaReady(probe)
+          : false;
+      }
+
+      if (
+        hasCanonicalUnnormalized &&
+        (!normalizedSchemaReady || currentlyRaw)
+      ) {
         const rawAddressCandidate = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
         const candidateSources = [
           enforcedAddressOutput,
@@ -7278,12 +7294,7 @@ async function main() {
         }
 
         enforcedAddressOutput = enforcedRaw;
-      } else if (
-        Object.prototype.hasOwnProperty.call(
-          enforcedAddressOutput,
-          "unnormalized_address",
-        )
-      ) {
+      } else if (!hasCanonicalUnnormalized && currentlyRaw) {
         delete enforcedAddressOutput.unnormalized_address;
       }
 
