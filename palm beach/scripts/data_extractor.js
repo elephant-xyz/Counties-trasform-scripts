@@ -8273,28 +8273,29 @@ async function main() {
     delete addressForOutput.source_http_request;
 
     let addressPayload = null;
+    let usedNormalizedSchema = false;
 
-    const fallbackRawUnnormalized =
-      canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
+    const normalizedCandidate =
+      buildNormalizedAddressOutputForSchema(addressForOutput);
 
-    if (
-      typeof fallbackRawUnnormalized === "string" &&
-      fallbackRawUnnormalized.trim().length
-    ) {
-      const rawCandidate = buildRawAddressOutputForSchema({
-        ...addressForOutput,
-        unnormalized_address: fallbackRawUnnormalized,
-      });
-      if (rawCandidate) {
-        addressPayload = pruneRawAddressPayloadForOutput(rawCandidate);
-      }
-    }
+    if (normalizedCandidate) {
+      addressPayload = normalizedCandidate;
+      usedNormalizedSchema = true;
+    } else {
+      const fallbackRawUnnormalized =
+        canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
 
-    if (!addressPayload) {
-      const normalizedCandidate =
-        buildNormalizedAddressOutputForSchema(addressForOutput);
-      if (normalizedCandidate) {
-        addressPayload = normalizedCandidate;
+      if (
+        typeof fallbackRawUnnormalized === "string" &&
+        fallbackRawUnnormalized.trim().length
+      ) {
+        const rawCandidate = buildRawAddressOutputForSchema({
+          ...addressForOutput,
+          unnormalized_address: fallbackRawUnnormalized,
+        });
+        if (rawCandidate) {
+          addressPayload = pruneRawAddressPayloadForOutput(rawCandidate);
+        }
       }
     }
 
@@ -8308,6 +8309,10 @@ async function main() {
 
       if (sourceHttpCandidate) {
         addressPayload.source_http_request = sourceHttpCandidate;
+      }
+
+      if (usedNormalizedSchema) {
+        delete addressPayload.unnormalized_address;
       }
 
       writeJSON(addressFilePath, addressPayload);
