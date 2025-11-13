@@ -1353,23 +1353,14 @@ function buildAddressOutputPayload(address) {
 function buildFinalAddressOutput(address, canonicalUnnormalized) {
   if (!address || typeof address !== "object") return null;
 
-  const normalizedCandidate = collectAddressFields(
-    address,
-    NORMALIZED_ADDRESS_FIELDS,
-    { preserveNulls: true },
-  );
-
-  const normalizedCandidateClone = { ...normalizedCandidate };
-  const normalizedReady = hasCompleteNormalizedAddress(normalizedCandidateClone);
-
-  if (normalizedReady) {
+  const buildNormalizedOutput = (candidate) => {
     const normalizedOutput = {};
 
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      const normalizedValue = normalizeAddressFieldForSchema(
-        field,
-        normalizedCandidate[field],
-      );
+      const sourceValue = Object.prototype.hasOwnProperty.call(candidate, field)
+        ? candidate[field]
+        : null;
+      const normalizedValue = normalizeAddressFieldForSchema(field, sourceValue);
       normalizedOutput[field] =
         normalizedValue === undefined || normalizedValue === null
           ? null
@@ -1389,6 +1380,19 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     }
 
     return normalizedOutput;
+  };
+
+  const normalizedCandidate = collectAddressFields(
+    address,
+    NORMALIZED_ADDRESS_FIELDS,
+    { preserveNulls: true },
+  );
+
+  const normalizedCandidateClone = { ...normalizedCandidate };
+  const normalizedReady = hasCompleteNormalizedAddress(normalizedCandidateClone);
+
+  if (normalizedReady) {
+    return buildNormalizedOutput(normalizedCandidateClone);
   }
 
   const trimmedUnnormalized =
@@ -1423,6 +1427,77 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
 
   if (!rawOutput.postal_code) {
     rawOutput.plus_four_postal_code = null;
+  }
+
+  const normalizedFallback = (() => {
+    const fallbackCandidate = { ...normalizedCandidate };
+
+    const rawSourcedFields = [
+      "street_number",
+      "street_name",
+      "street_pre_directional_text",
+      "street_post_directional_text",
+      "street_suffix_type",
+      "unit_identifier",
+      "route_number",
+      "city_name",
+      "state_code",
+      "postal_code",
+      "plus_four_postal_code",
+      "country_code",
+      "county_name",
+      "municipality_name",
+      "latitude",
+      "longitude",
+    ];
+
+    for (const field of rawSourcedFields) {
+      if (
+        !hasMeaningfulAddressValue(fallbackCandidate[field]) &&
+        hasMeaningfulAddressValue(rawOutput[field])
+      ) {
+        fallbackCandidate[field] = rawOutput[field];
+      }
+    }
+
+    const parsedFallback = extractComponentsFromFullAddress(trimmedUnnormalized);
+    if (parsedFallback) {
+      const componentMap = {
+        streetNumber: "street_number",
+        streetName: "street_name",
+        streetPreDirectional: "street_pre_directional_text",
+        streetPostDirectional: "street_post_directional_text",
+        streetSuffix: "street_suffix_type",
+        unitIdentifier: "unit_identifier",
+        routeNumber: "route_number",
+        cityName: "city_name",
+        stateCode: "state_code",
+        postalCode: "postal_code",
+        plus4: "plus_four_postal_code",
+      };
+      for (const [componentKey, targetField] of Object.entries(componentMap)) {
+        if (
+          !hasMeaningfulAddressValue(fallbackCandidate[targetField]) &&
+          hasMeaningfulAddressValue(parsedFallback[componentKey])
+        ) {
+          fallbackCandidate[targetField] = parsedFallback[componentKey];
+        }
+      }
+    }
+
+    const fallbackClone = { ...fallbackCandidate };
+    if (hasCompleteNormalizedAddress(fallbackClone)) {
+      return buildNormalizedOutput(fallbackClone);
+    }
+    return null;
+  })();
+
+  if (normalizedFallback) {
+    return normalizedFallback;
+  }
+
+  if (!isRawAddressVariantValid({ ...rawOutput })) {
+    return null;
   }
 
   return rawOutput;
