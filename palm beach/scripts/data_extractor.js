@@ -1900,6 +1900,31 @@ function hasCompleteNormalizedAddress(address) {
   return true;
 }
 
+function isNormalizedAddressVariantValid(address) {
+  if (!address || typeof address !== "object") return false;
+  const cloned = { ...address };
+  return hasCompleteNormalizedAddress(cloned);
+}
+
+function isRawAddressVariantValid(address) {
+  if (!address || typeof address !== "object") return false;
+  const raw =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!raw.length) {
+    return false;
+  }
+
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return false;
+  }
+
+  return true;
+}
+
 function isNormalizedAddressSchemaReady(address) {
   if (!address || typeof address !== "object") return false;
   for (const field of NORMALIZED_SCHEMA_REQUIRED_FIELDS) {
@@ -8018,26 +8043,51 @@ async function main() {
               );
 
               if (surfacedAddressOutput) {
-                writeJSON(addressFilePath, surfacedAddressOutput);
+                const hasRawVariant =
+                  typeof surfacedAddressOutput.unnormalized_address === "string" &&
+                  surfacedAddressOutput.unnormalized_address.trim().length > 0;
 
-                if (fs.existsSync(propertyFilePath)) {
-                  writeRelationshipFile(
-                    propertyAddressRelationshipPath,
-                    propertyFileRelative,
-                    addressFileRelative,
-                  );
-                } else {
+                const variantIsValid = hasRawVariant
+                  ? isRawAddressVariantValid(surfacedAddressOutput)
+                  : isNormalizedAddressVariantValid(surfacedAddressOutput);
+
+                if (!variantIsValid) {
+                  removeFileIfExists(addressFilePath);
                   removeFileIfExists(propertyAddressRelationshipPath);
-                }
-
-                if (fs.existsSync(factSheetPath)) {
-                  writeRelationshipFile(
-                    addressFactSheetRelationshipPath,
-                    addressFileRelative,
-                    factSheetFileRelative,
-                  );
-                } else {
                   removeFileIfExists(addressFactSheetRelationshipPath);
+                } else {
+                  if (!hasRawVariant && Object.prototype.hasOwnProperty.call(surfacedAddressOutput, "unnormalized_address")) {
+                    delete surfacedAddressOutput.unnormalized_address;
+                  }
+
+                  if (hasRawVariant) {
+                    const latitude = parseCoordinate(surfacedAddressOutput.latitude);
+                    const longitude = parseCoordinate(surfacedAddressOutput.longitude);
+                    surfacedAddressOutput.latitude = latitude;
+                    surfacedAddressOutput.longitude = longitude;
+                  }
+
+                  writeJSON(addressFilePath, surfacedAddressOutput);
+
+                  if (fs.existsSync(propertyFilePath)) {
+                    writeRelationshipFile(
+                      propertyAddressRelationshipPath,
+                      propertyFileRelative,
+                      addressFileRelative,
+                    );
+                  } else {
+                    removeFileIfExists(propertyAddressRelationshipPath);
+                  }
+
+                  if (fs.existsSync(factSheetPath)) {
+                    writeRelationshipFile(
+                      addressFactSheetRelationshipPath,
+                      addressFileRelative,
+                      factSheetFileRelative,
+                    );
+                  } else {
+                    removeFileIfExists(addressFactSheetRelationshipPath);
+                  }
                 }
               } else {
                 removeFileIfExists(addressFilePath);
