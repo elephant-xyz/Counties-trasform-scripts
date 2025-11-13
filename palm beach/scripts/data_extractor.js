@@ -1339,77 +1339,6 @@ function buildAddressOutputPayload(address) {
   return output;
 }
 
-function buildFinalAddressOutput(address, canonicalUnnormalized) {
-  if (!address || typeof address !== "object") return null;
-
-  const normalizedCandidate = collectAddressFields(
-    address,
-    NORMALIZED_ADDRESS_FIELDS,
-    { preserveNulls: true },
-  );
-
-  const normalizedClone = { ...normalizedCandidate };
-  if (hasCompleteNormalizedAddress(normalizedClone)) {
-    const normalizedOutput = {};
-    for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      const sourceValue = Object.prototype.hasOwnProperty.call(
-        normalizedClone,
-        field,
-      )
-        ? normalizedClone[field]
-        : null;
-      const normalizedValue = normalizeAddressFieldForSchema(
-        field,
-        sourceValue,
-      );
-      normalizedOutput[field] =
-        normalizedValue === undefined || normalizedValue === null
-          ? null
-          : normalizedValue;
-    }
-
-    if (!normalizedOutput.postal_code) {
-      normalizedOutput.plus_four_postal_code = null;
-    }
-    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
-      normalizedOutput.country_code = "US";
-    }
-
-    return normalizedOutput;
-  }
-
-  const trimmedUnnormalized =
-    typeof canonicalUnnormalized === "string"
-      ? canonicalUnnormalized.trim()
-      : "";
-  if (!trimmedUnnormalized.length) {
-    return null;
-  }
-
-  const rawPrimedOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    const normalizedValue = normalizeAddressFieldForSchema(
-      field,
-      address[field],
-    );
-    rawPrimedOutput[field] =
-      normalizedValue === undefined || normalizedValue === null
-        ? null
-        : normalizedValue;
-  }
-  rawPrimedOutput.unnormalized_address = trimmedUnnormalized;
-
-  if (rawPrimedOutput.state_code && !rawPrimedOutput.country_code) {
-    rawPrimedOutput.country_code = "US";
-  }
-
-  if (!rawPrimedOutput.postal_code) {
-    rawPrimedOutput.plus_four_postal_code = null;
-  }
-
-  return rawPrimedOutput;
-}
-
 function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
   if (!address || typeof address !== "object") return null;
 
@@ -8178,50 +8107,104 @@ async function main() {
       }
     }
 
-    if (canonicalUnnormalized.length) {
-      addressForOutput.unnormalized_address = canonicalUnnormalized;
-    } else if (
-      Object.prototype.hasOwnProperty.call(addressForOutput, "unnormalized_address")
-    ) {
-      delete addressForOutput.unnormalized_address;
-    }
-
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
-
-    for (const field of ADDRESS_SCHEMA_FIELDS) {
-      if (field === "unnormalized_address") continue;
-      if (!Object.prototype.hasOwnProperty.call(addressForOutput, field)) {
-        addressForOutput[field] = null;
-      }
-    }
 
     const normalizedProbe = collectAddressFields(
       addressForOutput,
       NORMALIZED_ADDRESS_FIELDS,
       { preserveNulls: true },
     );
-    const normalizedReady = hasCompleteNormalizedAddress({
-      ...normalizedProbe,
-    });
+    const normalizedAttempt = { ...normalizedProbe };
+    const normalizedReady = hasCompleteNormalizedAddress(normalizedAttempt);
 
-    const preferRawOutput =
-      !normalizedReady && canonicalUnnormalized.length > 0;
+    let finalizedAddressPayload = null;
 
-    const schemaReadyAddress = prepareAddressOutputForSchema(
-      addressForOutput,
-      {
-        fallbackUnnormalized: canonicalUnnormalized,
-        preferRaw: preferRawOutput,
-      },
-    );
+    if (normalizedReady) {
+      const normalizedOutput = {};
+      for (const field of NORMALIZED_ADDRESS_FIELDS) {
+        const candidate = Object.prototype.hasOwnProperty.call(
+          normalizedAttempt,
+          field,
+        )
+          ? normalizedAttempt[field]
+          : null;
+        const normalizedValue = normalizeAddressFieldForSchema(
+          field,
+          candidate,
+        );
+        normalizedOutput[field] =
+          normalizedValue === undefined || normalizedValue === null
+            ? null
+            : normalizedValue;
+      }
 
-    const surfacedAddressOutput = schemaReadyAddress
-      ? ensureAddressSchemaSurfaceCoverage(schemaReadyAddress)
-      : null;
+      if (!normalizedOutput.postal_code) {
+        normalizedOutput.plus_four_postal_code = null;
+      }
+      if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+        normalizedOutput.country_code = "US";
+      }
 
-    if (surfacedAddressOutput) {
-      writeJSON(addressFilePath, surfacedAddressOutput);
+      finalizedAddressPayload = normalizedOutput;
+    } else if (canonicalUnnormalized.length) {
+      const rawFieldsToInclude = [
+        "latitude",
+        "longitude",
+        "city_name",
+        "county_name",
+        "municipality_name",
+        "postal_code",
+        "plus_four_postal_code",
+        "state_code",
+        "country_code",
+        "street_name",
+        "street_post_directional_text",
+        "street_pre_directional_text",
+        "street_number",
+        "street_suffix_type",
+        "unit_identifier",
+        "route_number",
+        "township",
+        "range",
+        "section",
+        "block",
+        "lot",
+      ];
+
+      const rawOutput = {
+        unnormalized_address: canonicalUnnormalized,
+      };
+
+      for (const field of rawFieldsToInclude) {
+        if (!Object.prototype.hasOwnProperty.call(addressForOutput, field)) {
+          continue;
+        }
+        const normalizedValue = normalizeAddressFieldForSchema(
+          field,
+          addressForOutput[field],
+        );
+        if (normalizedValue !== undefined && normalizedValue !== null) {
+          rawOutput[field] = normalizedValue;
+        }
+      }
+
+      if (
+        !Object.prototype.hasOwnProperty.call(rawOutput, "county_name") &&
+        hasMeaningfulAddressValue(baseAddressSeed.county_name)
+      ) {
+        rawOutput.county_name = baseAddressSeed.county_name;
+      }
+
+      if (rawOutput.state_code && !rawOutput.country_code) {
+        rawOutput.country_code = "US";
+      }
+
+      finalizedAddressPayload = rawOutput;
+    }
+
+    if (finalizedAddressPayload) {
+      writeJSON(addressFilePath, finalizedAddressPayload);
     } else {
       removeFileIfExists(addressFilePath);
     }
