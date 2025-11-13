@@ -8286,22 +8286,29 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
-    const normalizedCandidate =
-      buildNormalizedAddressOutputForSchema(addressForOutput);
-
     let addressPayload = null;
 
-    if (normalizedCandidate) {
-      addressPayload = normalizedCandidate;
-    } else {
-      const fallbackRawUnnormalized =
-        canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
-      const rawCandidate = buildRawAddressOutputForSchema(
-        fallbackRawUnnormalized,
-        addressForOutput,
-      );
+    const fallbackRawUnnormalized =
+      canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
+
+    if (
+      typeof fallbackRawUnnormalized === "string" &&
+      fallbackRawUnnormalized.trim().length
+    ) {
+      const rawCandidate = buildRawAddressOutputForSchema({
+        ...addressForOutput,
+        unnormalized_address: fallbackRawUnnormalized,
+      });
       if (rawCandidate) {
-        addressPayload = rawCandidate;
+        addressPayload = pruneRawAddressPayloadForOutput(rawCandidate);
+      }
+    }
+
+    if (!addressPayload) {
+      const normalizedCandidate =
+        buildNormalizedAddressOutputForSchema(addressForOutput);
+      if (normalizedCandidate) {
+        addressPayload = normalizedCandidate;
       }
     }
 
