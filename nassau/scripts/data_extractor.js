@@ -1851,12 +1851,40 @@ function main() {
 
 
   // console.log("usecode",useCodeText);
-  const property_type = mapPropertyTypeFromUseCode(useCodeText || "");
-  // console.log("property_type>>",property_type);
-  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(useCodeText || "");
-  const build_status= mapBuildStatusFromUseCode(useCodeText || "");
+  let property_type = mapPropertyTypeFromUseCode(useCodeText || "");
+  const ownership_estate_type = mapOwnershipEstateTypeFromUseCode(useCodeText || "");
+  let build_status = mapBuildStatusFromUseCode(useCodeText || "");
   const structure_form = mapStructureFormFromUseCode(useCodeText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(useCodeText || "");
+  const normalizedUseCodeText = (useCodeText || "").toUpperCase();
+
+  if (!property_type && structure_form === "ManufacturedHomeOnLand") {
+    property_type = "ManufacturedHome";
+  }
+
+  if (!property_type) {
+    if (/(CONDO|CONDOMINIUM|UNIT|APT|APARTMENT|TIMESHARE)/.test(normalizedUseCodeText)) {
+      property_type = "Unit";
+    } else if (/(MOBILE|MANUFACT)/.test(normalizedUseCodeText)) {
+      property_type = "ManufacturedHome";
+    } else if (/(VACANT|TIMBER|TIMBERLAND|RIGHTS-OF-WAY|RIGHT-OF-WAY|SUB-SURFACE|RAW LAND|LAND)/.test(normalizedUseCodeText)) {
+      property_type = "LandParcel";
+    } else {
+      property_type = "Building";
+    }
+  }
+
+  if (build_status === "VacantLand" && property_type !== "LandParcel") {
+    property_type = "LandParcel";
+  }
+
+  if (!build_status) {
+    if (property_type === "LandParcel") {
+      build_status = "VacantLand";
+    } else {
+      build_status = "Improved";
+    }
+  }
   // console.log(ownership_estate_type, build_status, structure_form, property_usage_type);
 
   // Buildings: Sum all heated sq ft and get earliest year built
@@ -2211,6 +2239,13 @@ function main() {
   };
   writeJSON(path.join("data", "address.json"), address);
   // console.log(address)
+  writeJSON(
+    path.join("data", "relationship_property_has_address.json"),
+    {
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" },
+    }
+  );
   
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
@@ -2344,6 +2379,13 @@ function main() {
     lot_size_acre: lotSizeAcre,
   };
   writeJSON(path.join("data", "lot.json"), lot);
+  writeJSON(
+    path.join("data", "relationship_property_has_lot.json"),
+    {
+      from: { "/": "./property.json" },
+      to: { "/": "./lot.json" },
+    }
+  );
 
   // Tax values from Values table
   const valuesTable = $("div.values table.grid-transposed");
