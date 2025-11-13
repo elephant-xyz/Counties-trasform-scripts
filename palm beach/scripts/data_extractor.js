@@ -1195,6 +1195,8 @@ const STREET_SUFFIX_ENUM = [
   "Crk",
 ];
 
+const STREET_NAME_FORBIDDEN_DIRECTIONS = /\b(?:E|N|NE|NW|S|SE|SW|W)\b/;
+
 const NORMALIZED_ADDRESS_FIELDS = [
   "latitude",
   "longitude",
@@ -1241,46 +1243,16 @@ const RAW_ADDRESS_CORE_FIELDS = [
 const RAW_ADDRESS_GRID_FIELDS = ["township", "range", "section"];
 const RAW_ADDRESS_OPTIONAL_GRID_FIELDS = ["block", "lot"];
 
-const RAW_ADDRESS_STREET_FIELDS = [
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
-];
-
+// The raw address schema only accepts location metadata alongside the original string.
 const RAW_ADDRESS_ALLOWED_FIELDS = [
   ...RAW_ADDRESS_CORE_FIELDS,
   ...RAW_ADDRESS_GRID_FIELDS,
   ...RAW_ADDRESS_OPTIONAL_GRID_FIELDS,
-  ...RAW_ADDRESS_STREET_FIELDS,
 ];
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
 // The County schema's raw branch accepts just the original string; any normalized
@@ -2089,6 +2061,15 @@ function hasCompleteNormalizedAddress(address) {
     const trimmed = value.trim();
     if (!trimmed.length) {
       return false;
+    }
+
+    if (field === "street_name") {
+      const normalizedStreet = trimmed.replace(/\s+/g, " ");
+      if (STREET_NAME_FORBIDDEN_DIRECTIONS.test(normalizedStreet.toUpperCase())) {
+        return false;
+      }
+      address[field] = normalizedStreet;
+      continue;
     }
 
     if (field === "city_name") {
