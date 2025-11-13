@@ -1928,9 +1928,15 @@ function materializeAddressForSchema(payload, variant, options = {}) {
 function prepareAddressOutputForSchema(candidate, options = {}) {
   if (!candidate || typeof candidate !== "object") return null;
 
-  const fallbackUnnormalized =
-    typeof options.fallbackUnnormalized === "string"
-      ? options.fallbackUnnormalized.trim()
+  const {
+    fallbackUnnormalized,
+    preferRaw = false,
+    preferredVariant = null,
+  } = options || {};
+
+  const fallbackValue =
+    typeof fallbackUnnormalized === "string"
+      ? fallbackUnnormalized.trim()
       : "";
 
   const normalizedSeed = { ...candidate };
@@ -1938,23 +1944,30 @@ function prepareAddressOutputForSchema(candidate, options = {}) {
   delete normalizedSeed.request_identifier;
   delete normalizedSeed.source_http_request;
 
-  const normalizedCandidate = materializeAddressForSchema(
-    normalizedSeed,
-    "normalized",
-  );
-  if (normalizedCandidate) {
-    return normalizedCandidate;
+  const shouldAttemptNormalized =
+    !preferRaw && preferredVariant !== "raw";
+
+  if (shouldAttemptNormalized) {
+    const normalizedCandidate = materializeAddressForSchema(
+      normalizedSeed,
+      "normalized",
+    );
+    if (normalizedCandidate) {
+      return normalizedCandidate;
+    }
   }
+
+  const enforceRaw = preferRaw || preferredVariant === "raw";
 
   const rawUnnormalized = resolveFirstNonEmptyString([
     typeof candidate.unnormalized_address === "string"
       ? candidate.unnormalized_address
       : null,
-    fallbackUnnormalized,
+    fallbackValue,
   ]);
 
   if (!rawUnnormalized || !rawUnnormalized.trim().length) {
-    return null;
+    return enforceRaw ? null : null;
   }
 
   const rawSeed = {
@@ -8205,9 +8218,24 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
+    const normalizedProbe = collectAddressFields(
+      addressForOutput,
+      NORMALIZED_ADDRESS_FIELDS,
+      { preserveNulls: true },
+    );
+    const normalizedReady = hasCompleteNormalizedAddress({
+      ...normalizedProbe,
+    });
+
+    const preferRawOutput =
+      !normalizedReady && canonicalUnnormalized.length > 0;
+
     const schemaReadyAddress = prepareAddressOutputForSchema(
       addressForOutput,
-      { fallbackUnnormalized: canonicalUnnormalized },
+      {
+        fallbackUnnormalized: canonicalUnnormalized,
+        preferRaw: preferRawOutput,
+      },
     );
 
     const surfacedAddressOutput = schemaReadyAddress
