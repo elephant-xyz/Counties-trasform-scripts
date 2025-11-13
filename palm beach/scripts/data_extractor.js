@@ -1228,19 +1228,9 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ADDRESS_CORE_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-];
+const RAW_ADDRESS_CORE_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
+const RAW_ADDRESS_ALLOWED_FIELDS = [...new Set(RAW_ADDRESS_CORE_FIELDS)];
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
