@@ -90,12 +90,10 @@ function writeRelationshipFile(filePath, fromValue, toValue) {
     return;
   }
 
-  const payload = [
-    {
-      from,
-      to,
-    },
-  ];
+  const payload = {
+    from,
+    to,
+  };
 
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
 }
@@ -2735,6 +2733,90 @@ function finalizeAddressForOutput(address) {
   }
 
   return enforceAddressSchemaSurfaceForOutput(prepared);
+}
+
+function ensureAddressOutputCoverage(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const cloned = { ...address };
+  const hasUnnormalized =
+    typeof cloned.unnormalized_address === "string" &&
+    cloned.unnormalized_address.trim().length > 0;
+
+  const trimmedUnnormalized = hasUnnormalized
+    ? cloned.unnormalized_address.trim()
+    : "";
+
+  if (hasUnnormalized && !trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const baseFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const orderedFields = hasUnnormalized
+    ? ["unnormalized_address", ...RAW_ADDRESS_OUTPUT_FIELDS]
+    : [...NORMALIZED_ADDRESS_FIELDS];
+
+  const result = {};
+
+  for (const field of orderedFields) {
+    if (field === "unnormalized_address") {
+      if (hasUnnormalized) {
+        result.unnormalized_address = trimmedUnnormalized;
+      }
+      continue;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(cloned, field)) {
+      result[field] = null;
+      continue;
+    }
+
+    const value = cloned[field];
+    if (value === undefined || value === null) {
+      result[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      result[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      result[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    result[field] = value;
+  }
+
+  if (!hasUnnormalized && Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
+    delete result.unnormalized_address;
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  // Guarantee presence of every base field (defaulting to null).
+  for (const field of baseFields) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+    }
+  }
+
+  if (hasUnnormalized && !Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
+    result.unnormalized_address = trimmedUnnormalized;
+  }
+
+  return result;
 }
 
 function materializeAddressVariantForOutput(address, options = {}) {
@@ -7794,9 +7876,12 @@ async function main() {
           const enforcedAddress = finalizeAddressForOutput(
             surfacedAddressOutput,
           );
+          const completedAddress = ensureAddressOutputCoverage(
+            enforcedAddress,
+          );
 
-          if (enforcedAddress) {
-            writeJSON(addressFilePath, enforcedAddress);
+          if (completedAddress) {
+            writeJSON(addressFilePath, completedAddress);
 
             if (fs.existsSync(propertyFilePath)) {
               writeRelationshipFile(
