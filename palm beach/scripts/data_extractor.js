@@ -1823,27 +1823,35 @@ function pruneRawAddressPayloadForOutput(payload) {
     unnormalized_address: unnormalized,
   };
 
+  const assignIfValue = (key, value) => {
+    if (value === undefined || value === null) return;
+    minimized[key] = value;
+  };
+
   for (const key of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (key === "unnormalized_address") continue;
 
-    let value = Object.prototype.hasOwnProperty.call(payload, key)
-      ? payload[key]
-      : null;
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+      continue;
+    }
+
+    let value = payload[key];
 
     if (typeof value === "string") {
       const trimmed = value.trim();
-      value = trimmed.length ? trimmed : null;
+      if (!trimmed.length) continue;
+      value = trimmed;
     } else if (typeof value === "number") {
-      value = Number.isFinite(value) ? value : null;
+      if (!Number.isFinite(value)) continue;
     } else if (typeof value === "boolean") {
-      // retain boolean value as-is
+      // retain boolean values
     } else if (value && typeof value === "object") {
       value = deepClone(value);
-    } else if (value === undefined) {
-      value = null;
+    } else {
+      continue;
     }
 
-    minimized[key] = value ?? null;
+    assignIfValue(key, value);
   }
 
   if (
@@ -1854,21 +1862,23 @@ function pruneRawAddressPayloadForOutput(payload) {
       typeof payload.request_identifier === "string"
         ? payload.request_identifier.trim()
         : payload.request_identifier;
-    minimized.request_identifier =
-      typeof trimmed === "string" && trimmed.length ? trimmed : null;
-  } else if (!Object.prototype.hasOwnProperty.call(minimized, "request_identifier")) {
-    minimized.request_identifier = null;
+    if (typeof trimmed === "string" && trimmed.length) {
+      minimized.request_identifier = trimmed;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    minimized.source_http_request = prepared ? prepared : null;
-  } else if (!Object.prototype.hasOwnProperty.call(minimized, "source_http_request")) {
-    minimized.source_http_request = null;
+    if (prepared) {
+      minimized.source_http_request = prepared;
+    }
   }
 
-  if (!minimized.postal_code) {
-    minimized.plus_four_postal_code = null;
+  if (
+    !Object.prototype.hasOwnProperty.call(minimized, "postal_code") &&
+    Object.prototype.hasOwnProperty.call(minimized, "plus_four_postal_code")
+  ) {
+    delete minimized.plus_four_postal_code;
   }
 
   return minimized;
@@ -4301,6 +4311,11 @@ function sanitizePlus4(value) {
   const hyphenatedMatch = stringValue.match(/\b\d{5}[-\s]*(\d{4})\b/);
   if (hyphenatedMatch && hyphenatedMatch[1]) {
     return hyphenatedMatch[1];
+  }
+
+  const digitsOnly = stringValue.replace(/\D+/g, "");
+  if (digitsOnly.length === 4) {
+    return digitsOnly;
   }
 
   return null;
@@ -7800,26 +7815,18 @@ async function main() {
     const parsedAddress = parseLocationAddress(locationLineForParsing);
     const resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
     const inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
-    const sanitizedPostalCode =
-      [
-        postalCode,
-        fullAddrInput,
-        fullAddr,
-        unnormalizedAddressCandidate,
-      ]
-        .map((candidate) => sanitizePostalCode(candidate))
-        .filter(Boolean)
-        .pop() || null;
-    const sanitizedPlus4 =
-      [
-        plus4,
-        fullAddrInput,
-        fullAddr,
-        unnormalizedAddressCandidate,
-      ]
-        .map((candidate) => sanitizePlus4(candidate))
-        .filter(Boolean)
-        .pop() || null;
+    const sanitizedPostalCode = resolveFieldFromCandidates("postal_code", [
+      postalCode,
+      fullAddrInput,
+      fullAddr,
+      unnormalizedAddressCandidate,
+    ]);
+    const sanitizedPlus4 = resolveFieldFromCandidates("plus_four_postal_code", [
+      plus4,
+      fullAddrInput,
+      fullAddr,
+      unnormalizedAddressCandidate,
+    ]);
     const stateMismatch =
       countyInferredStateCode &&
       resolvedStateUpper &&
