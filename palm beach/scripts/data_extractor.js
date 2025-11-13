@@ -1276,36 +1276,30 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     return null;
   }
 
-  const rawOutput = {
-    unnormalized_address: trimmedUnnormalized,
-  };
-
+  const normalizedFields = {};
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     const normalizedValue = normalizeAddressFieldForSchema(
       field,
       address[field],
     );
-    if (normalizedValue === undefined || normalizedValue === null) {
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(normalizedValue);
-      if (Number.isFinite(numeric)) {
-        rawOutput[field] = numeric;
-      }
-      continue;
-    }
-
-    rawOutput[field] = normalizedValue;
+    normalizedFields[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
   }
+
+  const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...normalizedFields,
+    unnormalized_address: trimmedUnnormalized,
+  };
 
   if (rawOutput.state_code && !rawOutput.country_code) {
     rawOutput.country_code = "US";
   }
 
-  if (!rawOutput.postal_code && rawOutput.plus_four_postal_code == null) {
-    delete rawOutput.plus_four_postal_code;
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
   }
 
   return rawOutput;
