@@ -1819,39 +1819,40 @@ function pruneRawAddressPayloadForOutput(payload) {
     return payload;
   }
 
-  const minimized = {
+  const hydrated = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: unnormalized,
-  };
-
-  const assignIfValue = (key, value) => {
-    if (value === undefined || value === null) return;
-    minimized[key] = value;
   };
 
   for (const key of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (key === "unnormalized_address") continue;
 
-    if (!Object.prototype.hasOwnProperty.call(payload, key)) {
-      continue;
-    }
-
-    let value = payload[key];
+    let value = Object.prototype.hasOwnProperty.call(payload, key)
+      ? payload[key]
+      : hydrated[key];
 
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed.length) continue;
-      value = trimmed;
-    } else if (typeof value === "number") {
-      if (!Number.isFinite(value)) continue;
-    } else if (typeof value === "boolean") {
-      // retain boolean values
-    } else if (value && typeof value === "object") {
-      value = deepClone(value);
-    } else {
+      hydrated[key] = trimmed.length ? trimmed : null;
       continue;
     }
 
-    assignIfValue(key, value);
+    if (typeof value === "number") {
+      hydrated[key] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    if (typeof value === "boolean") {
+      hydrated[key] = value;
+      continue;
+    }
+
+    if (value && typeof value === "object") {
+      hydrated[key] = deepClone(value);
+      continue;
+    }
+
+    hydrated[key] = null;
   }
 
   if (
@@ -1863,25 +1864,22 @@ function pruneRawAddressPayloadForOutput(payload) {
         ? payload.request_identifier.trim()
         : payload.request_identifier;
     if (typeof trimmed === "string" && trimmed.length) {
-      minimized.request_identifier = trimmed;
+      hydrated.request_identifier = trimmed;
     }
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(payload.source_http_request);
     if (prepared) {
-      minimized.source_http_request = prepared;
+      hydrated.source_http_request = prepared;
     }
   }
 
-  if (
-    !Object.prototype.hasOwnProperty.call(minimized, "postal_code") &&
-    Object.prototype.hasOwnProperty.call(minimized, "plus_four_postal_code")
-  ) {
-    delete minimized.plus_four_postal_code;
+  if (!hydrated.postal_code) {
+    hydrated.plus_four_postal_code = null;
   }
 
-  return minimized;
+  return hydrated;
 }
 
 function materializeAddressForSchema(payload, variant, options = {}) {
