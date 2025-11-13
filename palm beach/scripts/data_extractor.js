@@ -8149,7 +8149,14 @@ async function main() {
     }
 
     if (finalizedAddressPayload) {
-      writeJSON(addressFilePath, finalizedAddressPayload);
+      const surfacedAddress = ensureAddressSchemaSurfaceCoverage(
+        finalizedAddressPayload,
+      );
+      if (surfacedAddress) {
+        writeJSON(addressFilePath, surfacedAddress);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
     }
