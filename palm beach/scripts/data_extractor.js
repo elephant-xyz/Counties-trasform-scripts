@@ -7790,11 +7790,17 @@ async function main() {
     address.latitude = resolvedLatitude;
     address.longitude = resolvedLongitude;
 
-    if (
+    const needsGeocodeEnhancement =
+      unnormalizedAddressCandidate &&
       (!Number.isFinite(address.latitude) ||
-        !Number.isFinite(address.longitude)) &&
-      unnormalizedAddressCandidate
-    ) {
+        !Number.isFinite(address.longitude) ||
+        !hasMeaningfulAddressValue(address.plus_four_postal_code) ||
+        !hasMeaningfulAddressValue(address.street_post_directional_text) ||
+        !hasMeaningfulAddressValue(address.street_pre_directional_text) ||
+        !hasMeaningfulAddressValue(address.street_suffix_type) ||
+        !hasMeaningfulAddressValue(address.route_number));
+
+    if (needsGeocodeEnhancement) {
       const geocodeResult = await geocodeAddress(
         unnormalizedAddressCandidate,
       );
