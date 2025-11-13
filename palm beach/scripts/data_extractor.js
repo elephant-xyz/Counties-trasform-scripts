@@ -8216,15 +8216,13 @@ async function main() {
 
     if (surfacedAddressOutput) {
       writeJSON(addressFilePath, surfacedAddressOutput);
-      writeRelationshipFile(
-        propertyAddressRelationshipPath,
-        propertyFileRelative,
-        "./address.json",
-      );
     } else {
       removeFileIfExists(addressFilePath);
-      removeFileIfExists(propertyAddressRelationshipPath);
     }
+
+    // Relationship UR generation is now handled downstream; ensure we do not
+    // emit stale relationship payloads locally.
+    removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
