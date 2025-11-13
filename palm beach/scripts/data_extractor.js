@@ -1240,26 +1240,7 @@ const RAW_ADDRESS_CORE_FIELDS = [
   "municipality_name",
 ];
 
-const RAW_ADDRESS_STREET_FIELDS = [
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
-];
-
-const RAW_ADDRESS_GRID_FIELDS = ["township", "range", "section"];
-const RAW_ADDRESS_OPTIONAL_GRID_FIELDS = ["block", "lot"];
-
-// Allow raw payloads to surface any normalized components we can recover.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  ...RAW_ADDRESS_CORE_FIELDS,
-  ...RAW_ADDRESS_STREET_FIELDS,
-  ...RAW_ADDRESS_GRID_FIELDS,
-  ...RAW_ADDRESS_OPTIONAL_GRID_FIELDS,
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = [...RAW_ADDRESS_CORE_FIELDS];
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
