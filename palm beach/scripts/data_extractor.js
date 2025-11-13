@@ -8255,8 +8255,12 @@ async function main() {
       canonicalUnnormalized,
     );
 
-    if (finalAddressOutput) {
-      writeJSON(addressFilePath, finalAddressOutput);
+    const surfacedAddressOutput = finalAddressOutput
+      ? ensureAddressSchemaSurfaceCoverage(finalAddressOutput)
+      : null;
+
+    if (surfacedAddressOutput) {
+      writeJSON(addressFilePath, surfacedAddressOutput);
 
       if (fs.existsSync(propertyFilePath)) {
         writeRelationshipFile(
