@@ -1166,6 +1166,67 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   "source_http_request",
 ]);
 
+function buildAddressOutputPayload(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const hasUnnormalized =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+
+  const trimmedUnnormalized = hasUnnormalized
+    ? address.unnormalized_address.trim()
+    : "";
+  if (hasUnnormalized && !trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const targetFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+
+  const output = {};
+
+  if (hasUnnormalized) {
+    output.unnormalized_address = trimmedUnnormalized;
+  }
+
+  for (const field of targetFields) {
+    if (field === "unnormalized_address") continue;
+
+    const value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+
+    if (value === undefined || value === null) {
+      output[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      output[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      output[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    output[field] = value;
+  }
+
+  if (!output.postal_code) {
+    output.plus_four_postal_code = null;
+  }
+
+  if (output.state_code && !output.country_code) {
+    output.country_code = "US";
+  }
+
+  return output;
+}
+
 function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
   if (!address || typeof address !== "object") return null;
 
@@ -7881,58 +7942,35 @@ async function main() {
           );
 
           if (completedAddress) {
-            const hasUnnormalized =
-              typeof completedAddress.unnormalized_address === "string" &&
-              completedAddress.unnormalized_address.trim().length > 0;
+            const sanitizedAddress = buildAddressOutputPayload(
+              completedAddress,
+            );
 
-            if (hasUnnormalized) {
-              completedAddress.unnormalized_address =
-                completedAddress.unnormalized_address.trim();
-              for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-                if (!Object.prototype.hasOwnProperty.call(completedAddress, field)) {
-                  completedAddress[field] = null;
-                }
+            if (sanitizedAddress) {
+              writeJSON(addressFilePath, sanitizedAddress);
+
+              if (fs.existsSync(propertyFilePath)) {
+                writeRelationshipFile(
+                  propertyAddressRelationshipPath,
+                  propertyFileRelative,
+                  addressFileRelative,
+                );
+              } else {
+                removeFileIfExists(propertyAddressRelationshipPath);
+              }
+
+              if (fs.existsSync(factSheetPath)) {
+                writeRelationshipFile(
+                  addressFactSheetRelationshipPath,
+                  addressFileRelative,
+                  factSheetFileRelative,
+                );
+              } else {
+                removeFileIfExists(addressFactSheetRelationshipPath);
               }
             } else {
-              if (Object.prototype.hasOwnProperty.call(completedAddress, "unnormalized_address")) {
-                delete completedAddress.unnormalized_address;
-              }
-              for (const field of NORMALIZED_ADDRESS_FIELDS) {
-                if (!Object.prototype.hasOwnProperty.call(completedAddress, field)) {
-                  completedAddress[field] = null;
-                }
-              }
-            }
-
-            if (!completedAddress.postal_code) {
-              completedAddress.plus_four_postal_code = null;
-            }
-            if (
-              completedAddress.state_code &&
-              !completedAddress.country_code
-            ) {
-              completedAddress.country_code = "US";
-            }
-
-            writeJSON(addressFilePath, completedAddress);
-
-            if (fs.existsSync(propertyFilePath)) {
-              writeRelationshipFile(
-                propertyAddressRelationshipPath,
-                propertyFileRelative,
-                addressFileRelative,
-              );
-            } else {
+              removeFileIfExists(addressFilePath);
               removeFileIfExists(propertyAddressRelationshipPath);
-            }
-
-            if (fs.existsSync(factSheetPath)) {
-              writeRelationshipFile(
-                addressFactSheetRelationshipPath,
-                addressFileRelative,
-                factSheetFileRelative,
-              );
-            } else {
               removeFileIfExists(addressFactSheetRelationshipPath);
             }
           } else {
