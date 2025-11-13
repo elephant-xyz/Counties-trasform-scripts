@@ -8218,11 +8218,7 @@ async function main() {
 
     if (surfacedAddressOutput) {
       writeJSON(addressFilePath, surfacedAddressOutput);
-      writeRelationshipFile(
-        propertyAddressRelationshipPath,
-        propertyFileRelative,
-        "./address.json",
-      );
+      removeFileIfExists(propertyAddressRelationshipPath);
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
