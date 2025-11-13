@@ -3276,7 +3276,6 @@ async function main() {
   const propertyFilePath = path.join(dataDir, "property.json");
   const propertyFileRelative = "./property.json";
   const addressFileRelative = "./address.json";
-  const factSheetFileRelative = "./fact_sheet.json";
 
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
@@ -3951,7 +3950,6 @@ async function main() {
       dataDir,
       "relationship_address_has_fact_sheet.json",
     );
-    const factSheetPath = path.join(dataDir, "fact_sheet.json");
 
     for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -3976,25 +3974,8 @@ async function main() {
     if (surfacedAddressOutput) {
       writeJSON(addressFilePath, surfacedAddressOutput);
 
-      if (fs.existsSync(propertyFilePath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          propertyFileRelative,
-          addressFileRelative,
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
-
-      if (fs.existsSync(factSheetPath)) {
-        writeRelationshipFile(
-          addressFactSheetRelationshipPath,
-          addressFileRelative,
-          factSheetFileRelative,
-        );
-      } else {
-        removeFileIfExists(addressFactSheetRelationshipPath);
-      }
+      removeFileIfExists(propertyAddressRelationshipPath);
+      removeFileIfExists(addressFactSheetRelationshipPath);
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
