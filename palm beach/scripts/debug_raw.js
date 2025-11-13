@@ -284,70 +284,56 @@ function pruneRawAddressPayloadForOutput(payload) {
     return payload;
   }
 
-  const preservedKeys = [
-    "latitude",
-    "longitude",
-    "city_name",
-    "country_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "state_code",
-    "street_name",
-    "street_number",
-    "street_suffix_type",
-    "street_pre_directional_text",
-    "street_post_directional_text",
-    "unit_identifier",
-    "route_number",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-    "county_name",
-    "municipality_name",
-    "request_identifier",
-    "source_http_request",
-  ];
-
   const minimized = {
     unnormalized_address: unnormalized,
   };
 
-  for (const key of preservedKeys) {
-    if (!Object.prototype.hasOwnProperty.call(payload, key)) continue;
-    const value = payload[key];
-    if (value === null || value === undefined) continue;
+  for (const key of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (key === "unnormalized_address") continue;
+
+    let value = Object.prototype.hasOwnProperty.call(payload, key)
+      ? payload[key]
+      : null;
 
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed.length) continue;
-      minimized[key] = trimmed;
-      continue;
+      value = trimmed.length ? trimmed : null;
+    } else if (typeof value === "number") {
+      value = Number.isFinite(value) ? value : null;
+    } else if (typeof value === "boolean") {
+      // keep boolean values
+    } else if (value && typeof value === "object") {
+      value = deepClone(value);
+    } else if (value === undefined) {
+      value = null;
     }
 
-    if (typeof value === "number") {
-      if (Number.isFinite(value)) {
-        minimized[key] = value;
-      }
-      continue;
-    }
-
-    if (typeof value === "boolean") {
-      minimized[key] = value;
-      continue;
-    }
-
-    if (typeof value === "object") {
-      minimized[key] = deepClone(value);
-    }
+    minimized[key] = value ?? null;
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(minimized, "source_http_request") &&
-    minimized.source_http_request == null
+    Object.prototype.hasOwnProperty.call(payload, "request_identifier") &&
+    payload.request_identifier != null
   ) {
-    delete minimized.source_http_request;
+    const trimmed =
+      typeof payload.request_identifier === "string"
+        ? payload.request_identifier.trim()
+        : payload.request_identifier;
+    minimized.request_identifier =
+      typeof trimmed === "string" && trimmed.length ? trimmed : null;
+  } else if (!Object.prototype.hasOwnProperty.call(minimized, "request_identifier")) {
+    minimized.request_identifier = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    minimized.source_http_request = prepared ? prepared : null;
+  } else if (!Object.prototype.hasOwnProperty.call(minimized, "source_http_request")) {
+    minimized.source_http_request = null;
+  }
+
+  if (!minimized.postal_code) {
+    minimized.plus_four_postal_code = null;
   }
 
   return minimized;
