@@ -7881,6 +7881,39 @@ async function main() {
           );
 
           if (completedAddress) {
+            const hasUnnormalized =
+              typeof completedAddress.unnormalized_address === "string" &&
+              completedAddress.unnormalized_address.trim().length > 0;
+
+            if (hasUnnormalized) {
+              completedAddress.unnormalized_address =
+                completedAddress.unnormalized_address.trim();
+              for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+                if (!Object.prototype.hasOwnProperty.call(completedAddress, field)) {
+                  completedAddress[field] = null;
+                }
+              }
+            } else {
+              if (Object.prototype.hasOwnProperty.call(completedAddress, "unnormalized_address")) {
+                delete completedAddress.unnormalized_address;
+              }
+              for (const field of NORMALIZED_ADDRESS_FIELDS) {
+                if (!Object.prototype.hasOwnProperty.call(completedAddress, field)) {
+                  completedAddress[field] = null;
+                }
+              }
+            }
+
+            if (!completedAddress.postal_code) {
+              completedAddress.plus_four_postal_code = null;
+            }
+            if (
+              completedAddress.state_code &&
+              !completedAddress.country_code
+            ) {
+              completedAddress.country_code = "US";
+            }
+
             writeJSON(addressFilePath, completedAddress);
 
             if (fs.existsSync(propertyFilePath)) {
