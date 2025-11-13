@@ -3952,9 +3952,77 @@ async function main() {
         ? fallbackUnnormalizedValue.trim()
         : "";
 
+    const canonicalUnnormalized =
+      typeof trimmedUnnormalized === "string" && trimmedUnnormalized.length
+        ? trimmedUnnormalized
+        : "";
+
+    const addressForOutput = {
+      ...address,
+      latitude: Number.isFinite(address.latitude) ? address.latitude : null,
+      longitude: Number.isFinite(address.longitude) ? address.longitude : null,
+    };
+
+    if (
+      hasMeaningfulAddressValue(addressForOutput.postal_code) &&
+      !hasMeaningfulAddressValue(addressForOutput.plus_four_postal_code)
+    ) {
+      addressForOutput.plus_four_postal_code = null;
+    }
+
+    if (
+      hasMeaningfulAddressValue(addressForOutput.state_code) &&
+      !hasMeaningfulAddressValue(addressForOutput.country_code)
+    ) {
+      addressForOutput.country_code = "US";
+    }
+
+    const hasStreetNumber = hasMeaningfulAddressValue(
+      addressForOutput.street_number,
+    );
+    const hasStreetName = hasMeaningfulAddressValue(
+      addressForOutput.street_name,
+    );
+    if (hasStreetNumber !== hasStreetName) {
+      const streetFieldsToClear = [
+        "street_number",
+        "street_name",
+        "street_suffix_type",
+        "street_pre_directional_text",
+        "street_post_directional_text",
+      ];
+      for (const field of streetFieldsToClear) {
+        addressForOutput[field] = null;
+      }
+    }
+
+    const hasGridCore = ["township", "range", "section"].every((field) =>
+      hasMeaningfulAddressValue(addressForOutput[field]),
+    );
+    const hasAnyGrid = ["township", "range", "section", "block", "lot"].some(
+      (field) => hasMeaningfulAddressValue(addressForOutput[field]),
+    );
+    if (hasAnyGrid && !hasGridCore) {
+      const gridFieldsToClear = ["township", "range", "section", "block", "lot"];
+      for (const field of gridFieldsToClear) {
+        addressForOutput[field] = null;
+      }
+    }
+
+    if (canonicalUnnormalized.length) {
+      addressForOutput.unnormalized_address = canonicalUnnormalized;
+    } else if (
+      Object.prototype.hasOwnProperty.call(addressForOutput, "unnormalized_address")
+    ) {
+      delete addressForOutput.unnormalized_address;
+    }
+
+    delete addressForOutput.request_identifier;
+    delete addressForOutput.source_http_request;
+
     const finalAddressOutput = buildFinalAddressOutput(
-      address,
-      trimmedUnnormalized,
+      addressForOutput,
+      canonicalUnnormalized,
     );
 
     const surfacedAddressOutput = finalAddressOutput
