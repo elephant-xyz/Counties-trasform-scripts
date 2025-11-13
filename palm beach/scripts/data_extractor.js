@@ -1415,18 +1415,23 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
         : normalizedValue;
   }
 
-  const rawOutput = {
+  const rawPrimedOutput = {
     ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     ...normalizedFields,
     unnormalized_address: trimmedUnnormalized,
   };
 
-  if (rawOutput.state_code && !rawOutput.country_code) {
-    rawOutput.country_code = "US";
+  if (rawPrimedOutput.state_code && !rawPrimedOutput.country_code) {
+    rawPrimedOutput.country_code = "US";
   }
 
-  if (!rawOutput.postal_code) {
-    rawOutput.plus_four_postal_code = null;
+  if (!rawPrimedOutput.postal_code) {
+    rawPrimedOutput.plus_four_postal_code = null;
+  }
+
+  const rawOutput = ensureRawAddressFieldCoverage(rawPrimedOutput);
+  if (!rawOutput) {
+    return null;
   }
 
   const normalizedFallback = (() => {
@@ -2051,6 +2056,19 @@ function ensureAddressSchemaSurfaceCoverage(address) {
     if (Object.prototype.hasOwnProperty.call(address, field)) {
       const value = address[field];
       hydrated[field] = value === undefined ? null : value;
+    }
+  }
+
+  for (const field of surfaceFields) {
+    if (!Object.prototype.hasOwnProperty.call(hydrated, field)) {
+      hydrated[field] = null;
+    }
+    if (
+      ADDRESS_COORDINATE_FIELDS.includes(field) &&
+      hydrated[field] != null &&
+      !Number.isFinite(hydrated[field])
+    ) {
+      hydrated[field] = null;
     }
   }
 
