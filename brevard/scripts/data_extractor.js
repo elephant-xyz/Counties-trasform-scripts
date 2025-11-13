@@ -3944,18 +3944,39 @@ function main() {
   //constructing property json
   const property = {
     ...appendSourceInfo(seed),
-    number_of_units: bldgDetails.numberOfUnits ?? null,
-    parcel_identifier: parcelId || "",
-    property_legal_description_text: legalDesc || null,
-    property_structure_built_year: bldgDetails.yearBuilt ?? null,
-    property_type: property_type || null, // Now extracted from Property Use
-    subdivision: subdivision,
-    zoning: null,
-    ownership_estate_type: ownership_estate_type,
-    build_status: build_status,
-    structure_form:structure_form,
-    property_usage_type:property_usage_type    
   };
+  if (bldgDetails.numberOfUnits != null) {
+    property.number_of_units = bldgDetails.numberOfUnits;
+  }
+  if (parcelId) {
+    property.parcel_identifier = parcelId;
+  } else if (seed?.parcel_id) {
+    property.parcel_identifier = seed.parcel_id;
+  }
+  if (legalDesc) {
+    property.property_legal_description_text = legalDesc;
+  }
+  if (bldgDetails.yearBuilt != null) {
+    property.property_structure_built_year = bldgDetails.yearBuilt;
+  }
+  if (typeof property_type === "string" && property_type.length > 0) {
+    property.property_type = property_type;
+  }
+  if (subdivision) {
+    property.subdivision = subdivision;
+  }
+  if (typeof ownership_estate_type === "string" && ownership_estate_type.length > 0) {
+    property.ownership_estate_type = ownership_estate_type;
+  }
+  if (typeof build_status === "string" && build_status.length > 0) {
+    property.build_status = build_status;
+  }
+  if (typeof structure_form === "string" && structure_form.length > 0) {
+    property.structure_form = structure_form;
+  }
+  if (typeof property_usage_type === "string" && property_usage_type.length > 0) {
+    property.property_usage_type = property_usage_type;
+  }
   writeJSON(path.join(dataDir, "property.json"), property);
 
   // ---------- Address parsing and files creation logic ----------
@@ -4125,9 +4146,7 @@ function main() {
 
     const fileObj = {
       ...appendSourceInfo(seed),
-      document_type: "Title", //document_Type for deed.
-      name: null,
-      original_url: deedLink || null,
+      document_type: "Title", // document type for deed.
     };
     writeJSON(path.join(dataDir, `file_${salesFileIndex}.json`), fileObj);
 
