@@ -1769,27 +1769,43 @@ function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
     return null;
   }
 
-  const raw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  const raw = {
+    unnormalized_address: trimmed,
+  };
 
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    const hasField =
-      source && Object.prototype.hasOwnProperty.call(source, field);
-    const sanitized = hasField
-      ? normalizeAddressFieldForSchema(field, source[field])
-      : null;
-    raw[field] =
-      sanitized === undefined || sanitized === null ? null : sanitized;
+  const fields =
+    Array.isArray(RAW_ADDRESS_OUTPUT_FIELDS) && RAW_ADDRESS_OUTPUT_FIELDS.length
+      ? RAW_ADDRESS_OUTPUT_FIELDS
+      : [];
+
+  for (const field of fields) {
+    if (!source || !Object.prototype.hasOwnProperty.call(source, field)) {
+      continue;
+    }
+    const sanitized = normalizeAddressFieldForSchema(field, source[field]);
+    if (sanitized === undefined || sanitized === null) {
+      continue;
+    }
+    raw[field] = sanitized;
   }
 
-  if (!raw.postal_code) {
-    raw.plus_four_postal_code = null;
-  }
-
-  if (raw.state_code && !raw.country_code) {
+  if (Object.prototype.hasOwnProperty.call(raw, "state_code") && !raw.country_code) {
     raw.country_code = "US";
   }
 
-  raw.unnormalized_address = trimmed;
+  if (!raw.postal_code && Object.prototype.hasOwnProperty.call(raw, "plus_four_postal_code")) {
+    delete raw.plus_four_postal_code;
+  }
+
+  for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(raw, coordinateField)) continue;
+    const numeric = parseCoordinate(raw[coordinateField]);
+    if (!Number.isFinite(numeric)) {
+      delete raw[coordinateField];
+    } else {
+      raw[coordinateField] = numeric;
+    }
+  }
 
   return raw;
 }
@@ -8287,8 +8303,6 @@ async function main() {
         addressForOutput,
       );
       if (rawCandidate) {
-        // Keep the full raw field set (even when values are null) so the
-        // County address oneOf matches the unnormalized branch.
         addressPayload = rawCandidate;
       }
     }
