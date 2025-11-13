@@ -1433,6 +1433,57 @@ const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "county_name",
 ];
 
+const ROBUST_NORMALIZED_STRING_FIELDS = [
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "unit_identifier",
+  "route_number",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
+
+function hasRobustNormalizedAddress(address) {
+  if (!address || typeof address !== "object") return false;
+
+  const surface = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...address })
+    : { ...address };
+
+  if (!hasCompleteNormalizedAddress({ ...surface })) {
+    return false;
+  }
+
+  const lat = parseCoordinate(surface.latitude);
+  const lon = parseCoordinate(surface.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return false;
+  }
+
+  for (const field of ROBUST_NORMALIZED_STRING_FIELDS) {
+    const value = surface[field];
+    if (typeof value !== "string") {
+      return false;
+    }
+    const trimmed = value.trim();
+    if (!trimmed.length) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function isNormalizedAddressSchemaReady(address) {
   if (!address || typeof address !== "object") return false;
   for (const field of NORMALIZED_SCHEMA_REQUIRED_FIELDS) {
@@ -4082,10 +4133,14 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
-    const normalizedCandidate =
-      buildNormalizedAddressOutputForSchema(addressForOutput);
-
     let addressPayload = null;
+    let normalizedCandidate = null;
+    if (
+      hasRobustNormalizedAddress(addressForOutput)
+    ) {
+      normalizedCandidate =
+        buildNormalizedAddressOutputForSchema(addressForOutput);
+    }
 
     if (normalizedCandidate) {
       addressPayload = normalizedCandidate;
