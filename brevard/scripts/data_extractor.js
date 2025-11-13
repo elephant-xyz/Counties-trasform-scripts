@@ -3519,12 +3519,8 @@ const layoutsPath = path.join("owners", "layout_data.json");
 // const structuresData = null;
 const seed = readJSON("property_seed.json");
 const appendSourceInfo = (seed) => ({
-  source_http_request: {
-    method: "GET",
-    url: seed?.source_http_request?.url || null,
-  },
   request_identifier: seed?.request_identifier || seed?.parcel_id || "",
-  });
+});
 
 // try {
 //   structuresData = readJSON(structuresPath);
@@ -3635,6 +3631,15 @@ function createStructureFiles(seed,parcelIdentifier) {
         path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
         relationship
       );
+      const propertyStructureRelationship = {
+        type: "property_has_structure",
+        from: { "/": "./property.json" },
+        to: { "/": `./structure_${structureIndex}.json` },
+      };
+      writeJSON(
+        path.join("data", `relationship_property_has_structure_${structureIndex}.json`),
+        propertyStructureRelationship,
+      );
     });
   }
 
@@ -3705,6 +3710,15 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
         relationship
       );
+      const propertyUtilityRelationship = {
+        type: "property_has_utilities",
+        from: { "/": "./property.json" },
+        to: { "/": `./utility_${utilityIndex}.json` },
+      };
+      writeJSON(
+        path.join("data", `relationship_property_has_utilities_${utilityIndex}.json`),
+        propertyUtilityRelationship,
+      );
     });
   }
 
@@ -3765,6 +3779,15 @@ function createLayoutFiles(seed,parcelIdentifier){
         building_number: layout.building_number ?? null
       };
       writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
+      const propertyLayoutRelationship = {
+        type: "property_has_layout",
+        from: { "/": "./property.json" },
+        to: { "/": `./layout_${idx + 1}.json` },
+      };
+      writeJSON(
+        path.join("data", `relationship_property_has_layout_${idx + 1}.json`),
+        propertyLayoutRelationship,
+      );
     });
     
     // Create layout relationships
@@ -3822,17 +3845,6 @@ function main() {
   const layoutsData = fs.existsSync(layoutsJsonPath)
     ? readJSON(layoutsJsonPath)
     : {};
-
-  const appendSourceInfo = (seed) => ({
-  source_http_request: {
-    method: "GET",
-    url: seed?.source_http_request?.url || null,
-  },
-  request_identifier: seed?.request_identifier || seed?.parcel_id || "",
-  });
-
-
-
 
   // ---------- Parse Property ----------
   const parcelId = $("#divDetails_Pid").text().trim() || null;
@@ -4057,6 +4069,17 @@ function main() {
     unnormalized_address: siteAddr || null
   };
   writeJSON(path.join(dataDir, "address.json"), address);
+  if (siteAddr) {
+    const propertyAddressRelationship = {
+      type: "property_has_address",
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" },
+    };
+    writeJSON(
+      path.join(dataDir, "relationship_property_has_address.json"),
+      propertyAddressRelationship,
+    );
+  }
 
 
   //MAILING ADDRESS FILES.
@@ -4100,6 +4123,18 @@ function main() {
       sale.purchase_price_amount = purchasePrice;
     }
     writeJSON(path.join(dataDir, `sales_${salesFileIndex}.json`), sale);
+    const propertySalesRelationship = {
+      type: "property_has_sales_history",
+      from: { "/": "./property.json" },
+      to: { "/": `./sales_${salesFileIndex}.json` },
+    };
+    writeJSON(
+      path.join(
+        dataDir,
+        `relationship_property_has_sales_history_${salesFileIndex}.json`,
+      ),
+      propertySalesRelationship,
+    );
 
     // Map deed code/title to deed_type
     // console.log(deedCode)
@@ -4125,6 +4160,18 @@ function main() {
       document_type: "Title", // document type for deed.
     };
     writeJSON(path.join(dataDir, `file_${salesFileIndex}.json`), fileObj);
+    const propertyFileRelationship = {
+      type: "property_has_file",
+      from: { "/": "./property.json" },
+      to: { "/": `./file_${salesFileIndex}.json` },
+    };
+    writeJSON(
+      path.join(
+        dataDir,
+        `relationship_property_has_file_${salesFileIndex}.json`,
+      ),
+      propertyFileRelationship,
+    );
 
     const relSalesDeed = {
       from: { "/": `./sales_${salesFileIndex}.json` },
@@ -4338,6 +4385,15 @@ function main() {
           yearly_tax_amount: null,
         };
         writeJSON(path.join(dataDir, `tax_${yr}.json`), tax);
+        const propertyTaxRelationship = {
+          type: "property_has_tax",
+          from: { "/": "./property.json" },
+          to: { "/": `./tax_${yr}.json` },
+        };
+        writeJSON(
+          path.join(dataDir, `relationship_property_has_tax_${yr}.json`),
+          propertyTaxRelationship,
+        );
       }
     });
   }
@@ -4377,6 +4433,15 @@ function main() {
   };
 
   writeJSON(path.join(dataDir, "lot.json"), lotOut);
+  const propertyLotRelationship = {
+    type: "property_has_lot",
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  };
+  writeJSON(
+    path.join(dataDir, "relationship_property_has_lot.json"),
+    propertyLotRelationship,
+  );
 }
 
 main();
