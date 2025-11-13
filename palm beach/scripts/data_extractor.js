@@ -1227,6 +1227,84 @@ function buildAddressOutputPayload(address) {
   return output;
 }
 
+function buildFinalAddressOutput(address, canonicalUnnormalized) {
+  if (!address || typeof address !== "object") return null;
+
+  const normalizedCandidate = collectAddressFields(
+    address,
+    NORMALIZED_ADDRESS_FIELDS,
+    { preserveNulls: true },
+  );
+
+  const normalizedCandidateClone = { ...normalizedCandidate };
+  const normalizedReady = hasCompleteNormalizedAddress(normalizedCandidateClone);
+
+  if (normalizedReady) {
+    const normalizedOutput = {};
+
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const normalizedValue = normalizeAddressFieldForSchema(
+        field,
+        normalizedCandidate[field],
+      );
+      normalizedOutput[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
+    }
+
+    const latitude = parseCoordinate(normalizedOutput.latitude);
+    const longitude = parseCoordinate(normalizedOutput.longitude);
+    normalizedOutput.latitude = Number.isFinite(latitude) ? latitude : null;
+    normalizedOutput.longitude = Number.isFinite(longitude) ? longitude : null;
+
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+
+    return normalizedOutput;
+  }
+
+  const trimmedUnnormalized =
+    typeof canonicalUnnormalized === "string"
+      ? canonicalUnnormalized.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const rawOutput = {};
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const normalizedValue = normalizeAddressFieldForSchema(
+      field,
+      address[field],
+    );
+    rawOutput[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  const latitude = parseCoordinate(rawOutput.latitude);
+  const longitude = parseCoordinate(rawOutput.longitude);
+  rawOutput.latitude = Number.isFinite(latitude) ? latitude : null;
+  rawOutput.longitude = Number.isFinite(longitude) ? longitude : null;
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+
+  rawOutput.unnormalized_address = trimmedUnnormalized;
+
+  return rawOutput;
+}
+
 function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
   if (!address || typeof address !== "object") return null;
 
@@ -7974,141 +8052,32 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
-    const addressPayload = buildAddressPayloadForOutput(addressForOutput, {
+    const finalAddressOutput = buildFinalAddressOutput(
+      addressForOutput,
       canonicalUnnormalized,
-    });
+    );
 
-    if (addressPayload && addressPayload.payload) {
-      const { variant, payload } = addressPayload;
-      const clonedPayload = deepClone(payload) || { ...payload };
+    if (finalAddressOutput) {
+      writeJSON(addressFilePath, finalAddressOutput);
 
-      if (Object.prototype.hasOwnProperty.call(clonedPayload, "request_identifier")) {
-        delete clonedPayload.request_identifier;
-      }
-      if (Object.prototype.hasOwnProperty.call(clonedPayload, "source_http_request")) {
-        delete clonedPayload.source_http_request;
-      }
-
-      let isPayloadValid = true;
-
-      if (variant === "raw") {
-        const rawValue = clonedPayload.unnormalized_address;
-        if (typeof rawValue === "string") {
-          const trimmedRaw = rawValue.trim();
-          if (trimmedRaw.length) {
-            clonedPayload.unnormalized_address = trimmedRaw;
-          } else {
-            isPayloadValid = false;
-          }
-        } else {
-          isPayloadValid = false;
-        }
-      } else if (
-        Object.prototype.hasOwnProperty.call(clonedPayload, "unnormalized_address")
-      ) {
-        delete clonedPayload.unnormalized_address;
-      }
-
-      if (!isPayloadValid) {
-        removeFileIfExists(addressFilePath);
-        removeFileIfExists(propertyAddressRelationshipPath);
-        removeFileIfExists(addressFactSheetRelationshipPath);
+      if (fs.existsSync(propertyFilePath)) {
+        writeRelationshipFile(
+          propertyAddressRelationshipPath,
+          propertyFileRelative,
+          addressFileRelative,
+        );
       } else {
-        const templatedOutput = finalizeAddressPayload(variant, clonedPayload);
-        const preparedAddressOutput = templatedOutput
-          ? prepareAddressOutputForSchema(templatedOutput, {
-              fallbackUnnormalized: canonicalUnnormalized,
-            })
-          : null;
-        const surfacedAddressOutput = preparedAddressOutput
-          ? ensureAddressSchemaSurfaceCoverage(preparedAddressOutput)
-          : null;
+        removeFileIfExists(propertyAddressRelationshipPath);
+      }
 
-        if (surfacedAddressOutput) {
-          const enforcedAddress = finalizeAddressForOutput(
-            surfacedAddressOutput,
-          );
-          const completedAddress = ensureAddressOutputCoverage(
-            enforcedAddress,
-          );
-
-          if (completedAddress) {
-            const sanitizedAddress = buildAddressOutputPayload(
-              completedAddress,
-            );
-
-            if (sanitizedAddress) {
-              const surfacedAddressOutput = ensureAddressOutputFieldPresence(
-                sanitizedAddress,
-              );
-
-              if (surfacedAddressOutput) {
-                const hasRawVariant =
-                  typeof surfacedAddressOutput.unnormalized_address === "string" &&
-                  surfacedAddressOutput.unnormalized_address.trim().length > 0;
-
-                const variantIsValid = hasRawVariant
-                  ? isRawAddressVariantValid(surfacedAddressOutput)
-                  : isNormalizedAddressVariantValid(surfacedAddressOutput);
-
-                if (!variantIsValid) {
-                  removeFileIfExists(addressFilePath);
-                  removeFileIfExists(propertyAddressRelationshipPath);
-                  removeFileIfExists(addressFactSheetRelationshipPath);
-                } else {
-                  if (!hasRawVariant && Object.prototype.hasOwnProperty.call(surfacedAddressOutput, "unnormalized_address")) {
-                    delete surfacedAddressOutput.unnormalized_address;
-                  }
-
-                  if (hasRawVariant) {
-                    const latitude = parseCoordinate(surfacedAddressOutput.latitude);
-                    const longitude = parseCoordinate(surfacedAddressOutput.longitude);
-                    surfacedAddressOutput.latitude = latitude;
-                    surfacedAddressOutput.longitude = longitude;
-                  }
-
-                  writeJSON(addressFilePath, surfacedAddressOutput);
-
-                  if (fs.existsSync(propertyFilePath)) {
-                    writeRelationshipFile(
-                      propertyAddressRelationshipPath,
-                      propertyFileRelative,
-                      addressFileRelative,
-                    );
-                  } else {
-                    removeFileIfExists(propertyAddressRelationshipPath);
-                  }
-
-                  if (fs.existsSync(factSheetPath)) {
-                    writeRelationshipFile(
-                      addressFactSheetRelationshipPath,
-                      addressFileRelative,
-                      factSheetFileRelative,
-                    );
-                  } else {
-                    removeFileIfExists(addressFactSheetRelationshipPath);
-                  }
-                }
-              } else {
-                removeFileIfExists(addressFilePath);
-                removeFileIfExists(propertyAddressRelationshipPath);
-                removeFileIfExists(addressFactSheetRelationshipPath);
-              }
-            } else {
-              removeFileIfExists(addressFilePath);
-              removeFileIfExists(propertyAddressRelationshipPath);
-              removeFileIfExists(addressFactSheetRelationshipPath);
-            }
-          } else {
-            removeFileIfExists(addressFilePath);
-            removeFileIfExists(propertyAddressRelationshipPath);
-            removeFileIfExists(addressFactSheetRelationshipPath);
-          }
-        } else {
-          removeFileIfExists(addressFilePath);
-          removeFileIfExists(propertyAddressRelationshipPath);
-          removeFileIfExists(addressFactSheetRelationshipPath);
-        }
+      if (fs.existsSync(factSheetPath)) {
+        writeRelationshipFile(
+          addressFactSheetRelationshipPath,
+          addressFileRelative,
+          factSheetFileRelative,
+        );
+      } else {
+        removeFileIfExists(addressFactSheetRelationshipPath);
       }
     } else {
       removeFileIfExists(addressFilePath);
