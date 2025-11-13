@@ -8280,8 +8280,14 @@ async function main() {
     let addressPayload = null;
     let usedNormalizedSchema = false;
 
-    const normalizedCandidate =
-      buildNormalizedAddressOutputForSchema(addressForOutput);
+    let normalizedCandidate = null;
+    if (
+      hasStructuredAddressInput &&
+      hasCompleteNormalizedAddress(addressForOutput)
+    ) {
+      normalizedCandidate =
+        buildNormalizedAddressOutputForSchema(addressForOutput);
+    }
 
     if (normalizedCandidate) {
       addressPayload = normalizedCandidate;
