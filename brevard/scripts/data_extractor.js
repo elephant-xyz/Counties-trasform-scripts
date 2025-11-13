@@ -2776,103 +2776,79 @@ const propertyTypeMapping=[
 
 const extraFeaturesCodeListMapping=[]
 
-const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
-  if (!entry || !entry.property_usecode) {
-    return lookup;
-  }
-  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedUseCode) {
-    return lookup;
+function buildUseCodeKeys(raw) {
+  if (raw == null) return [];
+  const str = String(raw).trim();
+  if (!str) return [];
+  const keys = new Set();
+  const normalized = str.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (normalized) keys.add(normalized);
+  const leadingToken = str.split(/[\s-]+/)[0] || "";
+  if (leadingToken) {
+    keys.add(leadingToken);
+    const padded = leadingToken.padStart(4, "0");
+    keys.add(padded);
+    const numeric = parseInt(leadingToken, 10);
+    if (!Number.isNaN(numeric)) {
+      keys.add(String(numeric));
+      keys.add(String(numeric).padStart(4, "0"));
     }
-  lookup[normalizedUseCode] = entry.property_type ?? null;
-  return lookup;
-}, {});
+  }
+  return Array.from(keys);
+}
 
+function createUseCodeLookup(valueExtractor) {
+  return propertyTypeMapping.reduce((lookup, entry) => {
+    if (!entry || entry.property_usecode == null) return lookup;
+    const value = valueExtractor(entry);
+    buildUseCodeKeys(entry.property_usecode).forEach((key) => {
+      if (key && !(key in lookup)) {
+        lookup[key] = value ?? null;
+      }
+    });
+    return lookup;
+  }, {});
+}
 
-const ownershipEstateTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
-  if (!entry || !entry.property_usecode) return lookup;
-  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedUseCode) return lookup;
-  lookup[normalizedUseCode] = entry.ownership_estate_type ?? null;
-  return lookup;
-}, {});
-
-const buildStatusByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
-  if (!entry || !entry.property_usecode) return lookup;
-  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedUseCode) return lookup;
-  lookup[normalizedUseCode] = entry.build_status ?? null;
-  return lookup;
-}, {});
-
-const structureFormByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
-  if (!entry || !entry.property_usecode) return lookup;
-  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedUseCode) return lookup;
-  lookup[normalizedUseCode] = entry.structure_form ?? null;
-  return lookup;
-}, {});
-
-const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
-  if (!entry || !entry.property_usecode) return lookup;
-  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedUseCode) return lookup;
-  lookup[normalizedUseCode] = entry.property_usage_type ?? null;
-  return lookup;
-}, {});
-
-function mapPropertyTypeFromUseCode(code) {
+function resolveUseCodeMapping(lookup, code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  // console.log("1",normalizedInput)
-  // console.log(propertyTypeByUseCode)
-  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
-    return propertyTypeByUseCode[normalizedInput];
+  const keys = buildUseCodeKeys(code);
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(lookup, key)) {
+      return lookup[key];
+    }
   }
   return null;
 }
 
+const propertyTypeByUseCode = createUseCodeLookup((entry) => entry.property_type ?? null);
+const ownershipEstateTypeByUseCode = createUseCodeLookup(
+  (entry) => entry.ownership_estate_type ?? null,
+);
+const buildStatusByUseCode = createUseCodeLookup((entry) => entry.build_status ?? null);
+const structureFormByUseCode = createUseCodeLookup((entry) => entry.structure_form ?? null);
+const propertyUsageTypeByUseCode = createUseCodeLookup(
+  (entry) => entry.property_usage_type ?? null,
+);
 
+function mapPropertyTypeFromUseCode(code) {
+  return resolveUseCodeMapping(propertyTypeByUseCode, code);
+}
 
 function mapOwnershipEstateTypeFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
-    return ownershipEstateTypeByUseCode[normalizedInput];
-  }
-  return null;
+  return resolveUseCodeMapping(ownershipEstateTypeByUseCode, code);
 }
 
 function mapBuildStatusFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
-    return buildStatusByUseCode[normalizedInput];
-  }
-  return null;
+  return resolveUseCodeMapping(buildStatusByUseCode, code);
 }
 
 function mapStructureFormFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
-    return structureFormByUseCode[normalizedInput];
-  }
-  return null;
+  return resolveUseCodeMapping(structureFormByUseCode, code);
 }
 
 function mapPropertyUsageTypeFromUseCode(code) {
-  if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
-    return propertyUsageTypeByUseCode[normalizedInput];
-  }
-  return null;
+  return resolveUseCodeMapping(propertyUsageTypeByUseCode, code);
 }
 
 
