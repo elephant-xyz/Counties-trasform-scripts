@@ -2880,6 +2880,69 @@ function ensureAddressOutputCoverage(address) {
   return result;
 }
 
+function ensureAddressOutputFieldPresence(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const result = { ...address };
+  const hasUnnormalized =
+    typeof result.unnormalized_address === "string" &&
+    result.unnormalized_address.trim().length > 0;
+
+  const normalizedUnnormalized =
+    hasUnnormalized && result.unnormalized_address
+      ? result.unnormalized_address.trim()
+      : "";
+
+  if (hasUnnormalized && !normalizedUnnormalized.length) {
+    delete result.unnormalized_address;
+  } else if (hasUnnormalized) {
+    result.unnormalized_address = normalizedUnnormalized;
+  } else if (Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
+    delete result.unnormalized_address;
+  }
+
+  const fieldList = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+
+  for (const field of fieldList) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+      continue;
+    }
+
+    const value = result[field];
+    if (value === undefined) {
+      result[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      result[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (
+      ADDRESS_COORDINATE_FIELDS.includes(field) &&
+      value != null &&
+      !Number.isFinite(value)
+    ) {
+      const numeric = parseCoordinate(value);
+      result[field] = Number.isFinite(numeric) ? numeric : null;
+    }
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  return result;
+}
+
 function materializeAddressVariantForOutput(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -7192,6 +7255,9 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
+    relationships: {
+      property_has_address: null,
+    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -7947,25 +8013,35 @@ async function main() {
             );
 
             if (sanitizedAddress) {
-              writeJSON(addressFilePath, sanitizedAddress);
+              const surfacedAddressOutput = ensureAddressOutputFieldPresence(
+                sanitizedAddress,
+              );
 
-              if (fs.existsSync(propertyFilePath)) {
-                writeRelationshipFile(
-                  propertyAddressRelationshipPath,
-                  propertyFileRelative,
-                  addressFileRelative,
-                );
+              if (surfacedAddressOutput) {
+                writeJSON(addressFilePath, surfacedAddressOutput);
+
+                if (fs.existsSync(propertyFilePath)) {
+                  writeRelationshipFile(
+                    propertyAddressRelationshipPath,
+                    propertyFileRelative,
+                    addressFileRelative,
+                  );
+                } else {
+                  removeFileIfExists(propertyAddressRelationshipPath);
+                }
+
+                if (fs.existsSync(factSheetPath)) {
+                  writeRelationshipFile(
+                    addressFactSheetRelationshipPath,
+                    addressFileRelative,
+                    factSheetFileRelative,
+                  );
+                } else {
+                  removeFileIfExists(addressFactSheetRelationshipPath);
+                }
               } else {
+                removeFileIfExists(addressFilePath);
                 removeFileIfExists(propertyAddressRelationshipPath);
-              }
-
-              if (fs.existsSync(factSheetPath)) {
-                writeRelationshipFile(
-                  addressFactSheetRelationshipPath,
-                  addressFileRelative,
-                  factSheetFileRelative,
-                );
-              } else {
                 removeFileIfExists(addressFactSheetRelationshipPath);
               }
             } else {
