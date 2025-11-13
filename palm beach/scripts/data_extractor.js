@@ -51,6 +51,41 @@ function resolveSourceHttpRequest(...candidates) {
   return null;
 }
 
+function extractCoordinatesFromHTML(html) {
+  const fallback = { latitude: null, longitude: null };
+  if (typeof html !== "string" || !html.length) {
+    return fallback;
+  }
+
+  const candidatePatterns = [
+    /"latitude"\s*:\s*(-?\d+\.\d+)[^}]{0,200}"longitude"\s*:\s*(-?\d+\.\d+)/i,
+    /"lat"\s*[:=]\s*(-?\d+\.\d+)[^}]{0,200}"(?:lng|lon|longitude)"\s*[:=]\s*(-?\d+\.\d+)/i,
+    /lat\s*=\s*(-?\d+\.\d+)[^,\n]{0,120},\s*(?:lng|lon|long)\s*=\s*(-?\d+\.\d+)/i,
+    /data-latitude\s*=\s*"(-?\d+\.\d+)"[^>]{0,200}data-longitude\s*=\s*"(-?\d+\.\d+)"/i,
+  ];
+
+  for (const pattern of candidatePatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      const [, lat, lon] = match;
+      return { latitude: lat, longitude: lon };
+    }
+  }
+
+  const latitudeMatch =
+    html.match(/"latitude"\s*:\s*(-?\d+\.\d+)/i) ||
+    html.match(/\blat(?:itude)?\b["'\s:=]+(-?\d+\.\d+)/i);
+  const longitudeMatch =
+    html.match(/"longitude"\s*:\s*(-?\d+\.\d+)/i) ||
+    html.match(/\b(?:lng|lon|longitude)\b["'\s:=]+(-?\d+\.\d+)/i);
+
+  if (latitudeMatch && longitudeMatch) {
+    return { latitude: latitudeMatch[1], longitude: longitudeMatch[1] };
+  }
+
+  return fallback;
+}
+
 function writeRelationshipFile(filePath, fromValue, toValue) {
   const relationshipDir = path.dirname(filePath);
 
@@ -2213,7 +2248,19 @@ function isRawAddressVariantValid(address) {
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
       : "";
-  return raw.length > 0;
+  if (!raw.length) {
+    return false;
+  }
+
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return false;
+  }
+
+  address.latitude = latitude;
+  address.longitude = longitude;
+  return true;
 }
 
 function isNormalizedAddressSchemaReady(address) {
@@ -7233,6 +7280,9 @@ async function main() {
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
+  const htmlCoordinates = extractCoordinatesFromHTML(inputHTML);
+  const htmlLatitude = parseCoordinate(htmlCoordinates.latitude);
+  const htmlLongitude = parseCoordinate(htmlCoordinates.longitude);
 
   // Input owners/utilities/layout
   let ownersData = {};
@@ -7851,15 +7901,19 @@ async function main() {
     const resolvedLatitude =
       Number.isFinite(initialLatitude)
         ? initialLatitude
-        : parcelCentroid && Number.isFinite(parcelCentroid.latitude)
-          ? parcelCentroid.latitude
-          : null;
+        : Number.isFinite(htmlLatitude)
+          ? htmlLatitude
+          : parcelCentroid && Number.isFinite(parcelCentroid.latitude)
+            ? parcelCentroid.latitude
+            : null;
     const resolvedLongitude =
       Number.isFinite(initialLongitude)
         ? initialLongitude
-        : parcelCentroid && Number.isFinite(parcelCentroid.longitude)
-          ? parcelCentroid.longitude
-          : null;
+        : Number.isFinite(htmlLongitude)
+          ? htmlLongitude
+          : parcelCentroid && Number.isFinite(parcelCentroid.longitude)
+            ? parcelCentroid.longitude
+            : null;
     address.latitude = resolvedLatitude;
     address.longitude = resolvedLongitude;
 
@@ -8055,6 +8109,7 @@ async function main() {
       address.latitude,
       normalizedSnapshot && normalizedSnapshot.latitude,
       initialLatitude,
+      htmlLatitude,
       resolvedLatitude,
       parcelCentroid ? parcelCentroid.latitude : null,
     ];
@@ -8063,6 +8118,7 @@ async function main() {
       address.longitude,
       normalizedSnapshot && normalizedSnapshot.longitude,
       initialLongitude,
+      htmlLongitude,
       resolvedLongitude,
       parcelCentroid ? parcelCentroid.longitude : null,
     ];
