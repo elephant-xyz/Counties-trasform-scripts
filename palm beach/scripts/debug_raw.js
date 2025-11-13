@@ -4034,6 +4034,13 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
+    for (const field of ADDRESS_SCHEMA_FIELDS) {
+      if (field === "unnormalized_address") continue;
+      if (!Object.prototype.hasOwnProperty.call(addressForOutput, field)) {
+        addressForOutput[field] = null;
+      }
+    }
+
     const finalAddressOutput = buildFinalAddressOutput(
       addressForOutput,
       canonicalUnnormalized,
