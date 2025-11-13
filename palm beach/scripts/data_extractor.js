@@ -1770,6 +1770,7 @@ function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
   }
 
   const raw = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmed,
   };
 
@@ -1779,32 +1780,29 @@ function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
       : [];
 
   for (const field of fields) {
-    if (!source || !Object.prototype.hasOwnProperty.call(source, field)) {
-      continue;
-    }
-    const sanitized = normalizeAddressFieldForSchema(field, source[field]);
-    if (sanitized === undefined || sanitized === null) {
-      continue;
-    }
-    raw[field] = sanitized;
+    const candidate =
+      source && Object.prototype.hasOwnProperty.call(source, field)
+        ? source[field]
+        : null;
+    const sanitized = normalizeAddressFieldForSchema(field, candidate);
+    raw[field] = sanitized === undefined || sanitized === null ? null : sanitized;
   }
 
   if (Object.prototype.hasOwnProperty.call(raw, "state_code") && !raw.country_code) {
     raw.country_code = "US";
   }
 
-  if (!raw.postal_code && Object.prototype.hasOwnProperty.call(raw, "plus_four_postal_code")) {
-    delete raw.plus_four_postal_code;
+  if (!raw.postal_code) {
+    raw.plus_four_postal_code = null;
   }
 
   for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(raw, coordinateField)) continue;
     const numeric = parseCoordinate(raw[coordinateField]);
     if (!Number.isFinite(numeric)) {
-      delete raw[coordinateField];
-    } else {
-      raw[coordinateField] = numeric;
+      raw[coordinateField] = null;
+      continue;
     }
+    raw[coordinateField] = numeric;
   }
 
   return raw;
