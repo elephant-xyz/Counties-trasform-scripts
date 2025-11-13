@@ -1293,6 +1293,9 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
   rawOutput.latitude = Number.isFinite(latitude) ? latitude : null;
   rawOutput.longitude = Number.isFinite(longitude) ? longitude : null;
 
+  const hasCoordinates =
+    Number.isFinite(rawOutput.latitude) && Number.isFinite(rawOutput.longitude);
+
   if (!rawOutput.postal_code) {
     rawOutput.plus_four_postal_code = null;
   }
@@ -1301,6 +1304,10 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
   }
 
   rawOutput.unnormalized_address = trimmedUnnormalized;
+
+  if (!hasCoordinates) {
+    return null;
+  }
 
   return rawOutput;
 }
