@@ -7551,9 +7551,6 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
-    relationships: {
-      property_has_address: null,
-    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -8255,10 +8252,15 @@ async function main() {
 
     if (surfacedAddressOutput) {
       writeJSON(addressFilePath, surfacedAddressOutput);
+      writeRelationshipFile(
+        propertyAddressRelationshipPath,
+        propertyFileRelative,
+        "./address.json",
+      );
     } else {
       removeFileIfExists(addressFilePath);
+      removeFileIfExists(propertyAddressRelationshipPath);
     }
-    removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
