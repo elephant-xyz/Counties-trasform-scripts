@@ -1733,6 +1733,13 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
     candidate.plus_four_postal_code = null;
   }
 
+  const hasLatitude = Number.isFinite(candidate.latitude);
+  const hasLongitude = Number.isFinite(candidate.longitude);
+  if (hasLatitude !== hasLongitude) {
+    candidate.latitude = null;
+    candidate.longitude = null;
+  }
+
   return candidate;
 }
 
@@ -2188,17 +2195,7 @@ function isRawAddressVariantValid(address) {
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
       : "";
-  if (!raw.length) {
-    return false;
-  }
-
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return false;
-  }
-
-  return true;
+  return raw.length > 0;
 }
 
 function isNormalizedAddressSchemaReady(address) {
@@ -7206,8 +7203,6 @@ async function main() {
   ensureDir(dataDir);
   const propertyFilePath = path.join(dataDir, "property.json");
   const propertyFileRelative = "./property.json";
-  const addressFileRelative = "./address.json";
-  const factSheetFileRelative = "./fact_sheet.json";
 
   const staleRelationshipFiles = [
     path.join(dataDir, "relationship_property_has_address.json"),
@@ -8021,7 +8016,6 @@ async function main() {
       dataDir,
       "relationship_address_has_fact_sheet.json",
     );
-    const factSheetPath = path.join(dataDir, "fact_sheet.json");
 
     for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
       if (!Number.isFinite(address[coordinateField])) {
@@ -8261,31 +8255,11 @@ async function main() {
 
     if (surfacedAddressOutput) {
       writeJSON(addressFilePath, surfacedAddressOutput);
-
-      if (fs.existsSync(propertyFilePath)) {
-        writeRelationshipFile(
-          propertyAddressRelationshipPath,
-          propertyFileRelative,
-          addressFileRelative,
-        );
-      } else {
-        removeFileIfExists(propertyAddressRelationshipPath);
-      }
-
-      if (fs.existsSync(factSheetPath)) {
-        writeRelationshipFile(
-          addressFactSheetRelationshipPath,
-          addressFileRelative,
-          factSheetFileRelative,
-        );
-      } else {
-        removeFileIfExists(addressFactSheetRelationshipPath);
-      }
     } else {
       removeFileIfExists(addressFilePath);
-      removeFileIfExists(propertyAddressRelationshipPath);
-      removeFileIfExists(addressFactSheetRelationshipPath);
     }
+    removeFileIfExists(propertyAddressRelationshipPath);
+    removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
 
