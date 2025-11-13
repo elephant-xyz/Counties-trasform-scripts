@@ -1534,26 +1534,36 @@ function validateSuffix(suffix) {
 
 function parsePerson(name) {
   if (!name) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-  
-  let tokens = name.trim().split(/\s+/).filter(Boolean);
+
+  const normalized = name.replace(/\s+/g, " ").trim();
+  if (!normalized) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
+
+  const spaced = normalized.replace(/\s+,\s+/g, ", ");
+  const isAllCaps = spaced === spaced.toUpperCase();
+
+  let tokens = spaced.replace(/,/g, " ").split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
 
-  // Extract prefix
   const prefixes = ["Mr.", "Mrs.", "Ms.", "Miss", "Mx.", "Dr.", "Prof.", "Rev.", "Fr.", "Sr.", "Br.", "Capt.", "Col.", "Maj.", "Lt.", "Sgt.", "Hon.", "Judge", "Rabbi", "Imam", "Sheikh", "Sir", "Dame"];
   let prefix = null;
   if (tokens.length > 0) {
-    const foundPrefix = prefixes.find(p => tokens[0].toLowerCase() === p.toLowerCase());
+    const foundPrefix = prefixes.find((p) => tokens[0].toLowerCase() === p.toLowerCase());
     if (foundPrefix) {
       prefix = foundPrefix;
       tokens.shift();
     }
   }
 
-  // Extract suffix (check all positions)
   const suffixes = ["Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM", "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."];
   let suffix = null;
   for (let i = tokens.length - 1; i >= 0; i--) {
-    const foundSuffix = suffixes.find(s => tokens[i].toLowerCase() === s.toLowerCase() || (s === "Jr." && tokens[i].toLowerCase() === "jr") || (s === "Sr." && tokens[i].toLowerCase() === "sr"));
+    const candidate = tokens[i];
+    const foundSuffix = suffixes.find(
+      (s) =>
+        candidate.toLowerCase() === s.toLowerCase() ||
+        (s === "Jr." && candidate.toLowerCase() === "jr") ||
+        (s === "Sr." && candidate.toLowerCase() === "sr"),
+    );
     if (foundSuffix) {
       suffix = foundSuffix;
       tokens.splice(i, 1);
@@ -1563,9 +1573,19 @@ function parsePerson(name) {
 
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix, suffix };
 
-  const firstName = tokens[0];
-  const lastName = tokens[tokens.length - 1];
-  const middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+  let firstName = null;
+  let lastName = null;
+  let middleName = null;
+
+  if (isAllCaps) {
+    lastName = tokens[0];
+    firstName = tokens[1] || null;
+    if (tokens.length > 2) middleName = tokens.slice(2).join(" ");
+  } else {
+    firstName = tokens[0];
+    lastName = tokens[tokens.length - 1];
+    if (tokens.length > 2) middleName = tokens.slice(1, -1).join(" ");
+  }
 
   return { firstName, lastName, middleName, prefix, suffix };
 }
@@ -1575,26 +1595,39 @@ function extractOwnerInfo(ownershipHtml) {
   
   // Remove content within <p></p> tags (addresses)
   const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-  
+
+  const decodeEntities = (value) =>
+    (value || "")
+      .replace(/&amp;/g, "&")
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"');
+
+  const normalizeOwnerName = (value) => {
+    if (!value) return "";
+    let name = decodeEntities(value);
+    name = name.replace(/<[^>]*>/g, "");
+    name = name.replace(/^[>\s]+/, "");
+    name = name.replace(/\s*\((?:[^A-Za-z]*\d[^)]*|[\d\s/%]+)\)\s*$/g, "");
+    name = name.replace(/\s+/g, " ").trim();
+    return name;
+  };
+
   // Split by <br> tags to get individual owner lines
-  const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
-    .map(line => line.replace(/<[^>]*>/g, '').trim())
-    .filter(line => line.length > 0);
-  
+  const ownerLines = htmlWithoutAddresses
+    .split(/<br\s*\/?>/i)
+    .map(normalizeOwnerName)
+    .filter((line) => line.length > 0);
+
   const owners = [];
   const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
   
   for (const line of ownerLines) {
-    let cleanName = line.trim();
-    if (cleanName && cleanName.length > 2) {
-      // Decode HTML entities like &amp; to &
-      cleanName = cleanName.replace(/&amp;/g, '&');
-      
+    if (line && line.length > 2) {
       // Split by & to handle multiple owners on same line
-      const namesParts = cleanName.split(/\s*&\s*/);
-      
+      const namesParts = line.split(/\s*&\s*/);
+
       for (const namePart of namesParts) {
-        const trimmedName = namePart.trim();
+        const trimmedName = normalizeOwnerName(namePart);
         if (trimmedName && trimmedName.length > 2) {
           const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
           owners.push({ name: trimmedName, type: ownerType });
