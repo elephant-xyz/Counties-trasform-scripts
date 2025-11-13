@@ -8205,18 +8205,22 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
-    const finalAddressOutput = buildFinalAddressOutput(
+    const schemaReadyAddress = prepareAddressOutputForSchema(
       addressForOutput,
-      canonicalUnnormalized,
+      { fallbackUnnormalized: canonicalUnnormalized },
     );
 
-    const surfacedAddressOutput = finalAddressOutput
-      ? ensureAddressSchemaSurfaceCoverage(finalAddressOutput)
+    const surfacedAddressOutput = schemaReadyAddress
+      ? ensureAddressSchemaSurfaceCoverage(schemaReadyAddress)
       : null;
 
     if (surfacedAddressOutput) {
       writeJSON(addressFilePath, surfacedAddressOutput);
-      removeFileIfExists(propertyAddressRelationshipPath);
+      writeRelationshipFile(
+        propertyAddressRelationshipPath,
+        propertyFileRelative,
+        "./address.json",
+      );
     } else {
       removeFileIfExists(addressFilePath);
       removeFileIfExists(propertyAddressRelationshipPath);
