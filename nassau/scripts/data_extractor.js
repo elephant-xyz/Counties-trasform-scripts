@@ -1496,29 +1496,59 @@ function validateStringNotNull(value, fieldName) {
   return value;
 }
 
-function validatePersonName(value, fieldName) {
+function validatePersonName(value, fieldName, { required = false } = {}) {
   if (value === null || value === undefined || value === "") {
-    console.log(`Warning: ${fieldName} cannot be null or empty`);
-    return value;
+    if (required) {
+      console.log(`Warning: ${fieldName} cannot be null or empty`);
+    }
+    return null;
   }
   if (typeof value !== "string") {
     console.log(`Warning: ${fieldName} must be a string`);
-    return value;
+    return null;
   }
-  if (fieldName !== 'first_name' && fieldName !== 'last_name' && fieldName !== 'middle_name') {
-    if (!PERSON_NAME_PATTERN.test(value)) {
-      console.log(`Warning: ${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
-    }
+  if (!PERSON_NAME_PATTERN.test(value)) {
+    console.log(`Warning: ${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+    return null;
   }
   return value;
 }
 
-function formatName(name) {
-  if (!name || name.trim() === "") return null;
-  const normalizedSpacing = name.trim().toLowerCase().replace(/\s+/g, " ");
-  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
-  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
-  return sanitized;
+function formatName(name, { allowNull = false } = {}) {
+  if (name === null || name === undefined) return allowNull ? null : null;
+  const cleaned = String(name)
+    .replace(/&/g, " ")
+    .replace(/\//g, " ")
+    .replace(/[^A-Za-z\s-',.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return allowNull ? null : null;
+  return cleaned
+    .toLowerCase()
+    .replace(/\b([a-z])/g, (m, ch) => ch.toUpperCase());
+}
+
+function deriveNamePartsFromRaw(raw) {
+  const normalized = formatName(raw, { allowNull: true });
+  if (!normalized) return null;
+  const tokens = normalized.split(" ").filter(Boolean);
+  if (tokens.length < 2) return null;
+
+  const firstCandidate = formatName(tokens[0]);
+  const lastCandidate = formatName(tokens[tokens.length - 1]);
+  const middleRaw = tokens.slice(1, -1).join(" ");
+  const middleCandidate = middleRaw
+    ? formatName(middleRaw, { allowNull: true })
+    : null;
+
+  const firstName = validatePersonName(firstCandidate, "first_name", { required: true });
+  const lastName = validatePersonName(lastCandidate, "last_name", { required: true });
+  const middleName = middleCandidate
+    ? validatePersonName(middleCandidate, "middle_name")
+    : null;
+
+  if (!firstName || !lastName) return null;
+  return { first: firstName, last: lastName, middle: middleName };
 }
 
 // Validate prefix/suffix against schema
@@ -2310,13 +2340,31 @@ function main() {
     } else {
       // Parse person name with prefix/suffix extraction
       const parsed = parsePerson(owner.name);
-      const firstNameRaw = formatName(parsed.firstName);
-      const lastNameRaw = formatName(parsed.lastName);
-      let middleName = formatName(parsed.middleName);
-      const firstName = validatePersonName(firstNameRaw, 'first_name');
-      const lastName = validatePersonName(lastNameRaw, 'last_name');
-      if (middleName != null) {
-        middleName = validatePersonName(middleName, 'middle_name');
+      let firstName = validatePersonName(
+        formatName(parsed.firstName),
+        "first_name",
+        { required: true },
+      );
+      let lastName = validatePersonName(
+        formatName(parsed.lastName),
+        "last_name",
+        { required: true },
+      );
+      let middleName = formatName(parsed.middleName, { allowNull: true });
+      middleName = middleName != null ? validatePersonName(middleName, "middle_name") : null;
+
+      if (!firstName || !lastName) {
+        const fallbackParts = deriveNamePartsFromRaw(owner.name);
+        if (fallbackParts) {
+          firstName = fallbackParts.first;
+          lastName = fallbackParts.last;
+          middleName = fallbackParts.middle;
+        }
+      }
+
+      if (!firstName || !lastName) {
+        console.log(`Skipping owner due to unparseable name: ${owner.name}`);
+        return;
       }
       
       const person = {
@@ -2635,16 +2683,37 @@ function main() {
 
 
     function ensurePerson(owner) {
-      const key = `${owner.first_name}|${owner.middle_name || ""}|${owner.last_name}`;
-      if (!personIndexByKey.has(key)) {
-        const firstNameRaw = formatName(owner.first_name);
-        const lastNameRaw = formatName(owner.last_name);
-        let middleName = formatName(owner.middle_name);
-        const firstName = validatePersonName(firstNameRaw, 'first_name');
-        const lastName = validatePersonName(lastNameRaw, 'last_name');
-        if (middleName != null) {
-          middleName = validatePersonName(middleName, 'middle_name');
+      let firstName = validatePersonName(
+        formatName(owner.first_name),
+        "first_name",
+        { required: true },
+      );
+      let lastName = validatePersonName(
+        formatName(owner.last_name),
+        "last_name",
+        { required: true },
+      );
+      let middleName = formatName(owner.middle_name, { allowNull: true });
+      middleName = middleName != null ? validatePersonName(middleName, "middle_name") : null;
+
+      if (!firstName || !lastName) {
+        const fallbackParts = deriveNamePartsFromRaw(
+          [owner.first_name, owner.last_name].filter(Boolean).join(" "),
+        );
+        if (fallbackParts) {
+          firstName = fallbackParts.first;
+          lastName = fallbackParts.last;
+          middleName = fallbackParts.middle;
         }
+      }
+
+      if (!firstName || !lastName) {
+        console.log(`Skipping sales history owner due to invalid name: ${JSON.stringify(owner)}`);
+        return null;
+      }
+
+      const key = `${firstName}|${middleName || ""}|${lastName}`;
+      if (!personIndexByKey.has(key)) {
         const personObj = {
           source_http_request: {
             method: "GET",
@@ -2694,6 +2763,7 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
+          if (!personFile) return;
           const rel = {
             from: { "/": `./${sref.salesFileName}` },
             to: { "/": `./${personFile}` },
@@ -2763,6 +2833,7 @@ function main() {
       currentOwners.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
+          if (!personFile) return;
           const rel = {
             from: { "/": `./${personFile}` },
             to: { "/": `./mailing_address.json` },

@@ -18,6 +18,26 @@ function titleCase(str) {
     .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
 }
 
+const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
+
+function sanitizeNameValue(value, { allowNull = false } = {}) {
+  if (value === null || value === undefined) return allowNull ? null : null;
+  const cleaned = String(value)
+    .replace(/&/g, " ")
+    .replace(/\//g, " ")
+    .replace(/[^A-Za-z\s-',.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return allowNull ? null : null;
+  const titled = cleaned
+    .toLowerCase()
+    .replace(/\b([a-z])/g, (m, ch) => ch.toUpperCase());
+  if (!PERSON_NAME_PATTERN.test(titled)) {
+    return allowNull ? null : null;
+  }
+  return titled;
+}
+
 // Extract property id
 function extractPropertyId($) {
   // Identify parcel identifier from HTML
@@ -155,11 +175,16 @@ function validateSuffix(suffix) {
 
 // Build a person object using inferred pattern
 function buildPerson(first, last, middle, prefix, suffix) {
+  const firstName = sanitizeNameValue(first);
+  const lastName = sanitizeNameValue(last);
+  const middleName = sanitizeNameValue(middle, { allowNull: true });
+  if (!firstName || !lastName) return null;
+
   return {
     type: "person",
-    first_name: titleCase(first),
-    last_name: titleCase(last),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: firstName,
+    last_name: lastName,
+    middle_name: middleName,
     prefix_name: prefix ? validatePrefix(prefix) : null,
     suffix_name: suffix ? validateSuffix(suffix) : null,
   };
