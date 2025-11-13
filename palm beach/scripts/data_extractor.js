@@ -8287,6 +8287,8 @@ async function main() {
         addressForOutput,
       );
       if (rawCandidate) {
+        // Keep the full raw field set (even when values are null) so the
+        // County address oneOf matches the unnormalized branch.
         addressPayload = rawCandidate;
       }
     }
@@ -8301,13 +8303,6 @@ async function main() {
 
       if (sourceHttpCandidate) {
         addressPayload.source_http_request = sourceHttpCandidate;
-      }
-
-      if (
-        typeof addressPayload.unnormalized_address === "string" &&
-        addressPayload.unnormalized_address.trim().length
-      ) {
-        addressPayload = pruneRawAddressPayloadForOutput(addressPayload);
       }
 
       writeJSON(addressFilePath, addressPayload);
