@@ -1388,24 +1388,31 @@ function buildAddressOutputPayload(address) {
 function buildFinalAddressOutput(address, canonicalUnnormalized) {
   if (!address || typeof address !== "object") return null;
 
-  const buildNormalizedOutput = (candidate) => {
-    const normalizedOutput = {};
+  const normalizedCandidate = collectAddressFields(
+    address,
+    NORMALIZED_ADDRESS_FIELDS,
+    { preserveNulls: true },
+  );
 
+  const normalizedClone = { ...normalizedCandidate };
+  if (hasCompleteNormalizedAddress(normalizedClone)) {
+    const normalizedOutput = {};
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      const sourceValue = Object.prototype.hasOwnProperty.call(candidate, field)
-        ? candidate[field]
+      const sourceValue = Object.prototype.hasOwnProperty.call(
+        normalizedClone,
+        field,
+      )
+        ? normalizedClone[field]
         : null;
-      const normalizedValue = normalizeAddressFieldForSchema(field, sourceValue);
+      const normalizedValue = normalizeAddressFieldForSchema(
+        field,
+        sourceValue,
+      );
       normalizedOutput[field] =
         normalizedValue === undefined || normalizedValue === null
           ? null
           : normalizedValue;
     }
-
-    const latitude = parseCoordinate(normalizedOutput.latitude);
-    const longitude = parseCoordinate(normalizedOutput.longitude);
-    normalizedOutput.latitude = Number.isFinite(latitude) ? latitude : null;
-    normalizedOutput.longitude = Number.isFinite(longitude) ? longitude : null;
 
     if (!normalizedOutput.postal_code) {
       normalizedOutput.plus_four_postal_code = null;
@@ -1415,19 +1422,6 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     }
 
     return normalizedOutput;
-  };
-
-  const normalizedCandidate = collectAddressFields(
-    address,
-    NORMALIZED_ADDRESS_FIELDS,
-    { preserveNulls: true },
-  );
-
-  const normalizedCandidateClone = { ...normalizedCandidate };
-  const normalizedReady = hasCompleteNormalizedAddress(normalizedCandidateClone);
-
-  if (normalizedReady) {
-    return buildNormalizedOutput(normalizedCandidateClone);
   }
 
   const trimmedUnnormalized =
@@ -1438,23 +1432,18 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     return null;
   }
 
-  const normalizedFields = {};
+  const rawPrimedOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     const normalizedValue = normalizeAddressFieldForSchema(
       field,
       address[field],
     );
-    normalizedFields[field] =
+    rawPrimedOutput[field] =
       normalizedValue === undefined || normalizedValue === null
         ? null
         : normalizedValue;
   }
-
-  const rawPrimedOutput = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    ...normalizedFields,
-    unnormalized_address: trimmedUnnormalized,
-  };
+  rawPrimedOutput.unnormalized_address = trimmedUnnormalized;
 
   if (rawPrimedOutput.state_code && !rawPrimedOutput.country_code) {
     rawPrimedOutput.country_code = "US";
@@ -1464,83 +1453,7 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     rawPrimedOutput.plus_four_postal_code = null;
   }
 
-  const rawOutput = ensureRawAddressFieldCoverage(rawPrimedOutput);
-  if (!rawOutput) {
-    return null;
-  }
-
-  const normalizedFallback = (() => {
-    const fallbackCandidate = { ...normalizedCandidate };
-
-    const rawSourcedFields = [
-      "street_number",
-      "street_name",
-      "street_pre_directional_text",
-      "street_post_directional_text",
-      "street_suffix_type",
-      "unit_identifier",
-      "route_number",
-      "city_name",
-      "state_code",
-      "postal_code",
-      "plus_four_postal_code",
-      "country_code",
-      "county_name",
-      "municipality_name",
-      "latitude",
-      "longitude",
-    ];
-
-    for (const field of rawSourcedFields) {
-      if (
-        !hasMeaningfulAddressValue(fallbackCandidate[field]) &&
-        hasMeaningfulAddressValue(rawOutput[field])
-      ) {
-        fallbackCandidate[field] = rawOutput[field];
-      }
-    }
-
-    const parsedFallback = extractComponentsFromFullAddress(trimmedUnnormalized);
-    if (parsedFallback) {
-      const componentMap = {
-        streetNumber: "street_number",
-        streetName: "street_name",
-        streetPreDirectional: "street_pre_directional_text",
-        streetPostDirectional: "street_post_directional_text",
-        streetSuffix: "street_suffix_type",
-        unitIdentifier: "unit_identifier",
-        routeNumber: "route_number",
-        cityName: "city_name",
-        stateCode: "state_code",
-        postalCode: "postal_code",
-        plus4: "plus_four_postal_code",
-      };
-      for (const [componentKey, targetField] of Object.entries(componentMap)) {
-        if (
-          !hasMeaningfulAddressValue(fallbackCandidate[targetField]) &&
-          hasMeaningfulAddressValue(parsedFallback[componentKey])
-        ) {
-          fallbackCandidate[targetField] = parsedFallback[componentKey];
-        }
-      }
-    }
-
-    const fallbackClone = { ...fallbackCandidate };
-    if (hasCompleteNormalizedAddress(fallbackClone)) {
-      return buildNormalizedOutput(fallbackClone);
-    }
-    return null;
-  })();
-
-  if (normalizedFallback) {
-    return normalizedFallback;
-  }
-
-  if (!isRawAddressVariantValid({ ...rawOutput })) {
-    return null;
-  }
-
-  return rawOutput;
+  return rawPrimedOutput;
 }
 
 function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLOWED_FIELDS) {
@@ -2240,27 +2153,6 @@ function isNormalizedAddressVariantValid(address) {
   if (!address || typeof address !== "object") return false;
   const cloned = { ...address };
   return hasCompleteNormalizedAddress(cloned);
-}
-
-function isRawAddressVariantValid(address) {
-  if (!address || typeof address !== "object") return false;
-  const raw =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!raw.length) {
-    return false;
-  }
-
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return false;
-  }
-
-  address.latitude = latitude;
-  address.longitude = longitude;
-  return true;
 }
 
 function isNormalizedAddressSchemaReady(address) {

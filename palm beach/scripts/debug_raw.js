@@ -2281,27 +2281,22 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     { preserveNulls: true },
   );
 
-  const normalizedCandidateClone = { ...normalizedCandidate };
-  const normalizedReady = hasCompleteNormalizedAddress(normalizedCandidateClone);
+  const normalizedClone = { ...normalizedCandidate };
+  const normalizedReady = hasCompleteNormalizedAddress(normalizedClone);
 
   if (normalizedReady) {
     const normalizedOutput = {};
 
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      const normalizedValue = normalizeAddressFieldForSchema(
-        field,
-        normalizedCandidate[field],
-      );
+      const sourceValue = Object.prototype.hasOwnProperty.call(normalizedClone, field)
+        ? normalizedClone[field]
+        : null;
+      const normalizedValue = normalizeAddressFieldForSchema(field, sourceValue);
       normalizedOutput[field] =
         normalizedValue === undefined || normalizedValue === null
           ? null
           : normalizedValue;
     }
-
-    const latitude = parseCoordinate(normalizedOutput.latitude);
-    const longitude = parseCoordinate(normalizedOutput.longitude);
-    normalizedOutput.latitude = Number.isFinite(latitude) ? latitude : null;
-    normalizedOutput.longitude = Number.isFinite(longitude) ? longitude : null;
 
     if (!normalizedOutput.postal_code) {
       normalizedOutput.plus_four_postal_code = null;
@@ -2321,7 +2316,7 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     return null;
   }
 
-  const rawOutput = {};
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     const normalizedValue = normalizeAddressFieldForSchema(
       field,
@@ -2330,13 +2325,8 @@ function buildFinalAddressOutput(address, canonicalUnnormalized) {
     rawOutput[field] =
       normalizedValue === undefined || normalizedValue === null
         ? null
-        : normalizedValue;
+          : normalizedValue;
   }
-
-  const latitude = parseCoordinate(rawOutput.latitude);
-  const longitude = parseCoordinate(rawOutput.longitude);
-  rawOutput.latitude = Number.isFinite(latitude) ? latitude : null;
-  rawOutput.longitude = Number.isFinite(longitude) ? longitude : null;
 
   if (!rawOutput.postal_code) {
     rawOutput.plus_four_postal_code = null;
