@@ -1794,6 +1794,86 @@ function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
   return raw;
 }
 
+function pruneRawAddressPayloadForOutput(payload) {
+  if (!payload || typeof payload !== "object") return payload;
+
+  const unnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
+    return payload;
+  }
+
+  const preservedKeys = [
+    "latitude",
+    "longitude",
+    "city_name",
+    "country_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "state_code",
+    "street_name",
+    "street_number",
+    "street_suffix_type",
+    "street_pre_directional_text",
+    "street_post_directional_text",
+    "unit_identifier",
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+    "county_name",
+    "municipality_name",
+    "request_identifier",
+    "source_http_request",
+  ];
+
+  const minimized = {
+    unnormalized_address: unnormalized,
+  };
+
+  for (const key of preservedKeys) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) continue;
+    const value = payload[key];
+    if (value === null || value === undefined) continue;
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) continue;
+      minimized[key] = trimmed;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        minimized[key] = value;
+      }
+      continue;
+    }
+
+    if (typeof value === "boolean") {
+      minimized[key] = value;
+      continue;
+    }
+
+    if (typeof value === "object") {
+      minimized[key] = deepClone(value);
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(minimized, "source_http_request") &&
+    minimized.source_http_request == null
+  ) {
+    delete minimized.source_http_request;
+  }
+
+  return minimized;
+}
+
 function materializeAddressForSchema(payload, variant, options = {}) {
   if (!payload || typeof payload !== "object") return null;
 
@@ -8221,6 +8301,13 @@ async function main() {
 
       if (sourceHttpCandidate) {
         addressPayload.source_http_request = sourceHttpCandidate;
+      }
+
+      if (
+        typeof addressPayload.unnormalized_address === "string" &&
+        addressPayload.unnormalized_address.trim().length
+      ) {
+        addressPayload = pruneRawAddressPayloadForOutput(addressPayload);
       }
 
       writeJSON(addressFilePath, addressPayload);
