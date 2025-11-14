@@ -781,7 +781,6 @@ function main() {
     );
 
     const relDf = {
-      type: "deed_has_file",
       from: { "/": `./deed_${idx + 1}.json` },
       to: { "/": `./file_${idx + 1}.json` },
     };
@@ -817,10 +816,9 @@ function main() {
           ) + 1;
     if (deedIdx > 0) {
       const rel = {
-        type: "sales_history_has_deed",
-        // Schema expects deed -> sales_history orientation.
-        from: { "/": `./deed_${deedIdx}.json` },
-        to: { "/": `./sales_${idx + 1}.json` },
+        // Schema expects sales_history -> deed orientation.
+        from: { "/": `./sales_${idx + 1}.json` },
+        to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
