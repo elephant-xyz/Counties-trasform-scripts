@@ -8311,7 +8311,7 @@ async function main() {
         if (!rawUnnormalized.length) {
           addressPayload = null;
         } else {
-          addressPayload = { unnormalized_address: rawUnnormalized };
+          addressPayload.unnormalized_address = rawUnnormalized;
         }
       }
     }
