@@ -574,6 +574,92 @@ function ensureAddressSchemaSurfaceCoverage(address) {
   return hydrated;
 }
 
+function composeSchemaAlignedAddressOutput(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const hasUnnormalized =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+
+  const variantFields = hasUnnormalized
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasUnnormalized
+    ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE }
+    : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+  const aligned = { ...template };
+
+  for (const field of variantFields) {
+    let value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+
+    if (value === undefined) {
+      value = null;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      aligned[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      aligned[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      aligned[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    aligned[field] = value === null || value === undefined ? null : value;
+  }
+
+  if (hasUnnormalized) {
+    const trimmed = address.unnormalized_address.trim();
+    if (!trimmed.length) {
+      return null;
+    }
+    aligned.unnormalized_address = trimmed;
+  } else if (Object.prototype.hasOwnProperty.call(aligned, "unnormalized_address")) {
+    delete aligned.unnormalized_address;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier") &&
+    address.request_identifier != null
+  ) {
+    const trimmedIdentifier = safeNullIfEmpty(address.request_identifier);
+    if (trimmedIdentifier) {
+      aligned.request_identifier = trimmedIdentifier;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
+    address.source_http_request
+  ) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      aligned.source_http_request = prepared;
+    }
+  }
+
+  if (!aligned.postal_code) {
+    aligned.plus_four_postal_code = null;
+  }
+
+  if (aligned.state_code && !aligned.country_code) {
+    aligned.country_code = "US";
+  }
+
+  return aligned;
+}
+
 function deriveNormalizedAddressFromFullText(fullText, options = {}) {
   const normalized = normalizeWhitespace(fullText);
   if (!normalized) {
@@ -4290,9 +4376,14 @@ async function main() {
       const finalizedAddress = enforceAddressOneOfSurface(preparedAddress);
       if (finalizedAddress) {
         const surfacedAddress =
+          composeSchemaAlignedAddressOutput(finalizedAddress) ||
           ensureAddressSchemaSurfaceCoverage(finalizedAddress) ||
-          finalizedAddress;
-        writeJSON(addressFilePath, surfacedAddress);
+          null;
+        if (surfacedAddress) {
+          writeJSON(addressFilePath, surfacedAddress);
+        } else {
+          removeFileIfExists(addressFilePath);
+        }
       } else {
         removeFileIfExists(addressFilePath);
       }
