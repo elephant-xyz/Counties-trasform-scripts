@@ -1534,6 +1534,80 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   "source_http_request",
 ]);
 
+function applyAddressSchemaDefaultsForVariant(address, variantHint) {
+  if (!address || typeof address !== "object") return null;
+
+  const hasRawString =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+  const resolveVariant =
+    variantHint === "normalized"
+      ? "normalized"
+      : variantHint === "raw"
+        ? "raw"
+        : hasRawString
+          ? "raw"
+          : "normalized";
+
+  const surfaceFields =
+    resolveVariant === "raw"
+      ? RAW_ADDRESS_OUTPUT_FIELDS
+      : NORMALIZED_ADDRESS_FIELDS;
+
+  const materialized = {};
+
+  if (resolveVariant === "raw") {
+    materialized.unnormalized_address = hasRawString
+      ? address.unnormalized_address.trim()
+      : null;
+  }
+
+  for (const field of surfaceFields) {
+    const candidate = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    materialized[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  if (resolveVariant === "normalized") {
+    if (Object.prototype.hasOwnProperty.call(materialized, "unnormalized_address")) {
+      delete materialized.unnormalized_address;
+    }
+  }
+
+  if (!materialized.postal_code) {
+    materialized.plus_four_postal_code = null;
+  }
+
+  if (materialized.state_code && !materialized.country_code) {
+    materialized.country_code = "US";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const trimmedRequest =
+      typeof address.request_identifier === "string"
+        ? address.request_identifier.trim()
+        : address.request_identifier;
+    materialized.request_identifier =
+      trimmedRequest && String(trimmedRequest).length
+        ? trimmedRequest
+        : null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      materialized.source_http_request = prepared;
+    }
+  }
+
+  return materialized;
+}
+
 function buildAddressOutputPayload(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -6154,14 +6228,15 @@ function prepareAddressOutputForWrite(address) {
 
     const enforced = enforceAddressOneOfSurface(prepared);
     if (enforced && typeof enforced === "object") {
-      return ensureRawAddressSchemaDefaults(enforced) || enforced;
+      return applyAddressSchemaDefaultsForVariant(enforced, "raw");
     }
 
     const defaulted = ensureRawAddressSchemaDefaults(prepared);
     if (!defaulted) {
       return null;
     }
-    return enforceAddressOneOfSurface(defaulted);
+    const enforcedDefault = enforceAddressOneOfSurface(defaulted) || defaulted;
+    return applyAddressSchemaDefaultsForVariant(enforcedDefault, "raw");
   }
 
   const surfaced = ensureNormalizedAddressSchemaSurface(address);
@@ -6176,24 +6251,19 @@ function prepareAddressOutputForWrite(address) {
 
   const enforced = enforceAddressOneOfSurface(prepared);
   if (enforced && typeof enforced === "object") {
-    const normalized = {
-      ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-      ...enforced,
-    };
-    if (normalized.state_code && !normalized.country_code) {
-      normalized.country_code = "US";
-    }
-    if (!normalized.postal_code) {
-      normalized.plus_four_postal_code = null;
-    }
-    return normalized;
+    return applyAddressSchemaDefaultsForVariant(enforced, "normalized");
   }
 
   const defaultedNormalized = {
     ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
     ...prepared,
   };
-  return enforceAddressOneOfSurface(defaultedNormalized);
+  const enforcedNormalized =
+    enforceAddressOneOfSurface(defaultedNormalized) || defaultedNormalized;
+  return applyAddressSchemaDefaultsForVariant(
+    enforcedNormalized,
+    "normalized",
+  );
 }
 
 function buildSchemaCompliantAddressPayload(address, options = {}) {
@@ -6272,10 +6342,10 @@ function buildSchemaCompliantAddressPayload(address, options = {}) {
       rawPayload.source_http_request = deepClone(preparedSourceHttpRequest);
     }
 
-    return { variant: "raw", payload: rawPayload };
-  }
+  return { variant: "raw", payload: rawPayload };
+}
 
-  const normalizedPayload = {};
+const normalizedPayload = {};
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const candidate = Object.prototype.hasOwnProperty.call(address, field)
       ? address[field]
