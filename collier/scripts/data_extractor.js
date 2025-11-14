@@ -781,6 +781,7 @@ function main() {
     );
 
     const relDf = {
+      type: "deed_has_file",
       from: { "/": `./deed_${idx + 1}.json` },
       to: { "/": `./file_${idx + 1}.json` },
     };
@@ -808,12 +809,15 @@ function main() {
 
   // Relationship: sales -> deed for all valid sales (map to original row index)
   validSales.forEach((s, idx) => {
-    const orig = saleRows.findIndex(
-      (r) => r.iso === s.iso && r.amount === s.amount,
-    );
-    if (orig !== -1) {
-      const deedIdx = orig + 1;
+    const deedIdx =
+      typeof s.rowIndex === "number"
+        ? s.rowIndex
+        : saleRows.findIndex(
+            (r) => r.iso === s.iso && r.amount === s.amount,
+          ) + 1;
+    if (deedIdx > 0) {
       const rel = {
+        type: "sales_history_has_deed",
         from: { "/": `./sales_${idx + 1}.json` },
         to: { "/": `./deed_${deedIdx}.json` },
       };
