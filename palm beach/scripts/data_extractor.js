@@ -5087,10 +5087,21 @@ function enforceAddressOneOfSurface(address) {
     address.source_http_request,
   );
 
+  const unnormalizedCandidates = [];
+  if (typeof address.unnormalized_address === "string") {
+    unnormalizedCandidates.push(address.unnormalized_address.trim());
+  }
+  if (typeof composeUnnormalizedAddress === "function") {
+    const composed = composeUnnormalizedAddress(address);
+    if (typeof composed === "string") {
+      unnormalizedCandidates.push(composed.trim());
+    }
+  }
   const trimmedUnnormalized =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
+    unnormalizedCandidates.find(
+      (candidate) => typeof candidate === "string" && candidate.length > 0,
+    ) || "";
+
   if (trimmedUnnormalized.length > 0) {
     const rawOutput = { unnormalized_address: trimmedUnnormalized };
 
@@ -5118,6 +5129,10 @@ function enforceAddressOneOfSurface(address) {
     }
 
     return rawOutput;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "unnormalized_address")) {
+    delete address.unnormalized_address;
   }
 
   const normalizedOutput = {};
