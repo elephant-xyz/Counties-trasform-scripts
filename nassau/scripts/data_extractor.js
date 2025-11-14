@@ -1496,59 +1496,29 @@ function validateStringNotNull(value, fieldName) {
   return value;
 }
 
-function validatePersonName(value, fieldName, { required = false } = {}) {
+function validatePersonName(value, fieldName) {
   if (value === null || value === undefined || value === "") {
-    if (required) {
-      console.log(`Warning: ${fieldName} cannot be null or empty`);
-    }
-    return null;
+    console.log(`Warning: ${fieldName} cannot be null or empty`);
+    return value;
   }
   if (typeof value !== "string") {
     console.log(`Warning: ${fieldName} must be a string`);
-    return null;
+    return value;
   }
-  if (!PERSON_NAME_PATTERN.test(value)) {
-    console.log(`Warning: ${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
-    return null;
+  if (fieldName !== 'first_name' && fieldName !== 'last_name' && fieldName !== 'middle_name') {
+    if (!PERSON_NAME_PATTERN.test(value)) {
+      console.log(`Warning: ${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+    }
   }
   return value;
 }
 
-function formatName(name, { allowNull = false } = {}) {
-  if (name === null || name === undefined) return allowNull ? null : null;
-  const cleaned = String(name)
-    .replace(/&/g, " ")
-    .replace(/\//g, " ")
-    .replace(/[^A-Za-z\s-',.]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!cleaned) return allowNull ? null : null;
-  return cleaned
-    .toLowerCase()
-    .replace(/\b([a-z])/g, (m, ch) => ch.toUpperCase());
-}
-
-function deriveNamePartsFromRaw(raw) {
-  const normalized = formatName(raw, { allowNull: true });
-  if (!normalized) return null;
-  const tokens = normalized.split(" ").filter(Boolean);
-  if (tokens.length < 2) return null;
-
-  const firstCandidate = formatName(tokens[0]);
-  const lastCandidate = formatName(tokens[tokens.length - 1]);
-  const middleRaw = tokens.slice(1, -1).join(" ");
-  const middleCandidate = middleRaw
-    ? formatName(middleRaw, { allowNull: true })
-    : null;
-
-  const firstName = validatePersonName(firstCandidate, "first_name", { required: true });
-  const lastName = validatePersonName(lastCandidate, "last_name", { required: true });
-  const middleName = middleCandidate
-    ? validatePersonName(middleCandidate, "middle_name")
-    : null;
-
-  if (!firstName || !lastName) return null;
-  return { first: firstName, last: lastName, middle: middleName };
+function formatName(name) {
+  if (!name || name.trim() === "") return null;
+  const normalizedSpacing = name.trim().toLowerCase().replace(/\s+/g, " ");
+  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
+  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
+  return sanitized;
 }
 
 // Validate prefix/suffix against schema
@@ -1564,36 +1534,26 @@ function validateSuffix(suffix) {
 
 function parsePerson(name) {
   if (!name) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-
-  const normalized = name.replace(/\s+/g, " ").trim();
-  if (!normalized) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-
-  const spaced = normalized.replace(/\s+,\s+/g, ", ");
-  const isAllCaps = spaced === spaced.toUpperCase();
-
-  let tokens = spaced.replace(/,/g, " ").split(/\s+/).filter(Boolean);
+  
+  let tokens = name.trim().split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
 
+  // Extract prefix
   const prefixes = ["Mr.", "Mrs.", "Ms.", "Miss", "Mx.", "Dr.", "Prof.", "Rev.", "Fr.", "Sr.", "Br.", "Capt.", "Col.", "Maj.", "Lt.", "Sgt.", "Hon.", "Judge", "Rabbi", "Imam", "Sheikh", "Sir", "Dame"];
   let prefix = null;
   if (tokens.length > 0) {
-    const foundPrefix = prefixes.find((p) => tokens[0].toLowerCase() === p.toLowerCase());
+    const foundPrefix = prefixes.find(p => tokens[0].toLowerCase() === p.toLowerCase());
     if (foundPrefix) {
       prefix = foundPrefix;
       tokens.shift();
     }
   }
 
+  // Extract suffix (check all positions)
   const suffixes = ["Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM", "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."];
   let suffix = null;
   for (let i = tokens.length - 1; i >= 0; i--) {
-    const candidate = tokens[i];
-    const foundSuffix = suffixes.find(
-      (s) =>
-        candidate.toLowerCase() === s.toLowerCase() ||
-        (s === "Jr." && candidate.toLowerCase() === "jr") ||
-        (s === "Sr." && candidate.toLowerCase() === "sr"),
-    );
+    const foundSuffix = suffixes.find(s => tokens[i].toLowerCase() === s.toLowerCase() || (s === "Jr." && tokens[i].toLowerCase() === "jr") || (s === "Sr." && tokens[i].toLowerCase() === "sr"));
     if (foundSuffix) {
       suffix = foundSuffix;
       tokens.splice(i, 1);
@@ -1603,19 +1563,9 @@ function parsePerson(name) {
 
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix, suffix };
 
-  let firstName = null;
-  let lastName = null;
-  let middleName = null;
-
-  if (isAllCaps) {
-    lastName = tokens[0];
-    firstName = tokens[1] || null;
-    if (tokens.length > 2) middleName = tokens.slice(2).join(" ");
-  } else {
-    firstName = tokens[0];
-    lastName = tokens[tokens.length - 1];
-    if (tokens.length > 2) middleName = tokens.slice(1, -1).join(" ");
-  }
+  const firstName = tokens[0];
+  const lastName = tokens[tokens.length - 1];
+  const middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
 
   return { firstName, lastName, middleName, prefix, suffix };
 }
@@ -1625,39 +1575,26 @@ function extractOwnerInfo(ownershipHtml) {
   
   // Remove content within <p></p> tags (addresses)
   const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-
-  const decodeEntities = (value) =>
-    (value || "")
-      .replace(/&amp;/g, "&")
-      .replace(/&#39;/g, "'")
-      .replace(/&quot;/g, '"');
-
-  const normalizeOwnerName = (value) => {
-    if (!value) return "";
-    let name = decodeEntities(value);
-    name = name.replace(/<[^>]*>/g, "");
-    name = name.replace(/^[>\s]+/, "");
-    name = name.replace(/\s*\((?:[^A-Za-z]*\d[^)]*|[\d\s/%]+)\)\s*$/g, "");
-    name = name.replace(/\s+/g, " ").trim();
-    return name;
-  };
-
+  
   // Split by <br> tags to get individual owner lines
-  const ownerLines = htmlWithoutAddresses
-    .split(/<br\s*\/?>/i)
-    .map(normalizeOwnerName)
-    .filter((line) => line.length > 0);
-
+  const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
+    .map(line => line.replace(/<[^>]*>/g, '').trim())
+    .filter(line => line.length > 0);
+  
   const owners = [];
   const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
   
   for (const line of ownerLines) {
-    if (line && line.length > 2) {
+    let cleanName = line.trim();
+    if (cleanName && cleanName.length > 2) {
+      // Decode HTML entities like &amp; to &
+      cleanName = cleanName.replace(/&amp;/g, '&');
+      
       // Split by & to handle multiple owners on same line
-      const namesParts = line.split(/\s*&\s*/);
-
+      const namesParts = cleanName.split(/\s*&\s*/);
+      
       for (const namePart of namesParts) {
-        const trimmedName = normalizeOwnerName(namePart);
+        const trimmedName = namePart.trim();
         if (trimmedName && trimmedName.length > 2) {
           const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
           owners.push({ name: trimmedName, type: ownerType });
@@ -1914,40 +1851,12 @@ function main() {
 
 
   // console.log("usecode",useCodeText);
-  let property_type = mapPropertyTypeFromUseCode(useCodeText || "");
-  const ownership_estate_type = mapOwnershipEstateTypeFromUseCode(useCodeText || "");
-  let build_status = mapBuildStatusFromUseCode(useCodeText || "");
+  const property_type = mapPropertyTypeFromUseCode(useCodeText || "");
+  // console.log("property_type>>",property_type);
+  const ownership_estate_type=mapOwnershipEstateTypeFromUseCode(useCodeText || "");
+  const build_status= mapBuildStatusFromUseCode(useCodeText || "");
   const structure_form = mapStructureFormFromUseCode(useCodeText || "");
   const property_usage_type = mapPropertyUsageTypeFromUseCode(useCodeText || "");
-  const normalizedUseCodeText = (useCodeText || "").toUpperCase();
-
-  if (!property_type && structure_form === "ManufacturedHomeOnLand") {
-    property_type = "ManufacturedHome";
-  }
-
-  if (!property_type) {
-    if (/(CONDO|CONDOMINIUM|UNIT|APT|APARTMENT|TIMESHARE)/.test(normalizedUseCodeText)) {
-      property_type = "Unit";
-    } else if (/(MOBILE|MANUFACT)/.test(normalizedUseCodeText)) {
-      property_type = "ManufacturedHome";
-    } else if (/(VACANT|TIMBER|TIMBERLAND|RIGHTS-OF-WAY|RIGHT-OF-WAY|SUB-SURFACE|RAW LAND|LAND)/.test(normalizedUseCodeText)) {
-      property_type = "LandParcel";
-    } else {
-      property_type = "Building";
-    }
-  }
-
-  if (build_status === "VacantLand" && property_type !== "LandParcel") {
-    property_type = "LandParcel";
-  }
-
-  if (!build_status) {
-    if (property_type === "LandParcel") {
-      build_status = "VacantLand";
-    } else {
-      build_status = "Improved";
-    }
-  }
   // console.log(ownership_estate_type, build_status, structure_form, property_usage_type);
 
   // Buildings: Sum all heated sq ft and get earliest year built
@@ -2302,13 +2211,6 @@ function main() {
   };
   writeJSON(path.join("data", "address.json"), address);
   // console.log(address)
-  writeJSON(
-    path.join("data", "relationship_property_has_address.json"),
-    {
-      from: { "/": "./property.json" },
-      to: { "/": "./address.json" },
-    }
-  );
   
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
@@ -2340,31 +2242,13 @@ function main() {
     } else {
       // Parse person name with prefix/suffix extraction
       const parsed = parsePerson(owner.name);
-      let firstName = validatePersonName(
-        formatName(parsed.firstName),
-        "first_name",
-        { required: true },
-      );
-      let lastName = validatePersonName(
-        formatName(parsed.lastName),
-        "last_name",
-        { required: true },
-      );
-      let middleName = formatName(parsed.middleName, { allowNull: true });
-      middleName = middleName != null ? validatePersonName(middleName, "middle_name") : null;
-
-      if (!firstName || !lastName) {
-        const fallbackParts = deriveNamePartsFromRaw(owner.name);
-        if (fallbackParts) {
-          firstName = fallbackParts.first;
-          lastName = fallbackParts.last;
-          middleName = fallbackParts.middle;
-        }
-      }
-
-      if (!firstName || !lastName) {
-        console.log(`Skipping owner due to unparseable name: ${owner.name}`);
-        return;
+      const firstNameRaw = formatName(parsed.firstName);
+      const lastNameRaw = formatName(parsed.lastName);
+      let middleName = formatName(parsed.middleName);
+      const firstName = validatePersonName(firstNameRaw, 'first_name');
+      const lastName = validatePersonName(lastNameRaw, 'last_name');
+      if (middleName != null) {
+        middleName = validatePersonName(middleName, 'middle_name');
       }
       
       const person = {
@@ -2460,13 +2344,6 @@ function main() {
     lot_size_acre: lotSizeAcre,
   };
   writeJSON(path.join("data", "lot.json"), lot);
-  writeJSON(
-    path.join("data", "relationship_property_has_lot.json"),
-    {
-      from: { "/": "./property.json" },
-      to: { "/": "./lot.json" },
-    }
-  );
 
   // Tax values from Values table
   const valuesTable = $("div.values table.grid-transposed");
@@ -2683,37 +2560,16 @@ function main() {
 
 
     function ensurePerson(owner) {
-      let firstName = validatePersonName(
-        formatName(owner.first_name),
-        "first_name",
-        { required: true },
-      );
-      let lastName = validatePersonName(
-        formatName(owner.last_name),
-        "last_name",
-        { required: true },
-      );
-      let middleName = formatName(owner.middle_name, { allowNull: true });
-      middleName = middleName != null ? validatePersonName(middleName, "middle_name") : null;
-
-      if (!firstName || !lastName) {
-        const fallbackParts = deriveNamePartsFromRaw(
-          [owner.first_name, owner.last_name].filter(Boolean).join(" "),
-        );
-        if (fallbackParts) {
-          firstName = fallbackParts.first;
-          lastName = fallbackParts.last;
-          middleName = fallbackParts.middle;
-        }
-      }
-
-      if (!firstName || !lastName) {
-        console.log(`Skipping sales history owner due to invalid name: ${JSON.stringify(owner)}`);
-        return null;
-      }
-
-      const key = `${firstName}|${middleName || ""}|${lastName}`;
+      const key = `${owner.first_name}|${owner.middle_name || ""}|${owner.last_name}`;
       if (!personIndexByKey.has(key)) {
+        const firstNameRaw = formatName(owner.first_name);
+        const lastNameRaw = formatName(owner.last_name);
+        let middleName = formatName(owner.middle_name);
+        const firstName = validatePersonName(firstNameRaw, 'first_name');
+        const lastName = validatePersonName(lastNameRaw, 'last_name');
+        if (middleName != null) {
+          middleName = validatePersonName(middleName, 'middle_name');
+        }
         const personObj = {
           source_http_request: {
             method: "GET",
@@ -2763,7 +2619,6 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          if (!personFile) return;
           const rel = {
             from: { "/": `./${sref.salesFileName}` },
             to: { "/": `./${personFile}` },
@@ -2833,7 +2688,6 @@ function main() {
       currentOwners.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          if (!personFile) return;
           const rel = {
             from: { "/": `./${personFile}` },
             to: { "/": `./mailing_address.json` },
