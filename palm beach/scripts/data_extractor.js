@@ -8532,6 +8532,27 @@ async function main() {
       }
 
       if (schemaReadyAddress) {
+        const hasUnnormalizedSurface =
+          typeof schemaReadyAddress.unnormalized_address === "string" &&
+          schemaReadyAddress.unnormalized_address.trim().length > 0;
+
+        if (hasUnnormalizedSurface) {
+          const enforcedRawSurface =
+            ensureRawAddressOutputSurface(schemaReadyAddress) ||
+            ensureRawAddressSchemaSurface(schemaReadyAddress) ||
+            ensureRawAddressSchemaDefaults(schemaReadyAddress);
+          if (enforcedRawSurface) {
+            schemaReadyAddress = enforcedRawSurface;
+          }
+        } else {
+          const normalizedSurface = ensureNormalizedAddressSchemaSurface(
+            schemaReadyAddress,
+          );
+          if (normalizedSurface) {
+            schemaReadyAddress = normalizedSurface;
+          }
+        }
+
         applyPostalFromUnnormalized(schemaReadyAddress);
         writeJSON(addressFilePath, schemaReadyAddress);
       } else {
