@@ -4232,38 +4232,55 @@ function parseLocationAddress(raw) {
     if (STREET_DIRECTIONS.has(normalizedLast)) return false;
     if (mapStreetSuffixType(lastToken)) return false;
 
-  const ordinalRegex = /^\d+(ST|ND|RD|TH)$/;
-  const hasHashPrefix = lastToken.startsWith("#");
-  const hasDigits = /\d/.test(lastToken);
-  const looksOrdinal = ordinalRegex.test(lastToken);
-  const isCompactToken = /^[#A-Z0-9-]+$/.test(lastToken) && lastToken.length <= 6;
+    const ordinalRegex = /^\d+(ST|ND|RD|TH)$/;
+    const hasHashPrefix = lastToken.startsWith("#");
+    const hasDigits = /\d/.test(lastToken);
+    const looksOrdinal = ordinalRegex.test(lastToken);
+    const isCompactToken =
+      /^[#A-Z0-9-]+$/.test(lastToken) && lastToken.length <= 8;
+    const prevTokenRaw = tokens.length > 1 ? tokens[tokens.length - 2] : null;
+    const prevTokenUpper = prevTokenRaw ? prevTokenRaw.toUpperCase() : null;
+    const prevIsDirectional = prevTokenUpper
+      ? STREET_DIRECTIONS.has(prevTokenUpper)
+      : false;
+    const prevIsSuffix = prevTokenRaw ? mapStreetSuffixType(prevTokenRaw) : null;
+    const prevIsUnitKeyword = prevTokenUpper
+      ? UNIT_KEYWORDS.has(prevTokenUpper)
+      : false;
+    const hasStreetContext =
+      prevIsDirectional || prevIsSuffix || prevIsUnitKeyword;
 
-  if (isCompactToken && (hasHashPrefix || (hasDigits && !looksOrdinal))) {
-    if (!result.unitIdentifier) {
-      result.unitIdentifier = lastToken.replace(/^#/, "");
+    if (isCompactToken && (hasHashPrefix || (hasDigits && !looksOrdinal))) {
+      if (!result.unitIdentifier) {
+        result.unitIdentifier = lastToken.replace(/^#/, "");
+      }
+      tokens.pop();
+      return true;
     }
-    tokens.pop();
-    return true;
-  }
 
-  const isAlphaToken = /^[A-Z]{1,4}$/.test(normalizedLast);
-  if (isCompactToken && !hasDigits && isAlphaToken) {
-    const prevToken = tokens.length > 1 ? tokens[tokens.length - 2].toUpperCase() : null;
-    const prevIsDirectional = prevToken ? STREET_DIRECTIONS.has(prevToken) : false;
-    const prevIsSuffix = prevToken ? mapStreetSuffixType(prevToken) : null;
-    const prevIsUnitKeyword = prevToken ? UNIT_KEYWORDS.has(prevToken) : false;
-    if (prevIsDirectional || prevIsSuffix || prevIsUnitKeyword) {
+    const isAlphaToken = /^[A-Z]{1,4}$/.test(normalizedLast);
+    if (isCompactToken && !hasDigits && isAlphaToken && hasStreetContext) {
       if (!result.unitIdentifier) {
         result.unitIdentifier = lastToken;
       }
       tokens.pop();
       return true;
     }
-  }
-  return false;
-};
 
-removeTrailingUnitToken();
+    const hyphenatedUnit =
+      /^[A-Z0-9]{1,4}-[A-Z0-9]{1,4}$/.test(normalizedLast);
+    if (!hasDigits && hyphenatedUnit && hasStreetContext) {
+      if (!result.unitIdentifier) {
+        result.unitIdentifier = lastToken;
+      }
+      tokens.pop();
+      return true;
+    }
+
+    return false;
+  };
+
+  removeTrailingUnitToken();
 consumePostDirectional();
 
   if (!tokens.length) return result;
