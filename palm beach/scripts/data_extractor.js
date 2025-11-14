@@ -8459,12 +8459,18 @@ async function main() {
 
     let finalAddress = null;
     let addressVariant = null;
+    const coordinateOverride = {};
+    if (Number.isFinite(preferredLatitude)) {
+      coordinateOverride.latitude = preferredLatitude;
+    }
+    if (Number.isFinite(preferredLongitude)) {
+      coordinateOverride.longitude = preferredLongitude;
+    }
 
     if (normalizedCandidate) {
       const normalizedSurface = ensureNormalizedAddressSchemaSurface({
         ...normalizedCandidate,
-        latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
-        longitude: Number.isFinite(preferredLongitude) ? preferredLongitude : null,
+        ...coordinateOverride,
       });
       if (normalizedSurface) {
         finalAddress = normalizedSurface;
@@ -8473,10 +8479,9 @@ async function main() {
     }
 
     if (!finalAddress && rawCandidate) {
-      const rawSurface = ensureRawAddressSchemaDefaults({
+      const rawSurface = pruneRawAddressPayloadForOutput({
         ...rawCandidate,
-        latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
-        longitude: Number.isFinite(preferredLongitude) ? preferredLongitude : null,
+        ...coordinateOverride,
       });
       if (rawSurface) {
         finalAddress = rawSurface;
@@ -8485,13 +8490,6 @@ async function main() {
     }
 
     if (finalAddress) {
-      if (trimmedRequestIdentifier) {
-        finalAddress.request_identifier = trimmedRequestIdentifier;
-      }
-      if (sourceHttpCandidate) {
-        finalAddress.source_http_request = sourceHttpCandidate;
-      }
-
       if (addressVariant === "normalized") {
         if (Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")) {
           delete finalAddress.unnormalized_address;
@@ -8505,11 +8503,22 @@ async function main() {
         ) {
           finalAddress.unnormalized_address = canonicalUnnormalized;
         }
-        finalAddress = ensureRawAddressSchemaDefaults(finalAddress);
+        finalAddress = pruneRawAddressPayloadForOutput(finalAddress);
       }
 
-      applyPostalFromUnnormalized(finalAddress);
-      writeJSON(addressFilePath, finalAddress);
+      if (!finalAddress) {
+        removeFileIfExists(addressFilePath);
+      } else {
+        if (trimmedRequestIdentifier) {
+          finalAddress.request_identifier = trimmedRequestIdentifier;
+        }
+        if (sourceHttpCandidate) {
+          finalAddress.source_http_request = sourceHttpCandidate;
+        }
+
+        applyPostalFromUnnormalized(finalAddress);
+        writeJSON(addressFilePath, finalAddress);
+      }
     } else {
       removeFileIfExists(addressFilePath);
     }
