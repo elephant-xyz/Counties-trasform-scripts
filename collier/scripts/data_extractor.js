@@ -919,7 +919,6 @@ function main() {
           const salePath = `./sales_${si + 1}.json`;
           personFiles.forEach((personFile) => {
             const rel = {
-              type: "sales_history_has_person",
               from: { "/": salePath },
               to: { "/": personFile },
             };
