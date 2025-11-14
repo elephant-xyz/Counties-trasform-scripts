@@ -3229,44 +3229,103 @@ function enforceAddressSchemaSurfaceForOutput(address) {
 function finalizeAddressForOutput(address) {
   if (!address || typeof address !== "object") return null;
 
-  let prepared = enforceAddressOneOfSurface(address);
-  if (!prepared || typeof prepared !== "object") {
+  const requestIdentifier =
+    typeof address.request_identifier === "string" &&
+    address.request_identifier.trim().length
+      ? address.request_identifier.trim()
+      : null;
+  const preparedSourceHttp = prepareSourceHttpRequest(
+    address.source_http_request,
+  );
+
+  const normalizedCandidate = {};
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    const normalizedValue = normalizeAddressFieldForSchema(field, value);
+    normalizedCandidate[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  if (!normalizedCandidate.postal_code) {
+    normalizedCandidate.plus_four_postal_code = null;
+  }
+  if (
+    normalizedCandidate.state_code &&
+    !normalizedCandidate.country_code
+  ) {
+    normalizedCandidate.country_code = "US";
+  }
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedCandidate[field] === "string" &&
+      normalizedCandidate[field].trim().length > 0,
+  );
+
+  if (hasNormalizedCoverage) {
+    const output = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      output[field] = normalizedCandidate[field] ?? null;
+    }
+    if (requestIdentifier) {
+      output.request_identifier = requestIdentifier;
+    }
+    if (preparedSourceHttp) {
+      output.source_http_request = preparedSourceHttp;
+    }
+    return output;
+  }
+
+  const unnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!unnormalized.length) {
     return null;
   }
 
-  prepared = coerceAddressForSchemaOutput(prepared);
-  if (!prepared || typeof prepared !== "object") {
-    return null;
-  }
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+    let normalizedValue = normalizeAddressFieldForSchema(field, value);
 
-  const hasUnnormalized =
-    typeof prepared.unnormalized_address === "string" &&
-    prepared.unnormalized_address.trim().length > 0;
-
-  if (hasUnnormalized) {
-    const rawSurface = ensureRawAddressFieldCoverage(prepared);
-    const rawSurfaceReady =
-      rawSurface &&
-      typeof rawSurface === "object" &&
-      hasRawAddressRequiredFields(rawSurface) &&
-      hasRawAddressSurfaceCoverage(rawSurface);
-
-    if (rawSurfaceReady) {
-      return enforceAddressSchemaSurfaceForOutput(rawSurface);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(normalizedValue);
+      normalizedValue = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      normalizedValue = trimmed.length ? trimmed : null;
     }
 
-    const normalizedFallback = ensureNormalizedAddressSchemaSurface(prepared);
-    if (
-      normalizedFallback &&
-      hasCompleteNormalizedAddress({ ...normalizedFallback })
-    ) {
-      return enforceAddressSchemaSurfaceForOutput(normalizedFallback);
-    }
-
-    return null;
+    rawOutput[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
   }
 
-  return enforceAddressSchemaSurfaceForOutput(prepared);
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+
+  rawOutput.unnormalized_address = unnormalized;
+
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
+  }
+  if (preparedSourceHttp) {
+    rawOutput.source_http_request = preparedSourceHttp;
+  }
+
+  return rawOutput;
 }
 
 function ensureAddressOutputCoverage(address) {
