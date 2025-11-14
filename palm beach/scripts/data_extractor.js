@@ -8797,7 +8797,10 @@ async function main() {
     }
 
     if (finalizedAddress) {
-      writeJSON(addressFilePath, finalizedAddress);
+      const surfacedAddress =
+        ensureAddressSchemaSurfaceCoverage(finalizedAddress) ||
+        finalizedAddress;
+      writeJSON(addressFilePath, surfacedAddress);
     } else {
       removeFileIfExists(addressFilePath);
     }

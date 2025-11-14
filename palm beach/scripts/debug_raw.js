@@ -4287,7 +4287,15 @@ async function main() {
         preparedAddress.plus_four_postal_code = null;
       }
 
-      writeJSON(addressFilePath, preparedAddress);
+      const finalizedAddress = enforceAddressOneOfSurface(preparedAddress);
+      if (finalizedAddress) {
+        const surfacedAddress =
+          ensureAddressSchemaSurfaceCoverage(finalizedAddress) ||
+          finalizedAddress;
+        writeJSON(addressFilePath, surfacedAddress);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
     }
