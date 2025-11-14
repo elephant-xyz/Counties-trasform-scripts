@@ -8197,15 +8197,6 @@ async function main() {
       fallbackRawUnnormalized.trim().length > 0;
 
     if (normalizedCandidate) {
-      const hasCoordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-        (field) => Number.isFinite(normalizedCandidate[field]),
-      );
-      if (!hasCoordinateCoverage && hasRawFallback) {
-        normalizedCandidate = null;
-      }
-    }
-
-    if (normalizedCandidate) {
       addressPayload = normalizedCandidate;
       usedNormalizedSchema = true;
     } else if (hasRawFallback) {
