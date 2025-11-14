@@ -5087,20 +5087,13 @@ function enforceAddressOneOfSurface(address) {
     address.source_http_request,
   );
 
-  const unnormalizedCandidates = [];
+  let trimmedUnnormalized = "";
   if (typeof address.unnormalized_address === "string") {
-    unnormalizedCandidates.push(address.unnormalized_address.trim());
-  }
-  if (typeof composeUnnormalizedAddress === "function") {
-    const composed = composeUnnormalizedAddress(address);
-    if (typeof composed === "string") {
-      unnormalizedCandidates.push(composed.trim());
+    const candidate = address.unnormalized_address.trim();
+    if (candidate.length > 0) {
+      trimmedUnnormalized = candidate;
     }
   }
-  const trimmedUnnormalized =
-    unnormalizedCandidates.find(
-      (candidate) => typeof candidate === "string" && candidate.length > 0,
-    ) || "";
 
   if (trimmedUnnormalized.length > 0) {
     const rawOutput = { unnormalized_address: trimmedUnnormalized };
