@@ -4222,29 +4222,67 @@ async function main() {
     const hasStreetName = hasMeaningfulAddressValue(
       addressForOutput.street_name,
     );
-    if (hasStreetNumber !== hasStreetName) {
-      const streetFieldsToClear = [
-        "street_number",
-        "street_name",
-        "street_suffix_type",
-        "street_pre_directional_text",
-        "street_post_directional_text",
-      ];
-      for (const field of streetFieldsToClear) {
-        addressForOutput[field] = null;
-      }
-    }
-
-    const hasGridCore = ["township", "range", "section"].every((field) =>
-      hasMeaningfulAddressValue(addressForOutput[field]),
-    );
-    const hasAnyGrid = ["township", "range", "section", "block", "lot"].some(
-      (field) => hasMeaningfulAddressValue(addressForOutput[field]),
-    );
-    if (hasAnyGrid && !hasGridCore) {
-      const gridFieldsToClear = ["township", "range", "section", "block", "lot"];
-      for (const field of gridFieldsToClear) {
-        addressForOutput[field] = null;
+    if (!hasStreetNumber || !hasStreetName) {
+      const streetSource =
+        canonicalUnnormalized && canonicalUnnormalized.includes(",")
+          ? canonicalUnnormalized.split(",")[0]
+          : locationLineForParsing;
+      if (streetSource) {
+        const parsedStreetFallback = parseLocationAddress(streetSource);
+        if (!hasStreetNumber && parsedStreetFallback.streetNumber) {
+          addressForOutput.street_number = safeNullIfEmpty(
+            parsedStreetFallback.streetNumber,
+          );
+        }
+        if (!hasStreetName && parsedStreetFallback.streetName) {
+          const formattedStreetName = formatStreetNameCase(
+            parsedStreetFallback.streetName,
+          );
+          addressForOutput.street_name = formattedStreetName
+            ? formattedStreetName.toUpperCase()
+            : safeNullIfEmpty(parsedStreetFallback.streetName);
+        }
+        if (
+          !hasMeaningfulAddressValue(addressForOutput.street_suffix_type) &&
+          parsedStreetFallback.streetSuffix
+        ) {
+          const mappedSuffix = mapStreetSuffixType(
+            parsedStreetFallback.streetSuffix,
+          );
+          if (mappedSuffix) {
+            addressForOutput.street_suffix_type = mappedSuffix;
+          }
+        }
+        if (
+          !hasMeaningfulAddressValue(addressForOutput.street_pre_directional_text) &&
+          parsedStreetFallback.streetPreDirectional
+        ) {
+          addressForOutput.street_pre_directional_text =
+            parsedStreetFallback.streetPreDirectional.toUpperCase();
+        }
+        if (
+          !hasMeaningfulAddressValue(addressForOutput.street_post_directional_text) &&
+          parsedStreetFallback.streetPostDirectional
+        ) {
+          addressForOutput.street_post_directional_text =
+            parsedStreetFallback.streetPostDirectional.toUpperCase();
+        }
+        if (
+          !hasMeaningfulAddressValue(addressForOutput.unit_identifier) &&
+          parsedStreetFallback.unitIdentifier
+        ) {
+          addressForOutput.unit_identifier = safeNullIfEmpty(
+            parsedStreetFallback.unitIdentifier,
+          );
+        }
+        if (
+          !hasMeaningfulAddressValue(addressForOutput.route_number) &&
+          parsedStreetFallback.routeNumber
+        ) {
+          addressForOutput.route_number = safeNullIfEmpty(
+            parsedStreetFallback.routeNumber,
+          );
+        }
       }
     }
 
@@ -4271,6 +4309,12 @@ async function main() {
       seed && seed.source_http_request,
     );
 
+    const trimmedRequestIdentifier =
+      typeof requestIdentifierCandidate === "string" &&
+      requestIdentifierCandidate.trim().length
+        ? requestIdentifierCandidate.trim()
+        : null;
+
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
@@ -4284,6 +4328,18 @@ async function main() {
       latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
       longitude: Number.isFinite(preferredLongitude) ? preferredLongitude : null,
     };
+
+    const trimmedRawUnnormalized = hasRawString
+      ? fallbackRawUnnormalized.trim()
+      : "";
+    let baseRawCandidate = null;
+    if (hasRawString) {
+      baseRawCandidate =
+        buildRawAddressOutputForSchema(trimmedRawUnnormalized, {
+          ...addressForOutput,
+          ...coordinateOverride,
+        }) || null;
+    }
 
     let preparedAddress = null;
     let addressVariant = null;
@@ -4312,25 +4368,54 @@ async function main() {
       }
     }
 
-    if (!preparedAddress && hasRawString) {
-      const trimmedRaw = fallbackRawUnnormalized.trim();
-      const baseRawCandidate =
-        buildRawAddressOutputForSchema(trimmedRaw, {
-          ...addressForOutput,
-          ...coordinateOverride,
-        }) || null;
+    if (!preparedAddress && baseRawCandidate) {
+      const promotedNormalized = promoteRawAddressToNormalized(
+        baseRawCandidate,
+        {
+          fallbackSources: [
+            addressForOutput,
+            normalizedSnapshot,
+            baseAddressSeed,
+          ].filter(
+            (candidate) => candidate && typeof candidate === "object",
+          ),
+          stateFallback: inferredStateCode || countyInferredStateCode || "FL",
+          countyFallback:
+            formattedCountyName || countyName || defaultCounty || null,
+          municipalityFallback: normalizedMunicipality,
+          postalFallback:
+            fallbackPostalValue ||
+            postalCode ||
+            (parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal) ||
+            null,
+          plus4Fallback:
+            fallbackPlus4Value ||
+            (parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4) ||
+            null,
+          coordinateFallback: coordinateOverride,
+          requestIdentifier: trimmedRequestIdentifier || undefined,
+          sourceHttpRequest: sourceHttpCandidate || undefined,
+        },
+      );
 
+      if (promotedNormalized) {
+        preparedAddress = { ...promotedNormalized };
+        addressVariant = "normalized";
+      }
+    }
+
+    if (!preparedAddress && baseRawCandidate) {
       const rawSurface =
         ensureRawAddressOutputSurface(
           baseRawCandidate || {
             ...RAW_ADDRESS_SCHEMA_TEMPLATE,
             ...coordinateOverride,
-            unnormalized_address: trimmedRaw,
+            unnormalized_address: trimmedRawUnnormalized,
           },
         ) || null;
 
       if (rawSurface) {
-        rawSurface.unnormalized_address = trimmedRaw;
+        rawSurface.unnormalized_address = trimmedRawUnnormalized;
         if (!hasMeaningfulAddressValue(rawSurface.postal_code)) {
           rawSurface.plus_four_postal_code = null;
         }
@@ -4344,12 +4429,6 @@ async function main() {
         addressVariant = "raw";
       }
     }
-
-    const trimmedRequestIdentifier =
-      typeof requestIdentifierCandidate === "string" &&
-      requestIdentifierCandidate.trim().length
-        ? requestIdentifierCandidate.trim()
-        : null;
 
     if (preparedAddress) {
       if (
