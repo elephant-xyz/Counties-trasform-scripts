@@ -1,3 +1,16 @@
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+        });
+      }
+    }
+  }
+
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {

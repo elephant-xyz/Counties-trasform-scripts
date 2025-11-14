@@ -23,40 +23,6 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-function parseBookPageIdentifier(bookPage) {
-  if (!bookPage) return { book: null, page: null };
-  const cleaned = String(bookPage).trim();
-  if (!cleaned) return { book: null, page: null };
-
-  // Common patterns like "1234/567", "1234-567", "1234 567"
-  const separatorMatch = cleaned.match(/(\w+)\s*[/\-]\s*(\w+)/);
-  if (separatorMatch) {
-    return {
-      book: separatorMatch[1],
-      page: separatorMatch[2],
-    };
-  }
-
-  // Patterns like "Book 1234 Page 567" or "BK 1234 PG 567"
-  const bookMatch = cleaned.match(/\b(?:book|bk)\s*([0-9a-zA-Z]+)/i);
-  const pageMatch = cleaned.match(/\b(?:page|pg)\s*([0-9a-zA-Z]+)/i);
-  if (bookMatch || pageMatch) {
-    return {
-      book: bookMatch ? bookMatch[1] : null,
-      page: pageMatch ? pageMatch[1] : null,
-    };
-  }
-
-  // As a fallback, split on whitespace and punctuation and take the first two tokens
-  const tokens = cleaned.split(/[^0-9a-zA-Z]+/).filter(Boolean);
-  if (tokens.length >= 2) {
-    return { book: tokens[0], page: tokens[1] };
-  }
-
-  // Could not confidently parse a page number, treat entire string as book reference
-  return { book: cleaned, page: null };
-}
-
 function parseDateToISO(mdyy) {
   if (!mdyy) return null;
   // Accept MM/DD/YY or MM/DD/YYYY
@@ -504,7 +470,6 @@ function parseAddress(
   range,
   countyNameFromSeed,
   municipality,
-  unnormalizedAddress,
 ) {
   // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
   let streetNumber = null,
@@ -571,7 +536,7 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  const addressObj = {
+  return {
     block: block || null,
     city_name: city || null,
     country_code: null, // do not fabricate
@@ -586,21 +551,15 @@ function parseAddress(
     route_number: null,
     section: section || null,
     state_code: state || "FL",
+    street_name: streetName || null,
+    street_number: streetNumber || null,
+    street_post_directional_text: postDir || null,
+    street_pre_directional_text: preDir || null,
+    street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
+    // unnormalized_address: fullAddress || null,
   };
-
-  if (unnormalizedAddress) {
-    addressObj.unnormalized_address = unnormalizedAddress;
-  } else {
-    if (streetName) addressObj.street_name = streetName;
-    if (streetNumber) addressObj.street_number = streetNumber;
-    if (postDir) addressObj.street_post_directional_text = postDir;
-    if (preDir) addressObj.street_pre_directional_text = preDir;
-    if (suffixType) addressObj.street_suffix_type = suffixType;
-  }
-
-  return addressObj;
 }
 
 function main() {
@@ -771,26 +730,11 @@ function main() {
     range,
     countyName,
     municipality,
-    fullAddressUn,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
-
-  // Clean up legacy relationship artifacts; downstream processing populates relationship URIs.
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_property_address.json"));
-  } catch (_) {}
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_property_has_address.json"));
-  } catch (_) {}
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_address_fact_sheet.json"));
-  } catch (_) {}
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_address_has_fact_sheet.json"));
-  } catch (_) {}
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
@@ -809,50 +753,33 @@ function main() {
     saleRows.push(row);
   });
 
-  const saleCleanupPatterns = [
-    /^sales_\d+\.json$/,
-    /^sales_history_\d+\.json$/,
-    /^relationship_sales_deed_\d+\.json$/,
-    /^relationship_sales_history_has_deed_\d+\.json$/,
-    /^relationship_sales_person_/,
-    /^relationship_sales_company_/,
-    /^relationship_sales_history_has_person_/,
-    /^relationship_sales_history_has_company_/,
-    /^relationship_sales_history_has_fact_sheet_/,
-  ];
-  fs.readdirSync(dataDir).forEach((fileName) => {
-    if (saleCleanupPatterns.some((re) => re.test(fileName))) {
-      try {
-        fs.unlinkSync(path.join(dataDir, fileName));
-      } catch (_) {}
-    }
-  });
-
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
-    const { book, page } = parseBookPageIdentifier(row.bookPage);
     const deedObj = {};
-    if (book) deedObj.book = book;
-    if (page) deedObj.page = page;
-
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
 
-    const fileObj = {};
-    const fileNameParts = [];
-    if (book) fileNameParts.push(`Book ${book}`);
-    if (page) fileNameParts.push(`Page ${page}`);
-    if (fileNameParts.length > 0) {
-      fileObj.name = fileNameParts.join(" ");
-    } else if (row.bookPage) {
-      fileObj.name = row.bookPage;
-    }
-
+    const fileObj = {
+      file_format: null, // unknown (pdf not in enum)
+      name: row.bookPage || null,
+      original_url: null, // not provided (javascript: link only)
+      ipfs_url: null,
+      document_type: "ConveyanceDeed",
+    };
     fs.writeFileSync(
       path.join(dataDir, `file_${idx + 1}.json`),
       JSON.stringify(fileObj, null, 2),
+    );
+
+    const relDf = {
+      from: { "/": `./deed_${idx + 1}.json` },
+      to: { "/": `./file_${idx + 1}.json` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
+      JSON.stringify(relDf, null, 2),
     );
   });
 
@@ -864,15 +791,30 @@ function main() {
   validSales.forEach((s, idx) => {
     const saleObj = {
       ownership_transfer_date: s.iso,
+      purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
     };
-    if (s.amount != null) {
-      saleObj.purchase_price_amount = s.amount;
-    }
-    const saleFilename = `sales_history_${idx + 1}.json`;
     fs.writeFileSync(
-      path.join(dataDir, saleFilename),
+      path.join(dataDir, `sales_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),
     );
+  });
+
+  // Relationship: sales -> deed for all valid sales (map to original row index)
+  validSales.forEach((s, idx) => {
+    const orig = saleRows.findIndex(
+      (r) => r.iso === s.iso && r.amount === s.amount,
+    );
+    if (orig !== -1) {
+      const deedIdx = orig + 1;
+      const rel = {
+        from: { "/": `./sales_${idx + 1}.json` },
+        to: { "/": `./deed_${deedIdx}.json` },
+      };
+      fs.writeFileSync(
+        path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
+        JSON.stringify(rel, null, 2),
+      );
+    }
   });
 
   // Owners (company/person) from owners/owner_data.json
@@ -885,9 +827,21 @@ function main() {
   ) {
     const curr = ownerEntry.owners_by_date.current;
     if (curr.length > 0) {
+      // Cleanup any legacy duplicate relationship files
+      const files = fs
+        .readdirSync(dataDir)
+        .filter((f) => f.startsWith("relationship_sales_company"));
+      for (const f of files) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+        } catch (_) {}
+      }
+
       // Handle mixed owner types (persons and companies)
       let personIdx = 1;
       let companyIdx = 1;
+      const personFiles = [];
+      const companyFiles = [];
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
@@ -897,6 +851,7 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
+          companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
@@ -914,9 +869,45 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
+          personFiles.push(filename);
           personIdx++;
         }
       });
+
+      // Create relationships for valid sales
+      if (validSales.length > 0) {
+        validSales.forEach((s, si) => {
+          // Link to all person files
+          personFiles.forEach((personFile, pi) => {
+            const rel = {
+              to: { "/": `./${personFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
+            };
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+
+          // Link to all company files
+          companyFiles.forEach((companyFile, ci) => {
+            const rel = {
+              to: { "/": `./${companyFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
+            };
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+        });
+      }
     }
   }
 

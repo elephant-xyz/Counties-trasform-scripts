@@ -20,7 +20,6 @@ function parseAddress(
   range,
   countyNameFromSeed,
   municipality,
-  unnormalizedAddress,
 ) {
   // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
   let streetNumber = null,
@@ -87,7 +86,7 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  const addressObj = {
+  return {
     block: block || null,
     city_name: city || null,
     country_code: null, // do not fabricate
@@ -102,21 +101,15 @@ function parseAddress(
     route_number: null,
     section: section || null,
     state_code: state || "FL",
+    street_name: streetName || null,
+    street_number: streetNumber || null,
+    street_post_directional_text: postDir || null,
+    street_pre_directional_text: preDir || null,
+    street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
+    // unnormalized_address: fullAddress || null,
   };
-
-  if (unnormalizedAddress) {
-    addressObj.unnormalized_address = unnormalizedAddress;
-  } else {
-    if (streetName) addressObj.street_name = streetName;
-    if (streetNumber) addressObj.street_number = streetNumber;
-    if (postDir) addressObj.street_post_directional_text = postDir;
-    if (preDir) addressObj.street_pre_directional_text = preDir;
-    if (suffixType) addressObj.street_suffix_type = suffixType;
-  }
-
-  return addressObj;
 }
 
 function main() {

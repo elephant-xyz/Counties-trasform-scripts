@@ -130,26 +130,11 @@
     range,
     countyName,
     municipality,
-    fullAddressUn,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
-
-  // Clean up relationship files; they are generated downstream with resolved URIs.
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_property_address.json"));
-  } catch (_) {}
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_property_has_address.json"));
-  } catch (_) {}
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_address_fact_sheet.json"));
-  } catch (_) {}
-  try {
-    fs.unlinkSync(path.join(dataDir, "relationship_address_has_fact_sheet.json"));
-  } catch (_) {}
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
