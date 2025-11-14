@@ -9226,7 +9226,13 @@ async function main() {
     }
 
     if (finalAddress) {
-      writeJSON(addressFilePath, finalAddress);
+      const preparedAddressForWrite = prepareAddressOutputForWrite(finalAddress);
+      if (preparedAddressForWrite) {
+        const addressOutput = removeNullishFields(preparedAddressForWrite);
+        writeJSON(addressFilePath, addressOutput);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
     }
