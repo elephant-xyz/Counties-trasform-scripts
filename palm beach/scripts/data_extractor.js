@@ -200,6 +200,49 @@ function removeNullishFields(obj) {
   return pruned;
 }
 
+function parseGridFromPcn(rawValue) {
+  if (!rawValue) return null;
+  const digits = String(rawValue).replace(/[^0-9]/g, "");
+  if (digits.length !== 17) return null;
+
+  const township = digits.slice(2, 4);
+  const range = digits.slice(4, 6);
+  const section = digits.slice(6, 8);
+  const block = digits.slice(10, 13);
+  const lot = digits.slice(13);
+
+  if (![township, range, section].every((part) => /^[0-9]{2}$/.test(part))) {
+    return null;
+  }
+
+  return {
+    township,
+    range,
+    section,
+    block: /^[0-9]{3}$/.test(block) ? block : null,
+    lot: /^[0-9]{4}$/.test(lot) ? lot : null,
+  };
+}
+
+function extractPostalPieces(raw) {
+  if (!raw) {
+    return { postal: null, plus4: null };
+  }
+
+  const matches = Array.from(
+    String(raw).matchAll(/\b(\d{5})(?:[-\s]?(\d{4}))?\b/g),
+  );
+  if (!matches.length) {
+    return { postal: null, plus4: null };
+  }
+
+  const [, postal, plus4] = matches[matches.length - 1];
+  return {
+    postal: postal || null,
+    plus4: plus4 || null,
+  };
+}
+
 function coerceEmptyStringsToNull(obj, fields) {
   if (!obj || typeof obj !== "object") return;
   const keys =
@@ -8714,6 +8757,44 @@ async function main() {
     const canonicalUnnormalized = trimmedUnnormalized.length
       ? trimmedUnnormalized
       : null;
+
+    if (!hasMeaningfulAddressValue(addressForOutput.plus_four_postal_code)) {
+      const plusFourSources = [
+        canonicalUnnormalized,
+        combinedModelAddress,
+        addressLine3,
+        addressLine2,
+        addressLine1,
+        fullAddrInput,
+        fullAddr,
+      ];
+      for (const source of plusFourSources) {
+        const { plus4 } = extractPostalPieces(source);
+        if (!plus4) continue;
+        const normalizedPlus4 = sanitizePlus4(plus4);
+        if (normalizedPlus4) {
+          addressForOutput.plus_four_postal_code = normalizedPlus4;
+          break;
+        }
+      }
+    }
+
+    const gridSourceCandidates = [
+      fallbackPcnSource,
+      parcelId,
+      resolveFirstNonEmptyString(parcelIdRawCandidates),
+    ].filter(Boolean);
+    for (const candidate of gridSourceCandidates) {
+      const parsedGrid = parseGridFromPcn(candidate);
+      if (!parsedGrid) continue;
+      for (const [field, value] of Object.entries(parsedGrid)) {
+        if (!value) continue;
+        if (!hasMeaningfulAddressValue(addressForOutput[field])) {
+          addressForOutput[field] = value;
+        }
+      }
+      break;
+    }
 
     const hasStreetNumber = hasMeaningfulAddressValue(
       addressForOutput.street_number,
