@@ -1273,31 +1273,15 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-  "unit_identifier",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
-// The County schema's raw branch accepts the original string with only high-level
-// context (no street component breakdown), so limit the emitted fields accordingly.
+// Preserve the full normalized surface on the raw variant so the schema's oneOf
+// can be satisfied while still carrying the unnormalized string.
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [];
