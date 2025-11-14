@@ -9025,6 +9025,50 @@ async function main() {
       finalizedAddress = enforceAddressOneOfSurface(preparedAddress);
     }
 
+    if (!finalizedAddress) {
+      const fallbackUnnormalized =
+        typeof canonicalUnnormalized === "string" && canonicalUnnormalized.length
+          ? canonicalUnnormalized
+          : resolveFirstNonEmptyString([
+              resolvedUnnormalized,
+              combinedModelAddress,
+              siteLocationLine,
+              fullAddr,
+              fullAddrInput,
+            ]);
+
+      const fallbackSeed = buildCountyRawAddressPayload(
+        {
+          ...addressForOutput,
+          ...coordinateOverride,
+        },
+        fallbackUnnormalized,
+      );
+
+      if (fallbackSeed) {
+        if (
+          trimmedRequestIdentifier &&
+          !hasMeaningfulAddressValue(fallbackSeed.request_identifier)
+        ) {
+          fallbackSeed.request_identifier = trimmedRequestIdentifier;
+        }
+        if (sourceHttpCandidate) {
+          fallbackSeed.source_http_request = sourceHttpCandidate;
+        }
+
+        applyPostalFromUnnormalized(fallbackSeed);
+
+        if (fallbackSeed.state_code && !fallbackSeed.country_code) {
+          fallbackSeed.country_code = "US";
+        }
+        if (!fallbackSeed.postal_code) {
+          fallbackSeed.plus_four_postal_code = null;
+        }
+
+        finalizedAddress = enforceAddressOneOfSurface(fallbackSeed);
+      }
+    }
+
     if (finalizedAddress) {
       const surfacedAddress =
         composeSchemaAlignedAddressOutput(finalizedAddress) ||
