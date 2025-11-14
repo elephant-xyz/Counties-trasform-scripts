@@ -1240,9 +1240,24 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ADDRESS_CORE_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
-
-const RAW_ADDRESS_ALLOWED_FIELDS = [...new Set(RAW_ADDRESS_CORE_FIELDS)];
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+  "municipality_name",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
@@ -1877,7 +1892,7 @@ function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
   return raw;
 }
 
-const COUNTY_RAW_ADDRESS_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+const COUNTY_RAW_ADDRESS_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
 function buildCountyRawAddressPayload(base, unnormalizedValue) {
   const trimmed =
