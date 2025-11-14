@@ -4158,26 +4158,56 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
-    let addressPayload = null;
-    let normalizedCandidate = null;
-    if (
-      hasRobustNormalizedAddress(addressForOutput)
-    ) {
-      normalizedCandidate =
-        buildNormalizedAddressOutputForSchema(addressForOutput);
-    }
+    const fallbackRawUnnormalized =
+      canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
+    const hasRawString =
+      typeof fallbackRawUnnormalized === "string" &&
+      fallbackRawUnnormalized.trim().length > 0;
 
-    if (normalizedCandidate) {
-      addressPayload = normalizedCandidate;
-    } else {
-      const fallbackRawUnnormalized =
-        canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
+    const buildRawAddressPayload = () => {
+      if (!hasRawString) return null;
       const rawCandidate = buildRawAddressOutputForSchema(
         fallbackRawUnnormalized,
-        addressForOutput,
+        {
+          ...addressForOutput,
+          latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
+          longitude: Number.isFinite(preferredLongitude)
+            ? preferredLongitude
+            : null,
+        },
       );
-      if (rawCandidate) {
-        addressPayload = rawCandidate;
+      if (!rawCandidate) return null;
+      const pruned = pruneRawAddressPayloadForOutput(rawCandidate);
+      return pruned ? { ...pruned } : null;
+    };
+
+    let addressPayload = null;
+    let addressVariant = null;
+
+    if (hasRawString) {
+      const rawPayload = buildRawAddressPayload();
+      if (rawPayload) {
+        addressPayload = rawPayload;
+        addressVariant = "raw";
+      }
+    }
+
+    if (!addressPayload) {
+      if (hasRobustNormalizedAddress(addressForOutput)) {
+        const normalizedCandidate =
+          buildNormalizedAddressOutputForSchema(addressForOutput);
+        if (normalizedCandidate) {
+          addressPayload = {
+            ...normalizedCandidate,
+            latitude: Number.isFinite(preferredLatitude)
+              ? preferredLatitude
+              : null,
+            longitude: Number.isFinite(preferredLongitude)
+              ? preferredLongitude
+              : null,
+          };
+          addressVariant = "normalized";
+        }
       }
     }
 
@@ -4194,15 +4224,38 @@ async function main() {
       }
 
       if (
-        typeof addressPayload.unnormalized_address === "string" &&
-        addressPayload.unnormalized_address.trim().length
+        addressVariant === "raw" &&
+        hasRawString &&
+        !hasMeaningfulAddressValue(addressPayload.unnormalized_address)
       ) {
-        const prunedRaw = pruneRawAddressPayloadForOutput(addressPayload);
-        addressPayload = prunedRaw || null;
+        addressPayload.unnormalized_address = fallbackRawUnnormalized.trim();
       }
 
-      if (addressPayload) {
-        writeJSON(addressFilePath, addressPayload);
+      const finalizedAddressPayload = finalizeAddressForOutput(addressPayload);
+
+      if (finalizedAddressPayload) {
+        writeJSON(addressFilePath, finalizedAddressPayload);
+      } else if (addressVariant !== "raw" && hasRawString) {
+        const rawFallback = buildRawAddressPayload();
+        if (rawFallback) {
+          if (
+            typeof requestIdentifierCandidate === "string" &&
+            requestIdentifierCandidate.trim().length
+          ) {
+            rawFallback.request_identifier = requestIdentifierCandidate.trim();
+          }
+          if (sourceHttpCandidate) {
+            rawFallback.source_http_request = sourceHttpCandidate;
+          }
+          const finalizedRawFallback = finalizeAddressForOutput(rawFallback);
+          if (finalizedRawFallback) {
+            writeJSON(addressFilePath, finalizedRawFallback);
+          } else {
+            removeFileIfExists(addressFilePath);
+          }
+        } else {
+          removeFileIfExists(addressFilePath);
+        }
       } else {
         removeFileIfExists(addressFilePath);
       }

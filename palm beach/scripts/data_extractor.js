@@ -8416,17 +8416,13 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
-    const normalizedCandidate = hasRobustNormalizedAddress(addressForOutput)
-      ? buildNormalizedAddressOutputForSchema(addressForOutput)
-      : null;
-    const fallbackRawUnnormalized =
-      canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
-
-    let rawCandidate = null;
-    if (
+    const fallbackRawUnnormalized = resolveCandidateString(unnormalizedCandidates);
+    const hasRawString =
       typeof fallbackRawUnnormalized === "string" &&
-      fallbackRawUnnormalized.trim().length
-    ) {
+      fallbackRawUnnormalized.trim().length > 0;
+
+    const buildRawAddressPayload = () => {
+      if (!hasRawString) return null;
       const rawSeed = buildCountyRawAddressPayload(
         {
           ...addressForOutput,
@@ -8437,27 +8433,49 @@ async function main() {
         },
         fallbackRawUnnormalized,
       );
-      if (rawSeed) {
-        rawCandidate = pruneRawAddressPayloadForOutput(rawSeed);
-      }
-    }
+      if (!rawSeed) return null;
+      rawSeed.latitude = Number.isFinite(preferredLatitude)
+        ? preferredLatitude
+        : null;
+      rawSeed.longitude = Number.isFinite(preferredLongitude)
+        ? preferredLongitude
+        : null;
+      const prunedRaw = pruneRawAddressPayloadForOutput(rawSeed);
+      return prunedRaw ? { ...prunedRaw } : null;
+    };
 
     let addressPayload = null;
     let addressVariant = null;
 
-    if (normalizedCandidate) {
-      addressPayload = { ...normalizedCandidate };
-      addressVariant = "normalized";
-    } else if (rawCandidate) {
-      addressPayload = { ...rawCandidate };
-      addressVariant = "raw";
+    if (hasRawString) {
+      const rawPayload = buildRawAddressPayload();
+      if (rawPayload) {
+        addressPayload = rawPayload;
+        addressVariant = "raw";
+      }
+    }
+
+    if (!addressPayload) {
+      const normalizedCandidate = hasRobustNormalizedAddress(addressForOutput)
+        ? buildNormalizedAddressOutputForSchema(addressForOutput)
+        : null;
+      if (normalizedCandidate) {
+        const normalizedPayload = { ...normalizedCandidate };
+        normalizedPayload.latitude = Number.isFinite(preferredLatitude)
+          ? preferredLatitude
+          : null;
+        normalizedPayload.longitude = Number.isFinite(preferredLongitude)
+          ? preferredLongitude
+          : null;
+        addressPayload = normalizedPayload;
+        addressVariant = "normalized";
+      }
     }
 
     if (addressPayload) {
       if (
         addressVariant === "raw" &&
-        typeof fallbackRawUnnormalized === "string" &&
-        fallbackRawUnnormalized.trim().length &&
+        hasRawString &&
         !hasMeaningfulAddressValue(addressPayload.unnormalized_address)
       ) {
         addressPayload.unnormalized_address = fallbackRawUnnormalized.trim();
@@ -8481,38 +8499,33 @@ async function main() {
           finalizedAddressPayload.source_http_request = sourceHttpCandidate;
         }
         writeJSON(addressFilePath, finalizedAddressPayload);
-      } else if (addressVariant === "normalized" && rawCandidate) {
-        const rawFallbackPayload = { ...rawCandidate };
-        if (
-          typeof fallbackRawUnnormalized === "string" &&
-          fallbackRawUnnormalized.trim().length &&
-          !hasMeaningfulAddressValue(rawFallbackPayload.unnormalized_address)
-        ) {
-          rawFallbackPayload.unnormalized_address = fallbackRawUnnormalized.trim();
-        }
-        if (trimmedRequestIdentifier) {
-          rawFallbackPayload.request_identifier = trimmedRequestIdentifier;
-        }
-        if (sourceHttpCandidate) {
-          rawFallbackPayload.source_http_request = sourceHttpCandidate;
-        }
-        const finalizedRawFallback = finalizeAddressForOutput(rawFallbackPayload);
-        if (finalizedRawFallback) {
+      } else if (addressVariant !== "raw" && hasRawString) {
+        const rawFallback = buildRawAddressPayload();
+        if (rawFallback) {
           if (trimmedRequestIdentifier) {
-            finalizedRawFallback.request_identifier = trimmedRequestIdentifier;
+            rawFallback.request_identifier = trimmedRequestIdentifier;
           }
           if (sourceHttpCandidate) {
-            finalizedRawFallback.source_http_request = sourceHttpCandidate;
+            rawFallback.source_http_request = sourceHttpCandidate;
           }
-          writeJSON(addressFilePath, finalizedRawFallback);
+          const finalizedRawFallback = finalizeAddressForOutput(rawFallback);
+          if (finalizedRawFallback) {
+            if (trimmedRequestIdentifier) {
+              finalizedRawFallback.request_identifier = trimmedRequestIdentifier;
+            }
+            if (sourceHttpCandidate) {
+              finalizedRawFallback.source_http_request = sourceHttpCandidate;
+            }
+            writeJSON(addressFilePath, finalizedRawFallback);
+          } else {
+            removeFileIfExists(addressFilePath);
+          }
         } else {
           removeFileIfExists(addressFilePath);
         }
       } else {
         removeFileIfExists(addressFilePath);
       }
-    } else {
-      removeFileIfExists(addressFilePath);
     }
 
     // Relationship UR generation is now handled downstream; ensure we do not
