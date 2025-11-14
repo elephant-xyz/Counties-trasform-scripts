@@ -8333,6 +8333,12 @@ async function main() {
       seed && seed.source_http_request,
     );
 
+    const trimmedRequestIdentifier =
+      typeof requestIdentifierCandidate === "string" &&
+      requestIdentifierCandidate.trim().length
+        ? requestIdentifierCandidate.trim()
+        : null;
+
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
@@ -8365,30 +8371,16 @@ async function main() {
     let addressPayload = null;
     let addressVariant = null;
 
-    if (rawCandidate) {
-      addressPayload = rawCandidate;
+    if (normalizedCandidate) {
+      addressPayload = { ...normalizedCandidate };
+      addressVariant = "normalized";
+    } else if (rawCandidate) {
+      addressPayload = { ...rawCandidate };
       addressVariant = "raw";
-    } else if (normalizedCandidate) {
-      addressPayload = normalizedCandidate;
-      addressVariant = "normalized";
-    }
-
-    if (!addressPayload && normalizedCandidate) {
-      addressPayload = normalizedCandidate;
-      addressVariant = "normalized";
     }
 
     if (addressPayload) {
-      if (addressVariant === "normalized") {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            addressPayload,
-            "unnormalized_address",
-          )
-        ) {
-          delete addressPayload.unnormalized_address;
-        }
-      } else if (
+      if (
         addressVariant === "raw" &&
         typeof fallbackRawUnnormalized === "string" &&
         fallbackRawUnnormalized.trim().length &&
@@ -8397,18 +8389,54 @@ async function main() {
         addressPayload.unnormalized_address = fallbackRawUnnormalized.trim();
       }
 
-      if (
-        typeof requestIdentifierCandidate === "string" &&
-        requestIdentifierCandidate.trim().length
-      ) {
-        addressPayload.request_identifier = requestIdentifierCandidate.trim();
+      if (trimmedRequestIdentifier) {
+        addressPayload.request_identifier = trimmedRequestIdentifier;
       }
 
       if (sourceHttpCandidate) {
         addressPayload.source_http_request = sourceHttpCandidate;
       }
 
-      writeJSON(addressFilePath, addressPayload);
+      const finalizedAddressPayload = finalizeAddressForOutput(addressPayload);
+
+      if (finalizedAddressPayload) {
+        if (trimmedRequestIdentifier) {
+          finalizedAddressPayload.request_identifier = trimmedRequestIdentifier;
+        }
+        if (sourceHttpCandidate) {
+          finalizedAddressPayload.source_http_request = sourceHttpCandidate;
+        }
+        writeJSON(addressFilePath, finalizedAddressPayload);
+      } else if (addressVariant === "normalized" && rawCandidate) {
+        const rawFallbackPayload = { ...rawCandidate };
+        if (
+          typeof fallbackRawUnnormalized === "string" &&
+          fallbackRawUnnormalized.trim().length &&
+          !hasMeaningfulAddressValue(rawFallbackPayload.unnormalized_address)
+        ) {
+          rawFallbackPayload.unnormalized_address = fallbackRawUnnormalized.trim();
+        }
+        if (trimmedRequestIdentifier) {
+          rawFallbackPayload.request_identifier = trimmedRequestIdentifier;
+        }
+        if (sourceHttpCandidate) {
+          rawFallbackPayload.source_http_request = sourceHttpCandidate;
+        }
+        const finalizedRawFallback = finalizeAddressForOutput(rawFallbackPayload);
+        if (finalizedRawFallback) {
+          if (trimmedRequestIdentifier) {
+            finalizedRawFallback.request_identifier = trimmedRequestIdentifier;
+          }
+          if (sourceHttpCandidate) {
+            finalizedRawFallback.source_http_request = sourceHttpCandidate;
+          }
+          writeJSON(addressFilePath, finalizedRawFallback);
+        } else {
+          removeFileIfExists(addressFilePath);
+        }
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
     }
