@@ -6201,7 +6201,7 @@ function materializeAddressForSchemaOutput(address) {
   return surfaced;
 }
 
-function prepareAddressOutputForWrite(address) {
+function prepareAddressOutputForWrite(address, variantHint = null) {
   if (!address || typeof address !== "object") return null;
 
   const trimmedUnnormalized =
@@ -6209,7 +6209,14 @@ function prepareAddressOutputForWrite(address) {
       ? address.unnormalized_address.trim()
       : "";
 
-  if (trimmedUnnormalized.length > 0) {
+  const shouldEmitRaw =
+    variantHint === "raw" ||
+    (variantHint !== "normalized" && trimmedUnnormalized.length > 0);
+
+  if (shouldEmitRaw) {
+    if (!trimmedUnnormalized.length) {
+      return null;
+    }
     const surfaced =
       ensureRawAddressSchemaSurface(address) ||
       ensureRawAddressSchemaDefaults(address) ||
@@ -6303,49 +6310,8 @@ function buildSchemaCompliantAddressPayload(address, options = {}) {
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
       : "";
-  if (trimmedUnnormalized.length) {
-    const rawPayload = { unnormalized_address: trimmedUnnormalized };
-    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-      const candidate = Object.prototype.hasOwnProperty.call(address, field)
-        ? address[field]
-        : null;
-      const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
-      rawPayload[field] =
-        normalizedValue === undefined || normalizedValue === null
-          ? null
-          : normalizedValue;
-    }
 
-    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(rawPayload, field)) {
-        rawPayload[field] = null;
-      }
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        rawPayload[field] = parseCoordinate(rawPayload[field]);
-        if (!Number.isFinite(rawPayload[field])) {
-          rawPayload[field] = null;
-        }
-      }
-    }
-
-    if (!rawPayload.postal_code) {
-      rawPayload.plus_four_postal_code = null;
-    }
-    if (rawPayload.state_code && !rawPayload.country_code) {
-      rawPayload.country_code = "US";
-    }
-
-    if (requestIdentifier) {
-      rawPayload.request_identifier = requestIdentifier;
-    }
-    if (preparedSourceHttpRequest) {
-      rawPayload.source_http_request = deepClone(preparedSourceHttpRequest);
-    }
-
-  return { variant: "raw", payload: rawPayload };
-}
-
-const normalizedPayload = {};
+  const normalizedPayload = {};
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const candidate = Object.prototype.hasOwnProperty.call(address, field)
       ? address[field]
@@ -6385,6 +6351,48 @@ const normalizedPayload = {};
     }
 
     return { variant: "normalized", payload: normalizedPayload };
+  }
+
+  if (trimmedUnnormalized.length) {
+    const rawPayload = { unnormalized_address: trimmedUnnormalized };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      const candidate = Object.prototype.hasOwnProperty.call(address, field)
+        ? address[field]
+        : null;
+      const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+      rawPayload[field] =
+        normalizedValue === undefined || normalizedValue === null
+          ? null
+          : normalizedValue;
+    }
+
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(rawPayload, field)) {
+        rawPayload[field] = null;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        rawPayload[field] = parseCoordinate(rawPayload[field]);
+        if (!Number.isFinite(rawPayload[field])) {
+          rawPayload[field] = null;
+        }
+      }
+    }
+
+    if (!rawPayload.postal_code) {
+      rawPayload.plus_four_postal_code = null;
+    }
+    if (rawPayload.state_code && !rawPayload.country_code) {
+      rawPayload.country_code = "US";
+    }
+
+    if (requestIdentifier) {
+      rawPayload.request_identifier = requestIdentifier;
+    }
+    if (preparedSourceHttpRequest) {
+      rawPayload.source_http_request = deepClone(preparedSourceHttpRequest);
+    }
+
+    return { variant: "raw", payload: rawPayload };
   }
 
   return { variant: null, payload: null };
@@ -9483,8 +9491,17 @@ async function main() {
     }
 
     if (finalAddress) {
-      if (typeof canonicalUnnormalized === "string") {
-        const trimmedCanonical = canonicalUnnormalized.trim();
+      const initialVariant =
+        typeof finalAddress.unnormalized_address === "string" &&
+        finalAddress.unnormalized_address.trim().length > 0
+          ? "raw"
+          : "normalized";
+
+      if (initialVariant === "raw") {
+        const trimmedCanonical =
+          typeof canonicalUnnormalized === "string"
+            ? canonicalUnnormalized.trim()
+            : "";
         if (trimmedCanonical.length) {
           const existingRaw =
             typeof finalAddress.unnormalized_address === "string"
@@ -9497,9 +9514,18 @@ async function main() {
             };
           }
         }
+      } else if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        const cloned = { ...finalAddress };
+        delete cloned.unnormalized_address;
+        finalAddress = cloned;
       }
 
-      const preparedAddressForWrite = prepareAddressOutputForWrite(finalAddress);
+      const preparedAddressForWrite = prepareAddressOutputForWrite(
+        finalAddress,
+        initialVariant,
+      );
       if (preparedAddressForWrite) {
         if (
           finalAddress.request_identifier &&
