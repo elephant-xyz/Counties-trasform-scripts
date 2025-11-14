@@ -6,16 +6,23 @@
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
     const deedObj = {};
+    if (row.bookPage) {
+      const cleaned = row.bookPage.trim();
+      const parts = cleaned.split(/[\/\-]/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 1 && parts[0]) {
+        deedObj.book = parts[0];
+      }
+      if (parts.length >= 2 && parts[1]) {
+        deedObj.page = parts[1];
+      }
+    }
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
 
     const fileObj = {
-      file_format: null, // unknown (pdf not in enum)
       name: row.bookPage || null,
-      original_url: null, // not provided (javascript: link only)
-      ipfs_url: null,
       document_type: "ConveyanceDeed",
     };
     fs.writeFileSync(
@@ -24,8 +31,8 @@
     );
 
     const relDf = {
-      from: { "/": `./deed_${idx + 1}.json` },
-      to: { "/": `./file_${idx + 1}.json` },
+      from: { "/": `./file_${idx + 1}.json` },
+      to: { "/": `./deed_${idx + 1}.json` },
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -57,8 +64,8 @@
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        from: { "/": `./sales_${idx + 1}.json` },
-        to: { "/": `./deed_${deedIdx}.json` },
+        from: { "/": `./deed_${deedIdx}.json` },
+        to: { "/": `./sales_${idx + 1}.json` },
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),

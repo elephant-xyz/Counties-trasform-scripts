@@ -108,7 +108,7 @@ function parseAddress(
     street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
-    // unnormalized_address: fullAddress || null,
+    unnormalized_address: fullAddress || null,
   };
 }
 
