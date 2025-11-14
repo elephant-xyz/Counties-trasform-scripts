@@ -190,16 +190,6 @@ function padGridValue(value, length) {
   return alphanumeric;
 }
 
-function removeNullishFields(obj) {
-  if (!obj || typeof obj !== "object") return obj;
-  const pruned = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === null || value === undefined) continue;
-    pruned[key] = value;
-  }
-  return pruned;
-}
-
 function parseGridFromPcn(rawValue) {
   if (!rawValue) return null;
   const digits = String(rawValue).replace(/[^0-9]/g, "");
@@ -9228,8 +9218,7 @@ async function main() {
     if (finalAddress) {
       const preparedAddressForWrite = prepareAddressOutputForWrite(finalAddress);
       if (preparedAddressForWrite) {
-        const addressOutput = removeNullishFields(preparedAddressForWrite);
-        writeJSON(addressFilePath, addressOutput);
+        writeJSON(addressFilePath, preparedAddressForWrite);
       } else {
         removeFileIfExists(addressFilePath);
       }
