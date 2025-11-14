@@ -32,8 +32,8 @@
 
     const relDf = {
       type: "deed_has_file",
-      from: { "/": `./deed_${idx + 1}.json` },
-      to: { "/": `./file_${idx + 1}.json` },
+      from: `./deed_${idx + 1}.json`,
+      to: `./file_${idx + 1}.json`,
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -68,8 +68,8 @@
     if (deedIdx > 0) {
       const rel = {
         type: "sales_history_has_deed",
-        from: { "/": `./sales_${idx + 1}.json` },
-        to: { "/": `./deed_${deedIdx}.json` },
+        from: `./sales_${idx + 1}.json`,
+        to: `./deed_${deedIdx}.json`,
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
