@@ -23,6 +23,40 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+function parseBookPageIdentifier(bookPage) {
+  if (!bookPage) return { book: null, page: null };
+  const cleaned = String(bookPage).trim();
+  if (!cleaned) return { book: null, page: null };
+
+  // Common patterns like "1234/567", "1234-567", "1234 567"
+  const separatorMatch = cleaned.match(/(\w+)\s*[/\-]\s*(\w+)/);
+  if (separatorMatch) {
+    return {
+      book: separatorMatch[1],
+      page: separatorMatch[2],
+    };
+  }
+
+  // Patterns like "Book 1234 Page 567" or "BK 1234 PG 567"
+  const bookMatch = cleaned.match(/\b(?:book|bk)\s*([0-9a-zA-Z]+)/i);
+  const pageMatch = cleaned.match(/\b(?:page|pg)\s*([0-9a-zA-Z]+)/i);
+  if (bookMatch || pageMatch) {
+    return {
+      book: bookMatch ? bookMatch[1] : null,
+      page: pageMatch ? pageMatch[1] : null,
+    };
+  }
+
+  // As a fallback, split on whitespace and punctuation and take the first two tokens
+  const tokens = cleaned.split(/[^0-9a-zA-Z]+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    return { book: tokens[0], page: tokens[1] };
+  }
+
+  // Could not confidently parse a page number, treat entire string as book reference
+  return { book: cleaned, page: null };
+}
+
 function parseDateToISO(mdyy) {
   if (!mdyy) return null;
   // Accept MM/DD/YY or MM/DD/YYYY
@@ -755,27 +789,34 @@ function main() {
 
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
+    const { book, page } = parseBookPageIdentifier(row.bookPage);
     const deedObj = {};
+    if (book) deedObj.book = book;
+    if (page) deedObj.page = page;
+
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
 
-    const fileObj = {
-      file_format: null, // unknown (pdf not in enum)
-      name: row.bookPage || null,
-      original_url: null, // not provided (javascript: link only)
-      ipfs_url: null,
-      document_type: "ConveyanceDeed",
-    };
+    const fileObj = {};
+    const fileNameParts = [];
+    if (book) fileNameParts.push(`Book ${book}`);
+    if (page) fileNameParts.push(`Page ${page}`);
+    if (fileNameParts.length > 0) {
+      fileObj.name = fileNameParts.join(" ");
+    } else if (row.bookPage) {
+      fileObj.name = row.bookPage;
+    }
+
     fs.writeFileSync(
       path.join(dataDir, `file_${idx + 1}.json`),
       JSON.stringify(fileObj, null, 2),
     );
 
     const relDf = {
-      from: { "/": `./deed_${idx + 1}.json` },
-      to: { "/": `./file_${idx + 1}.json` },
+      from: { "/": `./file_${idx + 1}.json` },
+      to: { "/": `./deed_${idx + 1}.json` },
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -807,8 +848,8 @@ function main() {
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        from: { "/": `./sales_${idx + 1}.json` },
-        to: { "/": `./deed_${deedIdx}.json` },
+        from: { "/": `./deed_${deedIdx}.json` },
+        to: { "/": `./sales_${idx + 1}.json` },
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
@@ -880,8 +921,8 @@ function main() {
           // Link to all person files
           personFiles.forEach((personFile, pi) => {
             const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              from: { "/": `./${personFile}` },
+              to: { "/": `./sales_${si + 1}.json` },
             };
             fs.writeFileSync(
               path.join(
@@ -895,8 +936,8 @@ function main() {
           // Link to all company files
           companyFiles.forEach((companyFile, ci) => {
             const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              from: { "/": `./${companyFile}` },
+              to: { "/": `./sales_${si + 1}.json` },
             };
             fs.writeFileSync(
               path.join(
