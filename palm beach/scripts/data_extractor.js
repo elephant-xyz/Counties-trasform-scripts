@@ -9413,8 +9413,44 @@ async function main() {
     }
 
     if (finalAddress) {
+      if (typeof canonicalUnnormalized === "string") {
+        const trimmedCanonical = canonicalUnnormalized.trim();
+        if (trimmedCanonical.length) {
+          const existingRaw =
+            typeof finalAddress.unnormalized_address === "string"
+              ? finalAddress.unnormalized_address.trim()
+              : null;
+          if (!existingRaw || existingRaw !== trimmedCanonical) {
+            finalAddress = {
+              ...finalAddress,
+              unnormalized_address: trimmedCanonical,
+            };
+          }
+        }
+      }
+
       const preparedAddressForWrite = prepareAddressOutputForWrite(finalAddress);
       if (preparedAddressForWrite) {
+        if (
+          finalAddress.request_identifier &&
+          !preparedAddressForWrite.request_identifier
+        ) {
+          preparedAddressForWrite.request_identifier =
+            finalAddress.request_identifier;
+        }
+
+        if (
+          finalAddress.source_http_request &&
+          !preparedAddressForWrite.source_http_request
+        ) {
+          const preparedSource = prepareSourceHttpRequest(
+            finalAddress.source_http_request,
+          );
+          if (preparedSource) {
+            preparedAddressForWrite.source_http_request = preparedSource;
+          }
+        }
+
         writeJSON(addressFilePath, preparedAddressForWrite);
       } else {
         removeFileIfExists(addressFilePath);
