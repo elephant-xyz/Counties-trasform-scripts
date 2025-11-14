@@ -24,8 +24,8 @@
     );
 
     const relDf = {
-      from: { "/": `./deed_${idx + 1}.json` },
-      to: { "/": `./file_${idx + 1}.json` },
+      from: { "/": `./file_${idx + 1}.json` },
+      to: { "/": `./deed_${idx + 1}.json` },
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -57,8 +57,8 @@
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        from: { "/": `./sales_${idx + 1}.json` },
-        to: { "/": `./deed_${deedIdx}.json` },
+        from: { "/": `./deed_${deedIdx}.json` },
+        to: { "/": `./sales_${idx + 1}.json` },
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
@@ -130,8 +130,8 @@
           // Link to all person files
           personFiles.forEach((personFile, pi) => {
             const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              from: { "/": `./${personFile}` },
+              to: { "/": `./sales_${si + 1}.json` },
             };
             fs.writeFileSync(
               path.join(
@@ -145,6 +145,6 @@
           // Link to all company files
           companyFiles.forEach((companyFile, ci) => {
             const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              from: { "/": `./${companyFile}` },
+              to: { "/": `./sales_${si + 1}.json` },
             };
