@@ -284,7 +284,10 @@ function pruneRawAddressPayloadForOutput(payload) {
     return null;
   }
 
-  const result = { unnormalized_address: unnormalized };
+  const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: unnormalized,
+  };
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (field === "unnormalized_address") continue;
@@ -335,13 +338,6 @@ function pruneRawAddressPayloadForOutput(payload) {
     result.country_code = "US";
   }
 
-  if (
-    !result.postal_code &&
-    Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
-  ) {
-    delete result.plus_four_postal_code;
-  }
-
   const requestIdentifier =
     typeof payload.request_identifier === "string"
       ? payload.request_identifier.trim()
@@ -355,6 +351,12 @@ function pruneRawAddressPayloadForOutput(payload) {
   );
   if (preparedSource) {
     result.source_http_request = preparedSource;
+  }
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+    }
   }
 
   return result;

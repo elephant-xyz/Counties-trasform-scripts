@@ -1951,6 +1951,7 @@ function pruneRawAddressPayloadForOutput(payload) {
   }
 
   const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: unnormalized,
   };
 
@@ -1994,17 +1995,10 @@ function pruneRawAddressPayloadForOutput(payload) {
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (field === "unnormalized_address") continue;
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) continue;
-
-    const normalizedValue = normalizeAddressFieldForSchema(
-      field,
-      payload[field],
-    );
+    const hasField = Object.prototype.hasOwnProperty.call(payload, field);
+    const candidate = hasField ? payload[field] : null;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
     assignIfMeaningful(field, normalizedValue);
-  }
-
-  if (!Object.prototype.hasOwnProperty.call(result, "postal_code")) {
-    delete result.plus_four_postal_code;
   }
 
   if (
@@ -2028,6 +2022,12 @@ function pruneRawAddressPayloadForOutput(payload) {
   );
   if (preparedSource) {
     result.source_http_request = preparedSource;
+  }
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+    }
   }
 
   return result;
