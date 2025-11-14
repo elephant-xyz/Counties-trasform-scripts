@@ -1877,6 +1877,48 @@ function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
   return raw;
 }
 
+const COUNTY_RAW_ADDRESS_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+
+function buildCountyRawAddressPayload(base, unnormalizedValue) {
+  const trimmed =
+    typeof unnormalizedValue === "string"
+      ? unnormalizedValue.trim()
+      : "";
+  if (!trimmed.length) {
+    return null;
+  }
+
+  const payload = { unnormalized_address: trimmed };
+  const ensureValue = (field, original) => {
+    const sanitized = normalizeAddressFieldForSchema(field, original);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(sanitized);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+    if (sanitized === undefined || sanitized === null) {
+      return null;
+    }
+    if (typeof sanitized === "string") {
+      const collapsed = sanitized.trim();
+      return collapsed.length ? collapsed : null;
+    }
+    if (typeof sanitized === "number") {
+      return Number.isFinite(sanitized) ? sanitized : null;
+    }
+    return sanitized;
+  };
+
+  for (const field of COUNTY_RAW_ADDRESS_FIELDS) {
+    const candidate =
+      base && Object.prototype.hasOwnProperty.call(base, field)
+        ? base[field]
+        : null;
+    payload[field] = ensureValue(field, candidate);
+  }
+
+  return payload;
+}
+
 function pruneRawAddressPayloadForOutput(payload) {
   if (!payload || typeof payload !== "object") return null;
 
@@ -8151,7 +8193,7 @@ async function main() {
 
     const canonicalUnnormalized = trimmedUnnormalized.length
       ? trimmedUnnormalized
-      : "";
+      : null;
 
     const addressForOutput = {
       ...address,
@@ -8294,53 +8336,67 @@ async function main() {
     delete addressForOutput.request_identifier;
     delete addressForOutput.source_http_request;
 
-    let addressPayload = null;
-    let usedNormalizedSchema = false;
-
-    let normalizedCandidate = null;
-    if (hasRobustNormalizedAddress(addressForOutput)) {
-      normalizedCandidate =
-        buildNormalizedAddressOutputForSchema(addressForOutput);
-    }
+    const normalizedCandidate = hasRobustNormalizedAddress(addressForOutput)
+      ? buildNormalizedAddressOutputForSchema(addressForOutput)
+      : null;
     const fallbackRawUnnormalized =
       canonicalUnnormalized || resolveCandidateString(unnormalizedCandidates);
-    const hasRawFallback =
+
+    let rawCandidate = null;
+    if (
       typeof fallbackRawUnnormalized === "string" &&
-      fallbackRawUnnormalized.trim().length > 0;
-
-    if (normalizedCandidate) {
-      addressPayload = normalizedCandidate;
-      usedNormalizedSchema = true;
-    } else if (hasRawFallback) {
-      const rawCandidate = buildRawAddressOutputForSchema(
+      fallbackRawUnnormalized.trim().length
+    ) {
+      const rawSeed = buildCountyRawAddressPayload(
+        {
+          ...addressForOutput,
+          latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
+          longitude: Number.isFinite(preferredLongitude)
+            ? preferredLongitude
+            : null,
+        },
         fallbackRawUnnormalized,
-        addressForOutput,
       );
-      if (rawCandidate) {
-        const prunedRaw = pruneRawAddressPayloadForOutput(rawCandidate);
-        if (prunedRaw) {
-          addressPayload = prunedRaw;
-        }
+      if (rawSeed) {
+        rawCandidate = pruneRawAddressPayloadForOutput(rawSeed);
       }
     }
 
-    if (addressPayload) {
-      if (usedNormalizedSchema) {
-        delete addressPayload.unnormalized_address;
-      } else {
-        const rawUnnormalized =
-          typeof addressPayload.unnormalized_address === "string"
-            ? addressPayload.unnormalized_address.trim()
-            : "";
-        if (!rawUnnormalized.length) {
-          addressPayload = null;
-        } else {
-          addressPayload.unnormalized_address = rawUnnormalized;
-        }
-      }
+    let addressPayload = null;
+    let addressVariant = null;
+
+    if (rawCandidate) {
+      addressPayload = rawCandidate;
+      addressVariant = "raw";
+    } else if (normalizedCandidate) {
+      addressPayload = normalizedCandidate;
+      addressVariant = "normalized";
+    }
+
+    if (!addressPayload && normalizedCandidate) {
+      addressPayload = normalizedCandidate;
+      addressVariant = "normalized";
     }
 
     if (addressPayload) {
+      if (addressVariant === "normalized") {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            addressPayload,
+            "unnormalized_address",
+          )
+        ) {
+          delete addressPayload.unnormalized_address;
+        }
+      } else if (
+        addressVariant === "raw" &&
+        typeof fallbackRawUnnormalized === "string" &&
+        fallbackRawUnnormalized.trim().length &&
+        !hasMeaningfulAddressValue(addressPayload.unnormalized_address)
+      ) {
+        addressPayload.unnormalized_address = fallbackRawUnnormalized.trim();
+      }
+
       if (
         typeof requestIdentifierCandidate === "string" &&
         requestIdentifierCandidate.trim().length
