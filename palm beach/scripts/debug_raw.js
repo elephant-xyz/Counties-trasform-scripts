@@ -4194,50 +4194,68 @@ async function main() {
       typeof fallbackRawUnnormalized === "string" &&
       fallbackRawUnnormalized.trim().length > 0;
 
-    const buildRawAddressPayload = () => {
-      if (!hasRawString) return null;
-      const rawCandidate = buildRawAddressOutputForSchema(
-        fallbackRawUnnormalized,
-        {
-          ...addressForOutput,
-          latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
-          longitude: Number.isFinite(preferredLongitude)
-            ? preferredLongitude
-            : null,
-        },
-      );
-      if (!rawCandidate) return null;
-      const pruned = pruneRawAddressPayloadForOutput(rawCandidate);
-      return pruned ? { ...pruned } : null;
+    const coordinateOverride = {
+      latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
+      longitude: Number.isFinite(preferredLongitude) ? preferredLongitude : null,
     };
 
-    let addressPayload = null;
+    let preparedAddress = null;
     let addressVariant = null;
 
-    if (hasRawString) {
-      const rawPayload = buildRawAddressPayload();
-      if (rawPayload) {
-        addressPayload = rawPayload;
-        addressVariant = "raw";
+    const normalizedCandidate = hasRobustNormalizedAddress(addressForOutput)
+      ? buildNormalizedAddressOutputForSchema(addressForOutput)
+      : null;
+
+    if (normalizedCandidate) {
+      const normalizedSurface =
+        ensureNormalizedAddressSchemaSurface({
+          ...normalizedCandidate,
+          ...coordinateOverride,
+        }) || null;
+      if (normalizedSurface) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedSurface,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedSurface.unnormalized_address;
+        }
+        preparedAddress = normalizedSurface;
+        addressVariant = "normalized";
       }
     }
 
-    if (!addressPayload) {
-      if (hasRobustNormalizedAddress(addressForOutput)) {
-        const normalizedCandidate =
-          buildNormalizedAddressOutputForSchema(addressForOutput);
-        if (normalizedCandidate) {
-          addressPayload = {
-            ...normalizedCandidate,
-            latitude: Number.isFinite(preferredLatitude)
-              ? preferredLatitude
-              : null,
-            longitude: Number.isFinite(preferredLongitude)
-              ? preferredLongitude
-              : null,
-          };
-          addressVariant = "normalized";
+    if (!preparedAddress && hasRawString) {
+      const trimmedRaw = fallbackRawUnnormalized.trim();
+      const baseRawCandidate =
+        buildRawAddressOutputForSchema(trimmedRaw, {
+          ...addressForOutput,
+          ...coordinateOverride,
+        }) || null;
+
+      const rawSurface =
+        ensureRawAddressOutputSurface(
+          baseRawCandidate || {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...coordinateOverride,
+            unnormalized_address: trimmedRaw,
+          },
+        ) || null;
+
+      if (rawSurface) {
+        rawSurface.unnormalized_address = trimmedRaw;
+        if (!hasMeaningfulAddressValue(rawSurface.postal_code)) {
+          rawSurface.plus_four_postal_code = null;
         }
+        if (
+          hasMeaningfulAddressValue(rawSurface.state_code) &&
+          !hasMeaningfulAddressValue(rawSurface.country_code)
+        ) {
+          rawSurface.country_code = "US";
+        }
+        preparedAddress = rawSurface;
+        addressVariant = "raw";
       }
     }
 
@@ -4247,65 +4265,29 @@ async function main() {
         ? requestIdentifierCandidate.trim()
         : null;
 
-    if (addressPayload) {
+    if (preparedAddress) {
       if (
-        addressVariant === "raw" &&
-        hasRawString &&
-        !hasMeaningfulAddressValue(addressPayload.unnormalized_address)
+        trimmedRequestIdentifier &&
+        !hasMeaningfulAddressValue(preparedAddress.request_identifier)
       ) {
-        addressPayload.unnormalized_address = fallbackRawUnnormalized.trim();
+        preparedAddress.request_identifier = trimmedRequestIdentifier;
       }
-
-      if (trimmedRequestIdentifier) {
-        addressPayload.request_identifier = trimmedRequestIdentifier;
-      }
-
       if (sourceHttpCandidate) {
-        addressPayload.source_http_request = sourceHttpCandidate;
+        preparedAddress.source_http_request = sourceHttpCandidate;
       }
 
-      let schemaReadyAddress = enforceAddressOneOfSurface(addressPayload);
-
-      if (!schemaReadyAddress && addressVariant !== "raw" && hasRawString) {
-        const rawFallback = buildRawAddressPayload();
-        if (rawFallback) {
-          if (trimmedRequestIdentifier) {
-            rawFallback.request_identifier = trimmedRequestIdentifier;
-          }
-          if (sourceHttpCandidate) {
-            rawFallback.source_http_request = sourceHttpCandidate;
-          }
-          schemaReadyAddress = enforceAddressOneOfSurface(rawFallback);
-        }
+      if (addressVariant === "raw") {
+        applyPostalFromUnnormalized(preparedAddress);
       }
 
-      if (schemaReadyAddress) {
-        const hasUnnormalizedSurface =
-          typeof schemaReadyAddress.unnormalized_address === "string" &&
-          schemaReadyAddress.unnormalized_address.trim().length > 0;
-
-        if (hasUnnormalizedSurface) {
-          const enforcedRawSurface =
-            ensureRawAddressOutputSurface(schemaReadyAddress) ||
-            ensureRawAddressSchemaSurface(schemaReadyAddress) ||
-            ensureRawAddressSchemaDefaults(schemaReadyAddress);
-          if (enforcedRawSurface) {
-            schemaReadyAddress = enforcedRawSurface;
-          }
-        } else {
-          const normalizedSurface = ensureNormalizedAddressSchemaSurface(
-            schemaReadyAddress,
-          );
-          if (normalizedSurface) {
-            schemaReadyAddress = normalizedSurface;
-          }
-        }
-
-        applyPostalFromUnnormalized(schemaReadyAddress);
-        writeJSON(addressFilePath, schemaReadyAddress);
-      } else {
-        removeFileIfExists(addressFilePath);
+      if (preparedAddress.state_code && !preparedAddress.country_code) {
+        preparedAddress.country_code = "US";
       }
+      if (!preparedAddress.postal_code) {
+        preparedAddress.plus_four_postal_code = null;
+      }
+
+      writeJSON(addressFilePath, preparedAddress);
     } else {
       removeFileIfExists(addressFilePath);
     }

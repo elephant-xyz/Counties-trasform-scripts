@@ -8690,206 +8690,100 @@ async function main() {
 
     const hasRawString = canonicalUnnormalized != null;
 
+    const coordinateOverride = {
+      latitude: Number.isFinite(preferredLatitude) ? preferredLatitude : null,
+      longitude: Number.isFinite(preferredLongitude) ? preferredLongitude : null,
+    };
+
+    let preparedAddress = null;
+    let addressVariant = null;
+
     const normalizedCandidate = hasRobustNormalizedAddress(addressForOutput)
       ? buildNormalizedAddressOutputForSchema(addressForOutput)
       : null;
 
-    const rawCandidate = hasRawString
-      ? buildRawAddressOutputForSchema(canonicalUnnormalized, addressForOutput)
-      : null;
-
-    let finalAddress = null;
-    let addressVariant = null;
-    const coordinateOverride = {};
-    if (Number.isFinite(preferredLatitude)) {
-      coordinateOverride.latitude = preferredLatitude;
-    }
-    if (Number.isFinite(preferredLongitude)) {
-      coordinateOverride.longitude = preferredLongitude;
-    }
-
     if (normalizedCandidate) {
-      const normalizedSurface = ensureNormalizedAddressSchemaSurface({
-        ...normalizedCandidate,
-        ...coordinateOverride,
-      });
+      const normalizedSurface =
+        ensureNormalizedAddressSchemaSurface({
+          ...normalizedCandidate,
+          ...coordinateOverride,
+        }) || null;
       if (normalizedSurface) {
-        finalAddress = normalizedSurface;
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedSurface,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedSurface.unnormalized_address;
+        }
+        preparedAddress = normalizedSurface;
         addressVariant = "normalized";
       }
     }
 
-    if (!finalAddress && rawCandidate) {
-      const rawSurface = pruneRawAddressPayloadForOutput({
-        ...rawCandidate,
-        ...coordinateOverride,
-      });
+    if (!preparedAddress && hasRawString) {
+      const baseRawCandidate =
+        buildRawAddressOutputForSchema(canonicalUnnormalized, {
+          ...addressForOutput,
+          ...coordinateOverride,
+        }) || null;
+
+      const rawSurface =
+        ensureRawAddressOutputSurface(
+          baseRawCandidate || {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...coordinateOverride,
+            unnormalized_address: canonicalUnnormalized,
+          },
+        ) || null;
+
       if (rawSurface) {
-        finalAddress = rawSurface;
+        rawSurface.unnormalized_address = canonicalUnnormalized;
+        if (!hasMeaningfulAddressValue(rawSurface.postal_code)) {
+          rawSurface.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(rawSurface.state_code) &&
+          !hasMeaningfulAddressValue(rawSurface.country_code)
+        ) {
+          rawSurface.country_code = "US";
+        }
+        preparedAddress = rawSurface;
         addressVariant = "raw";
       }
     }
 
-    if (finalAddress) {
-      if (addressVariant === "normalized") {
-        if (Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")) {
-          delete finalAddress.unnormalized_address;
-        }
-        finalAddress = ensureNormalizedAddressSchemaSurface(finalAddress) || finalAddress;
-      } else if (addressVariant === "raw") {
-        if (
-          hasRawString &&
-          (!finalAddress.unnormalized_address ||
-            !finalAddress.unnormalized_address.trim().length)
-        ) {
-          finalAddress.unnormalized_address = canonicalUnnormalized;
-        }
-
-        const normalizedFallback = promoteRawAddressToNormalized(
-          finalAddress,
-          {
-            fallbackSources: [
-              addressForOutput,
-              normalizedSnapshot,
-              baseAddressSeed,
-              address,
-              rawCandidate,
-              unAddr,
-              seed,
-            ],
-            countyFallback: formattedCountyName,
-            municipalityFallback: normalizedMunicipality,
-            stateFallback:
-              inferredStateCode ||
-              countyInferredStateCode ||
-              (resolvedState ? resolvedState.toUpperCase() : null) ||
-              "FL",
-            postalFallback:
-              fallbackPostalValue ||
-              postalCode ||
-              (parsedUnnormalizedCityState
-                ? parsedUnnormalizedCityState.postal
-                : null),
-            plus4Fallback:
-              fallbackPlus4Value ||
-              plus4 ||
-              (parsedUnnormalizedCityState
-                ? parsedUnnormalizedCityState.plus4
-                : null),
-            coordinateFallback: coordinateOverride,
-            requestIdentifier: trimmedRequestIdentifier,
-            sourceHttpRequest: sourceHttpCandidate,
-          },
-        );
-
-        if (normalizedFallback) {
-          finalAddress =
-            ensureNormalizedAddressSchemaSurface({
-              ...normalizedFallback,
-              ...coordinateOverride,
-            }) || normalizedFallback;
-          if (
-            Object.prototype.hasOwnProperty.call(
-              finalAddress,
-              "unnormalized_address",
-            )
-          ) {
-            delete finalAddress.unnormalized_address;
-          }
-          addressVariant = "normalized";
-        } else {
-          finalAddress = pruneRawAddressPayloadForOutput(finalAddress);
-        }
-      }
-
-      let preparedVariant = null;
-      let preparedAddress = null;
-
-      if (finalAddress) {
-        const compliant = buildSchemaCompliantAddressPayload(finalAddress, {
-          requestIdentifier: trimmedRequestIdentifier,
-          sourceHttpRequest: sourceHttpCandidate,
-        });
-
-        if (compliant && compliant.payload) {
-          preparedVariant = compliant.variant;
-          if (compliant.variant === "normalized") {
-            preparedAddress =
-              ensureNormalizedAddressSchemaSurface(compliant.payload) ||
-              compliant.payload;
-            if (
-              preparedAddress &&
-              Object.prototype.hasOwnProperty.call(
-                preparedAddress,
-                "unnormalized_address",
-              )
-            ) {
-              delete preparedAddress.unnormalized_address;
-            }
-          } else if (compliant.variant === "raw") {
-            preparedAddress =
-              pruneRawAddressPayloadForOutput(compliant.payload) ||
-              ensureRawAddressSchemaSurface(compliant.payload) ||
-              compliant.payload;
-          }
-        }
-      }
-
-      if (!preparedAddress && hasRawString) {
-        preparedVariant = "raw";
-        preparedAddress =
-          pruneRawAddressPayloadForOutput({
-            ...finalAddress,
-            unnormalized_address: canonicalUnnormalized,
-          }) || {
-            unnormalized_address: canonicalUnnormalized,
-          };
-
-        if (preparedAddress) {
-          if (
-            trimmedRequestIdentifier &&
-            !Object.prototype.hasOwnProperty.call(
-              preparedAddress,
-              "request_identifier",
-            )
-          ) {
-            preparedAddress.request_identifier = trimmedRequestIdentifier;
-          }
-          if (
-            sourceHttpCandidate &&
-            !Object.prototype.hasOwnProperty.call(
-              preparedAddress,
-              "source_http_request",
-            )
-          ) {
-            preparedAddress.source_http_request = sourceHttpCandidate;
-          }
-        }
-      }
-
+    if (preparedAddress) {
       if (
-        preparedVariant === "normalized" &&
-        preparedAddress &&
-        Object.prototype.hasOwnProperty.call(
-          preparedAddress,
-          "unnormalized_address",
-        )
+        trimmedRequestIdentifier &&
+        !hasMeaningfulAddressValue(preparedAddress.request_identifier)
       ) {
-        delete preparedAddress.unnormalized_address;
+        preparedAddress.request_identifier = trimmedRequestIdentifier;
+      }
+      if (sourceHttpCandidate) {
+        preparedAddress.source_http_request = sourceHttpCandidate;
       }
 
-      if (preparedAddress) {
+      if (addressVariant === "raw") {
         applyPostalFromUnnormalized(preparedAddress);
-        writeJSON(addressFilePath, preparedAddress);
-      } else {
-        removeFileIfExists(addressFilePath);
       }
+
+      if (preparedAddress.state_code && !preparedAddress.country_code) {
+        preparedAddress.country_code = "US";
+      }
+      if (!preparedAddress.postal_code) {
+        preparedAddress.plus_four_postal_code = null;
+      }
+
+      writeJSON(addressFilePath, preparedAddress);
     } else {
       removeFileIfExists(addressFilePath);
     }
 
     // Relationship UR generation is now handled downstream; ensure we do not
     // emit stale relationship payloads locally.
+
     removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
 
