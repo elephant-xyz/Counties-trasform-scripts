@@ -145,6 +145,7 @@
   } catch (_) {}
 
   const propertyAddressRel = {
+    type: "property_has_address",
     from: { "/": "./property.json" },
     to: { "/": "./address.json" },
   };
@@ -154,6 +155,7 @@
   );
 
   const addressFactSheetRel = {
+    type: "address_has_fact_sheet",
     from: { "/": "./address.json" },
     to: { "/": "./fact_sheet.json" },
   };

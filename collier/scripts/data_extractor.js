@@ -787,6 +787,7 @@ function main() {
   } catch (_) {}
 
   const propertyAddressRel = {
+    type: "property_has_address",
     from: { "/": "./property.json" },
     to: { "/": "./address.json" },
   };
@@ -796,6 +797,7 @@ function main() {
   );
 
   const addressFactSheetRel = {
+    type: "address_has_fact_sheet",
     from: { "/": "./address.json" },
     to: { "/": "./fact_sheet.json" },
   };
@@ -873,6 +875,7 @@ function main() {
     );
 
     const relDf = {
+      type: "deed_has_file",
       from: { "/": `./deed_${idx + 1}.json` },
       to: { "/": `./file_${idx + 1}.json` },
     };
@@ -910,6 +913,7 @@ function main() {
     const saleRef = { "/": `./sales_history_${idx + 1}.json` };
     if (deedIdx != null) {
       const rel = {
+        type: "sales_history_has_deed",
         from: saleRef,
         to: { "/": `./deed_${deedIdx}.json` },
       };
@@ -920,6 +924,7 @@ function main() {
     }
     if (factSheetExists) {
       const relFactSheet = {
+        type: "sales_history_has_fact_sheet",
         from: saleRef,
         to: { "/": "./fact_sheet.json" },
       };
@@ -988,6 +993,7 @@ function main() {
           // Link to all person files
           personFiles.forEach((personFile) => {
             const rel = {
+              type: "sales_history_has_person",
               from: { "/": `./sales_history_${si + 1}.json` },
               to: { "/": `./${personFile}` },
             };
@@ -1004,6 +1010,7 @@ function main() {
           // Link to all company files
           companyFiles.forEach((companyFile) => {
             const rel = {
+              type: "sales_history_has_company",
               from: { "/": `./sales_history_${si + 1}.json` },
               to: { "/": `./${companyFile}` },
             };

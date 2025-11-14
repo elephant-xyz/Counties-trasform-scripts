@@ -76,6 +76,7 @@
     fileRecords.push(fileObj);
 
     const relDf = {
+      type: "deed_has_file",
       from: { "/": `./deed_${idx + 1}.json` },
       to: { "/": `./file_${idx + 1}.json` },
     };
@@ -113,6 +114,7 @@
     const saleRef = { "/": `./sales_history_${idx + 1}.json` };
     if (deedIdx != null) {
       const rel = {
+        type: "sales_history_has_deed",
         from: saleRef,
         to: { "/": `./deed_${deedIdx}.json` },
       };
@@ -123,6 +125,7 @@
     }
     if (factSheetExists) {
       const relFactSheet = {
+        type: "sales_history_has_fact_sheet",
         from: saleRef,
         to: { "/": "./fact_sheet.json" },
       };
@@ -191,6 +194,7 @@
           // Link to all person files
           personFiles.forEach((personFile) => {
             const rel = {
+              type: "sales_history_has_person",
               from: { "/": `./sales_history_${si + 1}.json` },
               to: { "/": `./${personFile}` },
             };
@@ -207,6 +211,7 @@
           // Link to all company files
           companyFiles.forEach((companyFile) => {
             const rel = {
+              type: "sales_history_has_company",
               from: { "/": `./sales_history_${si + 1}.json` },
               to: { "/": `./${companyFile}` },
             };
