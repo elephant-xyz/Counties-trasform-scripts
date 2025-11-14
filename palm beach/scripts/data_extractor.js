@@ -1888,7 +1888,10 @@ function pruneRawAddressPayloadForOutput(payload) {
     return null;
   }
 
-  const result = { unnormalized_address: unnormalized };
+  const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: unnormalized,
+  };
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (field === "unnormalized_address") continue;
@@ -1898,30 +1901,22 @@ function pruneRawAddressPayloadForOutput(payload) {
       field,
       payload[field],
     );
-    if (normalizedValue === undefined || normalizedValue === null) {
-      continue;
-    }
-
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const coordinate = parseCoordinate(normalizedValue);
-      if (Number.isFinite(coordinate)) {
-        result[field] = coordinate;
-      }
+      result[field] = Number.isFinite(coordinate) ? coordinate : null;
       continue;
     }
 
     if (typeof normalizedValue === "string") {
       const trimmed = normalizedValue.trim();
-      if (trimmed.length) {
-        result[field] = trimmed;
-      }
+      result[field] = trimmed.length ? trimmed : null;
       continue;
     }
 
     if (typeof normalizedValue === "number") {
-      if (Number.isFinite(normalizedValue)) {
-        result[field] = normalizedValue;
-      }
+      result[field] = Number.isFinite(normalizedValue)
+        ? normalizedValue
+        : null;
       continue;
     }
 
@@ -1932,18 +1927,18 @@ function pruneRawAddressPayloadForOutput(payload) {
 
     if (normalizedValue && typeof normalizedValue === "object") {
       result[field] = deepClone(normalizedValue);
+      continue;
     }
+
+    result[field] = null;
   }
 
   if (result.state_code && !result.country_code) {
     result.country_code = "US";
   }
 
-  if (
-    !result.postal_code &&
-    Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
-  ) {
-    delete result.plus_four_postal_code;
+  if (!hasMeaningfulAddressValue(result.postal_code)) {
+    result.plus_four_postal_code = null;
   }
 
   const requestIdentifier =
