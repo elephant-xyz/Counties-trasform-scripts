@@ -130,10 +130,29 @@
     range,
     countyName,
     municipality,
+    fullAddressUn,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
+  );
+
+  const propertyAddressRel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_property_address.json"),
+    JSON.stringify(propertyAddressRel, null, 2),
+  );
+
+  const addressFactSheetRel = {
+    from: { "/": "./address.json" },
+    to: { "/": "./fact_sheet.json" },
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_address_fact_sheet.json"),
+    JSON.stringify(addressFactSheetRel, null, 2),
   );
 
   // Sales + Deeds - from Summary sales table
