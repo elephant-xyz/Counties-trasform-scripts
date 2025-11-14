@@ -1951,8 +1951,45 @@ function pruneRawAddressPayloadForOutput(payload) {
   }
 
   const result = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: unnormalized,
+  };
+
+  const assignIfMeaningful = (field, value) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const coordinate = parseCoordinate(value);
+      if (Number.isFinite(coordinate)) {
+        result[field] = coordinate;
+      }
+      return;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length) {
+        result[field] = trimmed;
+      }
+      return;
+    }
+
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        result[field] = value;
+      }
+      return;
+    }
+
+    if (typeof value === "boolean") {
+      result[field] = value;
+      return;
+    }
+
+    if (value && typeof value === "object") {
+      result[field] = deepClone(value);
+    }
   };
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
@@ -1963,44 +2000,19 @@ function pruneRawAddressPayloadForOutput(payload) {
       field,
       payload[field],
     );
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const coordinate = parseCoordinate(normalizedValue);
-      result[field] = Number.isFinite(coordinate) ? coordinate : null;
-      continue;
-    }
-
-    if (typeof normalizedValue === "string") {
-      const trimmed = normalizedValue.trim();
-      result[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-
-    if (typeof normalizedValue === "number") {
-      result[field] = Number.isFinite(normalizedValue)
-        ? normalizedValue
-        : null;
-      continue;
-    }
-
-    if (typeof normalizedValue === "boolean") {
-      result[field] = normalizedValue;
-      continue;
-    }
-
-    if (normalizedValue && typeof normalizedValue === "object") {
-      result[field] = deepClone(normalizedValue);
-      continue;
-    }
-
-    result[field] = null;
+    assignIfMeaningful(field, normalizedValue);
   }
 
-  if (result.state_code && !result.country_code) {
+  if (!Object.prototype.hasOwnProperty.call(result, "postal_code")) {
+    delete result.plus_four_postal_code;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(result, "state_code") &&
+    result.state_code &&
+    !Object.prototype.hasOwnProperty.call(result, "country_code")
+  ) {
     result.country_code = "US";
-  }
-
-  if (!hasMeaningfulAddressValue(result.postal_code)) {
-    result.plus_four_postal_code = null;
   }
 
   const requestIdentifier =
