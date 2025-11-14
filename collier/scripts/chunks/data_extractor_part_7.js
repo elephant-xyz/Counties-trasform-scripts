@@ -1,10 +1,11 @@
             fs.writeFileSync(
               path.join(
                 dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+                `relationship_sales_history_has_company_${companyRelIdx}.json`,
               ),
               JSON.stringify(rel, null, 2),
             );
+            companyRelIdx++;
           });
         });
       }
