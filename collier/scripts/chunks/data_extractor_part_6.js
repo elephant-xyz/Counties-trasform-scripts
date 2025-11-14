@@ -3,9 +3,6 @@
     saleRows.push(row);
   });
 
-  const deedRecords = [];
-  const fileRecords = [];
-
   const saleCleanupPatterns = [
     /^sales_\d+\.json$/,
     /^sales_history_\d+\.json$/,
@@ -58,7 +55,6 @@
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
-    deedRecords.push(deedObj);
 
     const fileObj = {};
     const fileNameParts = [];
@@ -73,17 +69,6 @@
       path.join(dataDir, `file_${idx + 1}.json`),
       JSON.stringify(fileObj, null, 2),
     );
-    fileRecords.push(fileObj);
-
-    const relDf = {
-      type: "deed_has_file",
-      from: { "/": `./deed_${idx + 1}.json` },
-      to: { "/": `./file_${idx + 1}.json` },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
-      JSON.stringify(relDf, null, 2),
-    );
   });
 
   // Create sales files for all valid sales (including $0 amounts)
@@ -91,7 +76,6 @@
     (r) => r.amount != null && r.iso,
   );
   validSales.sort((a, b) => a.iso.localeCompare(b.iso));
-  const salesRecords = [];
   validSales.forEach((s, idx) => {
     const saleObj = {
       ownership_transfer_date: s.iso,
@@ -100,43 +84,10 @@
       saleObj.purchase_price_amount = s.amount;
     }
     const saleFilename = `sales_history_${idx + 1}.json`;
-    salesRecords.push(saleFilename);
     fs.writeFileSync(
       path.join(dataDir, saleFilename),
       JSON.stringify(saleObj, null, 2),
     );
-  });
-
-  // Relationship: sales_history -> deed for all valid sales (map to original row index)
-  const factSheetExists = fs.existsSync(path.join(dataDir, "fact_sheet.json"));
-  validSales.forEach((s, idx) => {
-    const deedIdx = s.rowIndex;
-    const saleRef = { "/": `./sales_history_${idx + 1}.json` };
-    if (deedIdx != null) {
-      const rel = {
-        type: "sales_history_has_deed",
-        from: saleRef,
-        to: { "/": `./deed_${deedIdx}.json` },
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `relationship_sales_history_has_deed_${idx + 1}.json`),
-        JSON.stringify(rel, null, 2),
-      );
-    }
-    if (factSheetExists) {
-      const relFactSheet = {
-        type: "sales_history_has_fact_sheet",
-        from: saleRef,
-        to: { "/": "./fact_sheet.json" },
-      };
-      fs.writeFileSync(
-        path.join(
-          dataDir,
-          `relationship_sales_history_has_fact_sheet_${idx + 1}.json`,
-        ),
-        JSON.stringify(relFactSheet, null, 2),
-      );
-    }
   });
 
   // Owners (company/person) from owners/owner_data.json
@@ -152,10 +103,6 @@
       // Handle mixed owner types (persons and companies)
       let personIdx = 1;
       let companyIdx = 1;
-      let personRelIdx = 1;
-      let companyRelIdx = 1;
-      const personFiles = [];
-      const companyFiles = [];
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
@@ -165,7 +112,6 @@
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-          companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
@@ -183,48 +129,8 @@
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-          personFiles.push(filename);
           personIdx++;
         }
       });
-
-      // Create relationships for valid sales
-      if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile) => {
-            const rel = {
-              type: "sales_history_has_person",
-              from: { "/": `./sales_history_${si + 1}.json` },
-              to: { "/": `./${personFile}` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_history_has_person_${personRelIdx}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-            personRelIdx++;
-          });
-
-          // Link to all company files
-          companyFiles.forEach((companyFile) => {
-            const rel = {
-              type: "sales_history_has_company",
-              from: { "/": `./sales_history_${si + 1}.json` },
-              to: { "/": `./${companyFile}` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_history_has_company_${companyRelIdx}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-            companyRelIdx++;
-          });
-        });
-      }
     }
   });

@@ -1,17 +1,3 @@
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_history_has_company_${companyRelIdx}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-            companyRelIdx++;
-          });
-        });
-      }
-    }
-  }
-
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {

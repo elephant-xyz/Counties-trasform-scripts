@@ -137,32 +137,19 @@
     JSON.stringify(addressObj, null, 2),
   );
 
+  // Clean up relationship files; they are generated downstream with resolved URIs.
   try {
     fs.unlinkSync(path.join(dataDir, "relationship_property_address.json"));
   } catch (_) {}
   try {
+    fs.unlinkSync(path.join(dataDir, "relationship_property_has_address.json"));
+  } catch (_) {}
+  try {
     fs.unlinkSync(path.join(dataDir, "relationship_address_fact_sheet.json"));
   } catch (_) {}
-
-  const propertyAddressRel = {
-    type: "property_has_address",
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_address.json"),
-    JSON.stringify(propertyAddressRel, null, 2),
-  );
-
-  const addressFactSheetRel = {
-    type: "address_has_fact_sheet",
-    from: { "/": "./address.json" },
-    to: { "/": "./fact_sheet.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
-    JSON.stringify(addressFactSheetRel, null, 2),
-  );
+  try {
+    fs.unlinkSync(path.join(dataDir, "relationship_address_has_fact_sheet.json"));
+  } catch (_) {}
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];

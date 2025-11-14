@@ -778,33 +778,19 @@ function main() {
     JSON.stringify(addressObj, null, 2),
   );
 
-  // Relationships: property -> address and address -> fact sheet
+  // Clean up legacy relationship artifacts; downstream processing populates relationship URIs.
   try {
     fs.unlinkSync(path.join(dataDir, "relationship_property_address.json"));
   } catch (_) {}
   try {
+    fs.unlinkSync(path.join(dataDir, "relationship_property_has_address.json"));
+  } catch (_) {}
+  try {
     fs.unlinkSync(path.join(dataDir, "relationship_address_fact_sheet.json"));
   } catch (_) {}
-
-  const propertyAddressRel = {
-    type: "property_has_address",
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_address.json"),
-    JSON.stringify(propertyAddressRel, null, 2),
-  );
-
-  const addressFactSheetRel = {
-    type: "address_has_fact_sheet",
-    from: { "/": "./address.json" },
-    to: { "/": "./fact_sheet.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
-    JSON.stringify(addressFactSheetRel, null, 2),
-  );
+  try {
+    fs.unlinkSync(path.join(dataDir, "relationship_address_has_fact_sheet.json"));
+  } catch (_) {}
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
@@ -822,9 +808,6 @@ function main() {
     };
     saleRows.push(row);
   });
-
-  const deedRecords = [];
-  const fileRecords = [];
 
   const saleCleanupPatterns = [
     /^sales_\d+\.json$/,
@@ -851,7 +834,6 @@ function main() {
     const deedObj = {};
     if (book) deedObj.book = book;
     if (page) deedObj.page = page;
-    deedRecords.push(deedObj);
 
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
@@ -867,21 +849,10 @@ function main() {
     } else if (row.bookPage) {
       fileObj.name = row.bookPage;
     }
-    fileRecords.push(fileObj);
 
     fs.writeFileSync(
       path.join(dataDir, `file_${idx + 1}.json`),
       JSON.stringify(fileObj, null, 2),
-    );
-
-    const relDf = {
-      type: "deed_has_file",
-      from: { "/": `./deed_${idx + 1}.json` },
-      to: { "/": `./file_${idx + 1}.json` },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
-      JSON.stringify(relDf, null, 2),
     );
   });
 
@@ -890,7 +861,6 @@ function main() {
     (r) => r.amount != null && r.iso,
   );
   validSales.sort((a, b) => a.iso.localeCompare(b.iso));
-  const salesRecords = [];
   validSales.forEach((s, idx) => {
     const saleObj = {
       ownership_transfer_date: s.iso,
@@ -899,43 +869,10 @@ function main() {
       saleObj.purchase_price_amount = s.amount;
     }
     const saleFilename = `sales_history_${idx + 1}.json`;
-    salesRecords.push(saleFilename);
     fs.writeFileSync(
       path.join(dataDir, saleFilename),
       JSON.stringify(saleObj, null, 2),
     );
-  });
-
-  // Relationship: sales_history -> deed for all valid sales (map to original row index)
-  const factSheetExists = fs.existsSync(path.join(dataDir, "fact_sheet.json"));
-  validSales.forEach((s, idx) => {
-    const deedIdx = s.rowIndex;
-    const saleRef = { "/": `./sales_history_${idx + 1}.json` };
-    if (deedIdx != null) {
-      const rel = {
-        type: "sales_history_has_deed",
-        from: saleRef,
-        to: { "/": `./deed_${deedIdx}.json` },
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `relationship_sales_history_has_deed_${idx + 1}.json`),
-        JSON.stringify(rel, null, 2),
-      );
-    }
-    if (factSheetExists) {
-      const relFactSheet = {
-        type: "sales_history_has_fact_sheet",
-        from: saleRef,
-        to: { "/": "./fact_sheet.json" },
-      };
-      fs.writeFileSync(
-        path.join(
-          dataDir,
-          `relationship_sales_history_has_fact_sheet_${idx + 1}.json`,
-        ),
-        JSON.stringify(relFactSheet, null, 2),
-      );
-    }
   });
 
   // Owners (company/person) from owners/owner_data.json
@@ -951,10 +888,6 @@ function main() {
       // Handle mixed owner types (persons and companies)
       let personIdx = 1;
       let companyIdx = 1;
-      let personRelIdx = 1;
-      let companyRelIdx = 1;
-      const personFiles = [];
-      const companyFiles = [];
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
@@ -964,7 +897,6 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-          companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
@@ -982,49 +914,9 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-          personFiles.push(filename);
           personIdx++;
         }
       });
-
-      // Create relationships for valid sales
-      if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile) => {
-            const rel = {
-              type: "sales_history_has_person",
-              from: { "/": `./sales_history_${si + 1}.json` },
-              to: { "/": `./${personFile}` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_history_has_person_${personRelIdx}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-            personRelIdx++;
-          });
-
-          // Link to all company files
-          companyFiles.forEach((companyFile) => {
-            const rel = {
-              type: "sales_history_has_company",
-              from: { "/": `./sales_history_${si + 1}.json` },
-              to: { "/": `./${companyFile}` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_history_has_company_${companyRelIdx}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-            companyRelIdx++;
-          });
-        });
-      }
     }
   }
 
