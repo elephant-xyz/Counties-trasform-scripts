@@ -2260,6 +2260,29 @@ function sanitizePlus4(value) {
   return null;
 }
 
+function applyPostalFromUnnormalized(address) {
+  if (!address || typeof address !== "object") return;
+  const raw = address.unnormalized_address;
+  if (typeof raw !== "string") return;
+
+  const matches = [...raw.matchAll(/\b(\d{5})(?:-(\d{4}))?\b/g)];
+  if (!matches.length) return;
+
+  const [, zipDigits, plus4Digits] = matches[matches.length - 1];
+  const sanitizedZip = sanitizePostalCode(zipDigits);
+  if (sanitizedZip) {
+    address.postal_code = sanitizedZip;
+  }
+
+  if (plus4Digits) {
+    const sanitizedPlus4 = sanitizePlus4(plus4Digits);
+    address.plus_four_postal_code =
+      sanitizedPlus4 !== null ? sanitizedPlus4 : address.plus_four_postal_code ?? null;
+  } else if (!address.postal_code) {
+    address.plus_four_postal_code = null;
+  }
+}
+
 function sanitizeCityName(value) {
   if (value == null) return null;
   const upper = String(value).toUpperCase();
@@ -4211,18 +4234,13 @@ async function main() {
       }
     }
 
+    const trimmedRequestIdentifier =
+      typeof requestIdentifierCandidate === "string" &&
+      requestIdentifierCandidate.trim().length
+        ? requestIdentifierCandidate.trim()
+        : null;
+
     if (addressPayload) {
-      if (
-        typeof requestIdentifierCandidate === "string" &&
-        requestIdentifierCandidate.trim().length
-      ) {
-        addressPayload.request_identifier = requestIdentifierCandidate.trim();
-      }
-
-      if (sourceHttpCandidate) {
-        addressPayload.source_http_request = sourceHttpCandidate;
-      }
-
       if (
         addressVariant === "raw" &&
         hasRawString &&
@@ -4231,31 +4249,32 @@ async function main() {
         addressPayload.unnormalized_address = fallbackRawUnnormalized.trim();
       }
 
-      const finalizedAddressPayload = finalizeAddressForOutput(addressPayload);
+      if (trimmedRequestIdentifier) {
+        addressPayload.request_identifier = trimmedRequestIdentifier;
+      }
 
-      if (finalizedAddressPayload) {
-        writeJSON(addressFilePath, finalizedAddressPayload);
-      } else if (addressVariant !== "raw" && hasRawString) {
+      if (sourceHttpCandidate) {
+        addressPayload.source_http_request = sourceHttpCandidate;
+      }
+
+      let schemaReadyAddress = enforceAddressOneOfSurface(addressPayload);
+
+      if (!schemaReadyAddress && addressVariant !== "raw" && hasRawString) {
         const rawFallback = buildRawAddressPayload();
         if (rawFallback) {
-          if (
-            typeof requestIdentifierCandidate === "string" &&
-            requestIdentifierCandidate.trim().length
-          ) {
-            rawFallback.request_identifier = requestIdentifierCandidate.trim();
+          if (trimmedRequestIdentifier) {
+            rawFallback.request_identifier = trimmedRequestIdentifier;
           }
           if (sourceHttpCandidate) {
             rawFallback.source_http_request = sourceHttpCandidate;
           }
-          const finalizedRawFallback = finalizeAddressForOutput(rawFallback);
-          if (finalizedRawFallback) {
-            writeJSON(addressFilePath, finalizedRawFallback);
-          } else {
-            removeFileIfExists(addressFilePath);
-          }
-        } else {
-          removeFileIfExists(addressFilePath);
+          schemaReadyAddress = enforceAddressOneOfSurface(rawFallback);
         }
+      }
+
+      if (schemaReadyAddress) {
+        applyPostalFromUnnormalized(schemaReadyAddress);
+        writeJSON(addressFilePath, schemaReadyAddress);
       } else {
         removeFileIfExists(addressFilePath);
       }

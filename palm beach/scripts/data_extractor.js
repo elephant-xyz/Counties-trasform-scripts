@@ -4572,6 +4572,29 @@ function sanitizePlus4(value) {
   return null;
 }
 
+function applyPostalFromUnnormalized(address) {
+  if (!address || typeof address !== "object") return;
+  const raw = address.unnormalized_address;
+  if (typeof raw !== "string") return;
+
+  const matches = [...raw.matchAll(/\b(\d{5})(?:-(\d{4}))?\b/g)];
+  if (!matches.length) return;
+
+  const [, zipDigits, plus4Digits] = matches[matches.length - 1];
+  const sanitizedZip = sanitizePostalCode(zipDigits);
+  if (sanitizedZip) {
+    address.postal_code = sanitizedZip;
+  }
+
+  if (plus4Digits) {
+    const sanitizedPlus4 = sanitizePlus4(plus4Digits);
+    address.plus_four_postal_code =
+      sanitizedPlus4 !== null ? sanitizedPlus4 : address.plus_four_postal_code ?? null;
+  } else if (!address.postal_code) {
+    address.plus_four_postal_code = null;
+  }
+}
+
 function sanitizeCityName(value) {
   if (value == null) return null;
   const upper = String(value).toUpperCase();
@@ -8489,22 +8512,13 @@ async function main() {
       if (trimmedRequestIdentifier) {
         addressPayload.request_identifier = trimmedRequestIdentifier;
       }
-
       if (sourceHttpCandidate) {
         addressPayload.source_http_request = sourceHttpCandidate;
       }
 
-      const finalizedAddressPayload = finalizeAddressForOutput(addressPayload);
+      let schemaReadyAddress = enforceAddressOneOfSurface(addressPayload);
 
-      if (finalizedAddressPayload) {
-        if (trimmedRequestIdentifier) {
-          finalizedAddressPayload.request_identifier = trimmedRequestIdentifier;
-        }
-        if (sourceHttpCandidate) {
-          finalizedAddressPayload.source_http_request = sourceHttpCandidate;
-        }
-        writeJSON(addressFilePath, finalizedAddressPayload);
-      } else if (addressVariant !== "raw" && hasRawString) {
+      if (!schemaReadyAddress && addressVariant !== "raw" && hasRawString) {
         const rawFallback = buildRawAddressPayload();
         if (rawFallback) {
           if (trimmedRequestIdentifier) {
@@ -8513,24 +8527,18 @@ async function main() {
           if (sourceHttpCandidate) {
             rawFallback.source_http_request = sourceHttpCandidate;
           }
-          const finalizedRawFallback = finalizeAddressForOutput(rawFallback);
-          if (finalizedRawFallback) {
-            if (trimmedRequestIdentifier) {
-              finalizedRawFallback.request_identifier = trimmedRequestIdentifier;
-            }
-            if (sourceHttpCandidate) {
-              finalizedRawFallback.source_http_request = sourceHttpCandidate;
-            }
-            writeJSON(addressFilePath, finalizedRawFallback);
-          } else {
-            removeFileIfExists(addressFilePath);
-          }
-        } else {
-          removeFileIfExists(addressFilePath);
+          schemaReadyAddress = enforceAddressOneOfSurface(rawFallback);
         }
+      }
+
+      if (schemaReadyAddress) {
+        applyPostalFromUnnormalized(schemaReadyAddress);
+        writeJSON(addressFilePath, schemaReadyAddress);
       } else {
         removeFileIfExists(addressFilePath);
       }
+    } else {
+      removeFileIfExists(addressFilePath);
     }
 
     // Relationship UR generation is now handled downstream; ensure we do not
