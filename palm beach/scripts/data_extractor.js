@@ -1755,9 +1755,80 @@ function buildNormalizedAddressOutputForSchema(source) {
   }
 
   for (const requiredField of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
-    const value = normalized[requiredField];
-    if (typeof value !== "string" || !value.trim().length) {
+    let value = normalized[requiredField];
+
+    if (value === undefined || value === null) {
       return null;
+    }
+
+    if (typeof value === "number") {
+      value = Number.isFinite(value) ? String(value) : null;
+    }
+
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed.length) {
+      return null;
+    }
+
+    switch (requiredField) {
+      case "street_number": {
+        normalized[requiredField] = trimmed;
+        break;
+      }
+      case "street_name": {
+        const collapsed = trimmed.replace(/\s+/g, " ");
+        if (STREET_NAME_FORBIDDEN_DIRECTIONS.test(collapsed.toUpperCase())) {
+          return null;
+        }
+        normalized[requiredField] = collapsed.toUpperCase();
+        break;
+      }
+      case "city_name": {
+        const sanitizedCity = sanitizeCityName(trimmed);
+        if (!sanitizedCity) {
+          return null;
+        }
+        normalized[requiredField] = sanitizedCity;
+        break;
+      }
+      case "state_code": {
+        const upperState = trimmed.toUpperCase();
+        if (!/^[A-Z]{2}$/.test(upperState)) {
+          return null;
+        }
+        normalized[requiredField] = upperState;
+        break;
+      }
+      case "postal_code": {
+        const sanitizedPostal = sanitizePostalCode(trimmed);
+        if (!sanitizedPostal) {
+          return null;
+        }
+        normalized[requiredField] = sanitizedPostal;
+        break;
+      }
+      case "country_code": {
+        const upperCountry = trimmed.toUpperCase();
+        if (!upperCountry.length) {
+          return null;
+        }
+        normalized[requiredField] = upperCountry;
+        break;
+      }
+      case "county_name": {
+        const titledCounty = toTitleCase(trimmed);
+        if (!titledCounty || !titledCounty.trim().length) {
+          return null;
+        }
+        normalized[requiredField] = titledCounty;
+        break;
+      }
+      default:
+        normalized[requiredField] = trimmed;
     }
   }
 
@@ -8230,6 +8301,22 @@ async function main() {
     }
 
     if (addressPayload) {
+      if (usedNormalizedSchema) {
+        delete addressPayload.unnormalized_address;
+      } else {
+        const rawUnnormalized =
+          typeof addressPayload.unnormalized_address === "string"
+            ? addressPayload.unnormalized_address.trim()
+            : "";
+        if (!rawUnnormalized.length) {
+          addressPayload = null;
+        } else {
+          addressPayload = { unnormalized_address: rawUnnormalized };
+        }
+      }
+    }
+
+    if (addressPayload) {
       if (
         typeof requestIdentifierCandidate === "string" &&
         requestIdentifierCandidate.trim().length
@@ -8239,10 +8326,6 @@ async function main() {
 
       if (sourceHttpCandidate) {
         addressPayload.source_http_request = sourceHttpCandidate;
-      }
-
-      if (usedNormalizedSchema) {
-        delete addressPayload.unnormalized_address;
       }
 
       writeJSON(addressFilePath, addressPayload);
