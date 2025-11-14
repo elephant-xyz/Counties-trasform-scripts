@@ -1454,26 +1454,6 @@ const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "county_name",
 ];
 
-const ROBUST_NORMALIZED_STRING_FIELDS = [
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "unit_identifier",
-  "route_number",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
-
 function hasRobustNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
 
@@ -1485,21 +1465,28 @@ function hasRobustNormalizedAddress(address) {
     return false;
   }
 
-  const lat = parseCoordinate(surface.latitude);
-  const lon = parseCoordinate(surface.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    return false;
-  }
+  const normalized = { ...surface };
+  const hasValidCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (field) => {
+      if (!Object.prototype.hasOwnProperty.call(normalized, field)) {
+        return true;
+      }
+      const value = normalized[field];
+      if (value === null || value === undefined || value === "") {
+        normalized[field] = null;
+        return true;
+      }
+      const numeric = parseCoordinate(value);
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      normalized[field] = numeric;
+      return true;
+    },
+  );
 
-  for (const field of ROBUST_NORMALIZED_STRING_FIELDS) {
-    const value = surface[field];
-    if (typeof value !== "string") {
-      return false;
-    }
-    const trimmed = value.trim();
-    if (!trimmed.length) {
-      return false;
-    }
+  if (!hasValidCoordinates) {
+    return false;
   }
 
   return true;
