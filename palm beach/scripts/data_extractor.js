@@ -1809,77 +1809,92 @@ function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
 }
 
 function pruneRawAddressPayloadForOutput(payload) {
-  if (!payload || typeof payload !== "object") return payload;
+  if (!payload || typeof payload !== "object") return null;
 
   const unnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
   if (!unnormalized.length) {
-    return payload;
+    return null;
   }
 
-  const hydrated = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+  const result = {
     unnormalized_address: unnormalized,
   };
 
-  for (const key of RAW_ADDRESS_OUTPUT_FIELDS) {
-    if (key === "unnormalized_address") continue;
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (field === "unnormalized_address") continue;
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) continue;
 
-    let value = Object.prototype.hasOwnProperty.call(payload, key)
-      ? payload[key]
-      : hydrated[key];
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      hydrated[key] = trimmed.length ? trimmed : null;
+    const normalizedValue = normalizeAddressFieldForSchema(
+      field,
+      payload[field],
+    );
+    if (normalizedValue === undefined || normalizedValue === null) {
       continue;
     }
 
-    if (typeof value === "number") {
-      hydrated[key] = Number.isFinite(value) ? value : null;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const coordinate = parseCoordinate(normalizedValue);
+      if (Number.isFinite(coordinate)) {
+        result[field] = coordinate;
+      }
       continue;
     }
 
-    if (typeof value === "boolean") {
-      hydrated[key] = value;
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      if (trimmed.length) {
+        result[field] = trimmed;
+      }
       continue;
     }
 
-    if (value && typeof value === "object") {
-      hydrated[key] = deepClone(value);
+    if (typeof normalizedValue === "number") {
+      if (Number.isFinite(normalizedValue)) {
+        result[field] = normalizedValue;
+      }
       continue;
     }
 
-    hydrated[key] = null;
+    if (typeof normalizedValue === "boolean") {
+      result[field] = normalizedValue;
+      continue;
+    }
+
+    if (normalizedValue && typeof normalizedValue === "object") {
+      result[field] = deepClone(normalizedValue);
+    }
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(payload, "request_identifier") &&
-    payload.request_identifier != null
+    !result.postal_code &&
+    Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code")
   ) {
-    const trimmed =
-      typeof payload.request_identifier === "string"
-        ? payload.request_identifier.trim()
-        : payload.request_identifier;
-    if (typeof trimmed === "string" && trimmed.length) {
-      hydrated.request_identifier = trimmed;
-    }
+    delete result.plus_four_postal_code;
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    if (prepared) {
-      hydrated.source_http_request = prepared;
-    }
+  const requestIdentifier =
+    typeof payload.request_identifier === "string"
+      ? payload.request_identifier.trim()
+      : null;
+  if (requestIdentifier) {
+    result.request_identifier = requestIdentifier;
   }
 
-  if (!hydrated.postal_code) {
-    hydrated.plus_four_postal_code = null;
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  if (preparedSource) {
+    result.source_http_request = preparedSource;
   }
 
-  return hydrated;
+  return result;
 }
 
 function materializeAddressForSchema(payload, variant, options = {}) {
@@ -8173,7 +8188,7 @@ async function main() {
     if (normalizedCandidate) {
       addressPayload = normalizedCandidate;
       usedNormalizedSchema = true;
-    } else if (
+  } else if (
       typeof fallbackRawUnnormalized === "string" &&
       fallbackRawUnnormalized.trim().length
     ) {
@@ -8182,7 +8197,10 @@ async function main() {
         addressForOutput,
       );
       if (rawCandidate) {
-        addressPayload = pruneRawAddressPayloadForOutput(rawCandidate);
+        const prunedRaw = pruneRawAddressPayloadForOutput(rawCandidate);
+        if (prunedRaw) {
+          addressPayload = prunedRaw;
+        }
       }
     }
 
