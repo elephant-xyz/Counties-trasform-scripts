@@ -8802,18 +8802,87 @@ async function main() {
         }
       }
 
-      if (!finalAddress) {
-        removeFileIfExists(addressFilePath);
-      } else {
-        if (trimmedRequestIdentifier) {
-          finalAddress.request_identifier = trimmedRequestIdentifier;
-        }
-        if (sourceHttpCandidate) {
-          finalAddress.source_http_request = sourceHttpCandidate;
-        }
+      let preparedVariant = null;
+      let preparedAddress = null;
 
-        applyPostalFromUnnormalized(finalAddress);
-        writeJSON(addressFilePath, finalAddress);
+      if (finalAddress) {
+        const compliant = buildSchemaCompliantAddressPayload(finalAddress, {
+          requestIdentifier: trimmedRequestIdentifier,
+          sourceHttpRequest: sourceHttpCandidate,
+        });
+
+        if (compliant && compliant.payload) {
+          preparedVariant = compliant.variant;
+          if (compliant.variant === "normalized") {
+            preparedAddress =
+              ensureNormalizedAddressSchemaSurface(compliant.payload) ||
+              compliant.payload;
+            if (
+              preparedAddress &&
+              Object.prototype.hasOwnProperty.call(
+                preparedAddress,
+                "unnormalized_address",
+              )
+            ) {
+              delete preparedAddress.unnormalized_address;
+            }
+          } else if (compliant.variant === "raw") {
+            preparedAddress =
+              pruneRawAddressPayloadForOutput(compliant.payload) ||
+              ensureRawAddressSchemaSurface(compliant.payload) ||
+              compliant.payload;
+          }
+        }
+      }
+
+      if (!preparedAddress && hasRawString) {
+        preparedVariant = "raw";
+        preparedAddress =
+          pruneRawAddressPayloadForOutput({
+            ...finalAddress,
+            unnormalized_address: canonicalUnnormalized,
+          }) || {
+            unnormalized_address: canonicalUnnormalized,
+          };
+
+        if (preparedAddress) {
+          if (
+            trimmedRequestIdentifier &&
+            !Object.prototype.hasOwnProperty.call(
+              preparedAddress,
+              "request_identifier",
+            )
+          ) {
+            preparedAddress.request_identifier = trimmedRequestIdentifier;
+          }
+          if (
+            sourceHttpCandidate &&
+            !Object.prototype.hasOwnProperty.call(
+              preparedAddress,
+              "source_http_request",
+            )
+          ) {
+            preparedAddress.source_http_request = sourceHttpCandidate;
+          }
+        }
+      }
+
+      if (
+        preparedVariant === "normalized" &&
+        preparedAddress &&
+        Object.prototype.hasOwnProperty.call(
+          preparedAddress,
+          "unnormalized_address",
+        )
+      ) {
+        delete preparedAddress.unnormalized_address;
+      }
+
+      if (preparedAddress) {
+        applyPostalFromUnnormalized(preparedAddress);
+        writeJSON(addressFilePath, preparedAddress);
+      } else {
+        removeFileIfExists(addressFilePath);
       }
     } else {
       removeFileIfExists(addressFilePath);
