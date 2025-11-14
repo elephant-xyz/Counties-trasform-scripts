@@ -7852,16 +7852,19 @@ async function main() {
   })();
   const parsedUnnormalizedCityState = parseCityStatePostal(unnormalizedAddressCandidate);
 
-  const tailSegments = [
+  const fullAddrTail =
     fullAddr && fullAddr.includes(",")
       ? fullAddr.split(",").slice(-1).join(" ")
-      : fullAddr,
-    siteLocationLine,
+      : fullAddr;
+
+  const tailSegments = [
+    fullAddrInput,
+    fullAddrTail,
     combinedModelAddress,
     addressLine3,
     addressLine2,
     addressLine1,
-    fullAddrInput,
+    siteLocationLine,
   ].filter(Boolean);
 
   const cityStateCandidates = tailSegments.map((segment) =>
@@ -8303,6 +8306,7 @@ async function main() {
       longitude: Number.isFinite(preferredLongitude) ? preferredLongitude : null,
     };
 
+
     const resolveCandidateString = (candidates) => {
       const resolved = resolveFirstNonEmptyString(
         Array.isArray(candidates) ? candidates : [],
@@ -8449,7 +8453,7 @@ async function main() {
       typeof fallbackRawUnnormalized === "string" &&
       fallbackRawUnnormalized.trim().length > 0;
 
-    const buildRawAddressPayload = () => {
+    const produceRawAddressPayload = () => {
       if (!hasRawString) return null;
       const rawSeed = buildCountyRawAddressPayload(
         {
@@ -8472,32 +8476,30 @@ async function main() {
       return prunedRaw ? { ...prunedRaw } : null;
     };
 
+    const rawPayloadCandidate = hasRawString ? produceRawAddressPayload() : null;
+
+    const normalizedCandidate = hasRobustNormalizedAddress(addressForOutput)
+      ? buildNormalizedAddressOutputForSchema(addressForOutput)
+      : null;
+
     let addressPayload = null;
     let addressVariant = null;
 
-    if (hasRawString) {
-      const rawPayload = buildRawAddressPayload();
-      if (rawPayload) {
-        addressPayload = rawPayload;
-        addressVariant = "raw";
-      }
+    if (normalizedCandidate) {
+      const normalizedPayload = { ...normalizedCandidate };
+      normalizedPayload.latitude = Number.isFinite(preferredLatitude)
+        ? preferredLatitude
+        : null;
+      normalizedPayload.longitude = Number.isFinite(preferredLongitude)
+        ? preferredLongitude
+        : null;
+      addressPayload = normalizedPayload;
+      addressVariant = "normalized";
     }
 
-    if (!addressPayload) {
-      const normalizedCandidate = hasRobustNormalizedAddress(addressForOutput)
-        ? buildNormalizedAddressOutputForSchema(addressForOutput)
-        : null;
-      if (normalizedCandidate) {
-        const normalizedPayload = { ...normalizedCandidate };
-        normalizedPayload.latitude = Number.isFinite(preferredLatitude)
-          ? preferredLatitude
-          : null;
-        normalizedPayload.longitude = Number.isFinite(preferredLongitude)
-          ? preferredLongitude
-          : null;
-        addressPayload = normalizedPayload;
-        addressVariant = "normalized";
-      }
+    if (!addressPayload && rawPayloadCandidate) {
+      addressPayload = rawPayloadCandidate;
+      addressVariant = "raw";
     }
 
     if (addressPayload) {
@@ -8519,7 +8521,7 @@ async function main() {
       let schemaReadyAddress = enforceAddressOneOfSurface(addressPayload);
 
       if (!schemaReadyAddress && addressVariant !== "raw" && hasRawString) {
-        const rawFallback = buildRawAddressPayload();
+        const rawFallback = produceRawAddressPayload();
         if (rawFallback) {
           if (trimmedRequestIdentifier) {
             rawFallback.request_identifier = trimmedRequestIdentifier;
