@@ -52,8 +52,8 @@
     );
 
     const relDf = {
-      from: { "/": `./file_${idx + 1}.json` },
-      to: { "/": `./deed_${idx + 1}.json` },
+      from: { "/": `./deed_${idx + 1}.json` },
+      to: { "/": `./file_${idx + 1}.json` },
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -85,8 +85,8 @@
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        from: { "/": `./deed_${deedIdx}.json` },
-        to: { "/": `./sales_${idx + 1}.json` },
+        from: { "/": `./sales_${idx + 1}.json` },
+        to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
