@@ -8754,6 +8754,8 @@ async function main() {
       }
     }
 
+    let finalizedAddress = null;
+
     if (preparedAddress) {
       if (
         trimmedRequestIdentifier &&
@@ -8776,7 +8778,11 @@ async function main() {
         preparedAddress.plus_four_postal_code = null;
       }
 
-      writeJSON(addressFilePath, preparedAddress);
+      finalizedAddress = enforceAddressOneOfSurface(preparedAddress);
+    }
+
+    if (finalizedAddress) {
+      writeJSON(addressFilePath, finalizedAddress);
     } else {
       removeFileIfExists(addressFilePath);
     }
