@@ -1293,13 +1293,7 @@ const RAW_ADDRESS_ALLOWED_FIELDS = [
   "country_code",
   "county_name",
   "municipality_name",
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
   "unit_identifier",
-  "route_number",
   "township",
   "range",
   "section",
@@ -1312,8 +1306,8 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
-// The County schema's raw branch accepts just the original string; any normalized
-// fields we can safely produce are emitted opportunistically.
+// The County schema's raw branch accepts the original string with only high-level
+// context (no street component breakdown), so limit the emitted fields accordingly.
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [];
