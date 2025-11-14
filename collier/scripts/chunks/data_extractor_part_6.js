@@ -5,47 +5,19 @@
 
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
-    const cleanedBookPage = row.bookPage ? String(row.bookPage).trim() : "";
-    let book = null;
-    let page = null;
-    if (cleanedBookPage) {
-      const separatorMatch = cleanedBookPage.match(/(\w+)\s*[/\-]\s*(\w+)/);
-      if (separatorMatch) {
-        book = separatorMatch[1];
-        page = separatorMatch[2];
-      } else {
-        const bookMatch = cleanedBookPage.match(/\b(?:book|bk)\s*([0-9a-zA-Z]+)/i);
-        const pageMatch = cleanedBookPage.match(/\b(?:page|pg)\s*([0-9a-zA-Z]+)/i);
-        if (bookMatch) book = bookMatch[1];
-        if (pageMatch) page = pageMatch[1];
-        if (!book || !page) {
-          const tokens = cleanedBookPage.split(/[^0-9a-zA-Z]+/).filter(Boolean);
-          if (tokens.length >= 2) {
-            if (!book) book = tokens[0];
-            if (!page) page = tokens[1];
-          }
-          if (!book) book = cleanedBookPage;
-        }
-      }
-    }
-
     const deedObj = {};
-    if (book) deedObj.book = book;
-    if (page) deedObj.page = page;
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
 
-    const fileObj = {};
-    const fileNameParts = [];
-    if (book) fileNameParts.push(`Book ${book}`);
-    if (page) fileNameParts.push(`Page ${page}`);
-    if (fileNameParts.length > 0) {
-      fileObj.name = fileNameParts.join(" ");
-    } else if (row.bookPage) {
-      fileObj.name = row.bookPage;
-    }
+    const fileObj = {
+      file_format: null, // unknown (pdf not in enum)
+      name: row.bookPage || null,
+      original_url: null, // not provided (javascript: link only)
+      ipfs_url: null,
+      document_type: "ConveyanceDeed",
+    };
     fs.writeFileSync(
       path.join(dataDir, `file_${idx + 1}.json`),
       JSON.stringify(fileObj, null, 2),
@@ -158,8 +130,8 @@
           // Link to all person files
           personFiles.forEach((personFile, pi) => {
             const rel = {
-              from: { "/": `./${personFile}` },
-              to: { "/": `./sales_${si + 1}.json` },
+              to: { "/": `./${personFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
             };
             fs.writeFileSync(
               path.join(
@@ -173,18 +145,6 @@
           // Link to all company files
           companyFiles.forEach((companyFile, ci) => {
             const rel = {
-              from: { "/": `./${companyFile}` },
-              to: { "/": `./sales_${si + 1}.json` },
+              to: { "/": `./${companyFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
             };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
-        });
-      }
-    }
-  });

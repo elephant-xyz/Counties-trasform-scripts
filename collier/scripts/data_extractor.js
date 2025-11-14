@@ -23,40 +23,6 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-function parseBookPageIdentifier(bookPage) {
-  if (!bookPage) return { book: null, page: null };
-  const cleaned = String(bookPage).trim();
-  if (!cleaned) return { book: null, page: null };
-
-  // Common patterns like "1234/567", "1234-567", "1234 567"
-  const separatorMatch = cleaned.match(/(\w+)\s*[/\-]\s*(\w+)/);
-  if (separatorMatch) {
-    return {
-      book: separatorMatch[1],
-      page: separatorMatch[2],
-    };
-  }
-
-  // Patterns like "Book 1234 Page 567" or "BK 1234 PG 567"
-  const bookMatch = cleaned.match(/\b(?:book|bk)\s*([0-9a-zA-Z]+)/i);
-  const pageMatch = cleaned.match(/\b(?:page|pg)\s*([0-9a-zA-Z]+)/i);
-  if (bookMatch || pageMatch) {
-    return {
-      book: bookMatch ? bookMatch[1] : null,
-      page: pageMatch ? pageMatch[1] : null,
-    };
-  }
-
-  // As a fallback, split on whitespace and punctuation and take the first two tokens
-  const tokens = cleaned.split(/[^0-9a-zA-Z]+/).filter(Boolean);
-  if (tokens.length >= 2) {
-    return { book: tokens[0], page: tokens[1] };
-  }
-
-  // Could not confidently parse a page number, treat entire string as book reference
-  return { book: cleaned, page: null };
-}
-
 function parseDateToISO(mdyy) {
   if (!mdyy) return null;
   // Accept MM/DD/YY or MM/DD/YYYY
@@ -504,7 +470,6 @@ function parseAddress(
   range,
   countyNameFromSeed,
   municipality,
-  unnormalizedAddress,
 ) {
   // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
   let streetNumber = null,
@@ -571,7 +536,7 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  const addressObj = {
+  return {
     block: block || null,
     city_name: city || null,
     country_code: null, // do not fabricate
@@ -593,13 +558,8 @@ function parseAddress(
     street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
+    // unnormalized_address: fullAddress || null,
   };
-
-  if (unnormalizedAddress) {
-    addressObj.unnormalized_address = unnormalizedAddress;
-  }
-
-  return addressObj;
 }
 
 function main() {
@@ -770,7 +730,6 @@ function main() {
     range,
     countyName,
     municipality,
-    fullAddressUn,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
@@ -796,26 +755,19 @@ function main() {
 
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
-    const { book, page } = parseBookPageIdentifier(row.bookPage);
     const deedObj = {};
-    if (book) deedObj.book = book;
-    if (page) deedObj.page = page;
-
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
 
-    const fileObj = {};
-    const fileNameParts = [];
-    if (book) fileNameParts.push(`Book ${book}`);
-    if (page) fileNameParts.push(`Page ${page}`);
-    if (fileNameParts.length > 0) {
-      fileObj.name = fileNameParts.join(" ");
-    } else if (row.bookPage) {
-      fileObj.name = row.bookPage;
-    }
-
+    const fileObj = {
+      file_format: null, // unknown (pdf not in enum)
+      name: row.bookPage || null,
+      original_url: null, // not provided (javascript: link only)
+      ipfs_url: null,
+      document_type: "ConveyanceDeed",
+    };
     fs.writeFileSync(
       path.join(dataDir, `file_${idx + 1}.json`),
       JSON.stringify(fileObj, null, 2),
@@ -928,8 +880,8 @@ function main() {
           // Link to all person files
           personFiles.forEach((personFile, pi) => {
             const rel = {
-              from: { "/": `./${personFile}` },
-              to: { "/": `./sales_${si + 1}.json` },
+              to: { "/": `./${personFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
             };
             fs.writeFileSync(
               path.join(
@@ -943,8 +895,8 @@ function main() {
           // Link to all company files
           companyFiles.forEach((companyFile, ci) => {
             const rel = {
-              from: { "/": `./${companyFile}` },
-              to: { "/": `./sales_${si + 1}.json` },
+              to: { "/": `./${companyFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
             };
             fs.writeFileSync(
               path.join(
