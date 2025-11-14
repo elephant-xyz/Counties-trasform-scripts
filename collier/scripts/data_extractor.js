@@ -536,7 +536,7 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  return {
+  const baseFields = {
     block: block || null,
     city_name: city || null,
     country_code: null, // do not fabricate
@@ -551,15 +551,29 @@ function parseAddress(
     route_number: null,
     section: section || null,
     state_code: state || "FL",
-    street_name: streetName || null,
-    street_number: streetNumber || null,
-    street_post_directional_text: postDir || null,
-    street_pre_directional_text: preDir || null,
-    street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
-    // unnormalized_address: fullAddress || null,
   };
+
+  if (streetNumber && streetName) {
+    return {
+      ...baseFields,
+      street_name: streetName || null,
+      street_number: streetNumber || null,
+      street_post_directional_text: postDir || null,
+      street_pre_directional_text: preDir || null,
+      street_suffix_type: suffixType || null,
+    };
+  }
+
+  const fallback = {
+    ...baseFields,
+    unnormalized_address: fullAddress || null,
+  };
+  if (!fullAddress) {
+    delete fallback.unnormalized_address;
+  }
+  return fallback;
 }
 
 function main() {
@@ -735,6 +749,24 @@ function main() {
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
+  try {
+    const relPath = path.join(dataDir, "relationship_property_has_address.json");
+    if (fs.existsSync(relPath)) fs.unlinkSync(relPath);
+  } catch (_) {}
+  if (
+    fs.existsSync(path.join(dataDir, "property.json")) &&
+    fs.existsSync(path.join(dataDir, "address.json"))
+  ) {
+    const propertyAddressRel = {
+      type: "property_has_address",
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_address.json"),
+      JSON.stringify(propertyAddressRel, null, 2),
+    );
+  }
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
@@ -828,13 +860,18 @@ function main() {
     const curr = ownerEntry.owners_by_date.current;
     if (curr.length > 0) {
       // Cleanup any legacy duplicate relationship files
-      const files = fs
-        .readdirSync(dataDir)
-        .filter((f) => f.startsWith("relationship_sales_company"));
-      for (const f of files) {
-        try {
-          fs.unlinkSync(path.join(dataDir, f));
-        } catch (_) {}
+      const relFiles = fs.readdirSync(dataDir);
+      for (const f of relFiles) {
+        if (
+          f.startsWith("relationship_sales_person") ||
+          f.startsWith("relationship_sales_company") ||
+          f.startsWith("relationship_sales_history_has_person") ||
+          f.startsWith("relationship_sales_history_has_company")
+        ) {
+          try {
+            fs.unlinkSync(path.join(dataDir, f));
+          } catch (_) {}
+        }
       }
 
       // Handle mixed owner types (persons and companies)
@@ -851,7 +888,7 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-          companyFiles.push(filename);
+          companyFiles.push(`./${filename}`);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
@@ -869,42 +906,47 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-          personFiles.push(filename);
+          personFiles.push(`./${filename}`);
           personIdx++;
         }
       });
 
       // Create relationships for valid sales
       if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
+        let personRelIdx = 1;
+        let companyRelIdx = 1;
+        validSales.forEach((_, si) => {
+          const salePath = `./sales_${si + 1}.json`;
+          personFiles.forEach((personFile) => {
             const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              type: "sales_history_has_person",
+              from: { "/": salePath },
+              to: { "/": personFile },
             };
             fs.writeFileSync(
               path.join(
                 dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+                `relationship_sales_history_has_person_${personRelIdx}.json`,
               ),
               JSON.stringify(rel, null, 2),
             );
+            personRelIdx++;
           });
 
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
+          companyFiles.forEach((companyFile) => {
             const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              type: "sales_history_has_company",
+              from: { "/": salePath },
+              to: { "/": companyFile },
             };
             fs.writeFileSync(
               path.join(
                 dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+                `relationship_sales_history_has_company_${companyRelIdx}.json`,
               ),
               JSON.stringify(rel, null, 2),
             );
+            companyRelIdx++;
           });
         });
       }

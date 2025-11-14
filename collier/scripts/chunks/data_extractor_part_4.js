@@ -86,7 +86,7 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  return {
+  const baseFields = {
     block: block || null,
     city_name: city || null,
     country_code: null, // do not fabricate
@@ -101,15 +101,29 @@ function parseAddress(
     route_number: null,
     section: section || null,
     state_code: state || "FL",
-    street_name: streetName || null,
-    street_number: streetNumber || null,
-    street_post_directional_text: postDir || null,
-    street_pre_directional_text: preDir || null,
-    street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
-    // unnormalized_address: fullAddress || null,
   };
+
+  if (streetNumber && streetName) {
+    return {
+      ...baseFields,
+      street_name: streetName || null,
+      street_number: streetNumber || null,
+      street_post_directional_text: postDir || null,
+      street_pre_directional_text: preDir || null,
+      street_suffix_type: suffixType || null,
+    };
+  }
+
+  const fallback = {
+    ...baseFields,
+    unnormalized_address: fullAddress || null,
+  };
+  if (!fullAddress) {
+    delete fallback.unnormalized_address;
+  }
+  return fallback;
 }
 
 function main() {
