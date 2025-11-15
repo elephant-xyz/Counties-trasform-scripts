@@ -10846,21 +10846,35 @@ async function main() {
               ? "raw"
               : "normalized";
 
-          const surfacedForSchema =
-            ensureAddressOutputFieldPresence(payloadToWrite) || payloadToWrite;
-          const variantAligned =
-            applyAddressSchemaDefaultsForVariant(
-              surfacedForSchema,
-              variantHintForSurface,
-            ) || surfacedForSchema;
-          const enforcedOneOf =
-            enforceAddressOneOfSurface(variantAligned) || variantAligned;
+          if (variantHintForSurface === "raw") {
+            const trimmedRaw =
+              typeof payloadToWrite.unnormalized_address === "string"
+                ? payloadToWrite.unnormalized_address.trim()
+                : "";
+            if (!trimmedRaw.length) {
+              payloadToWrite = null;
+            } else {
+              payloadToWrite = {
+                ...payloadToWrite,
+                unnormalized_address: trimmedRaw,
+              };
+            }
+          } else {
+            const surfacedForSchema =
+              ensureAddressOutputFieldPresence(payloadToWrite) || payloadToWrite;
+            const variantAligned =
+              applyAddressSchemaDefaultsForVariant(
+                surfacedForSchema,
+                variantHintForSurface,
+              ) || surfacedForSchema;
+            const enforcedOneOf =
+              enforceAddressOneOfSurface(variantAligned) || variantAligned;
 
-          payloadToWrite =
-            ensureAddressOutputFieldPresence(enforcedOneOf) || enforcedOneOf;
+            payloadToWrite =
+              ensureAddressOutputFieldPresence(enforcedOneOf) || enforcedOneOf;
 
-          if (payloadToWrite && variantHintForSurface !== "raw") {
             if (
+              payloadToWrite &&
               Object.prototype.hasOwnProperty.call(
                 payloadToWrite,
                 "unnormalized_address",
@@ -10876,59 +10890,61 @@ async function main() {
               }
             }
           }
-
-          if (variantHintForSurface === "raw" && payloadToWrite) {
-            payloadToWrite = pruneRawVariantToSchemaSurface(payloadToWrite);
-            if (payloadToWrite) {
-              payloadToWrite =
-                ensureRawAddressSchemaDefaults(payloadToWrite) ||
-                payloadToWrite;
-              payloadToWrite =
-                ensureAddressOutputFieldPresence(payloadToWrite) ||
-                payloadToWrite;
-            }
-          }
-
-          if (
-            variantHintForSurface === "raw" &&
-            (!payloadToWrite ||
-              typeof payloadToWrite.unnormalized_address !== "string" ||
-              !payloadToWrite.unnormalized_address.trim().length)
-          ) {
-            payloadToWrite = null;
-          }
         }
 
         if (payloadToWrite) {
-          let writeReady = buildAddressPayloadForWrite(
-            payloadToWrite,
-            variantHintForSurface,
-          );
-          if (writeReady && variantHintForSurface === "raw") {
-            writeReady =
-              ensureRawAddressSchemaDefaults(writeReady) || writeReady;
-            writeReady =
-              ensureAddressOutputFieldPresence(writeReady) || writeReady;
-          } else if (writeReady) {
-            writeReady =
-              ensureAddressOutputFieldPresence(writeReady) || writeReady;
-            if (
-              Object.prototype.hasOwnProperty.call(
-                writeReady,
-                "unnormalized_address",
-              )
-            ) {
-              delete writeReady.unnormalized_address;
+          if (variantHintForSurface === "raw") {
+            const rawSeed = {
+              ...payloadToWrite,
+              latitude: Number.isFinite(preferredLatitude)
+                ? preferredLatitude
+                : payloadToWrite.latitude,
+              longitude: Number.isFinite(preferredLongitude)
+                ? preferredLongitude
+                : payloadToWrite.longitude,
+            };
+            const filteredRaw = filterRawAddressFields(rawSeed, {
+              allowedFields: RAW_ADDRESS_ALLOWED_FIELDS,
+            });
+            if (filteredRaw) {
+              if (trimmedRequestIdentifier) {
+                filteredRaw.request_identifier = trimmedRequestIdentifier;
+              }
+              if (preparedSourceHttpRequest) {
+                filteredRaw.source_http_request = deepClone(
+                  preparedSourceHttpRequest,
+                );
+              }
+              writeJSON(addressFilePath, filteredRaw);
+            } else {
+              removeFileIfExists(addressFilePath);
             }
-          }
-          const finalizedAddress = buildCountyAddressOutput(writeReady);
-          if (finalizedAddress) {
-            const surfacedFinal =
-              ensureAddressOutputFieldPresence(finalizedAddress) ||
-              finalizedAddress;
-            writeJSON(addressFilePath, surfacedFinal);
           } else {
-            removeFileIfExists(addressFilePath);
+            let writeReady = buildAddressPayloadForWrite(
+              payloadToWrite,
+              variantHintForSurface,
+            );
+            if (writeReady) {
+              writeReady =
+                ensureAddressOutputFieldPresence(writeReady) || writeReady;
+              if (
+                Object.prototype.hasOwnProperty.call(
+                  writeReady,
+                  "unnormalized_address",
+                )
+              ) {
+                delete writeReady.unnormalized_address;
+              }
+            }
+            const finalizedAddress = buildCountyAddressOutput(writeReady);
+            if (finalizedAddress) {
+              const surfacedFinal =
+                ensureAddressOutputFieldPresence(finalizedAddress) ||
+                finalizedAddress;
+              writeJSON(addressFilePath, surfacedFinal);
+            } else {
+              removeFileIfExists(addressFilePath);
+            }
           }
         } else {
           removeFileIfExists(addressFilePath);
