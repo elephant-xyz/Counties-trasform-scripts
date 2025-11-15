@@ -5010,6 +5010,67 @@ async function main() {
               preparedForWrite =
                 ensureAddressOutputFieldPresence(preparedForWrite) ||
                 preparedForWrite;
+              if (preparedForWrite) {
+                const rawCandidate = { ...preparedForWrite };
+                const hasRawCoverage = hasRawAddressRequiredFields(
+                  rawCandidate,
+                );
+                if (hasRawCoverage) {
+                  preparedForWrite = rawCandidate;
+                } else {
+                  const normalizedCandidate = { ...rawCandidate };
+                  if (
+                    Object.prototype.hasOwnProperty.call(
+                      normalizedCandidate,
+                      "unnormalized_address",
+                    )
+                  ) {
+                    delete normalizedCandidate.unnormalized_address;
+                  }
+                  const normalizedSurface =
+                    enforceAddressOneOfSurface(normalizedCandidate) ||
+                    composeSchemaAlignedAddressOutput(normalizedCandidate) ||
+                    ensureAddressSchemaSurfaceCoverage(normalizedCandidate) ||
+                    null;
+                  if (normalizedSurface) {
+                    let normalizedOutput =
+                      ensureAddressOutputFieldPresence(normalizedSurface) ||
+                      normalizedSurface;
+                    if (
+                      normalizedOutput &&
+                      Object.prototype.hasOwnProperty.call(
+                        normalizedOutput,
+                        "unnormalized_address",
+                      )
+                    ) {
+                      delete normalizedOutput.unnormalized_address;
+                    }
+                    if (
+                      hasMeaningfulAddressValue(rawCandidate.request_identifier) &&
+                      !hasMeaningfulAddressValue(
+                        normalizedOutput.request_identifier,
+                      )
+                    ) {
+                      normalizedOutput.request_identifier =
+                        rawCandidate.request_identifier;
+                    }
+                    if (
+                      rawCandidate.source_http_request &&
+                      !normalizedOutput.source_http_request
+                    ) {
+                      const preparedSource = prepareSourceHttpRequest(
+                        rawCandidate.source_http_request,
+                      );
+                      if (preparedSource) {
+                        normalizedOutput.source_http_request = preparedSource;
+                      }
+                    }
+                    preparedForWrite = normalizedOutput;
+                  } else {
+                    preparedForWrite = null;
+                  }
+                }
+              }
             } else if (preparedForWrite) {
               preparedForWrite =
                 ensureAddressOutputFieldPresence(preparedForWrite) ||

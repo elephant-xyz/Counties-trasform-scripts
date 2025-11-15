@@ -11327,7 +11327,64 @@ async function main() {
             removeFileIfExists(addressFilePath);
           }
         } else if (rawPayloadForWrite) {
-          writeJSON(addressFilePath, rawPayloadForWrite);
+          let writeReady = buildAddressPayloadForWrite(
+            rawPayloadForWrite,
+            "raw",
+          );
+          writeReady =
+            ensureAddressOutputFieldPresence(writeReady || rawPayloadForWrite) ||
+            writeReady ||
+            rawPayloadForWrite;
+
+          if (writeReady) {
+            const rawCandidate = { ...writeReady };
+            const hasRawCoverage = hasRawAddressRequiredFields(rawCandidate);
+            if (hasRawCoverage) {
+              writeJSON(addressFilePath, rawCandidate);
+            } else {
+              const normalizedCandidate = { ...rawCandidate };
+              if (
+                Object.prototype.hasOwnProperty.call(
+                  normalizedCandidate,
+                  "unnormalized_address",
+                )
+              ) {
+                delete normalizedCandidate.unnormalized_address;
+              }
+              const normalizedFallback =
+                buildCountyAddressOutput(normalizedCandidate);
+              if (normalizedFallback) {
+                const surfacedFallback =
+                  ensureAddressOutputFieldPresence(normalizedFallback) ||
+                  normalizedFallback;
+                if (
+                  hasMeaningfulAddressValue(rawCandidate.request_identifier) &&
+                  !hasMeaningfulAddressValue(
+                    surfacedFallback.request_identifier,
+                  )
+                ) {
+                  surfacedFallback.request_identifier =
+                    rawCandidate.request_identifier;
+                }
+                if (
+                  rawCandidate.source_http_request &&
+                  !surfacedFallback.source_http_request
+                ) {
+                  const preparedSource = prepareSourceHttpRequest(
+                    rawCandidate.source_http_request,
+                  );
+                  if (preparedSource) {
+                    surfacedFallback.source_http_request = preparedSource;
+                  }
+                }
+                writeJSON(addressFilePath, surfacedFallback);
+              } else {
+                removeFileIfExists(addressFilePath);
+              }
+            }
+          } else {
+            removeFileIfExists(addressFilePath);
+          }
         } else {
           removeFileIfExists(addressFilePath);
         }
