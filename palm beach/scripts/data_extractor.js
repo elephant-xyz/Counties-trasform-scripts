@@ -9735,7 +9735,6 @@ async function main() {
     const canonicalUnnormalized = trimmedUnnormalized.length
       ? trimmedUnnormalized
       : null;
-    const preferRawVariant = Boolean(canonicalUnnormalized);
 
     backfillNormalizedAddressFields(addressForOutput, {
       unnormalized: canonicalUnnormalized || resolvedUnnormalized,
@@ -9972,6 +9971,9 @@ async function main() {
         preparedSourceHttpRequest,
       );
     }
+
+    const preferRawVariant =
+      Boolean(canonicalUnnormalized) && !hasNormalizedCoverage;
 
     let finalAddressPayload = null;
     let finalAddressVariant = null;
