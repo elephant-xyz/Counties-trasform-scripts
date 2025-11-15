@@ -9222,10 +9222,6 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
-    relationships: {
-      property_has_address: null,
-      address_has_fact_sheet: null,
-    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -10863,11 +10859,32 @@ async function main() {
           payloadToWrite =
             ensureAddressOutputFieldPresence(enforcedOneOf) || enforcedOneOf;
 
+          if (payloadToWrite && variantHintForSurface !== "raw") {
+            if (
+              Object.prototype.hasOwnProperty.call(
+                payloadToWrite,
+                "unnormalized_address",
+              )
+            ) {
+              const rawValue = payloadToWrite.unnormalized_address;
+              if (
+                rawValue === undefined ||
+                rawValue === null ||
+                (typeof rawValue === "string" && !rawValue.trim().length)
+              ) {
+                delete payloadToWrite.unnormalized_address;
+              }
+            }
+          }
+
           if (variantHintForSurface === "raw" && payloadToWrite) {
             payloadToWrite = pruneRawVariantToSchemaSurface(payloadToWrite);
             if (payloadToWrite) {
               payloadToWrite =
                 ensureRawAddressSchemaDefaults(payloadToWrite) ||
+                payloadToWrite;
+              payloadToWrite =
+                ensureAddressOutputFieldPresence(payloadToWrite) ||
                 payloadToWrite;
             }
           }
@@ -10890,10 +10907,26 @@ async function main() {
           if (writeReady && variantHintForSurface === "raw") {
             writeReady =
               ensureRawAddressSchemaDefaults(writeReady) || writeReady;
+            writeReady =
+              ensureAddressOutputFieldPresence(writeReady) || writeReady;
+          } else if (writeReady) {
+            writeReady =
+              ensureAddressOutputFieldPresence(writeReady) || writeReady;
+            if (
+              Object.prototype.hasOwnProperty.call(
+                writeReady,
+                "unnormalized_address",
+              )
+            ) {
+              delete writeReady.unnormalized_address;
+            }
           }
           const finalizedAddress = buildCountyAddressOutput(writeReady);
           if (finalizedAddress) {
-            writeJSON(addressFilePath, finalizedAddress);
+            const surfacedFinal =
+              ensureAddressOutputFieldPresence(finalizedAddress) ||
+              finalizedAddress;
+            writeJSON(addressFilePath, surfacedFinal);
           } else {
             removeFileIfExists(addressFilePath);
           }

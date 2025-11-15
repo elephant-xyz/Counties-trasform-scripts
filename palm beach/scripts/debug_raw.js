@@ -4909,6 +4909,28 @@ async function main() {
               preparedForWrite =
                 ensureRawAddressSchemaDefaults(preparedForWrite) ||
                 preparedForWrite;
+              preparedForWrite =
+                ensureAddressOutputFieldPresence(preparedForWrite) ||
+                preparedForWrite;
+            } else if (preparedForWrite) {
+              preparedForWrite =
+                ensureAddressOutputFieldPresence(preparedForWrite) ||
+                preparedForWrite;
+              if (
+                Object.prototype.hasOwnProperty.call(
+                  preparedForWrite,
+                  "unnormalized_address",
+                )
+              ) {
+                const rawValue = preparedForWrite.unnormalized_address;
+                if (
+                  rawValue === undefined ||
+                  rawValue === null ||
+                  (typeof rawValue === "string" && !rawValue.trim().length)
+                ) {
+                  delete preparedForWrite.unnormalized_address;
+                }
+              }
             }
             if (preparedForWrite) {
               writeJSON(addressFilePath, preparedForWrite);
