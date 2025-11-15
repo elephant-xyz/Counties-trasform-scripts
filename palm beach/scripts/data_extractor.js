@@ -9725,7 +9725,14 @@ async function main() {
       if (finalAddressVariant === "raw") {
         const prunedRawPayload = pruneRawAddressPayloadForOutput(
           finalAddressPayload,
+          { fillMissing: true },
         );
+        if (prunedRawPayload) {
+          ensureAddressFieldSurface(
+            prunedRawPayload,
+            RAW_ADDRESS_OUTPUT_FIELDS,
+          );
+        }
         finalAddressPayload = prunedRawPayload || null;
       }
     }
