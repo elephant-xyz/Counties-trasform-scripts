@@ -2795,6 +2795,93 @@ function composeSchemaAlignedAddressOutput(address) {
   return aligned;
 }
 
+function finalizeAddressPayloadForOutput(payload, variantHint = null) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const hasRawValue =
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length > 0;
+
+  const resolvedVariant =
+    variantHint === "normalized"
+      ? "normalized"
+      : variantHint === "raw"
+        ? "raw"
+        : hasRawValue
+          ? "raw"
+          : "normalized";
+
+  const template =
+    resolvedVariant === "raw"
+      ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE }
+      : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+  const finalized = { ...template };
+
+  for (const field of Object.keys(template)) {
+    let value = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (value === undefined) {
+      finalized[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      finalized[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      finalized[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    finalized[field] = value === null ? null : value;
+  }
+
+  if (resolvedVariant === "raw") {
+    const trimmedUnnormalized = hasRawValue
+      ? payload.unnormalized_address.trim()
+      : "";
+    if (!trimmedUnnormalized.length) {
+      return null;
+    }
+    finalized.unnormalized_address = trimmedUnnormalized;
+  } else if (Object.prototype.hasOwnProperty.call(finalized, "unnormalized_address")) {
+    delete finalized.unnormalized_address;
+  }
+
+  if (!finalized.postal_code) {
+    finalized.plus_four_postal_code = null;
+  }
+
+  if (finalized.state_code && !finalized.country_code) {
+    finalized.country_code = "US";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+    if (requestIdentifier) {
+      finalized.request_identifier = requestIdentifier;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const preparedSource = prepareSourceHttpRequest(
+      payload.source_http_request,
+    );
+    if (preparedSource) {
+      finalized.source_http_request = preparedSource;
+    }
+  }
+
+  return finalized;
+}
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -9938,7 +10025,16 @@ async function main() {
         preparedAddressOutput.country_code = "US";
       }
 
-      writeJSON(addressFilePath, preparedAddressOutput);
+      const finalizedAddressForWrite = finalizeAddressPayloadForOutput(
+        preparedAddressOutput,
+        finalAddressVariant,
+      );
+
+      if (finalizedAddressForWrite) {
+        writeJSON(addressFilePath, finalizedAddressForWrite);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
     }
