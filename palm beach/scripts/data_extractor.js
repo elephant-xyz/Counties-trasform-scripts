@@ -9440,6 +9440,23 @@ async function main() {
     }
 
     if (finalAddressPayload) {
+      if (finalAddressVariant === "raw") {
+        const enforcedRawSurface =
+          ensureRawAddressSchemaSurface(finalAddressPayload) ||
+          applyAddressSchemaDefaultsForVariant(finalAddressPayload, "raw");
+        if (enforcedRawSurface) {
+          finalAddressPayload = enforcedRawSurface;
+        }
+      } else if (finalAddressVariant === "normalized") {
+        const enforcedNormalizedSurface = applyAddressSchemaDefaultsForVariant(
+          finalAddressPayload,
+          "normalized",
+        );
+        if (enforcedNormalizedSurface) {
+          finalAddressPayload = enforcedNormalizedSurface;
+        }
+      }
+
       if (
         trimmedRequestIdentifier &&
         !hasMeaningfulAddressValue(finalAddressPayload.request_identifier)
@@ -9454,21 +9471,6 @@ async function main() {
         finalAddressPayload.source_http_request = deepClone(
           preparedSourceHttpRequest,
         );
-      }
-
-      if (finalAddressVariant === "raw") {
-        for (const field of [
-          "street_number",
-          "street_name",
-          "street_pre_directional_text",
-          "street_post_directional_text",
-          "street_suffix_type",
-          "unit_identifier",
-        ]) {
-          if (Object.prototype.hasOwnProperty.call(finalAddressPayload, field)) {
-            delete finalAddressPayload[field];
-          }
-        }
       }
 
       writeJSON(addressFilePath, finalAddressPayload);
