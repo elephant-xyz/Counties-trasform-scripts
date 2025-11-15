@@ -2140,6 +2140,81 @@ function ensureAddressFieldSurface(target, fields) {
   }
 }
 
+function backfillNormalizedAddressFields(target, options = {}) {
+  if (!target || typeof target !== "object") return;
+
+  const {
+    unnormalized,
+    fallbackCity,
+    fallbackState,
+    fallbackPostal,
+    fallbackPlus4,
+    fallbackCounty,
+    fallbackCountry = "US",
+    fallbackMunicipality,
+    fallbackUnit,
+    fallbackRoute,
+    fallbackLatitude,
+    fallbackLongitude,
+    fallbackTownship,
+    fallbackRange,
+    fallbackSection,
+    fallbackBlock,
+    fallbackLot,
+    fallbackStreetNumber,
+    fallbackStreetName,
+    fallbackStreetPreDirectional,
+    fallbackStreetPostDirectional,
+    fallbackStreetSuffix,
+  } = options || {};
+
+  if (typeof unnormalized === "string" && unnormalized.trim().length) {
+    enrichAddressFromUnnormalized(target, unnormalized);
+  }
+
+  const assignIfMissing = (field, candidate) => {
+    if (hasMeaningfulAddressValue(target[field])) return;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    if (normalizedValue === undefined || normalizedValue === null) return;
+    target[field] = normalizedValue;
+  };
+
+  const assignCoordinateIfMissing = (field, candidate) => {
+    if (Number.isFinite(target[field])) return;
+    const numeric = parseCoordinate(candidate);
+    if (Number.isFinite(numeric)) {
+      target[field] = numeric;
+    }
+  };
+
+  assignIfMissing("street_number", fallbackStreetNumber);
+  assignIfMissing("street_name", fallbackStreetName);
+  assignIfMissing("street_pre_directional_text", fallbackStreetPreDirectional);
+  assignIfMissing("street_post_directional_text", fallbackStreetPostDirectional);
+  assignIfMissing("street_suffix_type", fallbackStreetSuffix);
+
+  assignIfMissing("city_name", fallbackCity);
+  assignIfMissing("state_code", fallbackState);
+  assignIfMissing("postal_code", fallbackPostal);
+  assignIfMissing("plus_four_postal_code", fallbackPlus4);
+  assignIfMissing("county_name", fallbackCounty);
+  assignIfMissing("municipality_name", fallbackMunicipality);
+  assignIfMissing("unit_identifier", fallbackUnit);
+  assignIfMissing("route_number", fallbackRoute);
+  assignIfMissing("township", fallbackTownship);
+  assignIfMissing("range", fallbackRange);
+  assignIfMissing("section", fallbackSection);
+  assignIfMissing("block", fallbackBlock);
+  assignIfMissing("lot", fallbackLot);
+
+  if (hasMeaningfulAddressValue(target.state_code)) {
+    assignIfMissing("country_code", fallbackCountry);
+  }
+
+  assignCoordinateIfMissing("latitude", fallbackLatitude);
+  assignCoordinateIfMissing("longitude", fallbackLongitude);
+}
+
 function normalizeAddressFieldForSchema(field, value) {
   if (value === undefined || value === null) {
     return null;
@@ -9504,6 +9579,69 @@ async function main() {
       ? trimmedUnnormalized
       : null;
 
+    backfillNormalizedAddressFields(addressForOutput, {
+      unnormalized: canonicalUnnormalized || resolvedUnnormalized,
+      fallbackCity:
+        addressForOutput.city_name ||
+        normalizedCity ||
+        resolvedCity ||
+        (parsedUnnormalizedCityState && parsedUnnormalizedCityState.city),
+      fallbackState:
+        addressForOutput.state_code ||
+        inferredStateCode ||
+        resolvedState ||
+        countyInferredStateCode ||
+        (parsedUnnormalizedCityState && parsedUnnormalizedCityState.state) ||
+        "FL",
+      fallbackPostal:
+        addressForOutput.postal_code ||
+        fallbackPostalValue ||
+        postalCode ||
+        (parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal),
+      fallbackPlus4:
+        addressForOutput.plus_four_postal_code ||
+        fallbackPlus4Value ||
+        plus4 ||
+        (parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4),
+      fallbackCounty:
+        addressForOutput.county_name ||
+        formattedCountyName ||
+        countyName ||
+        defaultCounty,
+      fallbackCountry: addressForOutput.country_code || "US",
+      fallbackMunicipality:
+        addressForOutput.municipality_name || normalizedMunicipality,
+      fallbackUnit: addressForOutput.unit_identifier,
+      fallbackRoute: addressForOutput.route_number,
+      fallbackLatitude: preferredLatitude,
+      fallbackLongitude: preferredLongitude,
+      fallbackTownship:
+        addressForOutput.township ||
+        baseAddressSeed.township ||
+        address.township,
+      fallbackRange:
+        addressForOutput.range || baseAddressSeed.range || address.range,
+      fallbackSection:
+        addressForOutput.section ||
+        baseAddressSeed.section ||
+        address.section,
+      fallbackBlock:
+        addressForOutput.block || baseAddressSeed.block || address.block,
+      fallbackLot: addressForOutput.lot || baseAddressSeed.lot || address.lot,
+      fallbackStreetNumber:
+        addressForOutput.street_number || address.street_number,
+      fallbackStreetName:
+        addressForOutput.street_name || address.street_name,
+      fallbackStreetPreDirectional:
+        addressForOutput.street_pre_directional_text ||
+        address.street_pre_directional_text,
+      fallbackStreetPostDirectional:
+        addressForOutput.street_post_directional_text ||
+        address.street_post_directional_text,
+      fallbackStreetSuffix:
+        addressForOutput.street_suffix_type || address.street_suffix_type,
+    });
+
     if (!hasMeaningfulAddressValue(addressForOutput.plus_four_postal_code)) {
       const plusFourSources = [
         canonicalUnnormalized,
@@ -9886,6 +10024,96 @@ async function main() {
         address.lot,
       ]);
 
+      backfillNormalizedAddressFields(rawResult, {
+        unnormalized: canonicalUnnormalized,
+        fallbackCity:
+          rawResult.city_name ||
+          addressForOutput.city_name ||
+          normalizedCity ||
+          resolvedCity ||
+          (parsedUnnormalizedCityState && parsedUnnormalizedCityState.city),
+        fallbackState:
+          rawResult.state_code ||
+          addressForOutput.state_code ||
+          inferredStateCode ||
+          resolvedState ||
+          countyInferredStateCode ||
+          (parsedUnnormalizedCityState && parsedUnnormalizedCityState.state) ||
+          "FL",
+        fallbackPostal:
+          rawResult.postal_code ||
+          addressForOutput.postal_code ||
+          fallbackPostalValue ||
+          postalCode ||
+          (parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal),
+        fallbackPlus4:
+          rawResult.plus_four_postal_code ||
+          addressForOutput.plus_four_postal_code ||
+          fallbackPlus4Value ||
+          plus4 ||
+          (parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4),
+        fallbackCounty:
+          rawResult.county_name ||
+          addressForOutput.county_name ||
+          formattedCountyName ||
+          defaultCounty ||
+          countyName,
+        fallbackCountry: rawResult.country_code || addressForOutput.country_code || "US",
+        fallbackMunicipality:
+          rawResult.municipality_name ||
+          addressForOutput.municipality_name ||
+          normalizedMunicipality,
+        fallbackUnit: rawResult.unit_identifier || addressForOutput.unit_identifier,
+        fallbackRoute: rawResult.route_number || addressForOutput.route_number,
+        fallbackLatitude: preferredLatitude,
+        fallbackLongitude: preferredLongitude,
+        fallbackTownship:
+          rawResult.township ||
+          addressForOutput.township ||
+          baseAddressSeed.township ||
+          address.township,
+        fallbackRange:
+          rawResult.range ||
+          addressForOutput.range ||
+          baseAddressSeed.range ||
+          address.range,
+        fallbackSection:
+          rawResult.section ||
+          addressForOutput.section ||
+          baseAddressSeed.section ||
+          address.section,
+        fallbackBlock:
+          rawResult.block ||
+          addressForOutput.block ||
+          baseAddressSeed.block ||
+          address.block,
+        fallbackLot:
+          rawResult.lot ||
+          addressForOutput.lot ||
+          baseAddressSeed.lot ||
+          address.lot,
+        fallbackStreetNumber:
+          rawResult.street_number ||
+          addressForOutput.street_number ||
+          address.street_number,
+        fallbackStreetName:
+          rawResult.street_name ||
+          addressForOutput.street_name ||
+          address.street_name,
+        fallbackStreetPreDirectional:
+          rawResult.street_pre_directional_text ||
+          addressForOutput.street_pre_directional_text ||
+          address.street_pre_directional_text,
+        fallbackStreetPostDirectional:
+          rawResult.street_post_directional_text ||
+          addressForOutput.street_post_directional_text ||
+          address.street_post_directional_text,
+        fallbackStreetSuffix:
+          rawResult.street_suffix_type ||
+          addressForOutput.street_suffix_type ||
+          address.street_suffix_type,
+      });
+
       if (!rawResult.postal_code) {
         delete rawResult.plus_four_postal_code;
       }
@@ -10031,7 +10259,132 @@ async function main() {
       );
 
       if (finalizedAddressForWrite) {
-        writeJSON(addressFilePath, finalizedAddressForWrite);
+        let payloadToWrite = finalizedAddressForWrite;
+
+        if (
+          finalAddressVariant === "raw" &&
+          payloadToWrite &&
+          typeof payloadToWrite === "object"
+        ) {
+          backfillNormalizedAddressFields(payloadToWrite, {
+            unnormalized: payloadToWrite.unnormalized_address || canonicalUnnormalized,
+            fallbackCity:
+              payloadToWrite.city_name ||
+              addressForOutput.city_name ||
+              normalizedCity ||
+              resolvedCity ||
+              (parsedUnnormalizedCityState && parsedUnnormalizedCityState.city),
+            fallbackState:
+              payloadToWrite.state_code ||
+              addressForOutput.state_code ||
+              inferredStateCode ||
+              resolvedState ||
+              countyInferredStateCode ||
+              (parsedUnnormalizedCityState && parsedUnnormalizedCityState.state) ||
+              "FL",
+            fallbackPostal:
+              payloadToWrite.postal_code ||
+              addressForOutput.postal_code ||
+              fallbackPostalValue ||
+              postalCode ||
+              (parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal),
+            fallbackPlus4:
+              payloadToWrite.plus_four_postal_code ||
+              addressForOutput.plus_four_postal_code ||
+              fallbackPlus4Value ||
+              plus4 ||
+              (parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4),
+            fallbackCounty:
+              payloadToWrite.county_name ||
+              addressForOutput.county_name ||
+              formattedCountyName ||
+              defaultCounty ||
+              countyName,
+            fallbackCountry: payloadToWrite.country_code || addressForOutput.country_code || "US",
+            fallbackMunicipality:
+              payloadToWrite.municipality_name ||
+              addressForOutput.municipality_name ||
+              normalizedMunicipality,
+            fallbackUnit:
+              payloadToWrite.unit_identifier || addressForOutput.unit_identifier,
+            fallbackRoute:
+              payloadToWrite.route_number || addressForOutput.route_number,
+            fallbackLatitude: Number.isFinite(payloadToWrite.latitude)
+              ? payloadToWrite.latitude
+              : preferredLatitude,
+            fallbackLongitude: Number.isFinite(payloadToWrite.longitude)
+              ? payloadToWrite.longitude
+              : preferredLongitude,
+            fallbackTownship:
+              payloadToWrite.township ||
+              addressForOutput.township ||
+              baseAddressSeed.township ||
+              address.township,
+            fallbackRange:
+              payloadToWrite.range ||
+              addressForOutput.range ||
+              baseAddressSeed.range ||
+              address.range,
+            fallbackSection:
+              payloadToWrite.section ||
+              addressForOutput.section ||
+              baseAddressSeed.section ||
+              address.section,
+            fallbackBlock:
+              payloadToWrite.block ||
+              addressForOutput.block ||
+              baseAddressSeed.block ||
+              address.block,
+            fallbackLot:
+              payloadToWrite.lot ||
+              addressForOutput.lot ||
+              baseAddressSeed.lot ||
+              address.lot,
+            fallbackStreetNumber:
+              payloadToWrite.street_number ||
+              addressForOutput.street_number ||
+              address.street_number,
+            fallbackStreetName:
+              payloadToWrite.street_name ||
+              addressForOutput.street_name ||
+              address.street_name,
+            fallbackStreetPreDirectional:
+              payloadToWrite.street_pre_directional_text ||
+              addressForOutput.street_pre_directional_text ||
+              address.street_pre_directional_text,
+            fallbackStreetPostDirectional:
+              payloadToWrite.street_post_directional_text ||
+              addressForOutput.street_post_directional_text ||
+              address.street_post_directional_text,
+            fallbackStreetSuffix:
+              payloadToWrite.street_suffix_type ||
+              addressForOutput.street_suffix_type ||
+              address.street_suffix_type,
+          });
+
+          const normalizedOverride = finalizeAddressForOutput(payloadToWrite, {
+            requestIdentifier:
+              preparedAddressOutput.request_identifier ||
+              trimmedRequestIdentifier ||
+              null,
+            sourceHttpRequest:
+              preparedAddressOutput.source_http_request ||
+              preparedSourceHttpRequest ||
+              null,
+          });
+
+          if (
+            normalizedOverride &&
+            !Object.prototype.hasOwnProperty.call(
+              normalizedOverride,
+              "unnormalized_address",
+            )
+          ) {
+            payloadToWrite = normalizedOverride;
+          }
+        }
+
+        writeJSON(addressFilePath, payloadToWrite);
       } else {
         removeFileIfExists(addressFilePath);
       }
