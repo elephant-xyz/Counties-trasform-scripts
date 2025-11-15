@@ -8557,6 +8557,18 @@ function filterRawAddressFields(address, options = {}) {
     result.plus_four_postal_code = null;
   }
 
+  for (const field of allowedFields) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
+      result[field] = null;
+      continue;
+    }
+
+    if (!ADDRESS_COORDINATE_FIELDS.includes(field)) continue;
+
+    const numeric = parseCoordinate(result[field]);
+    result[field] = Number.isFinite(numeric) ? numeric : null;
+  }
+
   return result;
 }
 
