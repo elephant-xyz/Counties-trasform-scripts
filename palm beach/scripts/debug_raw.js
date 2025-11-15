@@ -1946,6 +1946,42 @@ const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "county_name",
 ];
 
+function ensureNormalizedAddressSchemaSurface(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const surface = {};
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      surface[field] = null;
+      continue;
+    }
+
+    let value = normalizeAddressFieldForSchema(field, address[field]);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      surface[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      surface[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    surface[field] = value === undefined ? null : value;
+  }
+
+  if (surface.state_code && !surface.country_code) {
+    surface.country_code = "US";
+  }
+  if (!surface.postal_code) {
+    surface.plus_four_postal_code = null;
+  }
+
+  return surface;
+}
+
 function hasRobustNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
 
@@ -3476,6 +3512,10 @@ function ensureAddressOutputCoverage(address) {
   }
 
   return result;
+}
+
+function ensureAddressOutputFieldPresence(address) {
+  return ensureAddressOutputCoverage(address);
 }
 
 function hydrateRawAddressForSchema(source, options = {}) {
