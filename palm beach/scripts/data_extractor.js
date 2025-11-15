@@ -4523,7 +4523,9 @@ function buildCountyAddressOutput(candidate) {
     }
     const rawWithDefaults =
       ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
-    return rawWithDefaults;
+    const minimalRaw =
+      composeMinimalRawAddress(rawWithDefaults) || rawWithDefaults;
+    return minimalRaw;
   }
 
   const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
@@ -6061,6 +6063,64 @@ function ensureRawAddressSchemaDefaults(address) {
   }
 
   return result;
+}
+
+function composeMinimalRawAddress(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const minimal = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+
+    const value = address[field];
+    if (value === undefined || value === null) continue;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      if (Number.isFinite(numeric)) {
+        minimal[field] = numeric;
+      }
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, value);
+    if (normalizedValue === undefined || normalizedValue === null) continue;
+    minimal[field] = normalizedValue;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const trimmed = safeNullIfEmpty(address.request_identifier);
+    if (trimmed) {
+      minimal.request_identifier = trimmed;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      minimal.source_http_request = deepClone(prepared);
+    }
+  }
+
+  if (
+    minimal.state_code &&
+    !minimal.country_code
+  ) {
+    minimal.country_code = "US";
+  }
+
+  return minimal;
 }
 
 function ensureRawAddressOutputSurface(address) {
@@ -10942,7 +11002,10 @@ async function main() {
               const finalRaw =
                 ensureAddressOutputFieldPresence(enforced) || enforced;
 
-              writeJSON(addressFilePath, finalRaw);
+              const minimalRawOutput =
+                composeMinimalRawAddress(finalRaw) || finalRaw;
+
+              writeJSON(addressFilePath, minimalRawOutput);
             } else {
               removeFileIfExists(addressFilePath);
             }
