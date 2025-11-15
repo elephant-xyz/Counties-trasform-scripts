@@ -1528,23 +1528,7 @@ const RAW_ADDRESS_SURFACE_FIELDS = [
 ];
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const RAW_ADDRESS_OUTPUT_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
-const RAW_VARIANT_ALLOWED_FIELD_SET = new Set([
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "country_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "municipality_name",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
+const RAW_VARIANT_ALLOWED_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
