@@ -9567,8 +9567,12 @@ async function main() {
       normalizedPayload.country_code = "US";
     }
 
-    const hasNormalizedCoverage = NORMALIZED_ADDRESS_STRONG_FIELDS.every(
-      (field) => hasMeaningfulAddressValue(normalizedPayload[field]),
+    const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) => {
+        const value = normalizedPayload[field];
+        if (typeof value !== "string") return false;
+        return value.trim().length > 0;
+      },
     );
 
     const trimmedRequestIdentifier =
