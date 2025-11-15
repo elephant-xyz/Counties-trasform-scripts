@@ -8509,6 +8509,7 @@ function filterRawAddressFields(address, options = {}) {
   }
 
   const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: unnormalized,
   };
 
