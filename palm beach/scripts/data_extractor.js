@@ -1528,6 +1528,23 @@ const RAW_ADDRESS_SURFACE_FIELDS = [
 ];
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const RAW_ADDRESS_OUTPUT_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
+const RAW_VARIANT_ALLOWED_FIELD_SET = new Set([
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "country_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "municipality_name",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+]);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
@@ -9346,33 +9363,83 @@ async function main() {
     }
 
     let finalAddressPayload = null;
+    let finalAddressVariant = null;
 
     if (hasNormalizedCoverage) {
-      finalAddressPayload = normalizedPayload;
+      const normalizedResult = {};
+      for (const field of NORMALIZED_ADDRESS_FIELDS) {
+        const value = Object.prototype.hasOwnProperty.call(normalizedPayload, field)
+          ? normalizedPayload[field]
+          : null;
+        normalizedResult[field] =
+          value === undefined || value === null ? null : value;
+      }
+
+      if (!normalizedResult.postal_code) {
+        normalizedResult.plus_four_postal_code = null;
+      }
+      if (normalizedResult.state_code && !normalizedResult.country_code) {
+        normalizedResult.country_code = "US";
+      }
+
+      finalAddressPayload = normalizedResult;
+      finalAddressVariant = "normalized";
     } else if (canonicalUnnormalized) {
-      finalAddressPayload = {
-        ...normalizedPayload,
+      const rawResult = {
         unnormalized_address: canonicalUnnormalized,
       };
-    }
 
-    if (finalAddressPayload) {
-      for (const field of NORMALIZED_ADDRESS_FIELDS) {
-        if (!Object.prototype.hasOwnProperty.call(finalAddressPayload, field)) {
-          finalAddressPayload[field] = null;
+      for (const field of RAW_VARIANT_ALLOWED_FIELD_SET) {
+        const candidateSource = Object.prototype.hasOwnProperty.call(normalizedPayload, field)
+          ? normalizedPayload[field]
+          : Object.prototype.hasOwnProperty.call(addressForOutput, field)
+            ? addressForOutput[field]
+            : null;
+        const normalizedValue = normalizeAddressFieldForSchema(field, candidateSource);
+
+        if (normalizedValue === undefined || normalizedValue === null) {
+          continue;
+        }
+
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(normalizedValue);
+          if (Number.isFinite(numeric)) {
+            rawResult[field] = numeric;
+          }
+          continue;
+        }
+
+        if (typeof normalizedValue === "string") {
+          const trimmed = normalizedValue.trim();
+          if (!trimmed.length) continue;
+          rawResult[field] = trimmed;
+          continue;
+        }
+
+        if (typeof normalizedValue === "number") {
+          if (Number.isFinite(normalizedValue)) {
+            rawResult[field] = normalizedValue;
+          }
+          continue;
+        }
+
+        if (typeof normalizedValue === "object" && normalizedValue) {
+          rawResult[field] = deepClone(normalizedValue);
         }
       }
 
-      if (!finalAddressPayload.postal_code) {
-        finalAddressPayload.plus_four_postal_code = null;
+      if (!rawResult.postal_code) {
+        delete rawResult.plus_four_postal_code;
       }
-      if (
-        finalAddressPayload.state_code &&
-        !finalAddressPayload.country_code
-      ) {
-        finalAddressPayload.country_code = "US";
+      if (rawResult.state_code && !rawResult.country_code) {
+        rawResult.country_code = "US";
       }
 
+      finalAddressPayload = rawResult;
+      finalAddressVariant = "raw";
+    }
+
+    if (finalAddressPayload) {
       if (
         trimmedRequestIdentifier &&
         !hasMeaningfulAddressValue(finalAddressPayload.request_identifier)
@@ -9387,6 +9454,21 @@ async function main() {
         finalAddressPayload.source_http_request = deepClone(
           preparedSourceHttpRequest,
         );
+      }
+
+      if (finalAddressVariant === "raw") {
+        for (const field of [
+          "street_number",
+          "street_name",
+          "street_pre_directional_text",
+          "street_post_directional_text",
+          "street_suffix_type",
+          "unit_identifier",
+        ]) {
+          if (Object.prototype.hasOwnProperty.call(finalAddressPayload, field)) {
+            delete finalAddressPayload[field];
+          }
+        }
       }
 
       writeJSON(addressFilePath, finalAddressPayload);
