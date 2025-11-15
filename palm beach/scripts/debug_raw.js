@@ -435,7 +435,8 @@ function pruneRawAddressPayloadForOutput(payload) {
     }
   }
 
-  return result;
+  const withDefaults = ensureRawAddressSchemaDefaults(result) || result;
+  return withDefaults;
 }
 
 function materializeAddressForSchema(payload, variant, options = {}) {
@@ -3163,7 +3164,9 @@ function enforceAddressOneOfSurface(address) {
       rawOutput.source_http_request = deepClone(preparedSourceHttpRequest);
     }
 
-    return rawOutput;
+    const rawWithDefaults =
+      ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
+    return rawWithDefaults;
   }
 
   const normalizedOutput = {};
@@ -4894,12 +4897,17 @@ async function main() {
             addressVariant,
           );
           if (finalizedAddressForWrite) {
-            const preparedForWrite =
+            let preparedForWrite =
               addressVariant === "raw"
                 ? pruneRawVariantToSchemaSurface({
                     ...finalizedAddressForWrite,
                   })
                 : finalizedAddressForWrite;
+            if (preparedForWrite && addressVariant === "raw") {
+              preparedForWrite =
+                ensureRawAddressSchemaDefaults(preparedForWrite) ||
+                preparedForWrite;
+            }
             if (preparedForWrite) {
               writeJSON(addressFilePath, preparedForWrite);
             } else {

@@ -4215,7 +4215,9 @@ function finalizeAddressForOutput(address) {
     rawOutput.source_http_request = preparedSourceHttp;
   }
 
-  return rawOutput;
+  const rawWithDefaults =
+    ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
+  return rawWithDefaults;
 }
 
 function ensureAddressOutputCoverage(address) {
@@ -4519,7 +4521,9 @@ function buildCountyAddressOutput(candidate) {
     if (preparedSource) {
       rawOutput.source_http_request = deepClone(preparedSource);
     }
-    return rawOutput;
+    const rawWithDefaults =
+      ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
+    return rawWithDefaults;
   }
 
   const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
@@ -6159,7 +6163,9 @@ function enforceAddressOneOfSurface(address) {
       rawOutput.source_http_request = deepClone(preparedSourceHttpRequest);
     }
 
-    return rawOutput;
+    const rawWithDefaults =
+      ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
+    return rawWithDefaults;
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "unnormalized_address")) {
@@ -8390,7 +8396,9 @@ function buildRawAddressFromSources(sources, options = {}) {
   }
   rawOutput.unnormalized_address = rawOutput.unnormalized_address.trim();
 
-  return rawOutput;
+  const rawWithDefaults =
+    ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
+  return rawWithDefaults;
 }
 
 function filterRawAddressFields(address, options = {}) {
@@ -10824,6 +10832,11 @@ async function main() {
 
           if (variantHintForSurface === "raw" && payloadToWrite) {
             payloadToWrite = pruneRawVariantToSchemaSurface(payloadToWrite);
+            if (payloadToWrite) {
+              payloadToWrite =
+                ensureRawAddressSchemaDefaults(payloadToWrite) ||
+                payloadToWrite;
+            }
           }
 
           if (
@@ -10837,10 +10850,14 @@ async function main() {
         }
 
         if (payloadToWrite) {
-          const writeReady = buildAddressPayloadForWrite(
+          let writeReady = buildAddressPayloadForWrite(
             payloadToWrite,
             variantHintForSurface,
           );
+          if (writeReady && variantHintForSurface === "raw") {
+            writeReady =
+              ensureRawAddressSchemaDefaults(writeReady) || writeReady;
+          }
           const finalizedAddress = buildCountyAddressOutput(writeReady);
           if (finalizedAddress) {
             writeJSON(addressFilePath, finalizedAddress);
