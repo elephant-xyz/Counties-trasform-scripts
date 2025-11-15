@@ -11655,9 +11655,170 @@ async function main() {
               hasRawUnnormalized ? "raw" : "normalized",
             ) || surfacedAddress;
 
-          const finalizedSurface =
+          let finalizedSurface =
             ensureAddressOutputFieldPresence(templatedAddress) ||
             templatedAddress;
+
+          const normalizedPromotionSeed = {
+            ...finalizedSurface,
+            unnormalized_address:
+              hasRawUnnormalized &&
+              typeof schemaAlignedAddress.unnormalized_address === "string"
+                ? schemaAlignedAddress.unnormalized_address
+                : canonicalUnnormalized ||
+                  resolvedUnnormalized ||
+                  fallbackUnnormalizedValue ||
+                  unnormalizedAddressCandidate ||
+                  combinedModelAddress ||
+                  siteLocationLine ||
+                  fullAddr ||
+                  fullAddrInput ||
+                  null,
+          };
+
+          const normalizedPromotionOptions = {
+            fallbackSources: [
+              schemaAlignedAddress,
+              finalizedSurface,
+              surfacedAddress,
+              templatedAddress,
+              preparedAddressOutput,
+              addressForOutput,
+              baseAddressSeed,
+              address,
+            ].filter(Boolean),
+            stateFallback:
+              inferredStateCode ||
+              resolvedStateUpper ||
+              countyInferredStateCode ||
+              (address && address.state_code) ||
+              null,
+            countyFallback:
+              formattedCountyName ||
+              normalizedCountyName ||
+              (address && address.county_name) ||
+              defaultCounty ||
+              null,
+            municipalityFallback:
+              normalizedMunicipality ||
+              resolvedCity ||
+              (address && address.municipality_name) ||
+              null,
+            postalFallback:
+              sanitizedPostalCode ||
+              postalCode ||
+              (address && address.postal_code) ||
+              null,
+            plus4Fallback:
+              sanitizedPlus4 ||
+              plus4 ||
+              (address && address.plus_four_postal_code) ||
+              null,
+            coordinateFallback: {
+              latitude:
+                Number.isFinite(preferredLatitude)
+                  ? preferredLatitude
+                  : Number.isFinite(resolvedLatitude)
+                    ? resolvedLatitude
+                    : parcelCentroid && Number.isFinite(parcelCentroid.latitude)
+                      ? parcelCentroid.latitude
+                      : null,
+              longitude:
+                Number.isFinite(preferredLongitude)
+                  ? preferredLongitude
+                  : Number.isFinite(resolvedLongitude)
+                    ? resolvedLongitude
+                    : parcelCentroid && Number.isFinite(parcelCentroid.longitude)
+                      ? parcelCentroid.longitude
+                      : null,
+            },
+            grid: fallbackPcnSource
+              ? deriveGridPartsFromPcn(fallbackPcnSource)
+              : null,
+          };
+
+          const promotedNormalized = promoteRawAddressToNormalized(
+            normalizedPromotionSeed,
+            normalizedPromotionOptions,
+          );
+
+          if (
+            promotedNormalized &&
+            hasCompleteNormalizedAddress({ ...promotedNormalized })
+          ) {
+            const normalizedSurface =
+              ensureNormalizedAddressSchemaSurface(promotedNormalized) ||
+              promotedNormalized;
+            if (normalizedSurface) {
+              const mergedSurface = { ...finalizedSurface };
+              for (const field of NORMALIZED_ADDRESS_FIELDS) {
+                if (field === "latitude" || field === "longitude") {
+                  const numericCandidate = Number.isFinite(
+                    normalizedSurface[field],
+                  )
+                    ? normalizedSurface[field]
+                    : parseCoordinate(normalizedSurface[field]);
+                  if (
+                    !Number.isFinite(mergedSurface[field]) &&
+                    Number.isFinite(numericCandidate)
+                  ) {
+                    mergedSurface[field] = numericCandidate;
+                  }
+                  continue;
+                }
+                if (
+                  !hasMeaningfulAddressValue(mergedSurface[field]) &&
+                  hasMeaningfulAddressValue(normalizedSurface[field])
+                ) {
+                  mergedSurface[field] = normalizedSurface[field];
+                }
+              }
+
+              const trimmedSeedUnnormalized =
+                typeof normalizedPromotionSeed.unnormalized_address === "string"
+                  ? normalizedPromotionSeed.unnormalized_address.trim()
+                  : "";
+              if (
+                trimmedSeedUnnormalized.length &&
+                (!hasMeaningfulAddressValue(mergedSurface.unnormalized_address) ||
+                  typeof mergedSurface.unnormalized_address !== "string")
+              ) {
+                mergedSurface.unnormalized_address = trimmedSeedUnnormalized;
+              }
+
+              if (
+                hasMeaningfulAddressValue(finalizedSurface.request_identifier) &&
+                !hasMeaningfulAddressValue(mergedSurface.request_identifier)
+              ) {
+                mergedSurface.request_identifier =
+                  finalizedSurface.request_identifier;
+              } else if (
+                hasMeaningfulAddressValue(normalizedSurface.request_identifier) &&
+                !hasMeaningfulAddressValue(mergedSurface.request_identifier)
+              ) {
+                mergedSurface.request_identifier =
+                  normalizedSurface.request_identifier;
+              }
+
+              const resolvedSourceRequest =
+                mergedSurface.source_http_request ||
+                finalizedSurface.source_http_request ||
+                normalizedSurface.source_http_request ||
+                null;
+              if (resolvedSourceRequest) {
+                const preparedSource = prepareSourceHttpRequest(
+                  resolvedSourceRequest,
+                );
+                if (preparedSource) {
+                  mergedSurface.source_http_request = preparedSource;
+                }
+              }
+
+              finalizedSurface =
+                ensureAddressOutputFieldPresence(mergedSurface) ||
+                mergedSurface;
+            }
+          }
 
           for (const coordField of ADDRESS_COORDINATE_FIELDS) {
             if (!Number.isFinite(finalizedSurface[coordField])) {
@@ -11675,9 +11836,12 @@ async function main() {
             finalizedSurface.country_code = "US";
           }
 
-          if (hasRawUnnormalized) {
-            const trimmed =
-              schemaAlignedAddress.unnormalized_address.trim();
+          const finalHasRawUnnormalized =
+            typeof finalizedSurface.unnormalized_address === "string" &&
+            finalizedSurface.unnormalized_address.trim().length > 0;
+
+          if (finalHasRawUnnormalized) {
+            const trimmed = finalizedSurface.unnormalized_address.trim();
             if (trimmed.length) {
               finalizedSurface.unnormalized_address = trimmed;
             } else if (
@@ -11702,9 +11866,9 @@ async function main() {
           removeFileIfExists(addressFilePath);
         }
       } catch (err) {
-      removeFileIfExists(addressFilePath);
+        removeFileIfExists(addressFilePath);
+      }
     }
-  }
 
   enforceFinalAddressSchemaOutput(addressFilePath);
   finalizeCountyAddressFile(addressFilePath);
