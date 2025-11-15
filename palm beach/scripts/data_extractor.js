@@ -2385,7 +2385,7 @@ function buildCountyRawAddressPayload(base, unnormalizedValue) {
   return payload;
 }
 
-function pruneRawAddressPayloadForOutput(payload) {
+function pruneRawAddressPayloadForOutput(payload, options = {}) {
   if (!payload || typeof payload !== "object") return null;
 
   const unnormalized =
@@ -2396,8 +2396,11 @@ function pruneRawAddressPayloadForOutput(payload) {
     return null;
   }
 
+  const { fillMissing = false } = options || {};
+  const surface = fillMissing ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE } : {};
+
   const result = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...surface,
     unnormalized_address: unnormalized,
   };
 
@@ -2470,9 +2473,11 @@ function pruneRawAddressPayloadForOutput(payload) {
     result.source_http_request = preparedSource;
   }
 
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(result, field)) {
-      result[field] = null;
+  if (fillMissing) {
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(result, field)) {
+        result[field] = null;
+      }
     }
   }
 
@@ -2798,6 +2803,22 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "postal_code",
   "country_code",
   "county_name",
+];
+
+const NORMALIZED_ADDRESS_STRONG_FIELDS = [
+  ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
 ];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
@@ -9546,12 +9567,9 @@ async function main() {
       normalizedPayload.country_code = "US";
     }
 
-    const hasNormalizedCoverage =
-      NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-        (field) =>
-          typeof normalizedPayload[field] === "string" &&
-          normalizedPayload[field].trim().length > 0,
-      );
+    const hasNormalizedCoverage = NORMALIZED_ADDRESS_STRONG_FIELDS.every(
+      (field) => hasMeaningfulAddressValue(normalizedPayload[field]),
+    );
 
     const trimmedRequestIdentifier =
       typeof requestIdentifierCandidate === "string" &&
@@ -9660,27 +9678,17 @@ async function main() {
 
     if (finalAddressPayload) {
       if (finalAddressVariant === "raw") {
-        const enforcedRawSurface =
-          ensureRawAddressSchemaSurface(finalAddressPayload) ||
-          applyAddressSchemaDefaultsForVariant(finalAddressPayload, "raw");
-        if (enforcedRawSurface) {
-          finalAddressPayload = enforcedRawSurface;
+        if (
+          !Number.isFinite(finalAddressPayload.latitude) &&
+          Number.isFinite(preferredLatitude)
+        ) {
+          finalAddressPayload.latitude = preferredLatitude;
         }
-
-        if (!Number.isFinite(finalAddressPayload.latitude)) {
-          if (Number.isFinite(preferredLatitude)) {
-            finalAddressPayload.latitude = preferredLatitude;
-          } else {
-            finalAddressPayload.latitude = null;
-          }
-        }
-
-        if (!Number.isFinite(finalAddressPayload.longitude)) {
-          if (Number.isFinite(preferredLongitude)) {
-            finalAddressPayload.longitude = preferredLongitude;
-          } else {
-            finalAddressPayload.longitude = null;
-          }
+        if (
+          !Number.isFinite(finalAddressPayload.longitude) &&
+          Number.isFinite(preferredLongitude)
+        ) {
+          finalAddressPayload.longitude = preferredLongitude;
         }
       } else if (finalAddressVariant === "normalized") {
         const enforcedNormalizedSurface = applyAddressSchemaDefaultsForVariant(
@@ -9690,15 +9698,14 @@ async function main() {
         if (enforcedNormalizedSurface) {
           finalAddressPayload = enforcedNormalizedSurface;
         }
-      }
-
-      if (finalAddressPayload) {
         ensureAddressFieldSurface(
           finalAddressPayload,
           NORMALIZED_ADDRESS_FIELDS,
         );
       }
+    }
 
+    if (finalAddressPayload) {
       if (
         trimmedRequestIdentifier &&
         !hasMeaningfulAddressValue(finalAddressPayload.request_identifier)
@@ -9715,6 +9722,15 @@ async function main() {
         );
       }
 
+      if (finalAddressVariant === "raw") {
+        const prunedRawPayload = pruneRawAddressPayloadForOutput(
+          finalAddressPayload,
+        );
+        finalAddressPayload = prunedRawPayload || null;
+      }
+    }
+
+    if (finalAddressPayload) {
       writeJSON(addressFilePath, finalAddressPayload);
     } else {
       removeFileIfExists(addressFilePath);
