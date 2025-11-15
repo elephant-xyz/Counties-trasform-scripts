@@ -1078,6 +1078,13 @@ function writeRelationshipFile(directory, targetName, fromRef, toRef) {
   writeJSON(targetPath, relationshipBody);
 }
 
+const PERSON_NAME_PATTERN = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+function isValidPersonNameValue(value) {
+  if (!value) return false;
+  return PERSON_NAME_PATTERN.test(value.trim());
+}
+
 function normalizeOwnerKey(o) {
   if (!o) return null;
   const fn = (o.first_name || "").trim().toLowerCase();
@@ -2408,10 +2415,21 @@ async function main() {
   // console.log(combined)
   combined.forEach((o) => {
     if (o && o.type === "person") {
-      const key = normalizeOwnerKey(o);
+      const first = (o.first_name || "").trim();
+      const last = (o.last_name || "").trim();
+      if (!isValidPersonNameValue(first) || !isValidPersonNameValue(last)) {
+        return;
+      }
+      const normalized = {
+        ...o,
+        first_name: first,
+        last_name: last,
+        middle_name: o.middle_name ? o.middle_name.trim() || null : null,
+      };
+      const key = normalizeOwnerKey(normalized);
       if (key && !seenPersons.has(key)) {
         seenPersons.add(key);
-        uniquePersons.push({ o, key });
+        uniquePersons.push({ o: normalized, key });
       }
     } else if (o && o.type === "company") {
       const key = normalizeCompanyKey(o);
@@ -2425,12 +2443,13 @@ async function main() {
   // Create person files
   uniquePersons.forEach((entry, idx) => {
     const o = entry.o;
+    const middle = o.middle_name ? o.middle_name.trim() || null : null;
     const person = {
       ...appendSourceInfo(seed),
       birth_date: null,
-      first_name: o.first_name || "",
-      last_name: o.last_name || "",
-      middle_name: o.middle_name || null,
+      first_name: o.first_name,
+      last_name: o.last_name,
+      middle_name: middle,
       prefix_name: null,
       suffix_name: null,
       us_citizenship_status: null,
@@ -2458,7 +2477,18 @@ async function main() {
   currentOwners.forEach((o) => {
     // console.log("relIdx",relIdx);
     if (o && o.type === "person") {
-      const key = normalizeOwnerKey(o);
+      const first = (o.first_name || "").trim();
+      const last = (o.last_name || "").trim();
+      if (!isValidPersonNameValue(first) || !isValidPersonNameValue(last)) {
+        return;
+      }
+      const lookupOwner = {
+        ...o,
+        first_name: first,
+        last_name: last,
+        middle_name: o.middle_name ? o.middle_name.trim() || null : null,
+      };
+      const key = normalizeOwnerKey(lookupOwner);
       const pf = personFilesByKey[key];
       if (pf) {
         relIdx += 1;
