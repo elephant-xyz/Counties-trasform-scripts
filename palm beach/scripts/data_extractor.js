@@ -10400,8 +10400,44 @@ async function main() {
             }
           }
         }
+        if (payloadToWrite) {
+          const variantHintForSurface =
+            preferRawVariant ||
+            finalAddressVariant === "raw" ||
+            (payloadToWrite &&
+              typeof payloadToWrite.unnormalized_address === "string" &&
+              payloadToWrite.unnormalized_address.trim().length)
+              ? "raw"
+              : "normalized";
 
-        writeJSON(addressFilePath, payloadToWrite);
+          const surfacedForSchema =
+            ensureAddressOutputFieldPresence(payloadToWrite) || payloadToWrite;
+          const variantAligned =
+            applyAddressSchemaDefaultsForVariant(
+              surfacedForSchema,
+              variantHintForSurface,
+            ) || surfacedForSchema;
+          const enforcedOneOf =
+            enforceAddressOneOfSurface(variantAligned) || variantAligned;
+
+          payloadToWrite =
+            ensureAddressOutputFieldPresence(enforcedOneOf) || enforcedOneOf;
+
+          if (
+            variantHintForSurface === "raw" &&
+            (!payloadToWrite ||
+              typeof payloadToWrite.unnormalized_address !== "string" ||
+              !payloadToWrite.unnormalized_address.trim().length)
+          ) {
+            payloadToWrite = null;
+          }
+        }
+
+        if (payloadToWrite) {
+          writeJSON(addressFilePath, payloadToWrite);
+        } else {
+          removeFileIfExists(addressFilePath);
+        }
       } else {
         removeFileIfExists(addressFilePath);
       }
