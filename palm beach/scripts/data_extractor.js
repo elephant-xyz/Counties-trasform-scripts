@@ -9075,6 +9075,8 @@ async function main() {
       latitude: preferredLatitude,
       longitude: preferredLongitude,
     };
+    const hasPreferredCoordinates =
+      Number.isFinite(preferredLatitude) && Number.isFinite(preferredLongitude);
 
     if (
       !hasMeaningfulAddressValue(baseAddressSeed.postal_code) &&
@@ -9435,6 +9437,19 @@ async function main() {
         rawResult.country_code = "US";
       }
 
+      if (
+        !Number.isFinite(rawResult.latitude) &&
+        Number.isFinite(preferredLatitude)
+      ) {
+        rawResult.latitude = preferredLatitude;
+      }
+      if (
+        !Number.isFinite(rawResult.longitude) &&
+        Number.isFinite(preferredLongitude)
+      ) {
+        rawResult.longitude = preferredLongitude;
+      }
+
       finalAddressPayload = rawResult;
       finalAddressVariant = "raw";
     }
@@ -9447,6 +9462,26 @@ async function main() {
         if (enforcedRawSurface) {
           finalAddressPayload = enforcedRawSurface;
         }
+
+        if (
+          (!Number.isFinite(finalAddressPayload.latitude) ||
+            !Number.isFinite(finalAddressPayload.longitude)) &&
+          hasPreferredCoordinates
+        ) {
+          if (!Number.isFinite(finalAddressPayload.latitude)) {
+            finalAddressPayload.latitude = preferredLatitude;
+          }
+          if (!Number.isFinite(finalAddressPayload.longitude)) {
+            finalAddressPayload.longitude = preferredLongitude;
+          }
+        }
+
+        if (
+          !Number.isFinite(finalAddressPayload.latitude) ||
+          !Number.isFinite(finalAddressPayload.longitude)
+        ) {
+          finalAddressPayload = null;
+        }
       } else if (finalAddressVariant === "normalized") {
         const enforcedNormalizedSurface = applyAddressSchemaDefaultsForVariant(
           finalAddressPayload,
@@ -9455,6 +9490,13 @@ async function main() {
         if (enforcedNormalizedSurface) {
           finalAddressPayload = enforcedNormalizedSurface;
         }
+      }
+
+      if (finalAddressPayload) {
+        ensureAddressFieldSurface(
+          finalAddressPayload,
+          NORMALIZED_ADDRESS_FIELDS,
+        );
       }
 
       if (
