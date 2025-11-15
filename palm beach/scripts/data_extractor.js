@@ -4378,6 +4378,96 @@ function buildAddressPayloadForWrite(address, variantHint = null) {
   return materialized;
 }
 
+function buildCountyAddressOutput(candidate) {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const normalizedSurface = NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {});
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const hasField = Object.prototype.hasOwnProperty.call(candidate, field);
+    let value = hasField ? candidate[field] : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      normalizedSurface[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, value);
+    if (normalizedValue === undefined || normalizedValue === null) {
+      normalizedSurface[field] = null;
+      continue;
+    }
+
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      normalizedSurface[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    normalizedSurface[field] = normalizedValue;
+  }
+
+  const hasLatitude = Number.isFinite(normalizedSurface.latitude);
+  const hasLongitude = Number.isFinite(normalizedSurface.longitude);
+  if (hasLatitude !== hasLongitude) {
+    normalizedSurface.latitude = null;
+    normalizedSurface.longitude = null;
+  }
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
+  }
+  if (normalizedSurface.state_code && !normalizedSurface.country_code) {
+    normalizedSurface.country_code = "US";
+  }
+
+  const requestIdentifier = safeNullIfEmpty(candidate.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    candidate.source_http_request,
+  );
+
+  const trimmedUnnormalized =
+    typeof candidate.unnormalized_address === "string"
+      ? candidate.unnormalized_address.trim()
+      : "";
+
+  if (trimmedUnnormalized.length) {
+    const rawOutput = {
+      ...normalizedSurface,
+      unnormalized_address: trimmedUnnormalized,
+    };
+    if (requestIdentifier) {
+      rawOutput.request_identifier = requestIdentifier;
+    }
+    if (preparedSource) {
+      rawOutput.source_http_request = deepClone(preparedSource);
+    }
+    return rawOutput;
+  }
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedSurface[field] === "string" &&
+      normalizedSurface[field].trim().length > 0,
+  );
+  if (!hasNormalizedCoverage) {
+    return null;
+  }
+
+  const normalizedOutput = { ...normalizedSurface };
+  if (requestIdentifier) {
+    normalizedOutput.request_identifier = requestIdentifier;
+  }
+  if (preparedSource) {
+    normalizedOutput.source_http_request = deepClone(preparedSource);
+  }
+  return normalizedOutput;
+}
+
 function materializeAddressVariantForOutput(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -10598,93 +10688,13 @@ async function main() {
         }
 
         if (payloadToWrite) {
-          let writeReady = buildAddressPayloadForWrite(
+          const writeReady = buildAddressPayloadForWrite(
             payloadToWrite,
             variantHintForSurface,
           );
-          if (writeReady) {
-            const hasRawString =
-              typeof writeReady.unnormalized_address === "string" &&
-              writeReady.unnormalized_address.trim().length > 0;
-
-            if (hasRawString) {
-              for (const field of NORMALIZED_ADDRESS_FIELDS) {
-                if (!Object.prototype.hasOwnProperty.call(writeReady, field)) {
-                  writeReady[field] = null;
-                  continue;
-                }
-                const value = writeReady[field];
-                if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-                  const numeric = parseCoordinate(value);
-                  writeReady[field] = Number.isFinite(numeric) ? numeric : null;
-                  continue;
-                }
-                if (typeof value === "string") {
-                  const trimmed = value.trim();
-                  writeReady[field] = trimmed.length ? trimmed : null;
-                  continue;
-                }
-                writeReady[field] = value == null ? null : value;
-              }
-              if (!writeReady.postal_code) {
-                writeReady.plus_four_postal_code = null;
-              }
-              if (writeReady.state_code && !writeReady.country_code) {
-                writeReady.country_code = "US";
-              }
-            } else {
-              if (
-                Object.prototype.hasOwnProperty.call(
-                  writeReady,
-                  "unnormalized_address",
-                )
-              ) {
-                delete writeReady.unnormalized_address;
-              }
-
-              const hasNormalizedRequirements =
-                NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) => {
-                  const value = writeReady[field];
-                  return (
-                    typeof value === "string" && value.trim().length > 0
-                  );
-                });
-
-              if (!hasNormalizedRequirements) {
-                writeReady = null;
-              } else {
-                for (const field of NORMALIZED_ADDRESS_FIELDS) {
-                  if (!Object.prototype.hasOwnProperty.call(writeReady, field)) {
-                    writeReady[field] = null;
-                    continue;
-                  }
-                  const value = writeReady[field];
-                  if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-                    const numeric = parseCoordinate(value);
-                    writeReady[field] = Number.isFinite(numeric)
-                      ? numeric
-                      : null;
-                    continue;
-                  }
-                  if (typeof value === "string") {
-                    const trimmed = value.trim();
-                    writeReady[field] = trimmed.length ? trimmed : null;
-                    continue;
-                  }
-                  writeReady[field] = value == null ? null : value;
-                }
-                if (!writeReady.postal_code) {
-                  writeReady.plus_four_postal_code = null;
-                }
-                if (writeReady.state_code && !writeReady.country_code) {
-                  writeReady.country_code = "US";
-                }
-              }
-            }
-          }
-
-          if (writeReady) {
-            writeJSON(addressFilePath, writeReady);
+          const finalizedAddress = buildCountyAddressOutput(writeReady);
+          if (finalizedAddress) {
+            writeJSON(addressFilePath, finalizedAddress);
           } else {
             removeFileIfExists(addressFilePath);
           }
