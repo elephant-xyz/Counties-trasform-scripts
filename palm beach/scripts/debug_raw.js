@@ -824,6 +824,100 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
   return finalized;
 }
 
+function finalizeCountyAddressFile(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const hasRaw = trimmedRaw.length > 0;
+
+  const baseFields = hasRaw
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+
+  const normalized = {};
+
+  if (hasRaw) {
+    normalized.unnormalized_address = trimmedRaw;
+  }
+
+  for (const field of baseFields) {
+    if (field === "unnormalized_address") continue;
+
+    let value = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      normalized[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      normalized[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      normalized[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    normalized[field] =
+      value === undefined || value === null ? null : value;
+  }
+
+  for (const field of baseFields) {
+    if (field === "unnormalized_address") continue;
+    if (!Object.prototype.hasOwnProperty.call(normalized, field)) {
+      normalized[field] = null;
+    }
+  }
+
+  if (!normalized.postal_code) {
+    normalized.plus_four_postal_code = null;
+  }
+  if (normalized.state_code && !normalized.country_code) {
+    normalized.country_code = "US";
+  }
+
+  const trimmedRequest = safeNullIfEmpty(payload.request_identifier);
+  if (trimmedRequest) {
+    normalized.request_identifier = trimmedRequest;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request") &&
+    payload.source_http_request
+  ) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    if (prepared) {
+      normalized.source_http_request = prepared;
+    }
+  }
+
+  writeJSON(addressFilePath, normalized);
+}
+
 function deriveNormalizedAddressFromFullText(fullText, options = {}) {
   const normalized = normalizeWhitespace(fullText);
   if (!normalized) {
@@ -2898,11 +2992,7 @@ function pruneRawAddressForSchema(address, options = {}) {
     !Object.prototype.hasOwnProperty.call(pruned, "postal_code") &&
     Object.prototype.hasOwnProperty.call(pruned, "plus_four_postal_code")
   ) {
-    if (preserveNulls) {
-      pruned.plus_four_postal_code = null;
-    } else {
-      delete pruned.plus_four_postal_code;
-    }
+    pruned.plus_four_postal_code = null;
   }
 
   if (
@@ -5109,6 +5199,7 @@ async function main() {
       removeFileIfExists(addressFilePath);
     }
 
+    finalizeCountyAddressFile(addressFilePath);
     removeFileIfExists(propertyAddressRelationshipPath);
     removeFileIfExists(addressFactSheetRelationshipPath);
   }
