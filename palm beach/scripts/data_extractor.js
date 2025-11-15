@@ -1682,17 +1682,9 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   "source_http_request",
 ]);
 
-const RAW_VARIANT_SCHEMA_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+// Raw variant should expose the full normalized surface so the schema's oneOf
+// branch that allows an unnormalized string still sees the required keys.
+const RAW_VARIANT_SCHEMA_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
 
 function applyAddressSchemaDefaultsForVariant(address, variantHint) {

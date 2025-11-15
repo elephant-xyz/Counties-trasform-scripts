@@ -1828,17 +1828,9 @@ const RAW_ADDRESS_SURFACE_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_ALLOW
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-const RAW_VARIANT_SCHEMA_FIELDS = [
-  "latitude",
-  "longitude",
-  "county_name",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+// Align raw variant with normalized surface so the schema oneOf that permits
+// unnormalized strings still sees every nullable key.
+const RAW_VARIANT_SCHEMA_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
