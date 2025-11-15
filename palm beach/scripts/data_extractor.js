@@ -1931,36 +1931,52 @@ function hasMeaningfulAddressValue(value) {
 function hasRawAddressRequiredFields(address) {
   if (!address || typeof address !== "object") return false;
 
-  const unnormalized =
+  const trimmedUnnormalized =
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
       : "";
-  if (!unnormalized.length) {
+  if (!trimmedUnnormalized.length) {
     return false;
   }
 
+  address.unnormalized_address = trimmedUnnormalized;
+
+  let hasSupportingField = false;
+
   for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      return false;
-    }
-
-    const value = address[field];
-
-    if (!hasMeaningfulAddressValue(value)) {
-      return false;
-    }
-
-    if (typeof value === "string") {
-      address[field] = value.trim();
-    }
-  }
-
-  for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, coordinateField)) {
       continue;
     }
-    const numeric = parseCoordinate(address[coordinateField]);
-    address[coordinateField] = Number.isFinite(numeric) ? numeric : null;
+
+    const currentValue = address[field];
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(currentValue);
+      if (Number.isFinite(numeric)) {
+        address[field] = numeric;
+        hasSupportingField = true;
+      } else {
+        address[field] = null;
+      }
+      continue;
+    }
+
+    if (typeof currentValue === "string") {
+      const trimmed = currentValue.trim();
+      if (trimmed.length) {
+        address[field] = trimmed;
+        hasSupportingField = true;
+      } else {
+        address[field] = null;
+      }
+      continue;
+    }
+
+    if (hasMeaningfulAddressValue(currentValue)) {
+      hasSupportingField = true;
+    } else {
+      address[field] = null;
+    }
   }
 
   if (
@@ -1968,9 +1984,11 @@ function hasRawAddressRequiredFields(address) {
     !hasMeaningfulAddressValue(address.country_code)
   ) {
     address.country_code = "US";
+    hasSupportingField = true;
   }
 
-  return true;
+  // Permit raw addresses that only supply an unnormalized string by treating that as minimal coverage.
+  return hasSupportingField || trimmedUnnormalized.length > 0;
 }
 
 function hasRawAddressStrictValues(address) {
