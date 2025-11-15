@@ -2079,6 +2079,10 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
     candidate.plus_four_postal_code = null;
   }
 
+  backfillNormalizedAddressFields(candidate, {
+    unnormalized: trimmedUnnormalized,
+  });
+
   const hasLatitude = Number.isFinite(candidate.latitude);
   const hasLongitude = Number.isFinite(candidate.longitude);
   if (hasLatitude !== hasLongitude) {
@@ -4140,6 +4144,12 @@ function enforceAddressSchemaSurfaceForOutput(address) {
     result.country_code = "US";
   }
 
+  if (hasUnnormalized && normalizedUnnormalized.length) {
+    backfillNormalizedAddressFields(result, {
+      unnormalized: normalizedUnnormalized,
+    });
+  }
+
   return result;
 }
 
@@ -4389,6 +4399,12 @@ function ensureAddressOutputFieldPresence(address) {
   }
   if (result.state_code && !result.country_code) {
     result.country_code = "US";
+  }
+
+  if (hasUnnormalized && normalizedUnnormalized.length) {
+    backfillNormalizedAddressFields(result, {
+      unnormalized: normalizedUnnormalized,
+    });
   }
 
   return result;
@@ -6200,6 +6216,10 @@ function ensureRawAddressSchemaDefaults(address) {
   if (result.state_code && !result.country_code) {
     result.country_code = "US";
   }
+
+  backfillNormalizedAddressFields(result, {
+    unnormalized: trimmedUnnormalized,
+  });
 
   return result;
 }
