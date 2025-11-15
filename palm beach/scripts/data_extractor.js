@@ -11213,7 +11213,63 @@ async function main() {
         );
 
         if (schemaAlignedAddress) {
-          writeJSON(addressFilePath, schemaAlignedAddress);
+          const hasRawUnnormalized =
+            typeof schemaAlignedAddress.unnormalized_address === "string" &&
+            schemaAlignedAddress.unnormalized_address.trim().length > 0;
+
+          const surfacedAddress =
+            ensureAddressOutputFieldPresence(schemaAlignedAddress) ||
+            schemaAlignedAddress;
+
+          const templatedAddress =
+            buildAddressPayloadForWrite(
+              surfacedAddress,
+              hasRawUnnormalized ? "raw" : "normalized",
+            ) || surfacedAddress;
+
+          const finalizedSurface =
+            ensureAddressOutputFieldPresence(templatedAddress) ||
+            templatedAddress;
+
+          for (const coordField of ADDRESS_COORDINATE_FIELDS) {
+            if (!Number.isFinite(finalizedSurface[coordField])) {
+              finalizedSurface[coordField] = null;
+            }
+          }
+
+          if (!finalizedSurface.postal_code) {
+            finalizedSurface.plus_four_postal_code = null;
+          }
+          if (
+            finalizedSurface.state_code &&
+            !finalizedSurface.country_code
+          ) {
+            finalizedSurface.country_code = "US";
+          }
+
+          if (hasRawUnnormalized) {
+            const trimmed =
+              schemaAlignedAddress.unnormalized_address.trim();
+            if (trimmed.length) {
+              finalizedSurface.unnormalized_address = trimmed;
+            } else if (
+              Object.prototype.hasOwnProperty.call(
+                finalizedSurface,
+                "unnormalized_address",
+              )
+            ) {
+              delete finalizedSurface.unnormalized_address;
+            }
+          } else if (
+            Object.prototype.hasOwnProperty.call(
+              finalizedSurface,
+              "unnormalized_address",
+            )
+          ) {
+            delete finalizedSurface.unnormalized_address;
+          }
+
+          writeJSON(addressFilePath, finalizedSurface);
         } else {
           removeFileIfExists(addressFilePath);
         }
