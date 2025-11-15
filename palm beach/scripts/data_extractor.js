@@ -4733,10 +4733,15 @@ function enforceFinalAddressSchemaOutput(addressFilePath) {
   );
 
   if (hasRawUnnormalized) {
-    const rawOutput = { unnormalized_address: trimmedUnnormalized };
-    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const rawOutput = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedUnnormalized,
+    };
+
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
       const value = normalizedSurface[field];
-      rawOutput[field] = value === undefined || value === null ? null : value;
+      rawOutput[field] =
+        value === undefined || value === null ? null : value;
     }
     if (!rawOutput.postal_code) {
       rawOutput.plus_four_postal_code = null;
