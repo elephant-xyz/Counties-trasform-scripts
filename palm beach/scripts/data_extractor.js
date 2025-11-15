@@ -10596,10 +10596,91 @@ async function main() {
         }
 
         if (payloadToWrite) {
-          const writeReady = buildAddressPayloadForWrite(
+          let writeReady = buildAddressPayloadForWrite(
             payloadToWrite,
             variantHintForSurface,
           );
+          if (writeReady) {
+            const hasRawString =
+              typeof writeReady.unnormalized_address === "string" &&
+              writeReady.unnormalized_address.trim().length > 0;
+
+            if (hasRawString) {
+              for (const field of NORMALIZED_ADDRESS_FIELDS) {
+                if (!Object.prototype.hasOwnProperty.call(writeReady, field)) {
+                  writeReady[field] = null;
+                  continue;
+                }
+                const value = writeReady[field];
+                if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+                  const numeric = parseCoordinate(value);
+                  writeReady[field] = Number.isFinite(numeric) ? numeric : null;
+                  continue;
+                }
+                if (typeof value === "string") {
+                  const trimmed = value.trim();
+                  writeReady[field] = trimmed.length ? trimmed : null;
+                  continue;
+                }
+                writeReady[field] = value == null ? null : value;
+              }
+              if (!writeReady.postal_code) {
+                writeReady.plus_four_postal_code = null;
+              }
+              if (writeReady.state_code && !writeReady.country_code) {
+                writeReady.country_code = "US";
+              }
+            } else {
+              if (
+                Object.prototype.hasOwnProperty.call(
+                  writeReady,
+                  "unnormalized_address",
+                )
+              ) {
+                delete writeReady.unnormalized_address;
+              }
+
+              const hasNormalizedRequirements =
+                NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) => {
+                  const value = writeReady[field];
+                  return (
+                    typeof value === "string" && value.trim().length > 0
+                  );
+                });
+
+              if (!hasNormalizedRequirements) {
+                writeReady = null;
+              } else {
+                for (const field of NORMALIZED_ADDRESS_FIELDS) {
+                  if (!Object.prototype.hasOwnProperty.call(writeReady, field)) {
+                    writeReady[field] = null;
+                    continue;
+                  }
+                  const value = writeReady[field];
+                  if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+                    const numeric = parseCoordinate(value);
+                    writeReady[field] = Number.isFinite(numeric)
+                      ? numeric
+                      : null;
+                    continue;
+                  }
+                  if (typeof value === "string") {
+                    const trimmed = value.trim();
+                    writeReady[field] = trimmed.length ? trimmed : null;
+                    continue;
+                  }
+                  writeReady[field] = value == null ? null : value;
+                }
+                if (!writeReady.postal_code) {
+                  writeReady.plus_four_postal_code = null;
+                }
+                if (writeReady.state_code && !writeReady.country_code) {
+                  writeReady.country_code = "US";
+                }
+              }
+            }
+          }
+
           if (writeReady) {
             writeJSON(addressFilePath, writeReady);
           } else {
