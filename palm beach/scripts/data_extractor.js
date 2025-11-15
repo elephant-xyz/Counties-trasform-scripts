@@ -4545,6 +4545,120 @@ function buildCountyAddressOutput(candidate) {
   return normalizedOutput;
 }
 
+function enforceFinalAddressSchemaOutput(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const hasRawUnnormalized = trimmedUnnormalized.length > 0;
+
+  const sanitizeField = (field, value) => {
+    const normalized = normalizeAddressFieldForSchema(field, value);
+    if (normalized === undefined || normalized === null) {
+      return null;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(normalized);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+    if (typeof normalized === "string") {
+      const trimmed = normalized.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    if (typeof normalized === "number") {
+      return Number.isFinite(normalized) ? normalized : null;
+    }
+    if (typeof normalized === "boolean") {
+      return normalized;
+    }
+    return null;
+  };
+
+  const normalizedSurface = NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
+    const rawValue = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    acc[field] = sanitizeField(field, rawValue);
+    return acc;
+  }, {});
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedSurface[field] === "string" &&
+      normalizedSurface[field].trim().length > 0,
+  );
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const value = normalizedSurface[field];
+      normalizedOutput[field] =
+        value === undefined || value === null ? null : value;
+    }
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    }
+    if (preparedSource) {
+      normalizedOutput.source_http_request = deepClone(preparedSource);
+    }
+    writeJSON(addressFilePath, normalizedOutput);
+    return;
+  }
+
+  if (!hasRawUnnormalized) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawOutput = { unnormalized_address: trimmedUnnormalized };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const value = normalizedSurface[field];
+    rawOutput[field] = value === undefined || value === null ? null : value;
+  }
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
+  }
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  }
+
+  writeJSON(addressFilePath, rawOutput);
+}
+
 function materializeAddressVariantForOutput(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -11274,15 +11388,17 @@ async function main() {
           removeFileIfExists(addressFilePath);
         }
       } catch (err) {
-        removeFileIfExists(addressFilePath);
-      }
+      removeFileIfExists(addressFilePath);
     }
+  }
 
-    // Relationship UR generation is now handled downstream; ensure we do not
-    // emit stale relationship payloads locally.
+  enforceFinalAddressSchemaOutput(addressFilePath);
 
-    removeFileIfExists(propertyAddressRelationshipPath);
-    removeFileIfExists(addressFactSheetRelationshipPath);
+  // Relationship UR generation is now handled downstream; ensure we do not
+  // emit stale relationship payloads locally.
+
+  removeFileIfExists(propertyAddressRelationshipPath);
+  removeFileIfExists(addressFactSheetRelationshipPath);
 
   }
 
