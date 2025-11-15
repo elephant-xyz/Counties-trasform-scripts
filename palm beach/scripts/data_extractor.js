@@ -9578,6 +9578,7 @@ async function main() {
     const canonicalUnnormalized = trimmedUnnormalized.length
       ? trimmedUnnormalized
       : null;
+    const preferRawVariant = Boolean(canonicalUnnormalized);
 
     backfillNormalizedAddressFields(addressForOutput, {
       unnormalized: canonicalUnnormalized || resolvedUnnormalized,
@@ -9818,27 +9819,33 @@ async function main() {
     let finalAddressPayload = null;
     let finalAddressVariant = null;
 
+    let normalizedResult = null;
     if (hasNormalizedCoverage) {
-      const normalizedResult = {};
+      const normalizedResultCandidate = {};
       for (const field of NORMALIZED_ADDRESS_FIELDS) {
         const value = Object.prototype.hasOwnProperty.call(normalizedPayload, field)
           ? normalizedPayload[field]
           : null;
-        normalizedResult[field] =
+        normalizedResultCandidate[field] =
           value === undefined || value === null ? null : value;
       }
 
-      if (!normalizedResult.postal_code) {
-        normalizedResult.plus_four_postal_code = null;
+      if (!normalizedResultCandidate.postal_code) {
+        normalizedResultCandidate.plus_four_postal_code = null;
       }
-      if (normalizedResult.state_code && !normalizedResult.country_code) {
-        normalizedResult.country_code = "US";
+      if (
+        normalizedResultCandidate.state_code &&
+        !normalizedResultCandidate.country_code
+      ) {
+        normalizedResultCandidate.country_code = "US";
       }
 
-      finalAddressPayload = normalizedResult;
-      finalAddressVariant = "normalized";
-    } else if (canonicalUnnormalized) {
-      const rawResult = {
+      normalizedResult = normalizedResultCandidate;
+    }
+
+    let rawResult = null;
+    if (canonicalUnnormalized) {
+      rawResult = {
         unnormalized_address: canonicalUnnormalized,
       };
 
@@ -10133,7 +10140,15 @@ async function main() {
       ) {
         rawResult.longitude = preferredLongitude;
       }
+    }
 
+    if (rawResult && preferRawVariant) {
+      finalAddressPayload = rawResult;
+      finalAddressVariant = "raw";
+    } else if (normalizedResult) {
+      finalAddressPayload = normalizedResult;
+      finalAddressVariant = "normalized";
+    } else if (rawResult) {
       finalAddressPayload = rawResult;
       finalAddressVariant = "raw";
     }
@@ -10362,25 +10377,27 @@ async function main() {
               address.street_suffix_type,
           });
 
-          const normalizedOverride = finalizeAddressForOutput(payloadToWrite, {
-            requestIdentifier:
-              preparedAddressOutput.request_identifier ||
-              trimmedRequestIdentifier ||
-              null,
-            sourceHttpRequest:
-              preparedAddressOutput.source_http_request ||
-              preparedSourceHttpRequest ||
-              null,
-          });
+          if (!preferRawVariant) {
+            const normalizedOverride = finalizeAddressForOutput(payloadToWrite, {
+              requestIdentifier:
+                preparedAddressOutput.request_identifier ||
+                trimmedRequestIdentifier ||
+                null,
+              sourceHttpRequest:
+                preparedAddressOutput.source_http_request ||
+                preparedSourceHttpRequest ||
+                null,
+            });
 
-          if (
-            normalizedOverride &&
-            !Object.prototype.hasOwnProperty.call(
-              normalizedOverride,
-              "unnormalized_address",
-            )
-          ) {
-            payloadToWrite = normalizedOverride;
+            if (
+              normalizedOverride &&
+              !Object.prototype.hasOwnProperty.call(
+                normalizedOverride,
+                "unnormalized_address",
+              )
+            ) {
+              payloadToWrite = normalizedOverride;
+            }
           }
         }
 
