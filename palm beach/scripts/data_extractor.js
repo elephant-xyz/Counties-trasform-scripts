@@ -1642,7 +1642,16 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
 
 // Preserve the full normalized surface on the raw variant so the schema's oneOf
 // can be satisfied while still carrying the unnormalized string.
-const RAW_SCHEMA_REQUIRED_FIELDS = [];
+const RAW_SCHEMA_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "street_number",
+  "street_name",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+];
 
 const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [];
 
@@ -11020,6 +11029,22 @@ async function main() {
         !preparedAddressOutput.country_code
       ) {
         preparedAddressOutput.country_code = "US";
+      }
+
+      if (
+        typeof preparedAddressOutput.unnormalized_address === "string" &&
+        preparedAddressOutput.unnormalized_address.trim().length
+      ) {
+        const rawReadinessProbe = {
+          ...preparedAddressOutput,
+          unnormalized_address: preparedAddressOutput.unnormalized_address.trim(),
+        };
+        if (!hasRawAddressRequiredFields({ ...rawReadinessProbe })) {
+          delete preparedAddressOutput.unnormalized_address;
+          if (finalAddressVariant === "raw") {
+            finalAddressVariant = "normalized";
+          }
+        }
       }
 
       const finalizedAddressForWrite = finalizeAddressPayloadForOutput(
