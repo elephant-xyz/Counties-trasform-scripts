@@ -10252,8 +10252,7 @@ async function main() {
       );
     }
 
-    const preferRawVariant =
-      Boolean(canonicalUnnormalized) && !hasNormalizedCoverage;
+    const preferRawVariant = Boolean(canonicalUnnormalized);
 
     let finalAddressPayload = null;
     let finalAddressVariant = null;
