@@ -9656,6 +9656,149 @@ async function main() {
         }
       }
 
+      enrichAddressFromUnnormalized(rawResult, canonicalUnnormalized);
+
+      const ensureRawField = (field, candidates = []) => {
+        if (hasMeaningfulAddressValue(rawResult[field])) {
+          return;
+        }
+        for (const candidate of candidates) {
+          if (!hasMeaningfulAddressValue(candidate)) continue;
+          const normalizedCandidate = normalizeAddressFieldForSchema(
+            field,
+            candidate,
+          );
+          if (normalizedCandidate === undefined || normalizedCandidate === null) {
+            continue;
+          }
+          rawResult[field] = normalizedCandidate;
+          return;
+        }
+      };
+
+      ensureRawField("street_number", [
+        normalizedPayload.street_number,
+        addressForOutput.street_number,
+        address.street_number,
+      ]);
+      ensureRawField("street_name", [
+        normalizedPayload.street_name,
+        addressForOutput.street_name,
+        address.street_name,
+        locationLine,
+      ]);
+      ensureRawField("street_pre_directional_text", [
+        normalizedPayload.street_pre_directional_text,
+        addressForOutput.street_pre_directional_text,
+        address.street_pre_directional_text,
+      ]);
+      ensureRawField("street_post_directional_text", [
+        normalizedPayload.street_post_directional_text,
+        addressForOutput.street_post_directional_text,
+        address.street_post_directional_text,
+      ]);
+      ensureRawField("street_suffix_type", [
+        normalizedPayload.street_suffix_type,
+        addressForOutput.street_suffix_type,
+        address.street_suffix_type,
+      ]);
+      ensureRawField("unit_identifier", [
+        normalizedPayload.unit_identifier,
+        addressForOutput.unit_identifier,
+        address.unit_identifier,
+        extractUnitIdentifierFromAddressLines([
+          addressLine1,
+          addressLine2,
+          locationLine,
+        ]),
+      ]);
+      ensureRawField("route_number", [
+        normalizedPayload.route_number,
+        addressForOutput.route_number,
+        address.route_number,
+      ]);
+      ensureRawField("city_name", [
+        normalizedPayload.city_name,
+        addressForOutput.city_name,
+        address.city_name,
+        normalizedCity,
+        resolvedCity,
+        parsedUnnormalizedCityState && parsedUnnormalizedCityState.city,
+      ]);
+      ensureRawField("municipality_name", [
+        normalizedPayload.municipality_name,
+        addressForOutput.municipality_name,
+        address.municipality_name,
+        normalizedMunicipality ? toTitleCase(normalizedMunicipality) : null,
+      ]);
+      ensureRawField("state_code", [
+        normalizedPayload.state_code,
+        addressForOutput.state_code,
+        address.state_code,
+        countyInferredStateCode,
+        inferredStateCode,
+        "FL",
+      ]);
+      ensureRawField("postal_code", [
+        normalizedPayload.postal_code,
+        addressForOutput.postal_code,
+        address.postal_code,
+        fallbackPostalValue,
+        postalCode,
+        parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal,
+      ]);
+      ensureRawField("plus_four_postal_code", [
+        normalizedPayload.plus_four_postal_code,
+        addressForOutput.plus_four_postal_code,
+        address.plus_four_postal_code,
+        fallbackPlus4Value,
+        plus4,
+        parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4,
+      ]);
+      ensureRawField("county_name", [
+        normalizedPayload.county_name,
+        addressForOutput.county_name,
+        address.county_name,
+        formattedCountyName,
+        defaultCounty,
+      ]);
+      ensureRawField("country_code", [
+        normalizedPayload.country_code,
+        addressForOutput.country_code,
+        address.country_code,
+        "US",
+      ]);
+      ensureRawField("township", [
+        normalizedPayload.township,
+        addressForOutput.township,
+        baseAddressSeed.township,
+        address.township,
+      ]);
+      ensureRawField("range", [
+        normalizedPayload.range,
+        addressForOutput.range,
+        baseAddressSeed.range,
+        address.range,
+      ]);
+      ensureRawField("section", [
+        normalizedPayload.section,
+        addressForOutput.section,
+        baseAddressSeed.section,
+        address.section,
+      ]);
+      ensureRawField("block", [
+        normalizedPayload.block,
+        addressForOutput.block,
+        baseAddressSeed.block,
+        address.block,
+      ]);
+      ensureRawField("lot", [
+        normalizedPayload.lot,
+        addressForOutput.lot,
+        baseAddressSeed.lot,
+        address.lot,
+      ]);
+
       if (!rawResult.postal_code) {
         delete rawResult.plus_four_postal_code;
       }
