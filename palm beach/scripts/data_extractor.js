@@ -8679,6 +8679,9 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
+    relationships: {
+      property_has_address: null,
+    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -9278,8 +9281,6 @@ async function main() {
       latitude: preferredLatitude,
       longitude: preferredLongitude,
     };
-    const hasPreferredCoordinates =
-      Number.isFinite(preferredLatitude) && Number.isFinite(preferredLongitude);
 
     if (
       !hasMeaningfulAddressValue(baseAddressSeed.postal_code) &&
@@ -9666,24 +9667,20 @@ async function main() {
           finalAddressPayload = enforcedRawSurface;
         }
 
-        if (
-          (!Number.isFinite(finalAddressPayload.latitude) ||
-            !Number.isFinite(finalAddressPayload.longitude)) &&
-          hasPreferredCoordinates
-        ) {
-          if (!Number.isFinite(finalAddressPayload.latitude)) {
+        if (!Number.isFinite(finalAddressPayload.latitude)) {
+          if (Number.isFinite(preferredLatitude)) {
             finalAddressPayload.latitude = preferredLatitude;
-          }
-          if (!Number.isFinite(finalAddressPayload.longitude)) {
-            finalAddressPayload.longitude = preferredLongitude;
+          } else {
+            finalAddressPayload.latitude = null;
           }
         }
 
-        if (
-          !Number.isFinite(finalAddressPayload.latitude) ||
-          !Number.isFinite(finalAddressPayload.longitude)
-        ) {
-          finalAddressPayload = null;
+        if (!Number.isFinite(finalAddressPayload.longitude)) {
+          if (Number.isFinite(preferredLongitude)) {
+            finalAddressPayload.longitude = preferredLongitude;
+          } else {
+            finalAddressPayload.longitude = null;
+          }
         }
       } else if (finalAddressVariant === "normalized") {
         const enforcedNormalizedSurface = applyAddressSchemaDefaultsForVariant(
