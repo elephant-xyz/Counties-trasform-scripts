@@ -3161,6 +3161,28 @@ const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 
+function hasRawAddressRequiredValues(address) {
+  if (!address || typeof address !== "object") return false;
+
+  const coordsPresent =
+    Number.isFinite(address.latitude) && Number.isFinite(address.longitude);
+  if (!coordsPresent) {
+    return false;
+  }
+
+  const stringRequiredFields = RAW_SCHEMA_REQUIRED_FIELDS.filter(
+    (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
+  );
+
+  for (const field of stringRequiredFields) {
+    if (!hasMeaningfulAddressValue(address[field])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "street_number",
   "street_name",
@@ -4566,7 +4588,64 @@ function buildCountyAddressOutput(candidate) {
     }
     const rawWithDefaults =
       ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
-    return rawWithDefaults;
+
+    if (hasRawAddressRequiredValues(rawWithDefaults)) {
+      return rawWithDefaults;
+    }
+
+    const normalizedSeed = {
+      ...normalizedSurface,
+      latitude: rawWithDefaults.latitude,
+      longitude: rawWithDefaults.longitude,
+    };
+
+    const normalizedFromUnnormalized =
+      buildNormalizedAddressFromUnnormalized(
+        normalizedSeed,
+        trimmedUnnormalized,
+        {
+          seed: normalizedSeed,
+          latitudeCandidates: Number.isFinite(rawWithDefaults.latitude)
+            ? [rawWithDefaults.latitude]
+            : [],
+          longitudeCandidates: Number.isFinite(rawWithDefaults.longitude)
+            ? [rawWithDefaults.longitude]
+            : [],
+        },
+      ) || normalizedSeed;
+
+    const normalizedSurfaceFallback =
+      ensureNormalizedAddressSchemaSurface(normalizedFromUnnormalized) || null;
+
+    if (normalizedSurfaceFallback) {
+      const hasNormalizedCoverageFallback =
+        NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+          (field) =>
+            typeof normalizedSurfaceFallback[field] === "string" &&
+            normalizedSurfaceFallback[field].trim().length > 0,
+        );
+
+      if (hasNormalizedCoverageFallback) {
+        if (requestIdentifier) {
+          normalizedSurfaceFallback.request_identifier = requestIdentifier;
+        }
+        if (preparedSource) {
+          normalizedSurfaceFallback.source_http_request =
+            deepClone(preparedSource);
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedSurfaceFallback,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedSurfaceFallback.unnormalized_address;
+        }
+        return normalizedSurfaceFallback;
+      }
+    }
+
+    return null;
   }
 
   const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
@@ -10150,7 +10229,10 @@ async function main() {
       });
 
     const fallbackPcnSource =
-      (modelDetail && modelDetail.FormattedPCN) || pcnHyphen || null;
+      (modelDetail && modelDetail.FormattedPCN) ||
+      pcnHyphen ||
+      parcelId ||
+      null;
     const fallbackPostalValue = stateMismatch ? null : sanitizedPostalCode;
     const fallbackPlus4Value = stateMismatch ? null : sanitizedPlus4;
 
