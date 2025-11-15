@@ -4523,9 +4523,7 @@ function buildCountyAddressOutput(candidate) {
     }
     const rawWithDefaults =
       ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
-    const minimalRaw =
-      composeMinimalRawAddress(rawWithDefaults) || rawWithDefaults;
-    return minimalRaw;
+    return rawWithDefaults;
   }
 
   const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
@@ -11002,10 +11000,7 @@ async function main() {
               const finalRaw =
                 ensureAddressOutputFieldPresence(enforced) || enforced;
 
-              const minimalRawOutput =
-                composeMinimalRawAddress(finalRaw) || finalRaw;
-
-              writeJSON(addressFilePath, minimalRawOutput);
+              writeJSON(addressFilePath, finalRaw);
             } else {
               removeFileIfExists(addressFilePath);
             }

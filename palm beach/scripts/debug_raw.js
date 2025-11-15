@@ -3262,9 +3262,7 @@ function enforceAddressOneOfSurface(address) {
 
     const rawWithDefaults =
       ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
-    const minimalRaw =
-      composeMinimalRawAddress(rawWithDefaults) || rawWithDefaults;
-    return minimalRaw;
+    return rawWithDefaults;
   }
 
   const normalizedOutput = {};
@@ -5011,9 +5009,6 @@ async function main() {
                 preparedForWrite;
               preparedForWrite =
                 ensureAddressOutputFieldPresence(preparedForWrite) ||
-                preparedForWrite;
-              preparedForWrite =
-                composeMinimalRawAddress(preparedForWrite) ||
                 preparedForWrite;
             } else if (preparedForWrite) {
               preparedForWrite =
