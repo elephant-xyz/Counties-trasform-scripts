@@ -3076,17 +3076,18 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLO
 function ensureRawAddressSchemaDefaults(address) {
   if (!address || typeof address !== "object") return null;
 
-  const unnormalized =
+  const trimmedUnnormalized =
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
       : "";
-  if (!unnormalized.length) {
+  if (!trimmedUnnormalized.length) {
     return null;
   }
 
   const result = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     ...address,
-    unnormalized_address: unnormalized,
+    unnormalized_address: trimmedUnnormalized,
   };
 
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
@@ -3095,19 +3096,20 @@ function ensureRawAddressSchemaDefaults(address) {
       continue;
     }
 
-    if (result[field] === undefined) {
+    const currentValue = result[field];
+    if (currentValue === undefined || currentValue === null) {
       result[field] = null;
       continue;
     }
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(result[field]);
-      result[field] = numeric != null ? numeric : null;
+      const numeric = parseCoordinate(currentValue);
+      result[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
 
-    if (typeof result[field] === "string") {
-      const trimmed = result[field].trim();
+    if (typeof currentValue === "string") {
+      const trimmed = currentValue.trim();
       result[field] = trimmed.length ? trimmed : null;
     }
   }

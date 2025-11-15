@@ -6013,18 +6013,51 @@ function buildRawSchemaAlignedAddress(address) {
 function ensureRawAddressSchemaDefaults(address) {
   if (!address || typeof address !== "object") return null;
 
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
   const result = {
     ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     ...address,
+    unnormalized_address: trimmedUnnormalized,
   };
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    if (
-      !Object.prototype.hasOwnProperty.call(result, field) ||
-      result[field] === undefined
-    ) {
+    if (!Object.prototype.hasOwnProperty.call(result, field)) {
       result[field] = null;
+      continue;
     }
+
+    const currentValue = result[field];
+    if (currentValue === undefined || currentValue === null) {
+      result[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(currentValue);
+      result[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof currentValue === "string") {
+      const trimmed = currentValue.trim();
+      result[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
   }
 
   return result;
