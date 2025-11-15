@@ -10919,15 +10919,30 @@ async function main() {
               allowedFields: RAW_ADDRESS_ALLOWED_FIELDS,
             });
             if (filteredRaw) {
+              const hydratedRaw = { ...filteredRaw };
               if (trimmedRequestIdentifier) {
-                filteredRaw.request_identifier = trimmedRequestIdentifier;
+                hydratedRaw.request_identifier = trimmedRequestIdentifier;
               }
               if (preparedSourceHttpRequest) {
-                filteredRaw.source_http_request = deepClone(
+                hydratedRaw.source_http_request = deepClone(
                   preparedSourceHttpRequest,
                 );
               }
-              writeJSON(addressFilePath, filteredRaw);
+
+              const withDefaults =
+                ensureRawAddressSchemaDefaults(hydratedRaw) || hydratedRaw;
+              const surfacedRaw =
+                ensureAddressOutputFieldPresence(withDefaults) ||
+                withDefaults;
+              const variantAligned =
+                applyAddressSchemaDefaultsForVariant(surfacedRaw, "raw") ||
+                surfacedRaw;
+              const enforced =
+                enforceAddressOneOfSurface(variantAligned) || variantAligned;
+              const finalRaw =
+                ensureAddressOutputFieldPresence(enforced) || enforced;
+
+              writeJSON(addressFilePath, finalRaw);
             } else {
               removeFileIfExists(addressFilePath);
             }
