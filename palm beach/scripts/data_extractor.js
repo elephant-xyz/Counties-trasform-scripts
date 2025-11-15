@@ -394,6 +394,153 @@ async function geocodeAddressWithNominatim(query) {
   }
 }
 
+function collectNonEmptyStrings(...values) {
+  const flattened = values.flat();
+  const seen = new Set();
+  const results = [];
+  for (const candidate of flattened) {
+    if (candidate === undefined || candidate === null) continue;
+    let raw = candidate;
+    if (typeof raw !== "string") {
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        raw = String(raw);
+      } else {
+        continue;
+      }
+    }
+    const normalized = normalizeWhitespace(raw);
+    if (!normalized) continue;
+    const key = normalized.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(normalized);
+  }
+  return results;
+}
+
+function composeStreetLineForGeocode(address) {
+  if (!address || typeof address !== "object") return null;
+  const segments = [];
+  const pushSegment = (value) => {
+    if (value === undefined || value === null) return;
+    const normalized = normalizeWhitespace(value);
+    if (!normalized) return;
+    segments.push(normalized);
+  };
+
+  pushSegment(address.street_number);
+  pushSegment(address.street_pre_directional_text);
+  pushSegment(address.street_name);
+  pushSegment(address.street_suffix_type);
+  pushSegment(address.street_post_directional_text);
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "unit_identifier") &&
+    address.unit_identifier !== undefined &&
+    address.unit_identifier !== null
+  ) {
+    const unitSegment = normalizeWhitespace(address.unit_identifier);
+    if (unitSegment) {
+      segments.push(`#${unitSegment}`);
+    }
+  }
+
+  return segments.length ? segments.join(" ") : null;
+}
+
+async function geocodeAddressWithFallbacks(options = {}) {
+  const {
+    primaryQuery = null,
+    address = null,
+    cityHints = [],
+    municipalityHints = [],
+    countyHints = [],
+    stateHints = [],
+    postalHints = [],
+  } = options;
+
+  const queries = [];
+  const seenQueries = new Set();
+  const enqueueQuery = (candidate) => {
+    if (candidate === undefined || candidate === null) return;
+    const normalized = normalizeWhitespace(candidate);
+    if (!normalized) return;
+    const key = normalized.toUpperCase();
+    if (seenQueries.has(key)) return;
+    seenQueries.add(key);
+    queries.push(normalized);
+  };
+
+  enqueueQuery(primaryQuery);
+
+  const streetLine = composeStreetLineForGeocode(address);
+  const stateCandidates = collectNonEmptyStrings(stateHints);
+  if (!stateCandidates.length) {
+    stateCandidates.push("FL");
+  }
+  const cityCandidates = collectNonEmptyStrings(cityHints, municipalityHints);
+  const countyCandidates = collectNonEmptyStrings(countyHints).map((county) =>
+    county.toUpperCase().includes("COUNTY") ? county : `${county} County`,
+  );
+  const postalCandidates = collectNonEmptyStrings(postalHints);
+
+  if (primaryQuery) {
+    for (const state of stateCandidates) {
+      enqueueQuery(`${primaryQuery}, ${state}`);
+    }
+    for (const county of countyCandidates) {
+      enqueueQuery(`${primaryQuery}, ${county}`);
+    }
+  }
+
+  if (streetLine) {
+    for (const city of cityCandidates) {
+      for (const state of stateCandidates) {
+        const base = `${streetLine}, ${city}, ${state}`;
+        enqueueQuery(base);
+        for (const postal of postalCandidates) {
+          enqueueQuery(`${base} ${postal}`);
+        }
+      }
+    }
+
+    for (const county of countyCandidates) {
+      for (const state of stateCandidates) {
+        enqueueQuery(`${streetLine}, ${county}, ${state}`);
+      }
+    }
+  }
+
+  if (cityCandidates.length) {
+    for (const city of cityCandidates) {
+      for (const state of stateCandidates) {
+        enqueueQuery(`${city}, ${state}`);
+      }
+    }
+  }
+
+  if (countyCandidates.length) {
+    for (const county of countyCandidates) {
+      for (const state of stateCandidates) {
+        enqueueQuery(`${county}, ${state}`);
+      }
+    }
+  }
+
+  if (!queries.length) {
+    return null;
+  }
+
+  for (const query of queries) {
+    const result = await geocodeAddress(query);
+    if (result) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
 async function geocodeAddressWithCensus(query) {
   const params = new URLSearchParams({
     address: query,
@@ -8609,12 +8756,61 @@ async function main() {
     }
   }
 
-  const fullAddrInput = safeNullIfEmpty(unAddr && unAddr.full_address);
+  const rawAddressCandidates = [];
+  const seenRawCandidates = new Set();
+  const pushRawCandidate = (value) => {
+    const normalized = safeNullIfEmpty(value);
+    if (!normalized) return;
+    const key = normalized.toUpperCase();
+    if (seenRawCandidates.has(key)) return;
+    seenRawCandidates.add(key);
+    rawAddressCandidates.push(normalized);
+  };
+
+  if (unAddr && typeof unAddr === "object") {
+    const candidateFields = [
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+      "raw_address",
+      "location_address",
+    ];
+    for (const field of candidateFields) {
+      if (Object.prototype.hasOwnProperty.call(unAddr, field)) {
+        pushRawCandidate(unAddr[field]);
+      }
+    }
+
+    if (Array.isArray(unAddr.lines)) {
+      const joined = unAddr.lines
+        .map((line) => safeNullIfEmpty(line))
+        .filter(Boolean)
+        .join(", ");
+      pushRawCandidate(joined);
+    }
+
+    const lineFields = ["line1", "line2", "line3", "line4"];
+    const joinedLines = lineFields
+      .map((field) => safeNullIfEmpty(unAddr[field]))
+      .filter(Boolean)
+      .join(", ");
+    pushRawCandidate(joinedLines);
+  }
+
+  const fullAddrInput = rawAddressCandidates.length
+    ? rawAddressCandidates[0]
+    : null;
   const modelAddressLines = [addressLine1, addressLine2, addressLine3].filter(Boolean);
   const combinedModelAddress = combineAddressLines(modelAddressLines);
 
-  const hasMeaningfulFullAddress = (value) =>
-    !!value && /[A-Z]/i.test(value) && /\d/.test(value);
+  const hasMeaningfulFullAddress = (value) => {
+    const normalized = normalizeWhitespace(value);
+    if (!normalized) return false;
+    if (normalized.length < 4) return false;
+    if (/[A-Za-z]/.test(normalized)) return true;
+    return /\d/.test(normalized);
+  };
 
   const locationFullAddressCandidates = [
     safeNullIfEmpty(siteLocationLine),
@@ -8836,9 +9032,32 @@ async function main() {
         !hasMeaningfulAddressValue(address.route_number));
 
     if (needsGeocodeEnhancement) {
-      const geocodeResult = await geocodeAddress(
-        unnormalizedAddressCandidate,
-      );
+      const geocodeResult = await geocodeAddressWithFallbacks({
+        primaryQuery: unnormalizedAddressCandidate,
+        address,
+        cityHints: [
+          address.city_name,
+          normalizedMunicipality,
+          resolvedCity,
+          parsedUnnormalizedCityState && parsedUnnormalizedCityState.city,
+        ],
+        municipalityHints: [normalizedMunicipality],
+        countyHints: [
+          formattedCountyName,
+          countyName,
+          defaultCounty,
+        ],
+        stateHints: [
+          inferredStateCode,
+          resolvedStateUpper,
+          countyInferredStateCode,
+        ],
+        postalHints: [
+          sanitizedPostalCode,
+          postalCode,
+          parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal,
+        ],
+      });
       if (geocodeResult) {
         applyGeocodeEnhancements(address, geocodeResult);
       }

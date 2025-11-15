@@ -4029,12 +4029,61 @@ async function main() {
     }
   }
 
-  const fullAddrInput = safeNullIfEmpty(unAddr && unAddr.full_address);
+  const rawAddressCandidates = [];
+  const seenRawCandidates = new Set();
+  const pushRawCandidate = (value) => {
+    const normalized = safeNullIfEmpty(value);
+    if (!normalized) return;
+    const key = normalized.toUpperCase();
+    if (seenRawCandidates.has(key)) return;
+    seenRawCandidates.add(key);
+    rawAddressCandidates.push(normalized);
+  };
+
+  if (unAddr && typeof unAddr === "object") {
+    const candidateFields = [
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+      "raw_address",
+      "location_address",
+    ];
+    for (const field of candidateFields) {
+      if (Object.prototype.hasOwnProperty.call(unAddr, field)) {
+        pushRawCandidate(unAddr[field]);
+      }
+    }
+
+    if (Array.isArray(unAddr.lines)) {
+      const joined = unAddr.lines
+        .map((line) => safeNullIfEmpty(line))
+        .filter(Boolean)
+        .join(", ");
+      pushRawCandidate(joined);
+    }
+
+    const lineFields = ["line1", "line2", "line3", "line4"];
+    const joinedLines = lineFields
+      .map((field) => safeNullIfEmpty(unAddr[field]))
+      .filter(Boolean)
+      .join(", ");
+    pushRawCandidate(joinedLines);
+  }
+
+  const fullAddrInput = rawAddressCandidates.length
+    ? rawAddressCandidates[0]
+    : null;
   const modelAddressLines = [addressLine1, addressLine2, addressLine3].filter(Boolean);
   const combinedModelAddress = combineAddressLines(modelAddressLines);
 
-  const hasMeaningfulFullAddress = (value) =>
-    !!value && /[A-Z]/i.test(value) && /\d/.test(value);
+  const hasMeaningfulFullAddress = (value) => {
+    const normalized = normalizeWhitespace(value);
+    if (!normalized) return false;
+    if (normalized.length < 4) return false;
+    if (/[A-Za-z]/.test(normalized)) return true;
+    return /\d/.test(normalized);
+  };
 
   const locationFullAddressCandidates = [
     safeNullIfEmpty(siteLocationLine),
