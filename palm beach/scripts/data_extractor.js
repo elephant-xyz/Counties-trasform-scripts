@@ -1682,6 +1682,19 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   "source_http_request",
 ]);
 
+const RAW_VARIANT_SCHEMA_FIELDS = [
+  "latitude",
+  "longitude",
+  "county_name",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
+const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
+
 function applyAddressSchemaDefaultsForVariant(address, variantHint) {
   if (!address || typeof address !== "object") return null;
 
@@ -2277,6 +2290,71 @@ function normalizeAddressFieldForSchema(field, value) {
       }
       return value;
   }
+}
+
+function pruneRawVariantToSchemaSurface(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const hasRaw =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+  if (!hasRaw) return address;
+
+  address.unnormalized_address = address.unnormalized_address.trim();
+
+  for (const key of Object.keys(address)) {
+    if (
+      key === "unnormalized_address" ||
+      key === "request_identifier" ||
+      key === "source_http_request" ||
+      RAW_VARIANT_SCHEMA_FIELD_SET.has(key)
+    ) {
+      continue;
+    }
+    delete address[key];
+  }
+
+  for (const field of RAW_VARIANT_SCHEMA_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+      continue;
+    }
+
+    const candidate = address[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    address[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
+  if (requestIdentifier) {
+    address.request_identifier = requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier")
+  ) {
+    address.request_identifier = null;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    address.source_http_request,
+  );
+  if (preparedSource) {
+    address.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request")
+  ) {
+    delete address.source_http_request;
+  }
+
+  return address;
 }
 
 function buildNormalizedAddressOutputForSchema(source) {
@@ -10422,6 +10500,10 @@ async function main() {
 
           payloadToWrite =
             ensureAddressOutputFieldPresence(enforcedOneOf) || enforcedOneOf;
+
+          if (variantHintForSurface === "raw" && payloadToWrite) {
+            payloadToWrite = pruneRawVariantToSchemaSurface(payloadToWrite);
+          }
 
           if (
             variantHintForSurface === "raw" &&
