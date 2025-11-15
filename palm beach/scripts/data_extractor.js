@@ -6357,6 +6357,140 @@ function buildNormalizedAddressForOutput(source, options = {}) {
   return normalized;
 }
 
+function coerceAddressToSchemaVariant(address, options = {}) {
+  if (!address || typeof address !== "object") return null;
+
+  const requestIdentifier = safeNullIfEmpty(
+    options && Object.prototype.hasOwnProperty.call(options, "requestIdentifier")
+      ? options.requestIdentifier
+      : address.request_identifier,
+  );
+
+  const sourceRequestCandidate =
+    options && Object.prototype.hasOwnProperty.call(options, "sourceHttpRequest")
+      ? options.sourceHttpRequest
+      : address.source_http_request || null;
+  const preparedSource = prepareSourceHttpRequest(sourceRequestCandidate);
+
+  const fallbackUnnormalizedCandidates = [];
+  if (typeof address.unnormalized_address === "string") {
+    fallbackUnnormalizedCandidates.push(address.unnormalized_address);
+  }
+  if (
+    options &&
+    Object.prototype.hasOwnProperty.call(options, "fallbackUnnormalized")
+  ) {
+    const fallbackValue = options.fallbackUnnormalized;
+    if (Array.isArray(fallbackValue)) {
+      for (const candidate of fallbackValue) {
+        if (candidate != null) fallbackUnnormalizedCandidates.push(candidate);
+      }
+    } else if (fallbackValue != null) {
+      fallbackUnnormalizedCandidates.push(fallbackValue);
+    }
+  }
+
+  const trimmedFallback = (() => {
+    const resolved = resolveFirstNonEmptyString(fallbackUnnormalizedCandidates);
+    if (typeof resolved !== "string") return "";
+    const trimmed = resolved.trim();
+    return trimmed.length ? trimmed : "";
+  })();
+
+  const normalizedCandidate = materializeAddressForSchema(address, "normalized", {
+    sourceHttpRequest: preparedSource,
+  });
+
+  if (normalizedCandidate) {
+    const surfacedNormalized =
+      ensureAddressOutputFieldPresence(normalizedCandidate) || normalizedCandidate;
+
+    if (requestIdentifier) {
+      surfacedNormalized.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        surfacedNormalized,
+        "request_identifier",
+      )
+    ) {
+      const trimmedRequest = safeNullIfEmpty(
+        surfacedNormalized.request_identifier,
+      );
+      surfacedNormalized.request_identifier = trimmedRequest;
+    }
+
+    if (preparedSource) {
+      surfacedNormalized.source_http_request = deepClone(preparedSource);
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        surfacedNormalized,
+        "source_http_request",
+      )
+    ) {
+      delete surfacedNormalized.source_http_request;
+    }
+
+    if (!surfacedNormalized.postal_code) {
+      surfacedNormalized.plus_four_postal_code = null;
+    }
+    if (surfacedNormalized.state_code && !surfacedNormalized.country_code) {
+      surfacedNormalized.country_code = "US";
+    }
+
+    return surfacedNormalized;
+  }
+
+  if (!trimmedFallback.length) {
+    return null;
+  }
+
+  const rawSeed = {
+    ...address,
+    unnormalized_address: trimmedFallback,
+  };
+
+  const rawCandidate =
+    materializeAddressForSchema(rawSeed, "raw", {
+      sourceHttpRequest: preparedSource,
+    }) || buildRawAddressOutputForSchema(trimmedFallback, rawSeed);
+
+  if (!rawCandidate) {
+    return null;
+  }
+
+  const surfacedRaw =
+    ensureAddressOutputFieldPresence(rawCandidate) || rawCandidate;
+
+  if (!surfacedRaw.postal_code) {
+    surfacedRaw.plus_four_postal_code = null;
+  }
+  if (surfacedRaw.state_code && !surfacedRaw.country_code) {
+    surfacedRaw.country_code = "US";
+  }
+
+  if (requestIdentifier) {
+    surfacedRaw.request_identifier = requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(surfacedRaw, "request_identifier")
+  ) {
+    const trimmedRequest = safeNullIfEmpty(surfacedRaw.request_identifier);
+    surfacedRaw.request_identifier = trimmedRequest;
+  }
+
+  if (preparedSource) {
+    surfacedRaw.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(
+      surfacedRaw,
+      "source_http_request",
+    )
+  ) {
+    delete surfacedRaw.source_http_request;
+  }
+
+  return surfacedRaw;
+}
+
 function buildRawAddressForOutput(source, options = {}) {
   if (!source || typeof source !== "object") return null;
 
@@ -11046,6 +11180,46 @@ async function main() {
       }
     } else {
       removeFileIfExists(addressFilePath);
+    }
+
+    if (fs.existsSync(addressFilePath)) {
+      try {
+        const existingAddressPayload = readJSON(addressFilePath);
+        const schemaAlignedAddress = coerceAddressToSchemaVariant(
+          existingAddressPayload,
+          {
+            fallbackUnnormalized: [
+              canonicalUnnormalized,
+              resolvedUnnormalized,
+              fallbackUnnormalizedValue,
+              unnormalizedAddressCandidate,
+              combinedModelAddress,
+              siteLocationLine,
+              fullAddr,
+              fullAddrInput,
+            ],
+            requestIdentifier:
+              trimmedRequestIdentifier ||
+              (preparedAddressOutput &&
+                safeNullIfEmpty(preparedAddressOutput.request_identifier)) ||
+              null,
+            sourceHttpRequest:
+              preparedSourceHttpRequest ||
+              (preparedAddressOutput &&
+                preparedAddressOutput.source_http_request) ||
+              existingAddressPayload.source_http_request ||
+              null,
+          },
+        );
+
+        if (schemaAlignedAddress) {
+          writeJSON(addressFilePath, schemaAlignedAddress);
+        } else {
+          removeFileIfExists(addressFilePath);
+        }
+      } catch (err) {
+        removeFileIfExists(addressFilePath);
+      }
     }
 
     // Relationship UR generation is now handled downstream; ensure we do not
