@@ -389,8 +389,10 @@ function buildStructureEntry($, card) {
   entry.finished_upper_story_area = metrics.finishedUpperArea;
   entry.primary_framing_material = primaryFraming;
   entry.roof_date = builtYear ? String(builtYear) : null;
+  const roofAgeYears =
+    builtYear != null ? currentYear - builtYear : null;
   entry.roof_age_years =
-    builtYear != null ? Math.max(currentYear - builtYear, 0) : null;
+    roofAgeYears != null && roofAgeYears >= 1 ? roofAgeYears : null;
 
   return entry;
 }
