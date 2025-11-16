@@ -11832,14 +11832,30 @@ async function main() {
             finalizedSurface.country_code = "US";
           }
 
-          const finalHasRawUnnormalized =
-            typeof finalizedSurface.unnormalized_address === "string" &&
-            finalizedSurface.unnormalized_address.trim().length > 0;
+          const normalizedCandidate =
+            ensureNormalizedAddressSchemaSurface(finalizedSurface) || null;
+          const normalizedCoverageProbe = normalizedCandidate
+            ? deepClone(normalizedCandidate)
+            : null;
+          const hasNormalizedCoverage =
+            normalizedCoverageProbe &&
+            hasCompleteNormalizedAddress(normalizedCoverageProbe);
 
-          const trimmedUnnormalized = finalHasRawUnnormalized
-            ? finalizedSurface.unnormalized_address.trim()
-            : "";
-          const finalVariant = finalHasRawUnnormalized ? "raw" : "normalized";
+          const trimmedUnnormalizedRaw =
+            typeof finalizedSurface.unnormalized_address === "string"
+              ? finalizedSurface.unnormalized_address.trim()
+              : "";
+          const rawVariantAvailable = trimmedUnnormalizedRaw.length > 0;
+
+          let finalVariant;
+          if (hasNormalizedCoverage) {
+            finalVariant = "normalized";
+          } else if (rawVariantAvailable) {
+            finalVariant = "raw";
+          } else {
+            finalVariant = "normalized";
+          }
+
           const baseTemplate =
             finalVariant === "raw"
               ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE }
@@ -11851,12 +11867,17 @@ async function main() {
               ? RAW_ADDRESS_OUTPUT_FIELDS
               : NORMALIZED_ADDRESS_FIELDS;
 
+          const outputSource =
+            finalVariant === "normalized" && normalizedCoverageProbe
+              ? normalizedCoverageProbe
+              : finalizedSurface;
+
           for (const field of fieldList) {
             let value = Object.prototype.hasOwnProperty.call(
-              finalizedSurface,
+              outputSource,
               field,
             )
-              ? finalizedSurface[field]
+              ? outputSource[field]
               : null;
 
             if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
@@ -11875,18 +11896,23 @@ async function main() {
           let shouldWriteAddress = true;
 
           if (finalVariant === "raw") {
-            if (!trimmedUnnormalized.length) {
+            if (!trimmedUnnormalizedRaw.length) {
               shouldWriteAddress = false;
             } else {
-              templatedOutput.unnormalized_address = trimmedUnnormalized;
+              templatedOutput.unnormalized_address = trimmedUnnormalizedRaw;
             }
-          } else if (
-            Object.prototype.hasOwnProperty.call(
-              templatedOutput,
-              "unnormalized_address",
-            )
-          ) {
-            delete templatedOutput.unnormalized_address;
+          } else {
+            if (
+              Object.prototype.hasOwnProperty.call(
+                templatedOutput,
+                "unnormalized_address",
+              )
+            ) {
+              delete templatedOutput.unnormalized_address;
+            }
+            if (!hasNormalizedCoverage) {
+              shouldWriteAddress = false;
+            }
           }
 
           if (!shouldWriteAddress) {
