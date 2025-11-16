@@ -5274,6 +5274,47 @@ function enforceCountyAddressOneOfCompliance(addressFilePath) {
     "source_http_request",
   );
 
+  const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    const normalized = normalizeAddressFieldForSchema(field, candidate);
+    if (normalized !== undefined && normalized !== null) {
+      normalizedOutput[field] = normalized;
+    } else {
+      normalizedOutput[field] = null;
+    }
+  }
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedOutput[field] === "string" &&
+      normalizedOutput[field].trim().length > 0,
+  );
+
+  if (hasNormalizedCoverage) {
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      normalizedOutput.request_identifier = null;
+    }
+    if (preparedSource) {
+      normalizedOutput.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      normalizedOutput.source_http_request = null;
+    }
+
+    writeJSON(addressFilePath, normalizedOutput);
+    return;
+  }
+
   if (trimmedUnnormalized.length) {
     const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
@@ -5307,43 +5348,7 @@ function enforceCountyAddressOneOfCompliance(addressFilePath) {
     return;
   }
 
-  const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-  let hasMeaningfulNormalizedValue = false;
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
-      ? payload[field]
-      : null;
-    const normalized = normalizeAddressFieldForSchema(field, candidate);
-    if (normalized !== undefined && normalized !== null) {
-      normalizedOutput[field] = normalized;
-      hasMeaningfulNormalizedValue = true;
-    } else {
-      normalizedOutput[field] = null;
-    }
-  }
-
-  if (!hasMeaningfulNormalizedValue) {
-    removeFileIfExists(addressFilePath);
-    return;
-  }
-
-  if (!normalizedOutput.postal_code) {
-    normalizedOutput.plus_four_postal_code = null;
-  }
-  if (normalizedOutput.state_code && !normalizedOutput.country_code) {
-    normalizedOutput.country_code = "US";
-  }
-  if (requestIdentifier) {
-    normalizedOutput.request_identifier = requestIdentifier;
-  } else if (hadRequestIdentifier) {
-    normalizedOutput.request_identifier = null;
-  }
-  if (preparedSource) {
-    normalizedOutput.source_http_request = deepClone(preparedSource);
-  } else if (hadSourceHttpRequest) {
-    normalizedOutput.source_http_request = null;
-  }
-  writeJSON(addressFilePath, normalizedOutput);
+  removeFileIfExists(addressFilePath);
 }
 
 function coerceAddressFileToRawVariant(addressFilePath, options = {}) {
