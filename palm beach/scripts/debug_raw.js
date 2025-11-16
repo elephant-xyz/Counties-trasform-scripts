@@ -5277,6 +5277,12 @@ async function main() {
     locationLine = streetCandidates[0];
   }
 
+  let resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
+  let inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
+  let sanitizedPostalCode = null;
+  let sanitizedPlus4 = null;
+  let stateMismatch = false;
+
   if (locationLine || normalizedCity || resolvedState || postalCode) {
     const locationLineForParsing = (() => {
       if (!locationLine) return locationLine;
@@ -5284,29 +5290,29 @@ async function main() {
       return firstSegment || locationLine;
     })();
     const parsedAddress = parseLocationAddress(locationLineForParsing);
-    const resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
-    const inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
-  const sanitizedPostalCode =
-    [
-      postalCode,
-      fullAddrInput,
-      fullAddr,
-      unnormalizedAddressCandidate,
-    ]
-      .map((candidate) => sanitizePostalCode(candidate))
-      .filter(Boolean)
-      .pop() || null;
-  const sanitizedPlus4 =
-    [
-      plus4,
-      fullAddrInput,
-      fullAddr,
-      unnormalizedAddressCandidate,
-    ]
-      .map((candidate) => sanitizePlus4(candidate))
-      .filter(Boolean)
-      .pop() || null;
-    const stateMismatch =
+    resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
+    inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
+    sanitizedPostalCode =
+      [
+        postalCode,
+        fullAddrInput,
+        fullAddr,
+        unnormalizedAddressCandidate,
+      ]
+        .map((candidate) => sanitizePostalCode(candidate))
+        .filter(Boolean)
+        .pop() || null;
+    sanitizedPlus4 =
+      [
+        plus4,
+        fullAddrInput,
+        fullAddr,
+        unnormalizedAddressCandidate,
+      ]
+        .map((candidate) => sanitizePlus4(candidate))
+        .filter(Boolean)
+        .pop() || null;
+    stateMismatch =
       countyInferredStateCode &&
       resolvedStateUpper &&
       resolvedStateUpper !== countyInferredStateCode;
@@ -5901,7 +5907,7 @@ async function main() {
 
     finalizeCountyAddressFile(addressFilePath);
     forceRawCountyAddressOutput(addressFilePath, {
-      preferRaw: true,
+      preferRaw: false,
       unnormalizedCandidates: [
         canonicalUnnormalized,
         resolvedUnnormalized,

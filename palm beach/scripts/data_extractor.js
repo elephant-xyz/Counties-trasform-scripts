@@ -4834,6 +4834,79 @@ function ensureAddressFileFieldCompleteness(addressFilePath) {
   enforceCountyAddressOneOfCompliance(addressFilePath);
 }
 
+function preferNormalizedAddressOutput(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const hasRequiredNormalizedFields = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => {
+      const value = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null;
+      return typeof value === "string" && value.trim().length > 0;
+    },
+  );
+
+  if (!hasRequiredNormalizedFields) {
+    return;
+  }
+  const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const rawValue = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(rawValue);
+      normalizedOutput[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+    normalizedOutput[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  if (!normalizedOutput.postal_code) {
+    normalizedOutput.plus_four_postal_code = null;
+  }
+
+  if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+    normalizedOutput.country_code = "US";
+  }
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    payload.request_identifier,
+  );
+  if (resolvedRequestIdentifier) {
+    normalizedOutput.request_identifier = resolvedRequestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  if (preparedSource) {
+    normalizedOutput.source_http_request = deepClone(preparedSource);
+  }
+
+  writeJSON(addressFilePath, normalizedOutput);
+}
+
 function buildAddressPayloadForWrite(address, variantHint = null) {
   if (!address || typeof address !== "object") return null;
 
@@ -9302,7 +9375,7 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
       : []),
   );
 
-  if (!trimmedRaw.length && hasNormalizedCoverage) {
+  if (hasNormalizedCoverage) {
     const normalizedOutput = finalizeAddressPayloadForOutput(
       normalizedSurface,
       "normalized",
@@ -13095,6 +13168,12 @@ async function main() {
     locationLine = streetCandidates[0];
   }
 
+  let resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
+  let inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
+  let sanitizedPostalCode = null;
+  let sanitizedPlus4 = null;
+  let stateMismatch = false;
+
   if (locationLine || normalizedCity || resolvedState || postalCode || unnormalizedAddressCandidate) {
     const locationLineForParsing = (() => {
       if (!locationLine) return locationLine;
@@ -13102,21 +13181,21 @@ async function main() {
       return firstSegment || locationLine;
     })();
     const parsedAddress = parseLocationAddress(locationLineForParsing);
-    const resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
-    const inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
-    const sanitizedPostalCode = resolveFieldFromCandidates("postal_code", [
+    resolvedStateUpper = resolvedState ? resolvedState.toUpperCase() : null;
+    inferredStateCode = countyInferredStateCode || resolvedStateUpper || null;
+    sanitizedPostalCode = resolveFieldFromCandidates("postal_code", [
       postalCode,
       fullAddrInput,
       fullAddr,
       unnormalizedAddressCandidate,
     ]);
-    const sanitizedPlus4 = resolveFieldFromCandidates("plus_four_postal_code", [
+    sanitizedPlus4 = resolveFieldFromCandidates("plus_four_postal_code", [
       plus4,
       fullAddrInput,
       fullAddr,
       unnormalizedAddressCandidate,
     ]);
-    const stateMismatch =
+    stateMismatch =
       countyInferredStateCode &&
       resolvedStateUpper &&
       resolvedStateUpper !== countyInferredStateCode;
@@ -15328,7 +15407,7 @@ async function main() {
     ],
   };
   forceRawCountyAddressOutput(addressFilePath, {
-    preferRaw: true,
+    preferRaw: false,
     unnormalizedCandidates: [
       canonicalUnnormalized,
       resolvedUnnormalized,
@@ -15701,55 +15780,9 @@ async function main() {
     ],
   });
 
-  preferRawAddressVariant(addressFilePath, {
-    fieldSources: [
-      preparedAddressOutput,
-      finalAddressPayload,
-      rawResult,
-      normalizedResult,
-      normalizedPayload,
-      addressForOutput,
-      baseAddressSeed,
-      address,
-      normalizedSnapshot,
-      unAddr,
-      seed,
-    ],
-    fieldFallbacks: addressFieldFallbacks,
-    unnormalizedCandidates: [
-      canonicalUnnormalized,
-      resolvedUnnormalized,
-      fallbackUnnormalizedValue,
-      unnormalizedAddressCandidate,
-      combinedModelAddress,
-      siteLocationLine,
-      fullAddr,
-      fullAddrInput,
-    ],
-    requestIdentifierCandidates: [
-      trimmedRequestIdentifier,
-      address && address.request_identifier,
-      baseAddressSeed && baseAddressSeed.request_identifier,
-      unAddr && unAddr.request_identifier,
-      seed && seed.request_identifier,
-    ],
-    sourceHttpRequestCandidates: [
-      preparedSourceHttpRequest,
-      finalAddressPayload && finalAddressPayload.source_http_request,
-      preparedAddressOutput && preparedAddressOutput.source_http_request,
-      address && address.source_http_request,
-      baseAddressSeed && baseAddressSeed.source_http_request,
-      unAddr && unAddr.source_http_request,
-      seed && seed.source_http_request,
-    ],
-    coordinateFallback: {
-      latitude: preferredLatitude,
-      longitude: preferredLongitude,
-    },
-  });
-
   ensureAddressFileFieldCompleteness(addressFilePath);
   enforceRawAddressSurface(addressFilePath);
+  preferNormalizedAddressOutput(addressFilePath);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
@@ -15758,6 +15791,8 @@ async function main() {
   ensureNullRelationshipFile(addressFactSheetRelationshipPath);
 
   }
+
+  preferNormalizedAddressOutput(path.join(dataDir, "address.json"));
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
@@ -16730,53 +16765,75 @@ async function main() {
     .filter((value) => typeof value === "string" && value.trim().length)
     .join(", ");
 
-  overwriteAddressWithRawBaseline(path.join(dataDir, "address.json"), {
-    unnormalizedCandidates: [
-      unAddr && unAddr.full_address,
-      siteLocationLine,
-      combinedModelAddress,
-      addressLineCombined,
-    ],
-    fieldSources: [unAddr, seed],
-    fieldFallbacks: {
-      city_name: [
-        normalizedCity,
-        resolvedCity,
+  const finalAddressPath = path.join(dataDir, "address.json");
+  let shouldOverwriteRaw = true;
+  if (fs.existsSync(finalAddressPath)) {
+    try {
+      const existingAddress = readJSON(finalAddressPath);
+      if (existingAddress && typeof existingAddress === "object") {
+        const hasNormalizedCore = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+          (field) =>
+            typeof existingAddress[field] === "string" &&
+            existingAddress[field].trim().length > 0,
+        );
+        if (hasNormalizedCore) {
+          shouldOverwriteRaw = false;
+        }
+      }
+    } catch {
+      shouldOverwriteRaw = true;
+    }
+  }
+
+  if (shouldOverwriteRaw) {
+    overwriteAddressWithRawBaseline(finalAddressPath, {
+      unnormalizedCandidates: [
+        unAddr && unAddr.full_address,
+        siteLocationLine,
+        combinedModelAddress,
+        addressLineCombined,
       ],
-      state_code: [
-        resolvedState,
-        countyInferredStateCode,
-        "FL",
-      ],
-      postal_code: [
-        sanitizedPostalCode,
-        postalCode,
-      ],
-      plus_four_postal_code: [
-        sanitizedPlus4,
-        plus4,
-      ],
-      county_name: [
-        formattedCountyName,
-        countyName,
-        "Palm Beach",
-      ],
-      municipality_name: [
-        normalizedMunicipality
-          ? toTitleCase(normalizedMunicipality)
-          : null,
-        resolvedCity,
-      ],
-    },
-    coordinateCandidates: [
-      { latitude: initialLatitude, longitude: initialLongitude },
-      parcelCentroid && {
-        latitude: parcelCentroid.latitude,
-        longitude: parcelCentroid.longitude,
+      fieldSources: [unAddr, seed],
+      fieldFallbacks: {
+        city_name: [
+          normalizedCity,
+          resolvedCity,
+        ],
+        state_code: [
+          resolvedState,
+          countyInferredStateCode,
+          "FL",
+        ],
+        postal_code: [
+          sanitizedPostalCode,
+          postalCode,
+        ],
+        plus_four_postal_code: [
+          sanitizedPlus4,
+          plus4,
+        ],
+        county_name: [
+          formattedCountyName,
+          countyName,
+          "Palm Beach",
+        ],
+        municipality_name: [
+          normalizedMunicipality
+            ? toTitleCase(normalizedMunicipality)
+            : null,
+          resolvedCity,
+        ],
       },
-    ].filter(Boolean),
-    parcelIdCandidates: [parcelId, pcnHyphen],
-  });
+      coordinateCandidates: [
+        { latitude: initialLatitude, longitude: initialLongitude },
+        parcelCentroid && {
+          latitude: parcelCentroid.latitude,
+          longitude: parcelCentroid.longitude,
+        },
+      ].filter(Boolean),
+      parcelIdCandidates: [parcelId, pcnHyphen],
+    });
+  }
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");
