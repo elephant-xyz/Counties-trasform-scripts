@@ -4788,15 +4788,26 @@ function finalizeCountyAddressFile(addressFilePath) {
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
-  const hasRaw = trimmedRaw.length > 0;
 
-  const baseFields = hasRaw
+  let useRawVariant = trimmedRaw.length > 0;
+  if (useRawVariant) {
+    const probe = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...payload,
+      unnormalized_address: trimmedRaw,
+    };
+    if (!hasRawAddressRequiredFields({ ...probe })) {
+      useRawVariant = false;
+    }
+  }
+
+  const baseFields = useRawVariant
     ? RAW_ADDRESS_OUTPUT_FIELDS
     : NORMALIZED_ADDRESS_FIELDS;
 
   const normalized = {};
 
-  if (hasRaw) {
+  if (useRawVariant) {
     normalized.unnormalized_address = trimmedRaw;
   }
 
