@@ -1640,18 +1640,10 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
-// Preserve the full normalized surface on the raw variant so the schema's oneOf
-// can be satisfied while still carrying the unnormalized string.
-const RAW_SCHEMA_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
-  "street_number",
-  "street_name",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-];
+// Raw variant only requires the persisted unnormalized string. Downstream
+// validators will populate normalized fields when available, but their absence
+// should not disqualify the raw payload.
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_REQUIRED_FIELD_SURFACE = [];
 
@@ -1941,20 +1933,26 @@ function hasRawAddressRequiredFields(address) {
 
   address.unnormalized_address = trimmedUnnormalized;
 
-  for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
-    const numeric = parseCoordinate(address[coordinateField]);
-    if (!Number.isFinite(numeric)) {
-      return false;
-    }
-    address[coordinateField] = numeric;
+  const parsedLatitude = parseCoordinate(address.latitude);
+  const parsedLongitude = parseCoordinate(address.longitude);
+  const hasLatitude = Number.isFinite(parsedLatitude);
+  const hasLongitude = Number.isFinite(parsedLongitude);
+
+  if (hasLatitude && hasLongitude) {
+    address.latitude = parsedLatitude;
+    address.longitude = parsedLongitude;
+  } else {
+    address.latitude = null;
+    address.longitude = null;
   }
 
-  for (const field of RAW_ADDRESS_REQUIRED_STRING_FIELDS) {
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) continue;
+
     const normalized = normalizeAddressFieldForSchema(field, address[field]);
-    if (!hasMeaningfulAddressValue(normalized)) {
-      return false;
-    }
-    address[field] = normalized;
+    address[field] =
+      normalized === undefined || normalized === null ? null : normalized;
   }
 
   if (
@@ -3144,20 +3142,27 @@ const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
 function hasRawAddressRequiredValues(address) {
   if (!address || typeof address !== "object") return false;
 
-  const coordsPresent =
-    Number.isFinite(address.latitude) && Number.isFinite(address.longitude);
-  if (!coordsPresent) {
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
     return false;
   }
 
-  const stringRequiredFields = RAW_SCHEMA_REQUIRED_FIELDS.filter(
-    (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
-  );
+  address.unnormalized_address = trimmedUnnormalized;
 
-  for (const field of stringRequiredFields) {
-    if (!hasMeaningfulAddressValue(address[field])) {
-      return false;
-    }
+  const parsedLatitude = parseCoordinate(address.latitude);
+  const parsedLongitude = parseCoordinate(address.longitude);
+  const hasLatitude = Number.isFinite(parsedLatitude);
+  const hasLongitude = Number.isFinite(parsedLongitude);
+
+  if (hasLatitude && hasLongitude) {
+    address.latitude = parsedLatitude;
+    address.longitude = parsedLongitude;
+  } else {
+    address.latitude = null;
+    address.longitude = null;
   }
 
   return true;
