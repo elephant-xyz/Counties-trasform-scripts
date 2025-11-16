@@ -4475,6 +4475,13 @@ function ensureAddressOutputFieldPresence(address) {
     backfillNormalizedAddressFields(result, {
       unnormalized: normalizedUnnormalized,
     });
+
+    // Ensure raw variant payloads do not surface normalized street components.
+    for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(result, field)) {
+        delete result[field];
+      }
+    }
   }
 
   return result;
