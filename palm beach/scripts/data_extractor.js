@@ -8756,16 +8756,6 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
   const trimmedRaw =
     typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
 
-  if (!trimmedRaw.length) {
-    if (
-      Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
-    ) {
-      delete payload.unnormalized_address;
-      writeJSON(addressFilePath, payload);
-    }
-    return;
-  }
-
   const candidateSources = [payload];
   if (Array.isArray(fieldSources)) {
     for (const source of fieldSources) {
@@ -8843,6 +8833,63 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
     return null;
   };
 
+  const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const value = resolveFieldValue(field);
+    normalizedCandidate[field] =
+      value === undefined || value === null ? null : value;
+  }
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface(normalizedCandidate) || null;
+  const hasNormalizedCoverage =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const requestIdentifierQueue = [];
+  if (payload.request_identifier != null) {
+    requestIdentifierQueue.push(payload.request_identifier);
+  }
+  if (Array.isArray(requestIdentifierCandidates)) {
+    requestIdentifierQueue.push(...requestIdentifierCandidates);
+  }
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString(requestIdentifierQueue),
+  );
+
+  const sourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
+      : []),
+  );
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = finalizeAddressPayloadForOutput(
+      normalizedSurface,
+      "normalized",
+    );
+    if (normalizedOutput) {
+      if (resolvedRequestIdentifier) {
+        normalizedOutput.request_identifier = resolvedRequestIdentifier;
+      }
+      if (sourceHttp) {
+        normalizedOutput.source_http_request = deepClone(sourceHttp);
+      }
+      writeJSON(addressFilePath, normalizedOutput);
+      return;
+    }
+  }
+
+  if (!trimmedRaw.length) {
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
+    ) {
+      delete payload.unnormalized_address;
+      writeJSON(addressFilePath, payload);
+    }
+    return;
+  }
+
   const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     const value = resolveFieldValue(field);
@@ -8866,26 +8913,10 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
 
   rawOutput.unnormalized_address = trimmedRaw;
 
-  const requestIdentifierQueue = [];
-  if (payload.request_identifier != null) {
-    requestIdentifierQueue.push(payload.request_identifier);
-  }
-  if (Array.isArray(requestIdentifierCandidates)) {
-    requestIdentifierQueue.push(...requestIdentifierCandidates);
-  }
-  const resolvedRequestIdentifier = safeNullIfEmpty(
-    resolveFirstNonEmptyString(requestIdentifierQueue),
-  );
   if (resolvedRequestIdentifier) {
     rawOutput.request_identifier = resolvedRequestIdentifier;
   }
 
-  const sourceHttp = resolveSourceHttpRequest(
-    payload.source_http_request,
-    ...(Array.isArray(sourceHttpRequestCandidates)
-      ? sourceHttpRequestCandidates
-      : []),
-  );
   if (sourceHttp) {
     rawOutput.source_http_request = deepClone(sourceHttp);
   }
