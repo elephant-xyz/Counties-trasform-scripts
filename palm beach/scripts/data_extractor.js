@@ -5014,6 +5014,33 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
   }
 
   const coordinateFallback = options.coordinateFallback || {};
+
+  const hasUnnormalized =
+    typeof rawSurface.unnormalized_address === "string" &&
+    rawSurface.unnormalized_address.trim().length > 0;
+
+  if (hasUnnormalized) {
+    const trimmedUnnormalized = rawSurface.unnormalized_address.trim();
+    backfillNormalizedAddressFields(rawSurface, {
+      unnormalized: trimmedUnnormalized,
+      fallbackCity: rawSurface.city_name,
+      fallbackState: rawSurface.state_code,
+      fallbackPostal: rawSurface.postal_code,
+      fallbackPlus4: rawSurface.plus_four_postal_code,
+      fallbackCounty: rawSurface.county_name,
+      fallbackCountry: rawSurface.country_code || "US",
+      fallbackMunicipality: rawSurface.municipality_name,
+      fallbackUnit: rawSurface.unit_identifier,
+      fallbackRoute: rawSurface.route_number,
+      fallbackLatitude: Number.isFinite(rawSurface.latitude)
+        ? rawSurface.latitude
+        : coordinateFallback.latitude,
+      fallbackLongitude: Number.isFinite(rawSurface.longitude)
+        ? rawSurface.longitude
+        : coordinateFallback.longitude,
+    });
+  }
+
   for (const field of ADDRESS_COORDINATE_FIELDS) {
     if (Number.isFinite(rawSurface[field])) continue;
     const fallbackValue = coordinateFallback[field];
