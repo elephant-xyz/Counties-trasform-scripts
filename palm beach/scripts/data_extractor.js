@@ -6832,6 +6832,140 @@ function coerceAddressFileToRawVariant(addressFilePath, options = {}) {
   writeJSON(addressFilePath, sanitized);
 }
 
+function enforceAddressTemplateForOutput(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  const hasRawVariant = trimmedUnnormalized.length > 0;
+  const surfaceFields = hasRawVariant
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasRawVariant
+    ? RAW_ADDRESS_SCHEMA_TEMPLATE
+    : NORMALIZED_ADDRESS_SCHEMA_TEMPLATE;
+
+  const normalizedSurface = { ...template };
+
+  for (const field of surfaceFields) {
+    const hasField = Object.prototype.hasOwnProperty.call(payload, field);
+    const candidate = hasField ? payload[field] : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      normalizedSurface[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    if (normalizedValue === undefined || normalizedValue === null) {
+      normalizedSurface[field] = null;
+      continue;
+    }
+
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      normalizedSurface[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    normalizedSurface[field] = normalizedValue;
+  }
+
+  if (hasRawVariant) {
+    normalizedSurface.unnormalized_address = trimmedUnnormalized;
+  } else if (
+    Object.prototype.hasOwnProperty.call(
+      normalizedSurface,
+      "unnormalized_address",
+    )
+  ) {
+    delete normalizedSurface.unnormalized_address;
+  }
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
+  }
+  if (normalizedSurface.state_code && !normalizedSurface.country_code) {
+    normalizedSurface.country_code = "US";
+  }
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    payload.request_identifier,
+  );
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  const variant = hasRawVariant ? "raw" : "normalized";
+
+  let aligned =
+    buildAddressPayloadForWrite(normalizedSurface, variant) ||
+    ensureAddressOutputFieldPresence(normalizedSurface) ||
+    normalizedSurface;
+
+  if (!aligned || typeof aligned !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!aligned.postal_code) {
+    aligned.plus_four_postal_code = null;
+  }
+  if (aligned.state_code && !aligned.country_code) {
+    aligned.country_code = "US";
+  }
+
+  if (variant === "normalized") {
+    if (
+      Object.prototype.hasOwnProperty.call(aligned, "unnormalized_address")
+    ) {
+      delete aligned.unnormalized_address;
+    }
+  } else if (
+    typeof aligned.unnormalized_address === "string" &&
+    !aligned.unnormalized_address.trim().length
+  ) {
+    delete aligned.unnormalized_address;
+  }
+
+  if (resolvedRequestIdentifier) {
+    aligned.request_identifier = resolvedRequestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(aligned, "request_identifier")
+  ) {
+    aligned.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    aligned.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(aligned, "source_http_request")
+  ) {
+    delete aligned.source_http_request;
+  }
+
+  writeJSON(addressFilePath, aligned);
+}
+
 function materializeAddressVariantForOutput(address, options = {}) {
   if (!address || typeof address !== "object") return null;
 
@@ -14432,6 +14566,8 @@ async function main() {
       longitude: preferredLongitude,
     },
   });
+
+  enforceAddressTemplateForOutput(addressFilePath);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
