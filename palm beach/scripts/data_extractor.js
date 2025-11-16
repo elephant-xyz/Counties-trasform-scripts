@@ -1974,6 +1974,12 @@ function hasRawAddressRequiredFields(address) {
     address.country_code = "US";
   }
 
+  for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
+    if (!hasMeaningfulAddressValue(address[field])) {
+      return false;
+    }
+  }
+
   return true;
 }
 
