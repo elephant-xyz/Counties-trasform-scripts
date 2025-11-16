@@ -4850,6 +4850,15 @@ function preferNormalizedAddressOutput(addressFilePath) {
     return;
   }
 
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (trimmedUnnormalized.length) {
+    // Preserve raw variant output when an unnormalized address is present.
+    return;
+  }
+
   const hasRequiredNormalizedFields = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
     (field) => {
       const value = Object.prototype.hasOwnProperty.call(payload, field)
@@ -15063,10 +15072,12 @@ async function main() {
           const rawVariantAvailable = trimmedUnnormalizedRaw.length > 0;
 
           let finalVariant;
-          if (hasNormalizedCoverage) {
-            finalVariant = "normalized";
-          } else if (rawVariantAvailable) {
+          if (rawVariantAvailable) {
+            // Prefer emitting the raw variant when the source supplies an
+            // unnormalized address for County workflows.
             finalVariant = "raw";
+          } else if (hasNormalizedCoverage) {
+            finalVariant = "normalized";
           } else {
             finalVariant = "normalized";
           }
@@ -16766,74 +16777,53 @@ async function main() {
     .join(", ");
 
   const finalAddressPath = path.join(dataDir, "address.json");
-  let shouldOverwriteRaw = true;
-  if (fs.existsSync(finalAddressPath)) {
-    try {
-      const existingAddress = readJSON(finalAddressPath);
-      if (existingAddress && typeof existingAddress === "object") {
-        const hasNormalizedCore = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-          (field) =>
-            typeof existingAddress[field] === "string" &&
-            existingAddress[field].trim().length > 0,
-        );
-        if (hasNormalizedCore) {
-          shouldOverwriteRaw = false;
-        }
-      }
-    } catch {
-      shouldOverwriteRaw = true;
-    }
-  }
-
-  if (shouldOverwriteRaw) {
-    overwriteAddressWithRawBaseline(finalAddressPath, {
-      unnormalizedCandidates: [
-        unAddr && unAddr.full_address,
-        siteLocationLine,
-        combinedModelAddress,
-        addressLineCombined,
+  overwriteAddressWithRawBaseline(finalAddressPath, {
+    unnormalizedCandidates: [
+      unAddr && unAddr.full_address,
+      siteLocationLine,
+      combinedModelAddress,
+      addressLineCombined,
+    ],
+    fieldSources: [unAddr, seed],
+    fieldFallbacks: {
+      city_name: [
+        normalizedCity,
+        resolvedCity,
       ],
-      fieldSources: [unAddr, seed],
-      fieldFallbacks: {
-        city_name: [
-          normalizedCity,
-          resolvedCity,
-        ],
-        state_code: [
-          resolvedState,
-          countyInferredStateCode,
-          "FL",
-        ],
-        postal_code: [
-          sanitizedPostalCode,
-          postalCode,
-        ],
-        plus_four_postal_code: [
-          sanitizedPlus4,
-          plus4,
-        ],
-        county_name: [
-          formattedCountyName,
-          countyName,
-          "Palm Beach",
-        ],
-        municipality_name: [
-          normalizedMunicipality
-            ? toTitleCase(normalizedMunicipality)
-            : null,
-          resolvedCity,
-        ],
+      state_code: [
+        resolvedState,
+        countyInferredStateCode,
+        "FL",
+      ],
+      postal_code: [
+        sanitizedPostalCode,
+        postalCode,
+      ],
+      plus_four_postal_code: [
+        sanitizedPlus4,
+        plus4,
+      ],
+      county_name: [
+        formattedCountyName,
+        countyName,
+        "Palm Beach",
+      ],
+      municipality_name: [
+        normalizedMunicipality
+          ? toTitleCase(normalizedMunicipality)
+          : null,
+        resolvedCity,
+      ],
+    },
+    coordinateCandidates: [
+      { latitude: initialLatitude, longitude: initialLongitude },
+      parcelCentroid && {
+        latitude: parcelCentroid.latitude,
+        longitude: parcelCentroid.longitude,
       },
-      coordinateCandidates: [
-        { latitude: initialLatitude, longitude: initialLongitude },
-        parcelCentroid && {
-          latitude: parcelCentroid.latitude,
-          longitude: parcelCentroid.longitude,
-        },
-      ].filter(Boolean),
-      parcelIdCandidates: [parcelId, pcnHyphen],
-    });
-  }
+    ].filter(Boolean),
+    parcelIdCandidates: [parcelId, pcnHyphen],
+  });
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");
