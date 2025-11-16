@@ -12968,14 +12968,7 @@ async function main() {
                 "unnormalized_address",
               )
             ) {
-              const rawValue = preparedNormalized.unnormalized_address;
-              if (
-                rawValue === undefined ||
-                rawValue === null ||
-                (typeof rawValue === "string" && !rawValue.trim().length)
-              ) {
-                delete preparedNormalized.unnormalized_address;
-              }
+              delete preparedNormalized.unnormalized_address;
             }
 
             normalizedPayloadForWrite = preparedNormalized;
@@ -13440,7 +13433,100 @@ async function main() {
           }
 
           if (outputPayload) {
-            writeJSON(addressFilePath, outputPayload);
+            // Guarantee the final payload satisfies exactly one address schema branch.
+            let resolvedPayload = deepClone(outputPayload);
+            const rawSurface =
+              typeof resolvedPayload.unnormalized_address === "string"
+                ? resolvedPayload.unnormalized_address.trim()
+                : "";
+
+            if (rawSurface.length) {
+              const rawProbe = { ...resolvedPayload };
+              if (!hasRawAddressRequiredFields(rawProbe)) {
+                const minimalRaw = composeMinimalRawAddress({
+                  ...resolvedPayload,
+                  unnormalized_address: rawSurface,
+                });
+                if (
+                  minimalRaw &&
+                  hasRawAddressRequiredFields({ ...minimalRaw })
+                ) {
+                  resolvedPayload = minimalRaw;
+                } else {
+                  const normalizedProbe =
+                    ensureNormalizedAddressSchemaSurface(resolvedPayload) ||
+                    null;
+                  if (
+                    normalizedProbe &&
+                    hasCompleteNormalizedAddress({ ...normalizedProbe })
+                  ) {
+                    if (
+                      Object.prototype.hasOwnProperty.call(
+                        normalizedProbe,
+                        "unnormalized_address",
+                      )
+                    ) {
+                      delete normalizedProbe.unnormalized_address;
+                    }
+                    resolvedPayload = normalizedProbe;
+                  } else {
+                    resolvedPayload = null;
+                  }
+                }
+              }
+            } else {
+              const normalizedProbe =
+                ensureNormalizedAddressSchemaSurface(resolvedPayload) || null;
+              if (
+                !(
+                  normalizedProbe &&
+                  hasCompleteNormalizedAddress({ ...normalizedProbe })
+                )
+              ) {
+                const fallbackUnnormalized = resolveFirstNonEmptyString([
+                  canonicalUnnormalized,
+                  resolvedUnnormalized,
+                  fallbackUnnormalizedValue,
+                  unnormalizedAddressCandidate,
+                  combinedModelAddress,
+                  siteLocationLine,
+                  fullAddr,
+                  fullAddrInput,
+                ]);
+                if (fallbackUnnormalized) {
+                  const minimalRaw = composeMinimalRawAddress({
+                    ...resolvedPayload,
+                    unnormalized_address: fallbackUnnormalized,
+                  });
+                  if (
+                    minimalRaw &&
+                    hasRawAddressRequiredFields({ ...minimalRaw })
+                  ) {
+                    resolvedPayload = minimalRaw;
+                  } else {
+                    resolvedPayload = null;
+                  }
+                } else {
+                  resolvedPayload = null;
+                }
+              } else {
+                resolvedPayload = normalizedProbe;
+                if (
+                  Object.prototype.hasOwnProperty.call(
+                    resolvedPayload,
+                    "unnormalized_address",
+                  )
+                ) {
+                  delete resolvedPayload.unnormalized_address;
+                }
+              }
+            }
+
+            if (resolvedPayload) {
+              writeJSON(addressFilePath, resolvedPayload);
+            } else {
+              removeFileIfExists(addressFilePath);
+            }
           } else {
             removeFileIfExists(addressFilePath);
           }
