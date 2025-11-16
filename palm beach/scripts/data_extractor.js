@@ -1670,13 +1670,7 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([
-  "street_name",
-  "street_number",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-]);
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
   (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),

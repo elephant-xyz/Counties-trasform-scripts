@@ -2361,13 +2361,7 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([
-  "street_name",
-  "street_number",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-]);
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 // Fields that may accompany the raw (unnormalized) address payload.
 // Keep the list aligned with the schema requirements so every nullable property is present,
