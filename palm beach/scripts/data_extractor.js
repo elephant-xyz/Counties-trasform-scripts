@@ -4735,7 +4735,7 @@ function enforceFinalAddressSchemaOutput(addressFilePath) {
       ...normalizedSurface,
       unnormalized_address: trimmedUnnormalized,
     };
-    const minimalRaw = composeMinimalRawAddress(rawCandidate);
+    let minimalRaw = composeMinimalRawAddress(rawCandidate);
     if (minimalRaw) {
       if (requestIdentifier) {
         minimalRaw.request_identifier = requestIdentifier;
@@ -4754,7 +4754,15 @@ function enforceFinalAddressSchemaOutput(addressFilePath) {
       ) {
         delete minimalRaw.source_http_request;
       }
-      writeJSON(addressFilePath, minimalRaw);
+      const surfacedRaw = finalizeAddressPayloadForOutput(
+        minimalRaw,
+        "raw",
+      );
+      if (surfacedRaw) {
+        writeJSON(addressFilePath, surfacedRaw);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
     } else {
       removeFileIfExists(addressFilePath);
     }
@@ -4780,7 +4788,15 @@ function enforceFinalAddressSchemaOutput(addressFilePath) {
     if (preparedSource) {
       normalizedOutput.source_http_request = deepClone(preparedSource);
     }
-    writeJSON(addressFilePath, normalizedOutput);
+    const surfacedNormalized = finalizeAddressPayloadForOutput(
+      normalizedOutput,
+      "normalized",
+    );
+    if (surfacedNormalized) {
+      writeJSON(addressFilePath, surfacedNormalized);
+    } else {
+      removeFileIfExists(addressFilePath);
+    }
     return;
   }
 
@@ -4819,7 +4835,7 @@ function finalizeCountyAddressFile(addressFilePath) {
       ...payload,
       unnormalized_address: trimmedRaw,
     };
-    const minimalRaw = composeMinimalRawAddress(rawCandidate);
+    let minimalRaw = composeMinimalRawAddress(rawCandidate);
     if (minimalRaw) {
       if (trimmedRequest) {
         minimalRaw.request_identifier = trimmedRequest;
@@ -4838,7 +4854,15 @@ function finalizeCountyAddressFile(addressFilePath) {
       ) {
         delete minimalRaw.source_http_request;
       }
-      writeJSON(addressFilePath, minimalRaw);
+      const surfacedRaw = finalizeAddressPayloadForOutput(
+        minimalRaw,
+        "raw",
+      );
+      if (surfacedRaw) {
+        writeJSON(addressFilePath, surfacedRaw);
+      } else {
+        removeFileIfExists(addressFilePath);
+      }
       return;
     }
   }
@@ -4881,7 +4905,15 @@ function finalizeCountyAddressFile(addressFilePath) {
     delete normalizedOutput.source_http_request;
   }
 
-  writeJSON(addressFilePath, normalizedOutput);
+  const surfacedNormalized = finalizeAddressPayloadForOutput(
+    normalizedOutput,
+    "normalized",
+  );
+  if (surfacedNormalized) {
+    writeJSON(addressFilePath, surfacedNormalized);
+  } else {
+    removeFileIfExists(addressFilePath);
+  }
 }
 
 function materializeAddressVariantForOutput(address, options = {}) {
