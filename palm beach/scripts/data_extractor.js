@@ -4437,6 +4437,73 @@ function ensureAddressOutputFieldPresence(address) {
   return result;
 }
 
+function enforceRawAddressSurface(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (!trimmedUnnormalized.length) {
+    return;
+  }
+
+  const merged = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      merged[field] = payload[field];
+    }
+  }
+
+  merged.unnormalized_address = trimmedUnnormalized;
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (requestIdentifier) {
+    merged.request_identifier = requestIdentifier;
+  } else if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    merged.request_identifier = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    if (prepared) {
+      merged.source_http_request = deepClone(prepared);
+    } else if (Object.prototype.hasOwnProperty.call(merged, "source_http_request")) {
+      delete merged.source_http_request;
+    }
+  }
+
+  const surfaced =
+    ensureAddressOutputFieldPresence(merged) || merged;
+  const withDefaults =
+    applyAddressSchemaDefaultsForVariant(surfaced, "raw") || surfaced;
+
+  if (!withDefaults.postal_code) {
+    withDefaults.plus_four_postal_code = null;
+  }
+
+  if (withDefaults.state_code && !withDefaults.country_code) {
+    withDefaults.country_code = "US";
+  }
+
+  writeJSON(addressFilePath, withDefaults);
+}
+
 function ensureAddressFileFieldCompleteness(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -15393,6 +15460,7 @@ async function main() {
   });
 
   ensureAddressFileFieldCompleteness(addressFilePath);
+  enforceRawAddressSurface(addressFilePath);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
