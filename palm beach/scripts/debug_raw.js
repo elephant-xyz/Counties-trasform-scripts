@@ -150,6 +150,49 @@ function padGridValue(value, length) {
   return alphanumeric;
 }
 
+function extractPostalPieces(raw) {
+  if (!raw) {
+    return { postal: null, plus4: null };
+  }
+
+  const matches = Array.from(
+    String(raw).matchAll(/\b(\d{5})(?:[-\s]?(\d{4}))?\b/g),
+  );
+  if (!matches.length) {
+    return { postal: null, plus4: null };
+  }
+
+  const [, postal, plus4] = matches[matches.length - 1];
+  return {
+    postal: postal || null,
+    plus4: plus4 || null,
+  };
+}
+
+function parseGridFromPcn(rawValue) {
+  if (!rawValue) return null;
+  const digits = String(rawValue).replace(/[^0-9]/g, "");
+  if (digits.length !== 17) return null;
+
+  const township = digits.slice(2, 4);
+  const range = digits.slice(4, 6);
+  const section = digits.slice(6, 8);
+  const block = digits.slice(10, 13);
+  const lot = digits.slice(13);
+
+  if (![township, range, section].every((part) => /^[0-9]{2}$/.test(part))) {
+    return null;
+  }
+
+  return {
+    township,
+    range,
+    section,
+    block: /^[0-9]{3}$/.test(block) ? block : null,
+    lot: /^[0-9]{4}$/.test(lot) ? lot : null,
+  };
+}
+
 function coerceEmptyStringsToNull(obj, fields) {
   if (!obj || typeof obj !== "object") return;
   const keys =
@@ -1070,6 +1113,176 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
   const surfacedRaw =
     ensureAddressOutputFieldPresence(rawSurface) || rawSurface;
   writeJSON(addressFilePath, surfacedRaw);
+}
+
+function hydrateAddressFromContext(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const {
+    unnormalizedCandidates = [],
+    fieldFallbacks = {},
+    parcelIdCandidates = [],
+    parcelIdRawCandidates = [],
+    coordinateFallback = {},
+  } = options || {};
+
+  const unnormalizedQueue = [];
+  if (
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length
+  ) {
+    unnormalizedQueue.push(payload.unnormalized_address);
+  }
+  if (Array.isArray(unnormalizedCandidates)) {
+    for (const candidate of unnormalizedCandidates) {
+      if (candidate != null) {
+        unnormalizedQueue.push(candidate);
+      }
+    }
+  }
+  const resolvedUnnormalized = resolveFirstNonEmptyString(unnormalizedQueue);
+  const trimmedUnnormalized =
+    typeof resolvedUnnormalized === "string"
+      ? resolvedUnnormalized.trim()
+      : "";
+
+  const assignFieldIfMissing = (field, value) => {
+    if (!field) return;
+    if (hasMeaningfulAddressValue(payload[field])) {
+      return;
+    }
+    const normalized = normalizeAddressFieldForSchema(field, value);
+    if (normalized === undefined || normalized === null) {
+      return;
+    }
+    payload[field] = normalized;
+  };
+
+  const assignCoordinateIfMissing = (field, value) => {
+    if (!ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      return;
+    }
+    if (Number.isFinite(payload[field])) {
+      return;
+    }
+    const numeric = parseCoordinate(value);
+    if (Number.isFinite(numeric)) {
+      payload[field] = numeric;
+    }
+  };
+
+  if (trimmedUnnormalized.length) {
+    payload.unnormalized_address = trimmedUnnormalized;
+
+    const parsedStreet = parseLocationAddress(trimmedUnnormalized);
+    if (parsedStreet) {
+      assignFieldIfMissing("street_number", parsedStreet.streetNumber);
+      assignFieldIfMissing("street_name", parsedStreet.streetName);
+      assignFieldIfMissing(
+        "street_pre_directional_text",
+        parsedStreet.streetPreDirectional,
+      );
+      assignFieldIfMissing(
+        "street_post_directional_text",
+        parsedStreet.streetPostDirectional,
+      );
+      assignFieldIfMissing(
+        "street_suffix_type",
+        parsedStreet.streetSuffix,
+      );
+      assignFieldIfMissing("unit_identifier", parsedStreet.unitIdentifier);
+      assignFieldIfMissing("route_number", parsedStreet.routeNumber);
+    }
+
+    const parsedLocality = parseCityStatePostal(trimmedUnnormalized);
+    if (parsedLocality) {
+      assignFieldIfMissing("city_name", parsedLocality.city);
+      assignFieldIfMissing("state_code", parsedLocality.state);
+      assignFieldIfMissing("postal_code", parsedLocality.postal);
+      assignFieldIfMissing("plus_four_postal_code", parsedLocality.plus4);
+    }
+
+    const { postal, plus4 } = extractPostalPieces(trimmedUnnormalized);
+    assignFieldIfMissing("postal_code", postal);
+    assignFieldIfMissing("plus_four_postal_code", plus4);
+  }
+
+  if (fieldFallbacks && typeof fieldFallbacks === "object") {
+    for (const [field, candidates] of Object.entries(fieldFallbacks)) {
+      if (!Array.isArray(candidates)) continue;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        for (const candidate of candidates) {
+          assignCoordinateIfMissing(field, candidate);
+        }
+        continue;
+      }
+      for (const candidate of candidates) {
+        assignFieldIfMissing(field, candidate);
+        if (hasMeaningfulAddressValue(payload[field])) {
+          break;
+        }
+      }
+    }
+  }
+
+  const parcelCandidates = [];
+  if (Array.isArray(parcelIdCandidates)) {
+    parcelCandidates.push(...parcelIdCandidates);
+  }
+  if (Array.isArray(parcelIdRawCandidates)) {
+    parcelCandidates.push(...parcelIdRawCandidates);
+  }
+  for (const candidate of parcelCandidates) {
+    if (!candidate) continue;
+    const grid = parseGridFromPcn(candidate);
+    if (!grid) continue;
+    assignFieldIfMissing("township", grid.township);
+    assignFieldIfMissing("range", grid.range);
+    assignFieldIfMissing("section", grid.section);
+    assignFieldIfMissing("block", grid.block);
+    assignFieldIfMissing("lot", grid.lot);
+    const hasAllGrid =
+      hasMeaningfulAddressValue(payload.township) &&
+      hasMeaningfulAddressValue(payload.range) &&
+      hasMeaningfulAddressValue(payload.section);
+    if (hasAllGrid) {
+      break;
+    }
+  }
+
+  for (const field of ADDRESS_COORDINATE_FIELDS) {
+    assignCoordinateIfMissing(field, payload[field]);
+    if (
+      coordinateFallback &&
+      Object.prototype.hasOwnProperty.call(coordinateFallback, field)
+    ) {
+      assignCoordinateIfMissing(field, coordinateFallback[field]);
+    }
+  }
+
+  if (
+    hasMeaningfulAddressValue(payload.state_code) &&
+    !hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    payload.country_code = "US";
+  }
+
+  const surfaced =
+    ensureAddressOutputFieldPresence(payload) || payload;
+  writeJSON(addressFilePath, surfaced);
 }
 
 function enforceCountyAddressOneOfCompliance(addressFilePath) {
@@ -5508,6 +5721,160 @@ async function main() {
         seed && seed.source_http_request,
       ],
     });
+    const parsedUnnormalizedCityState = parseCityStatePostal(
+      unnormalizedAddressCandidate ||
+      canonicalUnnormalized ||
+      resolvedUnnormalized ||
+      fallbackUnnormalizedValue ||
+      combinedModelAddress ||
+      siteLocationLine ||
+      fullAddr ||
+      fullAddrInput ||
+      ""
+    );
+
+    const rawParcelCandidates =
+      typeof parcelIdRawCandidates !== "undefined"
+        ? parcelIdRawCandidates
+        : [];
+
+    const addressFieldFallbacks = {
+      city_name: [
+        normalizedSnapshot && normalizedSnapshot.city_name,
+        addressForOutput && addressForOutput.city_name,
+        address && address.city_name,
+        normalizedCity,
+        resolvedCity,
+        parsedUnnormalizedCityState && parsedUnnormalizedCityState.city,
+      ],
+      state_code: [
+        normalizedSnapshot && normalizedSnapshot.state_code,
+        addressForOutput && addressForOutput.state_code,
+        address && address.state_code,
+        inferredStateCode,
+        resolvedState,
+        countyInferredStateCode,
+        "FL",
+      ],
+      postal_code: [
+        normalizedSnapshot && normalizedSnapshot.postal_code,
+        addressForOutput && addressForOutput.postal_code,
+        address && address.postal_code,
+        fallbackPostalValue,
+        postalCode,
+        parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal,
+      ],
+      plus_four_postal_code: [
+        normalizedSnapshot && normalizedSnapshot.plus_four_postal_code,
+        addressForOutput && addressForOutput.plus_four_postal_code,
+        address && address.plus_four_postal_code,
+        fallbackPlus4Value,
+        plus4,
+        parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4,
+      ],
+      county_name: [
+        normalizedSnapshot && normalizedSnapshot.county_name,
+        addressForOutput && addressForOutput.county_name,
+        address && address.county_name,
+        formattedCountyName,
+        countyName,
+        defaultCounty,
+      ],
+      municipality_name: [
+        normalizedSnapshot && normalizedSnapshot.municipality_name,
+        addressForOutput && addressForOutput.municipality_name,
+        address && address.municipality_name,
+        normalizedMunicipality
+          ? toTitleCase(normalizedMunicipality)
+          : null,
+      ],
+      street_number: [
+        normalizedSnapshot && normalizedSnapshot.street_number,
+        addressForOutput && addressForOutput.street_number,
+        address && address.street_number,
+      ],
+      street_name: [
+        normalizedSnapshot && normalizedSnapshot.street_name,
+        addressForOutput && addressForOutput.street_name,
+        address && address.street_name,
+      ],
+      street_pre_directional_text: [
+        normalizedSnapshot && normalizedSnapshot.street_pre_directional_text,
+        addressForOutput && addressForOutput.street_pre_directional_text,
+        address && address.street_pre_directional_text,
+      ],
+      street_post_directional_text: [
+        normalizedSnapshot && normalizedSnapshot.street_post_directional_text,
+        addressForOutput && addressForOutput.street_post_directional_text,
+        address && address.street_post_directional_text,
+      ],
+      street_suffix_type: [
+        normalizedSnapshot && normalizedSnapshot.street_suffix_type,
+        addressForOutput && addressForOutput.street_suffix_type,
+        address && address.street_suffix_type,
+      ],
+      unit_identifier: [
+        normalizedSnapshot && normalizedSnapshot.unit_identifier,
+        addressForOutput && addressForOutput.unit_identifier,
+        address && address.unit_identifier,
+      ],
+      route_number: [
+        normalizedSnapshot && normalizedSnapshot.route_number,
+        addressForOutput && addressForOutput.route_number,
+        address && address.route_number,
+      ],
+      township: [
+        normalizedSnapshot && normalizedSnapshot.township,
+        addressForOutput && addressForOutput.township,
+        address && address.township,
+        baseAddressSeed && baseAddressSeed.township,
+      ],
+      range: [
+        normalizedSnapshot && normalizedSnapshot.range,
+        addressForOutput && addressForOutput.range,
+        address && address.range,
+        baseAddressSeed && baseAddressSeed.range,
+      ],
+      section: [
+        normalizedSnapshot && normalizedSnapshot.section,
+        addressForOutput && addressForOutput.section,
+        address && address.section,
+        baseAddressSeed && baseAddressSeed.section,
+      ],
+      block: [
+        normalizedSnapshot && normalizedSnapshot.block,
+        addressForOutput && addressForOutput.block,
+        address && address.block,
+        baseAddressSeed && baseAddressSeed.block,
+      ],
+      lot: [
+        normalizedSnapshot && normalizedSnapshot.lot,
+        addressForOutput && addressForOutput.lot,
+        address && address.lot,
+        baseAddressSeed && baseAddressSeed.lot,
+      ],
+    };
+
+    hydrateAddressFromContext(addressFilePath, {
+      unnormalizedCandidates: [
+        canonicalUnnormalized,
+        resolvedUnnormalized,
+        fallbackUnnormalizedValue,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        fullAddr,
+        fullAddrInput,
+      ],
+      fieldFallbacks: addressFieldFallbacks,
+      parcelIdCandidates: parcelId ? [parcelId] : [],
+      parcelIdRawCandidates: rawParcelCandidates,
+      coordinateFallback: {
+        latitude: preferredLatitude,
+        longitude: preferredLongitude,
+      },
+    });
+
     enforceCountyAddressOneOfCompliance(addressFilePath);
     ensureNullRelationshipFile(propertyAddressRelationshipPath);
     ensureNullRelationshipFile(addressFactSheetRelationshipPath);

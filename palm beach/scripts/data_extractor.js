@@ -5069,6 +5069,176 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
   writeJSON(addressFilePath, finalRaw);
 }
 
+function hydrateAddressFromContext(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const {
+    unnormalizedCandidates = [],
+    fieldFallbacks = {},
+    parcelIdCandidates = [],
+    parcelIdRawCandidates = [],
+    coordinateFallback = {},
+  } = options || {};
+
+  const unnormalizedQueue = [];
+  if (
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length
+  ) {
+    unnormalizedQueue.push(payload.unnormalized_address);
+  }
+  if (Array.isArray(unnormalizedCandidates)) {
+    for (const candidate of unnormalizedCandidates) {
+      if (candidate != null) {
+        unnormalizedQueue.push(candidate);
+      }
+    }
+  }
+  const resolvedUnnormalized = resolveFirstNonEmptyString(unnormalizedQueue);
+  const trimmedUnnormalized =
+    typeof resolvedUnnormalized === "string"
+      ? resolvedUnnormalized.trim()
+      : "";
+
+  const assignFieldIfMissing = (field, value) => {
+    if (!field) return;
+    if (hasMeaningfulAddressValue(payload[field])) {
+      return;
+    }
+    const normalized = normalizeAddressFieldForSchema(field, value);
+    if (normalized === undefined || normalized === null) {
+      return;
+    }
+    payload[field] = normalized;
+  };
+
+  const assignCoordinateIfMissing = (field, value) => {
+    if (!ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      return;
+    }
+    if (Number.isFinite(payload[field])) {
+      return;
+    }
+    const numeric = parseCoordinate(value);
+    if (Number.isFinite(numeric)) {
+      payload[field] = numeric;
+    }
+  };
+
+  if (trimmedUnnormalized.length) {
+    payload.unnormalized_address = trimmedUnnormalized;
+
+    const parsedStreet = parseLocationAddress(trimmedUnnormalized);
+    if (parsedStreet) {
+      assignFieldIfMissing("street_number", parsedStreet.streetNumber);
+      assignFieldIfMissing("street_name", parsedStreet.streetName);
+      assignFieldIfMissing(
+        "street_pre_directional_text",
+        parsedStreet.streetPreDirectional,
+      );
+      assignFieldIfMissing(
+        "street_post_directional_text",
+        parsedStreet.streetPostDirectional,
+      );
+      assignFieldIfMissing(
+        "street_suffix_type",
+        parsedStreet.streetSuffix,
+      );
+      assignFieldIfMissing("unit_identifier", parsedStreet.unitIdentifier);
+      assignFieldIfMissing("route_number", parsedStreet.routeNumber);
+    }
+
+    const parsedLocality = parseCityStatePostal(trimmedUnnormalized);
+    if (parsedLocality) {
+      assignFieldIfMissing("city_name", parsedLocality.city);
+      assignFieldIfMissing("state_code", parsedLocality.state);
+      assignFieldIfMissing("postal_code", parsedLocality.postal);
+      assignFieldIfMissing("plus_four_postal_code", parsedLocality.plus4);
+    }
+
+    const { postal, plus4 } = extractPostalPieces(trimmedUnnormalized);
+    assignFieldIfMissing("postal_code", postal);
+    assignFieldIfMissing("plus_four_postal_code", plus4);
+  }
+
+  if (fieldFallbacks && typeof fieldFallbacks === "object") {
+    for (const [field, candidates] of Object.entries(fieldFallbacks)) {
+      if (!Array.isArray(candidates)) continue;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        for (const candidate of candidates) {
+          assignCoordinateIfMissing(field, candidate);
+        }
+        continue;
+      }
+      for (const candidate of candidates) {
+        assignFieldIfMissing(field, candidate);
+        if (hasMeaningfulAddressValue(payload[field])) {
+          break;
+        }
+      }
+    }
+  }
+
+  const parcelCandidates = [];
+  if (Array.isArray(parcelIdCandidates)) {
+    parcelCandidates.push(...parcelIdCandidates);
+  }
+  if (Array.isArray(parcelIdRawCandidates)) {
+    parcelCandidates.push(...parcelIdRawCandidates);
+  }
+  for (const candidate of parcelCandidates) {
+    if (!candidate) continue;
+    const grid = parseGridFromPcn(candidate);
+    if (!grid) continue;
+    assignFieldIfMissing("township", grid.township);
+    assignFieldIfMissing("range", grid.range);
+    assignFieldIfMissing("section", grid.section);
+    assignFieldIfMissing("block", grid.block);
+    assignFieldIfMissing("lot", grid.lot);
+    const hasAllGrid =
+      hasMeaningfulAddressValue(payload.township) &&
+      hasMeaningfulAddressValue(payload.range) &&
+      hasMeaningfulAddressValue(payload.section);
+    if (hasAllGrid) {
+      break;
+    }
+  }
+
+  for (const field of ADDRESS_COORDINATE_FIELDS) {
+    assignCoordinateIfMissing(field, payload[field]);
+    if (
+      coordinateFallback &&
+      Object.prototype.hasOwnProperty.call(coordinateFallback, field)
+    ) {
+      assignCoordinateIfMissing(field, coordinateFallback[field]);
+    }
+  }
+
+  if (
+    hasMeaningfulAddressValue(payload.state_code) &&
+    !hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    payload.country_code = "US";
+  }
+
+  const surfaced =
+    ensureAddressOutputFieldPresence(payload) || payload;
+  writeJSON(addressFilePath, surfaced);
+}
+
 function enforceCountyAddressOneOfCompliance(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -12629,6 +12799,27 @@ async function main() {
       longitude: preferredLongitude,
     },
   });
+
+  hydrateAddressFromContext(addressFilePath, {
+    unnormalizedCandidates: [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      fallbackUnnormalizedValue,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+    ],
+    fieldFallbacks: addressFieldFallbacks,
+    parcelIdCandidates: parcelId ? [parcelId] : [],
+    parcelIdRawCandidates,
+    coordinateFallback: {
+      latitude: preferredLatitude,
+      longitude: preferredLongitude,
+    },
+  });
+
 
   enforceCountyAddressOneOfCompliance(addressFilePath);
 
