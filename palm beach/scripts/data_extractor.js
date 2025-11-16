@@ -6071,6 +6071,145 @@ function reconcileCountyAddressVariant(addressFilePath, options = {}) {
   writeJSON(addressFilePath, rawOutput);
 }
 
+function enforceRawAddressFieldDefaults(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const coordinateFallback =
+    options && typeof options.coordinateFallback === "object"
+      ? options.coordinateFallback
+      : {};
+
+  const requestIdentifierExtra =
+    options && Array.isArray(options.requestIdentifierCandidates)
+      ? options.requestIdentifierCandidates
+      : [];
+  const requestIdentifierCandidates = [
+    payload.request_identifier,
+    ...requestIdentifierExtra,
+  ];
+
+  const sourceHttpRequestExtra =
+    options && Array.isArray(options.sourceHttpRequestCandidates)
+      ? options.sourceHttpRequestCandidates
+      : [];
+  const sourceHttpRequestCandidates = [
+    payload.source_http_request,
+    ...sourceHttpRequestExtra,
+  ];
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (!trimmedUnnormalized.length) {
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
+    ) {
+      delete payload.unnormalized_address;
+      writeJSON(addressFilePath, payload);
+    }
+    return;
+  }
+
+  const enforced = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const hasField = Object.prototype.hasOwnProperty.call(payload, field);
+    const original = hasField ? payload[field] : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(original);
+      enforced[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (original === undefined || original === null) {
+      enforced[field] = null;
+      continue;
+    }
+
+    if (typeof original === "string") {
+      const trimmed = original.trim();
+      enforced[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof original === "number") {
+      enforced[field] = Number.isFinite(original) ? original : null;
+      continue;
+    }
+
+    if (typeof original === "boolean") {
+      enforced[field] = original;
+      continue;
+    }
+
+    enforced[field] =
+      original && typeof original === "object" ? deepClone(original) : null;
+  }
+
+  for (const coordField of ADDRESS_COORDINATE_FIELDS) {
+    if (
+      !Number.isFinite(enforced[coordField]) &&
+      Number.isFinite(coordinateFallback[coordField])
+    ) {
+      enforced[coordField] = coordinateFallback[coordField];
+    }
+  }
+
+  if ((enforced.latitude == null) !== (enforced.longitude == null)) {
+    enforced.latitude = null;
+    enforced.longitude = null;
+  }
+
+  if (!enforced.postal_code) {
+    enforced.plus_four_postal_code = null;
+  }
+  if (enforced.state_code && !enforced.country_code) {
+    enforced.country_code = "US";
+  }
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString(requestIdentifierCandidates),
+  );
+  if (resolvedRequestIdentifier) {
+    enforced.request_identifier = resolvedRequestIdentifier;
+  } else if (Object.prototype.hasOwnProperty.call(enforced, "request_identifier")) {
+    delete enforced.request_identifier;
+  }
+
+  const resolvedSource = resolveSourceHttpRequest(
+    ...sourceHttpRequestCandidates,
+  );
+  if (resolvedSource) {
+    enforced.source_http_request = deepClone(resolvedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(enforced, "source_http_request")
+  ) {
+    delete enforced.source_http_request;
+  }
+
+  writeJSON(addressFilePath, enforced);
+}
+
 function hydrateAddressFromContext(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -14249,6 +14388,29 @@ async function main() {
       fullAddr,
       fullAddrInput,
     ],
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      address && address.request_identifier,
+      baseAddressSeed && baseAddressSeed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      seed && seed.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      preparedSourceHttpRequest,
+      finalAddressPayload && finalAddressPayload.source_http_request,
+      preparedAddressOutput && preparedAddressOutput.source_http_request,
+      address && address.source_http_request,
+      baseAddressSeed && baseAddressSeed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+    coordinateFallback: {
+      latitude: preferredLatitude,
+      longitude: preferredLongitude,
+    },
+  });
+
+  enforceRawAddressFieldDefaults(addressFilePath, {
     requestIdentifierCandidates: [
       trimmedRequestIdentifier,
       address && address.request_identifier,
