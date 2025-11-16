@@ -4151,6 +4151,214 @@ function ensureAddressOutputFieldPresence(address) {
   return ensureAddressOutputCoverage(address);
 }
 
+function assignAddressFieldIfMissing(target, field, value) {
+  if (!target || typeof target !== "object") return;
+  if (field === "unnormalized_address") {
+    if (
+      typeof value === "string" &&
+      value.trim().length &&
+      !hasMeaningfulAddressValue(target.unnormalized_address)
+    ) {
+      target.unnormalized_address = value.trim();
+    }
+    return;
+  }
+
+  if (!RAW_ADDRESS_ALLOWED_FIELDS.includes(field)) {
+    return;
+  }
+
+  if (hasMeaningfulAddressValue(target[field])) {
+    return;
+  }
+
+  if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+    const numeric = parseCoordinate(value);
+    if (Number.isFinite(numeric)) {
+      target[field] = numeric;
+    }
+    return;
+  }
+
+  const normalized = normalizeAddressFieldForSchema(field, value);
+  if (normalized !== undefined && normalized !== null) {
+    target[field] = normalized;
+  }
+}
+
+function buildRawAddressPayloadFromSources(options = {}) {
+  const {
+    unnormalizedCandidates = [],
+    fieldSources = [],
+    fieldFallbacks = {},
+    coordinateCandidates = [],
+    parcelIdCandidates = [],
+  } = options || {};
+
+  const resolvedUnnormalized = resolveFirstNonEmptyString(
+    Array.isArray(unnormalizedCandidates) ? unnormalizedCandidates : [],
+  );
+  const trimmedUnnormalized = safeNullIfEmpty(resolvedUnnormalized);
+  if (!trimmedUnnormalized) {
+    return null;
+  }
+
+  const payload = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    payload[field] = null;
+  }
+
+  for (const source of fieldSources) {
+    if (!source || typeof source !== "object") continue;
+    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+      if (
+        Object.prototype.hasOwnProperty.call(source, field) &&
+        !hasMeaningfulAddressValue(payload[field])
+      ) {
+        assignAddressFieldIfMissing(payload, field, source[field]);
+      }
+    }
+  }
+
+  const parsedStreet = parseLocationAddress(trimmedUnnormalized);
+  assignAddressFieldIfMissing(payload, "street_number", parsedStreet.streetNumber);
+  assignAddressFieldIfMissing(payload, "street_name", parsedStreet.streetName);
+  assignAddressFieldIfMissing(
+    payload,
+    "street_pre_directional_text",
+    parsedStreet.streetPreDirectional,
+  );
+  assignAddressFieldIfMissing(
+    payload,
+    "street_post_directional_text",
+    parsedStreet.streetPostDirectional,
+  );
+  assignAddressFieldIfMissing(payload, "street_suffix_type", parsedStreet.streetSuffix);
+  assignAddressFieldIfMissing(payload, "unit_identifier", parsedStreet.unitIdentifier);
+  assignAddressFieldIfMissing(payload, "route_number", parsedStreet.routeNumber);
+
+  const parsedCityState = parseCityStatePostal(trimmedUnnormalized);
+  assignAddressFieldIfMissing(payload, "city_name", parsedCityState.city);
+  assignAddressFieldIfMissing(payload, "state_code", parsedCityState.state);
+  assignAddressFieldIfMissing(payload, "postal_code", parsedCityState.postal);
+  assignAddressFieldIfMissing(
+    payload,
+    "plus_four_postal_code",
+    parsedCityState.plus4,
+  );
+
+  const { postal, plus4 } = extractPostalPieces(trimmedUnnormalized);
+  assignAddressFieldIfMissing(payload, "postal_code", postal);
+  assignAddressFieldIfMissing(payload, "plus_four_postal_code", plus4);
+
+  if (fieldFallbacks && typeof fieldFallbacks === "object") {
+    for (const [field, candidates] of Object.entries(fieldFallbacks)) {
+      if (!Array.isArray(candidates)) continue;
+      for (const candidate of candidates) {
+        assignAddressFieldIfMissing(payload, field, candidate);
+        if (hasMeaningfulAddressValue(payload[field])) {
+          break;
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(coordinateCandidates)) {
+    for (const candidate of coordinateCandidates) {
+      if (!candidate || typeof candidate !== "object") continue;
+      assignAddressFieldIfMissing(payload, "latitude", candidate.latitude);
+      assignAddressFieldIfMissing(payload, "longitude", candidate.longitude);
+    }
+  }
+
+  if (Array.isArray(parcelIdCandidates)) {
+    for (const candidate of parcelIdCandidates) {
+      const grid = parseGridFromPcn(candidate);
+      if (!grid) continue;
+      assignAddressFieldIfMissing(payload, "township", grid.township);
+      assignAddressFieldIfMissing(payload, "range", grid.range);
+      assignAddressFieldIfMissing(payload, "section", grid.section);
+      assignAddressFieldIfMissing(payload, "block", grid.block);
+      assignAddressFieldIfMissing(payload, "lot", grid.lot);
+      if (
+        hasMeaningfulAddressValue(payload.township) &&
+        hasMeaningfulAddressValue(payload.range) &&
+        hasMeaningfulAddressValue(payload.section)
+      ) {
+        break;
+      }
+    }
+  }
+
+  if (
+    hasMeaningfulAddressValue(payload.state_code) &&
+    !hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    payload.country_code = "US";
+  }
+
+  if (!hasMeaningfulAddressValue(payload.postal_code)) {
+    payload.plus_four_postal_code = null;
+  }
+
+  return ensureAddressOutputFieldPresence(payload);
+}
+
+function overwriteAddressWithRawBaseline(addressFilePath, options = {}) {
+  if (!addressFilePath) return;
+
+  let existingPayload = null;
+  if (fs.existsSync(addressFilePath)) {
+    try {
+      existingPayload = readJSON(addressFilePath);
+    } catch {
+      existingPayload = null;
+    }
+  }
+
+  const fieldSources = [];
+  if (existingPayload && typeof existingPayload === "object") {
+    fieldSources.push(existingPayload);
+  }
+  if (Array.isArray(options.fieldSources)) {
+    for (const source of options.fieldSources) {
+      if (source && typeof source === "object") {
+        fieldSources.push(source);
+      }
+    }
+  }
+
+  const unnormalizedCandidates = [];
+  if (existingPayload && typeof existingPayload.unnormalized_address === "string") {
+    unnormalizedCandidates.push(existingPayload.unnormalized_address);
+  }
+  if (options.unnormalizedAddress) {
+    unnormalizedCandidates.push(options.unnormalizedAddress);
+  }
+  if (Array.isArray(options.unnormalizedCandidates)) {
+    unnormalizedCandidates.push(...options.unnormalizedCandidates);
+  }
+
+  const payload = buildRawAddressPayloadFromSources({
+    unnormalizedCandidates,
+    fieldSources,
+    fieldFallbacks: options.fieldFallbacks,
+    coordinateCandidates: Array.isArray(options.coordinateCandidates)
+      ? options.coordinateCandidates
+      : [],
+    parcelIdCandidates: Array.isArray(options.parcelIdCandidates)
+      ? options.parcelIdCandidates
+      : [],
+  });
+
+  if (!payload) return;
+
+  writeJSON(addressFilePath, payload);
+}
+
 function hydrateRawAddressForSchema(source, options = {}) {
   if (!source || typeof source !== "object") return null;
 
@@ -6859,6 +7067,58 @@ async function main() {
       writeJSON(path.join(dataDir, `tax_${y}.json`), taxObj);
     }
   }
+
+  const addressLineCombined = [addressLine1, addressLine2, addressLine3]
+    .filter((value) => typeof value === "string" && value.trim().length)
+    .join(", ");
+
+  overwriteAddressWithRawBaseline(path.join(dataDir, "address.json"), {
+    unnormalizedCandidates: [
+      unAddr && unAddr.full_address,
+      siteLocationLine,
+      combinedModelAddress,
+      addressLineCombined,
+    ],
+    fieldSources: [unAddr, seed],
+    fieldFallbacks: {
+      city_name: [
+        normalizedCity,
+        resolvedCity,
+      ],
+      state_code: [
+        resolvedState,
+        countyInferredStateCode,
+        "FL",
+      ],
+      postal_code: [
+        sanitizedPostalCode,
+        postalCode,
+      ],
+      plus_four_postal_code: [
+        sanitizedPlus4,
+        plus4,
+      ],
+      county_name: [
+        formattedCountyName,
+        countyName,
+        "Palm Beach",
+      ],
+      municipality_name: [
+        normalizedMunicipality
+          ? toTitleCase(normalizedMunicipality)
+          : null,
+        resolvedCity,
+      ],
+    },
+    coordinateCandidates: [
+      { latitude: initialLatitude, longitude: initialLongitude },
+      parcelCentroid && {
+        latitude: parcelCentroid.latitude,
+        longitude: parcelCentroid.longitude,
+      },
+    ].filter(Boolean),
+    parcelIdCandidates: [parcelId, pcnHyphen],
+  });
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");
