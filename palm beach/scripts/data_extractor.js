@@ -4437,6 +4437,80 @@ function ensureAddressOutputFieldPresence(address) {
   return result;
 }
 
+function ensureAddressFileFieldCompleteness(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const hasRawVariant = trimmedUnnormalized.length > 0;
+  const variantHint = hasRawVariant ? "raw" : "normalized";
+
+  const template =
+    variantHint === "raw"
+      ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE }
+      : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+  const seeded = { ...template };
+
+  if (hasRawVariant) {
+    seeded.unnormalized_address = trimmedUnnormalized;
+  }
+
+  const fieldList =
+    variantHint === "raw"
+      ? RAW_ADDRESS_OUTPUT_FIELDS
+      : NORMALIZED_ADDRESS_FIELDS;
+
+  for (const field of fieldList) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      seeded[field] = payload[field];
+    }
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (requestIdentifier) {
+    seeded.request_identifier = requestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  if (preparedSource) {
+    seeded.source_http_request = deepClone(preparedSource);
+  }
+
+  const withFields = ensureAddressOutputFieldPresence(seeded) || seeded;
+  const finalized =
+    finalizeAddressPayloadForOutput(withFields, variantHint) || withFields;
+
+  if (variantHint === "raw") {
+    const surfacedRaw =
+      ensureRawAddressOutputSurface(finalized) || finalized;
+    writeJSON(addressFilePath, surfacedRaw);
+  } else {
+    const surfacedNormalized =
+      ensureNormalizedAddressSchemaSurface(finalized) || finalized;
+    writeJSON(addressFilePath, surfacedNormalized);
+  }
+
+  enforceCountyAddressOneOfCompliance(addressFilePath);
+}
+
 function buildAddressPayloadForWrite(address, variantHint = null) {
   if (!address || typeof address !== "object") return null;
 
@@ -15217,6 +15291,8 @@ async function main() {
       longitude: preferredLongitude,
     },
   });
+
+  ensureAddressFileFieldCompleteness(addressFilePath);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
