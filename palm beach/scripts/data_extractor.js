@@ -4453,6 +4453,54 @@ function enforceRawAddressSurface(addressFilePath) {
     return;
   }
 
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface(payload) || null;
+  if (normalizedSurface) {
+    const normalizedCandidate = { ...normalizedSurface };
+    if (hasCompleteNormalizedAddress(normalizedCandidate)) {
+      if (!normalizedCandidate.postal_code) {
+        normalizedCandidate.plus_four_postal_code = null;
+      }
+      if (
+        normalizedCandidate.state_code &&
+        !normalizedCandidate.country_code
+      ) {
+        normalizedCandidate.country_code = "US";
+      }
+
+      const resolvedRequestIdentifier = safeNullIfEmpty(
+        payload.request_identifier,
+      );
+      if (resolvedRequestIdentifier) {
+        normalizedCandidate.request_identifier = resolvedRequestIdentifier;
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "request_identifier",
+        )
+      ) {
+        delete normalizedCandidate.request_identifier;
+      }
+
+      const preparedSource = prepareSourceHttpRequest(
+        payload.source_http_request,
+      );
+      if (preparedSource) {
+        normalizedCandidate.source_http_request = deepClone(preparedSource);
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "source_http_request",
+        )
+      ) {
+        delete normalizedCandidate.source_http_request;
+      }
+
+      writeJSON(addressFilePath, normalizedCandidate);
+      return;
+    }
+  }
+
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
