@@ -1950,21 +1950,21 @@ function hasRawAddressRequiredFields(address) {
   const hasLatitude = Number.isFinite(parsedLatitude);
   const hasLongitude = Number.isFinite(parsedLongitude);
 
-  if (hasLatitude && hasLongitude) {
-    address.latitude = parsedLatitude;
-    address.longitude = parsedLongitude;
-  } else {
-    address.latitude = null;
-    address.longitude = null;
-  }
+  address.latitude = hasLatitude ? parsedLatitude : null;
+  address.longitude = hasLongitude ? parsedLongitude : null;
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) continue;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
+    }
 
-    const normalized = normalizeAddressFieldForSchema(field, address[field]);
-    address[field] =
-      normalized === undefined || normalized === null ? null : normalized;
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      const normalized = normalizeAddressFieldForSchema(field, address[field]);
+      address[field] =
+        normalized === undefined || normalized === null ? null : normalized;
+    } else {
+      address[field] = null;
+    }
   }
 
   if (
@@ -1974,10 +1974,12 @@ function hasRawAddressRequiredFields(address) {
     address.country_code = "US";
   }
 
-  for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
-    if (!hasMeaningfulAddressValue(address[field])) {
-      return false;
-    }
+  if (!hasMeaningfulAddressValue(address.postal_code)) {
+    address.plus_four_postal_code = null;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(address, "plus_four_postal_code")
+  ) {
+    address.plus_four_postal_code = null;
   }
 
   return true;
