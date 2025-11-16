@@ -4728,6 +4728,14 @@ function enforceFinalAddressSchemaOutput(addressFilePath) {
   const preparedSource = prepareSourceHttpRequest(
     payload.source_http_request,
   );
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
 
   if (hasRawUnnormalized) {
     const rawCandidate = {
@@ -5059,6 +5067,113 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
   const finalRaw =
     applyAddressSchemaDefaultsForVariant(surfacedRaw, "raw") || surfacedRaw;
   writeJSON(addressFilePath, finalRaw);
+}
+
+function enforceCountyAddressOneOfCompliance(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+
+  if (trimmedUnnormalized.length) {
+    const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null;
+      const normalized = normalizeAddressFieldForSchema(field, candidate);
+      rawOutput[field] =
+        normalized === undefined || normalized === null ? null : normalized;
+    }
+    rawOutput.unnormalized_address = trimmedUnnormalized;
+
+    if (!rawOutput.postal_code) {
+      rawOutput.plus_four_postal_code = null;
+    }
+    if (rawOutput.state_code && !rawOutput.country_code) {
+      rawOutput.country_code = "US";
+    }
+    if (requestIdentifier) {
+      rawOutput.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      rawOutput.request_identifier = null;
+    }
+    if (preparedSource) {
+      rawOutput.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      rawOutput.source_http_request = null;
+    }
+
+    writeJSON(addressFilePath, rawOutput);
+    return;
+  }
+
+  const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  let hasMeaningfulNormalizedValue = false;
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    const normalized = normalizeAddressFieldForSchema(field, candidate);
+    if (normalized !== undefined && normalized !== null) {
+      normalizedOutput[field] = normalized;
+      hasMeaningfulNormalizedValue = true;
+    } else {
+      normalizedOutput[field] = null;
+    }
+  }
+
+  if (!hasMeaningfulNormalizedValue) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!normalizedOutput.postal_code) {
+    normalizedOutput.plus_four_postal_code = null;
+  }
+  if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+    normalizedOutput.country_code = "US";
+  }
+  if (requestIdentifier) {
+    normalizedOutput.request_identifier = requestIdentifier;
+  } else if (hadRequestIdentifier) {
+    normalizedOutput.request_identifier = null;
+  }
+  if (preparedSource) {
+    normalizedOutput.source_http_request = deepClone(preparedSource);
+  } else if (hadSourceHttpRequest) {
+    normalizedOutput.source_http_request = null;
+  }
+  writeJSON(addressFilePath, normalizedOutput);
 }
 
 function materializeAddressVariantForOutput(address, options = {}) {
@@ -12215,6 +12330,8 @@ async function main() {
       seed && seed.source_http_request,
     ],
   });
+
+  enforceCountyAddressOneOfCompliance(addressFilePath);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
