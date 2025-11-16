@@ -4923,7 +4923,9 @@ function finalizeCountyAddressFile(addressFilePath) {
         "raw",
       );
       if (surfacedRaw) {
-        writeJSON(addressFilePath, surfacedRaw);
+        const surfacedWithDefaults =
+          ensureRawAddressOutputSurface(surfacedRaw) || surfacedRaw;
+        writeJSON(addressFilePath, surfacedWithDefaults);
         return;
       }
     }
