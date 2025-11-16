@@ -5725,6 +5725,181 @@ function finalizeAddressSchemaOutput(addressFilePath, options = {}) {
   removeFileIfExists(addressFilePath);
 }
 
+function enforceFinalCountyAddressSchema(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const {
+    unnormalizedCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    coordinateFallback = {},
+  } = options || {};
+
+  const collectCandidates = (extra, accumulator = []) => {
+    if (extra == null) {
+      return accumulator;
+    }
+    if (Array.isArray(extra)) {
+      for (const item of extra) {
+        if (item != null) {
+          accumulator.push(item);
+        }
+      }
+      return accumulator;
+    }
+    accumulator.push(extra);
+    return accumulator;
+  };
+
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const normalizedValue = normalizeAddressFieldForSchema(field, payload[field]);
+    normalizedSurface[field] =
+      normalizedValue === undefined || normalizedValue === null ? null : normalizedValue;
+  }
+
+  const resolvedCoordinateFallback =
+    coordinateFallback && typeof coordinateFallback === "object"
+      ? coordinateFallback
+      : {};
+
+  for (const coordField of ADDRESS_COORDINATE_FIELDS) {
+    if (
+      !Number.isFinite(normalizedSurface[coordField]) &&
+      Number.isFinite(resolvedCoordinateFallback[coordField])
+    ) {
+      normalizedSurface[coordField] = resolvedCoordinateFallback[coordField];
+    }
+  }
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString(
+      collectCandidates(requestIdentifierCandidates, [
+        payload.request_identifier,
+      ]),
+    ),
+  );
+
+  const resolvedSourceHttpRequest = (function resolveSourceCandidate() {
+    const candidates = collectCandidates(sourceHttpRequestCandidates, [
+      payload.source_http_request,
+    ]);
+    for (const candidate of candidates) {
+      const prepared = prepareSourceHttpRequest(candidate);
+      if (prepared) {
+        return prepared;
+      }
+    }
+    return null;
+  })();
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedSurface[field] === "string" &&
+      normalizedSurface[field].trim().length > 0,
+  );
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOutput[field] = normalizedSurface[field];
+    }
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+    if (resolvedRequestIdentifier) {
+      normalizedOutput.request_identifier = resolvedRequestIdentifier;
+    }
+    if (resolvedSourceHttpRequest) {
+      normalizedOutput.source_http_request = deepClone(resolvedSourceHttpRequest);
+    }
+    writeJSON(addressFilePath, normalizedOutput);
+    return;
+  }
+
+  const rawUnnormalizedCandidates = collectCandidates(
+    unnormalizedCandidates,
+    typeof payload.unnormalized_address === "string"
+      ? [payload.unnormalized_address]
+      : [],
+  );
+
+  const reconstructedUnnormalized = composeUnnormalizedAddress({
+    ...normalizedSurface,
+    unnormalized_address: payload.unnormalized_address,
+  });
+
+  if (reconstructedUnnormalized) {
+    rawUnnormalizedCandidates.push(reconstructedUnnormalized);
+  }
+
+  const resolvedUnnormalized = resolveFirstNonEmptyString(
+    rawUnnormalizedCandidates,
+  );
+  const trimmedUnnormalized = safeNullIfEmpty(resolvedUnnormalized);
+
+  if (!trimmedUnnormalized) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    rawOutput[field] = normalizedSurface[field];
+  }
+  for (const coordField of ADDRESS_COORDINATE_FIELDS) {
+    if (
+      !Number.isFinite(rawOutput[coordField]) &&
+      Number.isFinite(resolvedCoordinateFallback[coordField])
+    ) {
+      rawOutput[coordField] = resolvedCoordinateFallback[coordField];
+    }
+  }
+
+  rawOutput.unnormalized_address = trimmedUnnormalized;
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+  if (resolvedRequestIdentifier) {
+    rawOutput.request_identifier = resolvedRequestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawOutput, "request_identifier")
+  ) {
+    delete rawOutput.request_identifier;
+  }
+  if (resolvedSourceHttpRequest) {
+    rawOutput.source_http_request = deepClone(resolvedSourceHttpRequest);
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")
+  ) {
+    delete rawOutput.source_http_request;
+  }
+
+  writeJSON(addressFilePath, rawOutput);
+}
+
 function hydrateAddressFromContext(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -13829,6 +14004,38 @@ async function main() {
       seed,
     ],
     fieldFallbacks: addressFieldFallbacks,
+    unnormalizedCandidates: [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      fallbackUnnormalizedValue,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+    ],
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      address && address.request_identifier,
+      baseAddressSeed && baseAddressSeed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      seed && seed.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      preparedSourceHttpRequest,
+      finalAddressPayload && finalAddressPayload.source_http_request,
+      preparedAddressOutput && preparedAddressOutput.source_http_request,
+      address && address.source_http_request,
+      baseAddressSeed && baseAddressSeed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+    coordinateFallback: {
+      latitude: preferredLatitude,
+      longitude: preferredLongitude,
+    },
+  });
+  enforceFinalCountyAddressSchema(addressFilePath, {
     unnormalizedCandidates: [
       canonicalUnnormalized,
       resolvedUnnormalized,
