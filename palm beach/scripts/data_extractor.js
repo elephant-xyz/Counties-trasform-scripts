@@ -5274,6 +5274,39 @@ function enforceCountyAddressOneOfCompliance(addressFilePath) {
     "source_http_request",
   );
 
+  if (trimmedUnnormalized.length) {
+    const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null;
+      const normalized = normalizeAddressFieldForSchema(field, candidate);
+      rawOutput[field] =
+        normalized === undefined || normalized === null ? null : normalized;
+    }
+    rawOutput.unnormalized_address = trimmedUnnormalized;
+
+    if (!rawOutput.postal_code) {
+      rawOutput.plus_four_postal_code = null;
+    }
+    if (rawOutput.state_code && !rawOutput.country_code) {
+      rawOutput.country_code = "US";
+    }
+    if (requestIdentifier) {
+      rawOutput.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      rawOutput.request_identifier = null;
+    }
+    if (preparedSource) {
+      rawOutput.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      rawOutput.source_http_request = null;
+    }
+
+    writeJSON(addressFilePath, rawOutput);
+    return;
+  }
+
   const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const candidate = Object.prototype.hasOwnProperty.call(payload, field)
@@ -5312,39 +5345,6 @@ function enforceCountyAddressOneOfCompliance(addressFilePath) {
     }
 
     writeJSON(addressFilePath, normalizedOutput);
-    return;
-  }
-
-  if (trimmedUnnormalized.length) {
-    const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      const normalized = normalizeAddressFieldForSchema(field, candidate);
-      rawOutput[field] =
-        normalized === undefined || normalized === null ? null : normalized;
-    }
-    rawOutput.unnormalized_address = trimmedUnnormalized;
-
-    if (!rawOutput.postal_code) {
-      rawOutput.plus_four_postal_code = null;
-    }
-    if (rawOutput.state_code && !rawOutput.country_code) {
-      rawOutput.country_code = "US";
-    }
-    if (requestIdentifier) {
-      rawOutput.request_identifier = requestIdentifier;
-    } else if (hadRequestIdentifier) {
-      rawOutput.request_identifier = null;
-    }
-    if (preparedSource) {
-      rawOutput.source_http_request = deepClone(preparedSource);
-    } else if (hadSourceHttpRequest) {
-      rawOutput.source_http_request = null;
-    }
-
-    writeJSON(addressFilePath, rawOutput);
     return;
   }
 
