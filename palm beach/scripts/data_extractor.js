@@ -8713,6 +8713,186 @@ function buildRawSchemaAlignedAddress(address) {
   return aligned;
 }
 
+function preferRawAddressVariant(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const {
+    fieldSources = [],
+    fieldFallbacks = {},
+    unnormalizedCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    coordinateFallback = {},
+  } = options || {};
+
+  const rawQueue = [];
+  if (typeof payload.unnormalized_address === "string") {
+    rawQueue.push(payload.unnormalized_address);
+  }
+  if (Array.isArray(unnormalizedCandidates)) {
+    for (const candidate of unnormalizedCandidates) {
+      if (candidate != null) {
+        rawQueue.push(candidate);
+      }
+    }
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawQueue);
+  const trimmedRaw =
+    typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
+
+  if (!trimmedRaw.length) {
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
+    ) {
+      delete payload.unnormalized_address;
+      writeJSON(addressFilePath, payload);
+    }
+    return;
+  }
+
+  const candidateSources = [payload];
+  if (Array.isArray(fieldSources)) {
+    for (const source of fieldSources) {
+      if (source && typeof source === "object") {
+        candidateSources.push(source);
+      }
+    }
+  }
+
+  const fallbackMap =
+    fieldFallbacks && typeof fieldFallbacks === "object"
+      ? fieldFallbacks
+      : {};
+
+  const coordinateFallbackMap =
+    coordinateFallback && typeof coordinateFallback === "object"
+      ? coordinateFallback
+      : {};
+
+  const gatherCandidatesForField = (field) => {
+    const collected = [];
+    for (const source of candidateSources) {
+      if (
+        source &&
+        typeof source === "object" &&
+        Object.prototype.hasOwnProperty.call(source, field)
+      ) {
+        collected.push(source[field]);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(fallbackMap, field)) {
+      const value = fallbackMap[field];
+      if (Array.isArray(value)) {
+        collected.push(...value);
+      } else if (value != null) {
+        collected.push(value);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(coordinateFallbackMap, field)) {
+      collected.push(coordinateFallbackMap[field]);
+    }
+    return collected;
+  };
+
+  const resolveFieldValue = (field) => {
+    const candidates = gatherCandidatesForField(field);
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) {
+        continue;
+      }
+
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(candidate);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+        continue;
+      }
+
+      const normalized = normalizeAddressFieldForSchema(field, candidate);
+      if (normalized === undefined || normalized === null) {
+        continue;
+      }
+
+      if (typeof normalized === "string") {
+        const trimmed = normalized.trim();
+        if (!trimmed.length) {
+          continue;
+        }
+        return trimmed;
+      }
+
+      return normalized;
+    }
+    return null;
+  };
+
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const value = resolveFieldValue(field);
+    rawOutput[field] = value === undefined || value === null ? null : value;
+  }
+
+  if (
+    (rawOutput.latitude == null) !== (rawOutput.longitude == null)
+  ) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+
+  rawOutput.unnormalized_address = trimmedRaw;
+
+  const requestIdentifierQueue = [];
+  if (payload.request_identifier != null) {
+    requestIdentifierQueue.push(payload.request_identifier);
+  }
+  if (Array.isArray(requestIdentifierCandidates)) {
+    requestIdentifierQueue.push(...requestIdentifierCandidates);
+  }
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString(requestIdentifierQueue),
+  );
+  if (resolvedRequestIdentifier) {
+    rawOutput.request_identifier = resolvedRequestIdentifier;
+  }
+
+  const sourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
+      : []),
+  );
+  if (sourceHttp) {
+    rawOutput.source_http_request = deepClone(sourceHttp);
+  }
+
+  writeJSON(addressFilePath, rawOutput);
+}
+
 function ensureRawAddressSchemaDefaults(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -14933,6 +15113,53 @@ async function main() {
       unAddr && unAddr.source_http_request,
       seed && seed.source_http_request,
     ],
+  });
+
+  preferRawAddressVariant(addressFilePath, {
+    fieldSources: [
+      preparedAddressOutput,
+      finalAddressPayload,
+      rawResult,
+      normalizedResult,
+      normalizedPayload,
+      addressForOutput,
+      baseAddressSeed,
+      address,
+      normalizedSnapshot,
+      unAddr,
+      seed,
+    ],
+    fieldFallbacks: addressFieldFallbacks,
+    unnormalizedCandidates: [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      fallbackUnnormalizedValue,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+    ],
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      address && address.request_identifier,
+      baseAddressSeed && baseAddressSeed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      seed && seed.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      preparedSourceHttpRequest,
+      finalAddressPayload && finalAddressPayload.source_http_request,
+      preparedAddressOutput && preparedAddressOutput.source_http_request,
+      address && address.source_http_request,
+      baseAddressSeed && baseAddressSeed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+    coordinateFallback: {
+      latitude: preferredLatitude,
+      longitude: preferredLongitude,
+    },
   });
 
   // Relationship UR generation is now handled downstream; ensure we do not
