@@ -8014,6 +8014,284 @@ consumePostDirectional();
   return result;
 }
 
+function deriveNormalizedAddressFieldsFromRaw(raw) {
+  const normalized = normalizeWhitespace(raw);
+  if (!normalized) return null;
+
+  const result = {};
+  const parts = normalized.split(",").map((part) => part.trim()).filter(Boolean);
+
+  const streetPart = parts.length ? parts.shift() : normalized;
+  let cityCandidate = parts.length ? parts.shift() : null;
+  let trailingSegment = parts.length ? parts.join(" ") : null;
+
+  if (cityCandidate && !trailingSegment) {
+    const tokens = cityCandidate.split(/\s+/);
+    if (tokens.length >= 3) {
+      const maybeState = tokens[tokens.length - 2];
+      const maybeZip = tokens[tokens.length - 1];
+      if (/^[A-Z]{2}$/i.test(maybeState) && /\d{5}/.test(maybeZip)) {
+        trailingSegment = `${maybeState} ${maybeZip}`;
+        cityCandidate = tokens.slice(0, -2).join(" ");
+      }
+    }
+  }
+
+  if (!cityCandidate && trailingSegment) {
+    const inferredCity = trailingSegment.replace(/([A-Z]{2})\s*\d{5}.*/, "").trim();
+    if (inferredCity && !/\d/.test(inferredCity)) {
+      cityCandidate = inferredCity;
+    }
+  }
+
+  const stateZipPattern = /([A-Z]{2})\s*(\d{5})(?:[-\s]*(\d{4}))?/i;
+  if (trailingSegment) {
+    const match = trailingSegment.match(stateZipPattern);
+    if (match) {
+      result.state_code = match[1].toUpperCase();
+      result.postal_code = match[2];
+      if (match[3]) {
+        result.plus_four_postal_code = match[3];
+      }
+      if (!cityCandidate) {
+        const before = trailingSegment.slice(0, match.index).trim();
+        if (before && !/\d/.test(before)) {
+          cityCandidate = before;
+        }
+      }
+    } else {
+      const stateCandidate = trailingSegment.match(/\b([A-Z]{2})\b/);
+      if (stateCandidate) {
+        result.state_code = stateCandidate[1].toUpperCase();
+      }
+      const postalCandidate = trailingSegment.match(/\b(\d{5})(?:[-\s]*(\d{4}))?\b/);
+      if (postalCandidate) {
+        result.postal_code = postalCandidate[1];
+        if (postalCandidate[2]) {
+          result.plus_four_postal_code = postalCandidate[2];
+        }
+        if (!cityCandidate) {
+          const beforeZip = trailingSegment.slice(0, postalCandidate.index).trim();
+          if (beforeZip) {
+            cityCandidate = beforeZip.replace(/,$/, "").trim();
+          }
+        }
+      }
+    }
+  }
+
+  if (cityCandidate) {
+    result.city_name = cityCandidate;
+  }
+
+  if (streetPart) {
+    const parsedStreet = parseLocationAddress(streetPart);
+    if (parsedStreet.streetNumber) {
+      result.street_number = parsedStreet.streetNumber;
+    }
+    if (parsedStreet.streetName) {
+      result.street_name = parsedStreet.streetName;
+    }
+    if (parsedStreet.streetPreDirectional) {
+      result.street_pre_directional_text = parsedStreet.streetPreDirectional;
+    }
+    if (parsedStreet.streetPostDirectional) {
+      result.street_post_directional_text = parsedStreet.streetPostDirectional;
+    }
+    if (parsedStreet.streetSuffix) {
+      result.street_suffix_type = parsedStreet.streetSuffix;
+    }
+    if (parsedStreet.unitIdentifier) {
+      result.unit_identifier = parsedStreet.unitIdentifier;
+    }
+    if (parsedStreet.routeNumber) {
+      result.route_number = parsedStreet.routeNumber;
+    }
+  }
+
+  return result;
+}
+
+function strengthenAddressFromRawCandidates(address, rawCandidates = []) {
+  if (!address || typeof address !== "object") return address;
+  if (!Array.isArray(rawCandidates) || !rawCandidates.length) return address;
+
+  const seen = new Set();
+  for (const raw of rawCandidates) {
+    if (typeof raw !== "string") continue;
+    const normalized = normalizeWhitespace(raw);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+
+    const derived = deriveNormalizedAddressFieldsFromRaw(normalized);
+    if (!derived) continue;
+
+    for (const [field, rawValue] of Object.entries(derived)) {
+      if (hasMeaningfulAddressValue(address[field])) continue;
+      const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+      if (normalizedValue === undefined || normalizedValue === null) continue;
+      address[field] = normalizedValue;
+    }
+  }
+
+  if (
+    hasMeaningfulAddressValue(address.state_code) &&
+    !hasMeaningfulAddressValue(address.country_code)
+  ) {
+    address.country_code = "US";
+  }
+
+  if (!hasMeaningfulAddressValue(address.postal_code)) {
+    address.plus_four_postal_code = null;
+  }
+
+  return address;
+}
+
+function ensureAddressFileSatisfiesSchema(filePath, options = {}) {
+  if (!filePath || !fs.existsSync(filePath)) return;
+
+  let payload;
+  try {
+    payload = readJSON(filePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") return;
+
+  const rawCandidates = [];
+  if (typeof payload.unnormalized_address === "string") {
+    rawCandidates.push(payload.unnormalized_address);
+  }
+  if (Array.isArray(options.unnormalizedCandidates)) {
+    rawCandidates.push(...options.unnormalizedCandidates);
+  }
+
+  const normalizedRawCandidates = rawCandidates
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0);
+
+  const preferredRaw =
+    normalizedRawCandidates.length > 0 ? normalizedRawCandidates[0] : null;
+
+  if (preferredRaw) {
+    payload.unnormalized_address = preferredRaw;
+    strengthenAddressFromRawCandidates(payload, normalizedRawCandidates);
+  } else if (
+    Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
+  ) {
+    delete payload.unnormalized_address;
+  }
+
+  const ensureFromCandidates = (field, candidates) => {
+    if (hasMeaningfulAddressValue(payload[field])) return;
+    if (!Array.isArray(candidates) || !candidates.length) return;
+    const resolved = resolveFirstNonEmptyString(candidates);
+    if (!resolved) return;
+    const normalizedValue = normalizeAddressFieldForSchema(field, resolved);
+    if (normalizedValue === undefined || normalizedValue === null) return;
+    payload[field] = normalizedValue;
+  };
+
+  ensureFromCandidates("county_name", options.countyCandidates);
+  ensureFromCandidates("municipality_name", options.municipalityCandidates);
+  ensureFromCandidates("city_name", options.cityCandidates);
+  ensureFromCandidates("state_code", options.stateCandidates);
+  ensureFromCandidates("postal_code", options.postalCandidates);
+  ensureFromCandidates("plus_four_postal_code", options.plus4Candidates);
+  ensureFromCandidates("country_code", options.countryCandidates || ["US"]);
+
+  if (
+    hasMeaningfulAddressValue(payload.city_name) &&
+    !hasMeaningfulAddressValue(payload.municipality_name)
+  ) {
+    payload.municipality_name = normalizeAddressFieldForSchema(
+      "municipality_name",
+      payload.city_name,
+    );
+  }
+
+  const resolveCoordinate = (field, candidates) => {
+    const numeric = parseCoordinate(payload[field]);
+    if (Number.isFinite(numeric)) {
+      payload[field] = numeric;
+      return;
+    }
+    const resolved = Array.isArray(candidates)
+      ? resolveFirstCoordinate(candidates)
+      : null;
+    payload[field] = Number.isFinite(resolved) ? resolved : null;
+  };
+
+  resolveCoordinate("latitude", [
+    payload.latitude,
+    ...(options.latitudeCandidates || []),
+  ]);
+  resolveCoordinate("longitude", [
+    payload.longitude,
+    ...(options.longitudeCandidates || []),
+  ]);
+
+  if (
+    hasMeaningfulAddressValue(payload.state_code) &&
+    !hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    payload.country_code = "US";
+  }
+
+  if (!hasMeaningfulAddressValue(payload.postal_code)) {
+    payload.plus_four_postal_code = null;
+  }
+
+  const requestIdentifierCandidates = [
+    payload.request_identifier,
+    ...(options.requestIdentifierCandidates || []),
+  ];
+  const resolvedRequestIdentifier =
+    resolveFirstNonEmptyString(requestIdentifierCandidates);
+  if (resolvedRequestIdentifier) {
+    payload.request_identifier = resolvedRequestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(payload, "request_identifier")
+  ) {
+    const trimmedIdentifier = safeNullIfEmpty(payload.request_identifier);
+    if (trimmedIdentifier) {
+      payload.request_identifier = trimmedIdentifier;
+    } else {
+      delete payload.request_identifier;
+    }
+  }
+
+  const sourceCandidates = Array.isArray(options.sourceHttpRequestCandidates)
+    ? options.sourceHttpRequestCandidates.filter(Boolean)
+    : [];
+  const resolvedSource = resolveSourceHttpRequest(
+    payload.source_http_request,
+    ...sourceCandidates,
+  );
+  if (resolvedSource) {
+    payload.source_http_request = resolvedSource;
+  } else if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+  ) {
+    delete payload.source_http_request;
+  }
+
+  let aligned = ensureAddressOutputFieldPresence(payload) || payload;
+
+  if (!aligned.postal_code) {
+    aligned.plus_four_postal_code = null;
+  }
+  if (aligned.state_code && !aligned.country_code) {
+    aligned.country_code = "US";
+  }
+
+  aligned = ensureAddressOutputFieldPresence(aligned) || aligned;
+
+  writeJSON(filePath, aligned);
+}
+
 function sanitizePostalCode(value) {
   if (!value) return null;
   const stringValue = String(value);
@@ -14576,6 +14854,86 @@ async function main() {
   });
 
   enforceAddressTemplateForOutput(addressFilePath);
+
+  ensureAddressFileSatisfiesSchema(addressFilePath, {
+    unnormalizedCandidates: [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      fallbackUnnormalizedValue,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+    ],
+    cityCandidates: [
+      addressForOutput && addressForOutput.city_name,
+      normalizedSnapshot && normalizedSnapshot.city_name,
+      normalizedCity,
+      resolvedCity,
+      parsedUnnormalizedCityState && parsedUnnormalizedCityState.city,
+    ],
+    municipalityCandidates: [
+      addressForOutput && addressForOutput.municipality_name,
+      normalizedSnapshot && normalizedSnapshot.municipality_name,
+      normalizedMunicipality,
+      parsedUnnormalizedCityState && parsedUnnormalizedCityState.city,
+    ],
+    stateCandidates: [
+      addressForOutput && addressForOutput.state_code,
+      normalizedSnapshot && normalizedSnapshot.state_code,
+      inferredStateCode,
+      resolvedStateUpper,
+      countyInferredStateCode,
+      "FL",
+    ],
+    postalCandidates: [
+      addressForOutput && addressForOutput.postal_code,
+      normalizedSnapshot && normalizedSnapshot.postal_code,
+      fallbackPostalValue,
+      sanitizedPostalCode,
+      postalCode,
+      parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal,
+    ],
+    plus4Candidates: [
+      addressForOutput && addressForOutput.plus_four_postal_code,
+      normalizedSnapshot && normalizedSnapshot.plus_four_postal_code,
+      fallbackPlus4Value,
+      sanitizedPlus4,
+      plus4,
+      parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4,
+    ],
+    countyCandidates: [
+      addressForOutput && addressForOutput.county_name,
+      normalizedSnapshot && normalizedSnapshot.county_name,
+      formattedCountyName,
+      countyName,
+      defaultCounty,
+    ],
+    countryCandidates: [
+      addressForOutput && addressForOutput.country_code,
+      normalizedSnapshot && normalizedSnapshot.country_code,
+      "US",
+    ],
+    latitudeCandidates: latitudeCandidates,
+    longitudeCandidates: longitudeCandidates,
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      address && address.request_identifier,
+      baseAddressSeed && baseAddressSeed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      seed && seed.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      preparedSourceHttpRequest,
+      finalAddressPayload && finalAddressPayload.source_http_request,
+      preparedAddressOutput && preparedAddressOutput.source_http_request,
+      address && address.source_http_request,
+      baseAddressSeed && baseAddressSeed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+  });
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
