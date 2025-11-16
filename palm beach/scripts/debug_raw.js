@@ -2361,32 +2361,20 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([
+  "street_name",
+  "street_number",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+]);
+
 // Fields that may accompany the raw (unnormalized) address payload.
 // Keep the list aligned with the schema requirements so every nullable property is present,
 // even when we only have an unnormalized string available.
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
-  "municipality_name",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
+  (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
+);
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 
@@ -2410,32 +2398,12 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
 // Align raw variant with normalized surface so the schema oneOf that permits
 // unnormalized strings still sees every nullable key.
-const RAW_VARIANT_SCHEMA_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+const RAW_VARIANT_SCHEMA_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
 const RAW_SCHEMA_REQUIRED_FIELDS = [];

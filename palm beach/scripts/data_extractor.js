@@ -1102,20 +1102,45 @@ function enrichAddressFromUnnormalized(address, unnormalizedValue) {
   const streetSegment = segments[0];
   if (streetSegment) {
     const parsedStreet = parseLocationAddress(streetSegment);
-    if (parsedStreet.streetNumber && !address.street_number) {
+    if (
+      parsedStreet.streetNumber &&
+      !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_number") &&
+      !address.street_number
+    ) {
+      console.log("assign street_number from enrich");
       address.street_number = safeNullIfEmpty(parsedStreet.streetNumber);
     }
-    if (parsedStreet.streetName && !address.street_name) {
+    if (
+      parsedStreet.streetName &&
+      !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_name") &&
+      !address.street_name
+    ) {
+      console.log("assign street_name from enrich");
       const formatted = formatStreetNameCase(parsedStreet.streetName);
       address.street_name = formatted ? formatted.toUpperCase() : null;
     }
-    if (parsedStreet.streetPreDirectional && !address.street_pre_directional_text) {
+    if (
+      parsedStreet.streetPreDirectional &&
+      !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_pre_directional_text") &&
+      !address.street_pre_directional_text
+    ) {
+      console.log("assign pre dir from enrich");
       address.street_pre_directional_text = parsedStreet.streetPreDirectional.toUpperCase();
     }
-    if (parsedStreet.streetPostDirectional && !address.street_post_directional_text) {
+    if (
+      parsedStreet.streetPostDirectional &&
+      !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_post_directional_text") &&
+      !address.street_post_directional_text
+    ) {
+      console.log("assign post dir from enrich");
       address.street_post_directional_text = parsedStreet.streetPostDirectional.toUpperCase();
     }
-    if (parsedStreet.streetSuffix && !address.street_suffix_type) {
+    if (
+      parsedStreet.streetSuffix &&
+      !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_suffix_type") &&
+      !address.street_suffix_type
+    ) {
+      console.log("assign suffix from enrich");
       const mappedSuffix = mapStreetSuffixType(parsedStreet.streetSuffix);
       if (mappedSuffix) {
         address.street_suffix_type = mappedSuffix;
@@ -1645,7 +1670,17 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([
+  "street_name",
+  "street_number",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+]);
+
+const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
+  (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
+);
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
@@ -1695,9 +1730,9 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   "source_http_request",
 ]);
 
-// Raw variant should expose the full normalized surface so the schema's oneOf
-// branch that allows an unnormalized string still sees the required keys.
-const RAW_VARIANT_SCHEMA_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+// Raw variant should only expose the subset of normalized fields that the
+// schema allows alongside an unnormalized string.
+const RAW_VARIANT_SCHEMA_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
 
 function applyAddressSchemaDefaultsForVariant(address, variantHint) {
@@ -2203,6 +2238,12 @@ function backfillNormalizedAddressFields(target, options = {}) {
   }
 
   const assignIfMissing = (field, candidate) => {
+    const hasRawUnnormalized =
+      typeof target.unnormalized_address === "string" &&
+      target.unnormalized_address.trim().length > 0;
+    if (hasRawUnnormalized && RAW_ADDRESS_EXCLUDED_FIELDS.has(field)) {
+      return;
+    }
     if (hasMeaningfulAddressValue(target[field])) return;
     const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
     if (normalizedValue === undefined || normalizedValue === null) return;
@@ -2251,6 +2292,14 @@ function mergeAddressFieldsFromSource(target, source) {
 
   for (const field of ADDRESS_SCHEMA_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+    if (
+      field !== "unnormalized_address" &&
+      typeof target.unnormalized_address === "string" &&
+      target.unnormalized_address.trim().length &&
+      RAW_ADDRESS_EXCLUDED_FIELDS.has(field)
+    ) {
+      continue;
+    }
     if (field !== "unnormalized_address" && hasMeaningfulAddressValue(target[field])) {
       continue;
     }
@@ -4171,12 +4220,6 @@ function enforceAddressSchemaSurfaceForOutput(address) {
     result.country_code = "US";
   }
 
-  if (hasUnnormalized && normalizedUnnormalized.length) {
-    backfillNormalizedAddressFields(result, {
-      unnormalized: normalizedUnnormalized,
-    });
-  }
-
   return result;
 }
 
@@ -4832,6 +4875,52 @@ function ensureAddressFileFieldCompleteness(addressFilePath) {
   }
 
   enforceCountyAddressOneOfCompliance(addressFilePath);
+}
+
+function stripDisallowedRawAddressFields(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const hasRawVariant =
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length > 0;
+  if (!hasRawVariant) {
+    return;
+  }
+
+  console.log("stripDisallowedRawAddressFields", Array.from(RAW_ADDRESS_EXCLUDED_FIELDS));
+  console.log("allowed fields", RAW_ADDRESS_ALLOWED_FIELDS);
+
+  let mutated = false;
+  for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      delete payload[field];
+      mutated = true;
+    }
+  }
+
+  if (!mutated) {
+    return;
+  }
+
+  console.log("strip mutated keys", Object.keys(payload));
+
+  const surfaced =
+    ensureAddressOutputFieldPresence(payload) || payload;
+  console.log("surfaced keys", Object.keys(surfaced));
+  writeJSON(addressFilePath, surfaced);
 }
 
 function preferNormalizedAddressOutput(addressFilePath) {
@@ -7643,6 +7732,9 @@ function materializeAddressVariantForOutput(address, options = {}) {
       : null;
 
   const ensureRawField = (field, extraCandidates = []) => {
+    if (!RAW_VARIANT_ALLOWED_FIELD_SET.has(field)) {
+      return;
+    }
     if (hasMeaningfulAddressValue(enforcedRaw[field])) {
       return;
     }
@@ -12409,6 +12501,12 @@ function buildRawAddressVariant(address, unnormalizedValue, options = {}) {
     raw.plus_four_postal_code = null;
   }
 
+  for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(raw, field)) {
+      delete raw[field];
+    }
+  }
+
   return raw;
 }
 
@@ -14010,6 +14108,9 @@ async function main() {
       enrichAddressFromUnnormalized(rawResult, canonicalUnnormalized);
 
       const ensureRawField = (field, candidates = []) => {
+        if (!RAW_VARIANT_ALLOWED_FIELD_SET.has(field)) {
+          return;
+        }
         if (hasMeaningfulAddressValue(rawResult[field])) {
           return;
         }
@@ -14334,6 +14435,17 @@ async function main() {
     }
 
     if (preparedAddressOutput) {
+      if (
+        typeof preparedAddressOutput.unnormalized_address === "string" &&
+        preparedAddressOutput.unnormalized_address.trim().length
+      ) {
+        for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
+          if (Object.prototype.hasOwnProperty.call(preparedAddressOutput, field)) {
+            delete preparedAddressOutput[field];
+          }
+        }
+      }
+
       const resolvedRequestIdentifier =
         trimmedRequestIdentifier ||
         (finalAddressPayload &&
@@ -15794,6 +15906,7 @@ async function main() {
   ensureAddressFileFieldCompleteness(addressFilePath);
   enforceRawAddressSurface(addressFilePath);
   preferNormalizedAddressOutput(addressFilePath);
+  stripDisallowedRawAddressFields(addressFilePath);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
@@ -15804,6 +15917,7 @@ async function main() {
   }
 
   preferNormalizedAddressOutput(path.join(dataDir, "address.json"));
+  stripDisallowedRawAddressFields(path.join(dataDir, "address.json"));
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
@@ -16824,6 +16938,7 @@ async function main() {
     ].filter(Boolean),
     parcelIdCandidates: [parcelId, pcnHyphen],
   });
+  stripDisallowedRawAddressFields(finalAddressPath);
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");
@@ -16839,6 +16954,7 @@ async function main() {
   require("./utilityMapping.js");
 
   console.log("All mapping scripts completed successfully");
+  stripDisallowedRawAddressFields(finalAddressPath);
 }
 
 main().catch((error) => {
