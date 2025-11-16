@@ -11836,28 +11836,109 @@ async function main() {
             typeof finalizedSurface.unnormalized_address === "string" &&
             finalizedSurface.unnormalized_address.trim().length > 0;
 
-          if (finalHasRawUnnormalized) {
-            const trimmed = finalizedSurface.unnormalized_address.trim();
-            if (trimmed.length) {
-              finalizedSurface.unnormalized_address = trimmed;
-            } else if (
-              Object.prototype.hasOwnProperty.call(
-                finalizedSurface,
-                "unnormalized_address",
-              )
-            ) {
-              delete finalizedSurface.unnormalized_address;
+          const trimmedUnnormalized = finalHasRawUnnormalized
+            ? finalizedSurface.unnormalized_address.trim()
+            : "";
+          const finalVariant = finalHasRawUnnormalized ? "raw" : "normalized";
+          const baseTemplate =
+            finalVariant === "raw"
+              ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE }
+              : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+          const templatedOutput = { ...baseTemplate };
+          const fieldList =
+            finalVariant === "raw"
+              ? RAW_ADDRESS_OUTPUT_FIELDS
+              : NORMALIZED_ADDRESS_FIELDS;
+
+          for (const field of fieldList) {
+            let value = Object.prototype.hasOwnProperty.call(
+              finalizedSurface,
+              field,
+            )
+              ? finalizedSurface[field]
+              : null;
+
+            if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+              const numeric = parseCoordinate(value);
+              templatedOutput[field] = Number.isFinite(numeric) ? numeric : null;
+              continue;
+            }
+
+            const normalizedValue = normalizeAddressFieldForSchema(field, value);
+            templatedOutput[field] =
+              normalizedValue === undefined || normalizedValue === null
+                ? null
+                : normalizedValue;
+          }
+
+          let shouldWriteAddress = true;
+
+          if (finalVariant === "raw") {
+            if (!trimmedUnnormalized.length) {
+              shouldWriteAddress = false;
+            } else {
+              templatedOutput.unnormalized_address = trimmedUnnormalized;
             }
           } else if (
             Object.prototype.hasOwnProperty.call(
-              finalizedSurface,
+              templatedOutput,
               "unnormalized_address",
             )
           ) {
-            delete finalizedSurface.unnormalized_address;
+            delete templatedOutput.unnormalized_address;
           }
 
-          writeJSON(addressFilePath, finalizedSurface);
+          if (!shouldWriteAddress) {
+            removeFileIfExists(addressFilePath);
+          } else {
+            if (!templatedOutput.postal_code) {
+              templatedOutput.plus_four_postal_code = null;
+            }
+            if (templatedOutput.state_code && !templatedOutput.country_code) {
+              templatedOutput.country_code = "US";
+            }
+
+            const resolvedRequestIdentifier = safeNullIfEmpty(
+              Object.prototype.hasOwnProperty.call(
+                finalizedSurface,
+                "request_identifier",
+              )
+                ? finalizedSurface.request_identifier
+                : templatedOutput.request_identifier,
+            );
+            if (resolvedRequestIdentifier) {
+              templatedOutput.request_identifier = resolvedRequestIdentifier;
+            } else if (
+              Object.prototype.hasOwnProperty.call(
+                templatedOutput,
+                "request_identifier",
+              )
+            ) {
+              delete templatedOutput.request_identifier;
+            }
+
+            const resolvedSourceRequest = prepareSourceHttpRequest(
+              Object.prototype.hasOwnProperty.call(
+                finalizedSurface,
+                "source_http_request",
+              )
+                ? finalizedSurface.source_http_request
+                : templatedOutput.source_http_request,
+            );
+            if (resolvedSourceRequest) {
+              templatedOutput.source_http_request = resolvedSourceRequest;
+            } else if (
+              Object.prototype.hasOwnProperty.call(
+                templatedOutput,
+                "source_http_request",
+              )
+            ) {
+              delete templatedOutput.source_http_request;
+            }
+
+            writeJSON(addressFilePath, templatedOutput);
+          }
         } else {
           removeFileIfExists(addressFilePath);
         }
