@@ -7477,6 +7477,150 @@ function hardenCountyAddressSurface(addressFilePath) {
   }
 
   writeJSON(addressFilePath, normalized);
+  rewriteAddressForCountySchema(addressFilePath);
+}
+
+function rewriteAddressForCountySchema(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  let hasNormalizedCoverage = true;
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    let normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      normalizedValue = Number.isFinite(numeric) ? numeric : null;
+    }
+
+    normalizedSurface[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+
+    if (
+      hasNormalizedCoverage &&
+      NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.includes(field)
+    ) {
+      const value = normalizedSurface[field];
+      if (typeof value !== "string" || !value.trim().length) {
+        hasNormalizedCoverage = false;
+      }
+    }
+  }
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
+  }
+  if (normalizedSurface.state_code && !normalizedSurface.country_code) {
+    normalizedSurface.country_code = "US";
+  }
+
+  if (hasNormalizedCoverage) {
+    const output = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      output[field] = normalizedSurface[field];
+    }
+    if (requestIdentifier) {
+      output.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      output.request_identifier = null;
+    }
+    if (preparedSource) {
+      output.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      output.source_http_request = null;
+    }
+    writeJSON(addressFilePath, output);
+    return;
+  }
+
+  if (!trimmedUnnormalized) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : normalizedSurface[field];
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    rawOutput[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  rawOutput.unnormalized_address = trimmedUnnormalized;
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
+  } else if (hadRequestIdentifier) {
+    rawOutput.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  } else if (hadSourceHttpRequest) {
+    rawOutput.source_http_request = null;
+  }
+
+  writeJSON(addressFilePath, rawOutput);
 }
 
 function coerceAddressFileToRawVariant(addressFilePath, options = {}) {
