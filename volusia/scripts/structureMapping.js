@@ -353,8 +353,13 @@ function mapPrimaryFramingMaterial(structureCodeText) {
 
 function parseBuiltYear(raw) {
   if (!raw) return null;
-  const match = String(raw).match(/(19|20)\d{2}/);
-  return match ? Number.parseInt(match[0], 10) : null;
+  const matches = String(raw).match(/(19|20)\d{2}/g);
+  if (!matches) return null;
+  const years = matches
+    .map((token) => Number.parseInt(token, 10))
+    .filter((year) => Number.isFinite(year));
+  if (!years.length) return null;
+  return years.reduce((max, year) => (year > max ? year : max), years[0]);
 }
 
 function createBaseStructureEntry() {
@@ -389,10 +394,15 @@ function buildStructureEntry($, card) {
   entry.finished_upper_story_area = metrics.finishedUpperArea;
   entry.primary_framing_material = primaryFraming;
   entry.roof_date = builtYear ? String(builtYear) : null;
-  const roofAgeYears =
-    builtYear != null ? currentYear - builtYear : null;
-  entry.roof_age_years =
-    roofAgeYears != null && roofAgeYears >= 1 ? roofAgeYears : null;
+
+  let roofAgeYears = null;
+  if (builtYear != null && builtYear <= currentYear) {
+    roofAgeYears = currentYear - builtYear;
+    if (roofAgeYears < 1) {
+      roofAgeYears = 1;
+    }
+  }
+  entry.roof_age_years = roofAgeYears;
 
   return entry;
 }
