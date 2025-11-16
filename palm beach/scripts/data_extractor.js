@@ -5240,6 +5240,175 @@ function hydrateAddressFromContext(addressFilePath, options = {}) {
   writeJSON(addressFilePath, surfaced);
 }
 
+function enforceAddressFieldSurface(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const {
+    unnormalizedCandidates = [],
+    fieldFallbacks = {},
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const resolvedUnnormalized = resolveFirstNonEmptyString([
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address
+      : null,
+    ...unnormalizedCandidates,
+  ]);
+
+  const trimmedUnnormalized =
+    typeof resolvedUnnormalized === "string"
+      ? resolvedUnnormalized.trim()
+      : "";
+
+  const hasRawVariant = trimmedUnnormalized.length > 0;
+  const variantFields = hasRawVariant
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+  const template = hasRawVariant
+    ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE }
+    : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+  const surfaced = { ...template };
+
+  for (const field of variantFields) {
+    const candidateValues = [];
+
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      candidateValues.push(payload[field]);
+    }
+
+    if (
+      fieldFallbacks &&
+      Object.prototype.hasOwnProperty.call(fieldFallbacks, field)
+    ) {
+      const fallbacks = fieldFallbacks[field];
+      if (Array.isArray(fallbacks)) {
+        candidateValues.push(...fallbacks);
+      } else if (fallbacks != null) {
+        candidateValues.push(fallbacks);
+      }
+    }
+
+    let resolved = null;
+    for (const candidate of candidateValues) {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(candidate);
+        if (Number.isFinite(numeric)) {
+          resolved = numeric;
+          break;
+        }
+        continue;
+      }
+
+      const normalized = normalizeAddressFieldForSchema(field, candidate);
+      if (normalized === undefined || normalized === null) {
+        continue;
+      }
+
+      if (typeof normalized === "string") {
+        const trimmed = normalized.trim();
+        if (!trimmed.length) {
+          continue;
+        }
+        resolved = trimmed;
+        break;
+      }
+
+      resolved = normalized;
+      break;
+    }
+
+    surfaced[field] = resolved === undefined ? null : resolved;
+    if (surfaced[field] === undefined) {
+      surfaced[field] = null;
+    }
+  }
+
+  if (hasRawVariant) {
+    surfaced.unnormalized_address = trimmedUnnormalized;
+  } else if (Object.prototype.hasOwnProperty.call(surfaced, "unnormalized_address")) {
+    delete surfaced.unnormalized_address;
+  }
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      ...requestIdentifierCandidates,
+    ]),
+  );
+  if (resolvedRequestIdentifier) {
+    surfaced.request_identifier = resolvedRequestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(surfaced, "request_identifier")
+  ) {
+    surfaced.request_identifier = null;
+  }
+
+  const resolvedSourceRequest = (() => {
+    const queue = [];
+    if (payload.source_http_request) {
+      queue.push(payload.source_http_request);
+    }
+    if (Array.isArray(sourceHttpRequestCandidates)) {
+      queue.push(...sourceHttpRequestCandidates);
+    }
+    for (const candidate of queue) {
+      const prepared = prepareSourceHttpRequest(candidate);
+      if (prepared) {
+        return prepared;
+      }
+    }
+    return null;
+  })();
+
+  if (resolvedSourceRequest) {
+    surfaced.source_http_request = resolvedSourceRequest;
+  } else if (
+    Object.prototype.hasOwnProperty.call(surfaced, "source_http_request")
+  ) {
+    delete surfaced.source_http_request;
+  }
+
+  if (!surfaced.postal_code) {
+    surfaced.plus_four_postal_code = null;
+  }
+  if (surfaced.state_code && !surfaced.country_code) {
+    surfaced.country_code = "US";
+  }
+
+  if (
+    hasRawVariant &&
+    (!surfaced.unnormalized_address ||
+      !surfaced.unnormalized_address.trim().length)
+  ) {
+    const reconstructed = composeUnnormalizedAddress(surfaced);
+    if (reconstructed && reconstructed.trim().length) {
+      surfaced.unnormalized_address = reconstructed.trim();
+    } else {
+      delete surfaced.unnormalized_address;
+    }
+  }
+
+  writeJSON(addressFilePath, surfaced);
+}
+
 function enforceCountyAddressOneOfCompliance(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -12828,6 +12997,35 @@ async function main() {
 
 
   enforceCountyAddressOneOfCompliance(addressFilePath);
+  enforceAddressFieldSurface(addressFilePath, {
+    unnormalizedCandidates: [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      fallbackUnnormalizedValue,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+    ],
+    fieldFallbacks: addressFieldFallbacks,
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      address && address.request_identifier,
+      baseAddressSeed && baseAddressSeed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      seed && seed.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      preparedSourceHttpRequest,
+      finalAddressPayload && finalAddressPayload.source_http_request,
+      preparedAddressOutput && preparedAddressOutput.source_http_request,
+      address && address.source_http_request,
+      baseAddressSeed && baseAddressSeed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+  });
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
