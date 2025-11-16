@@ -1941,42 +1941,20 @@ function hasRawAddressRequiredFields(address) {
 
   address.unnormalized_address = trimmedUnnormalized;
 
-  let hasSupportingField = false;
-
-  for (const field of RAW_SCHEMA_REQUIRED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
+  for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
+    const numeric = parseCoordinate(address[coordinateField]);
+    if (!Number.isFinite(numeric)) {
+      return false;
     }
+    address[coordinateField] = numeric;
+  }
 
-    const currentValue = address[field];
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(currentValue);
-      if (Number.isFinite(numeric)) {
-        address[field] = numeric;
-        hasSupportingField = true;
-      } else {
-        address[field] = null;
-      }
-      continue;
+  for (const field of RAW_ADDRESS_REQUIRED_STRING_FIELDS) {
+    const normalized = normalizeAddressFieldForSchema(field, address[field]);
+    if (!hasMeaningfulAddressValue(normalized)) {
+      return false;
     }
-
-    if (typeof currentValue === "string") {
-      const trimmed = currentValue.trim();
-      if (trimmed.length) {
-        address[field] = trimmed;
-        hasSupportingField = true;
-      } else {
-        address[field] = null;
-      }
-      continue;
-    }
-
-    if (hasMeaningfulAddressValue(currentValue)) {
-      hasSupportingField = true;
-    } else {
-      address[field] = null;
-    }
+    address[field] = normalized;
   }
 
   if (
@@ -1984,11 +1962,9 @@ function hasRawAddressRequiredFields(address) {
     !hasMeaningfulAddressValue(address.country_code)
   ) {
     address.country_code = "US";
-    hasSupportingField = true;
   }
 
-  // Permit raw addresses that only supply an unnormalized string by treating that as minimal coverage.
-  return hasSupportingField || trimmedUnnormalized.length > 0;
+  return true;
 }
 
 function hasRawAddressStrictValues(address) {
@@ -3160,6 +3136,10 @@ const NORMALIZED_ADDRESS_STRONG_FIELDS = [
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
+
+const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
+  (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
+);
 
 function hasRawAddressRequiredValues(address) {
   if (!address || typeof address !== "object") return false;
