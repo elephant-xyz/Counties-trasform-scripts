@@ -984,29 +984,6 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
     }
   }
 
-  const unnormalizedCandidates = Array.isArray(options.unnormalizedCandidates)
-    ? options.unnormalizedCandidates.slice()
-    : [];
-  if (
-    existingPayload &&
-    typeof existingPayload.unnormalized_address === "string" &&
-    existingPayload.unnormalized_address.trim().length
-  ) {
-    unnormalizedCandidates.unshift(existingPayload.unnormalized_address);
-  }
-
-  const resolvedUnnormalized = resolveFirstNonEmptyString(
-    unnormalizedCandidates,
-  );
-  if (!resolvedUnnormalized) {
-    return;
-  }
-
-  const rawSurface = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    unnormalized_address: resolvedUnnormalized.trim(),
-  };
-
   const fieldSources = [];
   if (existingPayload && typeof existingPayload === "object") {
     fieldSources.push(existingPayload);
@@ -1018,6 +995,39 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
       }
     }
   }
+
+  const unnormalizedCandidates = Array.isArray(options.unnormalizedCandidates)
+    ? options.unnormalizedCandidates.slice()
+    : [];
+  if (
+    existingPayload &&
+    typeof existingPayload.unnormalized_address === "string" &&
+    existingPayload.unnormalized_address.trim().length
+  ) {
+    unnormalizedCandidates.unshift(existingPayload.unnormalized_address);
+  }
+
+  let resolvedUnnormalized = resolveFirstNonEmptyString(
+    unnormalizedCandidates,
+  );
+  if (!resolvedUnnormalized && options && options.preferRaw) {
+    for (const source of fieldSources) {
+      if (!source) continue;
+      const synthesized = composeUnnormalizedAddress(source);
+      if (synthesized && synthesized.trim().length) {
+        resolvedUnnormalized = synthesized.trim();
+        break;
+      }
+    }
+  }
+  if (!resolvedUnnormalized) {
+    return;
+  }
+
+  const rawSurface = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: resolvedUnnormalized.trim(),
+  };
 
   const assignFieldFromSources = (field) => {
     for (const source of fieldSources) {
@@ -5683,6 +5693,7 @@ async function main() {
 
     finalizeCountyAddressFile(addressFilePath);
     forceRawCountyAddressOutput(addressFilePath, {
+      preferRaw: true,
       unnormalizedCandidates: [
         canonicalUnnormalized,
         resolvedUnnormalized,

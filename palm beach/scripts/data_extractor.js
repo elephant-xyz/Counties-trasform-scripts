@@ -4850,7 +4850,11 @@ function finalizeCountyAddressFile(addressFilePath) {
   const normalizedCandidate =
     ensureNormalizedAddressSchemaSurface(payload) || null;
 
-  if (normalizedCandidate && hasCompleteNormalizedAddress(normalizedCandidate)) {
+  if (
+    !trimmedRaw.length &&
+    normalizedCandidate &&
+    hasCompleteNormalizedAddress(normalizedCandidate)
+  ) {
     if (!normalizedCandidate.postal_code) {
       normalizedCandidate.plus_four_postal_code = null;
     }
@@ -4954,6 +4958,8 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
     }
   }
 
+  const preferRaw = Boolean(options && options.preferRaw);
+
   const fieldSources = [];
   if (existingPayload && typeof existingPayload === "object") {
     fieldSources.push(existingPayload);
@@ -4993,7 +4999,32 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
     ...sourceHttpCandidates,
   );
 
-  if (fieldSources.length) {
+  const unnormalizedCandidates = Array.isArray(options.unnormalizedCandidates)
+    ? options.unnormalizedCandidates.slice()
+    : [];
+  if (
+    existingPayload &&
+    typeof existingPayload.unnormalized_address === "string" &&
+    existingPayload.unnormalized_address.trim().length
+  ) {
+    unnormalizedCandidates.unshift(existingPayload.unnormalized_address);
+  }
+
+  let resolvedUnnormalized = resolveFirstNonEmptyString(
+    unnormalizedCandidates,
+  );
+  if (!resolvedUnnormalized && preferRaw) {
+    for (const source of fieldSources) {
+      if (!source) continue;
+      const synthesized = composeUnnormalizedAddress(source);
+      if (synthesized && synthesized.trim().length) {
+        resolvedUnnormalized = synthesized.trim();
+        break;
+      }
+    }
+  }
+
+  if (fieldSources.length && !(preferRaw && resolvedUnnormalized)) {
     const normalizedSeed = {};
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       for (const source of fieldSources) {
@@ -5055,20 +5086,6 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
     }
   }
 
-  const unnormalizedCandidates = Array.isArray(options.unnormalizedCandidates)
-    ? options.unnormalizedCandidates.slice()
-    : [];
-  if (
-    existingPayload &&
-    typeof existingPayload.unnormalized_address === "string" &&
-    existingPayload.unnormalized_address.trim().length
-  ) {
-    unnormalizedCandidates.unshift(existingPayload.unnormalized_address);
-  }
-
-  const resolvedUnnormalized = resolveFirstNonEmptyString(
-    unnormalizedCandidates,
-  );
   if (!resolvedUnnormalized) {
     return;
   }
@@ -5433,6 +5450,13 @@ function promoteAddressToNormalizedVariant(addressFilePath) {
 
   if (!payload || typeof payload !== "object") {
     removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const hasRawUnnormalized =
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length > 0;
+  if (hasRawUnnormalized) {
     return;
   }
 
@@ -8863,7 +8887,7 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
       : []),
   );
 
-  if (hasNormalizedCoverage) {
+  if (!trimmedRaw.length && hasNormalizedCoverage) {
     const normalizedOutput = finalizeAddressPayloadForOutput(
       normalizedSurface,
       "normalized",
@@ -14774,6 +14798,7 @@ async function main() {
     ],
   };
   forceRawCountyAddressOutput(addressFilePath, {
+    preferRaw: true,
     unnormalizedCandidates: [
       canonicalUnnormalized,
       resolvedUnnormalized,
