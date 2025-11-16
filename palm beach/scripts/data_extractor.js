@@ -5211,6 +5211,203 @@ function forceRawCountyAddressOutput(addressFilePath, options = {}) {
   writeJSON(addressFilePath, finalRaw);
 }
 
+function harmonizeCountyAddressOutput(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const unnormalizedQueue = [];
+  if (
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length
+  ) {
+    unnormalizedQueue.push(payload.unnormalized_address.trim());
+  }
+  if (Array.isArray(options.unnormalizedCandidates)) {
+    for (const candidate of options.unnormalizedCandidates) {
+      if (candidate == null) continue;
+      const trimmed = String(candidate).trim();
+      if (trimmed.length) {
+        unnormalizedQueue.push(trimmed);
+      }
+    }
+  }
+
+  const resolvedUnnormalized = resolveFirstNonEmptyString(unnormalizedQueue);
+  const trimmedUnnormalized =
+    typeof resolvedUnnormalized === "string"
+      ? resolvedUnnormalized.trim()
+      : "";
+
+  const requestIdentifierCandidates = [
+    payload.request_identifier,
+    ...(Array.isArray(options.requestIdentifierCandidates)
+      ? options.requestIdentifierCandidates
+      : []),
+  ];
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString(requestIdentifierCandidates),
+  );
+
+  const sourceHttpRequestCandidates = [
+    payload.source_http_request,
+    ...(Array.isArray(options.sourceHttpRequestCandidates)
+      ? options.sourceHttpRequestCandidates
+      : []),
+  ].filter((candidate) => candidate != null);
+  const resolvedSourceRequest = resolveSourceHttpRequest(
+    ...sourceHttpRequestCandidates,
+  );
+
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface(payload) || null;
+  if (normalizedSurface) {
+    const normalizedCandidate = { ...normalizedSurface };
+    const hasCoverage = hasCompleteNormalizedAddress({
+      ...normalizedCandidate,
+    });
+
+    if (hasCoverage) {
+      const normalizedForWrite =
+        buildAddressPayloadForWrite(
+          {
+            ...normalizedCandidate,
+            request_identifier: resolvedRequestIdentifier || null,
+            source_http_request: resolvedSourceRequest || null,
+          },
+          "normalized",
+        ) || null;
+
+      if (normalizedForWrite) {
+        if (resolvedRequestIdentifier) {
+          normalizedForWrite.request_identifier = resolvedRequestIdentifier;
+        } else if (
+          hadRequestIdentifier &&
+          Object.prototype.hasOwnProperty.call(
+            normalizedForWrite,
+            "request_identifier",
+          )
+        ) {
+          normalizedForWrite.request_identifier = null;
+        }
+
+        if (resolvedSourceRequest) {
+          normalizedForWrite.source_http_request = deepClone(
+            resolvedSourceRequest,
+          );
+        } else if (
+          hadSourceHttpRequest &&
+          Object.prototype.hasOwnProperty.call(
+            normalizedForWrite,
+            "source_http_request",
+          )
+        ) {
+          normalizedForWrite.source_http_request = null;
+        } else if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedForWrite,
+            "source_http_request",
+          )
+        ) {
+          delete normalizedForWrite.source_http_request;
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedForWrite,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedForWrite.unnormalized_address;
+        }
+
+        const surfacedNormalized =
+          ensureAddressOutputFieldPresence(normalizedForWrite) ||
+          normalizedForWrite;
+        writeJSON(addressFilePath, surfacedNormalized);
+        return;
+      }
+    }
+  }
+
+  if (!trimmedUnnormalized.length) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawSeed = {
+    ...payload,
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  if (resolvedRequestIdentifier) {
+    rawSeed.request_identifier = resolvedRequestIdentifier;
+  } else if (hadRequestIdentifier) {
+    rawSeed.request_identifier = null;
+  }
+
+  if (resolvedSourceRequest) {
+    rawSeed.source_http_request = deepClone(resolvedSourceRequest);
+  } else if (hadSourceHttpRequest) {
+    rawSeed.source_http_request = null;
+  }
+
+  const rawForWrite =
+    buildAddressPayloadForWrite(rawSeed, "raw") ||
+    buildAddressPayloadForWrite(
+      { unnormalized_address: trimmedUnnormalized },
+      "raw",
+    );
+
+  if (!rawForWrite) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (
+    !resolvedRequestIdentifier &&
+    Object.prototype.hasOwnProperty.call(rawForWrite, "request_identifier")
+  ) {
+    rawForWrite.request_identifier = null;
+  }
+
+  if (
+    !resolvedSourceRequest &&
+    Object.prototype.hasOwnProperty.call(rawForWrite, "source_http_request")
+  ) {
+    rawForWrite.source_http_request = null;
+  } else if (resolvedSourceRequest) {
+    rawForWrite.source_http_request = deepClone(resolvedSourceRequest);
+  }
+
+  const surfacedRaw =
+    ensureAddressOutputFieldPresence(rawForWrite) || rawForWrite;
+
+  writeJSON(addressFilePath, surfacedRaw);
+}
+
 function promoteAddressToNormalizedVariant(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -13040,6 +13237,34 @@ async function main() {
       latitude: preferredLatitude,
       longitude: preferredLongitude,
     },
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      address && address.request_identifier,
+      baseAddressSeed && baseAddressSeed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      seed && seed.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      preparedSourceHttpRequest,
+      finalAddressPayload && finalAddressPayload.source_http_request,
+      preparedAddressOutput && preparedAddressOutput.source_http_request,
+      address && address.source_http_request,
+      baseAddressSeed && baseAddressSeed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+  });
+  harmonizeCountyAddressOutput(addressFilePath, {
+    unnormalizedCandidates: [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      fallbackUnnormalizedValue,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+    ],
     requestIdentifierCandidates: [
       trimmedRequestIdentifier,
       address && address.request_identifier,
