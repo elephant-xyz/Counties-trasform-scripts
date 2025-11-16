@@ -14140,6 +14140,106 @@ async function main() {
                       preparedSourceHttpRequest ||
                       null,
                   });
+
+                  if (!normalizedOverride) {
+                    const promotionSources = [
+                      preparedAddressOutput,
+                      addressForOutput,
+                      baseAddressSeed,
+                      address,
+                      normalizedSnapshot,
+                    ].filter(Boolean);
+
+                    const resolvedStateFallback =
+                      resolvedState ||
+                      inferredStateCode ||
+                      countyInferredStateCode ||
+                      (address && address.state_code) ||
+                      (normalizedSnapshot && normalizedSnapshot.state_code) ||
+                      null;
+
+                    const resolvedCountyFallback =
+                      formattedCountyName ||
+                      (address && address.county_name) ||
+                      (normalizedSnapshot && normalizedSnapshot.county_name) ||
+                      countyName ||
+                      defaultCounty ||
+                      null;
+
+                    const resolvedMunicipalityFallback =
+                      normalizedMunicipality ||
+                      resolvedCity ||
+                      (address && address.municipality_name) ||
+                      (normalizedSnapshot && normalizedSnapshot.municipality_name) ||
+                      null;
+
+                    const postalFallbackCandidate =
+                      fallbackPostalValue ||
+                      postalCode ||
+                      (address && address.postal_code) ||
+                      (normalizedSnapshot && normalizedSnapshot.postal_code) ||
+                      (parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal) ||
+                      null;
+
+                    const plus4FallbackCandidate =
+                      fallbackPlus4Value ||
+                      (typeof plus4 !== "undefined" ? plus4 : null) ||
+                      (address && address.plus_four_postal_code) ||
+                      (normalizedSnapshot && normalizedSnapshot.plus_four_postal_code) ||
+                      (parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4) ||
+                      null;
+
+                    const resolvedLatitudeFallback = (() => {
+                      if (Number.isFinite(preferredLatitude)) return preferredLatitude;
+                      if (typeof resolvedLatitude === "number" && Number.isFinite(resolvedLatitude)) {
+                        return resolvedLatitude;
+                      }
+                      if (
+                        parcelCentroid &&
+                        typeof parcelCentroid.latitude === "number" &&
+                        Number.isFinite(parcelCentroid.latitude)
+                      ) {
+                        return parcelCentroid.latitude;
+                      }
+                      return null;
+                    })();
+
+                    const resolvedLongitudeFallback = (() => {
+                      if (Number.isFinite(preferredLongitude)) return preferredLongitude;
+                      if (typeof resolvedLongitude === "number" && Number.isFinite(resolvedLongitude)) {
+                        return resolvedLongitude;
+                      }
+                      if (
+                        parcelCentroid &&
+                        typeof parcelCentroid.longitude === "number" &&
+                        Number.isFinite(parcelCentroid.longitude)
+                      ) {
+                        return parcelCentroid.longitude;
+                      }
+                      return null;
+                    })();
+
+                    normalizedOverride = promoteRawAddressToNormalized(finalRaw, {
+                      fallbackSources: promotionSources,
+                      stateFallback: resolvedStateFallback,
+                      countyFallback: resolvedCountyFallback,
+                      municipalityFallback: resolvedMunicipalityFallback,
+                      postalFallback: postalFallbackCandidate,
+                      plus4Fallback: plus4FallbackCandidate,
+                      coordinateFallback: {
+                        latitude: resolvedLatitudeFallback,
+                        longitude: resolvedLongitudeFallback,
+                      },
+                      requestIdentifier:
+                        preparedAddressOutput.request_identifier ||
+                        trimmedRequestIdentifier ||
+                        null,
+                      sourceHttpRequest:
+                        preparedAddressOutput.source_http_request ||
+                        preparedSourceHttpRequest ||
+                        null,
+                    });
+                  }
                 }
 
                 if (
