@@ -6402,26 +6402,25 @@ function composeMinimalRawAddress(address) {
   }
 
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-
-    const value = address[field];
-    if (value === undefined || value === null) continue;
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    const rawValue = hasField ? address[field] : null;
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      if (Number.isFinite(numeric)) {
-        minimal[field] = numeric;
-      }
+      const numeric = parseCoordinate(rawValue);
+      minimal[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
 
-    const normalizedValue = normalizeAddressFieldForSchema(field, value);
-    if (normalizedValue === undefined || normalizedValue === null) continue;
-    minimal[field] = normalizedValue;
+    const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+    minimal[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
@@ -6443,6 +6442,9 @@ function composeMinimalRawAddress(address) {
     !minimal.country_code
   ) {
     minimal.country_code = "US";
+  }
+  if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
   }
 
   return minimal;
