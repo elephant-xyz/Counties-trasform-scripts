@@ -12,23 +12,6 @@ const toTitle = (s) =>
 const cleanWhitespace = (s) => s.replace(/\s+/g, " ").trim();
 const normalizeName = (s) => cleanWhitespace(s).toLowerCase();
 
-function decodeHtmlEntities(value) {
-  if (!value) return "";
-  const wrapper = cheerio.load(`<div>${value}</div>`);
-  return wrapper("div").text();
-}
-
-function stripDanglingAmpersand(value) {
-  return value.replace(/^\s*&\s*/g, "").replace(/\s*&\s*$/g, "");
-}
-
-function sanitizePersonToken(token, { allowSpaces = false } = {}) {
-  if (!token) return "";
-  const pattern = allowSpaces ? /[^A-Za-z'.-\s]/g : /[^A-Za-z'.-]/g;
-  const cleaned = token.replace(pattern, " ");
-  return cleanWhitespace(cleaned);
-}
-
 // Elephant Person prefix/suffix enums
 const PERSON_PREFIX_ENUM_VALUES = [
   "Mr.",
@@ -180,8 +163,6 @@ const COMPANY_PATTERNS = [
   /\bREAL\s+ESTATE\b/i,
   /\bMANAGEMENT\b/i,
   /\bMGMT\b/i,
-  /\bCONSULTING\b/i,
-  /\bMARKETING\b/i,
   /\bSERVICES?\b/i,
   /\bSOLUTIONS?\b/i,
   /\bDEVELOPMENT\b/i,
@@ -203,12 +184,6 @@ const COMPANY_PATTERNS = [
   /\bCLUB\b/i,
   /\bDEPARTMENT\b/i,
   /\bAGENCY\b/i,
-  /\bCITY\s+OF\b/i,
-  /\bTOWN\s+OF\b/i,
-  /\bCOUNTY\s+OF\b/i,
-  /\bSTATE\s+OF\b/i,
-  /\bGOVERNMENT\b/i,
-  /\bMUNICIPALITY\b/i,
 ]
   .concat(
     [
@@ -302,20 +277,17 @@ function extractOwnerBlocks($) {
 
 // Parse individual owner lines from blocks
 function parseOwnerCandidates(blockHtml) {
-  const textWithBreaks = blockHtml
+  const text = blockHtml
     .replace(/<br\s*\/?>(\s*)/gi, "\n")
     .replace(/<[^>]+>/g, " ");
-  const decoded = decodeHtmlEntities(textWithBreaks);
-  const lines = decoded
+  const lines = text
     .split("\n")
-    .map((s) => stripDanglingAmpersand(cleanWhitespace(s)))
+    .map((s) => cleanWhitespace(s))
     .filter(Boolean);
   const results = [];
   for (let line of lines) {
     // Keep only text before first hyphen separator
-    const base = stripDanglingAmpersand(
-      cleanWhitespace(line.split(/\s+-\s+/)[0]),
-    );
+    const base = cleanWhitespace(line.split(/\s+-\s+/)[0]);
     if (!base) continue;
     if (base.length < 2) continue;
     if (looksLikeAddress(base)) continue;
@@ -332,48 +304,41 @@ function parseOwnerCandidates(blockHtml) {
 
 // Heuristic: split multi-person name with & into separate persons using rightmost last name
 function splitAmpersandPersons(raw) {
-  const normalizedRaw = stripDanglingAmpersand(cleanWhitespace(raw));
-  const parts = normalizedRaw
+  const parts = raw
     .split("&")
-    .map((s) => stripDanglingAmpersand(cleanWhitespace(s)))
+    .map((s) => cleanWhitespace(s))
     .filter(Boolean);
   if (parts.length < 2) return null;
-  const allTokens = cleanWhitespace(normalizedRaw.replace(/&/g, " ")).split(" ");
-  const lastName = allTokens.length >= 2 ? allTokens[allTokens.length - 1] : null;
-  const sanitizedLast = sanitizePersonToken(lastName);
-  if (!sanitizedLast) return null;
+  const allTokens = cleanWhitespace(raw.replace(/&/g, " ")).split(" ");
+  const lastName =
+    allTokens.length >= 2 ? allTokens[allTokens.length - 1] : null;
+  if (!lastName) return null;
   const people = [];
   for (const p of parts) {
-    let toks = p
-      .split(" ")
-      .map((token) => sanitizePersonToken(token))
-      .filter(Boolean);
+    let toks = p.split(" ").filter(Boolean);
     if (toks.length === 0) continue;
     const extracted = extractPrefixSuffix(toks);
     toks = extracted.tokens;
-    if (toks.length > 1 && sanitizedLast) {
+    if (toks.length > 1 && lastName) {
       const maybeLast = toks[toks.length - 1];
       if (
         maybeLast &&
-        maybeLast.toLowerCase() === sanitizedLast.toLowerCase()
+        maybeLast.toLowerCase() === lastName.toLowerCase()
       ) {
         toks = toks.slice(0, -1);
       }
     }
     if (toks.length === 0) continue;
-    const firstToken = toks[0];
-    const middleTokens = toks.slice(1);
-    const sanitizedFirst = sanitizePersonToken(firstToken);
-    const sanitizedMiddle = middleTokens
-      .map((token) => sanitizePersonToken(token))
-      .filter(Boolean)
-      .join(" ") || null;
-    if (!sanitizedFirst) continue;
+    const first = toks[0];
+    const middle = toks.slice(1).join(" ") || null;
+    if (!first || !lastName) {
+      throw new Error(`Missing required name parts in owner "${raw}"`);
+    }
     people.push({
       type: "person",
-      first_name: toTitle(sanitizedFirst),
-      last_name: toTitle(sanitizedLast),
-      middle_name: sanitizedMiddle ? toTitle(sanitizedMiddle) : null,
+      first_name: toTitle(first),
+      last_name: toTitle(lastName),
+      middle_name: middle ? toTitle(middle) : null,
       prefix_name: extracted.prefix_name,
       suffix_name: extracted.suffix_name,
     });
@@ -538,7 +503,7 @@ function isLikelyLastFirstTwoTokens(name) {
 // Build owner object(s) from a raw candidate
 function buildOwnersFromRaw(raw, invalidOut) {
   const owners = [];
-  const name = stripDanglingAmpersand(cleanWhitespace(raw));
+  const name = cleanWhitespace(raw);
   if (!name) return owners;
 
   if (isCompany(name)) {
@@ -555,10 +520,7 @@ function buildOwnersFromRaw(raw, invalidOut) {
 
   // Remove commas
   const plain = name.replace(/,/g, " ");
-  let toks = plain
-    .split(/\s+/)
-    .map((token) => sanitizePersonToken(token))
-    .filter(Boolean);
+  let toks = plain.split(/\s+/).filter(Boolean);
   const { tokens: coreTokens, prefix_name, suffix_name } =
     extractPrefixSuffix(toks);
   toks = coreTokens;
@@ -593,21 +555,11 @@ function buildOwnersFromRaw(raw, invalidOut) {
     throw new Error(`Missing required name parts in owner "${name}"`);
   }
 
-  const sanitizedFirst = sanitizePersonToken(first);
-  const sanitizedLast = sanitizePersonToken(last);
-  const sanitizedMiddle = middle
-    ? sanitizePersonToken(middle, { allowSpaces: true })
-    : null;
-  if (!sanitizedFirst || !sanitizedLast) {
-    invalidOut.push({ raw: name, reason: "invalid_person_name_tokens" });
-    return owners;
-  }
-
   owners.push({
     type: "person",
-    first_name: toTitle(sanitizedFirst),
-    last_name: toTitle(sanitizedLast),
-    middle_name: sanitizedMiddle ? toTitle(sanitizedMiddle) : null,
+    first_name: toTitle(first),
+    last_name: toTitle(last),
+    middle_name: middle ? toTitle(middle) : null,
     prefix_name: prefix_name || null,
     suffix_name: suffix_name || null,
   });

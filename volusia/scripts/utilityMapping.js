@@ -376,54 +376,20 @@ function mapHeatingFuelType(context) {
 }
 
 function mapHeatingSystemType(context) {
-  const methodText = (context.signals.heatMethodText || "").toLowerCase();
-  const hvacText = (context.signals.hvacText || "").toLowerCase();
-  const sourceText = (context.signals.heatSourceText || "").toLowerCase();
-  if (!methodText && !hvacText && !sourceText) return null;
-
-  const combined = `${methodText} ${hvacText}`.trim();
-  const allText = `${combined} ${sourceText}`.trim();
-  if (
-    /none|n\/a|no heat|not heated|unknown/.test(combined) ||
-    /none|n\/a|unknown/.test(sourceText)
-  ) {
-    return null;
-  }
-
-  if (/ductless|mini\s*split/.test(allText)) return "Ductless";
-  if (/heat\s*pump|heat\s*h\/?p/.test(allText)) return "HeatPump";
-  if (/radiant/.test(allText)) return "Radiant";
-  if (/baseboard/.test(allText)) return "Baseboard";
-  if (/solar/.test(allText)) return "Solar";
-
-  const furnaceLike =
-    /furnace|forced air|air handler|central heat|floor furnace|wall furnace/;
-  if (furnaceLike.test(allText)) {
-    if (/\belectric/.test(allText)) {
-      return "ElectricFurnace";
-    }
-    if (/\b(gas|propane)\b/.test(allText) || /\blp\b/.test(allText)) {
-      return "GasFurnace";
-    }
-    return "Central";
-  }
-
-  if (/steam|boiler/.test(allText)) {
-    if (/\b(gas|propane)\b/.test(allText) || /\blp\b/.test(allText)) {
-      return "Gas";
-    }
-    if (/\belectric/.test(allText)) {
-      return "Electric";
-    }
-    return "Central";
-  }
-
-  if (/central/.test(allText)) return "Central";
-  if (/forced air/.test(allText)) return "Central";
-
-  if (/\belectric/.test(allText)) return "Electric";
-  if (/\b(gas|propane)\b/.test(allText) || /\blp\b/.test(allText)) return "Gas";
-
+  const text =
+    context.signals.heatMethodText ||
+    context.signals.hvacText ||
+    context.signals.heatSourceText ||
+    null;
+  if (!text) return null;
+  const normalized = text.toLowerCase();
+  if (/heat pump/.test(normalized)) return "HeatPump";
+  if (/radiant/.test(normalized)) return "Radiant";
+  if (/steam/.test(normalized)) return "Steam";
+  if (/furnace/.test(normalized)) return "Furnace";
+  if (/ductless/.test(normalized)) return "Ductless";
+  if (/wall heater/.test(normalized)) return "WallUnit";
+  if (/central/.test(normalized)) return "Central";
   return null;
 }
 
