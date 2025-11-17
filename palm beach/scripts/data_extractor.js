@@ -21,8 +21,88 @@ function readText(p) {
   return fs.readFileSync(p, "utf8");
 }
 
+function sanitizeAddressPayloadForWrite(payload) {
+  if (!payload || typeof payload !== "object") {
+    return payload;
+  }
+
+  const rawUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (!rawUnnormalized.length) {
+    return payload;
+  }
+
+  const sanitized = {
+    unnormalized_address: rawUnnormalized,
+  };
+
+  for (const field of RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS) {
+    let candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (candidate === undefined || candidate === null) {
+      sanitized[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      sanitized[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      sanitized[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    sanitized[field] = candidate;
+  }
+
+  if (
+    RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS.has("country_code") &&
+    RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS.has("state_code") &&
+    hasMeaningfulAddressValue(sanitized.state_code) &&
+    !hasMeaningfulAddressValue(sanitized.country_code)
+  ) {
+    sanitized.country_code = "US";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const trimmedRequest = safeNullIfEmpty(payload.request_identifier);
+    if (trimmedRequest) {
+      sanitized.request_identifier = trimmedRequest;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const preparedSource = prepareSourceHttpRequest(
+      payload.source_http_request,
+    );
+    if (preparedSource) {
+      sanitized.source_http_request = preparedSource;
+    }
+  }
+
+  return sanitized;
+}
+
 function writeJSON(p, obj) {
-  fs.writeFileSync(p, JSON.stringify(obj, null, 2));
+  let payload = obj;
+  if (
+    typeof p === "string" &&
+    p.endsWith("address.json") &&
+    obj &&
+    typeof obj === "object"
+  ) {
+    payload = sanitizeAddressPayloadForWrite(obj);
+  }
+  fs.writeFileSync(p, JSON.stringify(payload, null, 2));
 }
 
 function prepareSourceHttpRequest(raw) {
@@ -1729,6 +1809,15 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   "source_http_request",
 ]);
 
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
+  "municipality_name",
+]);
+
 // Raw variant should only expose the subset of normalized fields that the
 // schema allows alongside an unnormalized string.
 const RAW_VARIANT_SCHEMA_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
@@ -3216,6 +3305,21 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
     );
     if (preparedSource) {
       finalized.source_http_request = preparedSource;
+    }
+  }
+
+  if (resolvedVariant === "raw") {
+    for (const key of Object.keys(finalized)) {
+      if (
+        key === "unnormalized_address" ||
+        key === "request_identifier" ||
+        key === "source_http_request"
+      ) {
+        continue;
+      }
+      if (!RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS.has(key)) {
+        delete finalized[key];
+      }
     }
   }
 
