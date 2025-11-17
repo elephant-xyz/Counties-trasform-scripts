@@ -1639,7 +1639,7 @@ const STREET_SUFFIX_ENUM = [
   "Crk",
 ];
 
-const STREET_NAME_FORBIDDEN_DIRECTIONS = /\b(?:E|N|NE|NW|S|SE|SW|W)\b/;
+const STREET_NAME_FORBIDDEN_DIRECTIONS = /^(?:E|N|NE|NW|S|SE|SW|W)$/;
 
 const NORMALIZED_ADDRESS_FIELDS = [
   "latitude",
@@ -10745,13 +10745,10 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
     normalizedCandidate[field] =
       value === undefined || value === null ? null : value;
   }
-
   const normalizedSurface =
     ensureNormalizedAddressSchemaSurface(normalizedCandidate) || null;
   const hasNormalizedCoverage =
     normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
-
-  console.log("trimmedRaw value", trimmedRaw, hasNormalizedCoverage);
 
   const requestIdentifierQueue = [];
   if (payload.request_identifier != null) {
