@@ -7455,6 +7455,195 @@ function coerceAddressFileForOneOfCompliance(addressFilePath) {
   writeJSON(addressFilePath, rawCandidate);
 }
 
+function enforceCountyAddressCanonicalSurface(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    let normalizedValue = null;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      normalizedValue = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      normalizedValue = trimmed.length ? trimmed : null;
+    } else if (candidate != null) {
+      normalizedValue = candidate;
+    }
+
+    normalizedCandidate[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedCandidate[field] === "string" &&
+      normalizedCandidate[field].trim().length > 0,
+  );
+
+  let variant = null;
+  if (trimmedUnnormalized.length && !hasNormalizedCoverage) {
+    variant = "raw";
+  } else if (hasNormalizedCoverage) {
+    variant = "normalized";
+  } else if (trimmedUnnormalized.length) {
+    variant = "raw";
+  } else {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  let output;
+  if (variant === "normalized") {
+    output = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const value = normalizedCandidate[field];
+      output[field] = value === undefined || value === null ? null : value;
+    }
+  } else {
+    output = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    const resolveField = (field) => {
+      const candidates = [];
+      if (Object.prototype.hasOwnProperty.call(payload, field)) {
+        candidates.push(payload[field]);
+      }
+      if (Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+        candidates.push(normalizedCandidate[field]);
+      }
+      for (const candidate of candidates) {
+        if (candidate === undefined || candidate === null) {
+          continue;
+        }
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(candidate);
+          if (Number.isFinite(numeric)) {
+            return numeric;
+          }
+          continue;
+        }
+        if (typeof candidate === "string") {
+          const trimmed = candidate.trim();
+          if (trimmed.length) {
+            return trimmed;
+          }
+          continue;
+        }
+        return candidate;
+      }
+      return null;
+    };
+
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      output[field] = resolveField(field);
+    }
+
+    output.unnormalized_address = trimmedUnnormalized.length
+      ? trimmedUnnormalized
+      : null;
+  }
+
+  if (!output) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  for (const field of COUNTY_ADDRESS_ENSURE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(output, field)) {
+      output[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(output[field]);
+      output[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const value = output[field];
+    if (value == null) {
+      output[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      output[field] = trimmed.length ? trimmed : null;
+    }
+  }
+
+  if ((output.latitude == null) !== (output.longitude == null)) {
+    output.latitude = null;
+    output.longitude = null;
+  }
+
+  if (!output.postal_code) {
+    output.plus_four_postal_code = null;
+  }
+
+  if (output.state_code && !output.country_code) {
+    output.country_code = "US";
+  }
+
+  if (variant === "normalized") {
+    if (Object.prototype.hasOwnProperty.call(output, "unnormalized_address")) {
+      delete output.unnormalized_address;
+    }
+  } else if (
+    typeof output.unnormalized_address === "string" &&
+    !output.unnormalized_address.trim().length
+  ) {
+    output.unnormalized_address = null;
+  }
+
+  if (requestIdentifier) {
+    output.request_identifier = requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(output, "request_identifier")
+  ) {
+    delete output.request_identifier;
+  }
+
+  if (preparedSource) {
+    output.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(output, "source_http_request")
+  ) {
+    delete output.source_http_request;
+  }
+
+  writeJSON(addressFilePath, output);
+}
+
 const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "latitude",
   "longitude",
@@ -16702,6 +16891,7 @@ async function main() {
   });
 
   coerceAddressFileForOneOfCompliance(addressFilePath);
+  enforceCountyAddressCanonicalSurface(addressFilePath);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
@@ -16720,6 +16910,7 @@ async function main() {
     defaultStateCode: fallbackStateCode,
   });
   coerceAddressFileForOneOfCompliance(path.join(dataDir, "address.json"));
+  enforceCountyAddressCanonicalSurface(path.join(dataDir, "address.json"));
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
@@ -17753,6 +17944,7 @@ async function main() {
       inferredStateCode ||
       fallbackStateCode,
   });
+  enforceCountyAddressCanonicalSurface(finalAddressPath);
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");
@@ -17782,6 +17974,7 @@ async function main() {
       inferredStateCode ||
       fallbackStateCode,
   });
+  enforceCountyAddressCanonicalSurface(finalAddressPath);
 }
 
 main().catch((error) => {
