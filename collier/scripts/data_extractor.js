@@ -419,87 +419,6 @@ function toTitleCaseWords(value) {
 }
 
 
-function splitStreet(streetPart) {
-  const dirs = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW", "NORTH", "SOUTH", "EAST", "WEST"]);
-  let tokens = streetPart
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  let preDir = null;
-  let postDir = null;
-
-  // Check for pre-directional (first token)
-  if (tokens.length > 1 && dirs.has(tokens[0].toUpperCase())) {
-    const dirUpper = tokens[0].toUpperCase();
-    // Normalize to single letter
-    const dirMap = {
-      "NORTH": "N",
-      "SOUTH": "S",
-      "EAST": "E",
-      "WEST": "W",
-    };
-    preDir = dirMap[dirUpper] || dirUpper;
-    tokens = tokens.slice(1); // remove pre-directional from tokens
-  }
-
-  // Check for post-directional (last token)
-  if (tokens.length > 1 && dirs.has(tokens[tokens.length - 1].toUpperCase())) {
-    const dirUpper = tokens[tokens.length - 1].toUpperCase();
-    const dirMap = {
-      "NORTH": "N",
-      "SOUTH": "S",
-      "EAST": "E",
-      "WEST": "W",
-    };
-    postDir = dirMap[dirUpper] || dirUpper;
-    tokens.pop(); // remove post-directional
-  }
-
-  // Now determine suffix type from last token
-  const suffixMap = {
-    AVE: "Ave",
-    AVENUE: "Ave",
-    BLVD: "Blvd",
-    BOULEVARD: "Blvd",
-    RD: "Rd",
-    ROAD: "Rd",
-    ST: "St",
-    STREET: "St",
-    LN: "Ln",
-    LANE: "Ln",
-    DR: "Dr",
-    DRIVE: "Dr",
-    WAY: "Way",
-    WY: "Way",
-    TER: "Ter",
-    TERRACE: "Ter",
-    PL: "Pl",
-    PLACE: "Pl",
-    CT: "Ct",
-    COURT: "Ct",
-    HWY: "Hwy",
-    HIGHWAY: "Hwy",
-    CIR: "Cir",
-    CIRCLE: "Cir",
-    PKWY: "Pkwy",
-    PARKWAY: "Pkwy",
-    EXPY: "Expy",
-    EXPRESSWAY: "Expy",
-  };
-  let suffix = null;
-  if (tokens.length > 1) {
-    const rawSuffix = tokens[tokens.length - 1];
-    const rawUpper = (rawSuffix || "").toUpperCase();
-    if (suffixMap[rawUpper]) {
-      suffix = suffixMap[rawUpper];
-      tokens = tokens.slice(0, -1); // remove suffix from street_name tokens
-    }
-  }
-  const streetName = tokens.join(" ").toUpperCase();
-  return { streetName, preDir, postDir, suffix };
-}
-
 function parseAddress(
   fullAddress,
   legalText,
@@ -509,61 +428,6 @@ function parseAddress(
   countyNameFromSeed,
   municipality,
 ) {
-  // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
-  let streetNumber = null,
-    streetName = null,
-    postDir = null,
-    preDir = null,
-    suffixType = null,
-    city = null,
-    state = null,
-    zip = null,
-    unitId = null;
-
-  if (fullAddress) {
-    const addr = fullAddress.replace(/\s+,/g, ",").trim();
-
-    // First, extract unit identifier if present (# 2306, APT 2306, UNIT 2306, etc.)
-    let streetPartRaw = addr;
-    const unitMatch = addr.match(/(#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i);
-    if (unitMatch) {
-      unitId = unitMatch[2];
-      // Remove unit from address for further parsing
-      streetPartRaw = addr.replace(/(#|APT|UNIT|STE|SUITE)\s*[A-Z0-9-]+/i, "").trim();
-    }
-
-    // Prefer pattern: <num> <street words> [<postDir>], <CITY>, <STATE> <ZIP>
-    let m = streetPartRaw.match(
-      /^(\d+)\s+([^,]+),\s*([A-Z\s]+),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/,
-    );
-    if (m) {
-      streetNumber = m[1];
-      const streetPart = m[2].trim();
-      city = m[3].trim().toUpperCase();
-      state = m[4];
-      zip = m[5];
-      const parsed = splitStreet(streetPart);
-      streetName = parsed.streetName;
-      preDir = parsed.preDir;
-      postDir = parsed.postDir;
-      suffixType = parsed.suffix;
-    } else {
-      // Fallback pattern without explicit state: <num> <street words> [<postDir>], <CITY> <ZIP>
-      m = streetPartRaw.match(/^(\d+)\s+([^,]+),\s*([A-Z\s]+)\s*(\d{5})(?:-\d{4})?$/);
-      if (m) {
-        streetNumber = m[1];
-        const streetPart = m[2].trim();
-        city = m[3].trim().toUpperCase();
-        zip = m[4];
-        const parsed = splitStreet(streetPart);
-        streetName = parsed.streetName;
-        preDir = parsed.preDir;
-        postDir = parsed.postDir;
-        suffixType = parsed.suffix;
-      }
-    }
-  }
-
   // From legal, get block and lot
   let block = null,
     lot = null;
@@ -574,44 +438,25 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  const baseFields = {
+  const cleanedAddress = fullAddress ? fullAddress.replace(/\s+/g, " ").trim() : null;
+  const address = {
     block: block || null,
-    city_name: city || null,
-    country_code: null, // do not fabricate
     county_name: countyNameFromSeed || null,
-    latitude: null,
-    longitude: null,
     lot: lot || null,
     municipality_name: municipality || null,
-    plus_four_postal_code: null,
-    postal_code: zip || null,
     range: range || null,
-    route_number: null,
     section: section || null,
-    state_code: state || "FL",
     township: township || null,
-    unit_identifier: unitId || null,
   };
-
-  if (streetNumber && streetName) {
-    return {
-      ...baseFields,
-      street_name: streetName || null,
-      street_number: streetNumber || null,
-      street_post_directional_text: postDir || null,
-      street_pre_directional_text: preDir || null,
-      street_suffix_type: suffixType || null,
-    };
+  if (cleanedAddress) {
+    address.unnormalized_address = cleanedAddress;
   }
-
-  const fallback = {
-    ...baseFields,
-    unnormalized_address: fullAddress || null,
-  };
-  if (!fullAddress) {
-    delete fallback.unnormalized_address;
-  }
-  return fallback;
+  Object.keys(address).forEach((key) => {
+    if (address[key] == null) {
+      delete address[key];
+    }
+  });
+  return address;
 }
 
 function main() {
@@ -1531,19 +1376,6 @@ function main() {
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
-    const identifierParts = [];
-    if (rollType) identifierParts.push(rollType);
-    if (justText) identifierParts.push(`TotalJustValue=${justText}`);
-    if (landText) identifierParts.push(`LandJustValue=${landText}`);
-    if (imprText) identifierParts.push(`ImprovementsJustValue=${imprText}`);
-    if (nonSchoolExemptionText) {
-      identifierParts.push(
-        `NonSchoolWhollyExemptAmount=${nonSchoolExemptionText}`,
-      );
-    }
-    if (assessedText) identifierParts.push(`AssessedValue=${assessedText}`);
-    if (taxableText) identifierParts.push(`CountyTaxableValue=${taxableText}`);
-    if (yearlyText) identifierParts.push(`TotalTaxes=${yearlyText}`);
     const taxObj = {
       tax_year: ty,
       property_assessed_value_amount:
@@ -1560,8 +1392,6 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
-      request_identifier:
-        identifierParts.length > 0 ? identifierParts.join("|") : null,
     };
     taxRecords.push(taxObj);
   }
@@ -1606,19 +1436,11 @@ function main() {
       return;
     }
     const monthly = row.taxAmount != null ? round2(row.taxAmount / 12) : null;
-    const identifierParts = ["AdValorem"];
-    if (row.type) identifierParts.push(row.type);
-    if (row.name) identifierParts.push(row.name);
-    if (row.millageText) identifierParts.push(`Millage=${row.millageText}`);
-    if (row.taxAmountText) identifierParts.push(`Tax=${row.taxAmountText}`);
-    if (row.taxableText) identifierParts.push(`Taxable=${row.taxableText}`);
     const taxObj = {
       tax_year: ty,
       property_taxable_value_amount: row.taxableVal != null ? row.taxableVal : null,
       yearly_tax_amount: row.taxAmount != null ? row.taxAmount : null,
       monthly_tax_amount: monthly,
-      request_identifier:
-        identifierParts.length > 1 ? identifierParts.join("|") : null,
       property_assessed_value_amount: null,
       property_market_value_amount: null,
       property_building_amount: null,
@@ -1660,31 +1482,10 @@ function main() {
       .first()
       .text()
       .trim();
-    const identifierParts = ["AdValorem", "Total"];
-    if (detailCountyMillageText) {
-      identifierParts.push(`county:${detailCountyMillageText}`);
-    }
-    if (detailSchoolMillageText) {
-      identifierParts.push(`school:${detailSchoolMillageText}`);
-    }
-    if (detailMunicipalMillageText) {
-      identifierParts.push(`municipal:${detailMunicipalMillageText}`);
-    }
-    if (detailNonSchoolMillageText) {
-      identifierParts.push(`nonschool:${detailNonSchoolMillageText}`);
-    }
-    if (detailOtherMillageText) {
-      identifierParts.push(`other:${detailOtherMillageText}`);
-    }
-    if (totalAdValoremText) {
-      identifierParts.push(`TotalAdvTaxes=${totalAdValoremText}`);
-    }
     const taxObj = {
       tax_year: ty,
       yearly_tax_amount: totalAdValorem,
       monthly_tax_amount: round2(totalAdValorem / 12),
-      request_identifier:
-        identifierParts.length > 2 ? identifierParts.join("|") : null,
       property_taxable_value_amount: null,
       property_assessed_value_amount: null,
       property_market_value_amount: null,
@@ -1778,31 +1579,6 @@ function main() {
   }
   years.forEach((rec) => {
     const monthly = rec.yearlyH != null ? round2(rec.yearlyH / 12) : null;
-    const identifierParts = ["History", rec.yNum];
-    if (rec.schoolMillageText) {
-      identifierParts.push(`school:${rec.schoolMillageText}`);
-    }
-    if (rec.countyMillageText) {
-      identifierParts.push(`county:${rec.countyMillageText}`);
-    }
-    if (rec.municipalMillageText) {
-      identifierParts.push(`municipal:${rec.municipalMillageText}`);
-    }
-    if (rec.otherMillageText) {
-      identifierParts.push(`other:${rec.otherMillageText}`);
-    }
-    if (rec.yearlyHText) {
-      identifierParts.push(`TotalTaxes=${rec.yearlyHText}`);
-    }
-    if (rec.taxableHText) {
-      identifierParts.push(`CountyTaxableValue=${rec.taxableHText}`);
-    }
-    if (rec.assessedHText) {
-      identifierParts.push(`AssessedValue=${rec.assessedHText}`);
-    }
-    if (rec.justHText) {
-      identifierParts.push(`TotalJustValue=${rec.justHText}`);
-    }
     const taxObj = {
       tax_year: rec.yNum,
       property_assessed_value_amount:
@@ -1830,8 +1606,6 @@ function main() {
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
-      request_identifier:
-        identifierParts.length > 1 ? identifierParts.join("|") : null,
     };
     taxRecords.push(taxObj);
   });

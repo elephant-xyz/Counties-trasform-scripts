@@ -500,227 +500,55 @@ function buildOwnersByDate(validOwners) {
 }
 
 function buildMailingAddress($) {
-  const addressLines = [];
-  const keywordPatterns = [
-    /\bPO\s*BOX\b/,
-    /\bP\.O\.\s*BOX\b/,
-    /\bUNIT\b/,
-    /\bSTE\b/,
-    /\bSUITE\b/,
-    /\bAPT\b/,
-    /\bSTREET\b/,
-    /\bROAD\b/,
-    /\bAVENUE\b/,
-    /\bDRIVE\b/,
-    /\bCOURT\b/,
-    /\bLANE\b/,
-    /\bBOULEVARD\b/,
-    /\bPARKWAY\b/,
-    /\bHIGHWAY\b/,
-  ];
-  let addressStarted = false;
+  const rawLines = [];
   for (let i = 1; i <= 10; i++) {
-    const lineText = norm($(`#OwnerLine${i}`).text());
-    if (!lineText) continue;
-    const upper = lineText.toUpperCase();
-    const hasDigit = /\d/.test(upper);
-    const hasKeyword = keywordPatterns.some((pattern) => pattern.test(upper));
-    if (hasDigit || hasKeyword || addressStarted) {
-      addressLines.push(lineText);
-      addressStarted = true;
-    }
+    const text = norm($(`#OwnerLine${i}`).text());
+    if (text) rawLines.push(text);
   }
 
-  const cityRaw = norm($("#OwnerCity").text());
-  const stateRaw = norm($("#OwnerState").text());
-  const zipRaw = norm($("#OwnerZip").text());
+  const city = norm($("#OwnerCity").text());
+  const state = norm($("#OwnerState").text());
+  const postal = norm($("#OwnerZip").text());
 
-  const normalizedCity = cityRaw ? cityRaw.toUpperCase() : null;
-  const normalizedState = stateRaw ? stateRaw.toUpperCase() : null;
-
-  let postalCode = null;
-  let plusFour = null;
-  if (zipRaw) {
-    const zipMatch = zipRaw.match(/^(\d{5})(?:[-\s]*(\d{4}))?$/);
-    if (zipMatch) {
-      postalCode = zipMatch[1];
-      plusFour = zipMatch[2] || null;
+  const addressParts = [];
+  const addressKeywords = [
+    "PO BOX",
+    "P.O. BOX",
+    "UNIT",
+    "STE",
+    "SUITE",
+    "APT",
+    "STREET",
+    "ROAD",
+    "AVENUE",
+    "DRIVE",
+    "COURT",
+    "LANE",
+    "BOULEVARD",
+    "PARKWAY",
+    "HIGHWAY",
+  ];
+  let started = false;
+  rawLines.forEach((line) => {
+    const upper = line.toUpperCase();
+    if (
+      started ||
+      /\d/.test(upper) ||
+      addressKeywords.some((kw) => upper.includes(kw))
+    ) {
+      addressParts.push(line);
+      started = true;
     }
+  });
+
+  const cityStateZip = [city, state, postal].filter(Boolean).join(" ");
+  if (cityStateZip) {
+    addressParts.push(cityStateZip);
   }
 
-  const parts = [...addressLines];
-  if (normalizedCity || normalizedState || postalCode || zipRaw) {
-    const cityStateZip = [
-      normalizedCity,
-      normalizedState,
-      postalCode ? (plusFour ? `${postalCode}-${plusFour}` : postalCode) : zipRaw || null,
-    ]
-      .filter(Boolean)
-      .join(" ");
-    if (cityStateZip) {
-      parts.push(cityStateZip);
-    }
-  }
-
-  function parseStreetLine(rawLine) {
-    const text = norm(rawLine);
-    if (!text) return null;
-
-    const poBoxMatch = text.match(/^(P\.?\s*O\.?\s*BOX)\s+([A-Z0-9-]+)/i);
-    if (poBoxMatch) {
-      return {
-        street_name: "PO BOX",
-        route_number: poBoxMatch[2],
-        street_number: null,
-        street_suffix_type: null,
-        street_pre_directional_text: null,
-        street_post_directional_text: null,
-        unit_identifier: null,
-      };
-    }
-
-    const unitRegex = /(?:#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i;
-    let working = text;
-    let unitIdentifier = null;
-    const unitMatch = working.match(unitRegex);
-    if (unitMatch) {
-      unitIdentifier = unitMatch[1];
-      working = working.replace(unitRegex, "").trim();
-    }
-
-    const numMatch = working.match(/^(\d+)\s+(.*)$/);
-    if (!numMatch) return null;
-
-    const streetNumber = numMatch[1];
-    let remainder = numMatch[2].trim();
-    let tokens = remainder.split(/\s+/).filter(Boolean);
-    if (!tokens.length) return null;
-
-    const dirMap = {
-      N: "N",
-      NORTH: "N",
-      S: "S",
-      SOUTH: "S",
-      E: "E",
-      EAST: "E",
-      W: "W",
-      WEST: "W",
-      NE: "NE",
-      NORTHEAST: "NE",
-      NW: "NW",
-      NORTHWEST: "NW",
-      SE: "SE",
-      SOUTHEAST: "SE",
-      SW: "SW",
-      SOUTHWEST: "SW",
-    };
-
-    let preDir = null;
-    if (tokens.length > 1) {
-      const cand = dirMap[tokens[0].toUpperCase()];
-      if (cand) {
-        preDir = cand;
-        tokens = tokens.slice(1);
-      }
-    }
-
-    let postDir = null;
-    if (tokens.length > 1) {
-      const cand = dirMap[tokens[tokens.length - 1].toUpperCase()];
-      if (cand) {
-        postDir = cand;
-        tokens = tokens.slice(0, -1);
-      }
-    }
-
-    const suffixMap = {
-      AVE: "Ave",
-      AVENUE: "Ave",
-      BLVD: "Blvd",
-      BOULEVARD: "Blvd",
-      CT: "Ct",
-      COURT: "Ct",
-      CIR: "Cir",
-      CIRCLE: "Cir",
-      DR: "Dr",
-      DRIVE: "Dr",
-      HWY: "Hwy",
-      HIGHWAY: "Hwy",
-      LN: "Ln",
-      LANE: "Ln",
-      PKWY: "Pkwy",
-      PARKWAY: "Pkwy",
-      PL: "Pl",
-      PLACE: "Pl",
-      RD: "Rd",
-      ROAD: "Rd",
-      ST: "St",
-      STREET: "St",
-      TER: "Ter",
-      TERRACE: "Ter",
-      WAY: "Way",
-    };
-
-    let suffixType = null;
-    if (tokens.length > 1) {
-      const rawSuffix = tokens[tokens.length - 1].replace(/\./g, "");
-      const mapped = suffixMap[rawSuffix.toUpperCase()];
-      if (mapped) {
-        suffixType = mapped;
-        tokens = tokens.slice(0, -1);
-      }
-    }
-
-    const streetName = tokens.join(" ").trim();
-    if (!streetName) return null;
-
-    return {
-      street_number: streetNumber,
-      street_name: streetName.toUpperCase(),
-      street_suffix_type: suffixType,
-      street_pre_directional_text: preDir,
-      street_post_directional_text: postDir,
-      unit_identifier: unitIdentifier,
-      route_number: null,
-    };
-  }
-
-  const streetLine = addressLines.find((line) =>
-    /\d/.test(line) || /^P\.?\s*O\.?\s*BOX/i.test(line),
-  );
-  const parsedStreet = streetLine ? parseStreetLine(streetLine) : null;
-
-  if (parsedStreet && parsedStreet.street_name) {
-    const mailing = {
-      city_name: normalizedCity || null,
-      country_code: null,
-      county_name: null,
-      plus_four_postal_code: plusFour,
-      postal_code: postalCode || (zipRaw ? zipRaw.replace(/\s+/g, "") : null),
-      state_code: normalizedState || null,
-      street_name: parsedStreet.street_name,
-      street_number: parsedStreet.street_number,
-      street_post_directional_text: parsedStreet.street_post_directional_text,
-      street_pre_directional_text: parsedStreet.street_pre_directional_text,
-      street_suffix_type: parsedStreet.street_suffix_type,
-      unit_identifier: parsedStreet.unit_identifier || null,
-      route_number: parsedStreet.route_number || null,
-    };
-    Object.keys(mailing).forEach((key) => {
-      if (mailing[key] === null || mailing[key] === undefined) {
-        delete mailing[key];
-      }
-    });
-    return Object.keys(mailing).length ? mailing : null;
-  }
-
-  const unnormalizedAddress = parts.length ? parts.join(", ") : null;
-
-  if (!unnormalizedAddress) return null;
-
-  return {
-    unnormalized_address: unnormalizedAddress,
-  };
+  const unnormalized = addressParts.filter(Boolean).join(", ");
+  if (!unnormalized) return null;
+  return { unnormalized_address: unnormalized };
 }
 
 // Main processing
