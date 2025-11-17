@@ -5119,6 +5119,10 @@ function preferNormalizedAddressOutput(addressFilePath) {
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
 
+  if (hasRawVariant) {
+    return;
+  }
+
   const hasRequiredNormalizedFields = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
     (field) => {
       const value = Object.prototype.hasOwnProperty.call(payload, field)
@@ -7750,7 +7754,10 @@ function enforceCountyAddressCanonicalSurface(addressFilePath) {
     return;
   }
 
-  for (const field of COUNTY_ADDRESS_ENSURE_FIELDS) {
+  const ensureFields =
+    variant === "raw" ? RAW_ADDRESS_ALLOWED_FIELDS : COUNTY_ADDRESS_ENSURE_FIELDS;
+
+  for (const field of ensureFields) {
     if (!Object.prototype.hasOwnProperty.call(output, field)) {
       output[field] = null;
       continue;
@@ -7771,6 +7778,14 @@ function enforceCountyAddressCanonicalSurface(addressFilePath) {
     if (typeof value === "string") {
       const trimmed = value.trim();
       output[field] = trimmed.length ? trimmed : null;
+    }
+  }
+
+  if (variant === "raw") {
+    for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(output, field)) {
+        delete output[field];
+      }
     }
   }
 
@@ -7911,7 +7926,11 @@ function hardenCountyAddressSurface(addressFilePath) {
     normalized[field] = candidate;
   }
 
-  for (const field of COUNTY_ADDRESS_ENSURE_FIELDS) {
+  const ensureFields = hasRawVariant
+    ? RAW_ADDRESS_ALLOWED_FIELDS
+    : COUNTY_ADDRESS_ENSURE_FIELDS;
+
+  for (const field of ensureFields) {
     if (!Object.prototype.hasOwnProperty.call(normalized, field)) {
       normalized[field] = null;
       continue;
@@ -7938,6 +7957,14 @@ function hardenCountyAddressSurface(addressFilePath) {
     if (typeof value === "number") {
       normalized[field] = Number.isFinite(value) ? value : null;
       continue;
+    }
+  }
+
+  if (hasRawVariant) {
+    for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(normalized, field)) {
+        delete normalized[field];
+      }
     }
   }
 
