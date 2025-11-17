@@ -1,7 +1,12 @@
   const township = $("#Township").first().text().trim() || null;
   const range = $("#Range").first().text().trim() || null;
   const municipality = $("#Municipality").first().text().trim() || null;
-  const totalAcres = $("#TotalAcres").first().text().trim() || null;
+  const totalAcresRaw = $("#TotalAcres").first().text().trim() || null;
+  const totalAcres =
+    totalAcresRaw != null && totalAcresRaw !== ""
+      ? parseFloat(totalAcresRaw.replace(/[^0-9.]/g, ""))
+      : null;
+  const strapNumber = $("#StrapNumber").first().text().trim() || null;
 
   // Property JSON
   const property = {
@@ -152,6 +157,46 @@
       path.join(dataDir, "relationship_property_has_address.json"),
       JSON.stringify(propertyAddressRel, null, 2),
     );
+  }
+
+  if (totalAcres != null && !Number.isNaN(totalAcres) && totalAcres > 0) {
+    const lotObj = {
+      lot_size_acre: totalAcres,
+    };
+    const lotPath = path.join(dataDir, "lot.json");
+    fs.writeFileSync(lotPath, JSON.stringify(lotObj, null, 2));
+
+    const rel = {
+      type: "property_has_lot",
+      from: { "/": "./property.json" },
+      to: { "/": "./lot.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_lot.json"),
+      JSON.stringify(rel, null, 2),
+    );
+  }
+
+  if (strapNumber) {
+    const parcelIdentifier = strapNumber.replace(/\s+/g, " ").trim();
+    if (parcelIdentifier) {
+      const parcelObj = {
+        parcel_identifier: parcelIdentifier,
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "parcel.json"),
+        JSON.stringify(parcelObj, null, 2),
+      );
+      const parcelRel = {
+        type: "property_has_parcel",
+        from: { "/": "./property.json" },
+        to: { "/": "./parcel.json" },
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_parcel.json"),
+        JSON.stringify(parcelRel, null, 2),
+      );
+    }
   }
 
   // Sales + Deeds - from Summary sales table

@@ -36,7 +36,7 @@ function parseDateToISO(mdyy) {
 
   let yyyy =
     yy.length === 2
-      ? Number(yy) >= 70
+      ? Number(yy) >= 50
         ? 1900 + Number(yy)
         : 2000 + Number(yy)
       : Number(yy);

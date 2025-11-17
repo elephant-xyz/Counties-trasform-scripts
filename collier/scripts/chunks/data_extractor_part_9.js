@@ -16,6 +16,9 @@
   const land = toNumberCurrency($("#LandJustValue").first().text());
   const impr = toNumberCurrency($("#ImprovementsJustValue").first().text());
   const just = toNumberCurrency($("#TotalJustValue").first().text());
+  const nonSchoolExemption = toNumberCurrency(
+    $("#NonSchoolWhollyExemptAmount").first().text(),
+  );
   let assessed = toNumberCurrency(
     $("#TdDetailCountyAssessedValue").first().text(),
   );
@@ -45,6 +48,8 @@
       property_land_amount: land != null ? land : null,
       property_taxable_value_amount:
         taxable != null ? taxable : assessed != null ? assessed : null,
+      property_exemption_amount:
+        nonSchoolExemption != null ? nonSchoolExemption : null,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
@@ -52,6 +57,113 @@
     };
     fs.writeFileSync(
       path.join(dataDir, "tax_1.json"),
+      JSON.stringify(taxObj, null, 2),
+    );
+  }
+
+  const adValoremRows = [];
+  for (let idx = 1; idx <= 50; idx++) {
+    const name = $(`#TaName${idx}`).text().trim();
+    const taxableVal = toNumberCurrency($(`#Taxable${idx}`).text());
+    const millageText = $(`#Millage${idx}`).text().trim();
+    const millage = millageText ? Number(millageText) : null;
+    const taxAmount = toNumberCurrency($(`#Tax${idx}`).text());
+    const taxableType = $(`#TaxableType${idx}`).text().trim();
+
+    if (
+      !name &&
+      taxableVal == null &&
+      (millage == null || Number.isNaN(millage)) &&
+      taxAmount == null &&
+      !taxableType
+    ) {
+      continue;
+    }
+
+    adValoremRows.push({
+      name: name || null,
+      taxableVal,
+      millage: millage != null && !Number.isNaN(millage) ? millage : null,
+      taxAmount,
+      type: taxableType || null,
+    });
+  }
+
+  adValoremRows.forEach((row, idx) => {
+    if (row.taxableVal == null && row.taxAmount == null && row.millage == null) {
+      return;
+    }
+    const monthly = row.taxAmount != null ? round2(row.taxAmount / 12) : null;
+    const identifierParts = ["AdValorem"];
+    if (row.type) identifierParts.push(row.type);
+    if (row.name) identifierParts.push(row.name);
+    if (row.millage != null) identifierParts.push(`millage:${row.millage}`);
+    const taxObj = {
+      tax_year: ty,
+      property_taxable_value_amount: row.taxableVal != null ? row.taxableVal : null,
+      yearly_tax_amount: row.taxAmount != null ? row.taxAmount : null,
+      monthly_tax_amount: monthly,
+      request_identifier: identifierParts.join("|"),
+      property_assessed_value_amount: null,
+      property_market_value_amount: null,
+      property_building_amount: null,
+      property_land_amount: null,
+      property_exemption_amount: null,
+      period_start_date: ty ? `${ty}-01-01` : null,
+      period_end_date: ty ? `${ty}-12-31` : null,
+    };
+    const filename = `tax_breakdown_${idx + 1}.json`;
+    fs.writeFileSync(
+      path.join(dataDir, filename),
+      JSON.stringify(taxObj, null, 2),
+    );
+  });
+
+  const totalAdValorem = toNumberCurrency(
+    $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text(),
+  );
+  if (totalAdValorem != null) {
+    const detailCountyMillage = parseFloat(
+      $("#TdDetailCountyMillage").first().text().replace(/[^0-9.]+/g, ""),
+    );
+    const detailSchoolMillage = parseFloat(
+      $("#TdDetailSchoolMillage").first().text().replace(/[^0-9.]+/g, ""),
+    );
+    const detailMunicipalMillage = parseFloat(
+      $("#TdDetailMunicipalMillage").first().text().replace(/[^0-9.]+/g, ""),
+    );
+    const detailOtherMillage = parseFloat(
+      $("#TdDetailOtherMillage").first().text().replace(/[^0-9.]+/g, ""),
+    );
+    const identifierParts = ["AdValorem", "Total"];
+    if (!Number.isNaN(detailCountyMillage)) {
+      identifierParts.push(`county:${detailCountyMillage}`);
+    }
+    if (!Number.isNaN(detailSchoolMillage)) {
+      identifierParts.push(`school:${detailSchoolMillage}`);
+    }
+    if (!Number.isNaN(detailMunicipalMillage)) {
+      identifierParts.push(`municipal:${detailMunicipalMillage}`);
+    }
+    if (!Number.isNaN(detailOtherMillage)) {
+      identifierParts.push(`other:${detailOtherMillage}`);
+    }
+    const taxObj = {
+      tax_year: ty,
+      yearly_tax_amount: totalAdValorem,
+      monthly_tax_amount: round2(totalAdValorem / 12),
+      request_identifier: identifierParts.join("|"),
+      property_taxable_value_amount: null,
+      property_assessed_value_amount: null,
+      property_market_value_amount: null,
+      property_building_amount: null,
+      property_land_amount: null,
+      property_exemption_amount: null,
+      period_start_date: ty ? `${ty}-01-01` : null,
+      period_end_date: ty ? `${ty}-12-31` : null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "tax_breakdown_total.json"),
       JSON.stringify(taxObj, null, 2),
     );
   }
@@ -77,6 +189,21 @@
       $(`#HistoryCountyTaxableValue${idx}`).text(),
     );
     const yearlyH = toNumberCurrency($(`#HistoryTotalTaxes${idx}`).text());
+    const benefitH = toNumberCurrency(
+      $(`#HistoryNonSchool10PctBenefit${idx}`).text(),
+    );
+    const schoolMillage = parseFloat(
+      $(`#HistorySchoolMillage${idx}`).text().trim(),
+    );
+    const countyMillage = parseFloat(
+      $(`#HistoryCountyMillage${idx}`).text().trim(),
+    );
+    const municipalMillage = parseFloat(
+      $(`#HistoryMunicipalMillage${idx}`).text().trim(),
+    );
+    const otherMillage = parseFloat(
+      $(`#HistoryOtherMillage${idx}`).text().trim(),
+    );
 
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
@@ -88,11 +215,29 @@
         assessedH,
         taxableH,
         yearlyH,
+        benefitH,
+        schoolMillage,
+        countyMillage,
+        municipalMillage,
+        otherMillage,
       });
     }
   }
   years.forEach((rec) => {
     const monthly = rec.yearlyH != null ? round2(rec.yearlyH / 12) : null;
+    const identifierParts = ["History", rec.yNum];
+    if (Number.isFinite(rec.schoolMillage)) {
+      identifierParts.push(`school:${rec.schoolMillage}`);
+    }
+    if (Number.isFinite(rec.countyMillage)) {
+      identifierParts.push(`county:${rec.countyMillage}`);
+    }
+    if (Number.isFinite(rec.municipalMillage)) {
+      identifierParts.push(`municipal:${rec.municipalMillage}`);
+    }
+    if (Number.isFinite(rec.otherMillage)) {
+      identifierParts.push(`other:${rec.otherMillage}`);
+    }
     const taxObj = {
       tax_year: rec.yNum,
       property_assessed_value_amount:
@@ -115,10 +260,12 @@
           : rec.assessedH != null
             ? rec.assessedH
             : null,
+      property_exemption_amount: rec.benefitH != null ? rec.benefitH : null,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
+      request_identifier: identifierParts.join("|"),
     };
     const outIdx = rec.idx; // 1..5 corresponds to 2025..2021
     fs.writeFileSync(

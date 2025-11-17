@@ -35,6 +35,19 @@
 
     // Write layout file if we created one
     if (layoutObj) {
+      const builtYearNum =
+        yr && /^\d{4}$/.test(yr) ? parseInt(yr, 10) : null;
+      if (builtYearNum) {
+        layoutObj.built_year = builtYearNum;
+      }
+      const seqVal = $(`#SEQNO${buildingNum}`).text().trim();
+      if (seqVal) {
+        layoutObj.building_number = seqVal;
+        layoutObj.space_type_index = seqVal;
+      } else {
+        layoutObj.building_number = buildingNum;
+        layoutObj.space_type_index = String(buildingNum);
+      }
       fs.writeFileSync(
         path.join(dataDir, `layout_${layoutIdx}.json`),
         JSON.stringify(layoutObj, null, 2),

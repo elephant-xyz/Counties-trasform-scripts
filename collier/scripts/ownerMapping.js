@@ -567,12 +567,9 @@ function buildMailingAddress($) {
   if (!unnormalizedAddress) return null;
 
   return {
+    // Either emit unnormalized_address or fully normalized components; not both.
+    // Here we only expose the combined form because the source mixes free-form lines.
     unnormalized_address: unnormalizedAddress,
-    city_name: normalizedCity || null,
-    state_code: normalizedState || null,
-    postal_code: postalCode || null,
-    plus_four_postal_code: plusFour || null,
-    country_code: normalizedState ? "US" : null,
   };
 }
 

@@ -97,6 +97,22 @@
       let companyIdx = 1;
       const personFiles = [];
       const companyFiles = [];
+      let ownerMailingFile = null;
+
+      if (ownerEntry.mailing_address) {
+        const mailing = ownerEntry.mailing_address;
+        if (mailing.unnormalized_address) {
+          const ownerAddress = {
+            unnormalized_address: mailing.unnormalized_address,
+          };
+          const ownerAddressPath = path.join(dataDir, "owner_address.json");
+          fs.writeFileSync(
+            ownerAddressPath,
+            JSON.stringify(ownerAddress, null, 2),
+          );
+          ownerMailingFile = "./owner_address.json";
+        }
+      }
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
@@ -128,6 +144,38 @@
           personIdx++;
         }
       });
+
+      if (ownerMailingFile) {
+        companyFiles.forEach((companyFile, idx) => {
+          const rel = {
+            type: "company_has_address",
+            from: { "/": companyFile },
+            to: { "/": ownerMailingFile },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_company_has_address_${idx + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+        });
+
+        personFiles.forEach((personFile, idx) => {
+          const rel = {
+            type: "person_has_address",
+            from: { "/": personFile },
+            to: { "/": ownerMailingFile },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_person_has_address_${idx + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+        });
+      }
 
       // Create relationships for valid sales
       if (validSales.length > 0) {
