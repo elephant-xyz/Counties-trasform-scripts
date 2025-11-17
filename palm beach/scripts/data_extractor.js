@@ -16305,6 +16305,115 @@ async function main() {
       normalizedMunicipality,
     ]);
 
+    const trimmedUnnormalized =
+      typeof resolvedUnnormalized === "string"
+        ? resolvedUnnormalized.trim()
+        : "";
+
+    const canonicalUnnormalized = trimmedUnnormalized.length
+      ? trimmedUnnormalized
+      : null;
+
+    const applyStreetFallback = (parsed) => {
+      if (!parsed || typeof parsed !== "object") return;
+      if (!hasMeaningfulAddressValue(addressForOutput.street_number) && parsed.streetNumber) {
+        addressForOutput.street_number = parsed.streetNumber.trim();
+      }
+      if (
+        !hasMeaningfulAddressValue(addressForOutput.street_pre_directional_text) &&
+        parsed.streetPreDirectional
+      ) {
+        addressForOutput.street_pre_directional_text = parsed.streetPreDirectional.toUpperCase();
+      }
+      if (
+        !hasMeaningfulAddressValue(addressForOutput.street_post_directional_text) &&
+        parsed.streetPostDirectional
+      ) {
+        addressForOutput.street_post_directional_text =
+          parsed.streetPostDirectional.toUpperCase();
+      }
+      if (!hasMeaningfulAddressValue(addressForOutput.street_suffix_type) && parsed.streetSuffix) {
+        const normalizedSuffix = mapStreetSuffixType(parsed.streetSuffix);
+        if (normalizedSuffix) {
+          addressForOutput.street_suffix_type = normalizedSuffix;
+        }
+      }
+      if (!hasMeaningfulAddressValue(addressForOutput.street_name) && parsed.streetName) {
+        const formatted = formatStreetNameCase(parsed.streetName);
+        if (formatted) {
+          addressForOutput.street_name = formatted.toUpperCase();
+        }
+      }
+      if (!hasMeaningfulAddressValue(addressForOutput.unit_identifier) && parsed.unitIdentifier) {
+        addressForOutput.unit_identifier = parsed.unitIdentifier.trim();
+      }
+      if (!hasMeaningfulAddressValue(addressForOutput.route_number) && parsed.routeNumber) {
+        addressForOutput.route_number = parsed.routeNumber.trim();
+      }
+    };
+
+    const streetFallbackSources = [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      locationLine,
+      ...streetCandidatesForFallback,
+    ].filter((candidate, index, self) => {
+      if (!candidate || typeof candidate !== "string") return false;
+      const normalized = candidate.trim();
+      if (!normalized.length) return false;
+      const dupIndex = self.findIndex(
+        (value) => typeof value === "string" && value.trim() === normalized,
+      );
+      return dupIndex === index;
+    });
+
+    for (const candidate of streetFallbackSources) {
+      const primarySegment = candidate.includes(",")
+        ? candidate.split(",")[0].trim()
+        : candidate.trim();
+      const parsed = parseLocationAddress(primarySegment);
+      applyStreetFallback(parsed);
+      if (
+        hasMeaningfulAddressValue(addressForOutput.street_number) &&
+        hasMeaningfulAddressValue(addressForOutput.street_name) &&
+        hasMeaningfulAddressValue(addressForOutput.street_suffix_type)
+      ) {
+        break;
+      }
+    }
+
+    const GRID_FIELD_LENGTHS_FALLBACK = {
+      township: 2,
+      range: 2,
+      section: 2,
+      block: 3,
+      lot: 4,
+    };
+
+    const assignGridValueIfMissing = (field, value) => {
+      if (!value) return;
+      if (hasMeaningfulAddressValue(addressForOutput[field])) return;
+      const length = GRID_FIELD_LENGTHS_FALLBACK[field];
+      const padded = length ? padGridValue(value, length) : value;
+      addressForOutput[field] = padded;
+    };
+
+    const gridFallbackSources = [
+      ...parcelIdCandidates,
+      fallbackPcnSource,
+      parcelId,
+    ].filter(Boolean);
+
+    for (const candidate of gridFallbackSources) {
+      const parts = deriveGridPartsFromPcn(candidate);
+      if (!parts || typeof parts !== "object") continue;
+      assignGridValueIfMissing("township", parts.township);
+      assignGridValueIfMissing("range", parts.range);
+      assignGridValueIfMissing("section", parts.section);
+      assignGridValueIfMissing("block", parts.block);
+      assignGridValueIfMissing("lot", parts.lot);
+    }
+
     if (
       hasMeaningfulAddressValue(addressForOutput.postal_code) &&
       !hasMeaningfulAddressValue(addressForOutput.plus_four_postal_code)
@@ -16318,15 +16427,6 @@ async function main() {
     ) {
       addressForOutput.country_code = "US";
     }
-
-    const trimmedUnnormalized =
-      typeof resolvedUnnormalized === "string"
-        ? resolvedUnnormalized.trim()
-        : "";
-
-    const canonicalUnnormalized = trimmedUnnormalized.length
-      ? trimmedUnnormalized
-      : null;
 
     backfillNormalizedAddressFields(addressForOutput, {
       unnormalized: canonicalUnnormalized || resolvedUnnormalized,
