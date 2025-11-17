@@ -1832,6 +1832,150 @@ function enforceFinalAddressVariant(addressFilePath, options = {}) {
   writeJSON(addressFilePath, payload);
 }
 
+function enforceAddressOneOfStrictCompliance(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const sanitizeField = (field, value) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }
+
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    const normalized = normalizeAddressFieldForSchema(field, value);
+    if (normalized === undefined || normalized === null) {
+      return null;
+    }
+
+    if (typeof normalized === "string") {
+      const trimmedNormalized = normalized.trim();
+      return trimmedNormalized.length ? trimmedNormalized : null;
+    }
+
+    if (typeof normalized === "number") {
+      return Number.isFinite(normalized) ? normalized : null;
+    }
+
+    return normalized;
+  };
+
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    normalizedSurface[field] = sanitizeField(field, payload[field]);
+  }
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
+  }
+  if (normalizedSurface.state_code && !normalizedSurface.country_code) {
+    normalizedSurface.country_code = "US";
+  }
+  if ((normalizedSurface.latitude == null) !== (normalizedSurface.longitude == null)) {
+    normalizedSurface.latitude = null;
+    normalizedSurface.longitude = null;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+
+  if (requestIdentifier) {
+    normalizedSurface.request_identifier = requestIdentifier;
+  }
+  if (preparedSource) {
+    normalizedSurface.source_http_request = deepClone(preparedSource);
+  }
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedSurface[field] === "string" &&
+      normalizedSurface[field].trim().length > 0,
+  );
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const hasRawVariant = trimmedRaw.length > 0;
+
+  if (hasNormalizedCoverage) {
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedSurface, "unnormalized_address")
+    ) {
+      delete normalizedSurface.unnormalized_address;
+    }
+    writeJSON(addressFilePath, normalizedSurface);
+    return;
+  }
+
+  if (!hasRawVariant) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawSurface = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    rawSurface[field] = sanitizeField(field, payload[field]);
+  }
+  rawSurface.unnormalized_address = trimmedRaw;
+
+  if ((rawSurface.latitude == null) !== (rawSurface.longitude == null)) {
+    rawSurface.latitude = null;
+    rawSurface.longitude = null;
+  }
+
+  if (!rawSurface.postal_code) {
+    rawSurface.plus_four_postal_code = null;
+  }
+  if (rawSurface.state_code && !rawSurface.country_code) {
+    rawSurface.country_code = "US";
+  }
+
+  if (requestIdentifier) {
+    rawSurface.request_identifier = requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawSurface, "request_identifier")
+  ) {
+    rawSurface.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    rawSurface.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawSurface, "source_http_request")
+  ) {
+    rawSurface.source_http_request = null;
+  }
+
+  writeJSON(addressFilePath, rawSurface);
+}
+
 function repairAddressWithFallback(
   addressFilePath,
   context = ADDRESS_FALLBACK_CONTEXT,
@@ -8334,6 +8478,7 @@ async function main() {
   };
   solidifyCountyAddressOutput(addressOutputPath, solidifyOptions);
   enforceAddressVariantFieldSurface(addressOutputPath);
+  enforceAddressOneOfStrictCompliance(addressOutputPath);
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");
