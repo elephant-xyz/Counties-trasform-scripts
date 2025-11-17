@@ -57,14 +57,39 @@ function sanitizeAddressPayloadForWrite(payload) {
     : NORMALIZED_ADDRESS_FIELDS;
 
   for (const field of fieldIterator) {
-    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+    let candidate = Object.prototype.hasOwnProperty.call(payload, field)
       ? payload[field]
       : null;
+
+    if (candidate === undefined) {
+      candidate = null;
+    }
+
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      candidate = trimmed.length ? trimmed : null;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      candidate = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof candidate === "number" && !Number.isFinite(candidate)) {
+      candidate = null;
+    }
+
     sanitized[field] = candidate;
   }
 
   if (!hasRawVariant && Object.prototype.hasOwnProperty.call(sanitized, "unnormalized_address")) {
     delete sanitized.unnormalized_address;
+  }
+
+  if (!sanitized.postal_code) {
+    sanitized.plus_four_postal_code = null;
+  }
+
+  if (sanitized.state_code && !sanitized.country_code) {
+    sanitized.country_code = "US";
   }
 
   const surfaced =
