@@ -2776,79 +2776,103 @@ const propertyTypeMapping=[
 
 const extraFeaturesCodeListMapping=[]
 
-function buildUseCodeKeys(raw) {
-  if (raw == null) return [];
-  const str = String(raw).trim();
-  if (!str) return [];
-  const keys = new Set();
-  const normalized = str.replace(/[-\s:()]+/g, "").toUpperCase();
-  if (normalized) keys.add(normalized);
-  const leadingToken = str.split(/[\s-]+/)[0] || "";
-  if (leadingToken) {
-    keys.add(leadingToken);
-    const padded = leadingToken.padStart(4, "0");
-    keys.add(padded);
-    const numeric = parseInt(leadingToken, 10);
-    if (!Number.isNaN(numeric)) {
-      keys.add(String(numeric));
-      keys.add(String(numeric).padStart(4, "0"));
-    }
-  }
-  return Array.from(keys);
-}
-
-function createUseCodeLookup(valueExtractor) {
-  return propertyTypeMapping.reduce((lookup, entry) => {
-    if (!entry || entry.property_usecode == null) return lookup;
-    const value = valueExtractor(entry);
-    buildUseCodeKeys(entry.property_usecode).forEach((key) => {
-      if (key && !(key in lookup)) {
-        lookup[key] = value ?? null;
-      }
-    });
+const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) {
     return lookup;
-  }, {});
-}
-
-function resolveUseCodeMapping(lookup, code) {
-  if (!code && code !== 0) return null;
-  const keys = buildUseCodeKeys(code);
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(lookup, key)) {
-      return lookup[key];
+  }
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) {
+    return lookup;
     }
+  lookup[normalizedUseCode] = entry.property_type ?? null;
+  return lookup;
+}, {});
+
+
+const ownershipEstateTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.ownership_estate_type ?? null;
+  return lookup;
+}, {});
+
+const buildStatusByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.build_status ?? null;
+  return lookup;
+}, {});
+
+const structureFormByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.structure_form ?? null;
+  return lookup;
+}, {});
+
+const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) return lookup;
+  const normalizedUseCode = entry.property_usecode.replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedUseCode) return lookup;
+  lookup[normalizedUseCode] = entry.property_usage_type ?? null;
+  return lookup;
+}, {});
+
+function mapPropertyTypeFromUseCode(code) {
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  // console.log("1",normalizedInput)
+  // console.log(propertyTypeByUseCode)
+  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+    return propertyTypeByUseCode[normalizedInput];
   }
   return null;
 }
 
-const propertyTypeByUseCode = createUseCodeLookup((entry) => entry.property_type ?? null);
-const ownershipEstateTypeByUseCode = createUseCodeLookup(
-  (entry) => entry.ownership_estate_type ?? null,
-);
-const buildStatusByUseCode = createUseCodeLookup((entry) => entry.build_status ?? null);
-const structureFormByUseCode = createUseCodeLookup((entry) => entry.structure_form ?? null);
-const propertyUsageTypeByUseCode = createUseCodeLookup(
-  (entry) => entry.property_usage_type ?? null,
-);
 
-function mapPropertyTypeFromUseCode(code) {
-  return resolveUseCodeMapping(propertyTypeByUseCode, code);
-}
 
 function mapOwnershipEstateTypeFromUseCode(code) {
-  return resolveUseCodeMapping(ownershipEstateTypeByUseCode, code);
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
+    return ownershipEstateTypeByUseCode[normalizedInput];
+  }
+  return null;
 }
 
 function mapBuildStatusFromUseCode(code) {
-  return resolveUseCodeMapping(buildStatusByUseCode, code);
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
+    return buildStatusByUseCode[normalizedInput];
+  }
+  return null;
 }
 
 function mapStructureFormFromUseCode(code) {
-  return resolveUseCodeMapping(structureFormByUseCode, code);
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
+    return structureFormByUseCode[normalizedInput];
+  }
+  return null;
 }
 
 function mapPropertyUsageTypeFromUseCode(code) {
-  return resolveUseCodeMapping(propertyUsageTypeByUseCode, code);
+  if (!code && code !== 0) return null;
+  const normalizedInput = String(code).replace(/[-\s:()]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
+    return propertyUsageTypeByUseCode[normalizedInput];
+  }
+  return null;
 }
 
 
@@ -3519,8 +3543,12 @@ const layoutsPath = path.join("owners", "layout_data.json");
 // const structuresData = null;
 const seed = readJSON("property_seed.json");
 const appendSourceInfo = (seed) => ({
+  source_http_request: {
+    method: "GET",
+    url: seed?.source_http_request?.url || null,
+  },
   request_identifier: seed?.request_identifier || seed?.parcel_id || "",
-});
+  });
 
 // try {
 //   structuresData = readJSON(structuresPath);
@@ -3631,15 +3659,6 @@ function createStructureFiles(seed,parcelIdentifier) {
         path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
         relationship
       );
-      const propertyStructureRelationship = {
-        type: "property_has_structure",
-        from: { "/": "./property.json" },
-        to: { "/": `./structure_${structureIndex}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_property_has_structure_${structureIndex}.json`),
-        propertyStructureRelationship,
-      );
     });
   }
 
@@ -3710,15 +3729,6 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
         relationship
       );
-      const propertyUtilityRelationship = {
-        type: "property_has_utilities",
-        from: { "/": "./property.json" },
-        to: { "/": `./utility_${utilityIndex}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_property_has_utilities_${utilityIndex}.json`),
-        propertyUtilityRelationship,
-      );
     });
   }
 
@@ -3779,15 +3789,6 @@ function createLayoutFiles(seed,parcelIdentifier){
         building_number: layout.building_number ?? null
       };
       writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
-      const propertyLayoutRelationship = {
-        type: "property_has_layout",
-        from: { "/": "./property.json" },
-        to: { "/": `./layout_${idx + 1}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_property_has_layout_${idx + 1}.json`),
-        propertyLayoutRelationship,
-      );
     });
     
     // Create layout relationships
@@ -3845,6 +3846,17 @@ function main() {
   const layoutsData = fs.existsSync(layoutsJsonPath)
     ? readJSON(layoutsJsonPath)
     : {};
+
+  const appendSourceInfo = (seed) => ({
+  source_http_request: {
+    method: "GET",
+    url: seed?.source_http_request?.url || null,
+  },
+  request_identifier: seed?.request_identifier || seed?.parcel_id || "",
+  });
+
+
+
 
   // ---------- Parse Property ----------
   const parcelId = $("#divDetails_Pid").text().trim() || null;
@@ -3932,39 +3944,18 @@ function main() {
   //constructing property json
   const property = {
     ...appendSourceInfo(seed),
+    number_of_units: bldgDetails.numberOfUnits ?? null,
+    parcel_identifier: parcelId || "",
+    property_legal_description_text: legalDesc || null,
+    property_structure_built_year: bldgDetails.yearBuilt ?? null,
+    property_type: property_type || null, // Now extracted from Property Use
+    subdivision: subdivision,
+    zoning: null,
+    ownership_estate_type: ownership_estate_type,
+    build_status: build_status,
+    structure_form:structure_form,
+    property_usage_type:property_usage_type    
   };
-  if (bldgDetails.numberOfUnits != null) {
-    property.number_of_units = bldgDetails.numberOfUnits;
-  }
-  if (parcelId) {
-    property.parcel_identifier = parcelId;
-  } else if (seed?.parcel_id) {
-    property.parcel_identifier = seed.parcel_id;
-  }
-  if (legalDesc) {
-    property.property_legal_description_text = legalDesc;
-  }
-  if (bldgDetails.yearBuilt != null) {
-    property.property_structure_built_year = bldgDetails.yearBuilt;
-  }
-  if (typeof property_type === "string" && property_type.length > 0) {
-    property.property_type = property_type;
-  }
-  if (subdivision) {
-    property.subdivision = subdivision;
-  }
-  if (typeof ownership_estate_type === "string" && ownership_estate_type.length > 0) {
-    property.ownership_estate_type = ownership_estate_type;
-  }
-  if (typeof build_status === "string" && build_status.length > 0) {
-    property.build_status = build_status;
-  }
-  if (typeof structure_form === "string" && structure_form.length > 0) {
-    property.structure_form = structure_form;
-  }
-  if (typeof property_usage_type === "string" && property_usage_type.length > 0) {
-    property.property_usage_type = property_usage_type;
-  }
   writeJSON(path.join(dataDir, "property.json"), property);
 
   // ---------- Address parsing and files creation logic ----------
@@ -4069,17 +4060,6 @@ function main() {
     unnormalized_address: siteAddr || null
   };
   writeJSON(path.join(dataDir, "address.json"), address);
-  if (siteAddr) {
-    const propertyAddressRelationship = {
-      type: "property_has_address",
-      from: { "/": "./property.json" },
-      to: { "/": "./address.json" },
-    };
-    writeJSON(
-      path.join(dataDir, "relationship_property_has_address.json"),
-      propertyAddressRelationship,
-    );
-  }
 
 
   //MAILING ADDRESS FILES.
@@ -4123,18 +4103,6 @@ function main() {
       sale.purchase_price_amount = purchasePrice;
     }
     writeJSON(path.join(dataDir, `sales_${salesFileIndex}.json`), sale);
-    const propertySalesRelationship = {
-      type: "property_has_sales_history",
-      from: { "/": "./property.json" },
-      to: { "/": `./sales_${salesFileIndex}.json` },
-    };
-    writeJSON(
-      path.join(
-        dataDir,
-        `relationship_property_has_sales_history_${salesFileIndex}.json`,
-      ),
-      propertySalesRelationship,
-    );
 
     // Map deed code/title to deed_type
     // console.log(deedCode)
@@ -4157,21 +4125,11 @@ function main() {
 
     const fileObj = {
       ...appendSourceInfo(seed),
-      document_type: "Title", // document type for deed.
+      document_type: "Title", //document_Type for deed.
+      name: null,
+      original_url: deedLink || null,
     };
     writeJSON(path.join(dataDir, `file_${salesFileIndex}.json`), fileObj);
-    const propertyFileRelationship = {
-      type: "property_has_file",
-      from: { "/": "./property.json" },
-      to: { "/": `./file_${salesFileIndex}.json` },
-    };
-    writeJSON(
-      path.join(
-        dataDir,
-        `relationship_property_has_file_${salesFileIndex}.json`,
-      ),
-      propertyFileRelationship,
-    );
 
     const relSalesDeed = {
       from: { "/": `./sales_${salesFileIndex}.json` },
@@ -4385,15 +4343,6 @@ function main() {
           yearly_tax_amount: null,
         };
         writeJSON(path.join(dataDir, `tax_${yr}.json`), tax);
-        const propertyTaxRelationship = {
-          type: "property_has_tax",
-          from: { "/": "./property.json" },
-          to: { "/": `./tax_${yr}.json` },
-        };
-        writeJSON(
-          path.join(dataDir, `relationship_property_has_tax_${yr}.json`),
-          propertyTaxRelationship,
-        );
       }
     });
   }
@@ -4433,15 +4382,6 @@ function main() {
   };
 
   writeJSON(path.join(dataDir, "lot.json"), lotOut);
-  const propertyLotRelationship = {
-    type: "property_has_lot",
-    from: { "/": "./property.json" },
-    to: { "/": "./lot.json" },
-  };
-  writeJSON(
-    path.join(dataDir, "relationship_property_has_lot.json"),
-    propertyLotRelationship,
-  );
 }
 
 main();
