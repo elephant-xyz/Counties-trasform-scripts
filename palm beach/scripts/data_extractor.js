@@ -7374,6 +7374,56 @@ function finalizeAddressSchemaOutput(addressFilePath, options = {}) {
 
     rawOutput.unnormalized_address = resolvedUnnormalized;
 
+    backfillNormalizedAddressFields(rawOutput, {
+      unnormalized: resolvedUnnormalized,
+      fallbackCity: payload.city_name,
+      fallbackState: payload.state_code,
+      fallbackPostal: payload.postal_code,
+      fallbackPlus4: payload.plus_four_postal_code,
+      fallbackCounty: payload.county_name,
+      fallbackCountry: payload.country_code,
+      fallbackMunicipality: payload.municipality_name,
+      fallbackUnit: payload.unit_identifier,
+      fallbackRoute: payload.route_number,
+      fallbackLatitude: payload.latitude,
+      fallbackLongitude: payload.longitude,
+      fallbackTownship: payload.township,
+      fallbackRange: payload.range,
+      fallbackSection: payload.section,
+      fallbackBlock: payload.block,
+      fallbackLot: payload.lot,
+      fallbackStreetNumber: payload.street_number,
+      fallbackStreetName: payload.street_name,
+      fallbackStreetPreDirectional: payload.street_pre_directional_text,
+      fallbackStreetPostDirectional: payload.street_post_directional_text,
+      fallbackStreetSuffix: payload.street_suffix_type,
+    });
+
+    backfillNormalizedAddressFields(rawOutput, {
+      unnormalized: resolvedUnnormalized,
+      fallbackCity: payload.city_name,
+      fallbackState: payload.state_code,
+      fallbackPostal: payload.postal_code,
+      fallbackPlus4: payload.plus_four_postal_code,
+      fallbackCounty: payload.county_name,
+      fallbackCountry: payload.country_code,
+      fallbackMunicipality: payload.municipality_name,
+      fallbackUnit: payload.unit_identifier,
+      fallbackRoute: payload.route_number,
+      fallbackLatitude: payload.latitude,
+      fallbackLongitude: payload.longitude,
+      fallbackTownship: payload.township,
+      fallbackRange: payload.range,
+      fallbackSection: payload.section,
+      fallbackBlock: payload.block,
+      fallbackLot: payload.lot,
+      fallbackStreetNumber: payload.street_number,
+      fallbackStreetName: payload.street_name,
+      fallbackStreetPreDirectional: payload.street_pre_directional_text,
+      fallbackStreetPostDirectional: payload.street_post_directional_text,
+      fallbackStreetSuffix: payload.street_suffix_type,
+    });
+
     if (resolvedRequestIdentifier) {
       rawOutput.request_identifier = resolvedRequestIdentifier;
     } else if (hadRequestIdentifier) {
