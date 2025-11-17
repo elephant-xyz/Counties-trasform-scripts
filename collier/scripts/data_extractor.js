@@ -1203,23 +1203,19 @@ function main() {
     }
 
     if (!layoutObj) {
-      const defaultSpaceType =
-        toTitleCaseWords(buildingClass) || "Structure";
-      const exteriorIndicators = [
-        "FENCE",
-        "PATIO",
-        "PAV",
-        "DECK",
-        "CARPORT",
-        "CANOPY",
-        "WALK",
-        "DRIVE",
-        "COURT",
-      ];
-      const isExteriorDefault = exteriorIndicators.some((token) =>
-        buildingClass.includes(token),
-      );
-      layoutObj = createLayoutObj(defaultSpaceType, isExteriorDefault, layoutIdx, {});
+      if (buildingClass.includes("CARPORT")) {
+        layoutObj = createLayoutObj("Carport", true, layoutIdx, {});
+      } else if (buildingClass.includes("GARAGE")) {
+        layoutObj = createLayoutObj("Detached Garage", true, layoutIdx, {});
+      } else if (buildingClass.includes("RESIDENCE") || buildingClass.includes("BUILDING")) {
+        layoutObj = createLayoutObj("Building", false, layoutIdx, {});
+      } else if (buildingClass.includes("PATIO")) {
+        layoutObj = createLayoutObj("Patio", true, layoutIdx, {});
+      } else if (buildingClass.includes("COURT")) {
+        layoutObj = createLayoutObj("Courtyard", true, layoutIdx, {});
+      } else {
+        return;
+      }
     }
 
     if (layoutObj) {
@@ -1231,12 +1227,19 @@ function main() {
       const seqVal = ($row.length
         ? $row.find("span[id^=SEQNO]").first().text().trim()
         : $(`#SEQNO${buildingNum}`).text().trim());
-      if (seqVal) {
-        layoutObj.building_number = seqVal;
-        layoutObj.space_type_index = seqVal;
+      const seqNum = seqVal ? parseInt(seqVal, 10) : NaN;
+      if (!Number.isNaN(seqNum)) {
+        layoutObj.building_number = seqNum;
+        layoutObj.space_type_index = String(seqNum);
       } else {
-        layoutObj.building_number = buildingNum;
-        layoutObj.space_type_index = String(buildingNum);
+        const buildingNumInt = parseInt(buildingNum, 10);
+        if (!Number.isNaN(buildingNumInt)) {
+          layoutObj.building_number = buildingNumInt;
+          layoutObj.space_type_index = String(buildingNumInt);
+        } else {
+          layoutObj.building_number = null;
+          layoutObj.space_type_index = String(layoutIdx);
+        }
       }
     }
 
