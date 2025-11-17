@@ -562,13 +562,163 @@ function buildMailingAddress($) {
     }
   }
 
+  function parseStreetLine(rawLine) {
+    const text = norm(rawLine);
+    if (!text) return null;
+
+    const poBoxMatch = text.match(/^(P\.?\s*O\.?\s*BOX)\s+([A-Z0-9-]+)/i);
+    if (poBoxMatch) {
+      return {
+        street_name: "PO BOX",
+        route_number: poBoxMatch[2],
+        street_number: null,
+        street_suffix_type: null,
+        street_pre_directional_text: null,
+        street_post_directional_text: null,
+        unit_identifier: null,
+      };
+    }
+
+    const unitRegex = /(?:#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i;
+    let working = text;
+    let unitIdentifier = null;
+    const unitMatch = working.match(unitRegex);
+    if (unitMatch) {
+      unitIdentifier = unitMatch[1];
+      working = working.replace(unitRegex, "").trim();
+    }
+
+    const numMatch = working.match(/^(\d+)\s+(.*)$/);
+    if (!numMatch) return null;
+
+    const streetNumber = numMatch[1];
+    let remainder = numMatch[2].trim();
+    let tokens = remainder.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return null;
+
+    const dirMap = {
+      N: "N",
+      NORTH: "N",
+      S: "S",
+      SOUTH: "S",
+      E: "E",
+      EAST: "E",
+      W: "W",
+      WEST: "W",
+      NE: "NE",
+      NORTHEAST: "NE",
+      NW: "NW",
+      NORTHWEST: "NW",
+      SE: "SE",
+      SOUTHEAST: "SE",
+      SW: "SW",
+      SOUTHWEST: "SW",
+    };
+
+    let preDir = null;
+    if (tokens.length > 1) {
+      const cand = dirMap[tokens[0].toUpperCase()];
+      if (cand) {
+        preDir = cand;
+        tokens = tokens.slice(1);
+      }
+    }
+
+    let postDir = null;
+    if (tokens.length > 1) {
+      const cand = dirMap[tokens[tokens.length - 1].toUpperCase()];
+      if (cand) {
+        postDir = cand;
+        tokens = tokens.slice(0, -1);
+      }
+    }
+
+    const suffixMap = {
+      AVE: "Ave",
+      AVENUE: "Ave",
+      BLVD: "Blvd",
+      BOULEVARD: "Blvd",
+      CT: "Ct",
+      COURT: "Ct",
+      CIR: "Cir",
+      CIRCLE: "Cir",
+      DR: "Dr",
+      DRIVE: "Dr",
+      HWY: "Hwy",
+      HIGHWAY: "Hwy",
+      LN: "Ln",
+      LANE: "Ln",
+      PKWY: "Pkwy",
+      PARKWAY: "Pkwy",
+      PL: "Pl",
+      PLACE: "Pl",
+      RD: "Rd",
+      ROAD: "Rd",
+      ST: "St",
+      STREET: "St",
+      TER: "Ter",
+      TERRACE: "Ter",
+      WAY: "Way",
+    };
+
+    let suffixType = null;
+    if (tokens.length > 1) {
+      const rawSuffix = tokens[tokens.length - 1].replace(/\./g, "");
+      const mapped = suffixMap[rawSuffix.toUpperCase()];
+      if (mapped) {
+        suffixType = mapped;
+        tokens = tokens.slice(0, -1);
+      }
+    }
+
+    const streetName = tokens.join(" ").trim();
+    if (!streetName) return null;
+
+    return {
+      street_number: streetNumber,
+      street_name: streetName.toUpperCase(),
+      street_suffix_type: suffixType,
+      street_pre_directional_text: preDir,
+      street_post_directional_text: postDir,
+      unit_identifier: unitIdentifier,
+      route_number: null,
+    };
+  }
+
+  const streetLine = addressLines.find((line) =>
+    /\d/.test(line) || /^P\.?\s*O\.?\s*BOX/i.test(line),
+  );
+  const parsedStreet = streetLine ? parseStreetLine(streetLine) : null;
+
+  if (parsedStreet && parsedStreet.street_name) {
+    const mailing = {
+      city_name: normalizedCity || null,
+      country_code: null,
+      county_name: null,
+      plus_four_postal_code: plusFour,
+      postal_code: postalCode || (zipRaw ? zipRaw.replace(/\s+/g, "") : null),
+      state_code: normalizedState || null,
+      street_name: parsedStreet.street_name,
+      street_number: parsedStreet.street_number,
+      street_post_directional_text: parsedStreet.street_post_directional_text,
+      street_pre_directional_text: parsedStreet.street_pre_directional_text,
+      street_suffix_type: parsedStreet.street_suffix_type,
+      unit_identifier: parsedStreet.unit_identifier || null,
+      route_number: parsedStreet.route_number || null,
+    };
+    Object.keys(mailing).forEach((key) => {
+      if (mailing[key] === null || mailing[key] === undefined) {
+        delete mailing[key];
+      }
+    });
+    return Object.keys(mailing).length ? mailing : null;
+  }
+
   const unnormalizedAddress = parts.length ? parts.join(", ") : null;
 
   if (!unnormalizedAddress) return null;
 
   return {
-    // Either emit unnormalized_address or fully normalized components; not both.
-    // Here we only expose the combined form because the source mixes free-form lines.
     unnormalized_address: unnormalizedAddress,
   };
 }
