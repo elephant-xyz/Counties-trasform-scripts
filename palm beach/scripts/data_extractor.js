@@ -7793,47 +7793,39 @@ function collapseRawAddressVariant(addressFilePath, options = {}) {
       : RAW_ADDRESS_OUTPUT_FIELDS;
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
   for (const field of allowedFields) {
-    if (field === "unnormalized_address") continue;
     if (!Object.prototype.hasOwnProperty.call(payload, field)) continue;
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(payload[field]);
-      if (Number.isFinite(numeric)) {
-        rawOutput[field] = numeric;
-      }
+      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
 
     const normalized = normalizeAddressFieldForSchema(field, payload[field]);
     if (normalized === undefined || normalized === null) {
+      rawOutput[field] = null;
       continue;
     }
 
     if (typeof normalized === "string") {
       const trimmed = normalized.trim();
-      if (!trimmed.length) continue;
-      rawOutput[field] = trimmed;
+      rawOutput[field] = trimmed.length ? trimmed : null;
       continue;
     }
 
     rawOutput[field] = normalized;
   }
 
-  const hasLatitude = Object.prototype.hasOwnProperty.call(
-    rawOutput,
-    "latitude",
-  );
-  const hasLongitude = Object.prototype.hasOwnProperty.call(
-    rawOutput,
-    "longitude",
-  );
-  if (hasLatitude !== hasLongitude) {
-    delete rawOutput.latitude;
-    delete rawOutput.longitude;
+  const hasLatitudeValue = Number.isFinite(rawOutput.latitude);
+  const hasLongitudeValue = Number.isFinite(rawOutput.longitude);
+  if (hasLatitudeValue !== hasLongitudeValue) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
   }
 
   const fallbackCountyName =
@@ -7861,11 +7853,8 @@ function collapseRawAddressVariant(addressFilePath, options = {}) {
     rawOutput.country_code = "US";
   }
 
-  if (
-    !Object.prototype.hasOwnProperty.call(rawOutput, "postal_code") &&
-    Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")
-  ) {
-    delete rawOutput.plus_four_postal_code;
+  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
+    rawOutput.plus_four_postal_code = null;
   }
 
   const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
