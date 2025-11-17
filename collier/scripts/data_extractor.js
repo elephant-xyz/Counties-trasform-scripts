@@ -36,7 +36,7 @@ function parseDateToISO(mdyy) {
 
   let yyyy =
     yy.length === 2
-      ? Number(yy) >= 70
+      ? Number(yy) >= 50
         ? 1900 + Number(yy)
         : 2000 + Number(yy)
       : Number(yy);
@@ -380,6 +380,44 @@ function extractPropertyType(useCodeText) {
   return val;
 }
 
+function mapPermitImprovementType(typeText) {
+  const txt = (typeText || "").toUpperCase();
+  if (!txt) return "GeneralBuilding";
+  if (txt.includes("ROOF")) return "Roofing";
+  if (txt.includes("POOL")) return "PoolSpaInstallation";
+  if (txt.includes("FENCE")) return "Fencing";
+  if (txt.includes("SCREEN")) return "ScreenEnclosure";
+  if (txt.includes("SPA") || txt.includes("HOT TUB") || txt.includes("JACUZZI")) {
+    return "PoolSpaInstallation";
+  }
+  if (txt.includes("WINDOW") || txt.includes("DOOR")) return "WindowsDoors";
+  if (txt.includes("HVAC") || txt.includes("A/C") || txt.includes("AIR")) return "MechanicalHVAC";
+  if (txt.includes("ELECT")) return "Electrical";
+  if (txt.includes("PLUMB")) return "Plumbing";
+  if (txt.includes("SOLAR")) return "Solar";
+  if (txt.includes("PAVE")) return "Paving";
+  if (txt.includes("DEMO")) return "Demolition";
+  if (txt.includes("GARAGE") || txt.includes("ADDITION") || txt.includes("BUILD")) {
+    return "BuildingAddition";
+  }
+  if (txt.includes("CARPORT") || txt.includes("CANOPY")) return "Carport";
+  return "GeneralBuilding";
+}
+
+function determineImprovementStatus(closeDate) {
+  return closeDate ? "Completed" : "Permitted";
+}
+
+function toTitleCaseWords(value) {
+  if (!value) return null;
+  return value
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 
 function splitStreet(streetPart) {
   const dirs = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW", "NORTH", "SOUTH", "EAST", "WEST"]);
@@ -536,7 +574,7 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  return {
+  const baseFields = {
     block: block || null,
     city_name: city || null,
     country_code: null, // do not fabricate
@@ -551,14 +589,29 @@ function parseAddress(
     route_number: null,
     section: section || null,
     state_code: state || "FL",
-    street_name: streetName || null,
-    street_number: streetNumber || null,
-    street_post_directional_text: postDir || null,
-    street_pre_directional_text: preDir || null,
-    street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
   };
+
+  if (streetNumber && streetName) {
+    return {
+      ...baseFields,
+      street_name: streetName || null,
+      street_number: streetNumber || null,
+      street_post_directional_text: postDir || null,
+      street_pre_directional_text: preDir || null,
+      street_suffix_type: suffixType || null,
+    };
+  }
+
+  const fallback = {
+    ...baseFields,
+    unnormalized_address: fullAddress || null,
+  };
+  if (!fullAddress) {
+    delete fallback.unnormalized_address;
+  }
+  return fallback;
 }
 
 function main() {
@@ -600,7 +653,12 @@ function main() {
   const township = $("#Township").first().text().trim() || null;
   const range = $("#Range").first().text().trim() || null;
   const municipality = $("#Municipality").first().text().trim() || null;
-  const totalAcres = $("#TotalAcres").first().text().trim() || null;
+  const totalAcresRaw = $("#TotalAcres").first().text().trim() || null;
+  const totalAcres =
+    totalAcresRaw != null && totalAcresRaw !== ""
+      ? parseFloat(totalAcresRaw.replace(/[^0-9.]/g, ""))
+      : null;
+  const strapNumber = $("#StrapNumber").first().text().trim() || null;
 
   // Property JSON
   const property = {
@@ -734,6 +792,66 @@ function main() {
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
+  try {
+    const relPath = path.join(dataDir, "relationship_property_has_address.json");
+    if (fs.existsSync(relPath)) fs.unlinkSync(relPath);
+  } catch (_) {}
+  if (
+    fs.existsSync(path.join(dataDir, "property.json")) &&
+    fs.existsSync(path.join(dataDir, "address.json"))
+  ) {
+    const propertyAddressRel = {
+      type: "property_has_address",
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_address.json"),
+      JSON.stringify(propertyAddressRel, null, 2),
+    );
+  }
+
+  // Lot (acreage)
+  if (totalAcres != null && !Number.isNaN(totalAcres) && totalAcres > 0) {
+    const lotObj = {
+      lot_size_acre: totalAcres,
+    };
+    const lotPath = path.join(dataDir, "lot.json");
+    fs.writeFileSync(lotPath, JSON.stringify(lotObj, null, 2));
+
+    const rel = {
+      type: "property_has_lot",
+      from: { "/": "./property.json" },
+      to: { "/": "./lot.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_lot.json"),
+      JSON.stringify(rel, null, 2),
+    );
+  }
+
+  // Parcel (strap number)
+  if (strapNumber) {
+    const parcelIdentifier = strapNumber.replace(/\s+/g, " ").trim();
+    if (parcelIdentifier) {
+      const parcelObj = {
+        parcel_identifier: parcelIdentifier,
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "parcel.json"),
+        JSON.stringify(parcelObj, null, 2),
+      );
+      const parcelRel = {
+        type: "property_has_parcel",
+        from: { "/": "./property.json" },
+        to: { "/": "./parcel.json" },
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_parcel.json"),
+        JSON.stringify(parcelRel, null, 2),
+      );
+    }
+  }
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
@@ -773,8 +891,8 @@ function main() {
     );
 
     const relDf = {
-      to: { "/": `./deed_${idx + 1}.json` },
-      from: { "/": `./file_${idx + 1}.json` },
+      from: { "/": `./deed_${idx + 1}.json` },
+      to: { "/": `./file_${idx + 1}.json` },
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -806,8 +924,8 @@ function main() {
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        to: { "/": `./sales_${idx + 1}.json` },
-        from: { "/": `./deed_${deedIdx}.json` },
+        from: { "/": `./sales_${idx + 1}.json` },
+        to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
@@ -827,13 +945,22 @@ function main() {
     const curr = ownerEntry.owners_by_date.current;
     if (curr.length > 0) {
       // Cleanup any legacy duplicate relationship files
-      const files = fs
-        .readdirSync(dataDir)
-        .filter((f) => f.startsWith("relationship_sales_company"));
-      for (const f of files) {
-        try {
-          fs.unlinkSync(path.join(dataDir, f));
-        } catch (_) {}
+      const relFiles = fs.readdirSync(dataDir);
+      for (const f of relFiles) {
+        if (
+          f.startsWith("relationship_sales_person") ||
+          f.startsWith("relationship_sales_company") ||
+          f.startsWith("relationship_sales_history_has_person") ||
+          f.startsWith("relationship_sales_history_has_company") ||
+          f.startsWith("person_") ||
+          f.startsWith("company_") ||
+          f.startsWith("relationship_person_has_address") ||
+          f.startsWith("relationship_company_has_address")
+        ) {
+          try {
+            fs.unlinkSync(path.join(dataDir, f));
+          } catch (_) {}
+        }
       }
 
       // Handle mixed owner types (persons and companies)
@@ -841,6 +968,28 @@ function main() {
       let companyIdx = 1;
       const personFiles = [];
       const companyFiles = [];
+      let ownerMailingFile = null;
+
+      if (ownerEntry.mailing_address) {
+        const mailing = ownerEntry.mailing_address;
+        const ownerAddress = {
+          unnormalized_address: mailing.unnormalized_address || null,
+          city_name: mailing.city_name ? mailing.city_name.toUpperCase() : null,
+          state_code: mailing.state_code || null,
+          postal_code: mailing.postal_code || null,
+          plus_four_postal_code: mailing.plus_four_postal_code || null,
+          country_code: mailing.country_code || null,
+        };
+
+        if (ownerAddress.unnormalized_address || ownerAddress.city_name || ownerAddress.postal_code) {
+          const ownerAddressPath = path.join(dataDir, "owner_address.json");
+          fs.writeFileSync(
+            ownerAddressPath,
+            JSON.stringify(ownerAddress, null, 2),
+          );
+          ownerMailingFile = "./owner_address.json";
+        }
+      }
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
@@ -850,7 +999,7 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-          companyFiles.push(filename);
+          companyFiles.push(`./${filename}`);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
@@ -868,42 +1017,78 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-          personFiles.push(filename);
+          personFiles.push(`./${filename}`);
           personIdx++;
         }
       });
 
+      if (ownerMailingFile) {
+        companyFiles.forEach((companyFile, idx) => {
+          const rel = {
+            type: "company_has_address",
+            from: { "/": companyFile },
+            to: { "/": ownerMailingFile },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_company_has_address_${idx + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+        });
+
+        personFiles.forEach((personFile, idx) => {
+          const rel = {
+            type: "person_has_address",
+            from: { "/": personFile },
+            to: { "/": ownerMailingFile },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_person_has_address_${idx + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+        });
+      }
+
       // Create relationships for valid sales
       if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
+        let personRelIdx = 1;
+        let companyRelIdx = 1;
+        validSales.forEach((_, si) => {
+          const salePath = `./sales_${si + 1}.json`;
+          personFiles.forEach((personFile) => {
             const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              from: { "/": salePath },
+              to: { "/": personFile },
             };
             fs.writeFileSync(
               path.join(
                 dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+                `relationship_sales_history_has_person_${personRelIdx}.json`,
               ),
               JSON.stringify(rel, null, 2),
             );
+            personRelIdx++;
           });
 
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
+          companyFiles.forEach((companyFile) => {
             const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              type: "sales_history_has_company",
+              from: { "/": salePath },
+              to: { "/": companyFile },
             };
             fs.writeFileSync(
               path.join(
                 dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+                `relationship_sales_history_has_company_${companyRelIdx}.json`,
               ),
               JSON.stringify(rel, null, 2),
             );
+            companyRelIdx++;
           });
         });
       }
@@ -1020,6 +1205,7 @@ function main() {
         spa_installation_date: null,
         spa_type: null,
         space_index: idx, // Use the layout index as space_index
+        space_type_index: "1",
         space_type: spaceType,
         story_type: null,
         total_area_sq_ft: null,
@@ -1081,6 +1267,42 @@ function main() {
       layoutObj = createLayoutObj("Courtyard", true, layoutIdx, {});
     }
 
+    if (!layoutObj) {
+      const defaultSpaceType =
+        toTitleCaseWords(buildingClass) || "Structure";
+      const exteriorIndicators = [
+        "FENCE",
+        "PATIO",
+        "PAV",
+        "DECK",
+        "CARPORT",
+        "CANOPY",
+        "WALK",
+        "DRIVE",
+        "COURT",
+      ];
+      const isExteriorDefault = exteriorIndicators.some((token) =>
+        buildingClass.includes(token),
+      );
+      layoutObj = createLayoutObj(defaultSpaceType, isExteriorDefault, layoutIdx, {});
+    }
+
+    if (layoutObj) {
+      const builtYearNum =
+        yr && /^\d{4}$/.test(yr) ? parseInt(yr, 10) : null;
+      if (builtYearNum) {
+        layoutObj.built_year = builtYearNum;
+      }
+      const seqVal = $(`#SEQNO${buildingNum}`).text().trim();
+      if (seqVal) {
+        layoutObj.building_number = seqVal;
+        layoutObj.space_type_index = seqVal;
+      } else {
+        layoutObj.building_number = buildingNum;
+        layoutObj.space_type_index = String(buildingNum);
+      }
+    }
+
     // Write layout file if we created one
     if (layoutObj) {
       fs.writeFileSync(
@@ -1089,6 +1311,64 @@ function main() {
       );
       layoutIdx++;
     }
+  });
+
+  // Property improvements (permits)
+  const propertyImprovements = [];
+  $("#PermitAdditional tr").each((i, el) => {
+    const $row = $(el);
+    const permitNumber = $row.find("span[id^=permitno]").text().trim();
+    const issueText = $row.find("span[id^=IssuedDate]").text().trim();
+    const closeText = $row.find("span[id^=codate]").text().trim();
+    const permitTypeText = $row.find("span[id^=permittype]").text().trim();
+    const taxYearText = $row.find("span[id^=taxyear]").text().trim();
+
+    if (
+      !permitNumber &&
+      !issueText &&
+      !closeText &&
+      !permitTypeText &&
+      !taxYearText
+    ) {
+      return;
+    }
+
+    const issueDate = parseDateToISO(issueText);
+    const closeDate = parseDateToISO(closeText);
+    const taxYear = taxYearText ? parseInt(taxYearText, 10) : null;
+
+    const improvementRecord = {
+      permit_number: permitNumber || null,
+      permit_issue_date: issueDate || null,
+      permit_close_date: closeDate || null,
+      improvement_type: mapPermitImprovementType(permitTypeText),
+      improvement_action: permitTypeText || null,
+      improvement_status: determineImprovementStatus(closeDate),
+      application_received_date:
+        Number.isFinite(taxYear) && taxYear > 1600 ? `${taxYear}-01-01` : null,
+    };
+
+    propertyImprovements.push(improvementRecord);
+  });
+
+  propertyImprovements.forEach((improvement, idx) => {
+    const filename = `property_improvement_${idx + 1}.json`;
+    fs.writeFileSync(
+      path.join(dataDir, filename),
+      JSON.stringify(improvement, null, 2),
+    );
+    const rel = {
+      type: "property_has_property_improvement",
+      from: { "/": "./property.json" },
+      to: { "/": `./${filename}` },
+    };
+    fs.writeFileSync(
+      path.join(
+        dataDir,
+        `relationship_property_has_property_improvement_${idx + 1}.json`,
+      ),
+      JSON.stringify(rel, null, 2),
+    );
   });
 
   // Structure data from permits and building features
@@ -1214,6 +1494,9 @@ function main() {
   const land = toNumberCurrency($("#LandJustValue").first().text());
   const impr = toNumberCurrency($("#ImprovementsJustValue").first().text());
   const just = toNumberCurrency($("#TotalJustValue").first().text());
+  const nonSchoolExemption = toNumberCurrency(
+    $("#NonSchoolWhollyExemptAmount").first().text(),
+  );
   let assessed = toNumberCurrency(
     $("#TdDetailCountyAssessedValue").first().text(),
   );
@@ -1243,6 +1526,8 @@ function main() {
       property_land_amount: land != null ? land : null,
       property_taxable_value_amount:
         taxable != null ? taxable : assessed != null ? assessed : null,
+      property_exemption_amount:
+        nonSchoolExemption != null ? nonSchoolExemption : null,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
@@ -1275,6 +1560,21 @@ function main() {
       $(`#HistoryCountyTaxableValue${idx}`).text(),
     );
     const yearlyH = toNumberCurrency($(`#HistoryTotalTaxes${idx}`).text());
+    const benefitH = toNumberCurrency(
+      $(`#HistoryNonSchool10PctBenefit${idx}`).text(),
+    );
+    const schoolMillage = parseFloat(
+      $(`#HistorySchoolMillage${idx}`).text().trim(),
+    );
+    const countyMillage = parseFloat(
+      $(`#HistoryCountyMillage${idx}`).text().trim(),
+    );
+    const municipalMillage = parseFloat(
+      $(`#HistoryMunicipalMillage${idx}`).text().trim(),
+    );
+    const otherMillage = parseFloat(
+      $(`#HistoryOtherMillage${idx}`).text().trim(),
+    );
 
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
@@ -1286,6 +1586,11 @@ function main() {
         assessedH,
         taxableH,
         yearlyH,
+        benefitH,
+        schoolMillage,
+        countyMillage,
+        municipalMillage,
+        otherMillage,
       });
     }
   }
@@ -1313,6 +1618,7 @@ function main() {
           : rec.assessedH != null
             ? rec.assessedH
             : null,
+      property_exemption_amount: rec.benefitH != null ? rec.benefitH : null,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,

@@ -106,6 +106,14 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
+  "CHURCH",
+  "MINISTRIES",
+  "TEMPLE",
+  "PARISH",
+  "DIOCESE",
+  "MISSION",
+  "SOCIETY",
+  "FELLOWSHIP",
 ];
 
 function looksLikeCompany(name) {
@@ -491,6 +499,83 @@ function buildOwnersByDate(validOwners) {
   return map;
 }
 
+function buildMailingAddress($) {
+  const addressLines = [];
+  const keywordPatterns = [
+    /\bPO\s*BOX\b/,
+    /\bP\.O\.\s*BOX\b/,
+    /\bUNIT\b/,
+    /\bSTE\b/,
+    /\bSUITE\b/,
+    /\bAPT\b/,
+    /\bSTREET\b/,
+    /\bROAD\b/,
+    /\bAVENUE\b/,
+    /\bDRIVE\b/,
+    /\bCOURT\b/,
+    /\bLANE\b/,
+    /\bBOULEVARD\b/,
+    /\bPARKWAY\b/,
+    /\bHIGHWAY\b/,
+  ];
+  let addressStarted = false;
+  for (let i = 1; i <= 10; i++) {
+    const lineText = norm($(`#OwnerLine${i}`).text());
+    if (!lineText) continue;
+    const upper = lineText.toUpperCase();
+    const hasDigit = /\d/.test(upper);
+    const hasKeyword = keywordPatterns.some((pattern) => pattern.test(upper));
+    if (hasDigit || hasKeyword || addressStarted) {
+      addressLines.push(lineText);
+      addressStarted = true;
+    }
+  }
+
+  const cityRaw = norm($("#OwnerCity").text());
+  const stateRaw = norm($("#OwnerState").text());
+  const zipRaw = norm($("#OwnerZip").text());
+
+  const normalizedCity = cityRaw ? cityRaw.toUpperCase() : null;
+  const normalizedState = stateRaw ? stateRaw.toUpperCase() : null;
+
+  let postalCode = null;
+  let plusFour = null;
+  if (zipRaw) {
+    const zipMatch = zipRaw.match(/^(\d{5})(?:[-\s]*(\d{4}))?$/);
+    if (zipMatch) {
+      postalCode = zipMatch[1];
+      plusFour = zipMatch[2] || null;
+    }
+  }
+
+  const parts = [...addressLines];
+  if (normalizedCity || normalizedState || postalCode || zipRaw) {
+    const cityStateZip = [
+      normalizedCity,
+      normalizedState,
+      postalCode ? (plusFour ? `${postalCode}-${plusFour}` : postalCode) : zipRaw || null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (cityStateZip) {
+      parts.push(cityStateZip);
+    }
+  }
+
+  const unnormalizedAddress = parts.length ? parts.join(", ") : null;
+
+  if (!unnormalizedAddress) return null;
+
+  return {
+    unnormalized_address: unnormalizedAddress,
+    city_name: normalizedCity || null,
+    state_code: normalizedState || null,
+    postal_code: postalCode || null,
+    plus_four_postal_code: plusFour || null,
+    country_code: normalizedState ? "US" : null,
+  };
+}
+
 // Main processing
 (function main() {
   const propertyId = extractPropertyId($);
@@ -527,12 +612,15 @@ function buildOwnersByDate(validOwners) {
 
   const ownersByDate = buildOwnersByDate(deduped);
 
+  const mailingAddress = buildMailingAddress($);
+
   // Build final object
   const result = {};
   const propertyKey = `property_${propertyId || "unknown_id"}`;
   result[propertyKey] = {
     owners_by_date: ownersByDate,
     invalid_owners: invalidOwners,
+    mailing_address: mailingAddress,
   };
 
   // Persist file and print JSON
