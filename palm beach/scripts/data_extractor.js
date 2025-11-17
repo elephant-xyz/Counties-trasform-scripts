@@ -9957,6 +9957,179 @@ function repairAddressWithFallback(
   writeJSON(addressFilePath, payloadToWrite);
 }
 
+const COUNTY_ADDRESS_NORMALIZED_STRICT_COORDINATE_FIELDS = [...ADDRESS_COORDINATE_FIELDS];
+
+function enforceCountyAddressRequiredFields(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  const fallbackRawCandidate = composeFallbackUnnormalizedAddressFromFields(payload);
+  const resolvedUnnormalized =
+    trimmedUnnormalized.length
+      ? trimmedUnnormalized
+      : typeof fallbackRawCandidate === "string"
+        ? fallbackRawCandidate.trim()
+        : "";
+
+  const normalizedCandidate = { ...payload };
+
+  const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => {
+      const candidate = normalizedCandidate[field];
+      return typeof candidate === "string" && candidate.trim().length > 0;
+    },
+  );
+
+  const hasNormalizedCoordinates = COUNTY_ADDRESS_NORMALIZED_STRICT_COORDINATE_FIELDS.every(
+    (field) => {
+      const numeric = parseCoordinate(normalizedCandidate[field]);
+      if (Number.isFinite(numeric)) {
+        normalizedCandidate[field] = numeric;
+        return true;
+      }
+      return false;
+    },
+  );
+
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  if (hasNormalizedStrings && hasNormalizedCoordinates) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const sanitized = sanitizeAddressFieldValue(
+        field,
+        normalizedCandidate[field],
+      );
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        normalizedOutput[field] = Number.isFinite(sanitized)
+          ? sanitized
+          : null;
+        continue;
+      }
+      if (sanitized === undefined || sanitized === null) {
+        normalizedOutput[field] = null;
+        continue;
+      }
+      if (typeof sanitized === "string") {
+        const trimmed = sanitized.trim();
+        normalizedOutput[field] = trimmed.length ? trimmed : null;
+        continue;
+      }
+      normalizedOutput[field] = sanitized;
+    }
+
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+
+    if ((normalizedOutput.latitude == null) !== (normalizedOutput.longitude == null)) {
+      normalizedOutput.latitude = null;
+      normalizedOutput.longitude = null;
+    }
+
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      normalizedOutput.request_identifier = null;
+    }
+
+    if (preparedSource) {
+      normalizedOutput.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      normalizedOutput.source_http_request = null;
+    }
+
+    writeJSON(addressFilePath, normalizedOutput);
+    return;
+  }
+
+  if (resolvedUnnormalized.length) {
+    const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const sanitized = sanitizeAddressFieldValue(field, payload[field]);
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        rawOutput[field] = Number.isFinite(sanitized) ? sanitized : null;
+        continue;
+      }
+      if (sanitized === undefined || sanitized === null) {
+        rawOutput[field] = null;
+        continue;
+      }
+      if (typeof sanitized === "string") {
+        const trimmed = sanitized.trim();
+        rawOutput[field] = trimmed.length ? trimmed : null;
+        continue;
+      }
+      rawOutput[field] = sanitized;
+    }
+
+    rawOutput.unnormalized_address = resolvedUnnormalized;
+
+    if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+      rawOutput.latitude = null;
+      rawOutput.longitude = null;
+    }
+
+    if (!rawOutput.postal_code) {
+      rawOutput.plus_four_postal_code = null;
+    }
+    if (rawOutput.state_code && !rawOutput.country_code) {
+      rawOutput.country_code = "US";
+    }
+
+    if (requestIdentifier) {
+      rawOutput.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      rawOutput.request_identifier = null;
+    }
+
+    if (preparedSource) {
+      rawOutput.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      rawOutput.source_http_request = null;
+    }
+
+    writeJSON(addressFilePath, rawOutput);
+    return;
+  }
+
+  removeFileIfExists(addressFilePath);
+}
+
 function enforceFinalCountyAddressShape(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -20817,6 +20990,13 @@ async function main() {
       postProcessRawOptions.sourceHttpRequestCandidates,
   });
   finalizeCountyAddressSchemaOutcome(finalAddressPath);
+  enforceCountyAddressRequiredFields(finalAddressPath);
+  ensureNullRelationshipFile(
+    path.join(dataDir, "relationship_property_has_address.json"),
+  );
+  ensureNullRelationshipFile(
+    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+  );
 }
 
 main().catch((error) => {
