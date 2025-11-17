@@ -190,11 +190,23 @@ function sanitizeAddressPayloadForWrite(payload) {
   }
 
   if (trimmedUnnormalized.length) {
-    const rawPayload =
-      ensureAddressOutputFieldPresence({
-        unnormalized_address: trimmedUnnormalized,
-      }) || { unnormalized_address: trimmedUnnormalized };
-    return stripAddressRequestMetadata(rawPayload);
+    const rawSeed = {
+      ...normalizedCandidate,
+      unnormalized_address: trimmedUnnormalized,
+    };
+
+    if (!rawSeed.postal_code) {
+      rawSeed.plus_four_postal_code = null;
+    }
+
+    if (rawSeed.state_code && !rawSeed.country_code) {
+      rawSeed.country_code = "US";
+    }
+
+    const surfaced =
+      ensureAddressOutputFieldPresence(rawSeed) || rawSeed;
+
+    return stripAddressRequestMetadata(surfaced);
   }
 
   const surfaced =
