@@ -190,7 +190,10 @@ function sanitizeAddressPayloadForWrite(payload) {
   }
 
   if (trimmedUnnormalized.length) {
-    const rawPayload = { unnormalized_address: trimmedUnnormalized };
+    const rawPayload =
+      ensureAddressOutputFieldPresence({
+        unnormalized_address: trimmedUnnormalized,
+      }) || { unnormalized_address: trimmedUnnormalized };
     return stripAddressRequestMetadata(rawPayload);
   }
 
