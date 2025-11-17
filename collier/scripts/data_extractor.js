@@ -1477,6 +1477,8 @@ function main() {
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
+  const taxRecords = [];
+
   let rollType = (
     $("#RollType").first().text().trim() ||
     $("#RollType2").first().text().trim() ||
@@ -1526,11 +1528,9 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
+      request_identifier: rollType || null,
     };
-    fs.writeFileSync(
-      path.join(dataDir, "tax_1.json"),
-      JSON.stringify(taxObj, null, 2),
-    );
+    taxRecords.push(taxObj);
   }
 
   // Ad valorem breakdown (Tab3)
@@ -1740,12 +1740,27 @@ function main() {
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
       request_identifier: identifierParts.join("|"),
     };
-    const outIdx = rec.idx; // 1..5 corresponds to 2025..2021
-    fs.writeFileSync(
-      path.join(dataDir, `tax_${outIdx}.json`),
-      JSON.stringify(taxObj, null, 2),
-    );
+    taxRecords.push(taxObj);
   });
+
+  if (taxRecords.length > 0) {
+    // Remove stale tax_N files before writing fresh ones
+    try {
+      const existingTaxFiles = fs
+        .readdirSync(dataDir)
+        .filter((name) => /^tax_\d+\.json$/i.test(name));
+      for (const filename of existingTaxFiles) {
+        fs.unlinkSync(path.join(dataDir, filename));
+      }
+    } catch (_) {}
+    taxRecords.forEach((taxObj, idx) => {
+      const filename = `tax_${idx + 1}.json`;
+      fs.writeFileSync(
+        path.join(dataDir, filename),
+        JSON.stringify(taxObj, null, 2),
+      );
+    });
+  }
 }
 
 try {
