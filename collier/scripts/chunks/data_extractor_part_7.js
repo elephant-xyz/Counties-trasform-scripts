@@ -115,7 +115,6 @@
         pool_surface_type: null,
         pool_type: null,
         pool_water_quality: null,
-        request_identifier: null,
         safety_features: null,
         size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
         spa_installation_date: null,
