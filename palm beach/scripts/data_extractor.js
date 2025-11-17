@@ -9006,10 +9006,7 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
   if (typeof payload.unnormalized_address === "string") {
     rawCandidateQueue.push(payload.unnormalized_address);
   }
-  if (
-    options &&
-    Array.isArray(options.rawCandidates)
-  ) {
+  if (options && Array.isArray(options.rawCandidates)) {
     for (const candidate of options.rawCandidates) {
       if (candidate != null) {
         rawCandidateQueue.push(candidate);
@@ -9054,60 +9051,66 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     return null;
   };
 
-  const applyCoordinatePair = (target) => {
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  const applyRequestMetadata = (target) => {
+    if (requestIdentifier) {
+      target.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      target.request_identifier = null;
+    }
+
+    if (preparedSource) {
+      target.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      target.source_http_request = null;
+    }
+  };
+
+  const buildCoordinatePair = () => {
     const latitude = pickSanitizedValue("latitude");
     const longitude = pickSanitizedValue("longitude");
     if (typeof latitude === "number" && typeof longitude === "number") {
-      target.latitude = latitude;
-      target.longitude = longitude;
-    } else {
-      if (Object.prototype.hasOwnProperty.call(target, "latitude")) {
-        delete target.latitude;
-      }
-      if (Object.prototype.hasOwnProperty.call(target, "longitude")) {
-        delete target.longitude;
-      }
+      return { latitude, longitude };
     }
-  };
-
-  const ensureCountryCode = (target) => {
-    const countryCandidate = pickSanitizedValue("country_code");
-    if (
-      typeof target.state_code === "string" &&
-      target.state_code.trim().length &&
-      (!countryCandidate || !countryCandidate.trim().length)
-    ) {
-      target.country_code = "US";
-      return;
-    }
-    if (countryCandidate && countryCandidate.trim().length) {
-      target.country_code = countryCandidate.trim().toUpperCase();
-    }
-  };
-
-  const removeEmptyPlusFour = (target) => {
-    if (!target.postal_code) {
-      if (Object.prototype.hasOwnProperty.call(target, "plus_four_postal_code")) {
-        delete target.plus_four_postal_code;
-      }
-    }
+    return { latitude: null, longitude: null };
   };
 
   if (!hasRawVariant && normalizedCoverage) {
-    const normalizedOutput = {};
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
         continue;
       }
       const value = pickSanitizedValue(field);
-      if (value === null) continue;
+      if (value === null || value === undefined) continue;
       normalizedOutput[field] = value;
     }
 
-    applyCoordinatePair(normalizedOutput);
-    ensureCountryCode(normalizedOutput);
-    removeEmptyPlusFour(normalizedOutput);
+    const { latitude, longitude } = buildCoordinatePair();
+    normalizedOutput.latitude = latitude;
+    normalizedOutput.longitude = longitude;
+
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+
+    applyRequestMetadata(normalizedOutput);
 
     const missingRequired = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.some(
       (field) =>
@@ -9116,10 +9119,7 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     );
 
     if (!missingRequired) {
-      fs.writeFileSync(
-        addressFilePath,
-        `${JSON.stringify(normalizedOutput, null, 2)}\n`,
-      );
+      writeJSON(addressFilePath, normalizedOutput);
       return;
     }
   }
@@ -9129,49 +9129,37 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     return;
   }
 
-  const rawOutput = {
-    unnormalized_address: trimmedRaw,
-  };
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  rawOutput.unnormalized_address = trimmedRaw;
 
-  const rawFieldCandidates = [
-    "city_name",
-    "postal_code",
-    "plus_four_postal_code",
-    "state_code",
-    "street_number",
-    "street_name",
-    "street_pre_directional_text",
-    "street_post_directional_text",
-    "street_suffix_type",
-    "unit_identifier",
-    "route_number",
-    "county_name",
-    "municipality_name",
-    "lot",
-    "block",
-    "section",
-    "range",
-    "township",
-    "country_code",
-  ];
-
-  for (const field of rawFieldCandidates) {
-    if (field === "country_code") {
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const coordinate = pickSanitizedValue(field);
+      rawOutput[field] = Number.isFinite(coordinate) ? coordinate : null;
       continue;
     }
     const value = pickSanitizedValue(field);
-    if (value === null) continue;
+    if (value === null || value === undefined) {
+      rawOutput[field] = null;
+      continue;
+    }
     rawOutput[field] = value;
   }
 
-  applyCoordinatePair(rawOutput);
-  ensureCountryCode(rawOutput);
-  removeEmptyPlusFour(rawOutput);
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
 
-  fs.writeFileSync(
-    addressFilePath,
-    `${JSON.stringify(rawOutput, null, 2)}\n`,
-  );
+  applyRequestMetadata(rawOutput);
+
+  writeJSON(addressFilePath, rawOutput);
 }
 
 function repairAddressWithFallback(
