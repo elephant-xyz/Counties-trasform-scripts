@@ -1670,13 +1670,10 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-]);
+// County schema expects raw address payloads to surface the same core fields as the
+// normalized branch (with nulls permitted), so do not exclude any of the street
+// components from the raw variant surface.
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
   (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
@@ -2404,7 +2401,17 @@ function normalizeAddressFieldForSchema(field, value) {
       return sanitizePostalCode(value);
     case "plus_four_postal_code":
       return sanitizePlus4(value);
-    case "state_code":
+    case "state_code": {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim().toUpperCase();
+      if (!trimmed.length) {
+        return null;
+      }
+      if (trimmed.startsWith("US-") && trimmed.length > 3) {
+        return trimmed.slice(3);
+      }
+      return trimmed;
+    }
     case "country_code":
     case "street_pre_directional_text":
     case "street_post_directional_text":
@@ -4275,7 +4282,8 @@ function finalizeAddressForOutput(address) {
       normalizedCandidate[field].trim().length > 0,
   );
 
-  if (hasNormalizedCoverage) {
+  console.log("preferRaw core", trimmedRaw, hasNormalizedCoverage);
+  if (hasNormalizedCoverage && !trimmedUnnormalized.length) {
     const output = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       output[field] = normalizedCandidate[field] ?? null;
@@ -5339,7 +5347,7 @@ function buildCountyAddressOutput(candidate) {
       normalizedSurface[field].trim().length > 0,
   );
 
-  if (hasNormalizedCoverage) {
+  if (hasNormalizedCoverage && !trimmedUnnormalized.length) {
     const normalizedOutput = { ...normalizedSurface };
     if (requestIdentifier) {
       normalizedOutput.request_identifier = requestIdentifier;
@@ -7689,12 +7697,10 @@ function enforceCountyAddressCanonicalSurface(addressFilePath) {
   );
 
   let variant = null;
-  if (trimmedUnnormalized.length && !hasNormalizedCoverage) {
+  if (trimmedUnnormalized.length) {
     variant = "raw";
   } else if (hasNormalizedCoverage) {
     variant = "normalized";
-  } else if (trimmedUnnormalized.length) {
-    variant = "raw";
   } else {
     removeFileIfExists(addressFilePath);
     return;
@@ -8445,31 +8451,39 @@ function coerceAddressFileToRawVariant(addressFilePath, options = {}) {
     return;
   }
 
-  const normalizedCandidate =
-    ensureNormalizedAddressSchemaSurface(existing) || null;
-  if (
-    normalizedCandidate &&
-    hasCompleteNormalizedAddress({ ...normalizedCandidate })
-  ) {
-    if (!normalizedCandidate.postal_code) {
-      normalizedCandidate.plus_four_postal_code = null;
-    }
+  const trimmedExistingUnnormalized =
+    typeof existing.unnormalized_address === "string"
+      ? existing.unnormalized_address.trim()
+      : "";
+  const hasRawUnnormalized = trimmedExistingUnnormalized.length > 0;
+
+  if (!hasRawUnnormalized) {
+    const normalizedCandidate =
+      ensureNormalizedAddressSchemaSurface(existing) || null;
     if (
-      normalizedCandidate.state_code &&
-      !normalizedCandidate.country_code
+      normalizedCandidate &&
+      hasCompleteNormalizedAddress({ ...normalizedCandidate })
     ) {
-      normalizedCandidate.country_code = "US";
+      if (!normalizedCandidate.postal_code) {
+        normalizedCandidate.plus_four_postal_code = null;
+      }
+      if (
+        normalizedCandidate.state_code &&
+        !normalizedCandidate.country_code
+      ) {
+        normalizedCandidate.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedCandidate.unnormalized_address;
+      }
+      writeJSON(addressFilePath, normalizedCandidate);
+      return;
     }
-    if (
-      Object.prototype.hasOwnProperty.call(
-        normalizedCandidate,
-        "unnormalized_address",
-      )
-    ) {
-      delete normalizedCandidate.unnormalized_address;
-    }
-    writeJSON(addressFilePath, normalizedCandidate);
-    return;
   }
 
   const candidateSources = [];
@@ -8605,7 +8619,7 @@ function coerceAddressFileToRawVariant(addressFilePath, options = {}) {
 
   const normalizedSurface =
     ensureNormalizedAddressSchemaSurface(sanitized) || null;
-  if (normalizedSurface) {
+  if (!trimmedUnnormalized.length && normalizedSurface) {
     const normalizedCandidate = { ...normalizedSurface };
     if (hasCompleteNormalizedAddress(normalizedCandidate)) {
       if (!normalizedCandidate.postal_code) {
@@ -10632,6 +10646,8 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
     ensureNormalizedAddressSchemaSurface(normalizedCandidate) || null;
   const hasNormalizedCoverage =
     normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  console.log("trimmedRaw value", trimmedRaw, hasNormalizedCoverage);
 
   const requestIdentifierQueue = [];
   if (payload.request_identifier != null) {
@@ -13837,6 +13853,7 @@ async function main() {
   const htmlLongitude = parseCoordinate(htmlCoordinates.longitude);
   const fallbackCountyName = titleCaseCounty("Palm Beach");
   const fallbackStateCode = "FL";
+  let rawAddressVariantOptions = null;
 
   // Input owners/utilities/layout
   let ownersData = {};
@@ -17244,6 +17261,49 @@ async function main() {
 
   coerceAddressFileForOneOfCompliance(addressFilePath);
   enforceCountyAddressCanonicalSurface(addressFilePath);
+  rawAddressVariantOptions = {
+    unnormalizedCandidates: [
+      canonicalUnnormalized,
+      resolvedUnnormalized,
+      fallbackUnnormalizedValue,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+    ],
+    fieldSources: [
+      preparedAddressOutput,
+      finalAddressPayload,
+      rawResult,
+      normalizedResult,
+      normalizedPayload,
+      addressForOutput,
+      baseAddressSeed,
+      address,
+      normalizedSnapshot,
+      unAddr,
+      seed,
+    ],
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      address && address.request_identifier,
+      baseAddressSeed && baseAddressSeed.request_identifier,
+      unAddr && unAddr.request_identifier,
+      seed && seed.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      preparedSourceHttpRequest,
+      finalAddressPayload && finalAddressPayload.source_http_request,
+      preparedAddressOutput && preparedAddressOutput.source_http_request,
+      address && address.source_http_request,
+      baseAddressSeed && baseAddressSeed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      seed && seed.source_http_request,
+    ],
+  };
+  console.log("call prefer raw inside block");
+  preferRawAddressVariant(addressFilePath, rawAddressVariantOptions);
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
@@ -17263,6 +17323,12 @@ async function main() {
   });
   coerceAddressFileForOneOfCompliance(path.join(dataDir, "address.json"));
   enforceCountyAddressCanonicalSurface(path.join(dataDir, "address.json"));
+  if (rawAddressVariantOptions) {
+    preferRawAddressVariant(
+      path.join(dataDir, "address.json"),
+      rawAddressVariantOptions,
+    );
+  }
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
