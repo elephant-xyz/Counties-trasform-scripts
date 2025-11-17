@@ -972,6 +972,80 @@ function finalizeCountyAddressFile(addressFilePath) {
   writeJSON(addressFilePath, normalized);
 }
 
+function preferNormalizedCountyAddressOutput(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch (err) {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const hasRequiredNormalizedFields = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => {
+      const value = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null;
+      return typeof value === "string" && value.trim().length > 0;
+    },
+  );
+
+  if (!hasRequiredNormalizedFields) {
+    return;
+  }
+
+  const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const rawValue = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(rawValue);
+      normalizedOutput[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+    normalizedOutput[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  if (!normalizedOutput.postal_code) {
+    normalizedOutput.plus_four_postal_code = null;
+  }
+
+  if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+    normalizedOutput.country_code = "US";
+  }
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    payload.request_identifier,
+  );
+  if (resolvedRequestIdentifier) {
+    normalizedOutput.request_identifier = resolvedRequestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  if (preparedSource) {
+    normalizedOutput.source_http_request = preparedSource;
+  }
+
+  writeJSON(addressFilePath, normalizedOutput);
+}
+
 function forceRawCountyAddressOutput(addressFilePath, options = {}) {
   if (!addressFilePath) return;
 
@@ -6064,6 +6138,7 @@ async function main() {
     });
 
     enforceCountyAddressOneOfCompliance(addressFilePath);
+    preferNormalizedCountyAddressOutput(addressFilePath);
     ensureNullRelationshipFile(propertyAddressRelationshipPath);
     ensureNullRelationshipFile(addressFactSheetRelationshipPath);
   }
@@ -7087,6 +7162,9 @@ async function main() {
     ].filter(Boolean),
     parcelIdCandidates: [parcelId, pcnHyphen],
   });
+
+  enforceCountyAddressOneOfCompliance(path.join(dataDir, "address.json"));
+  preferNormalizedCountyAddressOutput(path.join(dataDir, "address.json"));
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");

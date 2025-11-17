@@ -5129,10 +5129,6 @@ function preferNormalizedAddressOutput(addressFilePath) {
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
 
-  if (hasRawVariant) {
-    return;
-  }
-
   const hasRequiredNormalizedFields = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
     (field) => {
       const value = Object.prototype.hasOwnProperty.call(payload, field)
