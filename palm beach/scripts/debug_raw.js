@@ -122,100 +122,82 @@ function sanitizeAddressPayloadForWrite(payload) {
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
-  const hasRawVariant = trimmedUnnormalized.length > 0;
+  const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
-  const variantFields = hasRawVariant
-    ? RAW_ADDRESS_OUTPUT_FIELDS
-    : NORMALIZED_ADDRESS_FIELDS;
-  const baseShape = hasRawVariant
-    ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: trimmedUnnormalized }
-    : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-
-  for (const field of variantFields) {
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const hasField = Object.prototype.hasOwnProperty.call(payload, field);
     const rawValue = hasField ? payload[field] : null;
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(rawValue);
-      baseShape[field] = Number.isFinite(numeric) ? numeric : null;
+      normalizedCandidate[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
 
     if (rawValue === undefined || rawValue === null) {
-      baseShape[field] = null;
+      normalizedCandidate[field] = null;
       continue;
     }
 
     if (typeof rawValue === "string") {
       const trimmed = rawValue.trim();
-      baseShape[field] = trimmed.length ? trimmed : null;
+      normalizedCandidate[field] = trimmed.length ? trimmed : null;
       continue;
     }
 
     if (typeof rawValue === "number") {
-      baseShape[field] = Number.isFinite(rawValue) ? rawValue : null;
+      normalizedCandidate[field] =
+        Number.isFinite(rawValue) ? rawValue : null;
       continue;
     }
 
     const normalized = normalizeAddressFieldForSchema(field, rawValue);
     if (normalized === undefined || normalized === null) {
-      baseShape[field] = null;
+      normalizedCandidate[field] = null;
       continue;
     }
     if (typeof normalized === "string") {
       const trimmedNormalized = normalized.trim();
-      baseShape[field] =
+      normalizedCandidate[field] =
         trimmedNormalized.length ? trimmedNormalized : null;
       continue;
     }
     if (typeof normalized === "number") {
-      baseShape[field] = Number.isFinite(normalized) ? normalized : null;
+      normalizedCandidate[field] =
+        Number.isFinite(normalized) ? normalized : null;
       continue;
     }
 
-    baseShape[field] = normalized;
+    normalizedCandidate[field] = normalized;
   }
 
-  if (!hasRawVariant && Object.prototype.hasOwnProperty.call(baseShape, "unnormalized_address")) {
-    delete baseShape.unnormalized_address;
-  } else if (hasRawVariant) {
-    baseShape.unnormalized_address = trimmedUnnormalized;
+  if (!normalizedCandidate.postal_code) {
+    normalizedCandidate.plus_four_postal_code = null;
   }
 
-  if (!baseShape.postal_code) {
-    baseShape.plus_four_postal_code = null;
+  if (normalizedCandidate.state_code && !normalizedCandidate.country_code) {
+    normalizedCandidate.country_code = "US";
   }
 
-  if (baseShape.state_code && !baseShape.country_code) {
-    baseShape.country_code = "US";
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(normalizedCandidate[field]),
+  );
+
+  if (hasNormalizedCoverage) {
+    const surfaced =
+      ensureAddressOutputFieldPresence(normalizedCandidate) ||
+      normalizedCandidate;
+    return stripAddressRequestMetadata(surfaced);
   }
 
-  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
-  if (requestIdentifier) {
-    baseShape.request_identifier = requestIdentifier;
-  }
-
-  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
-  if (preparedSource) {
-    baseShape.source_http_request = preparedSource;
-  }
-
-  const allowedKeys = new Set([
-    ...(hasRawVariant
-      ? ["unnormalized_address", ...RAW_ADDRESS_OUTPUT_FIELDS]
-      : NORMALIZED_ADDRESS_FIELDS),
-    "request_identifier",
-    "source_http_request",
-  ]);
-
-  for (const key of Object.keys(baseShape)) {
-    if (!allowedKeys.has(key)) {
-      delete baseShape[key];
-    }
+  if (trimmedUnnormalized.length) {
+    const rawPayload = { unnormalized_address: trimmedUnnormalized };
+    return stripAddressRequestMetadata(rawPayload);
   }
 
   const surfaced =
-    ensureAddressOutputFieldPresence(baseShape) || baseShape;
+    ensureAddressOutputFieldPresence(normalizedCandidate) ||
+    normalizedCandidate;
 
   return stripAddressRequestMetadata(surfaced);
 }
