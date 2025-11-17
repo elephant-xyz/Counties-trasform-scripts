@@ -10771,24 +10771,24 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
       : []),
   );
 
-  if (!trimmedRaw.length) {
-    if (hasNormalizedCoverage) {
-      const normalizedOutput = finalizeAddressPayloadForOutput(
-        normalizedSurface,
-        "normalized",
-      );
-      if (normalizedOutput) {
-        if (resolvedRequestIdentifier) {
-          normalizedOutput.request_identifier = resolvedRequestIdentifier;
-        }
-        if (sourceHttp) {
-          normalizedOutput.source_http_request = deepClone(sourceHttp);
-        }
-        writeJSON(addressFilePath, normalizedOutput);
-        return;
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = finalizeAddressPayloadForOutput(
+      normalizedSurface,
+      "normalized",
+    );
+    if (normalizedOutput) {
+      if (resolvedRequestIdentifier) {
+        normalizedOutput.request_identifier = resolvedRequestIdentifier;
       }
+      if (sourceHttp) {
+        normalizedOutput.source_http_request = deepClone(sourceHttp);
+      }
+      writeJSON(addressFilePath, normalizedOutput);
+      return;
     }
+  }
 
+  if (!trimmedRaw.length) {
     if (
       Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
     ) {
