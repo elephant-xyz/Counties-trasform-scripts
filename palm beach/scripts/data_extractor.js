@@ -21,75 +21,56 @@ function readText(p) {
   return fs.readFileSync(p, "utf8");
 }
 
+function stripAddressRequestMetadata(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    delete address.request_identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    delete address.source_http_request;
+  }
+
+  return address;
+}
+
 function sanitizeAddressPayloadForWrite(payload) {
   if (!payload || typeof payload !== "object") {
     return payload;
   }
 
-  const rawUnnormalized =
+  const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
+  const hasRawVariant = trimmedUnnormalized.length > 0;
 
-  if (!rawUnnormalized.length) {
-    return payload;
-  }
+  const sanitized = hasRawVariant
+    ? { unnormalized_address: trimmedUnnormalized }
+    : {};
 
-  const sanitized = {
-    unnormalized_address: rawUnnormalized,
-  };
+  const fieldIterator = hasRawVariant
+    ? RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
 
-  for (const field of RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS) {
-    let candidate = Object.prototype.hasOwnProperty.call(payload, field)
+  for (const field of fieldIterator) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
       ? payload[field]
       : null;
-
-    if (candidate === undefined || candidate === null) {
-      sanitized[field] = null;
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(candidate);
-      sanitized[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (typeof candidate === "string") {
-      const trimmed = candidate.trim();
-      sanitized[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-
     sanitized[field] = candidate;
   }
 
-  if (
-    RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS.has("country_code") &&
-    RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS.has("state_code") &&
-    hasMeaningfulAddressValue(sanitized.state_code) &&
-    !hasMeaningfulAddressValue(sanitized.country_code)
-  ) {
-    sanitized.country_code = "US";
+  if (!hasRawVariant && Object.prototype.hasOwnProperty.call(sanitized, "unnormalized_address")) {
+    delete sanitized.unnormalized_address;
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    const trimmedRequest = safeNullIfEmpty(payload.request_identifier);
-    if (trimmedRequest) {
-      sanitized.request_identifier = trimmedRequest;
-    }
-  }
+  const surfaced =
+    ensureAddressOutputFieldPresence(sanitized) || sanitized;
 
-  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
-    const preparedSource = prepareSourceHttpRequest(
-      payload.source_http_request,
-    );
-    if (preparedSource) {
-      sanitized.source_http_request = preparedSource;
-    }
-  }
-
-  return sanitized;
+  return stripAddressRequestMetadata(surfaced);
 }
 
 function writeJSON(p, obj) {

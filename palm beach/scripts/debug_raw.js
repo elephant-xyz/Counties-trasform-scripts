@@ -19,8 +19,69 @@ function readText(p) {
   return fs.readFileSync(p, "utf8");
 }
 
+function stripAddressRequestMetadata(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    delete address.request_identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    delete address.source_http_request;
+  }
+
+  return address;
+}
+
+function sanitizeAddressPayloadForWrite(payload) {
+  if (!payload || typeof payload !== "object") {
+    return payload;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const hasRawVariant = trimmedUnnormalized.length > 0;
+
+  const sanitized = hasRawVariant
+    ? { unnormalized_address: trimmedUnnormalized }
+    : {};
+
+  const fieldList = hasRawVariant
+    ? RAW_ADDRESS_OUTPUT_FIELDS
+    : NORMALIZED_ADDRESS_FIELDS;
+
+  for (const field of fieldList) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    sanitized[field] = candidate;
+  }
+
+  if (!hasRawVariant && Object.prototype.hasOwnProperty.call(sanitized, "unnormalized_address")) {
+    delete sanitized.unnormalized_address;
+  }
+
+  const surfaced =
+    ensureAddressOutputFieldPresence(sanitized) || sanitized;
+
+  return stripAddressRequestMetadata(surfaced);
+}
+
 function writeJSON(p, obj) {
-  fs.writeFileSync(p, JSON.stringify(obj, null, 2));
+  let payload = obj;
+  if (
+    typeof p === "string" &&
+    p.endsWith("address.json") &&
+    obj &&
+    typeof obj === "object"
+  ) {
+    payload = sanitizeAddressPayloadForWrite(obj);
+  }
+  fs.writeFileSync(p, JSON.stringify(payload, null, 2));
 }
 
 function prepareSourceHttpRequest(raw) {
