@@ -9123,11 +9123,15 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     return;
   }
 
-  const normalizedSurface = ensureNormalizedAddressSchemaSurface
-    ? ensureNormalizedAddressSchemaSurface({ ...payload })
-    : { ...payload };
-  const normalizedCandidate = { ...normalizedSurface };
-  const normalizedCoverage = hasCompleteNormalizedAddress(normalizedCandidate);
+  const fieldSources = Array.isArray(options.fieldSources)
+    ? options.fieldSources.filter(
+        (source) => source && typeof source === "object",
+      )
+    : [];
+  const fieldFallbacks =
+    options && typeof options.fieldFallbacks === "object"
+      ? options.fieldFallbacks
+      : {};
 
   const rawCandidateQueue = [];
   if (typeof payload.unnormalized_address === "string") {
@@ -9145,7 +9149,120 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
   const hasRawVariant = trimmedRaw.length > 0;
 
-  const candidateSources = [payload, normalizedCandidate];
+  const normalizedBase = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    normalizedBase[field] = sanitizeAddressFieldValue(field, payload[field]);
+  }
+
+  if (!normalizedBase.postal_code) {
+    normalizedBase.plus_four_postal_code = null;
+  }
+  if (normalizedBase.state_code && !normalizedBase.country_code) {
+    normalizedBase.country_code = "US";
+  }
+  if (
+    (normalizedBase.latitude == null) !==
+    (normalizedBase.longitude == null)
+  ) {
+    normalizedBase.latitude = null;
+    normalizedBase.longitude = null;
+  }
+
+  const augmentedNormalized = { ...normalizedBase };
+
+  if (hasRawVariant) {
+    enrichAddressFromUnnormalized(augmentedNormalized, trimmedRaw);
+  }
+
+  const applyCandidateValue = (target, field, value) => {
+    if (value === undefined || value === null) return;
+    if (hasMeaningfulAddressValue(target[field])) return;
+    const sanitized = sanitizeAddressFieldValue(field, value);
+    if (hasMeaningfulAddressValue(sanitized)) {
+      target[field] = sanitized;
+    }
+  };
+
+  for (const source of fieldSources) {
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      applyCandidateValue(augmentedNormalized, field, source[field]);
+    }
+  }
+
+  for (const [field, fallbackValue] of Object.entries(fieldFallbacks)) {
+    if (!NORMALIZED_ADDRESS_FIELDS.includes(field)) continue;
+    if (hasMeaningfulAddressValue(augmentedNormalized[field])) continue;
+    const candidates = Array.isArray(fallbackValue)
+      ? fallbackValue
+      : [fallbackValue];
+    for (const candidate of candidates) {
+      applyCandidateValue(augmentedNormalized, field, candidate);
+      if (hasMeaningfulAddressValue(augmentedNormalized[field])) {
+        break;
+      }
+    }
+  }
+
+  if (Array.isArray(options.coordinateCandidates)) {
+    for (const candidate of options.coordinateCandidates) {
+      if (!candidate || typeof candidate !== "object") continue;
+      if (!hasMeaningfulAddressValue(augmentedNormalized.latitude)) {
+        const latitude = parseCoordinate(candidate.latitude);
+        if (Number.isFinite(latitude)) {
+          augmentedNormalized.latitude = latitude;
+        }
+      }
+      if (!hasMeaningfulAddressValue(augmentedNormalized.longitude)) {
+        const longitude = parseCoordinate(candidate.longitude);
+        if (Number.isFinite(longitude)) {
+          augmentedNormalized.longitude = longitude;
+        }
+      }
+    }
+  }
+
+  if (
+    (augmentedNormalized.latitude == null) !==
+    (augmentedNormalized.longitude == null)
+  ) {
+    augmentedNormalized.latitude = null;
+    augmentedNormalized.longitude = null;
+  }
+  if (!augmentedNormalized.postal_code) {
+    augmentedNormalized.plus_four_postal_code = null;
+  }
+  if (
+    augmentedNormalized.state_code &&
+    !augmentedNormalized.country_code
+  ) {
+    augmentedNormalized.country_code = "US";
+  }
+
+  const candidateSources = [
+    payload,
+    augmentedNormalized,
+    normalizedBase,
+    ...fieldSources,
+  ];
+
+  if (Array.isArray(options.coordinateCandidates)) {
+    for (const candidate of options.coordinateCandidates) {
+      if (!candidate || typeof candidate !== "object") continue;
+      const normalizedCoords = {};
+      const latitude = parseCoordinate(candidate.latitude);
+      if (Number.isFinite(latitude)) {
+        normalizedCoords.latitude = latitude;
+      }
+      const longitude = parseCoordinate(candidate.longitude);
+      if (Number.isFinite(longitude)) {
+        normalizedCoords.longitude = longitude;
+      }
+      if (Object.keys(normalizedCoords).length) {
+        candidateSources.push(normalizedCoords);
+      }
+    }
+  }
 
   const pickSanitizedValue = (field) => {
     for (const source of candidateSources) {
@@ -9175,20 +9292,66 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
       }
       return sanitized;
     }
+
+    const fallbacks = fieldFallbacks[field];
+    const fallbackCandidates = Array.isArray(fallbacks)
+      ? fallbacks
+      : fallbacks != null
+        ? [fallbacks]
+        : [];
+    for (const candidate of fallbackCandidates) {
+      if (candidate === undefined || candidate === null) continue;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(candidate);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+        continue;
+      }
+      const sanitized = sanitizeAddressFieldValue(field, candidate);
+      if (hasMeaningfulAddressValue(sanitized)) {
+        return sanitized;
+      }
+    }
+
     return null;
   };
 
+  const requestIdentifierQueue = [];
+  if (payload.request_identifier != null) {
+    requestIdentifierQueue.push(payload.request_identifier);
+  }
+  if (
+    options &&
+    Array.isArray(options.requestIdentifierCandidates)
+  ) {
+    requestIdentifierQueue.push(...options.requestIdentifierCandidates);
+  }
+
+  const requestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString(requestIdentifierQueue),
+  );
   const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
     payload,
     "request_identifier",
   );
+
+  const sourceHttpCandidates = [];
+  if (payload.source_http_request) {
+    sourceHttpCandidates.push(payload.source_http_request);
+  }
+  if (
+    options &&
+    Array.isArray(options.sourceHttpRequestCandidates)
+  ) {
+    sourceHttpCandidates.push(...options.sourceHttpRequestCandidates);
+  }
+  const preparedSource = resolveSourceHttpRequest(
+    ...sourceHttpCandidates,
+  );
   const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
     payload,
     "source_http_request",
-  );
-  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
-  const preparedSource = prepareSourceHttpRequest(
-    payload.source_http_request,
   );
 
   const applyRequestMetadata = (target) => {
@@ -9205,31 +9368,26 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     }
   };
 
-  const buildCoordinatePair = () => {
-    const latitude = pickSanitizedValue("latitude");
-    const longitude = pickSanitizedValue("longitude");
-    if (typeof latitude === "number" && typeof longitude === "number") {
-      return { latitude, longitude };
-    }
-    return { latitude: null, longitude: null };
-  };
+  const normalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(augmentedNormalized[field]),
+  );
 
-  if (!hasRawVariant && normalizedCoverage) {
+  if (normalizedCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        continue;
-      }
-      const value = pickSanitizedValue(field);
-      if (value === null || value === undefined) continue;
-      normalizedOutput[field] = value;
+      normalizedOutput[field] =
+        augmentedNormalized[field] === undefined
+          ? null
+          : augmentedNormalized[field];
     }
 
-    const { latitude, longitude } = buildCoordinatePair();
-    normalizedOutput.latitude = latitude;
-    normalizedOutput.longitude = longitude;
-
+    if (
+      (normalizedOutput.latitude == null) !==
+      (normalizedOutput.longitude == null)
+    ) {
+      normalizedOutput.latitude = null;
+      normalizedOutput.longitude = null;
+    }
     if (!normalizedOutput.postal_code) {
       normalizedOutput.plus_four_postal_code = null;
     }
@@ -9238,17 +9396,8 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     }
 
     applyRequestMetadata(normalizedOutput);
-
-    const missingRequired = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.some(
-      (field) =>
-        typeof normalizedOutput[field] !== "string" ||
-        !normalizedOutput[field].trim().length,
-    );
-
-    if (!missingRequired) {
-      writeJSON(addressFilePath, normalizedOutput);
-      return;
-    }
+    writeJSON(addressFilePath, normalizedOutput);
+    return;
   }
 
   if (!hasRawVariant) {
@@ -9256,22 +9405,32 @@ function finalizeAddressForSchemaCompliance(addressFilePath, options = {}) {
     return;
   }
 
-  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-  rawOutput.unnormalized_address = trimmedRaw;
+  const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: trimmedRaw,
+  };
 
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const coordinate = pickSanitizedValue(field);
-      rawOutput[field] = Number.isFinite(coordinate) ? coordinate : null;
+      const coordinateCandidate = hasMeaningfulAddressValue(
+        augmentedNormalized[field],
+      )
+        ? augmentedNormalized[field]
+        : pickSanitizedValue(field);
+      rawOutput[field] = Number.isFinite(coordinateCandidate)
+        ? coordinateCandidate
+        : null;
       continue;
     }
-    const value = pickSanitizedValue(field);
-    if (value === null || value === undefined) {
-      rawOutput[field] = null;
-      continue;
+
+    let value = augmentedNormalized[field];
+    if (!hasMeaningfulAddressValue(value)) {
+      value = pickSanitizedValue(field);
     }
-    rawOutput[field] = value;
+    rawOutput[field] = hasMeaningfulAddressValue(value) ? value : null;
   }
+
+  enrichAddressFromUnnormalized(rawOutput, trimmedRaw);
 
   if (!rawOutput.postal_code) {
     rawOutput.plus_four_postal_code = null;
