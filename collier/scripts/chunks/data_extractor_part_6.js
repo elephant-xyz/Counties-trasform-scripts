@@ -78,18 +78,13 @@
     const curr = ownerEntry.owners_by_date.current;
     if (curr.length > 0) {
       // Cleanup any legacy duplicate relationship files
-      const relFiles = fs.readdirSync(dataDir);
-      for (const f of relFiles) {
-        if (
-          f.startsWith("relationship_sales_person") ||
-          f.startsWith("relationship_sales_company") ||
-          f.startsWith("relationship_sales_history_has_person") ||
-          f.startsWith("relationship_sales_history_has_company")
-        ) {
-          try {
-            fs.unlinkSync(path.join(dataDir, f));
-          } catch (_) {}
-        }
+      const files = fs
+        .readdirSync(dataDir)
+        .filter((f) => f.startsWith("relationship_sales_company"));
+      for (const f of files) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+        } catch (_) {}
       }
 
       // Handle mixed owner types (persons and companies)
@@ -106,7 +101,7 @@
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-          companyFiles.push(`./${filename}`);
+          companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
@@ -124,7 +119,7 @@
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-          personFiles.push(`./${filename}`);
+          personFiles.push(filename);
           personIdx++;
         }
       });

@@ -135,24 +135,6 @@
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
-  try {
-    const relPath = path.join(dataDir, "relationship_property_has_address.json");
-    if (fs.existsSync(relPath)) fs.unlinkSync(relPath);
-  } catch (_) {}
-  if (
-    fs.existsSync(path.join(dataDir, "property.json")) &&
-    fs.existsSync(path.join(dataDir, "address.json"))
-  ) {
-    const propertyAddressRel = {
-      type: "property_has_address",
-      from: { "/": "./property.json" },
-      to: { "/": "./address.json" },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_has_address.json"),
-      JSON.stringify(propertyAddressRel, null, 2),
-    );
-  }
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
