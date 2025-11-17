@@ -17459,6 +17459,8 @@ async function main() {
       rawAddressVariantOptions,
     );
   }
+  ensureCountyAddressFieldCompleteness(path.join(dataDir, "address.json"));
+  rewriteAddressForCountySchema(path.join(dataDir, "address.json"));
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
