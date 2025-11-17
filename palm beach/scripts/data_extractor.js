@@ -1305,7 +1305,6 @@ function enrichAddressFromUnnormalized(address, unnormalizedValue) {
       !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_number") &&
       !address.street_number
     ) {
-      console.log("assign street_number from enrich");
       address.street_number = safeNullIfEmpty(parsedStreet.streetNumber);
     }
     if (
@@ -1313,7 +1312,6 @@ function enrichAddressFromUnnormalized(address, unnormalizedValue) {
       !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_name") &&
       !address.street_name
     ) {
-      console.log("assign street_name from enrich");
       const formatted = formatStreetNameCase(parsedStreet.streetName);
       address.street_name = formatted ? formatted.toUpperCase() : null;
     }
@@ -1322,7 +1320,6 @@ function enrichAddressFromUnnormalized(address, unnormalizedValue) {
       !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_pre_directional_text") &&
       !address.street_pre_directional_text
     ) {
-      console.log("assign pre dir from enrich");
       address.street_pre_directional_text = parsedStreet.streetPreDirectional.toUpperCase();
     }
     if (
@@ -1330,7 +1327,6 @@ function enrichAddressFromUnnormalized(address, unnormalizedValue) {
       !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_post_directional_text") &&
       !address.street_post_directional_text
     ) {
-      console.log("assign post dir from enrich");
       address.street_post_directional_text = parsedStreet.streetPostDirectional.toUpperCase();
     }
     if (
@@ -1338,7 +1334,6 @@ function enrichAddressFromUnnormalized(address, unnormalizedValue) {
       !RAW_ADDRESS_EXCLUDED_FIELDS.has("street_suffix_type") &&
       !address.street_suffix_type
     ) {
-      console.log("assign suffix from enrich");
       const mappedSuffix = mapStreetSuffixType(parsedStreet.streetSuffix);
       if (mappedSuffix) {
         address.street_suffix_type = mappedSuffix;
@@ -5340,9 +5335,6 @@ function stripDisallowedRawAddressFields(addressFilePath) {
     return;
   }
 
-  console.log("stripDisallowedRawAddressFields", Array.from(RAW_ADDRESS_EXCLUDED_FIELDS));
-  console.log("allowed fields", RAW_ADDRESS_ALLOWED_FIELDS);
-
   let mutated = false;
   for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(payload, field)) {
@@ -5355,11 +5347,8 @@ function stripDisallowedRawAddressFields(addressFilePath) {
     return;
   }
 
-  console.log("strip mutated keys", Object.keys(payload));
-
   const surfaced =
     ensureAddressOutputFieldPresence(payload) || payload;
-  console.log("surfaced keys", Object.keys(surfaced));
   writeJSON(addressFilePath, surfaced);
 }
 
@@ -19934,7 +19923,6 @@ async function main() {
     ],
   };
   registerAddressFallbackContext(rawAddressVariantOptions);
-  console.log("call prefer raw inside block");
   preferRawAddressVariant(addressFilePath, rawAddressVariantOptions);
 
   // Relationship UR generation is now handled downstream; ensure we do not
@@ -21150,6 +21138,9 @@ async function main() {
   });
   finalizeCountyAddressSchemaOutcome(finalAddressPath);
   enforceCountyAddressRequiredFields(finalAddressPath);
+  alignAddressOneOfOutput(finalAddressPath);
+  enforceRawAddressSurfaceCompleteness(finalAddressPath);
+  ensureCountyAddressFieldCompleteness(finalAddressPath);
   ensureNullRelationshipFile(
     path.join(dataDir, "relationship_property_has_address.json"),
   );
