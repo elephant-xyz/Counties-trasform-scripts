@@ -23,6 +23,16 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+function removeNullishValues(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] == null) {
+      delete obj[key];
+    }
+  });
+  return obj;
+}
+
 function parseDateToISO(mdyy) {
   if (!mdyy) return null;
   // Accept MM/DD/YY or MM/DD/YYYY
@@ -692,24 +702,13 @@ function main() {
     );
   }
 
-  // Lot (acreage)
-  if (totalAcres != null && !Number.isNaN(totalAcres) && totalAcres > 0) {
-    const lotObj = {
-      lot_size_acre: totalAcres,
-    };
+  // Lot data is populated downstream; remove stale local files so we do not emit partial lot entities.
+  try {
     const lotPath = path.join(dataDir, "lot.json");
-    fs.writeFileSync(lotPath, JSON.stringify(lotObj, null, 2));
-
-    const rel = {
-      type: "property_has_lot",
-      from: { "/": "./property.json" },
-      to: { "/": "./lot.json" },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_has_lot.json"),
-      JSON.stringify(rel, null, 2),
-    );
-  }
+    if (fs.existsSync(lotPath)) fs.unlinkSync(lotPath);
+    const lotRelPath = path.join(dataDir, "relationship_property_has_lot.json");
+    if (fs.existsSync(lotRelPath)) fs.unlinkSync(lotRelPath);
+  } catch (_) {}
 
   // Parcel (strap number)
   if (strapNumber) {
@@ -1265,51 +1264,23 @@ function main() {
     }
   });
 
-  // Property improvements (permits)
-  const propertyImprovements = [];
-  $("#PermitAdditional tr").each((i, el) => {
-    const $row = $(el);
-    const permitNumber = $row.find("span[id^=permitno]").text().trim();
-    const issueText = $row.find("span[id^=IssuedDate]").text().trim();
-    const closeText = $row.find("span[id^=codate]").text().trim();
-    const permitTypeText = $row.find("span[id^=permittype]").text().trim();
-    if (!permitNumber && !issueText && !closeText && !permitTypeText) {
-      return;
+  // Property improvements (permits) - required schema fields are not present in the source, so keep pipeline clean of partial records.
+  try {
+    const existingImprovementFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => /^property_improvement_\d+\.json$/i.test(name));
+    for (const filename of existingImprovementFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
     }
-
-    const issueDate = parseDateToISO(issueText);
-    const closeDate = parseDateToISO(closeText);
-
-    const improvementRecord = {
-      permit_number: permitNumber || null,
-      permit_issue_date: issueDate || null,
-      permit_close_date: closeDate || null,
-      improvement_type: mapPermitImprovementType(permitTypeText),
-      improvement_action: permitTypeText || null,
-      improvement_status: determineImprovementStatus(closeDate),
-    };
-    propertyImprovements.push(improvementRecord);
-  });
-
-  propertyImprovements.forEach((improvement, idx) => {
-    const filename = `property_improvement_${idx + 1}.json`;
-    fs.writeFileSync(
-      path.join(dataDir, filename),
-      JSON.stringify(improvement, null, 2),
-    );
-    const rel = {
-      type: "property_has_property_improvement",
-      from: { "/": "./property.json" },
-      to: { "/": `./${filename}` },
-    };
-    fs.writeFileSync(
-      path.join(
-        dataDir,
-        `relationship_property_has_property_improvement_${idx + 1}.json`,
-      ),
-      JSON.stringify(rel, null, 2),
-    );
-  });
+    const existingImprovementRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) =>
+        name.startsWith("relationship_property_has_property_improvement_"),
+      );
+    for (const filename of existingImprovementRelFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+  } catch (_) {}
 
   // Structure data from permits and building features
   const structureObj = {
@@ -1498,7 +1469,7 @@ function main() {
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
-    const taxObj = {
+    const taxObj = removeNullishValues({
       tax_year: ty,
       property_assessed_value_amount:
         assessed != null ? assessed : just != null ? just : null,
@@ -1514,7 +1485,7 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
-    };
+    });
     taxRecords.push(taxObj);
   }
 
@@ -1556,7 +1527,7 @@ function main() {
   adValoremRows.forEach((row, idx) => {
     if (row.taxableVal == null && row.taxAmount == null) return;
     const monthly = row.taxAmount != null ? round2(row.taxAmount / 12) : null;
-    const taxObj = {
+    const taxObj = removeNullishValues({
       tax_year: ty,
       property_taxable_value_amount: row.taxableVal != null ? row.taxableVal : null,
       yearly_tax_amount: row.taxAmount != null ? row.taxAmount : null,
@@ -1568,7 +1539,7 @@ function main() {
       property_exemption_amount: null,
       period_start_date: ty ? `${ty}-01-01` : null,
       period_end_date: ty ? `${ty}-12-31` : null,
-    };
+    });
     const filename = `tax_breakdown_${idx + 1}.json`;
     const taxPath = path.join(dataDir, filename);
     fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
@@ -1593,7 +1564,7 @@ function main() {
     .trim();
   const totalAdValorem = toNumberCurrency(totalAdValoremText);
   if (totalAdValorem != null) {
-    const taxObj = {
+    const taxObj = removeNullishValues({
       tax_year: ty,
       yearly_tax_amount: totalAdValorem,
       monthly_tax_amount: round2(totalAdValorem / 12),
@@ -1605,7 +1576,7 @@ function main() {
       property_exemption_amount: null,
       period_start_date: ty ? `${ty}-01-01` : null,
       period_end_date: ty ? `${ty}-12-31` : null,
-    };
+    });
     const filename = "tax_breakdown_total.json";
     const taxPath = path.join(dataDir, filename);
     fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
@@ -1664,7 +1635,7 @@ function main() {
   }
   years.forEach((rec) => {
     const monthly = rec.yearlyH != null ? round2(rec.yearlyH / 12) : null;
-    const taxObj = {
+    const taxObj = removeNullishValues({
       tax_year: rec.yNum,
       property_assessed_value_amount:
         rec.assessedH != null
@@ -1691,7 +1662,7 @@ function main() {
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
-    };
+    });
     taxRecords.push(taxObj);
   });
 
