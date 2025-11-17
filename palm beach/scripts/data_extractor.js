@@ -7749,6 +7749,138 @@ function finalizeCountyAddressOneOfSurface(addressFilePath) {
   removeFileIfExists(addressFilePath);
 }
 
+function collapseRawAddressVariant(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (!trimmedUnnormalized.length) {
+    return;
+  }
+
+  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => {
+      const value = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null;
+      return typeof value === "string" && value.trim().length > 0;
+    },
+  );
+
+  if (hasNormalizedCoverage) {
+    return;
+  }
+
+  const allowedFields =
+    Array.isArray(options.allowedFields) && options.allowedFields.length
+      ? options.allowedFields
+      : RAW_ADDRESS_OUTPUT_FIELDS;
+
+  const rawOutput = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of allowedFields) {
+    if (field === "unnormalized_address") continue;
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) continue;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(payload[field]);
+      if (Number.isFinite(numeric)) {
+        rawOutput[field] = numeric;
+      }
+      continue;
+    }
+
+    const normalized = normalizeAddressFieldForSchema(field, payload[field]);
+    if (normalized === undefined || normalized === null) {
+      continue;
+    }
+
+    if (typeof normalized === "string") {
+      const trimmed = normalized.trim();
+      if (!trimmed.length) continue;
+      rawOutput[field] = trimmed;
+      continue;
+    }
+
+    rawOutput[field] = normalized;
+  }
+
+  const hasLatitude = Object.prototype.hasOwnProperty.call(
+    rawOutput,
+    "latitude",
+  );
+  const hasLongitude = Object.prototype.hasOwnProperty.call(
+    rawOutput,
+    "longitude",
+  );
+  if (hasLatitude !== hasLongitude) {
+    delete rawOutput.latitude;
+    delete rawOutput.longitude;
+  }
+
+  const fallbackCountyName =
+    typeof options.defaultCountyName === "string" &&
+    options.defaultCountyName.trim().length
+      ? options.defaultCountyName.trim()
+      : "Palm Beach";
+  if (!hasMeaningfulAddressValue(rawOutput.county_name)) {
+    rawOutput.county_name = toTitleCase(fallbackCountyName);
+  }
+
+  const fallbackStateCode =
+    typeof options.defaultStateCode === "string" &&
+    options.defaultStateCode.trim().length
+      ? options.defaultStateCode.trim().toUpperCase()
+      : "FL";
+  if (!hasMeaningfulAddressValue(rawOutput.state_code)) {
+    rawOutput.state_code = fallbackStateCode;
+  }
+
+  if (
+    rawOutput.state_code &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = "US";
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(rawOutput, "postal_code") &&
+    Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")
+  ) {
+    delete rawOutput.plus_four_postal_code;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  }
+
+  writeJSON(addressFilePath, rawOutput);
+}
+
 function coerceAddressFileToRawVariant(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -13157,6 +13289,8 @@ async function main() {
   const htmlCoordinates = extractCoordinatesFromHTML(inputHTML);
   const htmlLatitude = parseCoordinate(htmlCoordinates.latitude);
   const htmlLongitude = parseCoordinate(htmlCoordinates.longitude);
+  const fallbackCountyName = titleCaseCounty("Palm Beach");
+  const fallbackStateCode = "FL";
 
   // Input owners/utilities/layout
   let ownersData = {};
@@ -13832,7 +13966,7 @@ async function main() {
       (seed && safeNullIfEmpty(seed.county_name)) ||
       (unAddr && safeNullIfEmpty(unAddr.county_jurisdiction)) ||
       null;
-    const defaultCounty = titleCaseCounty("Palm Beach");
+    const defaultCounty = fallbackCountyName;
     if (!hasMeaningfulAddressValue(address.county_name)) {
       address.county_name = normalizedCountyName
         ? titleCaseCounty(normalizedCountyName)
@@ -16405,6 +16539,10 @@ async function main() {
   stripDisallowedRawAddressFields(addressFilePath);
   hardenCountyAddressSurface(addressFilePath);
   finalizeCountyAddressOneOfSurface(addressFilePath);
+  collapseRawAddressVariant(addressFilePath, {
+    defaultCountyName: fallbackCountyName,
+    defaultStateCode: fallbackStateCode,
+  });
 
   // Relationship UR generation is now handled downstream; ensure we do not
   // emit stale relationship payloads locally.
@@ -16418,6 +16556,10 @@ async function main() {
   stripDisallowedRawAddressFields(path.join(dataDir, "address.json"));
   hardenCountyAddressSurface(path.join(dataDir, "address.json"));
   finalizeCountyAddressOneOfSurface(path.join(dataDir, "address.json"));
+  collapseRawAddressVariant(path.join(dataDir, "address.json"), {
+    defaultCountyName: fallbackCountyName,
+    defaultStateCode: fallbackStateCode,
+  });
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
@@ -17441,6 +17583,16 @@ async function main() {
   stripDisallowedRawAddressFields(finalAddressPath);
   hardenCountyAddressSurface(finalAddressPath);
   finalizeCountyAddressOneOfSurface(finalAddressPath);
+  collapseRawAddressVariant(finalAddressPath, {
+    defaultCountyName:
+      formattedCountyName ||
+      countyName ||
+      fallbackCountyName,
+    defaultStateCode:
+      resolvedStateUpper ||
+      inferredStateCode ||
+      fallbackStateCode,
+  });
 
   // Run mapping scripts to generate additional data files
   console.log("Running owner mapping...");
@@ -17460,6 +17612,16 @@ async function main() {
   stripDisallowedRawAddressFields(finalAddressPath);
   hardenCountyAddressSurface(finalAddressPath);
   finalizeCountyAddressOneOfSurface(finalAddressPath);
+  collapseRawAddressVariant(finalAddressPath, {
+    defaultCountyName:
+      formattedCountyName ||
+      countyName ||
+      fallbackCountyName,
+    defaultStateCode:
+      resolvedStateUpper ||
+      inferredStateCode ||
+      fallbackStateCode,
+  });
 }
 
 main().catch((error) => {
