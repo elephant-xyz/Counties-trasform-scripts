@@ -418,6 +418,54 @@ function toTitleCaseWords(value) {
     .join(" ");
 }
 
+function buildRequestIdentifier(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const filteredEntries = Object.entries(payload).filter(([_, value]) => {
+    if (value == null) return false;
+    if (typeof value === "string" && value.trim() === "") return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "object") {
+      return Object.keys(value).length > 0;
+    }
+    return true;
+  });
+  if (filteredEntries.length === 0) return null;
+  const cleaned = Object.fromEntries(filteredEntries);
+  try {
+    return JSON.stringify(cleaned);
+  } catch (_) {
+    return filteredEntries
+      .map(([key, value]) => `${key}:${value}`)
+      .join(" | ");
+  }
+}
+
+function extractDetailTableRows($) {
+  const rows = [];
+  $("#TblDetailPropertyTaxTable tr").each((_, el) => {
+    const cells = $(el).find("td");
+    if (!cells.length) return;
+    const row = [];
+    let hasContent = false;
+    cells.each((__, cell) => {
+      const text = $(cell).text().replace(/\s+/g, " ").trim();
+      row.push(text);
+      if (text) hasContent = true;
+    });
+    if (hasContent) rows.push(row);
+  });
+  return rows;
+}
+
+function collectHistoryMillageValues($, idPrefix) {
+  const values = [];
+  for (let idx = 1; idx <= 5; idx++) {
+    const text = $(`#${idPrefix}${idx}`).text().trim();
+    values.push(text || null);
+  }
+  return values;
+}
+
 
 function parseAddress(
   fullAddress,
@@ -474,6 +522,7 @@ function main() {
   ensureDir(dataDir);
 
   const folio = seed.request_identifier || seed.parcel_id;
+  const buildingBaseAreaInfo = [];
 
   // Extract base fields from HTML
   const parcelId =
@@ -516,6 +565,7 @@ function main() {
     total_area: null,
     zoning: null,
   };
+  property.request_identifier = folio || null;
 
   // property_type and property_usage_type
   if (useCodeText) {
@@ -545,7 +595,9 @@ function main() {
   ];
 
   let yearBuilt = null;
+  let fallbackYearBuilt = null;
   let totalBaseArea = 0;
+  let totalBaseAreaAll = 0;
   let totalAdjArea = 0;
   let hasAnyResidentialBuildings = false;
 
@@ -553,50 +605,81 @@ function main() {
   $("span[id^=BLDGCLASS]").each((i, el) => {
     const $span = $(el);
     const buildingClass = $span.text().trim();
-    const spanId = $span.attr("id");
-
     if (!buildingClass) return;
 
-    // Extract building number from span ID (e.g., "BLDGCLASS1" -> "1")
+    const spanId = $span.attr("id") || "";
     const buildingNumMatch = spanId.match(/BLDGCLASS(\d+)/);
     if (!buildingNumMatch) return;
     const buildingNum = buildingNumMatch[1];
+    const $buildingRow = $span.closest("tr");
 
-    // Check if this matches any residential pattern
-    const isResidential = residentialTypes.some(pattern => pattern.test(buildingClass));
+    const isResidential = residentialTypes.some((pattern) =>
+      pattern.test(buildingClass),
+    );
 
-    if (isResidential) {
-      hasAnyResidentialBuildings = true;
-
-      // Get year built from first residential building
-      if (!yearBuilt) {
-        const yrSpan = $(`#YRBUILT${buildingNum}`);
-        const yr = yrSpan.text().trim();
-        if (yr) yearBuilt = parseInt(yr, 10);
-      }
-
-      // Sum base area
-      const baseAreaSpan = $(`#BASEAREA${buildingNum}`);
-      const baseAreaText = baseAreaSpan.text().trim();
-      if (baseAreaText) {
-        const num = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
-        if (!isNaN(num) && num > 0) {
-          totalBaseArea += num;
-        }
-      }
-
-      // Sum adjusted area
-      const adjAreaSpan = $(`#TYADJAREA${buildingNum}`);
-      const adjAreaText = adjAreaSpan.text().trim();
-      if (adjAreaText) {
-        const num = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
-        if (!isNaN(num) && num > 0) {
-          totalAdjArea += num;
+    const seqText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=SEQNO]").first().text().trim()
+      : $(`#SEQNO${buildingNum}`).first().text().trim()) || null;
+    const yearText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=YRBUILT]").first().text().trim()
+      : $(`#YRBUILT${buildingNum}`).first().text().trim());
+    let yearValue = null;
+    if (yearText) {
+      const parsedYear = parseInt(yearText, 10);
+      if (!Number.isNaN(parsedYear)) {
+        yearValue = parsedYear;
+        if (!fallbackYearBuilt) fallbackYearBuilt = parsedYear;
+        if (isResidential && !yearBuilt) {
+          yearBuilt = parsedYear;
         }
       }
     }
+
+    const baseAreaText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=BASEAREA]").first().text().trim()
+      : $(`#BASEAREA${buildingNum}`).first().text().trim());
+    let baseAreaValue = null;
+    if (baseAreaText) {
+      const parsedBase = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
+      if (!Number.isNaN(parsedBase) && parsedBase > 0) {
+        baseAreaValue = parsedBase;
+        totalBaseAreaAll += parsedBase;
+        if (isResidential) {
+          totalBaseArea += parsedBase;
+        }
+      }
+    }
+
+    const adjAreaText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=TYADJAREA]").first().text().trim()
+      : $(`#TYADJAREA${buildingNum}`).first().text().trim());
+    let adjAreaValue = null;
+    if (adjAreaText) {
+      const parsedAdj = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
+      if (!Number.isNaN(parsedAdj) && parsedAdj > 0) {
+        adjAreaValue = parsedAdj;
+        if (isResidential) {
+          totalAdjArea += parsedAdj;
+        }
+      }
+    }
+
+    if (isResidential) {
+      hasAnyResidentialBuildings = true;
+    }
+
+    buildingBaseAreaInfo.push({
+      sequence: seqText || null,
+      buildingClass: buildingClass || null,
+      baseArea: baseAreaValue,
+      adjustedArea: adjAreaValue,
+      yearBuilt: yearValue,
+    });
   });
 
+  if (!yearBuilt && fallbackYearBuilt) {
+    yearBuilt = fallbackYearBuilt;
+  }
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
   // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
   if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
@@ -605,6 +688,15 @@ function main() {
   }
   if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
     property.total_area = String(totalAdjArea);
+  }
+  if (totalBaseAreaAll >= 10) {
+    if (property.total_area == null) {
+      property.total_area = String(totalBaseAreaAll);
+    }
+    if (!hasAnyResidentialBuildings) {
+      property.livable_floor_area = String(totalBaseAreaAll);
+      property.area_under_air = String(totalBaseAreaAll);
+    }
   }
 
   // Write property.json
@@ -1047,12 +1139,15 @@ function main() {
     const buildingNumMatch = spanId.match(/BLDGCLASS(\d+)/);
     if (!buildingNumMatch) return;
     const buildingNum = buildingNumMatch[1];
+    const $row = $span.closest("tr");
 
     // Get year built and area
-    const yrSpan = $(`#YRBUILT${buildingNum}`);
-    const yr = yrSpan.text().trim();
-    const areaSpan = $(`#BASEAREA${buildingNum}`);
-    const areaText = areaSpan.text().trim();
+    const yr = ($row.length
+      ? $row.find("span[id^=YRBUILT]").first().text().trim()
+      : $(`#YRBUILT${buildingNum}`).text().trim()) || "";
+    const areaText = ($row.length
+      ? $row.find("span[id^=BASEAREA]").first().text().trim()
+      : $(`#BASEAREA${buildingNum}`).text().trim()) || "";
     const area = areaText ? parseFloat(areaText.replace(/[^0-9.]/g, "")) : null;
 
     let layoutObj = null;
@@ -1183,7 +1278,9 @@ function main() {
       if (builtYearNum) {
         layoutObj.built_year = builtYearNum;
       }
-      const seqVal = $(`#SEQNO${buildingNum}`).text().trim();
+      const seqVal = ($row.length
+        ? $row.find("span[id^=SEQNO]").first().text().trim()
+        : $(`#SEQNO${buildingNum}`).text().trim());
       if (seqVal) {
         layoutObj.building_number = seqVal;
         layoutObj.space_type_index = seqVal;
@@ -1222,6 +1319,8 @@ function main() {
     const permitNumber = $row.find("span[id^=permitno]").text().trim();
     const issueText = $row.find("span[id^=IssuedDate]").text().trim();
     const closeText = $row.find("span[id^=codate]").text().trim();
+     const taxYearText = $row.find("span[id^=taxyear]").text().trim();
+     const issuerText = $row.find("span[id^=issuer]").text().trim();
     const permitTypeText = $row.find("span[id^=permittype]").text().trim();
     if (!permitNumber && !issueText && !closeText && !permitTypeText) {
       return;
@@ -1238,6 +1337,17 @@ function main() {
       improvement_action: permitTypeText || null,
       improvement_status: determineImprovementStatus(closeDate),
     };
+    const improvementRequestId = buildRequestIdentifier({
+      permit_number: permitNumber || null,
+      tax_year: taxYearText || null,
+      issuer: issuerText || null,
+      issue_date_raw: issueText || null,
+      close_date_raw: closeText || null,
+      permit_type: permitTypeText || null,
+    });
+    if (improvementRequestId) {
+      improvementRecord.request_identifier = improvementRequestId;
+    }
 
     propertyImprovements.push(improvementRecord);
   });
@@ -1326,6 +1436,7 @@ function main() {
     window_installation_date: null,
     window_operation_type: null,
     window_screen_material: null,
+    request_identifier: null,
   };
 
   // Extract roof date from most recent ROOF permit
@@ -1345,24 +1456,44 @@ function main() {
     structureObj.roof_date = mostRecentRoofDate;
   }
 
-  // Count number of buildings (excluding pools, screen enclosures, decking, etc.)
-  const buildingTypes = new Set();
-  $("span[id^=BLDGCLASS]").each((i, el) => {
-    const buildingClass = $(el).text().trim().toUpperCase();
-    // Only count actual building structures
-    if (
-      buildingClass &&
-      !buildingClass.includes("POOL") &&
-      !buildingClass.includes("SCREEN") &&
-      !buildingClass.includes("DECK") &&
-      !buildingClass.includes("PATIO") &&
-      !buildingClass.includes("PORCH")
-    ) {
-      buildingTypes.add(buildingClass);
+  if (buildingBaseAreaInfo.length > 0) {
+    const sequenceValues = buildingBaseAreaInfo
+      .map((row) => row.sequence)
+      .filter(Boolean);
+    if (sequenceValues.length > 0) {
+      structureObj.number_of_buildings = sequenceValues.length;
+    } else {
+      structureObj.number_of_buildings =
+        buildingBaseAreaInfo.length || structureObj.number_of_buildings;
     }
-  });
-  if (buildingTypes.size > 0) {
-    structureObj.number_of_buildings = buildingTypes.size;
+
+    if (structureObj.finished_base_area == null) {
+      const primaryBase = buildingBaseAreaInfo
+        .filter((row) => row.baseArea != null)
+        .sort((a, b) => (b.baseArea || 0) - (a.baseArea || 0))[0];
+      if (primaryBase && primaryBase.baseArea != null) {
+        structureObj.finished_base_area = primaryBase.baseArea;
+      }
+    }
+
+    const structureRequestId = buildRequestIdentifier({
+      sequence_numbers: sequenceValues,
+      building_classes: buildingBaseAreaInfo
+        .map((row) => row.buildingClass)
+        .filter(Boolean),
+      base_areas: buildingBaseAreaInfo
+        .map((row) => row.baseArea)
+        .filter((value) => value != null),
+      adjusted_areas: buildingBaseAreaInfo
+        .map((row) => row.adjustedArea)
+        .filter((value) => value != null),
+      year_built_values: buildingBaseAreaInfo
+        .map((row) => row.yearBuilt)
+        .filter((value) => value != null),
+    });
+    if (structureRequestId) {
+      structureObj.request_identifier = structureRequestId;
+    }
   }
 
   // Always write structure.json with all required fields
@@ -1386,6 +1517,7 @@ function main() {
   // From Summary (preliminary/current)
   const taxRecords = [];
   let taxRelationshipIndex = 1;
+  const detailTableRows = extractDetailTableRows($);
   try {
     const existingTaxRelFiles = fs
       .readdirSync(dataDir)
@@ -1400,6 +1532,14 @@ function main() {
     $("#RollType2").first().text().trim() ||
     ""
   ).toUpperCase();
+  const millageSummary = {
+    county: $("#TdDetailCountyMillage").first().text().trim() || null,
+    non_school: $("#TdDetailNonSchoolMillage").first().text().trim() || null,
+    total: $("#TdDetailTotalMillage").first().text().trim() || null,
+    school: $("#TdDetailSchoolMillage").first().text().trim() || null,
+    municipal: $("#TdDetailMunicipalMillage").first().text().trim() || null,
+    other: $("#TdDetailOtherMillage").first().text().trim() || null,
+  };
   let ty = null;
   const mYear = rollType.match(/(\d{4})/);
   if (mYear) ty = parseInt(mYear[1], 10);
@@ -1464,6 +1604,15 @@ function main() {
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
     };
+    const summaryRequestId = buildRequestIdentifier({
+      source: "summary",
+      roll_type: rollType || null,
+      millage_summary: millageSummary,
+      detail_table_preview: detailTableRows.slice(0, 80),
+    });
+    if (summaryRequestId) {
+      taxObj.request_identifier = summaryRequestId;
+    }
     taxRecords.push(taxObj);
   }
 
@@ -1482,6 +1631,9 @@ function main() {
   for (let idx = 1; idx <= 50; idx++) {
     const taxableText = $(`#Taxable${idx}`).text().trim();
     const taxAmountText = $(`#Tax${idx}`).text().trim();
+    const taNameText = $(`#TaName${idx}`).text().trim();
+    const taxTypeText = $(`#TaxableType${idx}`).text().trim();
+    const millageText = $(`#Millage${idx}`).text().trim();
 
     if (!taxableText && !taxAmountText) continue;
 
@@ -1493,6 +1645,9 @@ function main() {
     adValoremRows.push({
       taxableVal,
       taxAmount,
+      authority: taNameText || null,
+      taxableType: taxTypeText || null,
+      millage: millageText || null,
     });
   }
 
@@ -1512,6 +1667,16 @@ function main() {
       period_start_date: ty ? `${ty}-01-01` : null,
       period_end_date: ty ? `${ty}-12-31` : null,
     };
+    const breakdownRequestId = buildRequestIdentifier({
+      source: "ad_valorem",
+      row_index: idx + 1,
+      authority: row.authority,
+      taxable_category: row.taxableType,
+      millage_rate: row.millage,
+    });
+    if (breakdownRequestId) {
+      taxObj.request_identifier = breakdownRequestId;
+    }
     const filename = `tax_breakdown_${idx + 1}.json`;
     const taxPath = path.join(dataDir, filename);
     fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
@@ -1549,6 +1714,14 @@ function main() {
       period_start_date: ty ? `${ty}-01-01` : null,
       period_end_date: ty ? `${ty}-12-31` : null,
     };
+    const totalBreakdownRequestId = buildRequestIdentifier({
+      source: "ad_valorem_total",
+      total_adv_taxes: totalAdValoremText || null,
+      total_millage: millageSummary.total,
+    });
+    if (totalBreakdownRequestId) {
+      taxObj.request_identifier = totalBreakdownRequestId;
+    }
     const filename = "tax_breakdown_total.json";
     const taxPath = path.join(dataDir, filename);
     fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
@@ -1568,6 +1741,10 @@ function main() {
   }
 
   // From History (Tab6) for multiple years
+  const historyCountyMillage = collectHistoryMillageValues($, "HistoryCountyMillage");
+  const historySchoolMillage = collectHistoryMillageValues($, "HistorySchoolMillage");
+  const historyMunicipalMillage = collectHistoryMillageValues($, "HistoryMunicipalMillage");
+  const historyOtherMillage = collectHistoryMillageValues($, "HistoryOtherMillage");
   const years = [];
   for (let idx = 1; idx <= 5; idx++) {
     const yTxt = $(`#HistoryTaxYear${idx}`).text().trim();
@@ -1593,6 +1770,7 @@ function main() {
 
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
+        index: idx,
         yNum,
         landH,
         imprH,
@@ -1634,6 +1812,18 @@ function main() {
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
     };
+    const historyRequestId = buildRequestIdentifier({
+      source: "history",
+      year: rec.yNum,
+      index: rec.index,
+      county_millage: historyCountyMillage[rec.index - 1] || null,
+      school_millage: historySchoolMillage[rec.index - 1] || null,
+      municipal_millage: historyMunicipalMillage[rec.index - 1] || null,
+      other_millage: historyOtherMillage[rec.index - 1] || null,
+    });
+    if (historyRequestId) {
+      taxObj.request_identifier = historyRequestId;
+    }
     taxRecords.push(taxObj);
   });
 
