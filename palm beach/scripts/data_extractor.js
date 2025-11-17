@@ -1809,14 +1809,7 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   "source_http_request",
 ]);
 
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-  "municipality_name",
-]);
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
 
 // Raw variant should only expose the subset of normalized fields that the
 // schema allows alongside an unnormalized string.
