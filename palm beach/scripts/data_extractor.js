@@ -16842,6 +16842,34 @@ async function main() {
             }
 
             if (resolvedPayload) {
+              const trimmedRawSurface =
+                typeof resolvedPayload.unnormalized_address === "string"
+                  ? resolvedPayload.unnormalized_address.trim()
+                  : "";
+              if (trimmedRawSurface.length) {
+                const rawCriticalProbe = {
+                  ...resolvedPayload,
+                  unnormalized_address: trimmedRawSurface,
+                };
+                if (!rawVariantMeetsCriticalFields({ ...rawCriticalProbe })) {
+                  const normalizedFallback =
+                    ensureNormalizedAddressSchemaSurface(resolvedPayload) || null;
+                  if (
+                    normalizedFallback &&
+                    hasCompleteNormalizedAddress({ ...normalizedFallback })
+                  ) {
+                    if (
+                      Object.prototype.hasOwnProperty.call(
+                        normalizedFallback,
+                        "unnormalized_address",
+                      )
+                    ) {
+                      delete normalizedFallback.unnormalized_address;
+                    }
+                    resolvedPayload = normalizedFallback;
+                  }
+                }
+              }
               writeJSON(addressFilePath, resolvedPayload);
             } else {
               removeFileIfExists(addressFilePath);
