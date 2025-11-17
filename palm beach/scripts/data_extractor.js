@@ -18808,6 +18808,26 @@ async function main() {
     rawCandidates: finalUnnormalizedCandidates,
   });
 
+  const addressOutputPath = path.join(dataDir, "address.json");
+  const propertyOutputPath = path.join(dataDir, "property.json");
+  const propertyAddressRelationshipFile = path.join(
+    dataDir,
+    "relationship_property_has_address.json",
+  );
+
+  if (fs.existsSync(addressOutputPath) && fs.existsSync(propertyOutputPath)) {
+    const propertyToAddressRelationship = {
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" },
+    };
+    fs.writeFileSync(
+      propertyAddressRelationshipFile,
+      `${JSON.stringify(propertyToAddressRelationship, null, 2)}\n`,
+    );
+  } else {
+    ensureNullRelationshipFile(propertyAddressRelationshipFile);
+  }
+
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
     roofCoverVal = null,
