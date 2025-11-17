@@ -8218,10 +8218,111 @@ function rewriteAddressForCountySchema(addressFilePath) {
     normalizedSurface.country_code = "US";
   }
 
+  if (!hasNormalizedCoverage && trimmedUnnormalized) {
+    const looseComponents = parseLooseUnnormalizedAddress(trimmedUnnormalized);
+    if (looseComponents) {
+      const assignIfMissing = (field, value) => {
+        if (value === undefined || value === null) return;
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (!trimmed.length) return;
+          if (hasMeaningfulAddressValue(normalizedSurface[field])) return;
+          normalizedSurface[field] = trimmed;
+          return;
+        }
+        if (!hasMeaningfulAddressValue(normalizedSurface[field])) {
+          normalizedSurface[field] = value;
+        }
+      };
+
+      const sanitizedPostalCandidate = looseComponents.postalCode
+        ? sanitizePostalCode(looseComponents.postalCode)
+        : null;
+      const sanitizedPlus4Candidate = looseComponents.plus4
+        ? sanitizePlus4(looseComponents.plus4)
+        : null;
+
+      assignIfMissing("street_number", safeNullIfEmpty(looseComponents.streetNumber));
+      assignIfMissing("street_name", looseComponents.streetName);
+      assignIfMissing(
+        "street_pre_directional_text",
+        looseComponents.streetPreDirectional
+          ? looseComponents.streetPreDirectional.toUpperCase()
+          : null,
+      );
+      assignIfMissing(
+        "street_post_directional_text",
+        looseComponents.streetPostDirectional
+          ? looseComponents.streetPostDirectional.toUpperCase()
+          : null,
+      );
+
+      const mappedSuffix = looseComponents.streetSuffix
+        ? mapStreetSuffixType(looseComponents.streetSuffix)
+        : null;
+      assignIfMissing("street_suffix_type", mappedSuffix || looseComponents.streetSuffix);
+
+      const sanitizedUnit = looseComponents.unitIdentifier
+        ? safeNullIfEmpty(looseComponents.unitIdentifier)
+        : null;
+      if (
+        sanitizedUnit &&
+        !(
+          (sanitizedPostalCandidate &&
+            sanitizedUnit === sanitizedPostalCandidate &&
+            /^\d{5}$/.test(sanitizedUnit)) ||
+          (looseComponents.postalCode &&
+            sanitizedUnit === looseComponents.postalCode &&
+            /^\d{5}$/.test(sanitizedUnit))
+        )
+      ) {
+        assignIfMissing("unit_identifier", sanitizedUnit);
+      }
+
+      assignIfMissing(
+        "route_number",
+        looseComponents.routeNumber ? safeNullIfEmpty(looseComponents.routeNumber) : null,
+      );
+      assignIfMissing("city_name", looseComponents.cityName);
+      assignIfMissing("state_code", looseComponents.stateCode);
+
+      assignIfMissing(
+        "postal_code",
+        sanitizedPostalCandidate || looseComponents.postalCode,
+      );
+
+      assignIfMissing(
+        "plus_four_postal_code",
+        sanitizedPlus4Candidate || looseComponents.plus4,
+      );
+    }
+
+    if (
+      !hasMeaningfulAddressValue(normalizedSurface.country_code) &&
+      hasMeaningfulAddressValue(normalizedSurface.state_code)
+    ) {
+      normalizedSurface.country_code = "US";
+    }
+
+    hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) => {
+        const value = normalizedSurface[field];
+        return typeof value === "string" && value.trim().length > 0;
+      },
+    );
+  }
+
   if (hasNormalizedCoverage) {
     const output = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       output[field] = normalizedSurface[field];
+    }
+    if (
+      hasMeaningfulAddressValue(output.unit_identifier) &&
+      output.postal_code &&
+      output.unit_identifier === output.postal_code
+    ) {
+      output.unit_identifier = null;
     }
     if (requestIdentifier) {
       output.request_identifier = requestIdentifier;
@@ -8285,6 +8386,14 @@ function rewriteAddressForCountySchema(addressFilePath) {
     rawOutput.source_http_request = deepClone(preparedSource);
   } else if (hadSourceHttpRequest) {
     rawOutput.source_http_request = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOutput.unit_identifier) &&
+    rawOutput.postal_code &&
+    rawOutput.unit_identifier === rawOutput.postal_code
+  ) {
+    rawOutput.unit_identifier = null;
   }
 
   writeJSON(addressFilePath, rawOutput);
