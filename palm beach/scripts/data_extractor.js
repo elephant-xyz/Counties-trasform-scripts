@@ -47,53 +47,96 @@ function sanitizeAddressPayloadForWrite(payload) {
       ? payload.unnormalized_address.trim()
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
-
-  const sanitized = hasRawVariant
-    ? { unnormalized_address: trimmedUnnormalized }
-    : {};
-
-  const fieldIterator = hasRawVariant
-    ? RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS
+  const variantFields = hasRawVariant
+    ? RAW_ADDRESS_OUTPUT_FIELDS
     : NORMALIZED_ADDRESS_FIELDS;
 
-  for (const field of fieldIterator) {
-    let candidate = Object.prototype.hasOwnProperty.call(payload, field)
-      ? payload[field]
-      : null;
+  const baseShape = hasRawVariant
+    ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: trimmedUnnormalized }
+    : { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
-    if (candidate === undefined) {
-      candidate = null;
-    }
-
-    if (typeof candidate === "string") {
-      const trimmed = candidate.trim();
-      candidate = trimmed.length ? trimmed : null;
-    }
+  for (const field of variantFields) {
+    const hasField = Object.prototype.hasOwnProperty.call(payload, field);
+    const rawValue = hasField ? payload[field] : null;
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(candidate);
-      candidate = Number.isFinite(numeric) ? numeric : null;
-    } else if (typeof candidate === "number" && !Number.isFinite(candidate)) {
-      candidate = null;
+      const numeric = parseCoordinate(rawValue);
+      baseShape[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
     }
 
-    sanitized[field] = candidate;
+    if (rawValue === undefined || rawValue === null) {
+      baseShape[field] = null;
+      continue;
+    }
+
+    if (typeof rawValue === "string") {
+      const trimmed = rawValue.trim();
+      baseShape[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof rawValue === "number") {
+      baseShape[field] = Number.isFinite(rawValue) ? rawValue : null;
+      continue;
+    }
+
+    const normalized = normalizeAddressFieldForSchema(field, rawValue);
+    if (normalized === undefined || normalized === null) {
+      baseShape[field] = null;
+      continue;
+    }
+    if (typeof normalized === "string") {
+      const trimmedNormalized = normalized.trim();
+      baseShape[field] = trimmedNormalized.length ? trimmedNormalized : null;
+      continue;
+    }
+    if (typeof normalized === "number") {
+      baseShape[field] = Number.isFinite(normalized) ? normalized : null;
+      continue;
+    }
+
+    baseShape[field] = normalized;
   }
 
-  if (!hasRawVariant && Object.prototype.hasOwnProperty.call(sanitized, "unnormalized_address")) {
-    delete sanitized.unnormalized_address;
+  if (!hasRawVariant && Object.prototype.hasOwnProperty.call(baseShape, "unnormalized_address")) {
+    delete baseShape.unnormalized_address;
+  } else if (hasRawVariant) {
+    baseShape.unnormalized_address = trimmedUnnormalized;
   }
 
-  if (!sanitized.postal_code) {
-    sanitized.plus_four_postal_code = null;
+  if (!baseShape.postal_code) {
+    baseShape.plus_four_postal_code = null;
   }
 
-  if (sanitized.state_code && !sanitized.country_code) {
-    sanitized.country_code = "US";
+  if (baseShape.state_code && !baseShape.country_code) {
+    baseShape.country_code = "US";
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (requestIdentifier) {
+    baseShape.request_identifier = requestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+  if (preparedSource) {
+    baseShape.source_http_request = preparedSource;
+  }
+
+  const permittedKeys = new Set([
+    ...(hasRawVariant ? ["unnormalized_address", ...RAW_ADDRESS_OUTPUT_FIELDS] : NORMALIZED_ADDRESS_FIELDS),
+    "request_identifier",
+    "source_http_request",
+  ]);
+
+  for (const key of Object.keys(baseShape)) {
+    if (!permittedKeys.has(key)) {
+      delete baseShape[key];
+    }
   }
 
   const surfaced =
-    ensureAddressOutputFieldPresence(sanitized) || sanitized;
+    ensureAddressOutputFieldPresence(baseShape) || baseShape;
 
   return stripAddressRequestMetadata(surfaced);
 }
