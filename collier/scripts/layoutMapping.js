@@ -90,7 +90,6 @@ function ensureDir(filePath) {
   // ALWAYS add Living Area layout with square footage data
   layouts.push({
     space_type: "Living Area",
-    space_index: 1,
     space_type_index: "1",
     livable_area_sq_ft: livableAreaSqFt,
     area_under_air_sq_ft: areaUnderAirSqFt,

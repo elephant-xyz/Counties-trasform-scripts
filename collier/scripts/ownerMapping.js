@@ -521,20 +521,30 @@ function buildMailingAddress($) {
     "STREET",
     "ROAD",
     "AVENUE",
+    "DR",
     "DRIVE",
     "COURT",
     "LANE",
     "BOULEVARD",
+    "PKWY",
     "PARKWAY",
     "HIGHWAY",
   ];
   let started = false;
   rawLines.forEach((line) => {
     const upper = line.toUpperCase();
+    const containsKeyword = addressKeywords.some((kw) => {
+      if (kw.includes(" ")) {
+        return upper.includes(kw);
+      }
+      const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+      const regex = new RegExp(`\\b${escaped}\\b`);
+      return regex.test(upper);
+    });
     if (
       started ||
       /\d/.test(upper) ||
-      addressKeywords.some((kw) => upper.includes(kw))
+      containsKeyword
     ) {
       addressParts.push(line);
       started = true;

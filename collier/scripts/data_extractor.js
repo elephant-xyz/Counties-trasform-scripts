@@ -1096,7 +1096,6 @@ function main() {
         size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
         spa_installation_date: null,
         spa_type: null,
-        space_index: idx, // Use the layout index as space_index
         space_type_index: "1",
         space_type: spaceType,
         story_type: null,
@@ -1225,21 +1224,12 @@ function main() {
     const issueText = $row.find("span[id^=IssuedDate]").text().trim();
     const closeText = $row.find("span[id^=codate]").text().trim();
     const permitTypeText = $row.find("span[id^=permittype]").text().trim();
-    const taxYearText = $row.find("span[id^=taxyear]").text().trim();
-
-    if (
-      !permitNumber &&
-      !issueText &&
-      !closeText &&
-      !permitTypeText &&
-      !taxYearText
-    ) {
+    if (!permitNumber && !issueText && !closeText && !permitTypeText) {
       return;
     }
 
     const issueDate = parseDateToISO(issueText);
     const closeDate = parseDateToISO(closeText);
-    const taxYear = taxYearText ? parseInt(taxYearText, 10) : null;
 
     const improvementRecord = {
       permit_number: permitNumber || null,
@@ -1248,8 +1238,6 @@ function main() {
       improvement_type: mapPermitImprovementType(permitTypeText),
       improvement_action: permitTypeText || null,
       improvement_status: determineImprovementStatus(closeDate),
-      application_received_date:
-        Number.isFinite(taxYear) && taxYear > 1600 ? `${taxYear}-01-01` : null,
     };
 
     propertyImprovements.push(improvementRecord);
@@ -1494,42 +1482,24 @@ function main() {
   } catch (_) {}
   const adValoremRows = [];
   for (let idx = 1; idx <= 50; idx++) {
-    const name = $(`#TaName${idx}`).text().trim();
     const taxableText = $(`#Taxable${idx}`).text().trim();
-    const taxableVal = toNumberCurrency(taxableText);
-    const millageText = $(`#Millage${idx}`).text().trim();
-    const millage =
-      millageText && millageText !== "" ? Number(millageText) : null;
     const taxAmountText = $(`#Tax${idx}`).text().trim();
-    const taxAmount = toNumberCurrency(taxAmountText);
-    const taxableType = $(`#TaxableType${idx}`).text().trim();
 
-    if (
-      !name &&
-      taxableVal == null &&
-      (millage == null || Number.isNaN(millage)) &&
-      taxAmount == null &&
-      !taxableType
-    ) {
-      continue;
-    }
+    if (!taxableText && !taxAmountText) continue;
+
+    const taxableVal = toNumberCurrency(taxableText);
+    const taxAmount = toNumberCurrency(taxAmountText);
+
+    if (taxableVal == null && taxAmount == null) continue;
 
     adValoremRows.push({
-      name: name || null,
       taxableVal,
-      taxableText: taxableText || null,
-      millage: millage != null && !Number.isNaN(millage) ? millage : null,
-      millageText: millageText || null,
       taxAmount,
-      taxAmountText: taxAmountText || null,
-      type: taxableType || null,
     });
   }
 
   adValoremRows.forEach((row, idx) => {
-    if (row.taxableVal == null && row.taxAmount == null && row.millage == null) {
-      return;
-    }
+    if (row.taxableVal == null && row.taxAmount == null) return;
     const monthly = row.taxAmount != null ? round2(row.taxAmount / 12) : null;
     const taxObj = {
       tax_year: ty,
@@ -1568,26 +1538,6 @@ function main() {
     .trim();
   const totalAdValorem = toNumberCurrency(totalAdValoremText);
   if (totalAdValorem != null) {
-    const detailCountyMillageText = $("#TdDetailCountyMillage")
-      .first()
-      .text()
-      .trim();
-    const detailSchoolMillageText = $("#TdDetailSchoolMillage")
-      .first()
-      .text()
-      .trim();
-    const detailMunicipalMillageText = $("#TdDetailMunicipalMillage")
-      .first()
-      .text()
-      .trim();
-    const detailNonSchoolMillageText = $("#TdDetailNonSchoolMillage")
-      .first()
-      .text()
-      .trim();
-    const detailOtherMillageText = $("#TdDetailOtherMillage")
-      .first()
-      .text()
-      .trim();
     const taxObj = {
       tax_year: ty,
       yearly_tax_amount: totalAdValorem,
@@ -1634,7 +1584,7 @@ function main() {
     const imprH = toNumberCurrency(imprHText);
     const justHText = $(`#HistoryTotalJustValue${idx}`).text().trim();
     const justH = toNumberCurrency(justHText);
-    const assessedHText = $(`#HistorySchoolAssessedValue${idx}`).text().trim();
+    const assessedHText = $(`#HistoryCountyAssessedValue${idx}`).text().trim();
     const assessedH = toNumberCurrency(assessedHText);
     const taxableHText = $(`#HistoryCountyTaxableValue${idx}`).text().trim();
     const taxableH = toNumberCurrency(taxableHText);
@@ -1642,36 +1592,9 @@ function main() {
     const yearlyH = toNumberCurrency(yearlyHText);
     const benefitHText = $(`#HistoryNonSchool10PctBenefit${idx}`).text().trim();
     const benefitH = toNumberCurrency(benefitHText);
-    const schoolMillageText = $(`#HistorySchoolMillage${idx}`)
-      .text()
-      .trim();
-    const schoolMillage =
-      schoolMillageText && schoolMillageText !== ""
-        ? Number(schoolMillageText)
-        : null;
-    const countyMillageText = $(`#HistoryCountyMillage${idx}`)
-      .text()
-      .trim();
-    const countyMillage =
-      countyMillageText && countyMillageText !== ""
-        ? Number(countyMillageText)
-        : null;
-    const municipalMillageText = $(`#HistoryMunicipalMillage${idx}`)
-      .text()
-      .trim();
-    const municipalMillage =
-      municipalMillageText && municipalMillageText !== ""
-        ? Number(municipalMillageText)
-        : null;
-    const otherMillageText = $(`#HistoryOtherMillage${idx}`).text().trim();
-    const otherMillage =
-      otherMillageText && otherMillageText !== ""
-        ? Number(otherMillageText)
-        : null;
 
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
-        idx,
         yNum,
         landH,
         imprH,
@@ -1680,18 +1603,6 @@ function main() {
         taxableH,
         yearlyH,
         benefitH,
-        schoolMillage,
-        schoolMillageText,
-        countyMillage,
-        countyMillageText,
-        municipalMillage,
-        municipalMillageText,
-        otherMillage,
-        otherMillageText,
-        yearlyHText,
-        taxableHText,
-        assessedHText,
-        justHText,
       });
     }
   }
