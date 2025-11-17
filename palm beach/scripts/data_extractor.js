@@ -5129,6 +5129,10 @@ function preferNormalizedAddressOutput(addressFilePath) {
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
 
+  if (hasRawVariant) {
+    return;
+  }
+
   const hasRequiredNormalizedFields = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
     (field) => {
       const value = Object.prototype.hasOwnProperty.call(payload, field)
@@ -10767,24 +10771,24 @@ function preferRawAddressVariant(addressFilePath, options = {}) {
       : []),
   );
 
-  if (hasNormalizedCoverage) {
-    const normalizedOutput = finalizeAddressPayloadForOutput(
-      normalizedSurface,
-      "normalized",
-    );
-    if (normalizedOutput) {
-      if (resolvedRequestIdentifier) {
-        normalizedOutput.request_identifier = resolvedRequestIdentifier;
-      }
-      if (sourceHttp) {
-        normalizedOutput.source_http_request = deepClone(sourceHttp);
-      }
-      writeJSON(addressFilePath, normalizedOutput);
-      return;
-    }
-  }
-
   if (!trimmedRaw.length) {
+    if (hasNormalizedCoverage) {
+      const normalizedOutput = finalizeAddressPayloadForOutput(
+        normalizedSurface,
+        "normalized",
+      );
+      if (normalizedOutput) {
+        if (resolvedRequestIdentifier) {
+          normalizedOutput.request_identifier = resolvedRequestIdentifier;
+        }
+        if (sourceHttp) {
+          normalizedOutput.source_http_request = deepClone(sourceHttp);
+        }
+        writeJSON(addressFilePath, normalizedOutput);
+        return;
+      }
+    }
+
     if (
       Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
     ) {
@@ -18511,7 +18515,6 @@ async function main() {
   require("./utilityMapping.js");
 
   console.log("All mapping scripts completed successfully");
-  preferNormalizedAddressOutput(finalAddressPath);
   stripDisallowedRawAddressFields(finalAddressPath);
   hardenCountyAddressSurface(finalAddressPath);
   finalizeCountyAddressOneOfSurface(finalAddressPath);
@@ -18525,6 +18528,68 @@ async function main() {
       inferredStateCode ||
       fallbackStateCode,
   });
+  enforceCountyAddressCanonicalSurface(finalAddressPath);
+  ensureCountyAddressFieldCompleteness(finalAddressPath);
+  const postProcessRawOptions =
+    rawAddressVariantOptions ||
+    {
+      fieldSources: [unAddr, seed],
+      unnormalizedCandidates: [
+        unAddr && unAddr.full_address,
+        siteLocationLine,
+        combinedModelAddress,
+        addressLineCombined,
+      ],
+      fieldFallbacks: {
+        city_name: [
+          normalizedCity,
+          resolvedCity,
+        ],
+        state_code: [
+          resolvedState,
+          countyInferredStateCode,
+          "FL",
+        ],
+        postal_code: [
+          sanitizedPostalCode,
+          postalCode,
+        ],
+        plus_four_postal_code: [
+          sanitizedPlus4,
+          plus4,
+        ],
+        county_name: [
+          formattedCountyName,
+          countyName,
+          "Palm Beach",
+        ],
+        municipality_name: [
+          normalizedMunicipality
+            ? toTitleCase(normalizedMunicipality)
+            : null,
+          resolvedCity,
+        ],
+        latitude: [
+          initialLatitude,
+          htmlLatitude,
+          parcelCentroid && parcelCentroid.latitude,
+        ],
+        longitude: [
+          initialLongitude,
+          htmlLongitude,
+          parcelCentroid && parcelCentroid.longitude,
+        ],
+      },
+      requestIdentifierCandidates: [
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ],
+    };
+  preferRawAddressVariant(finalAddressPath, postProcessRawOptions);
   enforceCountyAddressCanonicalSurface(finalAddressPath);
   ensureCountyAddressFieldCompleteness(finalAddressPath);
 }
