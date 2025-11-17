@@ -439,24 +439,18 @@ function parseAddress(
   }
 
   const cleanedAddress = fullAddress ? fullAddress.replace(/\s+/g, " ").trim() : null;
-  const address = {
-    block: block || null,
-    county_name: countyNameFromSeed || null,
-    lot: lot || null,
-    municipality_name: municipality || null,
-    range: range || null,
-    section: section || null,
-    township: township || null,
-  };
   if (cleanedAddress) {
-    address.unnormalized_address = cleanedAddress;
+    return { unnormalized_address: cleanedAddress };
   }
-  Object.keys(address).forEach((key) => {
-    if (address[key] == null) {
-      delete address[key];
-    }
-  });
-  return address;
+  const structured = {};
+  if (countyNameFromSeed) structured.county_name = countyNameFromSeed;
+  if (municipality) structured.municipality_name = municipality;
+  if (section) structured.section = section;
+  if (township) structured.township = township;
+  if (range) structured.range = range;
+  if (block) structured.block = block;
+  if (lot) structured.lot = lot;
+  return structured;
 }
 
 function main() {
@@ -797,6 +791,8 @@ function main() {
           f.startsWith("relationship_sales_company") ||
           f.startsWith("relationship_sales_history_has_person") ||
           f.startsWith("relationship_sales_history_has_company") ||
+          f.startsWith("relationship_property_has_company") ||
+          f.startsWith("relationship_property_has_person") ||
           f.startsWith("person_") ||
           f.startsWith("company_") ||
           f.startsWith("relationship_person_has_address") ||
@@ -859,6 +855,30 @@ function main() {
           personFiles.push(`./${filename}`);
           personIdx++;
         }
+      });
+
+      companyFiles.forEach((companyFile, idx) => {
+        const rel = {
+          type: "property_has_company",
+          from: { "/": "./property.json" },
+          to: { "/": companyFile },
+        };
+        fs.writeFileSync(
+          path.join(dataDir, `relationship_property_has_company_${idx + 1}.json`),
+          JSON.stringify(rel, null, 2),
+        );
+      });
+
+      personFiles.forEach((personFile, idx) => {
+        const rel = {
+          type: "property_has_person",
+          from: { "/": "./property.json" },
+          to: { "/": personFile },
+        };
+        fs.writeFileSync(
+          path.join(dataDir, `relationship_property_has_person_${idx + 1}.json`),
+          JSON.stringify(rel, null, 2),
+        );
       });
 
       if (ownerMailingFile) {
@@ -937,14 +957,39 @@ function main() {
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {
-    fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
-      JSON.stringify(utilsEntry, null, 2),
+    const utilityPath = path.join(dataDir, "utility.json");
+    fs.writeFileSync(utilityPath, JSON.stringify(utilsEntry, null, 2));
+    const utilityRelPath = path.join(
+      dataDir,
+      "relationship_property_has_utility.json",
     );
+    try {
+      if (fs.existsSync(utilityRelPath)) fs.unlinkSync(utilityRelPath);
+    } catch (_) {}
+    const rel = {
+      type: "property_has_utility",
+      from: { "/": "./property.json" },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(utilityRelPath, JSON.stringify(rel, null, 2));
   }
 
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
+  try {
+    const existingLayoutRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => name.startsWith("relationship_property_has_layout_"));
+    for (const filename of existingLayoutRelFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+    const existingLayoutFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => /^layout_\d+\.json$/i.test(name));
+    for (const filename of existingLayoutFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+  } catch (_) {}
   const layoutEntry = layouts[ownerKey];
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
@@ -960,9 +1005,17 @@ function main() {
           lay.is_finished = lay.is_exterior === false;
         }
 
+        const filename = `layout_${layoutIdx}.json`;
+        const layoutPath = path.join(dataDir, filename);
+        fs.writeFileSync(layoutPath, JSON.stringify(lay, null, 2));
+        const rel = {
+          type: "property_has_layout",
+          from: { "/": "./property.json" },
+          to: { "/": `./${filename}` },
+        };
         fs.writeFileSync(
-          path.join(dataDir, `layout_${layoutIdx}.json`),
-          JSON.stringify(lay, null, 2),
+          path.join(dataDir, `relationship_property_has_layout_${layoutIdx}.json`),
+          JSON.stringify(rel, null, 2),
         );
         layoutIdx++;
       }
@@ -1148,6 +1201,18 @@ function main() {
         path.join(dataDir, `layout_${layoutIdx}.json`),
         JSON.stringify(layoutObj, null, 2),
       );
+      const rel = {
+        type: "property_has_layout",
+        from: { "/": "./property.json" },
+        to: { "/": `./layout_${layoutIdx}.json` },
+      };
+      fs.writeFileSync(
+        path.join(
+          dataDir,
+          `relationship_property_has_layout_${layoutIdx}.json`,
+        ),
+        JSON.stringify(rel, null, 2),
+      );
       layoutIdx++;
     }
   });
@@ -1315,14 +1380,34 @@ function main() {
   }
 
   // Always write structure.json with all required fields
-  fs.writeFileSync(
-    path.join(dataDir, "structure.json"),
-    JSON.stringify(structureObj, null, 2),
+  const structurePath = path.join(dataDir, "structure.json");
+  fs.writeFileSync(structurePath, JSON.stringify(structureObj, null, 2));
+  const structureRelPath = path.join(
+    dataDir,
+    "relationship_property_has_structure.json",
   );
+  try {
+    if (fs.existsSync(structureRelPath)) fs.unlinkSync(structureRelPath);
+  } catch (_) {}
+  const structureRel = {
+    type: "property_has_structure",
+    from: { "/": "./property.json" },
+    to: { "/": "./structure.json" },
+  };
+  fs.writeFileSync(structureRelPath, JSON.stringify(structureRel, null, 2));
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
   const taxRecords = [];
+  let taxRelationshipIndex = 1;
+  try {
+    const existingTaxRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => name.startsWith("relationship_property_has_tax_"));
+    for (const filename of existingTaxRelFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+  } catch (_) {}
 
   let rollType = (
     $("#RollType").first().text().trim() ||
@@ -1397,6 +1482,16 @@ function main() {
   }
 
   // Ad valorem breakdown (Tab3)
+  try {
+    const existingBreakdownFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => /^tax_breakdown_\d+\.json$/i.test(name));
+    for (const filename of existingBreakdownFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+    const totalBreakdownPath = path.join(dataDir, "tax_breakdown_total.json");
+    if (fs.existsSync(totalBreakdownPath)) fs.unlinkSync(totalBreakdownPath);
+  } catch (_) {}
   const adValoremRows = [];
   for (let idx = 1; idx <= 50; idx++) {
     const name = $(`#TaName${idx}`).text().trim();
@@ -1450,10 +1545,21 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
     };
     const filename = `tax_breakdown_${idx + 1}.json`;
+    const taxPath = path.join(dataDir, filename);
+    fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
+    const rel = {
+      type: "property_has_tax",
+      from: { "/": "./property.json" },
+      to: { "/": `./${filename}` },
+    };
     fs.writeFileSync(
-      path.join(dataDir, filename),
-      JSON.stringify(taxObj, null, 2),
+      path.join(
+        dataDir,
+        `relationship_property_has_tax_${taxRelationshipIndex}.json`,
+      ),
+      JSON.stringify(rel, null, 2),
     );
+    taxRelationshipIndex++;
   });
 
   const totalAdValoremText = $("#TblAdValoremAdditionalTotal #TotalAdvTaxes")
@@ -1495,10 +1601,22 @@ function main() {
       period_start_date: ty ? `${ty}-01-01` : null,
       period_end_date: ty ? `${ty}-12-31` : null,
     };
+    const filename = "tax_breakdown_total.json";
+    const taxPath = path.join(dataDir, filename);
+    fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
+    const rel = {
+      type: "property_has_tax",
+      from: { "/": "./property.json" },
+      to: { "/": `./${filename}` },
+    };
     fs.writeFileSync(
-      path.join(dataDir, "tax_breakdown_total.json"),
-      JSON.stringify(taxObj, null, 2),
+      path.join(
+        dataDir,
+        `relationship_property_has_tax_${taxRelationshipIndex}.json`,
+      ),
+      JSON.stringify(rel, null, 2),
     );
+    taxRelationshipIndex++;
   }
 
   // From History (Tab6) for multiple years
@@ -1622,10 +1740,21 @@ function main() {
     } catch (_) {}
     taxRecords.forEach((taxObj, idx) => {
       const filename = `tax_${idx + 1}.json`;
+      const taxPath = path.join(dataDir, filename);
+      fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
+      const rel = {
+        type: "property_has_tax",
+        from: { "/": "./property.json" },
+        to: { "/": `./${filename}` },
+      };
       fs.writeFileSync(
-        path.join(dataDir, filename),
-        JSON.stringify(taxObj, null, 2),
+        path.join(
+          dataDir,
+          `relationship_property_has_tax_${taxRelationshipIndex}.json`,
+        ),
+        JSON.stringify(rel, null, 2),
       );
+      taxRelationshipIndex++;
     });
   }
 }
