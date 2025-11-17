@@ -8523,6 +8523,77 @@ function rewriteAddressForCountySchema(addressFilePath) {
   writeJSON(addressFilePath, rawOutput);
 }
 
+function enforceRawAddressSurfaceCompleteness(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (!trimmedUnnormalized.length) {
+    return;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+
+  const rawSeed = {
+    ...payload,
+    unnormalized_address: trimmedUnnormalized,
+  };
+  const normalizedRaw =
+    ensureRawAddressSchemaDefaults(rawSeed) || rawSeed;
+  const surfaced =
+    ensureAddressOutputFieldPresence(normalizedRaw) || normalizedRaw;
+
+  if (!surfaced.postal_code) {
+    surfaced.plus_four_postal_code = null;
+  }
+
+  if (surfaced.state_code && !surfaced.country_code) {
+    surfaced.country_code = "US";
+  }
+
+  if ((surfaced.latitude == null) !== (surfaced.longitude == null)) {
+    surfaced.latitude = null;
+    surfaced.longitude = null;
+  }
+
+  if (requestIdentifier) {
+    surfaced.request_identifier = requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(surfaced, "request_identifier")
+  ) {
+    surfaced.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    surfaced.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(surfaced, "source_http_request")
+  ) {
+    surfaced.source_http_request = null;
+  }
+
+  writeJSON(addressFilePath, surfaced);
+}
+
 function enforceFinalCountyAddressShape(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -17990,6 +18061,7 @@ async function main() {
   ensureCountyAddressFieldCompleteness(path.join(dataDir, "address.json"));
   enforceAddressOneOfConsistency(path.join(dataDir, "address.json"));
   rewriteAddressForCountySchema(path.join(dataDir, "address.json"));
+  enforceRawAddressSurfaceCompleteness(path.join(dataDir, "address.json"));
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
