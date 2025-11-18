@@ -15376,6 +15376,175 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
     defaultCountryCode = "US",
   } = options || {};
 
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    normalizedSurface[field] = sanitizeAddressFieldValue(field, current[field]);
+  }
+
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
+      hasMeaningfulAddressValue(normalizedSurface[field]),
+    );
+
+  const mergedFallbacks = {};
+  if (fieldFallbacks && typeof fieldFallbacks === "object") {
+    for (const [field, values] of Object.entries(fieldFallbacks)) {
+      if (!mergedFallbacks[field]) mergedFallbacks[field] = [];
+      if (Array.isArray(values)) {
+        mergedFallbacks[field].push(...values);
+      } else if (values != null) {
+        mergedFallbacks[field].push(values);
+      }
+    }
+  }
+
+  const pushFallback = (field, value) => {
+    if (value === undefined || value === null) return;
+    if (!mergedFallbacks[field]) mergedFallbacks[field] = [];
+    mergedFallbacks[field].push(value);
+  };
+
+  pushFallback("county_name", defaultCountyName);
+  pushFallback("state_code", defaultStateCode);
+  pushFallback("country_code", defaultCountryCode);
+
+  const coordinateQueue = Array.isArray(coordinateCandidates)
+    ? coordinateCandidates.filter(
+        (candidate) =>
+          candidate &&
+          typeof candidate === "object" &&
+          (candidate.latitude != null || candidate.longitude != null),
+      )
+    : [];
+
+  const applyFallback = (target, field, additional = []) => {
+    if (hasMeaningfulAddressValue(target[field])) {
+      return;
+    }
+    const candidatesForField = [
+      ...(mergedFallbacks[field] || []),
+      ...additional,
+    ];
+    for (const candidate of candidatesForField) {
+      const normalizedCandidate = sanitizeAddressFieldValue(field, candidate);
+      if (hasMeaningfulAddressValue(normalizedCandidate)) {
+        target[field] = normalizedCandidate;
+        return;
+      }
+    }
+  };
+
+  const ensureCoordinates = (target) => {
+    if (
+      Number.isFinite(target.latitude) &&
+      Number.isFinite(target.longitude)
+    ) {
+      return;
+    }
+
+    for (const candidate of coordinateQueue) {
+      const lat = parseCoordinate(candidate.latitude);
+      const lon = parseCoordinate(candidate.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        target.latitude = lat;
+        target.longitude = lon;
+        return;
+      }
+    }
+
+    if (
+      (target.latitude == null && target.longitude != null) ||
+      (target.latitude != null && target.longitude == null)
+    ) {
+      target.latitude = null;
+      target.longitude = null;
+    }
+  };
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      current.request_identifier,
+      ...(Array.isArray(requestIdentifierCandidates)
+        ? requestIdentifierCandidates
+        : []),
+    ]),
+  );
+
+  const resolvedSource = resolveSourceHttpRequest(
+    current.source_http_request,
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
+      : []),
+  );
+
+  const finalizePostalAndCountry = (target) => {
+    if (!hasMeaningfulAddressValue(target.postal_code)) {
+      target.postal_code = null;
+      target.plus_four_postal_code = null;
+    } else if (!hasMeaningfulAddressValue(target.plus_four_postal_code)) {
+      target.plus_four_postal_code = null;
+    }
+
+    if (hasMeaningfulAddressValue(target.state_code)) {
+      if (!hasMeaningfulAddressValue(target.country_code)) {
+        target.country_code = defaultCountryCode || "US";
+      }
+    } else if (!hasMeaningfulAddressValue(target.country_code)) {
+      target.country_code = defaultCountryCode || null;
+    }
+
+    if (
+      hasMeaningfulAddressValue(target.unit_identifier) &&
+      target.postal_code &&
+      target.unit_identifier === target.postal_code
+    ) {
+      target.unit_identifier = null;
+    }
+  };
+
+  const hydrateRequestMetadata = (target) => {
+    if (resolvedRequestIdentifier) {
+      target.request_identifier = resolvedRequestIdentifier;
+    }
+    if (resolvedSource) {
+      target.source_http_request = deepClone(resolvedSource);
+    }
+  };
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOutput[field] = normalizedSurface[field];
+    }
+
+    applyFallback(normalizedOutput, "county_name");
+    applyFallback(normalizedOutput, "state_code");
+    applyFallback(normalizedOutput, "country_code");
+    applyFallback(normalizedOutput, "city_name");
+    applyFallback(normalizedOutput, "municipality_name");
+    applyFallback(normalizedOutput, "postal_code");
+    applyFallback(normalizedOutput, "plus_four_postal_code");
+    applyFallback(normalizedOutput, "street_number");
+    applyFallback(normalizedOutput, "street_name");
+    applyFallback(normalizedOutput, "street_pre_directional_text");
+    applyFallback(normalizedOutput, "street_post_directional_text");
+    applyFallback(normalizedOutput, "street_suffix_type");
+    applyFallback(normalizedOutput, "unit_identifier");
+    applyFallback(normalizedOutput, "route_number");
+    applyFallback(normalizedOutput, "township");
+    applyFallback(normalizedOutput, "range");
+    applyFallback(normalizedOutput, "section");
+    applyFallback(normalizedOutput, "block");
+    applyFallback(normalizedOutput, "lot");
+
+    ensureCoordinates(normalizedOutput);
+    finalizePostalAndCountry(normalizedOutput);
+    hydrateRequestMetadata(normalizedOutput);
+
+    writeJSON(addressFilePath, normalizedOutput);
+    return;
+  }
+
   const rawQueue = [];
   const enqueueRaw = (value) => {
     if (typeof value !== "string") return;
@@ -15419,137 +15588,40 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
     typeof resolvedUnnormalized === "string" ? resolvedUnnormalized.trim() : "";
 
   if (!trimmedUnnormalized.length) {
+    removeFileIfExists(addressFilePath);
     return;
   }
 
   const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    rawOutput[field] = sanitizeAddressFieldValue(field, current[field]);
+    rawOutput[field] = normalizedSurface[field];
   }
 
-  const mergedFallbacks = {};
-  if (fieldFallbacks && typeof fieldFallbacks === "object") {
-    for (const [field, values] of Object.entries(fieldFallbacks)) {
-      if (!mergedFallbacks[field]) mergedFallbacks[field] = [];
-      if (Array.isArray(values)) {
-        mergedFallbacks[field].push(...values);
-      } else if (values != null) {
-        mergedFallbacks[field].push(values);
-      }
-    }
-  }
-
-  const applyFallback = (field, additional = []) => {
-    if (hasMeaningfulAddressValue(rawOutput[field])) {
-      return;
-    }
-    const candidatesForField = [
-      ...(mergedFallbacks[field] || []),
-      ...additional,
-    ];
-    for (const candidate of candidatesForField) {
-      const normalizedCandidate = sanitizeAddressFieldValue(field, candidate);
-      if (hasMeaningfulAddressValue(normalizedCandidate)) {
-        rawOutput[field] = normalizedCandidate;
-        return;
-      }
-    }
-  };
-
-  applyFallback("county_name", [defaultCountyName]);
-  applyFallback("state_code", [defaultStateCode]);
-  applyFallback("country_code", [defaultCountryCode]);
-  applyFallback("city_name");
-  applyFallback("municipality_name");
-  applyFallback("postal_code");
-  applyFallback("plus_four_postal_code");
-  applyFallback("street_number");
-  applyFallback("street_name");
-  applyFallback("street_pre_directional_text");
-  applyFallback("street_post_directional_text");
-  applyFallback("street_suffix_type");
-  applyFallback("unit_identifier");
-  applyFallback("route_number");
-  applyFallback("township");
-  applyFallback("range");
-  applyFallback("section");
-  applyFallback("block");
-  applyFallback("lot");
-
-  const coordinateQueue = Array.isArray(coordinateCandidates)
-    ? coordinateCandidates.slice()
-    : [];
-  const ensureCoordinates = () => {
-    if (
-      Number.isFinite(rawOutput.latitude) &&
-      Number.isFinite(rawOutput.longitude)
-    ) {
-      return;
-    }
-    for (const candidate of coordinateQueue) {
-      if (!candidate || typeof candidate !== "object") continue;
-      const lat = parseCoordinate(candidate.latitude);
-      const lon = parseCoordinate(candidate.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        rawOutput.latitude = lat;
-        rawOutput.longitude = lon;
-        return;
-      }
-    }
-  };
-
-  ensureCoordinates();
-
-  const latValue = parseCoordinate(rawOutput.latitude);
-  const lonValue = parseCoordinate(rawOutput.longitude);
-  if (Number.isFinite(latValue) && Number.isFinite(lonValue)) {
-    rawOutput.latitude = latValue;
-    rawOutput.longitude = lonValue;
-  } else {
-    rawOutput.latitude = null;
-    rawOutput.longitude = null;
-  }
-
-  if (!hasMeaningfulAddressValue(rawOutput.county_name) && defaultCountyName) {
-    rawOutput.county_name = defaultCountyName;
-  }
-  if (!hasMeaningfulAddressValue(rawOutput.state_code) && defaultStateCode) {
-    rawOutput.state_code = defaultStateCode;
-  }
-  if (!hasMeaningfulAddressValue(rawOutput.country_code)) {
-    rawOutput.country_code = defaultCountryCode || null;
-  }
-
-  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
-    rawOutput.postal_code = null;
-    rawOutput.plus_four_postal_code = null;
-  } else if (!hasMeaningfulAddressValue(rawOutput.plus_four_postal_code)) {
-    rawOutput.plus_four_postal_code = null;
-  }
+  applyFallback(rawOutput, "county_name");
+  applyFallback(rawOutput, "state_code");
+  applyFallback(rawOutput, "country_code");
+  applyFallback(rawOutput, "city_name");
+  applyFallback(rawOutput, "municipality_name");
+  applyFallback(rawOutput, "postal_code");
+  applyFallback(rawOutput, "plus_four_postal_code");
+  applyFallback(rawOutput, "street_number");
+  applyFallback(rawOutput, "street_name");
+  applyFallback(rawOutput, "street_pre_directional_text");
+  applyFallback(rawOutput, "street_post_directional_text");
+  applyFallback(rawOutput, "street_suffix_type");
+  applyFallback(rawOutput, "unit_identifier");
+  applyFallback(rawOutput, "route_number");
+  applyFallback(rawOutput, "township");
+  applyFallback(rawOutput, "range");
+  applyFallback(rawOutput, "section");
+  applyFallback(rawOutput, "block");
+  applyFallback(rawOutput, "lot");
 
   rawOutput.unnormalized_address = trimmedUnnormalized;
 
-  const resolvedRequestIdentifier = safeNullIfEmpty(
-    resolveFirstNonEmptyString([
-      current.request_identifier,
-      ...(Array.isArray(requestIdentifierCandidates)
-        ? requestIdentifierCandidates
-        : []),
-    ]),
-  );
-  if (resolvedRequestIdentifier) {
-    rawOutput.request_identifier = resolvedRequestIdentifier;
-  }
-
-  const resolvedSource = resolveSourceHttpRequest(
-    current.source_http_request,
-    ...(Array.isArray(sourceHttpRequestCandidates)
-      ? sourceHttpRequestCandidates
-      : []),
-  );
-  if (resolvedSource) {
-    rawOutput.source_http_request = deepClone(resolvedSource);
-  }
+  ensureCoordinates(rawOutput);
+  finalizePostalAndCountry(rawOutput);
+  hydrateRequestMetadata(rawOutput);
 
   writeJSON(addressFilePath, rawOutput);
 }
