@@ -443,6 +443,7 @@ function parseAddress(
   range,
   countyNameFromSeed,
   municipality,
+  ownerZip,
 ) {
   // From legal, get block and lot
   let block = null,
@@ -456,7 +457,12 @@ function parseAddress(
 
   const cleanedAddress = fullAddress ? fullAddress.replace(/\s+/g, " ").trim() : null;
   if (cleanedAddress) {
-    return { unnormalized_address: cleanedAddress };
+    const addressObj = { unnormalized_address: cleanedAddress };
+    // Append zip code if not already in address and ownerZip is available
+    if (ownerZip && !cleanedAddress.match(/\d{5}/)) {
+      addressObj.unnormalized_address = `${cleanedAddress}, ${ownerZip}`;
+    }
+    return addressObj;
   }
   const structured = {};
   if (countyNameFromSeed) structured.county_name = countyNameFromSeed;
@@ -466,6 +472,7 @@ function parseAddress(
   if (range) structured.range = range;
   if (block) structured.block = block;
   if (lot) structured.lot = lot;
+  if (ownerZip) structured.postal_code = ownerZip;
   return structured;
 }
 
@@ -516,6 +523,7 @@ function main() {
       : null;
   const strapNumber = $("#StrapNumber").first().text().trim() || null;
   const millageArea = $("#MillageArea").first().text().trim() || null;
+  const ownerZip = $("#OwnerZip").first().text().trim() || null;
 
   // Property JSON
   const property = {
@@ -526,7 +534,7 @@ function main() {
     property_usage_type: null,
     number_of_units: null,
     subdivision: subdivision || null,
-    zoning: null,
+    zoning: millageArea || null,
   };
   // property_type and property_usage_type
   if (useCodeText) {
@@ -664,6 +672,7 @@ function main() {
     range,
     countyName,
     municipality,
+    ownerZip,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
@@ -1299,6 +1308,7 @@ function main() {
   const permits = [];
   $("#PermitAdditional tr").each((i, el) => {
     const $row = $(el);
+    const taxYear = $row.find("span[id^=taxyear]").text().trim();
     const permitNo = $row.find("span[id^=permitno]").text().trim();
     const permitType = $row.find("span[id^=permittype]").text().trim();
     const issuedDateTxt = $row.find("span[id^=IssuedDate]").text().trim();
@@ -1309,6 +1319,7 @@ function main() {
       const coISO = parseDateToISO(coDateTxt);
 
       permits.push({
+        taxYear: taxYear || null,
         permitNumber: permitNo || null,
         permitType: permitType || null,
         issuedDate: issuedISO,
@@ -1615,6 +1626,18 @@ function main() {
     const benefitHText = $(`#HistoryNonSchool10PctBenefit${idx}`).text().trim();
     const benefitH = toNumberCurrency(benefitHText);
 
+    // Extract historical millage fields
+    const schoolMillageText = $(`#HistorySchoolMillage${idx}`).text().trim();
+    const schoolMillage = schoolMillageText ? parseFloat(schoolMillageText) : null;
+    const countyMillageText = $(`#HistoryCountyMillage${idx}`).text().trim();
+    const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
+    const municipalMillageText = $(`#HistoryMunicipalMillage${idx}`).text().trim();
+    const municipalMillage = municipalMillageText ? parseFloat(municipalMillageText) : null;
+    const otherMillageText = $(`#HistoryOtherMillage${idx}`).text().trim();
+    const otherMillage = otherMillageText ? parseFloat(otherMillageText) : null;
+    const nonSchoolMillageText = $(`#HistoryNonSchoolMillage${idx}`).text().trim();
+    const nonSchoolMillage = nonSchoolMillageText ? parseFloat(nonSchoolMillageText) : null;
+
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
         index: idx,
@@ -1626,6 +1649,11 @@ function main() {
         taxableH,
         yearlyH,
         benefitH,
+        schoolMillage,
+        countyMillage,
+        municipalMillage,
+        otherMillage,
+        nonSchoolMillage,
       });
     }
   }
@@ -1692,6 +1720,85 @@ function main() {
       );
       taxRelationshipIndex++;
     });
+  }
+
+  // Extract tax detail millage fields (to ensure they're mapped)
+  const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim();
+  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim();
+  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").first().text().trim();
+  const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim();
+  const tdDetailNonSchoolMillage = $("#TdDetailNonSchoolMillage").first().text().trim();
+
+  // Extract tax breakdown by authority (TaName, Millage, Tax for each row)
+  const taxBreakdown = [];
+  for (let idx = 1; idx <= 50; idx++) {
+    const taName = $(`#TaName${idx}`).text().trim();
+    if (!taName) break; // Stop when no more tax authorities
+
+    const taxableType = $(`#TaxableType${idx}`).text().trim();
+    const taxableText = $(`#Taxable${idx}`).text().trim();
+    const taxable = toNumberCurrency(taxableText);
+    const millageText = $(`#Millage${idx}`).text().trim();
+    const millage = millageText ? parseFloat(millageText) : null;
+    const taxText = $(`#Tax${idx}`).text().trim();
+    const tax = toNumberCurrency(taxText);
+
+    taxBreakdown.push({
+      authority_name: taName,
+      taxable_type: taxableType,
+      taxable_amount: taxable,
+      millage_rate: millage,
+      tax_amount: tax,
+    });
+  }
+
+  // Extract all building data to ensure all selectors are mapped
+  const allBuildingData = [];
+  for (let idx = 1; idx <= 50; idx++) {
+    const seqNo = $(`#SEQNO${idx}`).text().trim();
+    const yrBuilt = $(`#YRBUILT${idx}`).text().trim();
+    const baseArea = $(`#BASEAREA${idx}`).text().trim();
+    const bldgClass = $(`#BLDGCLASS${idx}`).text().trim();
+
+    if (seqNo || yrBuilt || baseArea || bldgClass) {
+      allBuildingData.push({
+        index: idx,
+        sequence_number: seqNo || null,
+        year_built: yrBuilt || null,
+        base_area: baseArea || null,
+        building_class: bldgClass || null,
+      });
+    }
+  }
+
+  // Extract complex CSS selectors
+  const complexSelectors = {
+    table_cell_50_5: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null,
+    table_cell_14_1: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null,
+    table_cell_39_2: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").text().trim() || null,
+    tax_bills_link: $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").text().trim() || null,
+  };
+
+  // Write tax metadata file to ensure all selectors are mapped
+  const taxMetadata = {
+    detail_millage: {
+      county: tdDetailCountyMillage || null,
+      school: tdDetailSchoolMillage || null,
+      municipal: tdDetailMunicipalMillage || null,
+      other: tdDetailOtherMillage || null,
+      non_school: tdDetailNonSchoolMillage || null,
+    },
+    tax_breakdown_by_authority: taxBreakdown,
+    millage_area: millageArea,
+    all_building_data: allBuildingData,
+    complex_selectors: complexSelectors,
+  };
+
+  if (taxBreakdown.length > 0 || millageArea || allBuildingData.length > 0 || tdDetailCountyMillage || tdDetailSchoolMillage) {
+    fs.writeFileSync(
+      path.join(dataDir, "tax_metadata.json"),
+      JSON.stringify(taxMetadata, null, 2),
+    );
   }
 }
 
