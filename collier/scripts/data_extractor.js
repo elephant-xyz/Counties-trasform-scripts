@@ -977,7 +977,6 @@ function main() {
 
           companyFiles.forEach((companyFile) => {
             const rel = {
-              type: "sales_history_has_company",
               from: { "/": salePath },
               to: { "/": companyFile },
             };
@@ -1532,11 +1531,6 @@ function main() {
       property_taxable_value_amount: row.taxableVal != null ? row.taxableVal : null,
       yearly_tax_amount: row.taxAmount != null ? row.taxAmount : null,
       monthly_tax_amount: monthly,
-      property_assessed_value_amount: null,
-      property_market_value_amount: null,
-      property_building_amount: null,
-      property_land_amount: null,
-      property_exemption_amount: null,
       period_start_date: ty ? `${ty}-01-01` : null,
       period_end_date: ty ? `${ty}-12-31` : null,
     });
@@ -1568,12 +1562,6 @@ function main() {
       tax_year: ty,
       yearly_tax_amount: totalAdValorem,
       monthly_tax_amount: round2(totalAdValorem / 12),
-      property_taxable_value_amount: null,
-      property_assessed_value_amount: null,
-      property_market_value_amount: null,
-      property_building_amount: null,
-      property_land_amount: null,
-      property_exemption_amount: null,
       period_start_date: ty ? `${ty}-01-01` : null,
       period_end_date: ty ? `${ty}-12-31` : null,
     });
