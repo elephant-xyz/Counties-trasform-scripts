@@ -1447,6 +1447,7 @@ function main() {
       permit_required: true,
       private_provider_inspections: null,
       private_provider_plan_review: null,
+      tax_year: permit.taxYear,
     };
 
     const filename = `property_improvement_${idx + 1}.json`;
@@ -1871,8 +1872,6 @@ function main() {
 
   for (let idx = 1; idx <= 50; idx++) {
     const taName = $(`#TaName${idx}`).text().trim();
-    if (!taName) break; // Stop when no more tax authorities
-
     const taxableType = $(`#TaxableType${idx}`).text().trim();
     const taxableText = $(`#Taxable${idx}`).text().trim();
     const taxable = toNumberCurrency(taxableText);
@@ -1882,10 +1881,15 @@ function main() {
     const tax = toNumberCurrency(taxText);
     const taxYearText = $(`#taxyear${idx}`).text().trim();
     const taxYearMatch = taxYearText.match(/(\d{4})/);
-    const taxYear = taxYearMatch ? parseInt(taxYearMatch[1], 10) : ty;
+    const taxYear = taxYearMatch ? parseInt(taxYearMatch[1], 10) : null;
+
+    // Only write if we have at least one meaningful value (not just taName)
+    if (!taName && !taxable && millage == null && !tax && !taxYear) {
+      break; // Stop when no more data
+    }
 
     const taxLevyObj = {
-      authority_name: taName,
+      authority_name: taName || null,
       taxable_type: taxableType || null,
       taxable_amount: taxable != null ? taxable : 0,
       millage_rate: millage,
