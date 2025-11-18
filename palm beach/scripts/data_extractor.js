@@ -14855,6 +14855,359 @@ function forceRawAddressVariantForFinalOutput(addressFilePath, options = {}) {
   writeJSON(addressFilePath, rawSurface);
 }
 
+function finalizeAddressRecordForSchema(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let existing;
+  try {
+    existing = readJSON(addressFilePath);
+  } catch {
+    existing = null;
+  }
+
+  const working =
+    existing && typeof existing === "object" ? { ...existing } : {};
+
+  const {
+    unnormalizedCandidates = [],
+    fieldFallbacks = {},
+    coordinateCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    parcelId = null,
+    seed = null,
+    sourceCandidates = [],
+  } = options || {};
+
+  const combinedUnnormalized = flattenCandidateValues(
+    working.unnormalized_address,
+    unnormalizedCandidates,
+    ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+      : [],
+  );
+  const resolvedUnnormalized = resolveFirstNonEmptyString(combinedUnnormalized);
+  if (resolvedUnnormalized) {
+    working.unnormalized_address = resolvedUnnormalized.trim();
+  } else if (
+    typeof working.unnormalized_address === "string" &&
+    !working.unnormalized_address.trim().length
+  ) {
+    delete working.unnormalized_address;
+  }
+
+  const fallbackByField = {};
+  if (fieldFallbacks && typeof fieldFallbacks === "object") {
+    for (const [field, value] of Object.entries(fieldFallbacks)) {
+      fallbackByField[field] = flattenCandidateValues(value);
+    }
+  }
+
+  const pushFallbackValue = (field, value) => {
+    if (value === undefined || value === null) return;
+    if (!fallbackByField[field]) {
+      fallbackByField[field] = [];
+    }
+    fallbackByField[field].push(value);
+  };
+
+  pushFallbackValue("county_name", defaultCountyName);
+  pushFallbackValue("state_code", defaultStateCode);
+  pushFallbackValue("country_code", defaultCountryCode || "US");
+
+  if (parcelId) {
+    const grid = parseGridFromPcn(parcelId);
+    if (grid && typeof grid === "object") {
+      if (grid.township) pushFallbackValue("township", grid.township);
+      if (grid.range) pushFallbackValue("range", grid.range);
+      if (grid.section) pushFallbackValue("section", grid.section);
+      if (grid.block) pushFallbackValue("block", grid.block);
+      if (grid.lot) pushFallbackValue("lot", grid.lot);
+    }
+  }
+
+  const latitudeCandidates = collectCoordinateCandidates(
+    "latitude",
+    working.latitude,
+    existing && existing.latitude,
+    fallbackByField.latitude,
+    coordinateCandidates,
+    ADDRESS_FALLBACK_CONTEXT &&
+      ADDRESS_FALLBACK_CONTEXT.coordinateCandidates
+      ? ADDRESS_FALLBACK_CONTEXT.coordinateCandidates
+      : [],
+  );
+
+  const longitudeCandidates = collectCoordinateCandidates(
+    "longitude",
+    working.longitude,
+    existing && existing.longitude,
+    fallbackByField.longitude,
+    coordinateCandidates,
+    ADDRESS_FALLBACK_CONTEXT &&
+      ADDRESS_FALLBACK_CONTEXT.coordinateCandidates
+      ? ADDRESS_FALLBACK_CONTEXT.coordinateCandidates
+      : [],
+  );
+
+  const resolvedLatitude = resolveFirstCoordinate(latitudeCandidates);
+  const resolvedLongitude = resolveFirstCoordinate(longitudeCandidates);
+
+  for (const [field, candidates] of Object.entries(fallbackByField)) {
+    if (!Array.isArray(candidates) || !candidates.length) continue;
+    if (hasMeaningfulAddressValue(working[field])) continue;
+    const resolved = resolveFieldFromCandidates(field, candidates);
+    if (resolved === undefined || resolved === null) continue;
+    working[field] = resolved;
+  }
+
+  backfillNormalizedAddressFields(working, {
+    unnormalized: working.unnormalized_address,
+    fallbackCity: resolveFieldFromCandidates(
+      "city_name",
+      fallbackByField.city_name || [],
+    ),
+    fallbackState: resolveFieldFromCandidates(
+      "state_code",
+      fallbackByField.state_code || [],
+    ),
+    fallbackPostal: resolveFieldFromCandidates(
+      "postal_code",
+      fallbackByField.postal_code || [],
+    ),
+    fallbackPlus4: resolveFieldFromCandidates(
+      "plus_four_postal_code",
+      fallbackByField.plus_four_postal_code || [],
+    ),
+    fallbackCounty: resolveFieldFromCandidates(
+      "county_name",
+      fallbackByField.county_name || [],
+    ),
+    fallbackCountry: defaultCountryCode || "US",
+    fallbackMunicipality: resolveFieldFromCandidates(
+      "municipality_name",
+      fallbackByField.municipality_name || [],
+    ),
+    fallbackUnit: resolveFieldFromCandidates(
+      "unit_identifier",
+      fallbackByField.unit_identifier || [],
+    ),
+    fallbackRoute: resolveFieldFromCandidates(
+      "route_number",
+      fallbackByField.route_number || [],
+    ),
+    fallbackLatitude: resolvedLatitude,
+    fallbackLongitude: resolvedLongitude,
+    fallbackTownship: resolveFieldFromCandidates(
+      "township",
+      fallbackByField.township || [],
+    ),
+    fallbackRange: resolveFieldFromCandidates(
+      "range",
+      fallbackByField.range || [],
+    ),
+    fallbackSection: resolveFieldFromCandidates(
+      "section",
+      fallbackByField.section || [],
+    ),
+    fallbackBlock: resolveFieldFromCandidates(
+      "block",
+      fallbackByField.block || [],
+    ),
+    fallbackLot: resolveFieldFromCandidates(
+      "lot",
+      fallbackByField.lot || [],
+    ),
+    fallbackStreetNumber: resolveFieldFromCandidates(
+      "street_number",
+      fallbackByField.street_number || [],
+    ),
+    fallbackStreetName: resolveFieldFromCandidates(
+      "street_name",
+      fallbackByField.street_name || [],
+    ),
+    fallbackStreetPreDirectional: resolveFieldFromCandidates(
+      "street_pre_directional_text",
+      fallbackByField.street_pre_directional_text || [],
+    ),
+    fallbackStreetPostDirectional: resolveFieldFromCandidates(
+      "street_post_directional_text",
+      fallbackByField.street_post_directional_text || [],
+    ),
+    fallbackStreetSuffix: resolveFieldFromCandidates(
+      "street_suffix_type",
+      fallbackByField.street_suffix_type || [],
+    ),
+  });
+
+  const coordinateOverrideLatitude = resolveFirstCoordinate([
+    resolvedLatitude,
+    working.latitude,
+  ]);
+  const coordinateOverrideLongitude = resolveFirstCoordinate([
+    resolvedLongitude,
+    working.longitude,
+  ]);
+
+  if (Number.isFinite(coordinateOverrideLatitude)) {
+    working.latitude = coordinateOverrideLatitude;
+  }
+  if (Number.isFinite(coordinateOverrideLongitude)) {
+    working.longitude = coordinateOverrideLongitude;
+  }
+
+  const requestIdentifierQueue = flattenCandidateValues(
+    working.request_identifier,
+    requestIdentifierCandidates,
+    seed && seed.request_identifier,
+    seed && seed.requestIdentifier,
+    ADDRESS_FALLBACK_CONTEXT &&
+      ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+      ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+      : [],
+  );
+  const resolvedRequestIdentifier = resolveFirstNonEmptyString(
+    requestIdentifierQueue,
+  );
+  if (resolvedRequestIdentifier) {
+    working.request_identifier = resolvedRequestIdentifier.trim();
+  } else if (
+    Object.prototype.hasOwnProperty.call(working, "request_identifier")
+  ) {
+    delete working.request_identifier;
+  }
+
+  const sourceQueue = flattenCandidateValues(
+    existing && existing.source_http_request,
+    working.source_http_request,
+    sourceHttpRequestCandidates,
+    sourceCandidates,
+    seed && seed.source_http_request,
+    ADDRESS_FALLBACK_CONTEXT &&
+      ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+      ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+      : [],
+  );
+  const candidateSources = [];
+  const pushSourceCandidate = (value) => {
+    if (value && typeof value === "object") {
+      candidateSources.push(value);
+    }
+  };
+  for (const candidate of sourceQueue) {
+    pushSourceCandidate(candidate);
+  }
+
+  const resolvedSource = resolveSourceHttpRequest(...candidateSources);
+  if (resolvedSource) {
+    working.source_http_request = resolvedSource;
+  } else if (
+    Object.prototype.hasOwnProperty.call(working, "source_http_request")
+  ) {
+    delete working.source_http_request;
+  }
+
+  const surfaced =
+    ensureAddressOutputFieldPresence({ ...working }) || { ...working };
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface(surfaced) || {};
+  const hasNormalizedCoverage = hasCompleteNormalizedAddress({
+    ...normalizedSurface,
+  });
+
+  if (hasNormalizedCoverage) {
+    const normalizedPayload = { ...normalizedSurface };
+    delete normalizedPayload.unnormalized_address;
+    if (surfaced.request_identifier) {
+      normalizedPayload.request_identifier = surfaced.request_identifier;
+    }
+    if (surfaced.source_http_request) {
+      normalizedPayload.source_http_request = deepClone(
+        surfaced.source_http_request,
+      );
+    }
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(normalizedPayload, field)) {
+        normalizedPayload[field] = null;
+      }
+    }
+    if (!normalizedPayload.postal_code) {
+      normalizedPayload.plus_four_postal_code = null;
+    }
+    if (
+      normalizedPayload.state_code &&
+      !normalizedPayload.country_code
+    ) {
+      normalizedPayload.country_code = defaultCountryCode || "US";
+    }
+    writeJSON(addressFilePath, normalizedPayload);
+    return;
+  }
+
+  const trimmedRaw =
+    typeof surfaced.unnormalized_address === "string"
+      ? surfaced.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    writeJSON(addressFilePath, surfaced);
+    return;
+  }
+
+  const rawCandidate =
+    ensureRawAddressSchemaDefaults({
+      ...surfaced,
+      unnormalized_address: trimmedRaw,
+    }) ||
+    composeMinimalRawAddress({
+      ...surfaced,
+      unnormalized_address: trimmedRaw,
+    }) ||
+    {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...surfaced,
+      unnormalized_address: trimmedRaw,
+    };
+
+  const rawSurface =
+    ensureAddressOutputFieldPresence(rawCandidate) || rawCandidate;
+
+  rawSurface.unnormalized_address = trimmedRaw;
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(rawSurface, field)) {
+      rawSurface[field] = null;
+    }
+  }
+  if (!rawSurface.postal_code) {
+    rawSurface.plus_four_postal_code = null;
+  }
+  if (rawSurface.state_code && !rawSurface.country_code) {
+    rawSurface.country_code = defaultCountryCode || "US";
+  }
+
+  if (surfaced.request_identifier) {
+    rawSurface.request_identifier = surfaced.request_identifier;
+  } else {
+    delete rawSurface.request_identifier;
+  }
+
+  if (surfaced.source_http_request) {
+    rawSurface.source_http_request = deepClone(
+      surfaced.source_http_request,
+    );
+  } else {
+    delete rawSurface.source_http_request;
+  }
+
+  writeJSON(addressFilePath, rawSurface);
+}
+
 function ensureRawAddressOutputSurface(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -17162,6 +17515,49 @@ function resolveFieldFromCandidates(field, candidates) {
     return normalized;
   }
   return null;
+}
+
+function flattenCandidateValues(...sources) {
+  const results = [];
+  const visit = (value) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        visit(entry);
+      }
+      return;
+    }
+    results.push(value);
+  };
+  for (const source of sources) {
+    visit(source);
+  }
+  return results;
+}
+
+function collectCoordinateCandidates(axis, ...sources) {
+  if (!axis) return [];
+  const results = [];
+  const visit = (value) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        visit(entry);
+      }
+      return;
+    }
+    if (typeof value === "object" && value) {
+      if (Object.prototype.hasOwnProperty.call(value, axis)) {
+        visit(value[axis]);
+      }
+      return;
+    }
+    results.push(value);
+  };
+  for (const source of sources) {
+    visit(source);
+  }
+  return results;
 }
 
 function prepareRawAddressForOutput(candidate, fallbackByField) {
@@ -23278,6 +23674,44 @@ async function main() {
       unAddr && unAddr.unnormalized_address,
       unAddr && unAddr.full_address,
     ],
+  });
+  ensureRawAddressFieldSurface(finalAddressPath);
+  finalizeAddressRecordForSchema(finalAddressPath, {
+    unnormalizedCandidates: [
+      ...(Array.isArray(finalUnnormalizedCandidates)
+        ? finalUnnormalizedCandidates
+        : []),
+      ...(Array.isArray(postProcessRawOptions.unnormalizedCandidates)
+        ? postProcessRawOptions.unnormalizedCandidates
+        : []),
+      unnormalizedAddressCandidate,
+      fullAddr,
+      fullAddrInput,
+      siteLocationLine,
+      combinedModelAddress,
+      addressLineCombined,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ],
+    fieldFallbacks: postProcessRawOptions.fieldFallbacks,
+    coordinateCandidates: postProcessRawOptions.coordinateCandidates,
+    requestIdentifierCandidates:
+      postProcessRawOptions.requestIdentifierCandidates,
+    sourceHttpRequestCandidates:
+      postProcessRawOptions.sourceHttpRequestCandidates,
+    defaultCountyName:
+      formattedCountyName ||
+      countyName ||
+      fallbackCountyName ||
+      "Palm Beach",
+    defaultStateCode:
+      resolvedStateUpper ||
+      inferredStateCode ||
+      fallbackStateCode ||
+      "FL",
+    defaultCountryCode: "US",
+    parcelId,
+    seed,
   });
   ensureRawAddressFieldSurface(finalAddressPath);
   removeFileIfExists(path.join(dataDir, "address_has_fact_sheet.json"));
