@@ -10,7 +10,7 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Data";
 
 function textTrim(s) {
@@ -72,35 +72,11 @@ function collectBuildings($) {
   return buildings;
 }
 
-function inferHVAC(buildings) {
-  let cooling_system_type = null;
-  let heating_system_type = null;
-
-  buildings.forEach((b) => {
-    const ac = (b["Air Conditioning"] || "").toUpperCase();
-    const heat = (b["Heat"] || "").toUpperCase();
-    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
-    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
-      heating_system_type = "Central";
-  });
-
-  if (cooling_system_type === "CentralAir") {
-    hvac_system_configuration = "SplitSystem";
-    hvac_equipment_component = "CondenserAndAirHandler";
-    hvac_condensing_unit_present = "Yes";
-  }
-
+function createUtilityBase(building_number = null) {
   return {
-    cooling_system_type,
-    heating_system_type
-  };
-}
-
-function buildUtilityRecord($, buildings) {
-  const hvac = inferHVAC(buildings);
-  const rec = {
-    cooling_system_type: hvac.cooling_system_type,
-    heating_system_type: hvac.heating_system_type,
+    building_number,
+    cooling_system_type: null,
+    heating_system_type: null,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -140,23 +116,88 @@ function buildUtilityRecord($, buildings) {
     water_heater_model: null,
     well_installation_date: null,
   };
+}
 
-  return rec;
+function mapCoolingType(acDesc) {
+  const ac = (acDesc || "").toUpperCase();
+  if (!ac) return null;
+  if (ac.includes("CENTRAL") || ac.includes("DUCTED")) return "CentralAir";
+  if (ac.includes("DUCTLESS") || ac.includes("MINI SPLIT")) return "Ductless";
+  if (ac.includes("WALL") || ac.includes("WINDOW")) return "WindowAirConditioner";
+  if (ac.includes("GEOTHERM")) return "GeothermalCooling";
+  if (ac.includes("FAN")) return "WholeHouseFan";
+  return null;
+}
+
+function mapHeatingType(heatDesc) {
+  const heat = (heatDesc || "").toUpperCase();
+  if (!heat) return null;
+  if (heat.includes("HEAT PUMP")) return "HeatPump";
+  if (heat.includes("CENTRAL")) return "Central";
+  if (heat.includes("DUCTLESS") || heat.includes("MINI SPLIT")) return "Ductless";
+  if (heat.includes("ELECT")) return "Electric";
+  if (heat.includes("GAS")) return "Gas";
+  if (heat.includes("RADIANT")) return "Radiant";
+  if (heat.includes("BASEBOARD")) return "Baseboard";
+  return null;
+}
+
+function buildUtilitiesForBuildings(buildings) {
+  return buildings.map((building, idx) => {
+    const rec = createUtilityBase(idx + 1);
+    rec.cooling_system_type = mapCoolingType(building["Air Conditioning"]);
+    rec.heating_system_type = mapHeatingType(building["Heat"]);
+    if (rec.cooling_system_type === "CentralAir") {
+      rec.hvac_system_configuration = "SplitSystem";
+      rec.hvac_equipment_component = "CondenserAndAirHandler";
+      rec.hvac_condensing_unit_present = "Yes";
+    } else if (rec.cooling_system_type === "Ductless") {
+      rec.hvac_system_configuration = "MiniSplit";
+    }
+    return rec;
+  });
+}
+
+function aggregateUtilities(utilities) {
+  const base = createUtilityBase(null);
+  const booleanDefaults = {
+    solar_panel_present: false,
+    solar_inverter_visible: false,
+  };
+  const fields = Object.keys(base).filter((key) => key !== "building_number");
+  fields.forEach((field) => {
+    base[field] = null;
+  });
+  utilities.forEach((entry) => {
+    fields.forEach((field) => {
+      if (base[field] == null && entry[field] != null) {
+        base[field] = entry[field];
+      }
+    });
+  });
+  Object.entries(booleanDefaults).forEach(([field, defaultVal]) => {
+    if (base[field] == null) {
+      base[field] = defaultVal;
+    }
+  });
+  return base;
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  // if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const utilitiesRecord = buildUtilityRecord($, buildings);
+  const utilities = buildUtilitiesForBuildings(buildings);
+  const aggregate = aggregateUtilities(utilities);
+  aggregate.utilities = utilities;
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = utilitiesRecord;
+  outObj[`property_${parcelId}`] = aggregate;
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
