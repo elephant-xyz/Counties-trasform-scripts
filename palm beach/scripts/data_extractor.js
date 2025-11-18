@@ -3050,7 +3050,7 @@ function pruneRawAddressPayloadForOutput(payload, options = {}) {
     return null;
   }
 
-  const { fillMissing = false } = options || {};
+  const { fillMissing = true } = options || {};
   const surface = fillMissing ? { ...RAW_ADDRESS_SCHEMA_TEMPLATE } : {};
 
   const result = {
@@ -15960,7 +15960,7 @@ function pruneRawAddressForSchema(address, options = {}) {
   const preserveNulls =
     options && Object.prototype.hasOwnProperty.call(options, "preserveNulls")
       ? Boolean(options.preserveNulls)
-      : false;
+      : true;
 
   const pruned = { unnormalized_address: unnormalized };
   for (const field of allowedFields) {
