@@ -1914,31 +1914,10 @@ function main() {
     taxLevyIdx++;
   }
 
-  // Extract complex CSS selectors and map them
-  const complexSelectorData = {
-    table_cell_50_5: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null,
-    table_cell_14_1: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null,
-    table_cell_39_2: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").text().trim() || null,
-    tax_bills_link: $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").text().trim() || null,
-  };
-
-  // Write complex selector data to property metadata to ensure selectors are mapped
-  if (complexSelectorData.table_cell_50_5 || complexSelectorData.table_cell_14_1 || complexSelectorData.table_cell_39_2 || complexSelectorData.tax_bills_link) {
-    const propMetadata = {
-      additional_data: complexSelectorData.table_cell_14_1 || null,
-      notes: complexSelectorData.table_cell_39_2 || null,
-      external_links: complexSelectorData.tax_bills_link || null,
-      extra_info: complexSelectorData.table_cell_50_5 || null,
-    };
-
-    // Add this metadata to the property.json file
-    const propertyPath = path.join(dataDir, "property.json");
-    if (fs.existsSync(propertyPath)) {
-      const existingProperty = JSON.parse(fs.readFileSync(propertyPath, "utf8"));
-      existingProperty.metadata = propMetadata;
-      fs.writeFileSync(propertyPath, JSON.stringify(existingProperty, null, 2));
-    }
-  }
+  // Extract complex CSS selectors - these are now properly mapped in other sections
+  // table_cell_50_5, table_cell_14_1, table_cell_39_2, and tax_bills_link
+  // are extracted but not mapped as they don't have corresponding schema fields
+  // Removed metadata field as it's not part of the Property schema
 }
 
 try {
