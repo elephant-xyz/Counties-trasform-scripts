@@ -796,6 +796,8 @@ function main() {
   $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").text();
   $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(6) > td.clsLabelnt:nth-child(2) > a").text();
   $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(7) > td.clsLabelnt:nth-child(2) > a").text();
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(8) > td.clsLabelnt:nth-child(2) > a").text();
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(11) > td.clsLabelnt:nth-child(2) > a").text();
 
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
@@ -1946,10 +1948,12 @@ function main() {
 
   // Access miscellaneous selectors
   $("#Municipality").text();
+  $("#OwnerLine1").text();
   $("#OwnerLine2").text();
   $("#TaxBills").text();
   $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").text();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").text();
 
   // Access HistoryTaxYear3 and other historical year selectors
   for (let i = 1; i <= 5; i++) {
