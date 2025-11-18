@@ -19973,6 +19973,285 @@ function collectCoordinateCandidates(axis, ...sources) {
   return results;
 }
 
+function forceCountyAddressFieldCoverage(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const working = { ...payload };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(working, field)) {
+      working[field] = null;
+    }
+  }
+
+  const unnormalizedCandidates = flattenCandidateValues(
+    working.unnormalized_address,
+    options.unnormalizedCandidates,
+  );
+  const resolvedUnnormalized =
+    resolveFirstNonEmptyString(unnormalizedCandidates) || null;
+
+  if (resolvedUnnormalized && !working.unnormalized_address) {
+    working.unnormalized_address = resolvedUnnormalized;
+  }
+
+  const strictComponents = resolvedUnnormalized
+    ? extractComponentsFromFullAddress(resolvedUnnormalized)
+    : null;
+  const looseComponents = resolvedUnnormalized
+    ? parseLooseUnnormalizedAddress(resolvedUnnormalized)
+    : null;
+
+  const streetCandidates = flattenCandidateValues(
+    options.streetCandidates,
+    resolvedUnnormalized,
+  ).filter((value) => typeof value === "string" && value.trim().length);
+
+  if (streetCandidates.length) {
+    fillAddressStreetComponents(working, streetCandidates);
+  }
+
+  const assignFieldIfMissing = (field, ...candidates) => {
+    if (hasMeaningfulAddressValue(working[field])) {
+      return;
+    }
+    const flattened = flattenCandidateValues(candidates);
+    if (!flattened.length) {
+      if (!Object.prototype.hasOwnProperty.call(working, field)) {
+        working[field] = null;
+      }
+      return;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = resolveFirstCoordinate(flattened);
+      if (Number.isFinite(numeric)) {
+        working[field] = numeric;
+      } else if (!Object.prototype.hasOwnProperty.call(working, field)) {
+        working[field] = null;
+      }
+      return;
+    }
+
+    const resolved = resolveFieldFromCandidates(field, flattened);
+    if (resolved === undefined || resolved === null) {
+      if (!Object.prototype.hasOwnProperty.call(working, field)) {
+        working[field] = null;
+      }
+      return;
+    }
+
+    if (typeof resolved === "string") {
+      const trimmed = resolved.trim();
+      working[field] = trimmed.length ? trimmed : working[field] || null;
+      return;
+    }
+
+    working[field] = resolved;
+  };
+
+  assignFieldIfMissing(
+    "street_number",
+    strictComponents && strictComponents.streetNumber,
+    looseComponents && looseComponents.streetNumber,
+  );
+  assignFieldIfMissing(
+    "street_pre_directional_text",
+    strictComponents && strictComponents.streetPreDirectional,
+    looseComponents && looseComponents.streetPreDirectional,
+  );
+  assignFieldIfMissing(
+    "street_post_directional_text",
+    strictComponents && strictComponents.streetPostDirectional,
+    looseComponents && looseComponents.streetPostDirectional,
+  );
+  assignFieldIfMissing(
+    "street_suffix_type",
+    strictComponents && strictComponents.streetSuffix,
+    looseComponents && looseComponents.streetSuffix,
+  );
+  assignFieldIfMissing(
+    "street_name",
+    strictComponents && strictComponents.streetName,
+    looseComponents && looseComponents.streetName,
+  );
+  assignFieldIfMissing(
+    "unit_identifier",
+    strictComponents && strictComponents.unitIdentifier,
+    looseComponents && looseComponents.unitIdentifier,
+  );
+  assignFieldIfMissing(
+    "route_number",
+    strictComponents && strictComponents.routeNumber,
+    looseComponents && looseComponents.routeNumber,
+  );
+
+  assignFieldIfMissing(
+    "city_name",
+    strictComponents && strictComponents.cityName,
+    looseComponents && looseComponents.cityName,
+    options.cityCandidates,
+  );
+  assignFieldIfMissing(
+    "municipality_name",
+    options.municipalityCandidates,
+    strictComponents && strictComponents.cityName,
+    looseComponents && looseComponents.cityName,
+    options.cityCandidates,
+  );
+  assignFieldIfMissing(
+    "state_code",
+    strictComponents && strictComponents.stateCode,
+    looseComponents && looseComponents.stateCode,
+    options.stateCandidates,
+    "FL",
+  );
+  assignFieldIfMissing(
+    "postal_code",
+    strictComponents && strictComponents.postalCode,
+    looseComponents && looseComponents.postalCode,
+    options.postalCandidates,
+  );
+  assignFieldIfMissing(
+    "plus_four_postal_code",
+    strictComponents && strictComponents.plus4,
+    looseComponents && looseComponents.plus4,
+    options.plus4Candidates,
+  );
+
+  assignFieldIfMissing("county_name", options.countyCandidates);
+
+  if (
+    !hasMeaningfulAddressValue(working.county_name) &&
+    typeof options.defaultCountyName === "string" &&
+    options.defaultCountyName.trim().length
+  ) {
+    working.county_name = toTitleCase(options.defaultCountyName);
+  }
+
+  const parcelCandidates = flattenCandidateValues(options.parcelIdCandidates);
+  for (const candidate of parcelCandidates) {
+    if (!candidate) continue;
+    const grid = deriveGridPartsFromPcn(candidate);
+    if (!grid || typeof grid !== "object") continue;
+    assignFieldIfMissing("township", grid.township);
+    assignFieldIfMissing("range", grid.range);
+    assignFieldIfMissing("section", grid.section);
+    assignFieldIfMissing("block", grid.block);
+    assignFieldIfMissing("lot", grid.lot);
+  }
+
+  const latitudeCandidates = flattenCandidateValues(
+    working.latitude,
+    options.coordinateCandidates
+      ? options.coordinateCandidates.map((coord) =>
+          coord && Object.prototype.hasOwnProperty.call(coord, "latitude")
+            ? coord.latitude
+            : null,
+        )
+      : [],
+    options.latitudeCandidates,
+  );
+  const longitudeCandidates = flattenCandidateValues(
+    working.longitude,
+    options.coordinateCandidates
+      ? options.coordinateCandidates.map((coord) =>
+          coord && Object.prototype.hasOwnProperty.call(coord, "longitude")
+            ? coord.longitude
+            : null,
+        )
+      : [],
+    options.longitudeCandidates,
+  );
+
+  const resolvedLatitude = resolveFirstCoordinate(latitudeCandidates);
+  const resolvedLongitude = resolveFirstCoordinate(longitudeCandidates);
+
+  if (Number.isFinite(resolvedLatitude)) {
+    working.latitude = resolvedLatitude;
+  }
+  if (Number.isFinite(resolvedLongitude)) {
+    working.longitude = resolvedLongitude;
+  }
+
+  if ((working.latitude == null) !== (working.longitude == null)) {
+    working.latitude = null;
+    working.longitude = null;
+  }
+
+  if (
+    working.state_code &&
+    !hasMeaningfulAddressValue(working.country_code)
+  ) {
+    working.country_code = "US";
+  }
+  if (!hasMeaningfulAddressValue(working.postal_code)) {
+    working.plus_four_postal_code = null;
+  }
+
+  const requestIdentifier = resolveFirstNonEmptyString(
+    flattenCandidateValues(
+      working.request_identifier,
+      options.requestIdentifierCandidates,
+    ),
+  );
+  if (requestIdentifier) {
+    working.request_identifier = requestIdentifier;
+  }
+
+  const sourceHttpRequest = resolveSourceHttpRequest(
+    working.source_http_request,
+    ...(Array.isArray(options.sourceHttpRequestCandidates)
+      ? options.sourceHttpRequestCandidates
+      : []),
+  );
+  if (sourceHttpRequest) {
+    working.source_http_request = sourceHttpRequest;
+  }
+
+  const finalized =
+    buildCountyAddressOutput(working) ||
+    (resolvedUnnormalized
+      ? buildCountyAddressOutput({
+          ...working,
+          unnormalized_address: resolvedUnnormalized,
+        })
+      : null);
+
+  if (finalized) {
+    writeJSON(addressFilePath, finalized);
+    return;
+  }
+
+  if (resolvedUnnormalized) {
+    const rawFallback = filterRawAddressFields(
+      {
+        ...working,
+        unnormalized_address: resolvedUnnormalized,
+      },
+      {
+        allowedFields: RAW_ADDRESS_ALLOWED_FIELDS,
+      },
+    );
+    if (rawFallback) {
+      writeJSON(addressFilePath, rawFallback);
+    }
+  }
+}
+
 function prepareRawAddressForOutput(candidate, fallbackByField) {
   if (!candidate || typeof candidate !== "object") return null;
 
@@ -26198,6 +26477,131 @@ async function main() {
     path.join(dataDir, "relationship_address_has_fact_sheet.json"),
   );
   forceAutogeneratedRelationshipPlaceholders(dataDir);
+
+  const safeParsedUnnormalizedCityState =
+    typeof parsedUnnormalizedCityState !== "undefined"
+      ? parsedUnnormalizedCityState
+      : null;
+  const safeNormalizedMunicipality =
+    typeof normalizedMunicipality !== "undefined"
+      ? normalizedMunicipality
+      : null;
+  const safeFallbackCountyName =
+    typeof fallbackCountyName !== "undefined" ? fallbackCountyName : null;
+  const safeFallbackStateCode =
+    typeof fallbackStateCode !== "undefined" ? fallbackStateCode : null;
+  const safeDefaultCounty =
+    typeof defaultCounty !== "undefined" ? defaultCounty : null;
+  const streetFallbackCandidates =
+    typeof streetCandidatesForFallback === "undefined" ||
+    streetCandidatesForFallback == null
+      ? []
+      : Array.isArray(streetCandidatesForFallback)
+        ? streetCandidatesForFallback
+        : [streetCandidatesForFallback];
+
+  forceCountyAddressFieldCoverage(finalAddressPath, {
+    unnormalizedCandidates: [
+      ...(Array.isArray(finalUnnormalizedCandidates)
+        ? finalUnnormalizedCandidates
+        : []),
+      ...(Array.isArray(postProcessRawOptions.unnormalizedCandidates)
+        ? postProcessRawOptions.unnormalizedCandidates
+        : []),
+      unnormalizedAddressCandidate,
+      fullAddr,
+      fullAddrInput,
+      siteLocationLine,
+      combinedModelAddress,
+      addressLineCombined,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ],
+    streetCandidates: streetFallbackCandidates,
+    cityCandidates: [
+      normalizedCity,
+      resolvedCity,
+      safeParsedUnnormalizedCityState && safeParsedUnnormalizedCityState.city,
+      safeNormalizedMunicipality,
+    ],
+    municipalityCandidates: [
+      safeNormalizedMunicipality,
+      resolvedCity,
+      safeParsedUnnormalizedCityState && safeParsedUnnormalizedCityState.city,
+    ],
+    stateCandidates: [
+      resolvedStateUpper,
+      inferredStateCode,
+      countyInferredStateCode,
+      safeFallbackStateCode,
+      "FL",
+    ],
+    postalCandidates: [
+      sanitizedPostalCode,
+      fallbackPostalValue,
+      postalCode,
+      safeParsedUnnormalizedCityState &&
+        safeParsedUnnormalizedCityState.postal,
+    ],
+    plus4Candidates: [
+      sanitizedPlus4,
+      fallbackPlus4Value,
+      plus4,
+      safeParsedUnnormalizedCityState && safeParsedUnnormalizedCityState.plus4,
+    ],
+    countyCandidates: [
+      formattedCountyName,
+      countyName,
+      safeFallbackCountyName,
+      safeDefaultCounty,
+      "Palm Beach",
+    ],
+    parcelIdCandidates: [parcelId, pcnHyphen].filter(Boolean),
+    coordinateCandidates: [
+      ...(Array.isArray(postProcessRawOptions.coordinateCandidates)
+        ? postProcessRawOptions.coordinateCandidates
+        : []),
+      ...(Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.coordinateCandidates
+        : []),
+    ],
+    requestIdentifierCandidates: [
+      ...(Array.isArray(postProcessRawOptions.requestIdentifierCandidates)
+        ? postProcessRawOptions.requestIdentifierCandidates
+        : []),
+      ...(Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : []),
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      ...(Array.isArray(postProcessRawOptions.sourceHttpRequestCandidates)
+        ? postProcessRawOptions.sourceHttpRequestCandidates
+        : []),
+      ...(Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+        : []),
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+    defaultCountyName:
+      formattedCountyName ||
+      countyName ||
+      safeFallbackCountyName ||
+      safeDefaultCounty ||
+      "Palm Beach",
+    latitudeCandidates: [
+      initialLatitude,
+      htmlLatitude,
+      parcelCentroid && parcelCentroid.latitude,
+    ],
+    longitudeCandidates: [
+      initialLongitude,
+      htmlLongitude,
+      parcelCentroid && parcelCentroid.longitude,
+    ],
+  });
 
   const finalSanitizedPostal =
     typeof sanitizedPostalCode !== "undefined" ? sanitizedPostalCode : null;
