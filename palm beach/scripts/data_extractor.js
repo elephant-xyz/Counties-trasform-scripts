@@ -20513,6 +20513,8 @@ async function main() {
   const fallbackStateCode = "FL";
   let rawAddressVariantOptions = null;
   let finalUnnormalizedCandidates = [];
+  let fallbackPostalValue = null;
+  let fallbackPlus4Value = null;
 
   // Input owners/utilities/layout
   let ownersData = {};
@@ -21450,8 +21452,8 @@ async function main() {
       pcnHyphen ||
       parcelId ||
       null;
-    const fallbackPostalValue = stateMismatch ? null : sanitizedPostalCode;
-    const fallbackPlus4Value = stateMismatch ? null : sanitizedPlus4;
+    fallbackPostalValue = stateMismatch ? null : sanitizedPostalCode;
+    fallbackPlus4Value = stateMismatch ? null : sanitizedPlus4;
 
     applyAddressFallbacks(address, {
       streetCandidates: streetCandidatesForFallback,
