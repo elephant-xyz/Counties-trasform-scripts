@@ -993,6 +993,55 @@ function parseDateToISO(txt) {
   return null;
 }
 
+function extractBookAndPage(rawText, href) {
+  const normalize = (value) => {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    return trimmed === "" ? null : trimmed;
+  };
+
+  const textCandidate = normalize(rawText)?.replace(/\s+/g, " ");
+  let book = null;
+  let page = null;
+
+  if (textCandidate) {
+    const slashMatch = textCandidate.match(/(\d+)\s*\/\s*(\d+)/);
+    if (slashMatch) {
+      book = slashMatch[1];
+      page = slashMatch[2];
+    } else {
+      const digits = textCandidate.match(/\d+/g);
+      if (digits && digits.length >= 2) {
+        [book, page] = digits;
+      }
+    }
+  }
+
+  if ((!book || !page) && href) {
+    try {
+      const url = new URL(href, "https://placeholder.local/");
+      const bookParam =
+        url.searchParams.get("book") ||
+        url.searchParams.get("Book") ||
+        url.searchParams.get("bk") ||
+        url.searchParams.get("BK");
+      const pageParam =
+        url.searchParams.get("page") ||
+        url.searchParams.get("Page") ||
+        url.searchParams.get("pg") ||
+        url.searchParams.get("PG");
+      book = book || normalize(bookParam);
+      page = page || normalize(pageParam);
+    } catch (_) {}
+  }
+
+  return {
+    book: normalize(book),
+    page: normalize(page),
+    label: textCandidate || null,
+  };
+}
+
 function textOf($el) {
   if (!$el || $el.length === 0) return null;
   return $el.text().trim();
@@ -1430,32 +1479,26 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `sales_${idx}.json`), saleObj);
 
     const deedType = mapInstrumentToDeedType(s.instrument);
-    
-    // Parse book and page from bookPage (format: "XXXX/YYYY")
-    let book = null;
-    let page = null;
-    if (s.bookPage) {
-      const bookPageMatch = s.bookPage.match(/^(\d+)\/(\d+)$/);
-      if (bookPageMatch) {
-        book = bookPageMatch[1];
-        page = bookPageMatch[2];
-      }
-    }
-    
+
+    const { book, page, label: bookPageLabel } = extractBookAndPage(
+      s.bookPage,
+      s.link,
+    );
+
     const deed = {
       ...appendSourceInfo(seed),
       deed_type: deedType,
-      book: book,
-      page: page
     };
+    if (book) deed.book = book;
+    if (page) deed.page = page;
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
+    const deedLabel = book && page ? `${book}/${page}` : bookPageLabel;
     const file = {
       ...appendSourceInfo(seed),
       document_type: "Title",
       file_format: null,
-      ipfs_url: null,
-      name: s.deedBook && s.deedPage ? `Deed ${s.deedBook}/${s.deedPage}` : "Deed Document",
+      name: deedLabel ? `Deed ${deedLabel}` : "Deed Document",
       original_url: s.link || null,
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
