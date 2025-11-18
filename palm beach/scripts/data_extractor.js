@@ -118,10 +118,71 @@ function sanitizeAddressPayloadForWrite(payload) {
     return payload;
   }
 
-  const trimmedUnnormalized =
+  let trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
+  if (!trimmedUnnormalized.length) {
+    const fallbackCandidates = [];
+
+    if (typeof payload.full_address === "string") {
+      fallbackCandidates.push(payload.full_address);
+    }
+
+    const composedFromPayload =
+      composeFallbackUnnormalizedAddressFromFields(payload);
+    if (composedFromPayload) {
+      fallbackCandidates.push(composedFromPayload);
+    }
+
+    if (
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+    ) {
+      fallbackCandidates.push(
+        ...ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates,
+      );
+    }
+
+    if (
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+    ) {
+      for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
+        if (!source || typeof source !== "object") continue;
+        if (typeof source.unnormalized_address === "string") {
+          fallbackCandidates.push(source.unnormalized_address);
+        }
+        if (typeof source.full_address === "string") {
+          fallbackCandidates.push(source.full_address);
+        }
+        const composed = composeFallbackUnnormalizedAddressFromFields(source);
+        if (composed) {
+          fallbackCandidates.push(composed);
+        }
+      }
+    }
+
+    if (
+      ADDRESS_FALLBACK_CONTEXT &&
+      ADDRESS_FALLBACK_CONTEXT.fieldFallbacks &&
+      typeof ADDRESS_FALLBACK_CONTEXT.fieldFallbacks === "object"
+    ) {
+      const rawFallbacks =
+        ADDRESS_FALLBACK_CONTEXT.fieldFallbacks.unnormalized_address;
+      if (Array.isArray(rawFallbacks)) {
+        fallbackCandidates.push(...rawFallbacks);
+      }
+    }
+
+    const fallbackRaw = resolveFirstNonEmptyString(fallbackCandidates);
+    if (typeof fallbackRaw === "string") {
+      const normalizedFallback = fallbackRaw.trim();
+      if (normalizedFallback.length) {
+        trimmedUnnormalized = normalizedFallback;
+      }
+    }
+  }
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
