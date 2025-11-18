@@ -3546,6 +3546,65 @@ function writeFinalAddressOneOfOutput(addressFilePath) {
   writeJSON(addressFilePath, rawSurface);
 }
 
+function enforceRawVariantFieldShape(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (!trimmedUnnormalized.length) {
+    return;
+  }
+
+  const rawSurface = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    rawSurface[field] = sanitizeAddressFieldValue(field, candidate);
+  }
+
+  rawSurface.unnormalized_address = trimmedUnnormalized;
+
+  if (
+    (rawSurface.latitude == null) !==
+    (rawSurface.longitude == null)
+  ) {
+    rawSurface.latitude = null;
+    rawSurface.longitude = null;
+  }
+
+  if (!rawSurface.postal_code) {
+    rawSurface.plus_four_postal_code = null;
+  }
+
+  if (rawSurface.state_code && !rawSurface.country_code) {
+    rawSurface.country_code = "US";
+  }
+
+  try {
+    fs.writeFileSync(addressFilePath, JSON.stringify(rawSurface, null, 2));
+  } catch {
+    // Swallow write issues so upstream fallback logic can continue without crashing.
+  }
+}
+
 function composeSchemaAlignedAddressOutput(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -26834,6 +26893,7 @@ async function main() {
   removeUnnormalizedWhenNormalized(finalAddressPath);
   normalizeCountyAddressForSchemaOutput(finalAddressPath);
   writeFinalAddressOneOfOutput(finalAddressPath);
+  enforceRawVariantFieldShape(finalAddressPath);
 }
 
 main().catch((error) => {
