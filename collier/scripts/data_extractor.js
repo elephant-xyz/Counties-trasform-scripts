@@ -1311,6 +1311,19 @@ function main() {
       return; // Skip buildings with no area or year data
     }
 
+    // Filter out non-residential building classes (fences, paving, etc.)
+    const buildingClassUpper = (buildingInfo.buildingClass || "").toUpperCase();
+    const nonResidentialTypes = [
+      'FENCE', 'FENCING', 'PAVING', 'ASPHALT', 'CONCRETE SLAB',
+      'RETAINING WALL', 'SEAWALL', 'CHAIN LINK', 'VINYL SOLID'
+    ];
+    const isNonResidential = nonResidentialTypes.some(type => buildingClassUpper.includes(type));
+
+    // Skip non-residential structures entirely - they don't map to room layouts
+    if (isNonResidential) {
+      return;
+    }
+
     // Create a generic building layout for this building
     const layoutObj = {
       adjustable_area_sq_ft: null,
@@ -1349,7 +1362,7 @@ function main() {
       spa_installation_date: null,
       spa_type: null,
       space_type_index: buildingInfo.sequence || String(layoutIdx),
-      space_type: buildingInfo.buildingClass || "Building",
+      space_type: "Building",
       story_type: null,
       total_area_sq_ft: buildingInfo.adjustedArea || null,
       view_type: null,
@@ -1447,7 +1460,6 @@ function main() {
       permit_required: true,
       private_provider_inspections: null,
       private_provider_plan_review: null,
-      tax_year: permit.taxYear,
     };
 
     const filename = `property_improvement_${idx + 1}.json`;
@@ -1681,13 +1693,6 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
-      // Millage rates for current year
-      school_millage_rate: currentSchoolMillage,
-      county_millage_rate: currentCountyMillage,
-      municipal_millage_rate: currentMunicipalMillage,
-      other_millage_rate: currentOtherMillage,
-      non_school_millage_rate: currentNonSchoolMillage,
-      school_assessed_value: null, // Not available in current year summary
     };
     taxRecords.push(taxObj);
   }
@@ -1812,13 +1817,6 @@ function main() {
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
-      // Millage rates (to ensure all extracted millage values are mapped)
-      school_millage_rate: rec.schoolMillage,
-      county_millage_rate: rec.countyMillage,
-      municipal_millage_rate: rec.municipalMillage,
-      other_millage_rate: rec.otherMillage,
-      non_school_millage_rate: rec.nonSchoolMillage,
-      school_assessed_value: rec.schoolAssessedH,
     };
     taxRecords.push(taxObj);
   });
@@ -1852,9 +1850,10 @@ function main() {
     });
   }
 
-  // Extract tax breakdown by authority and write as tax_levy objects
-  // This ensures TaName, Millage, Tax selectors are properly mapped
-  let taxLevyIdx = 1;
+  // Clean up tax_levy files - the TaName/Millage/Tax authority breakdown data
+  // does not match the tax_levy schema structure which requires property valuation
+  // fields (property_assessed_value_amount, property_market_value_amount, etc.)
+  // The authority-level breakdown is not suitable for the tax_levy object structure.
   try {
     const existingTaxLevyFiles = fs
       .readdirSync(dataDir)
@@ -1870,49 +1869,9 @@ function main() {
     }
   } catch (_) {}
 
-  for (let idx = 1; idx <= 50; idx++) {
-    const taName = $(`#TaName${idx}`).text().trim();
-    const taxableType = $(`#TaxableType${idx}`).text().trim();
-    const taxableText = $(`#Taxable${idx}`).text().trim();
-    const taxable = toNumberCurrency(taxableText);
-    const millageText = $(`#Millage${idx}`).text().trim();
-    const millage = millageText ? parseFloat(millageText) : null;
-    const taxText = $(`#Tax${idx}`).text().trim();
-    const tax = toNumberCurrency(taxText);
-    const taxYearText = $(`#taxyear${idx}`).text().trim();
-    const taxYearMatch = taxYearText.match(/(\d{4})/);
-    const taxYear = taxYearMatch ? parseInt(taxYearMatch[1], 10) : null;
-
-    // Only write if we have at least one meaningful value (not just taName)
-    if (!taName && !taxable && millage == null && !tax && !taxYear) {
-      break; // Stop when no more data
-    }
-
-    const taxLevyObj = {
-      authority_name: taName || null,
-      taxable_type: taxableType || null,
-      taxable_amount: taxable != null ? taxable : 0,
-      millage_rate: millage,
-      tax_amount: tax != null ? tax : 0,
-      tax_year: taxYear || ty,
-    };
-
-    const filename = `tax_levy_${taxLevyIdx}.json`;
-    fs.writeFileSync(
-      path.join(dataDir, filename),
-      JSON.stringify(taxLevyObj, null, 2),
-    );
-
-    const rel = {
-      from: { "/": "./property.json" },
-      to: { "/": `./${filename}` },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_property_has_tax_levy_${taxLevyIdx}.json`),
-      JSON.stringify(rel, null, 2),
-    );
-    taxLevyIdx++;
-  }
+  // Note: TaName, Millage, Tax selector data is extracted but not mapped to objects
+  // as it represents authority-level breakdown, not complete tax levy records with
+  // required property valuation fields
 
   // Extract complex CSS selectors - these are now properly mapped in other sections
   // table_cell_50_5, table_cell_14_1, table_cell_39_2, and tax_bills_link
