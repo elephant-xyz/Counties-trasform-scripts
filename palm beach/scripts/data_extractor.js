@@ -17033,9 +17033,6 @@ function emitFinalCountyAddressPayload(addressFilePath, options = {}) {
         typeof normalizedSurface[field] === "string" &&
         normalizedSurface[field].trim().length > 0,
     );
-  const hasCoordinateCoverage =
-    Number.isFinite(normalizedSurface.latitude) &&
-    Number.isFinite(normalizedSurface.longitude);
 
   const rawCandidateQueue = [];
   if (typeof payload.unnormalized_address === "string") {
@@ -17077,7 +17074,7 @@ function emitFinalCountyAddressPayload(addressFilePath, options = {}) {
     "source_http_request",
   );
 
-  if (normalizedStringCoverage && hasCoordinateCoverage) {
+  if (normalizedStringCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       const value = normalizedSurface[field];
