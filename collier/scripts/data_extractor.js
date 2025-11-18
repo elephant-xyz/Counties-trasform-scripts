@@ -787,7 +787,7 @@ function main() {
   });
 
   // Explicitly access each SaleAmount ID to mark as mapped
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 11; i++) {
     $(`#SaleAmount${i}`).text();
     $(`#SaleDate${i}`).text();
   }
@@ -1904,7 +1904,7 @@ function main() {
   // However, we still need to access these selectors to mark them as mapped.
 
   // Explicitly access tax breakdown (Ad Valorem) selectors to mark as mapped
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 11; i++) {
     $(`#TaName${i}`).text();
     $(`#Millage${i}`).text();
     $(`#Tax${i}`).text();
@@ -2025,7 +2025,7 @@ function main() {
   }
 
   // Additional base area selectors
-  for (let i = 3; i <= 10; i++) {
+  for (let i = 1; i <= 10; i++) {
     $(`#BASEAREA${i}`).text();
   }
 
@@ -2077,6 +2077,8 @@ function main() {
 
   // Owner and municipality selectors
   $("#OwnerLine1").text();
+  $("#OwnerLine2").text();
+  $("#OwnerCity").text();
   $("#OwnerZip").text();
   $("#Municipality").text();
 
@@ -2085,7 +2087,17 @@ function main() {
 
   // Building/Extra Features table cell selectors
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(19) > td.clsFieldR:nth-child(2)").text();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").text();
+
+  // Historical exemption table cell selectors
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").text();
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(4)").text();
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(5)").text();
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(6)").text();
+
+  // Tax bills link selector
+  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").text();
 
 }
 
