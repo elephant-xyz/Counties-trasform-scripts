@@ -6222,26 +6222,9 @@ function rawVariantMeetsCriticalFields(address) {
   if (!address || typeof address !== "object") return false;
 
   const working = { ...address };
-  if (!hasRawAddressRequiredFields(working)) {
-    return false;
-  }
-
-  for (const field of RAW_VARIANT_CRITICAL_FIELDS) {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(working[field]);
-      if (!Number.isFinite(numeric)) {
-        return false;
-      }
-      working[field] = numeric;
-      continue;
-    }
-
-    if (!hasMeaningfulAddressValue(working[field])) {
-      return false;
-    }
-  }
-
-  return true;
+  // County schema raw variant relies on oneOf where the unnormalized form is valid
+  // without full normalized coverage, so only enforce the minimal raw requirements.
+  return hasRawAddressRequiredFields(working);
 }
 
 function buildRawAddressPayloadFromSources(options = {}) {
