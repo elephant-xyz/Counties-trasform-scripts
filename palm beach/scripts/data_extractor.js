@@ -11766,6 +11766,38 @@ function buildRawAddressVariantForOneOf(source, rawString) {
     rawOutput.country_code = "US";
   }
 
+  for (const field of RAW_VARIANT_SCHEMA_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
+      rawOutput[field] = null;
+      continue;
+    }
+
+    if (rawOutput[field] === undefined) {
+      rawOutput[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(rawOutput[field]);
+      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof rawOutput[field] === "string") {
+      const normalized = rawOutput[field].trim();
+      rawOutput[field] = normalized.length ? normalized : null;
+    }
+  }
+
+  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  if (!rawOutput.postal_code && rawOutput.plus_four_postal_code !== null) {
+    rawOutput.plus_four_postal_code = null;
+  }
+
   return rawOutput;
 }
 
