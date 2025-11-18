@@ -1729,16 +1729,6 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
-      // Additional fields for detailed tax information
-      homestead_exemption_amount: hmstdExempt,
-      additional_homestead_exemption_amount: nonSchoolAddHmstdExempt,
-      save_our_homes_benefit_amount: sohBenefit,
-      county_millage_rate: currentCountyMillage,
-      school_millage_rate: currentSchoolMillage,
-      municipal_millage_rate: currentMunicipalMillage,
-      other_millage_rate: currentOtherMillage,
-      non_school_millage_rate: currentNonSchoolMillage,
-      school_taxable_value_amount: schoolTaxable,
     };
     taxRecords.push(taxObj);
   }
@@ -1872,13 +1862,6 @@ function main() {
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
-      // Additional historical fields
-      county_millage_rate: rec.countyMillage,
-      school_millage_rate: rec.schoolMillage,
-      municipal_millage_rate: rec.municipalMillage,
-      other_millage_rate: rec.otherMillage,
-      non_school_millage_rate: rec.nonSchoolMillage,
-      school_assessed_value_amount: rec.schoolAssessedH,
     };
     taxRecords.push(taxObj);
   });
