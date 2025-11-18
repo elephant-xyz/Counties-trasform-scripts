@@ -16051,7 +16051,154 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
     defaultCountyName = null,
     defaultStateCode = null,
     defaultCountryCode = "US",
+    parcelIdCandidates = [],
   } = options || {};
+
+  const parcelQueue = Array.isArray(parcelIdCandidates)
+    ? parcelIdCandidates
+        .map((candidate) =>
+          typeof candidate === "string" ? candidate.trim() : candidate,
+        )
+        .filter((candidate) => typeof candidate === "string" && candidate.length)
+    : [];
+
+  const seenRawStrings = new Set();
+  const rawStrings = [];
+  const registerRawString = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed.length || seenRawStrings.has(trimmed)) return;
+    seenRawStrings.add(trimmed);
+    rawStrings.push(trimmed);
+  };
+
+  registerRawString(current.unnormalized_address);
+  if (Array.isArray(candidates)) {
+    for (const candidate of candidates) {
+      registerRawString(candidate);
+    }
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    for (const candidate of ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) {
+      registerRawString(candidate);
+    }
+  }
+  if (typeof options.primary === "string") {
+    registerRawString(options.primary);
+  }
+  if (typeof options.fallback === "string") {
+    registerRawString(options.fallback);
+  }
+
+  const reconstructedRaw =
+    typeof composeFallbackUnnormalizedAddressFromFields === "function"
+      ? composeFallbackUnnormalizedAddressFromFields({ ...current })
+      : null;
+  registerRawString(reconstructedRaw);
+
+  const resolvedUnnormalized = resolveFirstNonEmptyString(rawStrings);
+  const trimmedUnnormalized =
+    typeof resolvedUnnormalized === "string"
+      ? resolvedUnnormalized.trim()
+      : "";
+
+  const assignFieldIfMissing = (target, field, value) => {
+    if (value === undefined || value === null) return;
+    if (hasMeaningfulAddressValue(target[field])) return;
+    const normalizedValue = sanitizeAddressFieldValue(field, value);
+    if (hasMeaningfulAddressValue(normalizedValue)) {
+      target[field] = normalizedValue;
+    }
+  };
+
+  const enrichFromRawString = (target, rawValue) => {
+    if (!rawValue) return;
+    const normalizedRaw = normalizeWhitespace(rawValue);
+    if (!normalizedRaw) return;
+
+    const primarySegment = normalizedRaw.includes(",")
+      ? normalizedRaw.split(",")[0]
+      : normalizedRaw;
+    const parsedStreet = parseLocationAddress(primarySegment);
+
+    assignFieldIfMissing(target, "street_number", parsedStreet.streetNumber);
+    assignFieldIfMissing(target, "street_name", parsedStreet.streetName);
+    assignFieldIfMissing(
+      target,
+      "street_pre_directional_text",
+      parsedStreet.streetPreDirectional,
+    );
+    assignFieldIfMissing(
+      target,
+      "street_post_directional_text",
+      parsedStreet.streetPostDirectional,
+    );
+    assignFieldIfMissing(
+      target,
+      "street_suffix_type",
+      parsedStreet.streetSuffix,
+    );
+    assignFieldIfMissing(
+      target,
+      "unit_identifier",
+      parsedStreet.unitIdentifier,
+    );
+    assignFieldIfMissing(target, "route_number", parsedStreet.routeNumber);
+
+    const parsedCityState = parseCityStatePostal(normalizedRaw);
+    assignFieldIfMissing(target, "city_name", parsedCityState.city);
+    assignFieldIfMissing(target, "state_code", parsedCityState.state);
+    assignFieldIfMissing(target, "postal_code", parsedCityState.postal);
+    assignFieldIfMissing(
+      target,
+      "plus_four_postal_code",
+      parsedCityState.plus4,
+    );
+    assignFieldIfMissing(
+      target,
+      "municipality_name",
+      parsedCityState.city,
+    );
+
+    const postalPieces = extractPostalPieces(normalizedRaw);
+    assignFieldIfMissing(target, "postal_code", postalPieces.postal);
+    assignFieldIfMissing(
+      target,
+      "plus_four_postal_code",
+      postalPieces.plus4,
+    );
+  };
+
+  const enrichFromRawStrings = (target) => {
+    for (const raw of rawStrings) {
+      enrichFromRawString(target, raw);
+    }
+  };
+
+  const enrichGridFromParcels = (target) => {
+    for (const candidate of parcelQueue) {
+      const parsedGrid = deriveGridPartsFromPcn(candidate);
+      if (!parsedGrid) continue;
+
+      assignFieldIfMissing(target, "township", parsedGrid.township);
+      assignFieldIfMissing(target, "range", parsedGrid.range);
+      assignFieldIfMissing(target, "section", parsedGrid.section);
+      assignFieldIfMissing(target, "block", parsedGrid.block);
+      assignFieldIfMissing(target, "lot", parsedGrid.lot);
+
+      const hasCoreGrid =
+        hasMeaningfulAddressValue(target.township) &&
+        hasMeaningfulAddressValue(target.range) &&
+        hasMeaningfulAddressValue(target.section);
+
+      if (hasCoreGrid) {
+        break;
+      }
+    }
+  };
 
   const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
@@ -16211,6 +16358,8 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
     applyFallback(normalizedOutput, "block");
     applyFallback(normalizedOutput, "lot");
 
+    enrichFromRawStrings(normalizedOutput);
+    enrichGridFromParcels(normalizedOutput);
     ensureCoordinates(normalizedOutput);
     finalizePostalAndCountry(normalizedOutput);
     hydrateRequestMetadata(normalizedOutput);
@@ -16218,48 +16367,6 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
     writeJSON(addressFilePath, normalizedOutput);
     return;
   }
-
-  const rawQueue = [];
-  const enqueueRaw = (value) => {
-    if (typeof value !== "string") return;
-    const trimmed = value.trim();
-    if (!trimmed.length) return;
-    rawQueue.push(trimmed);
-  };
-
-  enqueueRaw(current.unnormalized_address);
-
-  if (Array.isArray(candidates)) {
-    for (const candidate of candidates) {
-      enqueueRaw(candidate);
-    }
-  }
-
-  if (
-    ADDRESS_FALLBACK_CONTEXT &&
-    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
-  ) {
-    for (const candidate of ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) {
-      enqueueRaw(candidate);
-    }
-  }
-
-  if (typeof options.primary === "string") {
-    enqueueRaw(options.primary);
-  }
-  if (typeof options.fallback === "string") {
-    enqueueRaw(options.fallback);
-  }
-
-  const reconstructedRaw =
-    typeof composeFallbackUnnormalizedAddressFromFields === "function"
-      ? composeFallbackUnnormalizedAddressFromFields({ ...current })
-      : null;
-  enqueueRaw(reconstructedRaw);
-
-  const resolvedUnnormalized = resolveFirstNonEmptyString(rawQueue);
-  const trimmedUnnormalized =
-    typeof resolvedUnnormalized === "string" ? resolvedUnnormalized.trim() : "";
 
   if (!trimmedUnnormalized.length) {
     removeFileIfExists(addressFilePath);
@@ -16293,6 +16400,8 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
 
   rawOutput.unnormalized_address = trimmedUnnormalized;
 
+  enrichFromRawStrings(rawOutput);
+  enrichGridFromParcels(rawOutput);
   ensureCoordinates(rawOutput);
   finalizePostalAndCountry(rawOutput);
   hydrateRequestMetadata(rawOutput);
@@ -25301,6 +25410,7 @@ async function main() {
         ? ADDRESS_FALLBACK_CONTEXT.coordinateCandidates
         : []),
     ],
+    parcelIdCandidates: [parcelId, pcnHyphen].filter(Boolean),
     requestIdentifierCandidates: [
       ...(Array.isArray(postProcessRawOptions.requestIdentifierCandidates)
         ? postProcessRawOptions.requestIdentifierCandidates
