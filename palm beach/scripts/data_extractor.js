@@ -198,9 +198,10 @@ function sanitizeAddressPayloadForWrite(payload) {
     return stripAddressRequestMetadata(surfaced);
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(normalizedCandidate[field]),
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
+      hasMeaningfulAddressValue(normalizedCandidate[field]),
+    ) && hasNormalizedCountyCoverage(normalizedCandidate);
 
   if (hasNormalizedCoverage) {
     const surfaced =
@@ -3537,6 +3538,39 @@ const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
   (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
 );
 
+function hasNormalizedCountyCoverage(address) {
+  if (!address || typeof address !== "object") return false;
+
+  const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => {
+      const value = Object.prototype.hasOwnProperty.call(address, field)
+        ? address[field]
+        : null;
+      return typeof value === "string" && value.trim().length > 0;
+    },
+  );
+
+  if (!hasRequiredStrings) {
+    return false;
+  }
+
+  const hasCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (field) => {
+      const value = Object.prototype.hasOwnProperty.call(address, field)
+        ? address[field]
+        : null;
+      const numeric = parseCoordinate(value);
+      return Number.isFinite(numeric);
+    },
+  );
+
+  if (!hasCoordinates) {
+    return false;
+  }
+
+  return true;
+}
+
 function hasRawAddressRequiredValues(address) {
   if (!address || typeof address !== "object") return false;
 
@@ -4576,11 +4610,12 @@ function finalizeAddressForOutput(address) {
     normalizedCandidate.country_code = "US";
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedCandidate[field] === "string" &&
-      normalizedCandidate[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedCandidate[field] === "string" &&
+        normalizedCandidate[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedCandidate);
 
   console.log("preferRaw core", trimmedRaw, hasNormalizedCoverage);
   if (hasNormalizedCoverage && !trimmedUnnormalized.length) {
@@ -4829,14 +4864,7 @@ function enforceAddressVariantFieldSurface(addressFilePath) {
       : "";
   const hasUnnormalized = trimmedUnnormalized.length > 0;
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
 
   const variant =
     hasNormalizedCoverage || !hasUnnormalized ? "normalized" : "raw";
@@ -5178,14 +5206,7 @@ function upgradeRawAddressToNormalized(addressFilePath, options = {}) {
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
 
   if (hasNormalizedCoverage) {
     if (hasRawVariant) {
@@ -5396,11 +5417,7 @@ function enforceNormalizedFallbackForCountyAddress(addressFilePath, context = {}
     payload.source_http_request,
   );
 
-  const normalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof payload[field] === "string" &&
-      payload[field].trim().length > 0,
-  );
+  const normalizedCoverage = hasNormalizedCountyCoverage(payload);
 
   const defaultCountyName =
     typeof context.defaultCountyName === "string" &&
@@ -5917,11 +5934,12 @@ function solidifyCountyAddressOutput(addressFilePath, context = {}) {
     normalized.country_code = "US";
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalized[field] === "string" &&
-      normalized[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalized[field] === "string" &&
+        normalized[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalized);
 
   const rawCandidateQueue = [];
   if (payload && typeof payload.unnormalized_address === "string") {
@@ -6655,16 +6673,9 @@ function preferNormalizedAddressOutput(addressFilePath) {
     return;
   }
 
-  const hasRequiredNormalizedFields = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
 
-  if (!hasRequiredNormalizedFields) {
+  if (!hasNormalizedCoverage) {
     return;
   }
   const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -6865,11 +6876,7 @@ function buildCountyAddressOutput(candidate) {
       ? candidate.unnormalized_address.trim()
       : "";
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(normalizedSurface);
 
   if (hasNormalizedCoverage && !trimmedUnnormalized.length) {
     const normalizedOutput = { ...normalizedSurface };
@@ -7012,11 +7019,12 @@ function enforceFinalAddressSchemaOutput(addressFilePath) {
     return acc;
   }, {});
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedSurface[field] === "string" &&
+        normalizedSurface[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
     payload,
@@ -7914,11 +7922,12 @@ function finalizeAddressSchemaOutput(addressFilePath, options = {}) {
     normalizedSurface.country_code = "US";
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedSurface[field] === "string" &&
+        normalizedSurface[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   const requestIdentifierOptions = [
     payload.request_identifier,
@@ -8176,11 +8185,12 @@ function enforceFinalCountyAddressSchema(addressFilePath, options = {}) {
     return null;
   })();
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedSurface[field] === "string" &&
+        normalizedSurface[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   if (hasNormalizedCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -8328,11 +8338,12 @@ function reconcileCountyAddressVariant(addressFilePath, options = {}) {
     }
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedSurface[field] === "string" &&
+        normalizedSurface[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   const resolvedRequestIdentifier = safeNullIfEmpty(
     resolveFirstNonEmptyString(
@@ -8965,11 +8976,12 @@ function enforceCountyAddressOneOfCompliance(addressFilePath) {
     }
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedOutput[field] === "string" &&
-      normalizedOutput[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedOutput[field] === "string" &&
+        normalizedOutput[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedOutput);
   const hasRawVariant = trimmedUnnormalized.length > 0;
 
   if (hasNormalizedCoverage) {
@@ -9101,11 +9113,12 @@ function coerceAddressFileForOneOfCompliance(addressFilePath) {
     normalizedCandidate[field] = normalizedValue;
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedCandidate[field] === "string" &&
-      normalizedCandidate[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedCandidate[field] === "string" &&
+        normalizedCandidate[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedCandidate);
 
   if (hasNormalizedCoverage) {
     if (!normalizedCandidate.postal_code) {
@@ -9265,11 +9278,12 @@ function enforceCountyAddressCanonicalSurface(addressFilePath) {
         : normalizedValue;
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedCandidate[field] === "string" &&
-      normalizedCandidate[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedCandidate[field] === "string" &&
+        normalizedCandidate[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedCandidate);
 
   let variant = null;
   if (trimmedUnnormalized.length) {
@@ -9642,14 +9656,7 @@ function ensureCountyAddressFieldCompleteness(addressFilePath) {
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof candidate === "string" && candidate.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
 
   if (!hasRawVariant && !hasNormalizedCoverage) {
     removeFileIfExists(addressFilePath);
@@ -9791,6 +9798,8 @@ function rewriteAddressForCountySchema(addressFilePath) {
     normalizedSurface.country_code = "US";
   }
 
+  hasNormalizedCoverage = hasNormalizedCountyCoverage(normalizedSurface);
+
   if (!hasNormalizedCoverage && trimmedUnnormalized) {
     const looseComponents = parseLooseUnnormalizedAddress(trimmedUnnormalized);
     if (looseComponents) {
@@ -9877,12 +9886,7 @@ function rewriteAddressForCountySchema(addressFilePath) {
       normalizedSurface.country_code = "US";
     }
 
-    hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-      (field) => {
-        const value = normalizedSurface[field];
-        return typeof value === "string" && value.trim().length > 0;
-      },
-    );
+    hasNormalizedCoverage = hasNormalizedCountyCoverage(normalizedSurface);
   }
 
   if (hasNormalizedCoverage) {
@@ -10100,11 +10104,12 @@ function enforceCountyAddressSchemaCompliance(addressFilePath) {
     normalizedSurface.country_code = "US";
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedSurface[field] === "string" &&
+        normalizedSurface[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
@@ -10476,14 +10481,7 @@ function alignAddressOneOfOutput(addressFilePath) {
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
 
   const coerceFieldValue = (field, value) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
@@ -10652,11 +10650,12 @@ function enforceAddressOneOfStrictCompliance(addressFilePath) {
     normalizedSurface.source_http_request = deepClone(preparedSource);
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedSurface[field] === "string" &&
+        normalizedSurface[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   const trimmedRaw =
     typeof payload.unnormalized_address === "string"
@@ -12444,14 +12443,7 @@ function enforceFinalCountyAddressShape(addressFilePath) {
       ? payload.unnormalized_address.trim()
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
 
   if (!hasRawVariant && !hasNormalizedCoverage) {
     removeFileIfExists(addressFilePath);
@@ -12822,12 +12814,7 @@ function enforceAddressOneOfConsistency(addressFilePath) {
     normalizedSurface[field] = sanitizeAddressFieldValue(field, candidate);
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = normalizedSurface[field];
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(normalizedSurface);
 
   if (hasNormalizedCoverage) {
     if (!normalizedSurface.postal_code) {
@@ -12934,14 +12921,7 @@ function finalizeCountyAddressOneOfSurface(addressFilePath) {
       ? payload.unnormalized_address.trim()
       : "";
   const hasRawVariant = trimmedUnnormalized.length > 0;
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof candidate === "string" && candidate.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
 
   const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
   const preparedSource = prepareSourceHttpRequest(
@@ -13062,14 +13042,15 @@ function collapseRawAddressVariant(addressFilePath, options = {}) {
     return;
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) => {
+        const value = Object.prototype.hasOwnProperty.call(payload, field)
+          ? payload[field]
+          : null;
+        return typeof value === "string" && value.trim().length > 0;
+      },
+    ) && hasNormalizedCountyCoverage(payload);
 
   if (hasNormalizedCoverage) {
     return;
@@ -15645,11 +15626,12 @@ function forceRawAddressVariantForFinalOutput(addressFilePath, options = {}) {
     delete normalizedSurface.source_http_request;
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) =>
+        typeof normalizedSurface[field] === "string" &&
+        normalizedSurface[field].trim().length > 0,
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   if (hasNormalizedCoverage) {
     writeJSON(addressFilePath, normalizedSurface);
@@ -15767,10 +15749,7 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
     normalizedSurface[field] = sanitizeAddressFieldValue(field, current[field]);
   }
 
-  const hasNormalizedCoverage =
-    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
-      hasMeaningfulAddressValue(normalizedSurface[field]),
-    );
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(normalizedSurface);
 
   const mergedFallbacks = {};
   if (fieldFallbacks && typeof fieldFallbacks === "object") {
@@ -19369,16 +19348,17 @@ function enforceRawAddressOneOfSurface(filePath) {
     return;
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : null;
-      if (candidate === undefined || candidate === null) return false;
-      if (typeof candidate !== "string") return false;
-      return candidate.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) => {
+        const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+          ? payload[field]
+          : null;
+        if (candidate === undefined || candidate === null) return false;
+        if (typeof candidate !== "string") return false;
+        return candidate.trim().length > 0;
+      },
+    ) && hasNormalizedCountyCoverage(payload);
 
   if (hasNormalizedCoverage) {
     return;
@@ -19574,12 +19554,13 @@ function enforceFinalAddressOneOfCompliance(addressFilePath) {
     normalizedSurface.country_code = "US";
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = normalizedSurface[field];
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
+  const hasNormalizedCoverage =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+      (field) => {
+        const value = normalizedSurface[field];
+        return typeof value === "string" && value.trim().length > 0;
+      },
+    ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
@@ -21308,13 +21289,12 @@ async function main() {
       normalizedPayload.country_code = "US";
     }
 
-    const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-      (field) => {
+    const hasNormalizedCoverage =
+      NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) => {
         const value = normalizedPayload[field];
         if (typeof value !== "string") return false;
         return value.trim().length > 0;
-      },
-    );
+      }) && hasNormalizedCountyCoverage(normalizedPayload);
 
     const trimmedRequestIdentifier =
       typeof requestIdentifierCandidate === "string" &&
