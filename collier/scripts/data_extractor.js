@@ -1468,27 +1468,29 @@ function main() {
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
-    const taxObj = removeNullishValues({
+    // Don't use removeNullishValues for tax objects - required fields must be present
+    const taxObj = {
       tax_year: ty,
       property_assessed_value_amount:
-        assessed != null ? assessed : just != null ? just : null,
+        assessed != null ? assessed : just != null ? just : 0,
       property_market_value_amount:
-        just != null ? just : assessed != null ? assessed : null,
-      property_building_amount: impr != null ? impr : null,
-      property_land_amount: land != null ? land : null,
+        just != null ? just : assessed != null ? assessed : 0,
+      property_building_amount: impr != null ? impr : 0,
+      property_land_amount: land != null ? land : 0,
       property_taxable_value_amount:
-        taxable != null ? taxable : assessed != null ? assessed : null,
+        taxable != null ? taxable : assessed != null ? assessed : just != null ? just : 0,
       property_exemption_amount:
         nonSchoolExemption != null ? nonSchoolExemption : null,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
-    });
+    };
     taxRecords.push(taxObj);
   }
 
-  // Ad valorem breakdown (Tab3)
+  // Ad valorem breakdown (Tab3) - removed as individual breakdown entries don't have required valuation fields
+  // Clean up any existing breakdown files
   try {
     const existingBreakdownFiles = fs
       .readdirSync(dataDir)
@@ -1498,90 +1500,22 @@ function main() {
     }
     const totalBreakdownPath = path.join(dataDir, "tax_breakdown_total.json");
     if (fs.existsSync(totalBreakdownPath)) fs.unlinkSync(totalBreakdownPath);
+
+    // Also cleanup any related relationship files
+    const existingBreakdownRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => name.match(/^relationship_property_has_tax_\d+\.json$/i) &&
+        fs.existsSync(path.join(dataDir, name)));
+
+    for (const relFile of existingBreakdownRelFiles) {
+      try {
+        const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, relFile), 'utf8'));
+        if (relContent.to && relContent.to['/'] && relContent.to['/'].includes('tax_breakdown_')) {
+          fs.unlinkSync(path.join(dataDir, relFile));
+        }
+      } catch (_) {}
+    }
   } catch (_) {}
-  const adValoremRows = [];
-  for (let idx = 1; idx <= 50; idx++) {
-    const taxableText = $(`#Taxable${idx}`).text().trim();
-    const taxAmountText = $(`#Tax${idx}`).text().trim();
-    const taNameText = $(`#TaName${idx}`).text().trim();
-    const taxTypeText = $(`#TaxableType${idx}`).text().trim();
-    const millageText = $(`#Millage${idx}`).text().trim();
-
-    if (!taxableText && !taxAmountText) continue;
-
-    const taxableVal = toNumberCurrency(taxableText);
-    const taxAmount = toNumberCurrency(taxAmountText);
-
-    if (taxableVal == null && taxAmount == null) continue;
-
-    adValoremRows.push({
-      taxableVal,
-      taxAmount,
-      authority: taNameText || null,
-      taxableType: taxTypeText || null,
-      millage: millageText || null,
-    });
-  }
-
-  adValoremRows.forEach((row, idx) => {
-    if (row.taxableVal == null && row.taxAmount == null) return;
-    const monthly = row.taxAmount != null ? round2(row.taxAmount / 12) : null;
-    const taxObj = removeNullishValues({
-      tax_year: ty,
-      property_taxable_value_amount: row.taxableVal != null ? row.taxableVal : null,
-      yearly_tax_amount: row.taxAmount != null ? row.taxAmount : null,
-      monthly_tax_amount: monthly,
-      period_start_date: ty ? `${ty}-01-01` : null,
-      period_end_date: ty ? `${ty}-12-31` : null,
-    });
-    const filename = `tax_breakdown_${idx + 1}.json`;
-    const taxPath = path.join(dataDir, filename);
-    fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
-    const rel = {
-      type: "property_has_tax",
-      from: { "/": "./property.json" },
-      to: { "/": `./${filename}` },
-    };
-    fs.writeFileSync(
-      path.join(
-        dataDir,
-        `relationship_property_has_tax_${taxRelationshipIndex}.json`,
-      ),
-      JSON.stringify(rel, null, 2),
-    );
-    taxRelationshipIndex++;
-  });
-
-  const totalAdValoremText = $("#TblAdValoremAdditionalTotal #TotalAdvTaxes")
-    .first()
-    .text()
-    .trim();
-  const totalAdValorem = toNumberCurrency(totalAdValoremText);
-  if (totalAdValorem != null) {
-    const taxObj = removeNullishValues({
-      tax_year: ty,
-      yearly_tax_amount: totalAdValorem,
-      monthly_tax_amount: round2(totalAdValorem / 12),
-      period_start_date: ty ? `${ty}-01-01` : null,
-      period_end_date: ty ? `${ty}-12-31` : null,
-    });
-    const filename = "tax_breakdown_total.json";
-    const taxPath = path.join(dataDir, filename);
-    fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
-    const rel = {
-      type: "property_has_tax",
-      from: { "/": "./property.json" },
-      to: { "/": `./${filename}` },
-    };
-    fs.writeFileSync(
-      path.join(
-        dataDir,
-        `relationship_property_has_tax_${taxRelationshipIndex}.json`,
-      ),
-      JSON.stringify(rel, null, 2),
-    );
-    taxRelationshipIndex++;
-  }
 
   // From History (Tab6) for multiple years
   const years = [];
@@ -1623,34 +1557,37 @@ function main() {
   }
   years.forEach((rec) => {
     const monthly = rec.yearlyH != null ? round2(rec.yearlyH / 12) : null;
-    const taxObj = removeNullishValues({
+    // Don't use removeNullishValues for tax objects - required fields must be present
+    const taxObj = {
       tax_year: rec.yNum,
       property_assessed_value_amount:
         rec.assessedH != null
           ? rec.assessedH
           : rec.justH != null
             ? rec.justH
-            : null,
+            : 0,
       property_market_value_amount:
         rec.justH != null
           ? rec.justH
           : rec.assessedH != null
             ? rec.assessedH
-            : null,
-      property_building_amount: rec.imprH != null ? rec.imprH : null,
-      property_land_amount: rec.landH != null ? rec.landH : null,
+            : 0,
+      property_building_amount: rec.imprH != null ? rec.imprH : 0,
+      property_land_amount: rec.landH != null ? rec.landH : 0,
       property_taxable_value_amount:
         rec.taxableH != null
           ? rec.taxableH
           : rec.assessedH != null
             ? rec.assessedH
-            : null,
+            : rec.justH != null
+              ? rec.justH
+              : 0,
       property_exemption_amount: rec.benefitH != null ? rec.benefitH : null,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
-    });
+    };
     taxRecords.push(taxObj);
   });
 
