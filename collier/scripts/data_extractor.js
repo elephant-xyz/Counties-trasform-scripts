@@ -517,57 +517,6 @@ function main() {
   const strapNumber = $("#StrapNumber").first().text().trim() || null;
   const millageArea = $("#MillageArea").first().text().trim() || null;
 
-  // Access tax-related selectors (these are accessed but values are extracted elsewhere in the script)
-  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").first().text().trim();
-  const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim();
-  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim();
-  const tdDetailNonSchoolMillage = $("#TdDetailNonSchoolMillage").first().text().trim();
-  const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim();
-  const historySchoolMillage3 = $("#HistorySchoolMillage3").first().text().trim();
-  const totalAdvTaxes = $("#TotalAdvTaxes").first().text().trim();
-
-  // Access historical tax value selectors (accessed here, used later in tax history section)
-  const historyImprovementsJustValue2 = $("#HistoryImprovementsJustValue2").first().text().trim();
-  const historyImprovementsJustValue3 = $("#HistoryImprovementsJustValue3").first().text().trim();
-  const historyImprovementsJustValue4 = $("#HistoryImprovementsJustValue4").first().text().trim();
-  const historyImprovementsJustValue5 = $("#HistoryImprovementsJustValue5").first().text().trim();
-  const historyTotalJustValue2 = $("#HistoryTotalJustValue2").first().text().trim();
-  const historyTotalJustValue3 = $("#HistoryTotalJustValue3").first().text().trim();
-  const historyTotalJustValue4 = $("#HistoryTotalJustValue4").first().text().trim();
-  const historyTotalJustValue5 = $("#HistoryTotalJustValue5").first().text().trim();
-  const historyNonSchool10PctBenefit3 = $("#HistoryNonSchool10PctBenefit3").first().text().trim();
-  const historyNonSchool10PctBenefit4 = $("#HistoryNonSchool10PctBenefit4").first().text().trim();
-  const historyCountyAssessedValue3 = $("#HistoryCountyAssessedValue3").first().text().trim();
-  const historyCountyAssessedValue4 = $("#HistoryCountyAssessedValue4").first().text().trim();
-  const historyCountyMillage1 = $("#HistoryCountyMillage1").first().text().trim();
-  const historyMunicipalMillage4 = $("#HistoryMunicipalMillage4").first().text().trim();
-  const historyOtherMillage4 = $("#HistoryOtherMillage4").first().text().trim();
-
-  // Access tax year and millage selectors from tax detail tables
-  for (let i = 1; i <= 50; i++) {
-    $(`#taxyear${i}`).first().text().trim();
-    $(`#Millage${i}`).first().text().trim();
-    $(`#Tax${i}`).first().text().trim();
-  }
-
-  // Access various building/permit selectors to mark them as processed
-  for (let i = 1; i <= 50; i++) {
-    $(`#permitno${i}`).first().text().trim();
-    $(`#BASEAREA${i}`).first().text().trim();
-    $(`#YRBUILT${i}`).first().text().trim();
-    $(`#SEQNO${i}`).first().text().trim();
-    $(`#TaName${i}`).first().text().trim();
-  }
-
-  // Access owner zip (used in ownerMapping.js for mailing address)
-  const ownerZip = $("#OwnerZip").first().text().trim() || null;
-
-  // Access other specific selectors mentioned in errors
-  const taxBillsLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim();
-  const someTdValue = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").first().text().trim();
-  const someTdValue2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim();
-  const someTdValue3 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").first().text().trim();
-
   // Property JSON
   const property = {
     parcel_identifier: parcelId,
