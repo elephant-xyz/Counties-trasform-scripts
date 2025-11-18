@@ -3415,10 +3415,7 @@ function normalizeCountyAddressForSchemaOutput(addressFilePath) {
     );
 
   if (hasNormalizedCoverage) {
-    fs.writeFileSync(
-      addressFilePath,
-      JSON.stringify(normalizedSurface, null, 2),
-    );
+    writeJSON(addressFilePath, normalizedSurface);
     return;
   }
 
@@ -3435,14 +3432,11 @@ function normalizeCountyAddressForSchemaOutput(addressFilePath) {
       rawOutput.country_code = "US";
     }
 
-    fs.writeFileSync(addressFilePath, JSON.stringify(rawOutput, null, 2));
+    writeJSON(addressFilePath, rawOutput);
     return;
   }
 
-  fs.writeFileSync(
-    addressFilePath,
-    JSON.stringify(normalizedSurface, null, 2),
-  );
+  writeJSON(addressFilePath, normalizedSurface);
 }
 
 function writeFinalAddressOneOfOutput(addressFilePath) {
@@ -3505,10 +3499,7 @@ function writeFinalAddressOneOfOutput(addressFilePath) {
       : "";
 
   if (hasNormalizedCoverage) {
-    fs.writeFileSync(
-      addressFilePath,
-      JSON.stringify(normalizedSurface, null, 2),
-    );
+    writeJSON(addressFilePath, normalizedSurface);
     return;
   }
 
@@ -3541,7 +3532,7 @@ function writeFinalAddressOneOfOutput(addressFilePath) {
     rawSurface.country_code = "US";
   }
 
-  fs.writeFileSync(addressFilePath, JSON.stringify(rawSurface, null, 2));
+  writeJSON(addressFilePath, rawSurface);
 }
 
 function composeSchemaAlignedAddressOutput(address) {
@@ -21131,7 +21122,7 @@ function enforceFinalAddressOneOfCompliance(addressFilePath) {
     if (sourceHttpRequest) {
       output.source_http_request = sourceHttpRequest;
     }
-    fs.writeFileSync(addressFilePath, JSON.stringify(output, null, 2));
+    writeJSON(addressFilePath, output);
     return;
   }
 
@@ -21161,7 +21152,7 @@ function enforceFinalAddressOneOfCompliance(addressFilePath) {
     rawSurface.source_http_request = sourceHttpRequest;
   }
 
-  fs.writeFileSync(addressFilePath, JSON.stringify(rawSurface, null, 2));
+  writeJSON(addressFilePath, rawSurface);
 }
 
 const COUNTY_NORMALIZED_STRICT_STRING_FIELDS = [
