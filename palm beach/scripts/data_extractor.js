@@ -3897,78 +3897,62 @@ function buildMinimalRawAddressPayload(address) {
   }
 
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
   const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    minimal.latitude = latitude;
-    minimal.longitude = longitude;
-  }
+  minimal.latitude = Number.isFinite(latitude) ? latitude : null;
 
-  const copyFieldIfMeaningful = (field) => {
+  const longitude = parseCoordinate(address.longitude);
+  minimal.longitude = Number.isFinite(longitude) ? longitude : null;
+
+  const assignField = (field) => {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      minimal[field] = minimal[field] ?? null;
       return;
     }
+
     const normalized = normalizeAddressFieldForSchema(field, address[field]);
+
     if (normalized === undefined || normalized === null) {
+      minimal[field] = null;
       return;
     }
+
     if (typeof normalized === "string") {
       const trimmed = normalized.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      minimal[field] = trimmed;
+      minimal[field] = trimmed.length ? trimmed : null;
       return;
     }
+
     if (typeof normalized === "number") {
-      if (Number.isFinite(normalized)) {
-        minimal[field] = normalized;
-      }
+      minimal[field] = Number.isFinite(normalized) ? normalized : null;
       return;
     }
+
     minimal[field] = normalized;
   };
 
-  const OPTIONAL_FIELDS = [
-    "postal_code",
-    "plus_four_postal_code",
-    "city_name",
-    "state_code",
-    "country_code",
-    "county_name",
-    "municipality_name",
-    "street_number",
-    "street_name",
-    "street_suffix_type",
-    "street_pre_directional_text",
-    "street_post_directional_text",
-    "unit_identifier",
-    "route_number",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-  ];
-
-  for (const field of OPTIONAL_FIELDS) {
-    copyFieldIfMeaningful(field);
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (field === "latitude" || field === "longitude") {
+      continue;
+    }
+    assignField(field);
   }
 
+  if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
+  }
   if (minimal.state_code && !minimal.country_code) {
     minimal.country_code = "US";
-  }
-
-  if (!minimal.postal_code && minimal.plus_four_postal_code) {
-    delete minimal.plus_four_postal_code;
   }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
   if (requestIdentifier) {
     minimal.request_identifier = requestIdentifier;
+  } else if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    minimal.request_identifier = null;
   }
 
   const preparedSource = prepareSourceHttpRequest(
@@ -3976,6 +3960,10 @@ function buildMinimalRawAddressPayload(address) {
   );
   if (preparedSource) {
     minimal.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request")
+  ) {
+    minimal.source_http_request = null;
   }
 
   return minimal;
