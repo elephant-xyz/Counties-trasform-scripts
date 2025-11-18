@@ -95,7 +95,6 @@ function ensureDir(filePath) {
     area_under_air_sq_ft: areaUnderAirSqFt,
     flooring_material_type: null,
     size_square_feet: null,
-    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,

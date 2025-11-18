@@ -518,18 +518,13 @@ function main() {
 
   // Property JSON
   const property = {
-    livable_floor_area: null,
     parcel_identifier: parcelId,
     property_legal_description_text: legalText,
     property_structure_built_year: null,
     property_type: null,
     property_usage_type: null,
-    area_under_air: null,
     number_of_units: null,
-    number_of_units_type: null,
-    property_effective_built_year: null,
     subdivision: subdivision || null,
-    total_area: null,
     zoning: null,
   };
   // property_type and property_usage_type
@@ -646,23 +641,8 @@ function main() {
     yearBuilt = fallbackYearBuilt;
   }
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
-  // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
-  if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
-    property.livable_floor_area = String(totalBaseArea);
-    property.area_under_air = String(totalBaseArea);
-  }
-  if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
-    property.total_area = String(totalAdjArea);
-  }
-  if (totalBaseAreaAll >= 10) {
-    if (property.total_area == null) {
-      property.total_area = String(totalBaseAreaAll);
-    }
-    if (!hasAnyResidentialBuildings) {
-      property.livable_floor_area = String(totalBaseAreaAll);
-      property.area_under_air = String(totalBaseAreaAll);
-    }
-  }
+  // Note: Area fields (livable_floor_area, area_under_air, total_area) are deprecated
+  // in the property class. Area information is now stored in layout and structure objects.
 
   // Write property.json
   fs.writeFileSync(
@@ -1069,9 +1049,9 @@ function main() {
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
       if (lay && Object.keys(lay).length > 0) {
-        // Ensure space_index is an integer
-        if (lay.space_index === null || lay.space_index === undefined) {
-          lay.space_index = layoutIdx;
+        // Ensure space_type_index is set (space_index is deprecated)
+        if (!lay.space_type_index) {
+          lay.space_type_index = String(layoutIdx);
         }
 
         // Ensure is_finished is a boolean
@@ -1148,7 +1128,6 @@ function main() {
         decor_elements: null,
         design_style: null,
         fixture_finish_quality: null,
-        floor_level: null,
         flooring_installation_date: null,
         flooring_material_type: null,
         flooring_wear: null,
