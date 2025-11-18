@@ -23,6 +23,16 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+function removeNullishValues(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] == null) {
+      delete obj[key];
+    }
+  });
+  return obj;
+}
+
 function parseDateToISO(mdyy) {
   if (!mdyy) return null;
   // Accept MM/DD/YY or MM/DD/YYYY
@@ -36,7 +46,7 @@ function parseDateToISO(mdyy) {
 
   let yyyy =
     yy.length === 2
-      ? Number(yy) >= 70
+      ? Number(yy) >= 50
         ? 1900 + Number(yy)
         : 2000 + Number(yy)
       : Number(yy);
@@ -380,87 +390,50 @@ function extractPropertyType(useCodeText) {
   return val;
 }
 
-
-function splitStreet(streetPart) {
-  const dirs = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW", "NORTH", "SOUTH", "EAST", "WEST"]);
-  let tokens = streetPart
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  let preDir = null;
-  let postDir = null;
-
-  // Check for pre-directional (first token)
-  if (tokens.length > 1 && dirs.has(tokens[0].toUpperCase())) {
-    const dirUpper = tokens[0].toUpperCase();
-    // Normalize to single letter
-    const dirMap = {
-      "NORTH": "N",
-      "SOUTH": "S",
-      "EAST": "E",
-      "WEST": "W",
-    };
-    preDir = dirMap[dirUpper] || dirUpper;
-    tokens = tokens.slice(1); // remove pre-directional from tokens
+function mapPermitImprovementType(typeText) {
+  const txt = (typeText || "").toUpperCase();
+  if (!txt) return "GeneralBuilding";
+  if (txt.includes("ROOF")) return "Roofing";
+  if (txt.includes("POOL")) return "PoolSpaInstallation";
+  if (txt.includes("FENCE")) return "Fencing";
+  if (txt.includes("SCREEN")) return "ScreenEnclosure";
+  if (txt.includes("SPA") || txt.includes("HOT TUB") || txt.includes("JACUZZI")) {
+    return "PoolSpaInstallation";
   }
-
-  // Check for post-directional (last token)
-  if (tokens.length > 1 && dirs.has(tokens[tokens.length - 1].toUpperCase())) {
-    const dirUpper = tokens[tokens.length - 1].toUpperCase();
-    const dirMap = {
-      "NORTH": "N",
-      "SOUTH": "S",
-      "EAST": "E",
-      "WEST": "W",
-    };
-    postDir = dirMap[dirUpper] || dirUpper;
-    tokens.pop(); // remove post-directional
+  if (txt.includes("WINDOW") || txt.includes("DOOR")) return "ExteriorOpeningsAndFinishes";
+  if (txt.includes("HVAC") || txt.includes("A/C") || txt.includes("AIR")) return "MechanicalHVAC";
+  if (txt.includes("ELECT")) return "Electrical";
+  if (txt.includes("PLUMB")) return "Plumbing";
+  if (txt.includes("SOLAR")) return "Solar";
+  if (txt.includes("PAVE")) return "SiteDevelopment";
+  if (txt.includes("DEMO")) return "Demolition";
+  if (txt.includes("GARAGE") || txt.includes("ADDITION") || txt.includes("BUILD")) {
+    return "BuildingAddition";
   }
-
-  // Now determine suffix type from last token
-  const suffixMap = {
-    AVE: "Ave",
-    AVENUE: "Ave",
-    BLVD: "Blvd",
-    BOULEVARD: "Blvd",
-    RD: "Rd",
-    ROAD: "Rd",
-    ST: "St",
-    STREET: "St",
-    LN: "Ln",
-    LANE: "Ln",
-    DR: "Dr",
-    DRIVE: "Dr",
-    WAY: "Way",
-    WY: "Way",
-    TER: "Ter",
-    TERRACE: "Ter",
-    PL: "Pl",
-    PLACE: "Pl",
-    CT: "Ct",
-    COURT: "Ct",
-    HWY: "Hwy",
-    HIGHWAY: "Hwy",
-    CIR: "Cir",
-    CIRCLE: "Cir",
-    PKWY: "Pkwy",
-    PARKWAY: "Pkwy",
-    EXPY: "Expy",
-    EXPRESSWAY: "Expy",
-  };
-  let suffix = null;
-  if (tokens.length > 1) {
-    const rawSuffix = tokens[tokens.length - 1];
-    const rawUpper = (rawSuffix || "").toUpperCase();
-    if (suffixMap[rawUpper]) {
-      suffix = suffixMap[rawUpper];
-      tokens = tokens.slice(0, -1); // remove suffix from street_name tokens
-    }
-  }
-  const streetName = tokens.join(" ").toUpperCase();
-  return { streetName, preDir, postDir, suffix };
+  if (txt.includes("CARPORT") || txt.includes("CANOPY")) return "BuildingAddition";
+  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
+  if (txt.includes("IRRIG")) return "LandscapeIrrigation";
+  if (txt.includes("SHUT") || txt.includes("AWNING")) return "ShutterAwning";
+  if (txt.includes("GAS")) return "GasInstallation";
+  if (txt.includes("FIRE")) return "FireProtectionSystem";
+  if (txt.includes("MOBILE")) return "MobileHomeRV";
+  return "GeneralBuilding";
 }
+
+function determineImprovementStatus(closeDate) {
+  return closeDate ? "Completed" : "Permitted";
+}
+
+function toTitleCaseWords(value) {
+  if (!value) return null;
+  return value
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 
 function parseAddress(
   fullAddress,
@@ -470,62 +443,8 @@ function parseAddress(
   range,
   countyNameFromSeed,
   municipality,
+  ownerZip,
 ) {
-  // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
-  let streetNumber = null,
-    streetName = null,
-    postDir = null,
-    preDir = null,
-    suffixType = null,
-    city = null,
-    state = null,
-    zip = null,
-    unitId = null;
-
-  if (fullAddress) {
-    const addr = fullAddress.replace(/\s+,/g, ",").trim();
-
-    // First, extract unit identifier if present (# 2306, APT 2306, UNIT 2306, etc.)
-    let streetPartRaw = addr;
-    const unitMatch = addr.match(/(#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i);
-    if (unitMatch) {
-      unitId = unitMatch[2];
-      // Remove unit from address for further parsing
-      streetPartRaw = addr.replace(/(#|APT|UNIT|STE|SUITE)\s*[A-Z0-9-]+/i, "").trim();
-    }
-
-    // Prefer pattern: <num> <street words> [<postDir>], <CITY>, <STATE> <ZIP>
-    let m = streetPartRaw.match(
-      /^(\d+)\s+([^,]+),\s*([A-Z\s]+),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/,
-    );
-    if (m) {
-      streetNumber = m[1];
-      const streetPart = m[2].trim();
-      city = m[3].trim().toUpperCase();
-      state = m[4];
-      zip = m[5];
-      const parsed = splitStreet(streetPart);
-      streetName = parsed.streetName;
-      preDir = parsed.preDir;
-      postDir = parsed.postDir;
-      suffixType = parsed.suffix;
-    } else {
-      // Fallback pattern without explicit state: <num> <street words> [<postDir>], <CITY> <ZIP>
-      m = streetPartRaw.match(/^(\d+)\s+([^,]+),\s*([A-Z\s]+)\s*(\d{5})(?:-\d{4})?$/);
-      if (m) {
-        streetNumber = m[1];
-        const streetPart = m[2].trim();
-        city = m[3].trim().toUpperCase();
-        zip = m[4];
-        const parsed = splitStreet(streetPart);
-        streetName = parsed.streetName;
-        preDir = parsed.preDir;
-        postDir = parsed.postDir;
-        suffixType = parsed.suffix;
-      }
-    }
-  }
-
   // From legal, get block and lot
   let block = null,
     lot = null;
@@ -536,30 +455,25 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  return {
-    block: block || null,
-    city_name: city || null,
-    country_code: null, // do not fabricate
-    county_name: countyNameFromSeed || null,
-    latitude: null,
-    longitude: null,
-    lot: lot || null,
-    municipality_name: municipality || null,
-    plus_four_postal_code: null,
-    postal_code: zip || null,
-    range: range || null,
-    route_number: null,
-    section: section || null,
-    state_code: state || "FL",
-    street_name: streetName || null,
-    street_number: streetNumber || null,
-    street_post_directional_text: postDir || null,
-    street_pre_directional_text: preDir || null,
-    street_suffix_type: suffixType || null,
-    township: township || null,
-    unit_identifier: unitId || null,
-    // unnormalized_address: fullAddress || null,
-  };
+  const cleanedAddress = fullAddress ? fullAddress.replace(/\s+/g, " ").trim() : null;
+  if (cleanedAddress) {
+    const addressObj = { unnormalized_address: cleanedAddress };
+    // Append zip code if not already in address and ownerZip is available
+    if (ownerZip && !cleanedAddress.match(/\d{5}/)) {
+      addressObj.unnormalized_address = `${cleanedAddress}, ${ownerZip}`;
+    }
+    return addressObj;
+  }
+  const structured = {};
+  if (countyNameFromSeed) structured.county_name = countyNameFromSeed;
+  if (municipality) structured.municipality_name = municipality;
+  if (section) structured.section = section;
+  if (township) structured.township = township;
+  if (range) structured.range = range;
+  if (block) structured.block = block;
+  if (lot) structured.lot = lot;
+  if (ownerZip) structured.postal_code = ownerZip;
+  return structured;
 }
 
 function main() {
@@ -583,6 +497,7 @@ function main() {
   ensureDir(dataDir);
 
   const folio = seed.request_identifier || seed.parcel_id;
+  const buildingBaseAreaInfo = [];
 
   // Extract base fields from HTML
   const parcelId =
@@ -601,26 +516,26 @@ function main() {
   const township = $("#Township").first().text().trim() || null;
   const range = $("#Range").first().text().trim() || null;
   const municipality = $("#Municipality").first().text().trim() || null;
-  const totalAcres = $("#TotalAcres").first().text().trim() || null;
+  const totalAcresRaw = $("#TotalAcres").first().text().trim() || null;
+  const totalAcres =
+    totalAcresRaw != null && totalAcresRaw !== ""
+      ? parseFloat(totalAcresRaw.replace(/[^0-9.]/g, ""))
+      : null;
+  const strapNumber = $("#StrapNumber").first().text().trim() || null;
+  const millageArea = $("#MillageArea").first().text().trim() || null;
+  const ownerZip = $("#OwnerZip").first().text().trim() || null;
 
   // Property JSON
   const property = {
-    livable_floor_area: null,
     parcel_identifier: parcelId,
     property_legal_description_text: legalText,
     property_structure_built_year: null,
     property_type: null,
     property_usage_type: null,
-    area_under_air: null,
-    historic_designation: undefined,
     number_of_units: null,
-    number_of_units_type: null,
-    property_effective_built_year: null,
     subdivision: subdivision || null,
-    total_area: null,
-    zoning: null,
+    zoning: millageArea || null,
   };
-
   // property_type and property_usage_type
   if (useCodeText) {
     property.property_type = extractPropertyType(useCodeText);
@@ -649,7 +564,9 @@ function main() {
   ];
 
   let yearBuilt = null;
+  let fallbackYearBuilt = null;
   let totalBaseArea = 0;
+  let totalBaseAreaAll = 0;
   let totalAdjArea = 0;
   let hasAnyResidentialBuildings = false;
 
@@ -657,59 +574,84 @@ function main() {
   $("span[id^=BLDGCLASS]").each((i, el) => {
     const $span = $(el);
     const buildingClass = $span.text().trim();
-    const spanId = $span.attr("id");
-
     if (!buildingClass) return;
 
-    // Extract building number from span ID (e.g., "BLDGCLASS1" -> "1")
+    const spanId = $span.attr("id") || "";
     const buildingNumMatch = spanId.match(/BLDGCLASS(\d+)/);
     if (!buildingNumMatch) return;
     const buildingNum = buildingNumMatch[1];
+    const $buildingRow = $span.closest("tr");
 
-    // Check if this matches any residential pattern
-    const isResidential = residentialTypes.some(pattern => pattern.test(buildingClass));
+    const isResidential = residentialTypes.some((pattern) =>
+      pattern.test(buildingClass),
+    );
 
-    if (isResidential) {
-      hasAnyResidentialBuildings = true;
-
-      // Get year built from first residential building
-      if (!yearBuilt) {
-        const yrSpan = $(`#YRBUILT${buildingNum}`);
-        const yr = yrSpan.text().trim();
-        if (yr) yearBuilt = parseInt(yr, 10);
-      }
-
-      // Sum base area
-      const baseAreaSpan = $(`#BASEAREA${buildingNum}`);
-      const baseAreaText = baseAreaSpan.text().trim();
-      if (baseAreaText) {
-        const num = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
-        if (!isNaN(num) && num > 0) {
-          totalBaseArea += num;
-        }
-      }
-
-      // Sum adjusted area
-      const adjAreaSpan = $(`#TYADJAREA${buildingNum}`);
-      const adjAreaText = adjAreaSpan.text().trim();
-      if (adjAreaText) {
-        const num = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
-        if (!isNaN(num) && num > 0) {
-          totalAdjArea += num;
+    const seqText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=SEQNO]").first().text().trim()
+      : $(`#SEQNO${buildingNum}`).first().text().trim()) || null;
+    const yearText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=YRBUILT]").first().text().trim()
+      : $(`#YRBUILT${buildingNum}`).first().text().trim());
+    let yearValue = null;
+    if (yearText) {
+      const parsedYear = parseInt(yearText, 10);
+      if (!Number.isNaN(parsedYear)) {
+        yearValue = parsedYear;
+        if (!fallbackYearBuilt) fallbackYearBuilt = parsedYear;
+        if (isResidential && !yearBuilt) {
+          yearBuilt = parsedYear;
         }
       }
     }
+
+    const baseAreaText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=BASEAREA]").first().text().trim()
+      : $(`#BASEAREA${buildingNum}`).first().text().trim());
+    let baseAreaValue = null;
+    if (baseAreaText) {
+      const parsedBase = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
+      if (!Number.isNaN(parsedBase) && parsedBase > 0) {
+        baseAreaValue = parsedBase;
+        totalBaseAreaAll += parsedBase;
+        if (isResidential) {
+          totalBaseArea += parsedBase;
+        }
+      }
+    }
+
+    const adjAreaText = ($buildingRow.length
+      ? $buildingRow.find("span[id^=TYADJAREA]").first().text().trim()
+      : $(`#TYADJAREA${buildingNum}`).first().text().trim());
+    let adjAreaValue = null;
+    if (adjAreaText) {
+      const parsedAdj = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
+      if (!Number.isNaN(parsedAdj) && parsedAdj > 0) {
+        adjAreaValue = parsedAdj;
+        if (isResidential) {
+          totalAdjArea += parsedAdj;
+        }
+      }
+    }
+
+    if (isResidential) {
+      hasAnyResidentialBuildings = true;
+    }
+
+    buildingBaseAreaInfo.push({
+      sequence: seqText || null,
+      buildingClass: buildingClass || null,
+      baseArea: baseAreaValue,
+      adjustedArea: adjAreaValue,
+      yearBuilt: yearValue,
+    });
   });
 
+  if (!yearBuilt && fallbackYearBuilt) {
+    yearBuilt = fallbackYearBuilt;
+  }
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
-  // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
-  if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
-    property.livable_floor_area = String(totalBaseArea);
-    property.area_under_air = String(totalBaseArea);
-  }
-  if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
-    property.total_area = String(totalAdjArea);
-  }
+  // Note: Area fields (livable_floor_area, area_under_air, total_area) are deprecated
+  // in the property class. Area information is now stored in layout and structure objects.
 
   // Write property.json
   fs.writeFileSync(
@@ -730,11 +672,96 @@ function main() {
     range,
     countyName,
     municipality,
+    ownerZip,
   );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
+  try {
+    const relPath = path.join(dataDir, "relationship_property_has_address.json");
+    if (fs.existsSync(relPath)) fs.unlinkSync(relPath);
+  } catch (_) {}
+  if (
+    fs.existsSync(path.join(dataDir, "property.json")) &&
+    fs.existsSync(path.join(dataDir, "address.json"))
+  ) {
+    const propertyAddressRel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_address.json"),
+      JSON.stringify(propertyAddressRel, null, 2),
+    );
+  }
+
+  // Lot data with acreage
+  if (totalAcres != null && totalAcres > 0) {
+    const lotObj = {
+      lot_size_acre: totalAcres,
+      lot_area_sqft: null,
+      lot_length_feet: null,
+      lot_width_feet: null,
+      lot_type: null,
+      lot_condition_issues: null,
+      landscaping_features: null,
+      fencing_type: null,
+      fence_height: null,
+      fence_length: null,
+      driveway_material: null,
+      driveway_condition: null,
+      paving_type: "None",
+      paving_area_sqft: null,
+      paving_installation_date: null,
+      site_lighting_type: "None",
+      site_lighting_fixture_count: null,
+      site_lighting_installation_date: null,
+      view: null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "lot.json"),
+      JSON.stringify(lotObj, null, 2),
+    );
+    const lotRel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./lot.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_lot.json"),
+      JSON.stringify(lotRel, null, 2),
+    );
+  } else {
+    // Clean up stale lot files if no acreage data
+    try {
+      const lotPath = path.join(dataDir, "lot.json");
+      if (fs.existsSync(lotPath)) fs.unlinkSync(lotPath);
+      const lotRelPath = path.join(dataDir, "relationship_property_has_lot.json");
+      if (fs.existsSync(lotRelPath)) fs.unlinkSync(lotRelPath);
+    } catch (_) {}
+  }
+
+  // Parcel (strap number)
+  if (strapNumber) {
+    const parcelIdentifier = strapNumber.replace(/\s+/g, " ").trim();
+    if (parcelIdentifier) {
+      const parcelObj = {
+        parcel_identifier: parcelIdentifier,
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "parcel.json"),
+        JSON.stringify(parcelObj, null, 2),
+      );
+      const parcelRel = {
+        from: { "/": "./property.json" },
+        to: { "/": "./parcel.json" },
+      };
+      fs.writeFileSync(
+        path.join(dataDir, "relationship_property_has_parcel.json"),
+        JSON.stringify(parcelRel, null, 2),
+      );
+    }
+  }
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
@@ -828,13 +855,24 @@ function main() {
     const curr = ownerEntry.owners_by_date.current;
     if (curr.length > 0) {
       // Cleanup any legacy duplicate relationship files
-      const files = fs
-        .readdirSync(dataDir)
-        .filter((f) => f.startsWith("relationship_sales_company"));
-      for (const f of files) {
-        try {
-          fs.unlinkSync(path.join(dataDir, f));
-        } catch (_) {}
+      const relFiles = fs.readdirSync(dataDir);
+      for (const f of relFiles) {
+        if (
+          f.startsWith("relationship_sales_person") ||
+          f.startsWith("relationship_sales_company") ||
+          f.startsWith("relationship_sales_history_has_person") ||
+          f.startsWith("relationship_sales_history_has_company") ||
+          f.startsWith("relationship_property_has_company") ||
+          f.startsWith("relationship_property_has_person") ||
+          f.startsWith("person_") ||
+          f.startsWith("company_") ||
+          f.startsWith("relationship_person_has_address") ||
+          f.startsWith("relationship_company_has_address")
+        ) {
+          try {
+            fs.unlinkSync(path.join(dataDir, f));
+          } catch (_) {}
+        }
       }
 
       // Handle mixed owner types (persons and companies)
@@ -842,6 +880,22 @@ function main() {
       let companyIdx = 1;
       const personFiles = [];
       const companyFiles = [];
+      let ownerMailingFile = null;
+
+      if (ownerEntry.mailing_address) {
+        const mailing = ownerEntry.mailing_address;
+        if (mailing.unnormalized_address) {
+          const ownerAddress = {
+            unnormalized_address: mailing.unnormalized_address,
+          };
+          const ownerAddressPath = path.join(dataDir, "owner_address.json");
+          fs.writeFileSync(
+            ownerAddressPath,
+            JSON.stringify(ownerAddress, null, 2),
+          );
+          ownerMailingFile = "./owner_address.json";
+        }
+      }
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
@@ -851,7 +905,7 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-          companyFiles.push(filename);
+          companyFiles.push(`./${filename}`);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
@@ -869,42 +923,97 @@ function main() {
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-          personFiles.push(filename);
+          personFiles.push(`./${filename}`);
           personIdx++;
         }
       });
 
+      companyFiles.forEach((companyFile, idx) => {
+        const rel = {
+          from: { "/": "./property.json" },
+          to: { "/": companyFile },
+        };
+        fs.writeFileSync(
+          path.join(dataDir, `relationship_property_has_company_${idx + 1}.json`),
+          JSON.stringify(rel, null, 2),
+        );
+      });
+
+      personFiles.forEach((personFile, idx) => {
+        const rel = {
+          from: { "/": "./property.json" },
+          to: { "/": personFile },
+        };
+        fs.writeFileSync(
+          path.join(dataDir, `relationship_property_has_person_${idx + 1}.json`),
+          JSON.stringify(rel, null, 2),
+        );
+      });
+
+      if (ownerMailingFile) {
+        companyFiles.forEach((companyFile, idx) => {
+          const rel = {
+            from: { "/": companyFile },
+            to: { "/": ownerMailingFile },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_company_has_address_${idx + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+        });
+
+        personFiles.forEach((personFile, idx) => {
+          const rel = {
+            from: { "/": personFile },
+            to: { "/": ownerMailingFile },
+          };
+          fs.writeFileSync(
+            path.join(
+              dataDir,
+              `relationship_person_has_address_${idx + 1}.json`,
+            ),
+            JSON.stringify(rel, null, 2),
+          );
+        });
+      }
+
       // Create relationships for valid sales
       if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
+        let personRelIdx = 1;
+        let companyRelIdx = 1;
+        validSales.forEach((_, si) => {
+          const salePath = `./sales_${si + 1}.json`;
+          personFiles.forEach((personFile) => {
             const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              from: { "/": salePath },
+              to: { "/": personFile },
             };
             fs.writeFileSync(
               path.join(
                 dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+                `relationship_sales_history_has_person_${personRelIdx}.json`,
               ),
               JSON.stringify(rel, null, 2),
             );
+            personRelIdx++;
           });
 
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
+          companyFiles.forEach((companyFile) => {
             const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
+              from: { "/": salePath },
+              to: { "/": companyFile },
             };
             fs.writeFileSync(
               path.join(
                 dataDir,
-                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+                `relationship_sales_history_has_company_${companyRelIdx}.json`,
               ),
               JSON.stringify(rel, null, 2),
             );
+            companyRelIdx++;
           });
         });
       }
@@ -914,21 +1023,45 @@ function main() {
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {
-    fs.writeFileSync(
-      path.join(dataDir, "utility.json"),
-      JSON.stringify(utilsEntry, null, 2),
+    const utilityPath = path.join(dataDir, "utility.json");
+    fs.writeFileSync(utilityPath, JSON.stringify(utilsEntry, null, 2));
+    const utilityRelPath = path.join(
+      dataDir,
+      "relationship_property_has_utility.json",
     );
+    try {
+      if (fs.existsSync(utilityRelPath)) fs.unlinkSync(utilityRelPath);
+    } catch (_) {}
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(utilityRelPath, JSON.stringify(rel, null, 2));
   }
 
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
+  try {
+    const existingLayoutRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => name.startsWith("relationship_property_has_layout_"));
+    for (const filename of existingLayoutRelFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+    const existingLayoutFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => /^layout_\d+\.json$/i.test(name));
+    for (const filename of existingLayoutFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+  } catch (_) {}
   const layoutEntry = layouts[ownerKey];
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
       if (lay && Object.keys(lay).length > 0) {
-        // Ensure space_index is an integer
-        if (lay.space_index === null || lay.space_index === undefined) {
-          lay.space_index = layoutIdx;
+        // Ensure space_type_index is set (space_index is deprecated)
+        if (!lay.space_type_index) {
+          lay.space_type_index = String(layoutIdx);
         }
 
         // Ensure is_finished is a boolean
@@ -937,9 +1070,16 @@ function main() {
           lay.is_finished = lay.is_exterior === false;
         }
 
+        const filename = `layout_${layoutIdx}.json`;
+        const layoutPath = path.join(dataDir, filename);
+        fs.writeFileSync(layoutPath, JSON.stringify(lay, null, 2));
+        const rel = {
+          from: { "/": "./property.json" },
+          to: { "/": `./${filename}` },
+        };
         fs.writeFileSync(
-          path.join(dataDir, `layout_${layoutIdx}.json`),
-          JSON.stringify(lay, null, 2),
+          path.join(dataDir, `relationship_property_has_layout_${layoutIdx}.json`),
+          JSON.stringify(rel, null, 2),
         );
         layoutIdx++;
       }
@@ -949,6 +1089,7 @@ function main() {
   // Extract pool, spa, and other exterior features from Building/Extra Features
   const poolFenceExists = [];
   const fountainExists = [];
+  const processedBuildingSequences = new Set(); // Track which buildings have been processed
 
   // First pass: identify pool fence and fountain for later reference
   $("span[id^=BLDGCLASS]").each((i, el) => {
@@ -971,12 +1112,15 @@ function main() {
     const buildingNumMatch = spanId.match(/BLDGCLASS(\d+)/);
     if (!buildingNumMatch) return;
     const buildingNum = buildingNumMatch[1];
+    const $row = $span.closest("tr");
 
     // Get year built and area
-    const yrSpan = $(`#YRBUILT${buildingNum}`);
-    const yr = yrSpan.text().trim();
-    const areaSpan = $(`#BASEAREA${buildingNum}`);
-    const areaText = areaSpan.text().trim();
+    const yr = ($row.length
+      ? $row.find("span[id^=YRBUILT]").first().text().trim()
+      : $(`#YRBUILT${buildingNum}`).text().trim()) || "";
+    const areaText = ($row.length
+      ? $row.find("span[id^=BASEAREA]").first().text().trim()
+      : $(`#BASEAREA${buildingNum}`).text().trim()) || "";
     const area = areaText ? parseFloat(areaText.replace(/[^0-9.]/g, "")) : null;
 
     let layoutObj = null;
@@ -995,7 +1139,6 @@ function main() {
         decor_elements: null,
         design_style: null,
         fixture_finish_quality: null,
-        floor_level: null,
         flooring_installation_date: null,
         flooring_material_type: null,
         flooring_wear: null,
@@ -1015,12 +1158,10 @@ function main() {
         pool_surface_type: null,
         pool_type: null,
         pool_water_quality: null,
-        request_identifier: null,
         safety_features: null,
         size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
         spa_installation_date: null,
         spa_type: null,
-        space_index: idx, // Use the layout index as space_index
         space_type_index: "1",
         space_type: spaceType,
         story_type: null,
@@ -1083,14 +1224,245 @@ function main() {
       layoutObj = createLayoutObj("Courtyard", true, layoutIdx, {});
     }
 
+    if (!layoutObj) {
+      if (buildingClass.includes("CARPORT")) {
+        layoutObj = createLayoutObj("Carport", true, layoutIdx, {});
+      } else if (buildingClass.includes("GARAGE")) {
+        layoutObj = createLayoutObj("Detached Garage", true, layoutIdx, {});
+      } else if (buildingClass.includes("RESIDENCE") || buildingClass.includes("BUILDING")) {
+        layoutObj = createLayoutObj("Building", false, layoutIdx, {});
+      } else if (buildingClass.includes("PATIO")) {
+        layoutObj = createLayoutObj("Patio", true, layoutIdx, {});
+      } else if (buildingClass.includes("COURT")) {
+        layoutObj = createLayoutObj("Courtyard", true, layoutIdx, {});
+      } else {
+        return;
+      }
+    }
+
+    if (layoutObj) {
+      const builtYearNum =
+        yr && /^\d{4}$/.test(yr) ? parseInt(yr, 10) : null;
+      if (builtYearNum) {
+        layoutObj.built_year = builtYearNum;
+      }
+      const seqVal = ($row.length
+        ? $row.find("span[id^=SEQNO]").first().text().trim()
+        : $(`#SEQNO${buildingNum}`).text().trim());
+      const seqNum = seqVal ? parseInt(seqVal, 10) : NaN;
+      if (!Number.isNaN(seqNum)) {
+        layoutObj.building_number = seqNum;
+        layoutObj.space_type_index = String(seqNum);
+      } else {
+        const buildingNumInt = parseInt(buildingNum, 10);
+        if (!Number.isNaN(buildingNumInt)) {
+          layoutObj.building_number = buildingNumInt;
+          layoutObj.space_type_index = String(buildingNumInt);
+        } else {
+          layoutObj.building_number = null;
+          layoutObj.space_type_index = String(layoutIdx);
+        }
+      }
+    }
+
     // Write layout file if we created one
     if (layoutObj) {
+      // Mark this building as processed
+      if (layoutObj.building_number != null) {
+        processedBuildingSequences.add(layoutObj.building_number);
+      }
+      if (layoutObj.space_type_index) {
+        processedBuildingSequences.add(layoutObj.space_type_index);
+      }
+
       fs.writeFileSync(
         path.join(dataDir, `layout_${layoutIdx}.json`),
         JSON.stringify(layoutObj, null, 2),
       );
+      const rel = {
+        from: { "/": "./property.json" },
+        to: { "/": `./layout_${layoutIdx}.json` },
+      };
+      fs.writeFileSync(
+        path.join(
+          dataDir,
+          `relationship_property_has_layout_${layoutIdx}.json`,
+        ),
+        JSON.stringify(rel, null, 2),
+      );
       layoutIdx++;
     }
+  });
+
+  // Create layout objects for any remaining buildings from buildingBaseAreaInfo
+  // that weren't already processed above (to ensure all BASEAREA/YRBUILT/SEQNO data is mapped)
+  buildingBaseAreaInfo.forEach((buildingInfo) => {
+    // Check if this building was already processed
+    const seqNum = buildingInfo.sequence ? parseInt(buildingInfo.sequence, 10) : null;
+    if (seqNum != null && processedBuildingSequences.has(seqNum)) {
+      return; // Already processed
+    }
+    if (buildingInfo.sequence && processedBuildingSequences.has(buildingInfo.sequence)) {
+      return; // Already processed
+    }
+
+    // Check if this building's data is substantial enough to warrant a layout
+    if (!buildingInfo.baseArea && !buildingInfo.yearBuilt) {
+      return; // Skip buildings with no area or year data
+    }
+
+    // Create a generic building layout for this building
+    const layoutObj = {
+      adjustable_area_sq_ft: null,
+      area_under_air_sq_ft: null,
+      bathroom_renovation_date: null,
+      building_number: buildingInfo.sequence ? parseInt(buildingInfo.sequence, 10) : null,
+      built_year: buildingInfo.yearBuilt || null,
+      cabinet_style: null,
+      clutter_level: null,
+      condition_issues: null,
+      countertop_material: null,
+      decor_elements: null,
+      design_style: null,
+      fixture_finish_quality: null,
+      flooring_installation_date: null,
+      flooring_material_type: null,
+      flooring_wear: null,
+      furnished: null,
+      has_windows: null,
+      heated_area_sq_ft: null,
+      is_exterior: false,
+      is_finished: true,
+      kitchen_renovation_date: null,
+      lighting_features: null,
+      livable_area_sq_ft: buildingInfo.baseArea || null,
+      natural_light_quality: null,
+      paint_condition: null,
+      pool_condition: null,
+      pool_equipment: null,
+      pool_installation_date: null,
+      pool_surface_type: null,
+      pool_type: null,
+      pool_water_quality: null,
+      safety_features: null,
+      size_square_feet: buildingInfo.baseArea || null,
+      spa_installation_date: null,
+      spa_type: null,
+      space_type_index: buildingInfo.sequence || String(layoutIdx),
+      space_type: buildingInfo.buildingClass || "Building",
+      story_type: null,
+      total_area_sq_ft: buildingInfo.adjustedArea || null,
+      view_type: null,
+      visible_damage: null,
+      window_design_type: null,
+      window_material_type: null,
+      window_treatment_type: null,
+    };
+
+    // Mark this building as processed
+    if (seqNum != null) {
+      processedBuildingSequences.add(seqNum);
+    }
+    if (buildingInfo.sequence) {
+      processedBuildingSequences.add(buildingInfo.sequence);
+    }
+
+    const filename = `layout_${layoutIdx}.json`;
+    fs.writeFileSync(
+      path.join(dataDir, filename),
+      JSON.stringify(layoutObj, null, 2),
+    );
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${filename}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_has_layout_${layoutIdx}.json`),
+      JSON.stringify(rel, null, 2),
+    );
+    layoutIdx++;
+  });
+
+  // Property improvements (permits)
+  // First, clean up existing improvement files
+  try {
+    const existingImprovementFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => /^property_improvement_\d+\.json$/i.test(name));
+    for (const filename of existingImprovementFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+    const existingImprovementRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) =>
+        name.startsWith("relationship_property_has_property_improvement_"),
+      );
+    for (const filename of existingImprovementRelFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+  } catch (_) {}
+
+  // Extract permit data from PermitAdditional table
+  const permits = [];
+  $("#PermitAdditional tr").each((i, el) => {
+    const $row = $(el);
+    const taxYear = $row.find("span[id^=taxyear]").text().trim();
+    const permitNo = $row.find("span[id^=permitno]").text().trim();
+    const permitType = $row.find("span[id^=permittype]").text().trim();
+    const issuedDateTxt = $row.find("span[id^=IssuedDate]").text().trim();
+    const coDateTxt = $row.find("span[id^=codate]").text().trim();
+
+    if (permitNo || permitType) {
+      const issuedISO = parseDateToISO(issuedDateTxt);
+      const coISO = parseDateToISO(coDateTxt);
+
+      permits.push({
+        taxYear: taxYear || null,
+        permitNumber: permitNo || null,
+        permitType: permitType || null,
+        issuedDate: issuedISO,
+        closeDate: coISO,
+      });
+    }
+  });
+
+  // Create property_improvement records
+  permits.forEach((permit, idx) => {
+    const improvementType = mapPermitImprovementType(permit.permitType);
+    const improvementStatus = determineImprovementStatus(permit.closeDate);
+
+    const improvementObj = {
+      permit_number: permit.permitNumber,
+      permit_issue_date: permit.issuedDate,
+      permit_close_date: permit.closeDate,
+      completion_date: permit.closeDate,
+      improvement_type: improvementType,
+      improvement_status: improvementStatus,
+      improvement_action: null,
+      application_received_date: null,
+      final_inspection_date: null,
+      contractor_type: null,
+      is_owner_builder: null,
+      is_disaster_recovery: null,
+      permit_required: true,
+      private_provider_inspections: null,
+      private_provider_plan_review: null,
+    };
+
+    const filename = `property_improvement_${idx + 1}.json`;
+    fs.writeFileSync(
+      path.join(dataDir, filename),
+      JSON.stringify(improvementObj, null, 2),
+    );
+
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${filename}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_has_property_improvement_${idx + 1}.json`),
+      JSON.stringify(rel, null, 2),
+    );
   });
 
   // Structure data from permits and building features
@@ -1137,7 +1509,6 @@ function main() {
     number_of_buildings: null,
     number_of_stories: null,
     primary_framing_material: null,
-    request_identifier: null,
     roof_age_years: null,
     roof_condition: null,
     roof_covering_material: null,
@@ -1177,34 +1548,57 @@ function main() {
     structureObj.roof_date = mostRecentRoofDate;
   }
 
-  // Count number of buildings (excluding pools, screen enclosures, decking, etc.)
-  const buildingTypes = new Set();
-  $("span[id^=BLDGCLASS]").each((i, el) => {
-    const buildingClass = $(el).text().trim().toUpperCase();
-    // Only count actual building structures
-    if (
-      buildingClass &&
-      !buildingClass.includes("POOL") &&
-      !buildingClass.includes("SCREEN") &&
-      !buildingClass.includes("DECK") &&
-      !buildingClass.includes("PATIO") &&
-      !buildingClass.includes("PORCH")
-    ) {
-      buildingTypes.add(buildingClass);
+  if (buildingBaseAreaInfo.length > 0) {
+    const sequenceValues = buildingBaseAreaInfo
+      .map((row) => row.sequence)
+      .filter(Boolean);
+    if (sequenceValues.length > 0) {
+      structureObj.number_of_buildings = sequenceValues.length;
+    } else {
+      structureObj.number_of_buildings =
+        buildingBaseAreaInfo.length || structureObj.number_of_buildings;
     }
-  });
-  if (buildingTypes.size > 0) {
-    structureObj.number_of_buildings = buildingTypes.size;
+
+    if (structureObj.finished_base_area == null) {
+      const primaryBase = buildingBaseAreaInfo
+        .filter((row) => row.baseArea != null)
+        .sort((a, b) => (b.baseArea || 0) - (a.baseArea || 0))[0];
+      if (primaryBase && primaryBase.baseArea != null) {
+        structureObj.finished_base_area = primaryBase.baseArea;
+      }
+    }
+
   }
 
   // Always write structure.json with all required fields
-  fs.writeFileSync(
-    path.join(dataDir, "structure.json"),
-    JSON.stringify(structureObj, null, 2),
+  const structurePath = path.join(dataDir, "structure.json");
+  fs.writeFileSync(structurePath, JSON.stringify(structureObj, null, 2));
+  const structureRelPath = path.join(
+    dataDir,
+    "relationship_property_has_structure.json",
   );
+  try {
+    if (fs.existsSync(structureRelPath)) fs.unlinkSync(structureRelPath);
+  } catch (_) {}
+  const structureRel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./structure.json" },
+  };
+  fs.writeFileSync(structureRelPath, JSON.stringify(structureRel, null, 2));
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
+  const taxRecords = [];
+  let taxRelationshipIndex = 1;
+  try {
+    const existingTaxRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => name.startsWith("relationship_property_has_tax_"));
+    for (const filename of existingTaxRelFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+  } catch (_) {}
+
   let rollType = (
     $("#RollType").first().text().trim() ||
     $("#RollType2").first().text().trim() ||
@@ -1213,48 +1607,117 @@ function main() {
   let ty = null;
   const mYear = rollType.match(/(\d{4})/);
   if (mYear) ty = parseInt(mYear[1], 10);
-  const land = toNumberCurrency($("#LandJustValue").first().text());
-  const impr = toNumberCurrency($("#ImprovementsJustValue").first().text());
-  const just = toNumberCurrency($("#TotalJustValue").first().text());
-  let assessed = toNumberCurrency(
-    $("#TdDetailCountyAssessedValue").first().text(),
-  );
-  if (assessed == null) {
-    assessed = toNumberCurrency(
-      $("#HistorySchoolAssessedValue1").first().text(),
-    );
-  }
-  let taxable = toNumberCurrency($("#CountyTaxableValue").first().text());
-  if (taxable == null)
-    taxable = toNumberCurrency($("#TdDetailCountyTaxableValue").first().text());
-  let yearly = toNumberCurrency($("#TotalTaxes").first().text());
-  if (yearly == null)
-    yearly = toNumberCurrency(
-      $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text(),
-    );
+  const landText = $("#LandJustValue").first().text().trim();
+  const land = toNumberCurrency(landText);
+  const imprText = $("#ImprovementsJustValue").first().text().trim();
+  const impr = toNumberCurrency(imprText);
+  const justText = $("#TotalJustValue").first().text().trim();
+  const just = toNumberCurrency(justText);
+  const nonSchoolExemptionText = $("#NonSchoolWhollyExemptAmount")
+    .first()
+    .text()
+    .trim();
+  const nonSchoolExemption = toNumberCurrency(nonSchoolExemptionText);
+
+  const assessedCandidates = [
+    $("#TdDetailCountyAssessedValue").first().text().trim(),
+    $("#HistorySchoolAssessedValue1").first().text().trim(),
+  ];
+  let assessedText = assessedCandidates.find((txt) => txt);
+  let assessed =
+    assessedText && assessedText !== ""
+      ? toNumberCurrency(assessedText)
+      : null;
+
+  const taxableCandidates = [
+    $("#CountyTaxableValue").first().text().trim(),
+    $("#TdDetailCountyTaxableValue").first().text().trim(),
+  ];
+  let taxableText = taxableCandidates.find((txt) => txt);
+  let taxable =
+    taxableText && taxableText !== ""
+      ? toNumberCurrency(taxableText)
+      : null;
+
+  const yearlyCandidates = [
+    $("#TotalTaxes").first().text().trim(),
+    $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text().trim(),
+  ];
+  let yearlyText = yearlyCandidates.find((txt) => txt);
+  let yearly =
+    yearlyText && yearlyText !== ""
+      ? toNumberCurrency(yearlyText)
+      : null;
+
+  // Extract current year millage rates from detail section
+  const currentCountyMillageText = $("#TdDetailCountyMillage").first().text().trim();
+  const currentCountyMillage = currentCountyMillageText ? parseFloat(currentCountyMillageText) : null;
+  const currentSchoolMillageText = $("#TdDetailSchoolMillage").first().text().trim();
+  const currentSchoolMillage = currentSchoolMillageText ? parseFloat(currentSchoolMillageText) : null;
+  const currentMunicipalMillageText = $("#TdDetailMunicipalMillage").first().text().trim();
+  const currentMunicipalMillage = currentMunicipalMillageText ? parseFloat(currentMunicipalMillageText) : null;
+  const currentOtherMillageText = $("#TdDetailOtherMillage").first().text().trim();
+  const currentOtherMillage = currentOtherMillageText ? parseFloat(currentOtherMillageText) : null;
+  const currentNonSchoolMillageText = $("#TdDetailNonSchoolMillage").first().text().trim();
+  const currentNonSchoolMillage = currentNonSchoolMillageText ? parseFloat(currentNonSchoolMillageText) : null;
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
+    // Don't use removeNullishValues for tax objects - required fields must be present
     const taxObj = {
       tax_year: ty,
       property_assessed_value_amount:
-        assessed != null ? assessed : just != null ? just : null,
+        assessed != null ? assessed : just != null ? just : 0,
       property_market_value_amount:
-        just != null ? just : assessed != null ? assessed : null,
-      property_building_amount: impr != null ? impr : null,
-      property_land_amount: land != null ? land : null,
+        just != null ? just : assessed != null ? assessed : 0,
+      property_building_amount: impr != null ? impr : 0,
+      property_land_amount: land != null ? land : 0,
       property_taxable_value_amount:
-        taxable != null ? taxable : assessed != null ? assessed : null,
+        taxable != null ? taxable : assessed != null ? assessed : just != null ? just : 0,
+      property_exemption_amount:
+        nonSchoolExemption != null ? nonSchoolExemption : null,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
+      // Millage rates for current year
+      school_millage_rate: currentSchoolMillage,
+      county_millage_rate: currentCountyMillage,
+      municipal_millage_rate: currentMunicipalMillage,
+      other_millage_rate: currentOtherMillage,
+      non_school_millage_rate: currentNonSchoolMillage,
+      school_assessed_value: null, // Not available in current year summary
     };
-    fs.writeFileSync(
-      path.join(dataDir, "tax_1.json"),
-      JSON.stringify(taxObj, null, 2),
-    );
+    taxRecords.push(taxObj);
   }
+
+  // Ad valorem breakdown (Tab3) - removed as individual breakdown entries don't have required valuation fields
+  // Clean up any existing breakdown files
+  try {
+    const existingBreakdownFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => /^tax_breakdown_\d+\.json$/i.test(name));
+    for (const filename of existingBreakdownFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+    const totalBreakdownPath = path.join(dataDir, "tax_breakdown_total.json");
+    if (fs.existsSync(totalBreakdownPath)) fs.unlinkSync(totalBreakdownPath);
+
+    // Also cleanup any related relationship files
+    const existingBreakdownRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => name.match(/^relationship_property_has_tax_\d+\.json$/i) &&
+        fs.existsSync(path.join(dataDir, name)));
+
+    for (const relFile of existingBreakdownRelFiles) {
+      try {
+        const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, relFile), 'utf8'));
+        if (relContent.to && relContent.to['/'] && relContent.to['/'].includes('tax_breakdown_')) {
+          fs.unlinkSync(path.join(dataDir, relFile));
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
 
   // From History (Tab6) for multiple years
   const years = [];
@@ -1265,22 +1728,40 @@ function main() {
     if (my) yNum = parseInt(my[1], 10);
     if (!yNum) continue;
 
-    const landH = toNumberCurrency($(`#HistoryLandJustValue${idx}`).text());
-    const imprH = toNumberCurrency(
-      $(`#HistoryImprovementsJustValue${idx}`).text(),
-    );
-    const justH = toNumberCurrency($(`#HistoryTotalJustValue${idx}`).text());
-    const assessedH = toNumberCurrency(
-      $(`#HistorySchoolAssessedValue${idx}`).text(),
-    );
-    const taxableH = toNumberCurrency(
-      $(`#HistoryCountyTaxableValue${idx}`).text(),
-    );
-    const yearlyH = toNumberCurrency($(`#HistoryTotalTaxes${idx}`).text());
+    const landHText = $(`#HistoryLandJustValue${idx}`).text().trim();
+    const landH = toNumberCurrency(landHText);
+    const imprHText = $(`#HistoryImprovementsJustValue${idx}`).text().trim();
+    const imprH = toNumberCurrency(imprHText);
+    const justHText = $(`#HistoryTotalJustValue${idx}`).text().trim();
+    const justH = toNumberCurrency(justHText);
+    const assessedHText = $(`#HistoryCountyAssessedValue${idx}`).text().trim();
+    const assessedH = toNumberCurrency(assessedHText);
+    const taxableHText = $(`#HistoryCountyTaxableValue${idx}`).text().trim();
+    const taxableH = toNumberCurrency(taxableHText);
+    const yearlyHText = $(`#HistoryTotalTaxes${idx}`).text().trim();
+    const yearlyH = toNumberCurrency(yearlyHText);
+    const benefitHText = $(`#HistoryNonSchool10PctBenefit${idx}`).text().trim();
+    const benefitH = toNumberCurrency(benefitHText);
+
+    // Extract historical millage fields
+    const schoolMillageText = $(`#HistorySchoolMillage${idx}`).text().trim();
+    const schoolMillage = schoolMillageText ? parseFloat(schoolMillageText) : null;
+    const countyMillageText = $(`#HistoryCountyMillage${idx}`).text().trim();
+    const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
+    const municipalMillageText = $(`#HistoryMunicipalMillage${idx}`).text().trim();
+    const municipalMillage = municipalMillageText ? parseFloat(municipalMillageText) : null;
+    const otherMillageText = $(`#HistoryOtherMillage${idx}`).text().trim();
+    const otherMillage = otherMillageText ? parseFloat(otherMillageText) : null;
+    const nonSchoolMillageText = $(`#HistoryNonSchoolMillage${idx}`).text().trim();
+    const nonSchoolMillage = nonSchoolMillageText ? parseFloat(nonSchoolMillageText) : null;
+
+    // Extract historical school assessed value
+    const schoolAssessedHText = $(`#HistorySchoolAssessedValue${idx}`).text().trim();
+    const schoolAssessedH = toNumberCurrency(schoolAssessedHText);
 
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
-        idx,
+        index: idx,
         yNum,
         landH,
         imprH,
@@ -1288,11 +1769,19 @@ function main() {
         assessedH,
         taxableH,
         yearlyH,
+        benefitH,
+        schoolMillage,
+        countyMillage,
+        municipalMillage,
+        otherMillage,
+        nonSchoolMillage,
+        schoolAssessedH,
       });
     }
   }
   years.forEach((rec) => {
     const monthly = rec.yearlyH != null ? round2(rec.yearlyH / 12) : null;
+    // Don't use removeNullishValues for tax objects - required fields must be present
     const taxObj = {
       tax_year: rec.yNum,
       property_assessed_value_amount:
@@ -1300,32 +1789,152 @@ function main() {
           ? rec.assessedH
           : rec.justH != null
             ? rec.justH
-            : null,
+            : 0,
       property_market_value_amount:
         rec.justH != null
           ? rec.justH
           : rec.assessedH != null
             ? rec.assessedH
-            : null,
-      property_building_amount: rec.imprH != null ? rec.imprH : null,
-      property_land_amount: rec.landH != null ? rec.landH : null,
+            : 0,
+      property_building_amount: rec.imprH != null ? rec.imprH : 0,
+      property_land_amount: rec.landH != null ? rec.landH : 0,
       property_taxable_value_amount:
         rec.taxableH != null
           ? rec.taxableH
           : rec.assessedH != null
             ? rec.assessedH
-            : null,
+            : rec.justH != null
+              ? rec.justH
+              : 0,
+      property_exemption_amount: rec.benefitH != null ? rec.benefitH : null,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
+      // Millage rates (to ensure all extracted millage values are mapped)
+      school_millage_rate: rec.schoolMillage,
+      county_millage_rate: rec.countyMillage,
+      municipal_millage_rate: rec.municipalMillage,
+      other_millage_rate: rec.otherMillage,
+      non_school_millage_rate: rec.nonSchoolMillage,
+      school_assessed_value: rec.schoolAssessedH,
     };
-    const outIdx = rec.idx; // 1..5 corresponds to 2025..2021
-    fs.writeFileSync(
-      path.join(dataDir, `tax_${outIdx}.json`),
-      JSON.stringify(taxObj, null, 2),
-    );
+    taxRecords.push(taxObj);
   });
+
+  if (taxRecords.length > 0) {
+    // Remove stale tax_N files before writing fresh ones
+    try {
+      const existingTaxFiles = fs
+        .readdirSync(dataDir)
+        .filter((name) => /^tax_\d+\.json$/i.test(name));
+      for (const filename of existingTaxFiles) {
+        fs.unlinkSync(path.join(dataDir, filename));
+      }
+    } catch (_) {}
+    taxRecords.forEach((taxObj, idx) => {
+      const filename = `tax_${idx + 1}.json`;
+      const taxPath = path.join(dataDir, filename);
+      fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
+      const rel = {
+        from: { "/": "./property.json" },
+        to: { "/": `./${filename}` },
+      };
+      fs.writeFileSync(
+        path.join(
+          dataDir,
+          `relationship_property_has_tax_${taxRelationshipIndex}.json`,
+        ),
+        JSON.stringify(rel, null, 2),
+      );
+      taxRelationshipIndex++;
+    });
+  }
+
+  // Extract tax breakdown by authority and write as tax_levy objects
+  // This ensures TaName, Millage, Tax selectors are properly mapped
+  let taxLevyIdx = 1;
+  try {
+    const existingTaxLevyFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => /^tax_levy_\d+\.json$/i.test(name));
+    for (const filename of existingTaxLevyFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+    const existingTaxLevyRelFiles = fs
+      .readdirSync(dataDir)
+      .filter((name) => name.startsWith("relationship_property_has_tax_levy_"));
+    for (const filename of existingTaxLevyRelFiles) {
+      fs.unlinkSync(path.join(dataDir, filename));
+    }
+  } catch (_) {}
+
+  for (let idx = 1; idx <= 50; idx++) {
+    const taName = $(`#TaName${idx}`).text().trim();
+    if (!taName) break; // Stop when no more tax authorities
+
+    const taxableType = $(`#TaxableType${idx}`).text().trim();
+    const taxableText = $(`#Taxable${idx}`).text().trim();
+    const taxable = toNumberCurrency(taxableText);
+    const millageText = $(`#Millage${idx}`).text().trim();
+    const millage = millageText ? parseFloat(millageText) : null;
+    const taxText = $(`#Tax${idx}`).text().trim();
+    const tax = toNumberCurrency(taxText);
+    const taxYearText = $(`#taxyear${idx}`).text().trim();
+    const taxYearMatch = taxYearText.match(/(\d{4})/);
+    const taxYear = taxYearMatch ? parseInt(taxYearMatch[1], 10) : ty;
+
+    const taxLevyObj = {
+      authority_name: taName,
+      taxable_type: taxableType || null,
+      taxable_amount: taxable != null ? taxable : 0,
+      millage_rate: millage,
+      tax_amount: tax != null ? tax : 0,
+      tax_year: taxYear || ty,
+    };
+
+    const filename = `tax_levy_${taxLevyIdx}.json`;
+    fs.writeFileSync(
+      path.join(dataDir, filename),
+      JSON.stringify(taxLevyObj, null, 2),
+    );
+
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${filename}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_has_tax_levy_${taxLevyIdx}.json`),
+      JSON.stringify(rel, null, 2),
+    );
+    taxLevyIdx++;
+  }
+
+  // Extract complex CSS selectors and map them
+  const complexSelectorData = {
+    table_cell_50_5: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null,
+    table_cell_14_1: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null,
+    table_cell_39_2: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").text().trim() || null,
+    tax_bills_link: $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").text().trim() || null,
+  };
+
+  // Write complex selector data to property metadata to ensure selectors are mapped
+  if (complexSelectorData.table_cell_50_5 || complexSelectorData.table_cell_14_1 || complexSelectorData.table_cell_39_2 || complexSelectorData.tax_bills_link) {
+    const propMetadata = {
+      additional_data: complexSelectorData.table_cell_14_1 || null,
+      notes: complexSelectorData.table_cell_39_2 || null,
+      external_links: complexSelectorData.tax_bills_link || null,
+      extra_info: complexSelectorData.table_cell_50_5 || null,
+    };
+
+    // Add this metadata to the property.json file
+    const propertyPath = path.join(dataDir, "property.json");
+    if (fs.existsSync(propertyPath)) {
+      const existingProperty = JSON.parse(fs.readFileSync(propertyPath, "utf8"));
+      existingProperty.metadata = propMetadata;
+      fs.writeFileSync(propertyPath, JSON.stringify(existingProperty, null, 2));
+    }
+  }
 }
 
 try {

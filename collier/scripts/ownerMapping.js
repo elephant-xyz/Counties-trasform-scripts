@@ -106,6 +106,14 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
+  "CHURCH",
+  "MINISTRIES",
+  "TEMPLE",
+  "PARISH",
+  "DIOCESE",
+  "MISSION",
+  "SOCIETY",
+  "FELLOWSHIP",
 ];
 
 function looksLikeCompany(name) {
@@ -491,6 +499,68 @@ function buildOwnersByDate(validOwners) {
   return map;
 }
 
+function buildMailingAddress($) {
+  const rawLines = [];
+  for (let i = 1; i <= 10; i++) {
+    const text = norm($(`#OwnerLine${i}`).text());
+    if (text) rawLines.push(text);
+  }
+
+  const city = norm($("#OwnerCity").text());
+  const state = norm($("#OwnerState").text());
+  const postal = norm($("#OwnerZip").text());
+
+  const addressParts = [];
+  const addressKeywords = [
+    "PO BOX",
+    "P.O. BOX",
+    "UNIT",
+    "STE",
+    "SUITE",
+    "APT",
+    "STREET",
+    "ROAD",
+    "AVENUE",
+    "DR",
+    "DRIVE",
+    "COURT",
+    "LANE",
+    "BOULEVARD",
+    "PKWY",
+    "PARKWAY",
+    "HIGHWAY",
+  ];
+  let started = false;
+  rawLines.forEach((line) => {
+    const upper = line.toUpperCase();
+    const containsKeyword = addressKeywords.some((kw) => {
+      if (kw.includes(" ")) {
+        return upper.includes(kw);
+      }
+      const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+      const regex = new RegExp(`\\b${escaped}\\b`);
+      return regex.test(upper);
+    });
+    if (
+      started ||
+      /\d/.test(upper) ||
+      containsKeyword
+    ) {
+      addressParts.push(line);
+      started = true;
+    }
+  });
+
+  const cityStateZip = [city, state, postal].filter(Boolean).join(" ");
+  if (cityStateZip) {
+    addressParts.push(cityStateZip);
+  }
+
+  const unnormalized = addressParts.filter(Boolean).join(", ");
+  if (!unnormalized) return null;
+  return { unnormalized_address: unnormalized };
+}
+
 // Main processing
 (function main() {
   const propertyId = extractPropertyId($);
@@ -527,12 +597,15 @@ function buildOwnersByDate(validOwners) {
 
   const ownersByDate = buildOwnersByDate(deduped);
 
+  const mailingAddress = buildMailingAddress($);
+
   // Build final object
   const result = {};
   const propertyKey = `property_${propertyId || "unknown_id"}`;
   result[propertyKey] = {
     owners_by_date: ownersByDate,
     invalid_owners: invalidOwners,
+    mailing_address: mailingAddress,
   };
 
   // Persist file and print JSON
