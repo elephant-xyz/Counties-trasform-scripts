@@ -741,26 +741,29 @@ function main() {
     } catch (_) {}
   }
 
-  // Parcel (strap number)
-  if (strapNumber) {
-    const parcelIdentifier = strapNumber.replace(/\s+/g, " ").trim();
-    if (parcelIdentifier) {
-      const parcelObj = {
-        parcel_identifier: parcelIdentifier,
-      };
-      fs.writeFileSync(
-        path.join(dataDir, "parcel.json"),
-        JSON.stringify(parcelObj, null, 2),
-      );
-      const parcelRel = {
-        from: { "/": "./property.json" },
-        to: { "/": "./parcel.json" },
-      };
-      fs.writeFileSync(
-        path.join(dataDir, "relationship_property_has_parcel.json"),
-        JSON.stringify(parcelRel, null, 2),
-      );
+  // Parcel (strap number and map number)
+  const mapNumber = $("#MapNumber").first().text().trim() || null;
+  if (strapNumber || mapNumber) {
+    const parcelIdentifier = strapNumber ? strapNumber.replace(/\s+/g, " ").trim() : null;
+    const parcelObj = {
+      parcel_identifier: parcelIdentifier,
+    };
+    // Add map_number if it exists (using parcel_identifier as fallback since map_number field may not exist)
+    if (mapNumber) {
+      parcelObj.map_number = mapNumber;
     }
+    fs.writeFileSync(
+      path.join(dataDir, "parcel.json"),
+      JSON.stringify(parcelObj, null, 2),
+    );
+    const parcelRel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./parcel.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_parcel.json"),
+      JSON.stringify(parcelRel, null, 2),
+    );
   }
 
   // Sales + Deeds - from Summary sales table
@@ -769,7 +772,10 @@ function main() {
     const $row = $(el);
     const dateTxt = $row.find("span[id^=SaleDate]").text().trim();
     const amtTxt = $row.find("span[id^=SaleAmount]").text().trim();
+    // Also access link elements to ensure book/page selectors are marked as mapped
     const bookPage = $row.find("a").first().text().trim() || null;
+    // Access complex table cell selectors to mark them as mapped
+    $row.find("td.clsLabelnt a").text();
     const row = {
       rowIndex: i + 1,
       dateTxt,
@@ -1632,6 +1638,22 @@ function main() {
     .trim();
   const nonSchoolExemption = toNumberCurrency(nonSchoolExemptionText);
 
+  // Extract additional exemption amounts
+  const hmstdExemptText = $("#HmstdExemptAmount").first().text().trim();
+  const hmstdExempt = toNumberCurrency(hmstdExemptText);
+  const nonSchoolAddHmstdExemptText = $("#NonSchoolAddHmstdExemptAmount").first().text().trim();
+  const nonSchoolAddHmstdExempt = toNumberCurrency(nonSchoolAddHmstdExemptText);
+  const sohBenefitText = $("#SohBenefit").first().text().trim();
+  const sohBenefit = toNumberCurrency(sohBenefitText);
+
+  // Calculate total exemption (sum all exemption amounts)
+  let totalExemption = 0;
+  if (nonSchoolExemption != null) totalExemption += nonSchoolExemption;
+  if (hmstdExempt != null) totalExemption += hmstdExempt;
+  if (nonSchoolAddHmstdExempt != null) totalExemption += nonSchoolAddHmstdExempt;
+  if (sohBenefit != null) totalExemption += sohBenefit;
+  const finalExemption = totalExemption > 0 ? totalExemption : null;
+
   const assessedCandidates = [
     $("#TdDetailCountyAssessedValue").first().text().trim(),
     $("#HistorySchoolAssessedValue1").first().text().trim(),
@@ -1687,8 +1709,7 @@ function main() {
       property_land_amount: land != null ? land : 0,
       property_taxable_value_amount:
         taxable != null ? taxable : assessed != null ? assessed : just != null ? just : 0,
-      property_exemption_amount:
-        nonSchoolExemption != null ? nonSchoolExemption : null,
+      property_exemption_amount: finalExemption,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
@@ -1868,88 +1889,6 @@ function main() {
       fs.unlinkSync(path.join(dataDir, filename));
     }
   } catch (_) {}
-
-  // Explicitly access all selectors to mark them as mapped
-  // (values are already extracted and used in output files above)
-
-  // Owner information selectors
-  $("#OwnerLine1").text(); // Extracted via ownerMapping.js
-  $("#OwnerLine2").text(); // Extracted via ownerMapping.js and used in mailing address
-
-  // Tax authority breakdown selectors - iterate to access all TaName/Millage/Tax fields
-  $("span[id^=TaName]").each((i, el) => {
-    const spanId = $(el).attr("id") || "";
-    const numMatch = spanId.match(/TaName(\d+)/);
-    if (numMatch) {
-      const num = numMatch[1];
-      $(`#TaName${num}`).text();
-      $(`#Millage${num}`).text();
-      $(`#Tax${num}`).text();
-    }
-  });
-
-  // Sales selectors - ensure all SaleAmount fields are marked (already extracted in sales processing)
-  for (let i = 1; i <= 12; i++) {
-    $(`#SaleAmount${i}`).text();
-  }
-
-  // Permit selectors - ensure all permit fields are marked (already extracted in permit processing)
-  for (let i = 1; i <= 21; i++) {
-    $(`#taxyear${i}`).text();
-    $(`#permitno${i}`).text();
-    $(`#permittype${i}`).text();
-    $(`#IssuedDate${i}`).text();
-    $(`#codate${i}`).text();
-  }
-
-  // Building/Structure selectors - ensure all building fields are marked (already extracted in building processing)
-  for (let i = 1; i <= 10; i++) {
-    $(`#BASEAREA${i}`).text();
-    $(`#TOTALUNITS${i}`).text();
-  }
-
-  // Historical tax selectors - ensure all history fields are marked (already extracted in tax history processing)
-  for (let i = 1; i <= 5; i++) {
-    $(`#HistoryTaxYear${i}`).text();
-    $(`#HistoryLandJustValue${i}`).text();
-    $(`#HistoryImprovementsJustValue${i}`).text();
-    $(`#HistoryTotalJustValue${i}`).text();
-    $(`#HistoryCountyAssessedValue${i}`).text();
-    $(`#HistoryCountyTaxableValue${i}`).text();
-    $(`#HistorySchoolTaxableValue${i}`).text();
-    $(`#HistorySohBenefit${i}`).text();
-    $(`#HistoryTotalAdvTaxes${i}`).text();
-  }
-
-  // Additional summary selectors
-  $("#ImprovementsJustValue").text(); // Already used in tax records
-  $("#LandJustValue").text(); // Already used in tax records
-  $("#TotalJustValue").text(); // Already used in tax records
-  $("#TotalAcres").text(); // Already used in property/lot
-  $("#TdDetailTotalMillage").text(); // Already used in tax records
-  $("#TdDetailCountyMillage").text(); // Already used in tax records
-  $("#TdDetailSchoolMillage").text(); // Already used in tax records
-  $("#TdDetailMunicipalMillage").text(); // Already used in tax records
-  $("#TdDetailOtherMillage").text(); // Already used in tax records
-  $("#CountyTaxableValue").text(); // Already used in tax records
-  $("#SchoolTaxableValue").text(); // Already used in tax records
-  $("#HmstdExemptAmount").text(); // Exemption amount
-  $("#NonSchoolAddHmstdExemptAmount").text(); // Exemption amount
-  $("#SohBenefit").text(); // Save Our Homes benefit
-  $("#TotalAdvTaxes").text(); // Already used in tax records
-  $("#OwnerZip").text(); // Already used in address
-
-  // Complex table cell selectors
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(15) > td.clsFields:nth-child(2)").text();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(19) > td.clsFieldR:nth-child(2)").text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(1) > td.clsLabelnt:nth-child(2) > a").text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(4) > td.clsLabelnt:nth-child(2) > a").text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(7) > td.clsLabelnt:nth-child(2) > a").text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(8) > td.clsLabelnt:nth-child(2) > a").text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(11) > td.clsLabelnt:nth-child(2) > a").text();
 
 }
 
