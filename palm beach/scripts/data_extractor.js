@@ -10775,8 +10775,9 @@ function enforceCountyAddressFieldPresence(addressFilePath) {
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
+  const hasRawString = trimmedUnnormalized.length > 0;
 
-  if (trimmedUnnormalized.length) {
+  if (hasRawString) {
     if (payload.unnormalized_address !== trimmedUnnormalized) {
       payload.unnormalized_address = trimmedUnnormalized;
       mutated = true;
@@ -10788,7 +10789,9 @@ function enforceCountyAddressFieldPresence(addressFilePath) {
     mutated = true;
   }
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+  const fieldList = RAW_ADDRESS_OUTPUT_FIELDS;
+
+  for (const field of fieldList) {
     if (!Object.prototype.hasOwnProperty.call(payload, field)) {
       payload[field] = null;
       mutated = true;
@@ -10830,6 +10833,12 @@ function enforceCountyAddressFieldPresence(addressFilePath) {
       if (!Number.isFinite(value)) {
         payload[field] = null;
         mutated = true;
+        continue;
+      }
+      const stringified = String(value);
+      if (payload[field] !== stringified) {
+        payload[field] = stringified;
+        mutated = true;
       }
       continue;
     }
@@ -10860,6 +10869,31 @@ function enforceCountyAddressFieldPresence(addressFilePath) {
   if (payload.state_code && !payload.country_code) {
     payload.country_code = "US";
     mutated = true;
+  }
+
+  const normalizedStringsComplete =
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) => {
+      const value = payload[field];
+      return typeof value === "string" && value.trim().length > 0;
+    });
+  const normalizedCoordinatesComplete = ADDRESS_COORDINATE_FIELDS.every((field) =>
+    Number.isFinite(payload[field]),
+  );
+  const hasNormalizedCoverage =
+    normalizedStringsComplete && normalizedCoordinatesComplete;
+
+  if (
+    hasNormalizedCoverage &&
+    Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
+  ) {
+    delete payload.unnormalized_address;
+    mutated = true;
+  } else if (!hasNormalizedCoverage && hasRawString) {
+    // Ensure the persisted raw string remains trimmed if we rely on the raw variant
+    if (payload.unnormalized_address !== trimmedUnnormalized) {
+      payload.unnormalized_address = trimmedUnnormalized;
+      mutated = true;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
