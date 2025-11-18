@@ -64,7 +64,7 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx, parcelId) {
+function defaultLayout(space_type, parcelId, building_number = null, space_type_index = null) {
   return {
     source_http_request: {
       method: "GET",
@@ -80,7 +80,8 @@ function defaultLayout(space_type, idx, parcelId) {
     },
     request_identifier: parcelId,
     space_type,
-    space_index: idx,
+    space_type_index,
+    building_number,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -115,36 +116,36 @@ function defaultLayout(space_type, idx, parcelId) {
 }
 
 function buildLayoutsFromBuildings(buildings, parcelId) {
-  // Sum across all buildings
-  let totalBeds = 0;
-  let totalBaths = 0;
-  let heatedArea = null;
-  
-  buildings.forEach((b) => {
-    totalBeds += toInt(b["Bedrooms"]);
-    totalBaths += toInt(b["Bathrooms"]);
-    if (b["Heated Area"]) {
-      heatedArea = toInt(b["Heated Area"]);
+  const layouts = [];
+
+  buildings.forEach((building, idx) => {
+    const buildingNumber = idx + 1;
+    const buildingSpaceIndex = `${buildingNumber}`;
+    const heatedArea = toInt(building["Heated Area"]) || null;
+
+    layouts.push(
+      defaultLayout("Building", parcelId, buildingNumber, buildingSpaceIndex),
+    );
+
+    const bathrooms = Math.max(toInt(building["Bathrooms"]), 0);
+    const bedrooms = Math.max(toInt(building["Bedrooms"]), 0);
+    const spaceCounters = {};
+
+    function addSpaces(count, spaceType) {
+      const key = spaceType;
+      for (let i = 0; i < count; i++) {
+        spaceCounters[key] = (spaceCounters[key] || 0) + 1;
+        const typeIndex = `${buildingNumber}.${spaceCounters[key]}`;
+        const layout = defaultLayout(spaceType, parcelId, buildingNumber, typeIndex);
+        layout.heated_area_sq_ft = heatedArea;
+        layouts.push(layout);
+      }
     }
+
+    addSpaces(bathrooms, "Full Bathroom");
+    addSpaces(bedrooms, "Bedroom");
   });
 
-  const layouts = [];
-  let idx = 1;
-  
-  // Add bedrooms
-  for (let i = 0; i < totalBeds; i++) {
-    const layout = defaultLayout("Bedroom", idx++, parcelId);
-    layout.heated_area_sq_ft = heatedArea;
-    layouts.push(layout);
-  }
-  
-  // Add bathrooms
-  for (let i = 0; i < totalBaths; i++) {
-    const layout = defaultLayout("Full Bathroom", idx++, parcelId);
-    layout.heated_area_sq_ft = heatedArea;
-    layouts.push(layout);
-  }
-  
   return layouts;
 }
 
@@ -152,7 +153,7 @@ function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  // if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings, parcelId);
   
