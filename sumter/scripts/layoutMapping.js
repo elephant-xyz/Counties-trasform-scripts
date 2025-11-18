@@ -159,11 +159,29 @@ function buildLayoutsFromBuildings(buildings) {
   });
   return layouts;
 }
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
+}
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
+
+  //CHECK if the prepared site was for the correct seed parcelid.
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: `Request identifier and parcel id don't match.Prepared Site is wrong.`,
+      path: "property.request_identifier",
+    };
+  }  
+
   // if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);

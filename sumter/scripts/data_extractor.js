@@ -2102,6 +2102,7 @@ function main() {
   const unnormalized = readJSON("unnormalized_address.json");
 
   const parcelFromHTML = getParcelId($);
+  // console.log("-----",parcelFromHTML)
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
