@@ -519,7 +519,6 @@ function main() {
     property_type: null,
     property_usage_type: null,
     area_under_air: null,
-    historic_designation: undefined,
     number_of_units: null,
     number_of_units_type: null,
     property_effective_built_year: null,
