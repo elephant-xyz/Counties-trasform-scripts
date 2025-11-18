@@ -3590,31 +3590,15 @@ const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
 function hasNormalizedCountyCoverage(address) {
   if (!address || typeof address !== "object") return false;
 
-  const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(address, field)
-        ? address[field]
-        : null;
-      return typeof value === "string" && value.trim().length > 0;
-    },
-  );
-
-  if (!hasRequiredStrings) {
+  const normalizedProbe = { ...address };
+  if (!hasRobustNormalizedAddress(normalizedProbe)) {
     return false;
   }
 
-  const hasCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-    (field) => {
-      const value = Object.prototype.hasOwnProperty.call(address, field)
-        ? address[field]
-        : null;
-      const numeric = parseCoordinate(value);
-      return Number.isFinite(numeric);
-    },
-  );
-
-  if (!hasCoordinates) {
-    return false;
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(normalizedProbe, field)) {
+      address[field] = normalizedProbe[field];
+    }
   }
 
   return true;
