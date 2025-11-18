@@ -701,13 +701,51 @@ function main() {
     );
   }
 
-  // Lot data is populated downstream; remove stale local files so we do not emit partial lot entities.
-  try {
-    const lotPath = path.join(dataDir, "lot.json");
-    if (fs.existsSync(lotPath)) fs.unlinkSync(lotPath);
-    const lotRelPath = path.join(dataDir, "relationship_property_has_lot.json");
-    if (fs.existsSync(lotRelPath)) fs.unlinkSync(lotRelPath);
-  } catch (_) {}
+  // Lot data with acreage
+  if (totalAcres != null && totalAcres > 0) {
+    const lotObj = {
+      lot_size_acre: totalAcres,
+      lot_area_sqft: null,
+      lot_length_feet: null,
+      lot_width_feet: null,
+      lot_type: null,
+      lot_condition_issues: null,
+      landscaping_features: null,
+      fencing_type: null,
+      fence_height: null,
+      fence_length: null,
+      driveway_material: null,
+      driveway_condition: null,
+      paving_type: null,
+      paving_area_sqft: null,
+      paving_installation_date: null,
+      site_lighting_type: null,
+      site_lighting_fixture_count: null,
+      site_lighting_installation_date: null,
+      view: null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "lot.json"),
+      JSON.stringify(lotObj, null, 2),
+    );
+    const lotRel = {
+      type: "property_has_lot",
+      from: { "/": "./property.json" },
+      to: { "/": "./lot.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_lot.json"),
+      JSON.stringify(lotRel, null, 2),
+    );
+  } else {
+    // Clean up stale lot files if no acreage data
+    try {
+      const lotPath = path.join(dataDir, "lot.json");
+      if (fs.existsSync(lotPath)) fs.unlinkSync(lotPath);
+      const lotRelPath = path.join(dataDir, "relationship_property_has_lot.json");
+      if (fs.existsSync(lotRelPath)) fs.unlinkSync(lotRelPath);
+    } catch (_) {}
+  }
 
   // Parcel (strap number)
   if (strapNumber) {
@@ -1262,7 +1300,8 @@ function main() {
     }
   });
 
-  // Property improvements (permits) - required schema fields are not present in the source, so keep pipeline clean of partial records.
+  // Property improvements (permits)
+  // First, clean up existing improvement files
   try {
     const existingImprovementFiles = fs
       .readdirSync(dataDir)
@@ -1279,6 +1318,69 @@ function main() {
       fs.unlinkSync(path.join(dataDir, filename));
     }
   } catch (_) {}
+
+  // Extract permit data from PermitAdditional table
+  const permits = [];
+  $("#PermitAdditional tr").each((i, el) => {
+    const $row = $(el);
+    const permitNo = $row.find("span[id^=permitno]").text().trim();
+    const permitType = $row.find("span[id^=permittype]").text().trim();
+    const issuedDateTxt = $row.find("span[id^=IssuedDate]").text().trim();
+    const coDateTxt = $row.find("span[id^=codate]").text().trim();
+
+    if (permitNo || permitType) {
+      const issuedISO = parseDateToISO(issuedDateTxt);
+      const coISO = parseDateToISO(coDateTxt);
+
+      permits.push({
+        permitNumber: permitNo || null,
+        permitType: permitType || null,
+        issuedDate: issuedISO,
+        closeDate: coISO,
+      });
+    }
+  });
+
+  // Create property_improvement records
+  permits.forEach((permit, idx) => {
+    const improvementType = mapPermitImprovementType(permit.permitType);
+    const improvementStatus = determineImprovementStatus(permit.closeDate);
+
+    const improvementObj = {
+      permit_number: permit.permitNumber,
+      permit_issue_date: permit.issuedDate,
+      permit_close_date: permit.closeDate,
+      completion_date: permit.closeDate,
+      improvement_type: improvementType,
+      improvement_status: improvementStatus,
+      improvement_action: null,
+      fee: null,
+      application_received_date: null,
+      final_inspection_date: null,
+      contractor_type: null,
+      is_owner_builder: null,
+      is_disaster_recovery: null,
+      permit_required: true,
+      private_provider_inspections: null,
+      private_provider_plan_review: null,
+    };
+
+    const filename = `property_improvement_${idx + 1}.json`;
+    fs.writeFileSync(
+      path.join(dataDir, filename),
+      JSON.stringify(improvementObj, null, 2),
+    );
+
+    const rel = {
+      type: "property_has_property_improvement",
+      from: { "/": "./property.json" },
+      to: { "/": `./${filename}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_has_property_improvement_${idx + 1}.json`),
+      JSON.stringify(rel, null, 2),
+    );
+  });
 
   // Structure data from permits and building features
   const structureObj = {
