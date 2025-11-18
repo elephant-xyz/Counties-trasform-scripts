@@ -106,6 +106,14 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
+  "CHURCH",
+  "MINISTRIES",
+  "TEMPLE",
+  "PARISH",
+  "DIOCESE",
+  "MISSION",
+  "SOCIETY",
+  "FELLOWSHIP",
 ];
 
 function looksLikeCompany(name) {
@@ -491,6 +499,68 @@ function buildOwnersByDate(validOwners) {
   return map;
 }
 
+function buildMailingAddress($) {
+  const rawLines = [];
+  for (let i = 1; i <= 10; i++) {
+    const text = norm($(`#OwnerLine${i}`).text());
+    if (text) rawLines.push(text);
+  }
+
+  const city = norm($("#OwnerCity").text());
+  const state = norm($("#OwnerState").text());
+  const postal = norm($("#OwnerZip").text());
+
+  const addressParts = [];
+  const addressKeywords = [
+    "PO BOX",
+    "P.O. BOX",
+    "UNIT",
+    "STE",
+    "SUITE",
+    "APT",
+    "STREET",
+    "ROAD",
+    "AVENUE",
+    "DR",
+    "DRIVE",
+    "COURT",
+    "LANE",
+    "BOULEVARD",
+    "PKWY",
+    "PARKWAY",
+    "HIGHWAY",
+  ];
+  let started = false;
+  rawLines.forEach((line) => {
+    const upper = line.toUpperCase();
+    const containsKeyword = addressKeywords.some((kw) => {
+      if (kw.includes(" ")) {
+        return upper.includes(kw);
+      }
+      const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+      const regex = new RegExp(`\\b${escaped}\\b`);
+      return regex.test(upper);
+    });
+    if (
+      started ||
+      /\d/.test(upper) ||
+      containsKeyword
+    ) {
+      addressParts.push(line);
+      started = true;
+    }
+  });
+
+  const cityStateZip = [city, state, postal].filter(Boolean).join(" ");
+  if (cityStateZip) {
+    addressParts.push(cityStateZip);
+  }
+
+  const unnormalized = addressParts.filter(Boolean).join(", ");
+  if (!unnormalized) return null;
+  return { unnormalized_address: unnormalized };
+}
+
 // Main processing
 (function main() {
   const propertyId = extractPropertyId($);
@@ -527,22 +597,7 @@ function buildOwnersByDate(validOwners) {
 
   const ownersByDate = buildOwnersByDate(deduped);
 
-  const mailingLine1 = norm($("#OwnerLine3").text());
-  const mailingLine2 = norm($("#OwnerLine4").text());
-  const mailingCity = norm($("#OwnerCity").text());
-  const mailingState = norm($("#OwnerState").text());
-  const mailingZip = norm($("#OwnerZip").text());
-  let mailingAddress = null;
-  if (mailingLine1 || mailingLine2 || mailingCity || mailingState || mailingZip) {
-    mailingAddress = {
-      address_line_1: mailingLine1 || null,
-      address_line_2: mailingLine2 || null,
-      city_name: mailingCity || null,
-      state_code: mailingState || null,
-      postal_code: mailingZip || null,
-      country_code: null,
-    };
-  }
+  const mailingAddress = buildMailingAddress($);
 
   // Build final object
   const result = {};
