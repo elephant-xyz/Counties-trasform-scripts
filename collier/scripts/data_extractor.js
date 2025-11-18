@@ -400,17 +400,23 @@ function mapPermitImprovementType(typeText) {
   if (txt.includes("SPA") || txt.includes("HOT TUB") || txt.includes("JACUZZI")) {
     return "PoolSpaInstallation";
   }
-  if (txt.includes("WINDOW") || txt.includes("DOOR")) return "WindowsDoors";
+  if (txt.includes("WINDOW") || txt.includes("DOOR")) return "ExteriorOpeningsAndFinishes";
   if (txt.includes("HVAC") || txt.includes("A/C") || txt.includes("AIR")) return "MechanicalHVAC";
   if (txt.includes("ELECT")) return "Electrical";
   if (txt.includes("PLUMB")) return "Plumbing";
   if (txt.includes("SOLAR")) return "Solar";
-  if (txt.includes("PAVE")) return "Paving";
+  if (txt.includes("PAVE")) return "SiteDevelopment";
   if (txt.includes("DEMO")) return "Demolition";
   if (txt.includes("GARAGE") || txt.includes("ADDITION") || txt.includes("BUILD")) {
     return "BuildingAddition";
   }
-  if (txt.includes("CARPORT") || txt.includes("CANOPY")) return "Carport";
+  if (txt.includes("CARPORT") || txt.includes("CANOPY")) return "BuildingAddition";
+  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
+  if (txt.includes("IRRIG")) return "LandscapeIrrigation";
+  if (txt.includes("SHUT") || txt.includes("AWNING")) return "ShutterAwning";
+  if (txt.includes("GAS")) return "GasInstallation";
+  if (txt.includes("FIRE")) return "FireProtectionSystem";
+  if (txt.includes("MOBILE")) return "MobileHomeRV";
   return "GeneralBuilding";
 }
 
@@ -691,7 +697,6 @@ function main() {
     fs.existsSync(path.join(dataDir, "address.json"))
   ) {
     const propertyAddressRel = {
-      type: "property_has_address",
       from: { "/": "./property.json" },
       to: { "/": "./address.json" },
     };
@@ -729,7 +734,6 @@ function main() {
       JSON.stringify(lotObj, null, 2),
     );
     const lotRel = {
-      type: "property_has_lot",
       from: { "/": "./property.json" },
       to: { "/": "./lot.json" },
     };
@@ -759,7 +763,6 @@ function main() {
         JSON.stringify(parcelObj, null, 2),
       );
       const parcelRel = {
-        type: "property_has_parcel",
         from: { "/": "./property.json" },
         to: { "/": "./parcel.json" },
       };
@@ -937,7 +940,6 @@ function main() {
 
       companyFiles.forEach((companyFile, idx) => {
         const rel = {
-          type: "property_has_company",
           from: { "/": "./property.json" },
           to: { "/": companyFile },
         };
@@ -949,7 +951,6 @@ function main() {
 
       personFiles.forEach((personFile, idx) => {
         const rel = {
-          type: "property_has_person",
           from: { "/": "./property.json" },
           to: { "/": personFile },
         };
@@ -962,7 +963,6 @@ function main() {
       if (ownerMailingFile) {
         companyFiles.forEach((companyFile, idx) => {
           const rel = {
-            type: "company_has_address",
             from: { "/": companyFile },
             to: { "/": ownerMailingFile },
           };
@@ -977,7 +977,6 @@ function main() {
 
         personFiles.forEach((personFile, idx) => {
           const rel = {
-            type: "person_has_address",
             from: { "/": personFile },
             to: { "/": ownerMailingFile },
           };
@@ -1044,7 +1043,6 @@ function main() {
       if (fs.existsSync(utilityRelPath)) fs.unlinkSync(utilityRelPath);
     } catch (_) {}
     const rel = {
-      type: "property_has_utility",
       from: { "/": "./property.json" },
       to: { "/": "./utility.json" },
     };
@@ -1086,7 +1084,6 @@ function main() {
         const layoutPath = path.join(dataDir, filename);
         fs.writeFileSync(layoutPath, JSON.stringify(lay, null, 2));
         const rel = {
-          type: "property_has_layout",
           from: { "/": "./property.json" },
           to: { "/": `./${filename}` },
         };
@@ -1285,7 +1282,6 @@ function main() {
         JSON.stringify(layoutObj, null, 2),
       );
       const rel = {
-        type: "property_has_layout",
         from: { "/": "./property.json" },
         to: { "/": `./layout_${layoutIdx}.json` },
       };
@@ -1354,7 +1350,6 @@ function main() {
       improvement_type: improvementType,
       improvement_status: improvementStatus,
       improvement_action: null,
-      fee: null,
       application_received_date: null,
       final_inspection_date: null,
       contractor_type: null,
@@ -1372,7 +1367,6 @@ function main() {
     );
 
     const rel = {
-      type: "property_has_property_improvement",
       from: { "/": "./property.json" },
       to: { "/": `./${filename}` },
     };
@@ -1498,7 +1492,6 @@ function main() {
     if (fs.existsSync(structureRelPath)) fs.unlinkSync(structureRelPath);
   } catch (_) {}
   const structureRel = {
-    type: "property_has_structure",
     from: { "/": "./property.json" },
     to: { "/": "./structure.json" },
   };
@@ -1707,7 +1700,6 @@ function main() {
       const taxPath = path.join(dataDir, filename);
       fs.writeFileSync(taxPath, JSON.stringify(taxObj, null, 2));
       const rel = {
-        type: "property_has_tax",
         from: { "/": "./property.json" },
         to: { "/": `./${filename}` },
       };
