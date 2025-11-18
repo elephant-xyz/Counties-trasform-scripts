@@ -20666,8 +20666,24 @@ async function main() {
       address.longitude = resolvedLongitude;
     }
 
+    const primaryGeocodeQuery = (() => {
+      if (typeof unnormalizedAddressCandidate === "string") {
+        const trimmed = unnormalizedAddressCandidate.trim();
+        if (trimmed.length) {
+          return trimmed;
+        }
+      }
+      if (typeof address.unnormalized_address === "string") {
+        const trimmed = address.unnormalized_address.trim();
+        if (trimmed.length) {
+          return trimmed;
+        }
+      }
+      return null;
+    })();
+
     const needsGeocodeEnhancement =
-      unnormalizedAddressCandidate &&
+      primaryGeocodeQuery &&
       (!Number.isFinite(address.latitude) ||
         !Number.isFinite(address.longitude) ||
         !hasMeaningfulAddressValue(address.plus_four_postal_code) ||
@@ -20678,7 +20694,7 @@ async function main() {
 
     if (needsGeocodeEnhancement) {
       const geocodeResult = await geocodeAddressWithFallbacks({
-        primaryQuery: unnormalizedAddressCandidate,
+        primaryQuery: primaryGeocodeQuery,
         address,
         cityHints: [
           address.city_name,
