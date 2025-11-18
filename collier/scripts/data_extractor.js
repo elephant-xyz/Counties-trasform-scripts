@@ -2,8 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-const MAILING_ADDRESS_FILENAME = "mailing_address.json";
-
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
@@ -107,14 +105,6 @@ function capitalizeProperName(name) {
   });
 
   return capitalized.join("");
-}
-
-function getCleanText($el) {
-  if (!$el || $el.length === 0) return null;
-  const text = $el.text();
-  if (!text) return null;
-  const cleaned = text.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
-  return cleaned || null;
 }
 
 function extractPropertyUsageType(useCodeText) {
@@ -249,220 +239,137 @@ function extractPropertyUsageType(useCodeText) {
   return map[code] || null;
 }
 
-const PROPERTY_CATEGORY_MAP = {
-  // Residential (0-9)
-  0: "VacantLand", // 00 - VACANT RESIDENTIAL
-  1: "SingleFamily", // 01 - SINGLE FAMILY RESIDENTIAL
-  2: "MobileHome", // 02 - MOBILE HOMES
-  3: "MultiFamilyMoreThan10", // 03 - MULTI-FAMILY 10 UNITS OR MORE
-  4: "Condominium", // ALL CONDOMINIUMS
-  5: "Cooperative", // 05 - COOPERATIVES
-  6: "Retirement", // 06 - RETIREMENT HOMES
-  7: "MiscellaneousResidential", // 07 - MISCELLANEOUS RESIDENTIAL
-  8: "MultiFamilyLessThan10", // 08 - MULTI-FAMILY LESS THAN 10 UNIT
-  9: "MiscellaneousResidential", // 09 - MISCELLANEOUS
+function extractPropertyType(useCodeText) {
+  if (!useCodeText) return null;
+  const code = useCodeText.split("-")[0].trim();
+  const map = {
+    // Residential (0-9)
+    0: "VacantLand",              // 00 - VACANT RESIDENTIAL
+    1: "SingleFamily",            // 01 - SINGLE FAMILY RESIDENTIAL
+    2: "MobileHome",              // 02 - MOBILE HOMES
+    3: "MultiFamilyMoreThan10",   // 03 - MULTI-FAMILY 10 UNITS OR MORE
+    4: "Condominium",             // ALL CONDOMINIUMS
+    5: "Cooperative",             // 05 - COOPERATIVES
+    6: "Retirement",              // 06 - RETIREMENT HOMES
+    7: "MiscellaneousResidential",// 07 - MISCELLANEOUS RESIDENTIAL
+    8: "MultiFamilyLessThan10",   // 08 - MULTI-FAMILY LESS THAN 10 UNIT
+    9: "MiscellaneousResidential",// 09 - MISCELLANEOUS
 
-  // Condominiums (400-408)
-  400: "VacantLand", // 400 - VACANT (implied from context)
-  401: "Condominium", // 401 - SINGLE FAMILY CONDOMINIUMS
-  402: "Timeshare", // 402 - TIMESHARE CONDOMINIUMS
-  403: "Condominium", // 403 - HOMEOWNERS CONDOMINIUMS
-  404: "Condominium", // 404 - HOTEL CONDOMINIUMS
-  405: "Condominium", // 405 - BOAT SLIPS/BOAT RACKS CONDOMINIUMS
-  406: "MobileHome", // 406 - MOBILE HOME CONDOMINIUMS
-  407: "Condominium", // 407 - COMMERCIAL CONDOMINIUMS
-  408: "Apartment", // 408 - APT CONVERSION
+    // Condominiums (400-408)
+    400: "VacantLand",            // 400 - VACANT (implied from context)
+    401: "Condominium",           // 401 - SINGLE FAMILY CONDOMINIUMS
+    402: "Timeshare",             // 402 - TIMESHARE CONDOMINIUMS
+    403: "Condominium",           // 403 - HOMEOWNERS CONDOMINIUMS
+    404: "Condominium",           // 404 - HOTEL CONDOMINIUMS
+    405: "Condominium",           // 405 - BOAT SLIPS/BOAT RACKS CONDOMINIUMS
+    406: "MobileHome",            // 406 - MOBILE HOME CONDOMINIUMS
+    407: "Condominium",           // 407 - COMMERCIAL CONDOMINIUMS
+    408: "Apartment",             // 408 - APT CONVERSION
 
-  // Commercial (10-39)
-  10: "VacantLand", // 10 - VACANT COMMERCIAL
-  11: "Building", // 11 - STORES, ONE STORY
-  12: "Building", // 12 - MIXED USE (STORE AND RESIDENT)
-  13: "Building", // 13 - DEPARTMENT STORES
-  14: "Building", // 14 - SUPERMARKETS
-  15: "Building", // 15 - REGIONAL SHOPPING CENTERS
-  16: "Building", // 16 - COMMUNITY SHOPPING CENTERS
-  17: "Building", // 17 - OFFICE BLDG, NON-PROF, ONE STORY
-  18: "Building", // 18 - OFFICE BLDG, NON-PROF, MULT STORY
-  19: "Building", // 19 - PROFESSIONAL SERVICE BUILDINGS
-  20: "Building", // 20 - AIRPORTS, BUS TERM, PIERS, MARINAS
-  21: "Building", // 21 - RESTAURANTS, CAFETERIAS
-  22: "Building", // 22 - DRIVE-IN RESTAURANTS
-  23: "Building", // 23 - FINANCIAL INSTITUTIONS
-  24: "Building", // 24 - INSURANCE COMPANY OFFICES
-  25: "Building", // 25 - REPAIR SHOPS, LAUNDRIES, LAUNDROMATS
-  26: "Building", // 26 - SERVICE STATIONS
-  27: "Building", // 27 - EQUIPMENT SALES, REPAIR, BODY SHOPS
-  28: "LandParcel", // 28 - PARKING LOTS, MOBILE HOME PARKS
-  29: "Building", // 29 - WHOLESALE OUTLETS, PRODUCE HOUSES
-  30: "Building", // 30 - FLORIST, GREENHOUSES
-  31: "LandParcel", // 31 - DRIVE-IN THEATERS, OPEN STADIUMS
-  32: "Building", // 32 - ENCLOSED THEATERS, AUDITORIUMS
-  33: "Building", // 33 - NIGHTCLUBS, LOUNGES, BARS
-  34: "Building", // 34 - BOWLING ALLEYS, SKATING RINKS, POOL HALL
-  35: "Building", // 35 - TOURIST ATTRACTIONS
-  36: "LandParcel", // 36 - CAMPS
-  37: "LandParcel", // 37 - RACE TRACKS
-  38: "LandParcel", // 38 - GOLF COURSES, DRIVING RANGES
-  39: "Building", // 39 - HOTELS, MOTELS
+    // Commercial (10-39)
+    10: "VacantLand",             // 10 - VACANT COMMERCIAL
+    11: "Building",               // 11 - STORES, ONE STORY
+    12: "Building",               // 12 - MIXED USE (STORE AND RESIDENT)
+    13: "Building",               // 13 - DEPARTMENT STORES
+    14: "Building",               // 14 - SUPERMARKETS
+    15: "Building",               // 15 - REGIONAL SHOPPING CENTERS
+    16: "Building",               // 16 - COMMUNITY SHOPPING CENTERS
+    17: "Building",               // 17 - OFFICE BLDG, NON-PROF, ONE STORY
+    18: "Building",               // 18 - OFFICE BLDG, NON-PROF, MULT STORY
+    19: "Building",               // 19 - PROFESSIONAL SERVICE BUILDINGS
+    20: "Building",               // 20 - AIRPORTS, BUS TERM, PIERS, MARINAS
+    21: "Building",               // 21 - RESTAURANTS, CAFETERIAS
+    22: "Building",               // 22 - DRIVE-IN RESTAURANTS
+    23: "Building",               // 23 - FINANCIAL INSTITUTIONS
+    24: "Building",               // 24 - INSURANCE COMPANY OFFICES
+    25: "Building",               // 25 - REPAIR SHOPS, LAUNDRIES, LAUNDROMATS
+    26: "Building",               // 26 - SERVICE STATIONS
+    27: "Building",               // 27 - EQUIPMENT SALES, REPAIR, BODY SHOPS
+    28: "LandParcel",             // 28 - PARKING LOTS, MOBILE HOME PARKS
+    29: "Building",               // 29 - WHOLESALE OUTLETS, PRODUCE HOUSES
+    30: "Building",               // 30 - FLORIST, GREENHOUSES
+    31: "LandParcel",             // 31 - DRIVE-IN THEATERS, OPEN STADIUMS
+    32: "Building",               // 32 - ENCLOSED THEATERS, AUDITORIUMS
+    33: "Building",               // 33 - NIGHTCLUBS, LOUNGES, BARS
+    34: "Building",               // 34 - BOWLING ALLEYS, SKATING RINKS, POOL HALL
+    35: "Building",               // 35 - TOURIST ATTRACTIONS
+    36: "LandParcel",             // 36 - CAMPS
+    37: "LandParcel",             // 37 - RACE TRACKS
+    38: "LandParcel",             // 38 - GOLF COURSES, DRIVING RANGES
+    39: "Building",               // 39 - HOTELS, MOTELS
 
-  // Industrial (40-49)
-  40: "VacantLand", // 40 - VACANT INDUSTRIAL
-  41: "Building", // 41 - LIGHT MANUFACTURING, SMALL EQUIPMENT
-  42: "Building", // 42 - HEAVY INDUSTRIAL, HEAVY EQUIPMENT
-  43: "Building", // 43 - LUMBER YARDS, SAWMILLS
-  44: "Building", // 44 - PACKING PLANTS, FRUIT & VEGETABLE PACKING
-  45: "Building", // 45 - CANNERIES, BOTTLERS AND BREWERS, WINERIES
-  46: "Building", // 46 - OTHER FOOD PROCESSING, CANDY FACTORIES
-  47: "Building", // 47 - MINERAL PROCESSING, PHOSPHATE PROCESSING
-  48: "Building", // 48 - WAREHOUSING, DISTRIBUTION TERMINALS, TRUCK TERMINALS
-  49: "LandParcel", // 49 - OPEN STORAGE, NEW AND USED BUILDING SUPPLY
+    // Industrial (40-49)
+    40: "VacantLand",             // 40 - VACANT INDUSTRIAL
+    41: "Building",               // 41 - LIGHT MANUFACTURING, SMALL EQUIPMENT
+    42: "Building",               // 42 - HEAVY INDUSTRIAL, HEAVY EQUIPMENT
+    43: "Building",               // 43 - LUMBER YARDS, SAWMILLS
+    44: "Building",               // 44 - PACKING PLANTS, FRUIT & VEGETABLE PACKIN
+    45: "Building",               // 45 - CANNERIES, BOTTLERS AND BREWERS, WINERIES
+    46: "Building",               // 46 - OTHER FOOD PROCESSING, CANDY FACTORIES
+    47: "Building",               // 47 - MINERAL PROCESSING, PHOSPHATE PROCESSING
+    48: "Building",               // 48 - WAREHOUSING, DISTRIBUTION TERMINALS, TRU
+    49: "LandParcel",             // 49 - OPEN STORAGE, NEW AND USED BUILDING SUPP
 
-  // Agricultural (50-69)
-  50: "LandParcel", // 50 - AG IMPROVED AGRICULTURAL
-  51: "LandParcel", // 51 - AG CROPLAND SOIL CAPABILITY CLASS I
-  52: "LandParcel", // 52 - AG CROPLAND SOIL CAPABILITY CLASS II
-  53: "LandParcel", // 53 - AG CROPLAND SOIL CAPABILITY CLASS III
-  54: "LandParcel", // 54 - AG TIMBERLAND - SITE INDEX 90 & ABOVE
-  55: "LandParcel", // 55 - AG TIMBERLAND - SITE INDEX 80-89
-  56: "LandParcel", // 56 - AG TIMBERLAND - SITE INDEX 70-79
-  57: "LandParcel", // 57 - AG TIMBERLAND - SITE INDEX 60-69
-  58: "LandParcel", // 58 - AG TIMBERLAND - SITE INDEX 50-59
-  59: "LandParcel", // 59 - AG TIMBERLAND - NOT CLASSIFIED BY SITE INDEX
-  60: "LandParcel", // 60 - AG GRAZING LAND SOIL CAPABILITY CLASS I
-  61: "LandParcel", // 61 - AG GRAZING LAND SOIL CAPABILITY CLASS II
-  62: "LandParcel", // 62 - AG GRAZING LAND SOIL CAPABILITY CLASS III
-  63: "LandParcel", // 63 - AG GRAZING LAND SOIL CAPABILITY CLASS IV
-  64: "LandParcel", // 64 - AG GRAZING LAND SOIL CAPABILITY CLASS V
-  65: "LandParcel", // 65 - AG GRAZING LAND SOIL CAPABILITY CLASS VI
-  66: "LandParcel", // 66 - AG ORCHARD GROVES, CITRUS, ETC.
-  67: "LandParcel", // 67 - AG POULTRY, BEES, TROPICAL FISH, RABBITS
-  68: "LandParcel", // 68 - AG DAIRIES, FEED LOTS
-  69: "LandParcel", // 69 - AG ORNAMENTALS, MISC AGRICULTURAL
+    // Agricultural (50-69)
+    50: "LandParcel",             // 50 - AG IMPROVED AGRICULTURAL
+    51: "LandParcel",             // 51 - AG CROPLAND SOIL CAPABILITY CLASS I
+    52: "LandParcel",             // 52 - AG CROPLAND SOIL CAPABILITY CLASS II
+    53: "LandParcel",             // 53 - AG CROPLAND SOIL CAPABILITY CLASS III
+    54: "LandParcel",             // 54 - AG TIMBERLAND - SITE INDEX 90 & ABOVE
+    55: "LandParcel",             // 55 - AG TIMBERLAND - SITE INDEX 89-89
+    56: "LandParcel",             // 56 - AG TIMBERLAND - SITE INDEX 70-79
+    57: "LandParcel",             // 57 - AG TIMBERLAND - SITE INDEX 60-69
+    58: "LandParcel",             // 58 - AG TIMBERLAND - SITE INDEX 50-59
+    59: "LandParcel",             // 59 - AG TIMBERLAND - NOT CLASSIFIED BY SITE INDEX
+    60: "LandParcel",             // 60 - AG GRAZING LAND SOIL CAPABILITY CLASS I
+    61: "LandParcel",             // 61 - AG GRAZING LAND SOIL CAPABILITY CLASS II
+    62: "LandParcel",             // 62 - AG GRAZING LAND SOIL CAPABILITY CLASS III
+    63: "LandParcel",             // 63 - AG GRAZING LAND SOIL CAPABILITY CLASS IV
+    64: "LandParcel",             // 64 - AG GRAZING LAND SOIL CAPABILITY CLASS V
+    65: "LandParcel",             // 65 - AG GRAZING LAND SOIL CAPABILITY CLASS VI
+    66: "LandParcel",             // 66 - AG ORCHARD GROVES, CITRUS, ETC.
+    67: "LandParcel",             // 67 - AG POULTRY, BEES, TROPICAL FISH, RABBITS
+    68: "LandParcel",             // 68 - AG DAIRIES, FEED LOTS
+    69: "LandParcel",             // 69 - AG ORNAMENTALS, MISC AGRICULTURAL
 
-  // Institutional (70-79)
-  70: "VacantLand", // 70 - VACANT INSTITUTIONAL
-  71: "Building", // 71 - CHURCHES
-  72: "Building", // 72 - PRIVATE SCHOOLS AND COLLEGES
-  73: "Building", // 73 - PRIVATELY OWNED HOSPITALS
-  74: "Building", // 74 - HOMES FOR THE AGED
-  75: "Building", // 75 - ORPHANAGES, OTHER NON-PROFIT
-  76: "Building", // 76 - MORTUARIES, CEMETERIES, CREMATORIUMS
-  77: "Building", // 77 - CLUBS, LODGES, UNION HALLS
-  78: "Building", // 78 - SANITARIUMS, CONVALESCENT AND REST HOMES
-  79: "Building", // 79 - CULTURAL ORGANIZATIONS, FACILITIES
+    // Institutional (70-79)
+    70: "VacantLand",             // 70 - VACANT INSTITUTIONAL
+    71: "Building",               // 71 - CHURCHES
+    72: "Building",               // 72 - PRIVATE SCHOOLS AND COLLEGES
+    73: "Building",               // 73 - PRIVATELY OWNED HOSPITALS
+    74: "Building",               // 74 - HOMES FOR THE AGED
+    75: "Building",               // 75 - ORPHANAGES, OTHER NON-PROFIT
+    76: "Building",               // 76 - MORTUARIES, CEMETERIES, CREMATORIUMS
+    77: "Building",               // 77 - CLUBS, LODGES, UNION HALLS
+    78: "Building",               // 78 - SANITARIUMS, CONVALESCENT AND REST HOMES
+    79: "Building",               // 79 - CULTURAL ORGANIZATIONS, FACILITIES
 
-  // Government (80-89)
-  80: "Building", // 80 - UNDEFINED
-  81: "Building", // 81 - MILITARY
-  82: "LandParcel", // 82 - FOREST, PARKS, RECREATIONAL AREAS
-  83: "Building", // 83 - PUBLIC COUNTY SCHOOLS
-  84: "Building", // 84 - COLLEGES
-  85: "Building", // 85 - HOSPITALS
-  86: "Building", // 86 - COUNTIES INCLUDING NON-MUNICIPAL GOVERNMENT
-  87: "Building", // 87 - STATE, OTHER THAN MILITARY, FORESTS, PARKS
-  88: "Building", // 88 - FEDERAL, OTHER THAN MILITARY, FORESTS
-  89: "Building", // 89 - MUNICIPAL, OTHER THAN PARKS, RECREATIONAL
+    // Government (80-89)
+    80: "Building",               // 80 - UNDEFINED
+    81: "Building",               // 81 - MILITARY
+    82: "LandParcel",             // 82 - FOREST, PARKS, RECREATIONAL AREAS
+    83: "Building",               // 83 - PUBLIC COUNTY SCHOOLS
+    84: "Building",               // 84 - COLLEGES
+    85: "Building",               // 85 - HOSPITALS
+    86: "Building",               // 86 - COUNTIES INCLUDING NON-MUNICIPAL GOV.
+    87: "Building",               // 87 - State, OTHER THAN MILITARY, FORESTS, PAR
+    88: "Building",               // 88 - FEDERAL, OTHER THAN MILITARY, FORESTS
+    89: "Building",               // 89 - MUNICIPAL, OTHER THAN PARKS, RECREATIONA
 
-  // Miscellaneous (90-99)
-  90: "Building", // 90 - LEASEHOLD INTERESTS
-  91: "Building", // 91 - UTILITY, GAS, ELECTRIC, TELEPHONE, LOCAL
-  92: "LandParcel", // 92 - MINING LANDS, PETROLEUM LANDS, OR GAS LANDS
-  93: "LandParcel", // 93 - SUBSURFACE RIGHTS
-  94: "LandParcel", // 94 - RIGHT-OF-WAY, STREETS, ROADS, IRRIGATION
-  95: "LandParcel", // 95 - RIVERS AND LAKES, SUBMERGED LANDS
-  96: "LandParcel", // 96 - SEWAGE DISPOSAL, SOLID WASTE, BORROW PITS
-  97: "LandParcel", // 97 - OUTDOOR RECREATIONAL OR PARKLAND SUBJECT
-  98: "Building", // 98 - CENTRALLY ASSESSED
-  99: "LandParcel", // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
-};
-
-const PROPERTY_CATEGORY_FIELDS = {
-  VacantLand: { property_type: "LandParcel", build_status: "VacantLand" },
-  SingleFamily: {
-    property_type: "Building",
-    build_status: "Improved",
-    structure_form: "SingleFamilyDetached",
-  },
-  MobileHome: {
-    property_type: "ManufacturedHome",
-    build_status: "Improved",
-    structure_form: "MobileHome",
-  },
-  MultiFamilyMoreThan10: {
-    property_type: "Building",
-    build_status: "Improved",
-    structure_form: "MultiFamilyMoreThan10",
-  },
-  MultiFamilyLessThan10: {
-    property_type: "Building",
-    build_status: "Improved",
-    structure_form: "MultiFamilyLessThan10",
-  },
-  Condominium: {
-    property_type: "Unit",
-    build_status: "Improved",
-    structure_form: "ApartmentUnit",
-    ownership_estate_type: "Condominium",
-  },
-  Cooperative: {
-    property_type: "Unit",
-    build_status: "Improved",
-    structure_form: "ApartmentUnit",
-    ownership_estate_type: "Cooperative",
-  },
-  Timeshare: {
-    property_type: "Unit",
-    build_status: "Improved",
-    structure_form: "ApartmentUnit",
-    ownership_estate_type: "Timeshare",
-  },
-  Retirement: {
-    property_type: "Building",
-    build_status: "Improved",
-    structure_form: "MultiFamily5Plus",
-  },
-  MiscellaneousResidential: {
-    property_type: "Building",
-    build_status: "Improved",
-  },
-  Apartment: {
-    property_type: "Building",
-    build_status: "Improved",
-    structure_form: "MultiFamily5Plus",
-  },
-  Building: {
-    property_type: "Building",
-    build_status: "Improved",
-  },
-  LandParcel: {
-    property_type: "LandParcel",
-    build_status: "Improved",
-  },
-};
-
-const PROPERTY_CODE_OVERRIDES = {
-  90: { ownership_estate_type: "Leasehold" },
-  93: { ownership_estate_type: "SubsurfaceRights" },
-  94: { ownership_estate_type: "RightOfWay" },
-  400: {
-    property_type: "Unit",
-    build_status: "VacantLand",
-    structure_form: "ApartmentUnit",
-    ownership_estate_type: "Condominium",
-  },
-  406: {
-    ownership_estate_type: "Condominium",
-  },
-};
-
-function mapPropertyFieldsByUseCode(useCodeText) {
-  if (!useCodeText) return {};
-  const codePart = useCodeText.split("-")[0].trim();
-  const code = Number(codePart);
-  if (!Number.isInteger(code)) return {};
-
-  const category = PROPERTY_CATEGORY_MAP[code];
-  if (!category) {
+    // Miscellaneous (90-99)
+    90: "Building",               // 90 - LEASEHOLD INTERESTS
+    91: "Building",               // 91 - UTILITY, GAS, ELECTRIC, TELEPHONE, LOCAL
+    92: "LandParcel",             // 92 - MINING LANDS, PETROLEUM LANDS, OR GAS LA
+    93: "LandParcel",             // 93 - SUBSURFACE RIGHTS
+    94: "LandParcel",             // 94 - RIGHT-OF-WAY, STREETS, ROADS, IRRIGATION
+    95: "LandParcel",             // 95 - RIVERS AND LAKES, SUBMERGED LANDS
+    96: "LandParcel",             // 96 - SEWAGE DISPOSAL, SOLID WAST, BORROW PITS
+    97: "LandParcel",             // 97 - OUTDOOR RECREATIONAL OR PARKLAND SUBJECT
+    98: "Building",               // 98 - CENTRALLY ASSESSED
+    99: "LandParcel",             // 99 - ACREAGE NOT CLASSIFIED AGRICULTURAL
+  };
+  const val = map[code];
+  if (!val) {
     const err = {
       type: "error",
       message: `Unknown enum value ${code}.`,
@@ -470,259 +377,7 @@ function mapPropertyFieldsByUseCode(useCodeText) {
     };
     throw new Error(JSON.stringify(err));
   }
-
-  const baseFields = PROPERTY_CATEGORY_FIELDS[category] || {};
-  const overrides = PROPERTY_CODE_OVERRIDES[code] || {};
-  const propertyUsageType = extractPropertyUsageType(useCodeText);
-
-  return {
-    property_type: null,
-    build_status: null,
-    structure_form: null,
-    ownership_estate_type: null,
-    property_usage_type: propertyUsageType || null,
-    ...baseFields,
-    ...overrides,
-  };
-}
-
-function mapPermitImprovementType(typeText) {
-  if (!typeText) return "GeneralBuilding";
-  const normalized = typeText.toLowerCase();
-  const checks = [
-    { pattern: /(roof)/, value: "Roofing" },
-    { pattern: /(pool|spa|hot tub|jacuzzi)/, value: "PoolSpaInstallation" },
-    { pattern: /(dock|shore|seawall|pier)/, value: "DockAndShore" },
-    { pattern: /(demo|demolition)/, value: "Demolition" },
-    { pattern: /(fence|gate)/, value: "Fencing" },
-    { pattern: /(screen)/, value: "ScreenEnclosure" },
-    { pattern: /(shutter|awning)/, value: "ShutterAwning" },
-    { pattern: /(electric|electrical)/, value: "Electrical" },
-    { pattern: /(mechan|hvac|air\s*cond|aircond)/, value: "MechanicalHVAC" },
-    { pattern: /(gas)/, value: "GasInstallation" },
-    { pattern: /(plumb|sewer|water line)/, value: "Plumbing" },
-    { pattern: /(solar)/, value: "Solar" },
-    { pattern: /(landscape|irrigation)/, value: "LandscapeIrrigation" },
-    { pattern: /(addition)/, value: "BuildingAddition" },
-    { pattern: /(commercial)/, value: "CommercialConstruction" },
-    { pattern: /(resid|remodel|renov|build|house)/, value: "ResidentialConstruction" },
-    { pattern: /(driveway|right[-\s]?of[-\s]?way)/, value: "RightOfWayPermit" },
-    { pattern: /(well)/, value: "WellPermit" },
-  ];
-  for (const { pattern, value } of checks) {
-    if (pattern.test(normalized)) return value;
-  }
-  return "GeneralBuilding";
-}
-
-function determineImprovementStatus(completionDate, finalInspectionDate) {
-  if (completionDate || finalInspectionDate) return "Completed";
-  return "Permitted";
-}
-
-function mapImprovementAction(actionText) {
-  if (!actionText) return null;
-  const normalized = actionText.toLowerCase();
-  if (/(addition|add\b)/.test(normalized)) return "Addition";
-  if (/(replace|re-roof|reroof|re-roof)/.test(normalized)) return "Replacement";
-  if (/(new|install|construct)/.test(normalized)) return "New";
-  if (/(repair|maint)/.test(normalized)) return "Repair";
-  if (/(alter|remodel|renov|modify)/.test(normalized)) return "Alteration";
-  if (/(remove|demolition|demo)/.test(normalized)) return "Remove";
-  return "Other";
-}
-
-function parseDeedReference(linkText, hrefValue) {
-  const clean = (v) => {
-    if (v == null) return null;
-    const trimmed = String(v).trim();
-    return trimmed === "" ? null : trimmed;
-  };
-
-  let instrument = null;
-  let book = null;
-  let page = null;
-
-  const assignFromParts = (parts) => {
-    if (!parts.length) return;
-    if (parts.length >= 3) {
-      [instrument, book, page] = parts;
-    } else if (parts.length === 2) {
-      [book, page] = parts;
-    } else if (parts.length === 1) {
-      instrument = parts[0];
-    }
-  };
-
-  if (hrefValue) {
-    const match = hrefValue.match(/DownloadPDF\s*\(([^)]+)\)/i);
-    if (match) {
-      const args = match[1]
-        .split(",")
-        .map((part) => part.replace(/['"]/g, "").trim())
-        .filter(Boolean);
-      if (args.length === 1) {
-        assignFromParts(
-          args[0]
-            .split(/[-/]/)
-            .map((p) => p.trim())
-            .filter(Boolean),
-        );
-      } else {
-        assignFromParts(args);
-      }
-    }
-  }
-
-  if ((!book || !page) && linkText) {
-    const parts = linkText
-      .split(/[-/]/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (!book || !page) {
-      if (parts.length >= 2) {
-        book = book || parts[0];
-        page = page || parts[1];
-      }
-      if (parts.length >= 3 && !instrument) {
-        instrument = parts[0];
-      }
-    }
-  }
-
-  return {
-    instrument_number: clean(instrument),
-    book: clean(book),
-    page: clean(page),
-  };
-}
-
-function normalizeComparisonString(str) {
-  if (!str) return "";
-  return str
-    .replace(/&/g, " ")
-    .replace(/\u00A0/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/[^0-9A-Z]/gi, "")
-    .toUpperCase();
-}
-
-function buildOwnerNameVariants(owners) {
-  const variants = new Set();
-  if (!Array.isArray(owners)) return variants;
-  owners.forEach((owner) => {
-    if (!owner) return;
-    if (owner.type === "company" && owner.name) {
-      variants.add(normalizeComparisonString(owner.name));
-      return;
-    }
-    if (owner.type === "person") {
-      const first = (owner.first_name || "").trim();
-      const middle = (owner.middle_name || "").trim();
-      const last = (owner.last_name || "").trim();
-      const suffix = (owner.suffix_name || "").trim();
-      const namePieces = [first, middle, last, suffix].filter(Boolean);
-      if (namePieces.length === 0) return;
-
-      const variations = [];
-      variations.push(namePieces.join(" "));
-
-      const firstLast = [first, middle, last].filter(Boolean).join(" ");
-      if (firstLast) {
-        variations.push([firstLast, suffix].filter(Boolean).join(" "));
-      }
-
-      const lastCommaFirst = [
-        [last, suffix].filter(Boolean).join(" "),
-        [first, middle].filter(Boolean).join(" "),
-      ]
-        .filter(Boolean)
-        .join(", ");
-      if (lastCommaFirst) {
-        variations.push(lastCommaFirst);
-      }
-
-      const lastFirst = [
-        [last, suffix].filter(Boolean).join(" "),
-        [first, middle].filter(Boolean).join(" "),
-      ]
-        .filter(Boolean)
-        .join(" ");
-      if (lastFirst) {
-        variations.push(lastFirst);
-      }
-
-      variations.forEach((variant) => {
-        const normalized = normalizeComparisonString(variant);
-        if (normalized) variants.add(normalized);
-      });
-    }
-  });
-  return variants;
-}
-
-function shouldExcludeOwnerLine(line, ownerNameVariants) {
-  const normalized = normalizeComparisonString(line);
-  if (normalized && ownerNameVariants.has(normalized)) return true;
-
-  const splitPatterns = [
-    /\s*&\s*/i,
-    /\s+AND\s+/i,
-  ];
-  for (const pattern of splitPatterns) {
-    const segments = line
-      .split(pattern)
-      .map((seg) => seg.trim())
-      .filter(Boolean);
-    if (segments.length > 1) {
-      const allMatch = segments.every((seg) =>
-        ownerNameVariants.has(normalizeComparisonString(seg)),
-      );
-      if (allMatch) return true;
-    }
-  }
-  return false;
-}
-
-function buildMailingAddressLines(components, ownerNameVariants) {
-  const lines = [];
-  const seen = new Set();
-  const addLine = (line) => {
-    if (!line) return;
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    const key = trimmed.toUpperCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    lines.push(trimmed);
-  };
-
-  (components.ownerLines || []).forEach((line) => {
-    if (!shouldExcludeOwnerLine(line, ownerNameVariants)) {
-      addLine(line);
-    }
-  });
-  (components.locationParts || []).forEach((line) => addLine(line));
-  return lines;
-}
-
-function writeMailingAddressFile(
-  filePath,
-  components,
-  ownerNameVariants,
-  sourceHttpRequest,
-  requestIdentifier,
-) {
-  const lines = buildMailingAddressLines(components, ownerNameVariants);
-  const mailingObj = {
-    latitude: null,
-    longitude: null,
-    unnormalized_address: lines.length > 0 ? lines.join(", ") : null,
-    source_http_request: sourceHttpRequest || null,
-    request_identifier: requestIdentifier || null,
-  };
-  fs.writeFileSync(filePath, JSON.stringify(mailingObj, null, 2));
-  return mailingObj;
+  return val;
 }
 
 
@@ -814,7 +469,7 @@ function parseAddress(
   township,
   range,
   countyNameFromSeed,
-  municipality_name,
+  municipality,
 ) {
   // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
   let streetNumber = null,
@@ -889,7 +544,12 @@ function parseAddress(
     latitude: null,
     longitude: null,
     lot: lot || null,
-    municipality_name: municipality_name || null,
+    municipality_name: municipality || null,
+    plus_four_postal_code: null,
+    postal_code: zip || null,
+    range: range || null,
+    route_number: null,
+    section: section || null,
     state_code: state || "FL",
     street_name: streetName || null,
     street_number: streetNumber || null,
@@ -898,6 +558,7 @@ function parseAddress(
     street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
+    // unnormalized_address: fullAddress || null,
   };
 }
 
@@ -939,7 +600,7 @@ function main() {
   const section = $("#Section").first().text().trim() || null;
   const township = $("#Township").first().text().trim() || null;
   const range = $("#Range").first().text().trim() || null;
-  const municipality_name = $("#Municipality").first().text().trim() || null;
+  const municipality = $("#Municipality").first().text().trim() || null;
   const totalAcres = $("#TotalAcres").first().text().trim() || null;
 
   // Property JSON
@@ -948,9 +609,6 @@ function main() {
     parcel_identifier: parcelId,
     property_legal_description_text: legalText,
     property_structure_built_year: null,
-    ownership_estate_type: null,
-    build_status: null,
-    structure_form: null,
     property_type: null,
     property_usage_type: null,
     area_under_air: null,
@@ -965,7 +623,8 @@ function main() {
 
   // property_type and property_usage_type
   if (useCodeText) {
-    Object.assign(property, mapPropertyFieldsByUseCode(useCodeText));
+    property.property_type = extractPropertyType(useCodeText);
+    property.property_usage_type = extractPropertyUsageType(useCodeText);
   }
 
   // Year built and areas from Building/Extra Features
@@ -1063,158 +722,96 @@ function main() {
     unaddr.county_jurisdiction === "Collier"
       ? "Collier"
       : unaddr.county_jurisdiction || null;
-  const addressObj = {
-    township: township || null,
-    range: range || null,
-    section: section || null,
-    municipality_name: municipality_name || null,
-    latitude: null,
-    longitude: null,
-    unnormalized_address: fullAddress || null,
-    county_name: countyName,
-    country_code: "US",
-    source_http_request: seed.source_http_request || null,
-    request_identifier: seed.request_identifier || parcelId,
-  };
+  const addressObj = parseAddress(
+    fullAddress,
+    legalText,
+    section,
+    township,
+    range,
+    countyName,
+    municipality,
+  );
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
 
-  // Mailing address (owner address) from OwnerLine spans
-  const mailingComponents = {
-    ownerLines: [],
-    locationParts: [],
-  };
-  for (let i = 1; i <= 5; i++) {
-    const line = getCleanText($(`#OwnerLine${i}`));
-    if (line) mailingComponents.ownerLines.push(line);
-  }
-  const ownerCity = getCleanText($("#OwnerCity"));
-  const ownerState = getCleanText($("#OwnerState"));
-  const ownerZip = getCleanText($("#OwnerZip"));
-  if (ownerCity) mailingComponents.locationParts.push(ownerCity);
-  if (ownerState) mailingComponents.locationParts.push(ownerState);
-  if (ownerZip) mailingComponents.locationParts.push(ownerZip);
-
   // Sales + Deeds - from Summary sales table
-  const saleArtifactsToRemove = fs
-    .readdirSync(dataDir)
-    .filter((f) =>
-      /^deed_\d+\.json$/.test(f) ||
-      /^file_\d+\.json$/.test(f) ||
-      /^sales_\d+\.json$/.test(f) ||
-      /^sales_history_\d+\.json$/.test(f) ||
-      f.startsWith("relationship_sales_deed") ||
-      f.startsWith("relationship_sales_history_deed") ||
-      f.startsWith("relationship_deed_file") ||
-      /^property_improvement_\d+\.json$/.test(f) ||
-      f.startsWith("relationship_property_has_property_improvement") ||
-      f.startsWith("relationship_property_improvement_has_fact_sheet") ||
-      f.startsWith("relationship_layout_"),
-    );
-  for (const artifact of saleArtifactsToRemove) {
-    try {
-      fs.unlinkSync(path.join(dataDir, artifact));
-    } catch (_) {}
-  }
-
   const saleRows = [];
   $("#SalesAdditional tr").each((i, el) => {
     const $row = $(el);
     const dateTxt = $row.find("span[id^=SaleDate]").text().trim();
     const amtTxt = $row.find("span[id^=SaleAmount]").text().trim();
-    const anchor = $row.find("a").first();
-    const linkText = anchor.length ? anchor.text().trim() : "";
-    const hrefValue = anchor.length ? anchor.attr("href") || "" : "";
-    const refParts = parseDeedReference(linkText, hrefValue);
-
-    saleRows.push({
+    const bookPage = $row.find("a").first().text().trim() || null;
+    const row = {
       rowIndex: i + 1,
       dateTxt,
       iso: parseDateToISO(dateTxt),
       amount: toNumberCurrency(amtTxt),
-      deedReferenceText: linkText || null,
-      instrumentNumber: refParts.instrument_number,
-      deedBook: refParts.book,
-      deedPage: refParts.page,
-      hasFile: Boolean(anchor.length && (linkText || hrefValue)),
-    });
+      bookPage,
+    };
+    saleRows.push(row);
   });
 
+  // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
-    const deedIdx = idx + 1;
-    row.deedIdx = deedIdx;
     const deedObj = {};
-    if (row.deedBook) deedObj.book = row.deedBook;
-    if (row.deedPage) deedObj.page = row.deedPage;
-    if (row.instrumentNumber) deedObj.instrument_number = row.instrumentNumber;
     fs.writeFileSync(
-      path.join(dataDir, `deed_${deedIdx}.json`),
+      path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
 
-    if (row.hasFile) {
-      const fileLabelCandidates = [
-        row.deedReferenceText,
-        [row.deedBook, row.deedPage].filter(Boolean).join("-") || null,
-      ];
-      const fileObj = {
-        file_format: null,
-        name: fileLabelCandidates.find((val) => val) || null,
-        original_url: null,
-        ipfs_url: null,
-        document_type: "ConveyanceDeed",
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `file_${deedIdx}.json`),
-        JSON.stringify(fileObj, null, 2),
-      );
-
-      const relDf = {
-        from: { "/": `./deed_${deedIdx}.json` },
-        to: { "/": `./file_${deedIdx}.json` },
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `relationship_deed_file_${deedIdx}.json`),
-        JSON.stringify(relDf, null, 2),
-      );
-    }
-  });
-
-  const salesHistoryEntries = saleRows
-    .filter((row) => row.iso)
-    .sort((a, b) => {
-      const dateCompare = a.iso.localeCompare(b.iso);
-      if (dateCompare !== 0) return dateCompare;
-      return a.rowIndex - b.rowIndex;
-    });
-
-  salesHistoryEntries.forEach((row, idx) => {
-    const salesIdx = idx + 1;
-    row.salesHistoryIndex = salesIdx;
-    row.salesHistoryFile = `sales_history_${salesIdx}.json`;
-    const saleObj = {
-      ownership_transfer_date: row.iso,
+    const fileObj = {
+      file_format: null, // unknown (pdf not in enum)
+      name: row.bookPage || null,
+      original_url: null, // not provided (javascript: link only)
+      ipfs_url: null,
+      document_type: "ConveyanceDeed",
     };
-    if (row.amount != null && row.amount !== 0) {
-      saleObj.purchase_price_amount = row.amount;
-    }
     fs.writeFileSync(
-      path.join(dataDir, row.salesHistoryFile),
-      JSON.stringify(saleObj, null, 2),
+      path.join(dataDir, `file_${idx + 1}.json`),
+      JSON.stringify(fileObj, null, 2),
     );
 
-    if (row.deedIdx) {
+    const relDf = {
+      from: { "/": `./deed_${idx + 1}.json` },
+      to: { "/": `./file_${idx + 1}.json` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
+      JSON.stringify(relDf, null, 2),
+    );
+  });
+
+  // Create sales files for all valid sales (including $0 amounts)
+  const validSales = saleRows.filter(
+    (r) => r.amount != null && r.iso,
+  );
+  validSales.sort((a, b) => a.iso.localeCompare(b.iso));
+  validSales.forEach((s, idx) => {
+    const saleObj = {
+      ownership_transfer_date: s.iso,
+      purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `sales_${idx + 1}.json`),
+      JSON.stringify(saleObj, null, 2),
+    );
+  });
+
+  // Relationship: sales -> deed for all valid sales (map to original row index)
+  validSales.forEach((s, idx) => {
+    const orig = saleRows.findIndex(
+      (r) => r.iso === s.iso && r.amount === s.amount,
+    );
+    if (orig !== -1) {
+      const deedIdx = orig + 1;
       const rel = {
-        to: { "/": `./deed_${row.deedIdx}.json` },
-        from: { "/": `./${row.salesHistoryFile}` },
+        from: { "/": `./sales_${idx + 1}.json` },
+        to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
-        path.join(
-          dataDir,
-          `relationship_sales_history_deed_${salesIdx}.json`,
-        ),
+        path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
         JSON.stringify(rel, null, 2),
       );
     }
@@ -1223,157 +820,97 @@ function main() {
   // Owners (company/person) from owners/owner_data.json
   const ownerKey = `property_${folio}`;
   const ownerEntry = owners[ownerKey];
-  const curr =
+  if (
     ownerEntry &&
     ownerEntry.owners_by_date &&
     Array.isArray(ownerEntry.owners_by_date.current)
-      ? ownerEntry.owners_by_date.current
-      : [];
-  const ownerNameVariants = buildOwnerNameVariants(curr);
-  const mailingAddressPath = path.join(dataDir, MAILING_ADDRESS_FILENAME);
-  writeMailingAddressFile(
-    mailingAddressPath,
-    mailingComponents,
-    ownerNameVariants,
-    seed.source_http_request,
-    seed.request_identifier || parcelId,
-  );
-
-  if (curr.length > 0) {
-    const relPrefixes = [
-      "relationship_sales_company",
-      "relationship_sales_person",
-      "relationship_sales_history_company",
-      "relationship_sales_history_person",
-      "relationship_person_has_mailing_address",
-      "relationship_company_has_mailing_address",
-    ];
-    const relFiles = fs
-      .readdirSync(dataDir)
-      .filter((f) => relPrefixes.some((prefix) => f.startsWith(prefix)));
-    for (const f of relFiles) {
-      try {
-        fs.unlinkSync(path.join(dataDir, f));
-      } catch (_) {}
-    }
-
-    let personIdx = 1;
-    let companyIdx = 1;
-    const personFiles = [];
-    const companyFiles = [];
-
-    curr.forEach((owner) => {
-      if (owner.type === "company") {
-        const comp = { name: owner.name || null };
-        const filename = `company_${companyIdx}.json`;
-        fs.writeFileSync(
-          path.join(dataDir, filename),
-          JSON.stringify(comp, null, 2),
-        );
-        companyFiles.push(filename);
-        companyIdx++;
-      } else if (owner.type === "person") {
-        const person = {
-          birth_date: owner.birth_date || null,
-          first_name: capitalizeProperName(owner.first_name) || "",
-          last_name: capitalizeProperName(owner.last_name) || "",
-          middle_name: owner.middle_name ? capitalizeProperName(owner.middle_name) : null,
-          prefix_name: owner.prefix_name || null,
-          suffix_name: owner.suffix_name || null,
-          us_citizenship_status: owner.us_citizenship_status || null,
-          veteran_status: owner.veteran_status != null ? owner.veteran_status : null,
-        };
-        const filename = `person_${personIdx}.json`;
-        fs.writeFileSync(
-          path.join(dataDir, filename),
-          JSON.stringify(person, null, 2),
-        );
-        personFiles.push(filename);
-        personIdx++;
+  ) {
+    const curr = ownerEntry.owners_by_date.current;
+    if (curr.length > 0) {
+      // Cleanup any legacy duplicate relationship files
+      const files = fs
+        .readdirSync(dataDir)
+        .filter((f) => f.startsWith("relationship_sales_company"));
+      for (const f of files) {
+        try {
+          fs.unlinkSync(path.join(dataDir, f));
+        } catch (_) {}
       }
-    });
 
-    if (fs.existsSync(mailingAddressPath)) {
-      let mailingPersonIdx = 1;
-      personFiles.forEach((personFile) => {
-        const rel = {
-          from: { "/": `./${personFile}` },
-          to: { "/": `./${MAILING_ADDRESS_FILENAME}` },
-        };
-        fs.writeFileSync(
-          path.join(
-            dataDir,
-            `relationship_person_has_mailing_address_${mailingPersonIdx}.json`,
-          ),
-          JSON.stringify(rel, null, 2),
-        );
-        mailingPersonIdx++;
+      // Handle mixed owner types (persons and companies)
+      let personIdx = 1;
+      let companyIdx = 1;
+      const personFiles = [];
+      const companyFiles = [];
+
+      curr.forEach((owner) => {
+        if (owner.type === "company") {
+          const comp = { name: owner.name || null };
+          const filename = `company_${companyIdx}.json`;
+          fs.writeFileSync(
+            path.join(dataDir, filename),
+            JSON.stringify(comp, null, 2),
+          );
+          companyFiles.push(filename);
+          companyIdx++;
+        } else if (owner.type === "person") {
+          const person = {
+            birth_date: owner.birth_date || null,
+            first_name: capitalizeProperName(owner.first_name) || "",
+            last_name: capitalizeProperName(owner.last_name) || "",
+            middle_name: owner.middle_name ? capitalizeProperName(owner.middle_name) : null,
+            prefix_name: owner.prefix_name || null,
+            suffix_name: owner.suffix_name || null,
+            us_citizenship_status: owner.us_citizenship_status || null,
+            veteran_status: owner.veteran_status != null ? owner.veteran_status : null,
+          };
+          const filename = `person_${personIdx}.json`;
+          fs.writeFileSync(
+            path.join(dataDir, filename),
+            JSON.stringify(person, null, 2),
+          );
+          personFiles.push(filename);
+          personIdx++;
+        }
       });
 
-      let mailingCompanyIdx = 1;
-      companyFiles.forEach((companyFile) => {
-        const rel = {
-          from: { "/": `./${companyFile}` },
-          to: { "/": `./${MAILING_ADDRESS_FILENAME}` },
-        };
-        fs.writeFileSync(
-          path.join(
-            dataDir,
-            `relationship_company_has_mailing_address_${mailingCompanyIdx}.json`,
-          ),
-          JSON.stringify(rel, null, 2),
-        );
-        mailingCompanyIdx++;
-      });
+      // Create relationships for valid sales
+      if (validSales.length > 0) {
+        validSales.forEach((s, si) => {
+          // Link to all person files
+          personFiles.forEach((personFile, pi) => {
+            const rel = {
+              to: { "/": `./${personFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
+            };
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+
+          // Link to all company files
+          companyFiles.forEach((companyFile, ci) => {
+            const rel = {
+              to: { "/": `./${companyFile}` },
+              from: { "/": `./sales_${si + 1}.json` },
+            };
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+        });
+      }
     }
-
-    const latestSaleEntry =
-      salesHistoryEntries.length > 0
-        ? salesHistoryEntries[salesHistoryEntries.length - 1]
-        : null;
-
-    if (latestSaleEntry && latestSaleEntry.salesHistoryFile) {
-      const saleFileRef = `./${latestSaleEntry.salesHistoryFile}`;
-
-      personFiles.forEach((personFile, pi) => {
-        const rel = {
-          to: { "/": `./${personFile}` },
-          from: { "/": saleFileRef },
-        };
-        fs.writeFileSync(
-          path.join(
-            dataDir,
-            `relationship_sales_history_person_${pi + 1}.json`,
-          ),
-          JSON.stringify(rel, null, 2),
-        );
-      });
-
-      companyFiles.forEach((companyFile, ci) => {
-        const rel = {
-          to: { "/": `./${companyFile}` },
-          from: { "/": saleFileRef },
-        };
-        fs.writeFileSync(
-          path.join(
-            dataDir,
-            `relationship_sales_history_company_${ci + 1}.json`,
-          ),
-          JSON.stringify(rel, null, 2),
-        );
-      });
-    }
-  } else if (!fs.existsSync(mailingAddressPath)) {
-    writeMailingAddressFile(
-      mailingAddressPath,
-      mailingComponents,
-      new Set(),
-      seed.source_http_request,
-      seed.request_identifier || parcelId,
-    );
   }
 
-  let utilityFileWritten = false;
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {
@@ -1381,391 +918,180 @@ function main() {
       path.join(dataDir, "utility.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
-    utilityFileWritten = true;
   }
 
-  const permitEntries = [];
-  const propertyImprovementFiles = [];
-  $("#PermitAdditional tr").each((i, el) => {
-    const $row = $(el);
-    const getSpanText = (prefix) => {
-      const span = $row.find(`span[id^=${prefix}]`).first();
-      if (!span || span.length === 0) return null;
-      const text = span.text().trim();
-      return text ? text : null;
-    };
-
-    const permitNumber = getSpanText("permitno");
-    const permitTypeRaw = getSpanText("permittype");
-    const issuedDateRaw = getSpanText("IssuedDate");
-    const coDateRaw = getSpanText("codate");
-    const tempCoDateRaw = getSpanText("tempcodate");
-    const finalBldgDateRaw = getSpanText("finalbldgdate");
-
-    if (
-      !permitNumber &&
-      !permitTypeRaw &&
-      !issuedDateRaw &&
-      !coDateRaw &&
-      !tempCoDateRaw &&
-      !finalBldgDateRaw
-    ) {
-      return;
-    }
-
-    const permitIssueDate = parseDateToISO(issuedDateRaw);
-    const completionDate = parseDateToISO(coDateRaw);
-    const permitCloseDate = parseDateToISO(tempCoDateRaw) || completionDate;
-    const finalInspectionDate = parseDateToISO(finalBldgDateRaw);
-    const improvementType = mapPermitImprovementType(permitTypeRaw || "");
-    const improvementStatus = determineImprovementStatus(
-      completionDate,
-      finalInspectionDate,
-    );
-    const improvementAction = mapImprovementAction(permitTypeRaw) || "Other";
-
-    permitEntries.push({
-      permitNumber: permitNumber || null,
-      permitTypeRaw: permitTypeRaw || null,
-      permitIssueDate,
-      completionDate,
-      permitCloseDate,
-      finalInspectionDate,
-    });
-
-    const improvementObj = {
-      application_received_date: null,
-      completion_date: completionDate,
-      contractor_type: null,
-      fee: null,
-      final_inspection_date: finalInspectionDate,
-      contractor_type: "Unknown",
-      improvement_action: improvementAction,
-      improvement_status: improvementStatus || null,
-      improvement_type: improvementType || null,
-      is_disaster_recovery: null,
-      is_owner_builder: null,
-      permit_close_date: permitCloseDate,
-      permit_issue_date: permitIssueDate,
-      permit_number: permitNumber || null,
-      permit_required: true,
-      private_provider_inspections: null,
-      private_provider_plan_review: null,
-      request_identifier: seed.request_identifier || parcelId,
-      source_http_request: seed.source_http_request || null,
-    };
-
-    Object.keys(improvementObj).forEach((key) => {
-      if (improvementObj[key] == null) {
-        delete improvementObj[key];
-      }
-    });
-
-    const fileName = `property_improvement_${propertyImprovementFiles.length + 1}.json`;
-    propertyImprovementFiles.push(fileName);
-    fs.writeFileSync(
-      path.join(dataDir, fileName),
-      JSON.stringify(improvementObj, null, 2),
-    );
-  });
-
-  propertyImprovementFiles.forEach((fileName, idx) => {
-    const rel = {
-      from: { "/": "./property.json" },
-      to: { "/": `./${fileName}` },
-    };
-
-  });
-
-  const buildingLikeTypes = new Set(["Building", "Unit", "ManufacturedHome"]);
-  const isBuildingProperty = buildingLikeTypes.has(property.property_type);
-  const layoutFiles = [];
-  let layoutFileIdx = 1;
+  // Layouts from owners/layout_data.json
+  let layoutIdx = 1;
   const layoutEntry = layouts[ownerKey];
-
-  const writeLayoutFile = (layoutData) => {
-    const currentIndex = layoutFileIdx;
-    const filename = `layout_${currentIndex}.json`;
-    fs.writeFileSync(
-      path.join(dataDir, filename),
-      JSON.stringify(layoutData, null, 2),
-    );
-    layoutFiles.push({
-      file: filename,
-      index: currentIndex,
-      space_type: layoutData.space_type || null,
-      space_type_index: layoutData.space_type_index || null,
-    });
-    layoutFileIdx++;
-  };
-
-  let hasBuildingLayout = false;
-  if (
-    isBuildingProperty &&
-    layoutEntry &&
-    Array.isArray(layoutEntry.layouts)
-  ) {
+  if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
-      if (!lay || Object.keys(lay).length === 0) continue;
-      const layoutClone = { ...lay };
-      layoutClone.space_index = layoutFileIdx;
-      layoutClone.space_type = layoutClone.space_type || "Building";
-      layoutClone.space_type_index = layoutClone.space_type_index || "1";
-      if (typeof layoutClone.is_exterior !== "boolean") {
-        layoutClone.is_exterior = false;
+      if (lay && Object.keys(lay).length > 0) {
+        // Ensure space_index is an integer
+        if (lay.space_index === null || lay.space_index === undefined) {
+          lay.space_index = layoutIdx;
+        }
+
+        // Ensure is_finished is a boolean
+        if (typeof lay.is_finished !== 'boolean') {
+          // Default: exterior spaces are not finished, interior spaces are finished
+          lay.is_finished = lay.is_exterior === false;
+        }
+
+        fs.writeFileSync(
+          path.join(dataDir, `layout_${layoutIdx}.json`),
+          JSON.stringify(lay, null, 2),
+        );
+        layoutIdx++;
       }
-      if (typeof layoutClone.is_finished !== "boolean") {
-        layoutClone.is_finished = !layoutClone.is_exterior;
-      }
-      layoutClone.request_identifier = layoutClone.request_identifier || null;
-      hasBuildingLayout = hasBuildingLayout || layoutClone.space_type === "Building";
-      writeLayoutFile(layoutClone);
     }
   }
 
-  const parseNumeric = (value) => {
-    if (value == null) return null;
-    const num = Number(String(value).replace(/,/g, ""));
-    return Number.isFinite(num) && num > 0 ? num : null;
-  };
+  // Extract pool, spa, and other exterior features from Building/Extra Features
+  const poolFenceExists = [];
+  const fountainExists = [];
 
-  if (isBuildingProperty && !hasBuildingLayout) {
-    const livableArea = parseNumeric(property.livable_floor_area);
-    const underAirArea = parseNumeric(property.area_under_air);
-    const totalArea = parseNumeric(property.total_area);
-    const sizeArea = totalArea ?? underAirArea ?? livableArea;
-    const buildingLayout = {
-      space_type: "Building",
-      space_index: 1,
-      space_type_index: "1",
-      livable_area_sq_ft: livableArea,
-      area_under_air_sq_ft: underAirArea,
-      total_area_sq_ft: totalArea ?? livableArea ?? underAirArea,
-      is_exterior: false,
-      is_finished: true,
-      adjustable_area_sq_ft: null,
-      bathroom_renovation_date: null,
-      building_number: null,
-      cabinet_style: null,
-      clutter_level: null,
-      condition_issues: null,
-      countertop_material: null,
-      decor_elements: null,
-      design_style: null,
-      fixture_finish_quality: null,
-      floor_level: null,
-      flooring_installation_date: null,
-      flooring_material_type: null,
-      flooring_wear: null,
-      furnished: null,
-      has_windows: null,
-      heated_area_sq_ft: null,
-      kitchen_renovation_date: null,
-      lighting_features: null,
-      natural_light_quality: null,
-      paint_condition: null,
-      pool_condition: null,
-      pool_equipment: null,
-      pool_installation_date: null,
-      pool_surface_type: null,
-      pool_type: null,
-      pool_water_quality: null,
-      request_identifier: null,
-      safety_features: null,
-      size_square_feet: sizeArea,
-      spa_installation_date: null,
-      spa_type: null,
-      story_type: null,
-      view_type: null,
-      visible_damage: null,
-      window_design_type: null,
-      window_material_type: null,
-      window_treatment_type: null,
+  // First pass: identify pool fence and fountain for later reference
+  $("span[id^=BLDGCLASS]").each((i, el) => {
+    const buildingClass = $(el).text().trim().toUpperCase();
+    if (buildingClass.includes("POOL") && buildingClass.includes("FENCE")) {
+      poolFenceExists.push(true);
+    }
+    if (buildingClass.includes("FOUNTAIN")) {
+      fountainExists.push(true);
+    }
+  });
+
+  // Second pass: create layout entries for features
+  $("span[id^=BLDGCLASS]").each((i, el) => {
+    const $span = $(el);
+    const buildingClass = $span.text().trim().toUpperCase();
+    const spanId = $span.attr("id");
+
+    // Extract building number from span ID
+    const buildingNumMatch = spanId.match(/BLDGCLASS(\d+)/);
+    if (!buildingNumMatch) return;
+    const buildingNum = buildingNumMatch[1];
+
+    // Get year built and area
+    const yrSpan = $(`#YRBUILT${buildingNum}`);
+    const yr = yrSpan.text().trim();
+    const areaSpan = $(`#BASEAREA${buildingNum}`);
+    const areaText = areaSpan.text().trim();
+    const area = areaText ? parseFloat(areaText.replace(/[^0-9.]/g, "")) : null;
+
+    let layoutObj = null;
+
+    // Helper function to create complete layout object
+    const createLayoutObj = (spaceType, isExterior, idx, customFields = {}) => {
+      return {
+        adjustable_area_sq_ft: null,
+        area_under_air_sq_ft: null,
+        bathroom_renovation_date: null,
+        building_number: null,
+        cabinet_style: null,
+        clutter_level: null,
+        condition_issues: null,
+        countertop_material: null,
+        decor_elements: null,
+        design_style: null,
+        fixture_finish_quality: null,
+        floor_level: null,
+        flooring_installation_date: null,
+        flooring_material_type: null,
+        flooring_wear: null,
+        furnished: null,
+        has_windows: null,
+        heated_area_sq_ft: null,
+        is_exterior: isExterior,
+        is_finished: !isExterior, // Exterior spaces are not finished; interior spaces are finished
+        kitchen_renovation_date: null,
+        lighting_features: null,
+        livable_area_sq_ft: null,
+        natural_light_quality: null,
+        paint_condition: null,
+        pool_condition: null,
+        pool_equipment: null,
+        pool_installation_date: null,
+        pool_surface_type: null,
+        pool_type: null,
+        pool_water_quality: null,
+        request_identifier: null,
+        safety_features: null,
+        size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
+        spa_installation_date: null,
+        spa_type: null,
+        space_index: idx, // Use the layout index as space_index
+        space_type_index: "1",
+        space_type: spaceType,
+        story_type: null,
+        total_area_sq_ft: null,
+        view_type: null,
+        visible_damage: null,
+        window_design_type: null,
+        window_material_type: null,
+        window_treatment_type: null,
+        ...customFields, // Override with specific values
+      };
     };
-    writeLayoutFile(buildingLayout);
-    hasBuildingLayout = true;
-  }
 
-  if (isBuildingProperty && hasBuildingLayout) {
-    let featureCounter = 1;
-    let poolFenceDetected = false;
-    let fountainDetected = false;
-
-    $("span[id^=BLDGCLASS]").each((i, el) => {
-      const buildingClass = $(el).text().trim().toUpperCase();
-      if (buildingClass.includes("POOL") && buildingClass.includes("FENCE")) {
-        poolFenceDetected = true;
-      }
-      if (buildingClass.includes("FOUNTAIN")) {
-        fountainDetected = true;
-      }
-    });
-
-    $("span[id^=BLDGCLASS]").each((i, el) => {
-      const $span = $(el);
-      const buildingClassRaw = $span.text().trim();
-      if (!buildingClassRaw) return;
-      const buildingClass = buildingClassRaw.toUpperCase();
-      const spanId = $span.attr("id");
-
-      const buildingNumMatch = spanId ? spanId.match(/BLDGCLASS(\d+)/) : null;
-      if (!buildingNumMatch) return;
-      const buildingNum = buildingNumMatch[1];
-
-      const yrSpan = $(`#YRBUILT${buildingNum}`);
-      const yr = yrSpan.text().trim();
-      const areaSpan = $(`#BASEAREA${buildingNum}`);
-      const areaText = areaSpan.text().trim();
-      const area =
-        areaText && areaText.trim() !== ""
-          ? parseFloat(areaText.replace(/[^0-9.]/g, ""))
-          : null;
-      const areaValue =
-        area != null && !Number.isNaN(area) && area > 0 ? area : null;
-
-      const nextSpaceTypeIndex = () => {
-        const indexString = `1.${featureCounter}`;
-        featureCounter += 1;
-        return indexString;
+    // POOL
+    if (buildingClass.includes("POOL") && !buildingClass.includes("FENCE") && !buildingClass.includes("HOUSE")) {
+      const customFields = {
+        pool_installation_date: yr ? `${yr}-01-01` : null,
       };
 
-      const createLayoutObj = (spaceType, isExterior, spaceTypeIndex, customFields = {}) => {
-        const layoutObj = {
-          adjustable_area_sq_ft: null,
-          area_under_air_sq_ft: null,
-          bathroom_renovation_date: null,
-          building_number: null,
-          cabinet_style: null,
-          clutter_level: null,
-          condition_issues: null,
-          countertop_material: null,
-          decor_elements: null,
-          design_style: null,
-          fixture_finish_quality: null,
-          floor_level: null,
-          flooring_installation_date: null,
-          flooring_material_type: null,
-          flooring_wear: null,
-          furnished: null,
-          has_windows: null,
-          heated_area_sq_ft: null,
-          is_exterior: isExterior,
-          is_finished: !isExterior,
-          kitchen_renovation_date: null,
-          lighting_features: null,
-          livable_area_sq_ft: null,
-          natural_light_quality: null,
-          paint_condition: null,
-          pool_condition: null,
-          pool_equipment: null,
-          pool_installation_date: null,
-          pool_surface_type: null,
-          pool_type: null,
-          pool_water_quality: null,
-          request_identifier: null,
-          safety_features: null,
-          size_square_feet: areaValue,
-          spa_installation_date: null,
-          spa_type: null,
-          story_type: null,
-          total_area_sq_ft: null,
-          view_type: null,
-          visible_damage: null,
-          window_design_type: null,
-          window_material_type: null,
-          window_treatment_type: null,
-        };
-        Object.assign(layoutObj, customFields);
-        if (customFields.is_finished !== undefined) {
-          layoutObj.is_finished = customFields.is_finished;
-        }
-        if (layoutObj.size_square_feet == null && areaValue != null) {
-          layoutObj.size_square_feet = areaValue;
-        }
-        layoutObj.is_exterior = isExterior;
-        layoutObj.space_index = layoutFileIdx;
-        layoutObj.space_type = spaceType;
-        layoutObj.space_type_index = spaceTypeIndex;
-        return layoutObj;
-      };
-
-      let layoutObj = null;
-
-      if (
-        buildingClass.includes("POOL") &&
-        !buildingClass.includes("FENCE") &&
-        !buildingClass.includes("HOUSE")
-      ) {
-        const customs = {
-          pool_installation_date: yr ? `${yr}-01-01` : null,
-        };
-        if (poolFenceDetected) customs.safety_features = "Fencing";
-        if (fountainDetected) customs.pool_equipment = "Fountain";
-        layoutObj = createLayoutObj(
-          "Outdoor Pool",
-          true,
-          nextSpaceTypeIndex(),
-          customs,
-        );
-      } else if (
-        buildingClass.includes("SPA") ||
-        buildingClass.includes("JACUZZI") ||
-        buildingClass.includes("HOT TUB")
-      ) {
-        layoutObj = createLayoutObj(
-          "Hot Tub / Spa Area",
-          true,
-          nextSpaceTypeIndex(),
-          {
-            spa_installation_date: yr ? `${yr}-01-01` : null,
-          },
-        );
-      } else if (buildingClass.includes("SCREEN")) {
-        layoutObj = createLayoutObj(
-          "Screened Porch",
-          false,
-          nextSpaceTypeIndex(),
-          {
-            is_finished: true,
-          },
-        );
-      } else if (
-        buildingClass.includes("DECK") ||
-        (buildingClass.includes("TILE") && !buildingClass.includes("ROOF")) ||
-        buildingClass.includes("BRICK") ||
-        buildingClass.includes("KEYSTONE") ||
-        (buildingClass.includes("CONCRETE") && buildingClass.includes("SCULPTURED"))
-      ) {
-        layoutObj = createLayoutObj("Deck", true, nextSpaceTypeIndex());
-      } else if (buildingClass.includes("FOUNTAIN") && !poolFenceDetected) {
-        layoutObj = createLayoutObj("Courtyard", true, nextSpaceTypeIndex());
+      // Add safety features if pool fence exists
+      if (poolFenceExists.length > 0) {
+        customFields.safety_features = "Fencing";
       }
 
-      if (layoutObj) {
-        writeLayoutFile(layoutObj);
+      // Add pool equipment if fountain exists
+      if (fountainExists.length > 0) {
+        customFields.pool_equipment = "Fountain";
       }
-    });
-  }
 
-  const buildingLayoutFile = layoutFiles.find(
-    (entry) => entry.space_type === "Building",
-  );
-  if (buildingLayoutFile && layoutFiles.length > 1) {
-    layoutFiles.forEach((entry) => {
-      if (entry.file === buildingLayoutFile.file) return;
-      const rel = {
-        from: { "/": `./${buildingLayoutFile.file}` },
-        to: { "/": `./${entry.file}` },
-      };
+      layoutObj = createLayoutObj("Outdoor Pool", true, layoutIdx, customFields);
+    }
+
+    // SPA / HOT TUB
+    else if (buildingClass.includes("SPA") || buildingClass.includes("JACUZZI") || buildingClass.includes("HOT TUB")) {
+      layoutObj = createLayoutObj("Hot Tub / Spa Area", true, layoutIdx, {
+        spa_installation_date: yr ? `${yr}-01-01` : null,
+      });
+    }
+
+    // SCREEN ENCLOSURE
+    else if (buildingClass.includes("SCREEN")) {
+      layoutObj = createLayoutObj("Screened Porch", false, layoutIdx, {
+        is_finished: true,
+      });
+    }
+
+    // DECKING (TILE, BRICK, KEYSTONE, CONCRETE)
+    else if (
+      buildingClass.includes("DECK") ||
+      (buildingClass.includes("TILE") && !buildingClass.includes("ROOF")) ||
+      buildingClass.includes("BRICK") ||
+      buildingClass.includes("KEYSTONE") ||
+      (buildingClass.includes("CONCRETE") && buildingClass.includes("SCULPTURED"))
+    ) {
+      layoutObj = createLayoutObj("Deck", true, layoutIdx, {});
+    }
+
+    // FOUNTAIN (only if not already added to pool equipment)
+    else if (buildingClass.includes("FOUNTAIN") && poolFenceExists.length === 0) {
+      layoutObj = createLayoutObj("Courtyard", true, layoutIdx, {});
+    }
+
+    // Write layout file if we created one
+    if (layoutObj) {
       fs.writeFileSync(
-        path.join(
-          dataDir,
-          `relationship_layout_${buildingLayoutFile.index}_to_layout_${entry.index}.json`,
-        ),
-        JSON.stringify(rel, null, 2),
+        path.join(dataDir, `layout_${layoutIdx}.json`),
+        JSON.stringify(layoutObj, null, 2),
       );
-    });
-  }
+      layoutIdx++;
+    }
+  });
 
   // Structure data from permits and building features
   const structureObj = {
@@ -1836,18 +1162,14 @@ function main() {
 
   // Extract roof date from most recent ROOF permit
   let mostRecentRoofDate = null;
-  permitEntries.forEach((entry) => {
-    if (
-      entry.permitTypeRaw &&
-      entry.permitTypeRaw.toUpperCase().includes("ROOF")
-    ) {
-      const candidate =
-        entry.completionDate ||
-        entry.permitCloseDate ||
-        entry.permitIssueDate ||
-        null;
-      if (candidate && (!mostRecentRoofDate || candidate > mostRecentRoofDate)) {
-        mostRecentRoofDate = candidate;
+  $("#PermitAdditional tr").each((i, el) => {
+    const $row = $(el);
+    const permitType = $row.find("span[id^=permittype]").text().trim();
+    if (permitType && permitType.toUpperCase() === "ROOF") {
+      const coDateTxt = $row.find("span[id^=codate]").text().trim();
+      const iso = parseDateToISO(coDateTxt);
+      if (iso && (!mostRecentRoofDate || iso > mostRecentRoofDate)) {
+        mostRecentRoofDate = iso;
       }
     }
   });
@@ -1880,41 +1202,6 @@ function main() {
     path.join(dataDir, "structure.json"),
     JSON.stringify(structureObj, null, 2),
   );
-
-  if (layoutFiles.length > 0) {
-    const structureExists = fs.existsSync(path.join(dataDir, "structure.json"));
-    const utilityExists = utilityFileWritten && fs.existsSync(path.join(dataDir, "utility.json"));
-
-    layoutFiles.forEach((entry) => {
-      if (structureExists) {
-        const relStructure = {
-          from: { "/": `./${entry.file}` },
-          to: { "/": "./structure.json" },
-        };
-        fs.writeFileSync(
-          path.join(
-            dataDir,
-            `relationship_layout_${entry.index}_to_structure.json`,
-          ),
-          JSON.stringify(relStructure, null, 2),
-        );
-      }
-
-      if (utilityExists) {
-        const relUtility = {
-          from: { "/": `./${entry.file}` },
-          to: { "/": "./utility.json" },
-        };
-        fs.writeFileSync(
-          path.join(
-            dataDir,
-            `relationship_layout_${entry.index}_to_utility.json`,
-          ),
-          JSON.stringify(relUtility, null, 2),
-        );
-      }
-    });
-  }
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
