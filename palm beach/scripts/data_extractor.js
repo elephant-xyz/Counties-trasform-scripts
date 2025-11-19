@@ -4070,7 +4070,183 @@ function ensureRawAddressFinalFieldCoverage(addressFilePath) {
     ensured[field] = value === null ? null : value;
   }
 
+  const assignIfMissing = (field, candidate) => {
+    if (!Object.prototype.hasOwnProperty.call(ensured, field)) {
+      return;
+    }
+    if (candidate === undefined || candidate === null) {
+      return;
+    }
+    if (hasMeaningfulAddressValue(ensured[field])) {
+      return;
+    }
+    const normalized = normalizeAddressFieldForSchema(field, candidate);
+    if (normalized === undefined || normalized === null) {
+      return;
+    }
+    if (typeof normalized === "string") {
+      const trimmed = normalized.trim();
+      if (!trimmed.length) return;
+      ensured[field] = trimmed;
+      return;
+    }
+    if (typeof normalized === "number") {
+      if (!Number.isFinite(normalized)) return;
+      ensured[field] = normalized;
+      return;
+    }
+    ensured[field] = normalized;
+  };
+
+  const applyCandidateList = (field, candidates) => {
+    if (!Array.isArray(candidates)) return;
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        applyCandidateList(field, candidate);
+        if (hasMeaningfulAddressValue(ensured[field])) {
+          break;
+        }
+        continue;
+      }
+      if (candidate === undefined || candidate === null) {
+        continue;
+      }
+      assignIfMissing(field, candidate);
+      if (hasMeaningfulAddressValue(ensured[field])) {
+        break;
+      }
+    }
+  };
+
+  const derivedFromRaw = deriveNormalizedAddressFieldsFromRaw(
+    trimmedUnnormalized,
+  );
+  if (derivedFromRaw && typeof derivedFromRaw === "object") {
+    for (const [field, value] of Object.entries(derivedFromRaw)) {
+      assignIfMissing(field, value);
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    ADDRESS_FALLBACK_CONTEXT.fieldFallbacks &&
+    typeof ADDRESS_FALLBACK_CONTEXT.fieldFallbacks === "object"
+  ) {
+    for (const [field, values] of Object.entries(
+      ADDRESS_FALLBACK_CONTEXT.fieldFallbacks,
+    )) {
+      if (values === undefined || values === null) continue;
+      applyCandidateList(field, Array.isArray(values) ? values : [values]);
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
+      if (!source || typeof source !== "object") continue;
+      assignIfMissing("street_number", source.street_number);
+      assignIfMissing("street_name", source.street_name);
+      assignIfMissing("street_suffix_type", source.street_suffix_type);
+      assignIfMissing(
+        "street_pre_directional_text",
+        source.street_pre_directional_text,
+      );
+      assignIfMissing(
+        "street_post_directional_text",
+        source.street_post_directional_text,
+      );
+      assignIfMissing("unit_identifier", source.unit_identifier);
+      assignIfMissing("route_number", source.route_number);
+      assignIfMissing("city_name", source.city_name || source.city);
+      assignIfMissing(
+        "municipality_name",
+        source.municipality_name || source.city_name || source.city,
+      );
+      assignIfMissing("state_code", source.state_code || source.state);
+      assignIfMissing(
+        "postal_code",
+        source.postal_code || source.zip || source.zip_code,
+      );
+      assignIfMissing(
+        "plus_four_postal_code",
+        source.plus_four_postal_code || source.plus4,
+      );
+      assignIfMissing("county_name", source.county_name || source.county);
+      assignIfMissing("township", source.township);
+      assignIfMissing("range", source.range);
+      assignIfMissing("section", source.section);
+      assignIfMissing("block", source.block);
+      assignIfMissing("lot", source.lot);
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates)
+  ) {
+    for (const parcelId of ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates) {
+      if (!parcelId) continue;
+      const grid = deriveGridPartsFromPcn(parcelId);
+      if (!grid || typeof grid !== "object") continue;
+      assignIfMissing("township", grid.township);
+      assignIfMissing("range", grid.range);
+      assignIfMissing("section", grid.section);
+      assignIfMissing("block", grid.block);
+      assignIfMissing("lot", grid.lot);
+      if (
+        hasMeaningfulAddressValue(ensured.township) &&
+        hasMeaningfulAddressValue(ensured.range) &&
+        hasMeaningfulAddressValue(ensured.section) &&
+        hasMeaningfulAddressValue(ensured.block)
+      ) {
+        break;
+      }
+    }
+  }
+
+  if (
+    !hasMeaningfulAddressValue(ensured.municipality_name) &&
+    hasMeaningfulAddressValue(ensured.city_name)
+  ) {
+    assignIfMissing("municipality_name", ensured.city_name);
+  }
+
   ensured.unnormalized_address = trimmedUnnormalized;
+
+  const coordinateQueue = [];
+  const pushCoordinateCandidate = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return;
+    const lat = parseCoordinate(candidate.latitude);
+    const lon = parseCoordinate(candidate.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      coordinateQueue.push({ latitude: lat, longitude: lon });
+    }
+  };
+  pushCoordinateCandidate({
+    latitude: ensured.latitude,
+    longitude: ensured.longitude,
+  });
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+  ) {
+    for (const candidate of ADDRESS_FALLBACK_CONTEXT.coordinateCandidates) {
+      pushCoordinateCandidate(candidate);
+    }
+  }
+  if (coordinateQueue.length) {
+    const resolved = coordinateQueue.find(
+      (candidate) =>
+        Number.isFinite(candidate.latitude) &&
+        Number.isFinite(candidate.longitude),
+    );
+    if (resolved) {
+      ensured.latitude = resolved.latitude;
+      ensured.longitude = resolved.longitude;
+    }
+  }
 
   if ((ensured.latitude == null) !== (ensured.longitude == null)) {
     ensured.latitude = null;
