@@ -84,6 +84,20 @@
       `#SaleDate${s.rowIndex}`,
       s.dateRaw || s.dateTxt,
     );
+    if (s.bookPageRaw || s.bookPage) {
+      const instrumentText = s.bookPageRaw || s.bookPage;
+      saleSourceFields.instrument_number_text = instrumentText;
+      addSelectorSource(
+        saleSourceFields,
+        s.bookPagePrimarySelector,
+        instrumentText,
+      );
+      addSelectorSource(
+        saleSourceFields,
+        s.bookPageFallbackSelector,
+        instrumentText,
+      );
+    }
     if (Object.keys(saleSourceFields).length > 0) {
       saleObj.source_fields = saleSourceFields;
     }

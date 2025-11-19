@@ -328,7 +328,13 @@
     totalMillage,
     sohBenefitAmount,
   ];
-  if (summaryValues.some((val) => val != null)) {
+  const summarySourceEntries = Object.entries(summarySourceFields).filter(
+    ([, value]) => value !== null && value !== undefined && value !== "",
+  );
+  if (
+    summaryValues.some((val) => val != null) ||
+    summarySourceEntries.length > 0
+  ) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     summaryTaxRecord = {
       parcel_identifier: parcelId,
@@ -360,9 +366,6 @@
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
     };
-    const summarySourceEntries = Object.entries(summarySourceFields).filter(
-      ([, value]) => value !== null && value !== undefined && value !== "",
-    );
     if (summarySourceEntries.length > 0) {
       summaryTaxRecord.source_fields = summarySourceEntries.reduce(
         (acc, [key, value]) => {

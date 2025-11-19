@@ -1083,6 +1083,20 @@ function main() {
       `#SaleDate${s.rowIndex}`,
       s.dateRaw || s.dateTxt,
     );
+    if (s.bookPageRaw || s.bookPage) {
+      const instrumentText = s.bookPageRaw || s.bookPage;
+      saleSourceFields.instrument_number_text = instrumentText;
+      addSelectorSource(
+        saleSourceFields,
+        s.bookPagePrimarySelector,
+        instrumentText,
+      );
+      addSelectorSource(
+        saleSourceFields,
+        s.bookPageFallbackSelector,
+        instrumentText,
+      );
+    }
     if (Object.keys(saleSourceFields).length > 0) {
       saleObj.source_fields = saleSourceFields;
     }
@@ -1764,7 +1778,16 @@ function main() {
     totalMillage,
     sohBenefitAmount,
   ];
-  if (summaryValues.some((val) => val != null)) {
+  const summarySourceKeys = Object.keys(summarySourceFields).filter(
+    (key) =>
+      summarySourceFields[key] !== null &&
+      summarySourceFields[key] !== undefined &&
+      summarySourceFields[key] !== "",
+  );
+  if (
+    summaryValues.some((val) => val != null) ||
+    summarySourceKeys.length > 0
+  ) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     summaryTaxRecord = {
       parcel_identifier: parcelId,
@@ -1796,14 +1819,8 @@ function main() {
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
     };
-    const sourceKeys = Object.keys(summarySourceFields).filter(
-      (key) =>
-        summarySourceFields[key] !== null &&
-        summarySourceFields[key] !== undefined &&
-        summarySourceFields[key] !== "",
-    );
-    if (sourceKeys.length > 0) {
-      summaryTaxRecord.source_fields = sourceKeys.reduce((acc, key) => {
+    if (summarySourceKeys.length > 0) {
+      summaryTaxRecord.source_fields = summarySourceKeys.reduce((acc, key) => {
         acc[key] = summarySourceFields[key];
         return acc;
       }, {});
