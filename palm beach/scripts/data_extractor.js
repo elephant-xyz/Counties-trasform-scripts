@@ -6154,13 +6154,13 @@ function enforceAddressSchemaSurfaceForOutput(address) {
       Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code") &&
       !hasMeaningfulAddressValue(result.plus_four_postal_code)
     ) {
-      delete result.plus_four_postal_code;
+      result.plus_four_postal_code = null;
     }
     if (
       Object.prototype.hasOwnProperty.call(result, "country_code") &&
       !hasMeaningfulAddressValue(result.country_code)
     ) {
-      delete result.country_code;
+      result.country_code = null;
     }
   }
 
@@ -23593,7 +23593,10 @@ function selectCountyAddressVariantForOneOf(addressFilePath) {
   }
 
   if (trimmedUnnormalized.length) {
-    const rawOutput = { unnormalized_address: trimmedUnnormalized };
+    const rawOutput = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedUnnormalized,
+    };
 
     const latitudeSource = Object.prototype.hasOwnProperty.call(payload, "latitude")
       ? payload.latitude
@@ -23605,10 +23608,14 @@ function selectCountyAddressVariantForOneOf(addressFilePath) {
     const numericLatitude = parseCoordinate(latitudeSource);
     if (Number.isFinite(numericLatitude)) {
       rawOutput.latitude = numericLatitude;
+    } else {
+      rawOutput.latitude = null;
     }
     const numericLongitude = parseCoordinate(longitudeSource);
     if (Number.isFinite(numericLongitude)) {
       rawOutput.longitude = numericLongitude;
+    } else {
+      rawOutput.longitude = null;
     }
 
     const OPTIONAL_STRING_FIELDS = [
@@ -23655,7 +23662,7 @@ function selectCountyAddressVariantForOneOf(addressFilePath) {
       rawOutput.country_code = "US";
     }
     if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
-      delete rawOutput.plus_four_postal_code;
+      rawOutput.plus_four_postal_code = null;
     }
 
     fs.writeFileSync(
