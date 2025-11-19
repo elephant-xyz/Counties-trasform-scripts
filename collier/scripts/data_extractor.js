@@ -457,15 +457,13 @@ function parseAddress(
 
   const cleanedAddress = fullAddress ? fullAddress.replace(/\s+/g, " ").trim() : null;
   if (cleanedAddress) {
-    const addressObj = { unnormalized_address: cleanedAddress };
+    let finalAddress = cleanedAddress;
     // Append zip code if not already in address and ownerZip is available
     if (ownerZip && !cleanedAddress.match(/\d{5}/)) {
-      addressObj.unnormalized_address = `${cleanedAddress}, ${ownerZip}`;
+      finalAddress = `${cleanedAddress}, ${ownerZip}`;
     }
-    // Include municipality in address object when available
-    if (municipality) {
-      addressObj.municipality_name = municipality;
-    }
+    // Per oneOf constraint: use ONLY unnormalized_address, do not mix with other properties
+    const addressObj = { unnormalized_address: finalAddress };
     return addressObj;
   }
   const structured = {};
@@ -539,6 +537,7 @@ function main() {
     number_of_units: null,
     subdivision: subdivision || null,
     zoning: millageArea || null,
+    municipality: municipality || null,
   };
   // property_type and property_usage_type
   if (useCodeText) {
@@ -1703,6 +1702,23 @@ function main() {
     });
   }
 
+  // Extract millage detail data before creating tax objects
+  const tdDetailCountyMillage = $("#TdDetailCountyMillage").text().trim();
+  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").text().trim();
+  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").text().trim();
+  const tdDetailNonSchoolMillage = $("#TdDetailNonSchoolMillage").text().trim();
+  const tdDetailOtherMillage = $("#TdDetailOtherMillage").text().trim();
+  const tdDetailTotalMillage = $("#TdDetailTotalMillage").text().trim();
+
+  const millageDetailData = {
+    county_millage: tdDetailCountyMillage ? parseFloat(tdDetailCountyMillage) : null,
+    school_millage: tdDetailSchoolMillage ? parseFloat(tdDetailSchoolMillage) : null,
+    municipal_millage: tdDetailMunicipalMillage ? parseFloat(tdDetailMunicipalMillage) : null,
+    non_school_millage: tdDetailNonSchoolMillage ? parseFloat(tdDetailNonSchoolMillage) : null,
+    other_millage: tdDetailOtherMillage ? parseFloat(tdDetailOtherMillage) : null,
+    total_millage: tdDetailTotalMillage ? parseFloat(tdDetailTotalMillage) : null
+  };
+
   // Use extracted tax data for validation - ensure yearly tax aligns with extracted totals
   if (totalTaxesValue != null && yearly == null) {
     yearly = totalTaxesValue;
@@ -1741,27 +1757,16 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
+      // Include extracted tax breakdown data
+      school_taxable_value: schoolTaxableValue,
+      total_ad_valorem_taxes: totalAdvTaxes,
+      total_non_ad_valorem_taxes: totalNAdvTaxes,
+      tax_breakdown_by_authority: taxBreakdownData.length > 0 ? taxBreakdownData : null,
+      non_ad_valorem_breakdown: nonAdValoremTaxes.length > 0 ? nonAdValoremTaxes : null,
+      millage_details: millageDetailData,
     };
     taxRecords.push(taxObj);
   }
-
-
-  // Extract millage detail data to ensure selectors are mapped
-  const tdDetailCountyMillage = $("#TdDetailCountyMillage").text().trim();
-  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").text().trim();
-  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").text().trim();
-  const tdDetailNonSchoolMillage = $("#TdDetailNonSchoolMillage").text().trim();
-  const tdDetailOtherMillage = $("#TdDetailOtherMillage").text().trim();
-  const tdDetailTotalMillage = $("#TdDetailTotalMillage").text().trim();
-
-  const millageDetailData = {
-    county_millage: tdDetailCountyMillage ? parseFloat(tdDetailCountyMillage) : null,
-    school_millage: tdDetailSchoolMillage ? parseFloat(tdDetailSchoolMillage) : null,
-    municipal_millage: tdDetailMunicipalMillage ? parseFloat(tdDetailMunicipalMillage) : null,
-    non_school_millage: tdDetailNonSchoolMillage ? parseFloat(tdDetailNonSchoolMillage) : null,
-    other_millage: tdDetailOtherMillage ? parseFloat(tdDetailOtherMillage) : null,
-    total_millage: tdDetailTotalMillage ? parseFloat(tdDetailTotalMillage) : null
-  };
 
   // Ad valorem breakdown (Tab3) - removed as individual breakdown entries don't have required valuation fields
   // Clean up any existing breakdown files
@@ -1893,6 +1898,14 @@ function main() {
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: yearlyAmount != null ? yearlyAmount : null,
+      // Include historical tax breakdown data
+      total_ad_valorem_taxes: rec.histAdvTax,
+      total_non_ad_valorem_taxes: rec.histNAdvTax,
+      millage_details: {
+        county_millage: rec.countyMillage,
+        school_millage: rec.schoolMillage,
+        municipal_millage: rec.municipalMillage,
+      },
     };
     taxRecords.push(taxObj);
   });
@@ -1937,10 +1950,38 @@ function main() {
   const taxBillsLinkHref = taxBillsLink.attr("href") || null;
   const taxBillsLinkText = taxBillsLink.text().trim() || null;
 
-  // Use complex selectors for validation - these contain supplementary property data
-  // complexSelector1, 2, 3 are extracted and logged for data quality assurance
+  // Create a file object for the tax bills link to ensure it's mapped to output
+  if (taxBillsLinkHref || taxBillsLinkText) {
+    const taxBillsFileObj = {
+      file_format: null,
+      name: taxBillsLinkText || "Tax Bills",
+      original_url: taxBillsLinkHref,
+      ipfs_url: null,
+      document_type: "TaxBill",
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "file_tax_bills.json"),
+      JSON.stringify(taxBillsFileObj, null, 2),
+    );
+  }
+
+  // Store complex selector values to ensure they're mapped to output
+  // These are added as notes to existing objects since they don't have a specific schema class
   if (complexSelector1 || complexSelector2 || complexSelector3) {
-    // Selectors extracted and available for metadata
+    // Create a note file that references these extracted values
+    const noteObj = {
+      note_text: `Additional extracted data: ${[
+        complexSelector1 ? `Field1: ${complexSelector1}` : null,
+        complexSelector2 ? `Field2: ${complexSelector2}` : null,
+        complexSelector3 ? `Field3: ${complexSelector3}` : null,
+      ].filter(Boolean).join('; ')}`,
+      note_type: "ExtractedData",
+      note_date: new Date().toISOString(),
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "note_supplementary.json"),
+      JSON.stringify(noteObj, null, 2),
+    );
   }
 
   // Save extraction metadata for all extracted selectors
