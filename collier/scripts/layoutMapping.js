@@ -23,10 +23,7 @@ function ensureDir(filePath) {
   // Use POSITIVE INCLUSION approach: only include known residential building types
   let totalLivableArea = 0;
   let totalUnderAir = 0;
-  let totalAdjustedArea = 0;
   let hasAnyBuildings = false;
-  const baseAreaSources = [];
-  const adjustedAreaSources = [];
 
   // Positive list: These ARE residential structures that should be included
   const residentialTypes = [
@@ -78,23 +75,6 @@ function ensureDir(filePath) {
           totalUnderAir += num;
           hasAnyBuildings = true;
         }
-        baseAreaSources.push({
-          selector: `#BASEAREA${buildingNum}`,
-          text: areaText,
-        });
-      }
-
-      const adjustedAreaSpan = $(`#TYADJAREA${buildingNum}`);
-      const adjustedAreaText = adjustedAreaSpan.text().trim();
-      if (adjustedAreaText) {
-        const adjNum = parseFloat(adjustedAreaText.replace(/[^0-9.]/g, ""));
-        if (!isNaN(adjNum) && adjNum > 0) {
-          totalAdjustedArea += adjNum;
-        }
-        adjustedAreaSources.push({
-          selector: `#TYADJAREA${buildingNum}`,
-          text: adjustedAreaText,
-        });
       }
     }
   });
@@ -103,22 +83,18 @@ function ensureDir(filePath) {
   // (values < 10 are unrealistic and fail validation)
   const livableAreaSqFt = hasAnyBuildings && totalLivableArea >= 10 ? totalLivableArea : null;
   const areaUnderAirSqFt = hasAnyBuildings && totalUnderAir >= 10 ? totalUnderAir : null;
-  const totalAreaSqFt = hasAnyBuildings && totalAdjustedArea >= 10 ? totalAdjustedArea : null;
 
   // Create layouts array with Living Area
   const layouts = [];
 
   // ALWAYS add Living Area layout with square footage data
-  const livingAreaLayout = {
+  layouts.push({
     space_type: "Living Area",
-    space_index: 1,
     space_type_index: "1",
     livable_area_sq_ft: livableAreaSqFt,
     area_under_air_sq_ft: areaUnderAirSqFt,
-    total_area_sq_ft: totalAreaSqFt,
     flooring_material_type: null,
     size_square_feet: null,
-    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -146,43 +122,7 @@ function ensureDir(filePath) {
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
-  };
-
-  const layoutSourceFields = {};
-  if (baseAreaSources.length > 0) {
-    const combinedBaseArea = baseAreaSources
-      .map((entry) => entry.text)
-      .filter(Boolean)
-      .join(" | ");
-    if (combinedBaseArea) {
-      layoutSourceFields.livable_area_sq_ft_text = combinedBaseArea;
-      layoutSourceFields.area_under_air_sq_ft_text = combinedBaseArea;
-    }
-    baseAreaSources.forEach(({ selector, text }) => {
-      if (selector && text) {
-        layoutSourceFields[selector] = text;
-      }
-    });
-  }
-  if (adjustedAreaSources.length > 0) {
-    const combinedAdjustedArea = adjustedAreaSources
-      .map((entry) => entry.text)
-      .filter(Boolean)
-      .join(" | ");
-    if (combinedAdjustedArea) {
-      layoutSourceFields.total_area_sq_ft_text = combinedAdjustedArea;
-    }
-    adjustedAreaSources.forEach(({ selector, text }) => {
-      if (selector && text) {
-        layoutSourceFields[selector] = text;
-      }
-    });
-  }
-  if (Object.keys(layoutSourceFields).length > 0) {
-    livingAreaLayout.source_fields = layoutSourceFields;
-  }
-
-  layouts.push(livingAreaLayout);
+  });
 
   const output = {};
   output[`property_${parcelId}`] = { layouts };
