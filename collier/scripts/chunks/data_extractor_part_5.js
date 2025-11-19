@@ -1,7 +1,16 @@
-  const township = $("#Township").first().text().trim() || null;
-  const range = $("#Range").first().text().trim() || null;
-  const municipality = $("#Municipality").first().text().trim() || null;
-  const totalAcres = $("#TotalAcres").first().text().trim() || null;
+  const township = getCellText($, "#Township");
+  const range = getCellText($, "#Range");
+  const municipality = getCellText($, "#Municipality");
+  const totalAcresText = getCellText($, "#TotalAcres");
+  const totalAcres = totalAcresText ? toNumberCurrency(totalAcresText) : null;
+  const totalLandSquareFeetText = getCellText($, "#TOTALUNITS1");
+  const totalLandSquareFeet = totalLandSquareFeetText
+    ? toNumberCurrency(totalLandSquareFeetText)
+    : null;
+
+  const propertySourceFields = {};
+  const baseAreaRawByBuilding = {};
+  const adjAreaRawByBuilding = {};
 
   // Property JSON
   const property = {
@@ -18,6 +27,10 @@
     property_effective_built_year: null,
     subdivision: subdivision || null,
     total_area: null,
+    building_adjusted_area: null,
+    lot_size_square_feet: null,
+    lot_size_acres: null,
+    municipality_name: null,
     zoning: null,
   };
 
@@ -25,6 +38,11 @@
   if (useCodeText) {
     property.property_type = extractPropertyType(useCodeText);
     property.property_usage_type = extractPropertyUsageType(useCodeText);
+  }
+  if (municipality) {
+    property.municipality_name = municipality;
+    propertySourceFields.municipality_name_text = municipality;
+    addSelectorSource(propertySourceFields, "#Municipality", municipality);
   }
 
   // Year built and areas from Building/Extra Features
@@ -83,20 +101,32 @@
       const baseAreaSpan = $(`#BASEAREA${buildingNum}`);
       const baseAreaText = baseAreaSpan.text().trim();
       if (baseAreaText) {
+        baseAreaRawByBuilding[buildingNum] = baseAreaText;
         const num = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
         if (!isNaN(num) && num > 0) {
           totalBaseArea += num;
         }
+        addSelectorSource(
+          propertySourceFields,
+          `#BASEAREA${buildingNum}`,
+          baseAreaText,
+        );
       }
 
       // Sum adjusted area
       const adjAreaSpan = $(`#TYADJAREA${buildingNum}`);
       const adjAreaText = adjAreaSpan.text().trim();
       if (adjAreaText) {
+        adjAreaRawByBuilding[buildingNum] = adjAreaText;
         const num = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
         if (!isNaN(num) && num > 0) {
           totalAdjArea += num;
         }
+        addSelectorSource(
+          propertySourceFields,
+          `#TYADJAREA${buildingNum}`,
+          adjAreaText,
+        );
       }
     }
   });
@@ -104,11 +134,45 @@
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
   // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
   if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
-    property.livable_floor_area = String(totalBaseArea);
-    property.area_under_air = String(totalBaseArea);
+    property.livable_floor_area = totalBaseArea;
+    property.area_under_air = totalBaseArea;
   }
   if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
-    property.total_area = String(totalAdjArea);
+    property.total_area = totalAdjArea;
+    property.building_adjusted_area = totalAdjArea;
+  }
+
+  if (totalLandSquareFeet != null && totalLandSquareFeet > 0) {
+    property.lot_size_square_feet = totalLandSquareFeet;
+  }
+  if (totalAcres != null && totalAcres > 0) {
+    property.lot_size_acres = totalAcres;
+  }
+
+  Object.entries(baseAreaRawByBuilding).forEach(([buildingNum, raw]) => {
+    if (raw) {
+      propertySourceFields[`base_area_building_${buildingNum}_text`] = raw;
+    }
+  });
+  Object.entries(adjAreaRawByBuilding).forEach(([buildingNum, raw]) => {
+    if (raw) {
+      propertySourceFields[`adjusted_area_building_${buildingNum}_text`] = raw;
+    }
+  });
+  if (totalLandSquareFeetText) {
+    propertySourceFields.lot_size_square_feet_text = totalLandSquareFeetText;
+    addSelectorSource(
+      propertySourceFields,
+      "#TOTALUNITS1",
+      totalLandSquareFeetText,
+    );
+  }
+  if (totalAcresText) {
+    propertySourceFields.lot_size_acres_text = totalAcresText;
+    addSelectorSource(propertySourceFields, "#TotalAcres", totalAcresText);
+  }
+  if (Object.keys(propertySourceFields).length > 0) {
+    property.source_fields = propertySourceFields;
   }
 
   // Write property.json
@@ -131,38 +195,62 @@
     countyName,
     municipality,
   );
+  const addressSourceFields = {};
+  if (municipality)
+    addressSourceFields.municipality_name_text = municipality;
+  if (section) addressSourceFields.section_text = section;
+  if (township) addressSourceFields.township_text = township;
+  if (range) addressSourceFields.range_text = range;
+  if (fullAddressHtml)
+    addressSourceFields.unnormalized_address_text = fullAddressHtml;
+  if (Object.keys(addressSourceFields).length > 0) {
+    addressObj.source_fields = {
+      ...(addressObj.source_fields || {}),
+      ...addressSourceFields,
+    };
+  }
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
-  try {
-    const relPath = path.join(dataDir, "relationship_property_has_address.json");
-    if (fs.existsSync(relPath)) fs.unlinkSync(relPath);
-  } catch (_) {}
-  if (
-    fs.existsSync(path.join(dataDir, "property.json")) &&
-    fs.existsSync(path.join(dataDir, "address.json"))
-  ) {
-    const propertyAddressRel = {
-      type: "property_has_address",
-      from: { "/": "./property.json" },
-      to: { "/": "./address.json" },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_has_address.json"),
-      JSON.stringify(propertyAddressRel, null, 2),
-    );
-  }
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
-  $("#SalesAdditional tr").each((i, el) => {
-    const $row = $(el);
-    const dateTxt = $row.find("span[id^=SaleDate]").text().trim();
-    const amtTxt = $row.find("span[id^=SaleAmount]").text().trim();
-    const bookPage = $row.find("a").first().text().trim() || null;
-    const row = {
-      rowIndex: i + 1,
-      dateTxt,
-      iso: parseDateToISO(dateTxt),
-      amount: toNumberCurrency(amtTxt),
+  for (let idx = 1; idx <= 25; idx++) {
+    const dateTxt = getCellText($, `#SaleDate${idx}`);
+    const amountTxt = getCellText($, `#SaleAmount${idx}`);
+    const dateRaw =
+      getRawSelectorText($, `#SaleDate${idx}`) || dateTxt || null;
+    const amountRaw =
+      getRawSelectorText($, `#SaleAmount${idx}`) || amountTxt || null;
+    const bookPagePrimarySelector = `table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(${idx}) > td.clsLabelnt:nth-child(2) > a`;
+    const bookPagePrimary = getCellText($, bookPagePrimarySelector);
+    const bookPagePrimaryRaw =
+      getRawSelectorText($, bookPagePrimarySelector) || bookPagePrimary || null;
+    const bookPageFallbackSelector = `#TrSale${idx} td:nth-child(2) a`;
+    const bookPageFallback = getCellText($, bookPageFallbackSelector);
+    const bookPageFallbackRaw =
+      getRawSelectorText($, bookPageFallbackSelector) ||
+      bookPageFallback ||
+      null;
+    const bookPage = bookPagePrimary || bookPageFallback || null;
+    const bookPageRaw =
+      bookPagePrimaryRaw || bookPageFallbackRaw || bookPage || null;
+
+    if (!dateTxt && !amountTxt && !bookPage) {
+      continue;
+    }
+
+    saleRows.push({
+      rowIndex: idx,
+      dateTxt: dateTxt || null,
+      dateRaw,
+      iso: parseDateToISO(dateTxt || dateRaw),
+      amount: toNumberCurrency(amountTxt || amountRaw),
+      amountText: amountTxt || null,
+      amountRaw,
+      bookPage,
+      bookPageRaw,
+      bookPagePrimarySelector,
+      bookPageFallbackSelector,
+    });

@@ -22,15 +22,18 @@ function parseAddress(
   municipality,
 ) {
   // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
-  let streetNumber = null,
-    streetName = null,
-    postDir = null,
-    preDir = null,
-    suffixType = null,
-    city = null,
-    state = null,
-    zip = null,
-    unitId = null;
+  const normalizedFullAddress = fullAddress
+    ? fullAddress.replace(/\s+/g, " ").replace(/\s+,/g, ",").trim()
+    : null;
+  let streetNumber = null;
+  let streetName = null;
+  let postDir = null;
+  let preDir = null;
+  let suffixType = null;
+  let city = null;
+  let state = null;
+  let zip = null;
+  let unitId = null;
 
   if (fullAddress) {
     const addr = fullAddress.replace(/\s+,/g, ",").trim();
@@ -86,44 +89,49 @@ function parseAddress(
     if (l) lot = l[1];
   }
 
-  const baseFields = {
+  const base = {
     block: block || null,
-    city_name: city || null,
-    country_code: null, // do not fabricate
     county_name: countyNameFromSeed || null,
+    country_code: null,
     latitude: null,
     longitude: null,
     lot: lot || null,
     municipality_name: municipality || null,
-    plus_four_postal_code: null,
-    postal_code: zip || null,
     range: range || null,
-    route_number: null,
     section: section || null,
-    state_code: state || "FL",
     township: township || null,
-    unit_identifier: unitId || null,
   };
 
-  if (streetNumber && streetName) {
-    return {
-      ...baseFields,
-      street_name: streetName || null,
-      street_number: streetNumber || null,
-      street_post_directional_text: postDir || null,
-      street_pre_directional_text: preDir || null,
+  const hasNormalized =
+    streetNumber &&
+    streetName &&
+    city &&
+    (state || countyNameFromSeed || municipality);
+
+  if (hasNormalized) {
+    base.normalized_address = {
+      street_number: streetNumber,
+      street_name: streetName,
       street_suffix_type: suffixType || null,
+      street_pre_directional_text: preDir || null,
+      street_post_directional_text: postDir || null,
+      unit_identifier: unitId || null,
+      city_name: city || null,
+      state_code: state || "FL",
+      postal_code: zip || null,
+      plus_four_postal_code: null,
+      route_number: null,
     };
+  } else if (normalizedFullAddress) {
+    base.unnormalized_address = normalizedFullAddress;
   }
 
-  const fallback = {
-    ...baseFields,
-    unnormalized_address: fullAddress || null,
-  };
-  if (!fullAddress) {
-    delete fallback.unnormalized_address;
+  if (!hasNormalized) {
+    base.postal_code = zip || null;
+    base.state_code = state || (countyNameFromSeed ? "FL" : null);
   }
-  return fallback;
+
+  return base;
 }
 
 function main() {
@@ -145,6 +153,11 @@ function main() {
 
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
+  removeFilesByPattern(dataDir, /^file_\d+\.json$/);
+  removeFilesByPattern(dataDir, /^relationship_deed_file_\d+\.json$/);
+  removeFilesByPattern(dataDir, /^relationship_sales_.*\.json$/);
+  removeFilesByPattern(dataDir, /^sale_\d+\.json$/);
+  removeFilesByPattern(dataDir, /^sales_\d+\.json$/);
 
   const folio = seed.request_identifier || seed.parcel_id;
 
@@ -161,4 +174,4 @@ function main() {
     : null;
   const useCodeText = $("#UCDescription").first().text().trim();
 
-  const section = $("#Section").first().text().trim() || null;
+  const section = getCellText($, "#Section");
