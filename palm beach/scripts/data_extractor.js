@@ -14305,6 +14305,113 @@ function enforceCountyAddressSchemaCompliance(addressFilePath) {
   writeJSON(addressFilePath, surfaced);
 }
 
+function forceSimpleCountyAddressOutput(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const value = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    normalizedCandidate[field] = sanitizeAddressFieldValue(field, value);
+  }
+
+  if (!normalizedCandidate.postal_code) {
+    normalizedCandidate.plus_four_postal_code = null;
+  }
+  if (normalizedCandidate.state_code && !normalizedCandidate.country_code) {
+    normalizedCandidate.country_code = "US";
+  }
+  if (
+    (normalizedCandidate.latitude == null) !==
+    (normalizedCandidate.longitude == null)
+  ) {
+    normalizedCandidate.latitude = null;
+    normalizedCandidate.longitude = null;
+  }
+
+  const normalizedProbe = deepClone(normalizedCandidate);
+  if (hasCompleteNormalizedAddress(normalizedProbe)) {
+    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+    const preparedSource = prepareSourceHttpRequest(
+      payload.source_http_request,
+    );
+
+    if (requestIdentifier) {
+      normalizedProbe.request_identifier = requestIdentifier;
+    } else {
+      delete normalizedProbe.request_identifier;
+    }
+
+    if (preparedSource) {
+      normalizedProbe.source_http_request = deepClone(preparedSource);
+    } else {
+      delete normalizedProbe.source_http_request;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedProbe,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedProbe.unnormalized_address;
+    }
+
+    writeJSON(addressFilePath, normalizedProbe);
+    return;
+  }
+
+  const unnormalizedCandidates = [];
+  const enqueueCandidate = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed.length) return;
+    unnormalizedCandidates.push(trimmed);
+  };
+
+  enqueueCandidate(payload.unnormalized_address);
+
+  if (options && Array.isArray(options.unnormalizedCandidates)) {
+    for (const candidate of options.unnormalizedCandidates) {
+      enqueueCandidate(candidate);
+    }
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(unnormalizedCandidates);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawPayload = composeMinimalRawAddress({
+    ...payload,
+    unnormalized_address: resolvedRaw,
+  });
+
+  if (!rawPayload) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  writeJSON(addressFilePath, rawPayload);
+}
+
 function composeFallbackUnnormalizedAddressFromFields(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -32855,6 +32962,36 @@ async function main() {
   enforceCountyAddressOneOfComplianceFinal(finalAddressPath);
   enforceAddressVariantExclusivity(finalAddressPath);
   solidifyCountyAddressSchemaSurface(finalAddressPath);
+  forceSimpleCountyAddressOutput(finalAddressPath, {
+    unnormalizedCandidates: [
+      ...(Array.isArray(finalUnnormalizedCandidates)
+        ? finalUnnormalizedCandidates
+        : []),
+      ...(Array.isArray(postProcessRawOptions.unnormalizedCandidates)
+        ? postProcessRawOptions.unnormalizedCandidates
+        : []),
+      ...(ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : []),
+      typeof unnormalizedAddressCandidate === "string"
+        ? unnormalizedAddressCandidate
+        : null,
+      typeof fullAddr === "string" ? fullAddr : null,
+      typeof fullAddrInput === "string" ? fullAddrInput : null,
+      typeof siteLocationLine === "string" ? siteLocationLine : null,
+      typeof combinedModelAddress === "string"
+        ? combinedModelAddress
+        : null,
+      typeof addressLineCombined === "string" ? addressLineCombined : null,
+      unAddr && typeof unAddr.full_address === "string"
+        ? unAddr.full_address
+        : null,
+      unAddr && typeof unAddr.unnormalized_address === "string"
+        ? unAddr.unnormalized_address
+        : null,
+    ],
+  });
 }
 
 main().catch((error) => {
