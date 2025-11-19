@@ -3096,6 +3096,213 @@ function mergeAddressFieldsFromSource(target, source) {
   }
 }
 
+function ensureRawVariantCriticalStrings(address, options = {}) {
+  if (!address || typeof address !== "object") return;
+
+  const {
+    rawCandidates = [],
+    parcelCandidates = [],
+    defaultCounty = null,
+    defaultState = null,
+    defaultCountry = "US",
+    cityFallbacks = [],
+    municipalityFallbacks = [],
+    postalFallbacks = [],
+    plusFourFallbacks = [],
+    coordinateFallback = null,
+  } = options || {};
+
+  const ensureFieldPresence = (field) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+    }
+  };
+
+  for (const field of RAW_VARIANT_SCHEMA_FIELDS) {
+    ensureFieldPresence(field);
+  }
+  ensureFieldPresence("plus_four_postal_code");
+  ensureFieldPresence("route_number");
+  ensureFieldPresence("unit_identifier");
+
+  const uniqueRawStrings = [];
+  const seenRaw = new Set();
+  for (const candidate of rawCandidates) {
+    if (typeof candidate !== "string") continue;
+    const trimmed = candidate.trim();
+    if (!trimmed.length || seenRaw.has(trimmed)) continue;
+    seenRaw.add(trimmed);
+    uniqueRawStrings.push(trimmed);
+  }
+
+  const assignIfMissing = (field, value, formatter) => {
+    if (RAW_ADDRESS_EXCLUDED_FIELDS.has(field)) return;
+    if (hasMeaningfulAddressValue(address[field])) return;
+    if (value === undefined || value === null) return;
+    const prepared =
+      typeof formatter === "function" ? formatter(value) : value;
+    const normalized = normalizeAddressFieldForSchema(field, prepared);
+    if (normalized === undefined || normalized === null) return;
+    address[field] = normalized;
+  };
+
+  const assignFromArray = (field, values, formatter) => {
+    if (!Array.isArray(values) || !values.length) return;
+    for (const candidate of values) {
+      if (candidate === undefined || candidate === null) continue;
+      assignIfMissing(field, candidate, formatter);
+      if (hasMeaningfulAddressValue(address[field])) break;
+    }
+  };
+
+  for (const raw of uniqueRawStrings) {
+    const streetSegment = raw.includes(",")
+      ? raw.split(",")[0].trim()
+      : raw;
+    const parsedStreet = parseLocationAddress(streetSegment);
+
+    assignIfMissing("street_number", parsedStreet.streetNumber);
+    if (parsedStreet.streetName) {
+      assignIfMissing(
+        "street_name",
+        parsedStreet.streetName,
+        (value) => {
+          const formatted = formatStreetNameCase(value);
+          return formatted ? formatted.toUpperCase() : value;
+        },
+      );
+    }
+    assignIfMissing(
+      "street_pre_directional_text",
+      parsedStreet.streetPreDirectional,
+      (value) => value && value.toUpperCase(),
+    );
+    assignIfMissing(
+      "street_post_directional_text",
+      parsedStreet.streetPostDirectional,
+      (value) => value && value.toUpperCase(),
+    );
+    assignIfMissing("street_suffix_type", parsedStreet.streetSuffix);
+    assignIfMissing("unit_identifier", parsedStreet.unitIdentifier);
+    assignIfMissing("route_number", parsedStreet.routeNumber);
+
+    const trailingSegments = raw.includes(",")
+      ? raw.split(",").slice(1).join(" ").trim()
+      : "";
+    const cityStateSource = trailingSegments.length ? trailingSegments : raw;
+    const parsedCityState = parseCityStatePostal(cityStateSource);
+
+    assignIfMissing(
+      "city_name",
+      parsedCityState.city,
+      (value) => sanitizeCityName(value) || value,
+    );
+    assignIfMissing(
+      "state_code",
+      parsedCityState.state,
+      (value) => value && value.toUpperCase(),
+    );
+    assignIfMissing("postal_code", parsedCityState.postal);
+    assignIfMissing("plus_four_postal_code", parsedCityState.plus4);
+
+    const postalPieces = extractPostalPieces(raw);
+    if (postalPieces) {
+      assignIfMissing("postal_code", postalPieces.postal);
+      assignIfMissing("plus_four_postal_code", postalPieces.plus4);
+    }
+  }
+
+  if (!hasMeaningfulAddressValue(address.street_name)) {
+    for (const raw of uniqueRawStrings) {
+      const candidate = raw.includes(",")
+        ? raw.split(",")[0].trim()
+        : raw.trim();
+      const cleaned = cleanStreetCandidate(candidate);
+      if (!cleaned) continue;
+      const formatted = formatStreetNameCase(cleaned);
+      if (formatted && formatted.trim().length) {
+        address.street_name = formatted.toUpperCase();
+        break;
+      }
+    }
+  }
+
+  if (
+    !hasMeaningfulAddressValue(address.street_suffix_type) &&
+    hasMeaningfulAddressValue(address.street_name)
+  ) {
+    const tokens = address.street_name.split(/\s+/).filter(Boolean);
+    if (tokens.length > 1) {
+      const suffixCandidate = tokens[tokens.length - 1];
+      const mapped = mapStreetSuffixType(suffixCandidate);
+      if (mapped) {
+        address.street_suffix_type = mapped;
+        address.street_name = tokens.slice(0, -1).join(" ");
+      }
+    }
+  }
+
+  assignFromArray("city_name", cityFallbacks, sanitizeCityName);
+  assignFromArray("municipality_name", municipalityFallbacks, toTitleCase);
+  assignFromArray("postal_code", postalFallbacks);
+  assignFromArray("plus_four_postal_code", plusFourFallbacks);
+
+  if (
+    !hasMeaningfulAddressValue(address.municipality_name) &&
+    hasMeaningfulAddressValue(address.city_name)
+  ) {
+    address.municipality_name = toTitleCase(address.city_name);
+  }
+
+  if (!hasMeaningfulAddressValue(address.county_name) && defaultCounty) {
+    address.county_name = toTitleCase(defaultCounty);
+  }
+  if (!hasMeaningfulAddressValue(address.state_code) && defaultState) {
+    address.state_code = defaultState;
+  }
+  if (!hasMeaningfulAddressValue(address.country_code) && defaultCountry) {
+    address.country_code = defaultCountry;
+  }
+
+  const gridLengths = { township: 2, range: 2, section: 2, block: 3, lot: 4 };
+  for (const candidate of parcelCandidates) {
+    const parsed = deriveGridPartsFromPcn(candidate);
+    if (!parsed || typeof parsed !== "object") continue;
+    assignIfMissing("township", parsed.township);
+    assignIfMissing("range", parsed.range);
+    assignIfMissing("section", parsed.section);
+    assignIfMissing("block", parsed.block);
+    assignIfMissing("lot", parsed.lot);
+  }
+  for (const [field, length] of Object.entries(gridLengths)) {
+    if (!hasMeaningfulAddressValue(address[field])) continue;
+    address[field] = padGridValue(address[field], length);
+  }
+
+  if (coordinateFallback && typeof coordinateFallback === "object") {
+    const latitude = parseCoordinate(coordinateFallback.latitude);
+    const longitude = parseCoordinate(coordinateFallback.longitude);
+    if (!Number.isFinite(address.latitude) && Number.isFinite(latitude)) {
+      address.latitude = latitude;
+    }
+    if (!Number.isFinite(address.longitude) && Number.isFinite(longitude)) {
+      address.longitude = longitude;
+    }
+  }
+
+  if (
+    (address.latitude == null && address.longitude != null) ||
+    (address.latitude != null && address.longitude == null)
+  ) {
+    address.latitude = null;
+    address.longitude = null;
+  }
+
+  if (!hasMeaningfulAddressValue(address.plus_four_postal_code)) {
+    address.plus_four_postal_code = null;
+  }
+}
+
 function normalizeAddressFieldForSchema(field, value) {
   if (value === undefined || value === null) {
     return null;
@@ -20078,6 +20285,14 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
       )
     : [];
 
+  const coordinateFallback =
+    coordinateQueue.find((candidate) => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const lat = parseCoordinate(candidate.latitude);
+      const lon = parseCoordinate(candidate.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lon);
+    }) || null;
+
   const applyFallback = (target, field, additional = []) => {
     if (hasMeaningfulAddressValue(target[field])) {
       return;
@@ -20242,6 +20457,21 @@ function solidifyRawAddressFinalOutput(addressFilePath, options = {}) {
 
   enrichFromRawStrings(rawOutput);
   enrichGridFromParcels(rawOutput);
+  ensureRawVariantCriticalStrings(rawOutput, {
+    rawCandidates: [
+      trimmedUnnormalized,
+      ...(Array.isArray(rawStrings) ? rawStrings : []),
+    ],
+    parcelCandidates: parcelQueue,
+    defaultCounty: defaultCountyName,
+    defaultState: defaultStateCode,
+    defaultCountry: defaultCountryCode,
+    cityFallbacks: mergedFallbacks.city_name || [],
+    municipalityFallbacks: mergedFallbacks.municipality_name || [],
+    postalFallbacks: mergedFallbacks.postal_code || [],
+    plusFourFallbacks: mergedFallbacks.plus_four_postal_code || [],
+    coordinateFallback,
+  });
   ensureCoordinates(rawOutput);
   finalizePostalAndCountry(rawOutput);
   hydrateRequestMetadata(rawOutput);
