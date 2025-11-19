@@ -581,9 +581,6 @@ function buildOwnersByDate(validOwners) {
       normalized_address: normalizedMailing,
       request_identifier: propertyId || null,
     };
-    if (unnormalizedMailing) {
-      mailingAddress.unnormalized_address = unnormalizedMailing;
-    }
   } else if (unnormalizedMailing) {
     mailingAddress = {
       unnormalized_address: unnormalizedMailing,
