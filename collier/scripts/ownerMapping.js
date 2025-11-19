@@ -59,6 +59,9 @@ function isLikelyAddress(text) {
     " STE ",
     " P.O. ",
     " PO BOX ",
+    " C/O ",
+    " CARE OF ",
+    " ATTN ",
   ];
   const padded = " " + t + " ";
   for (const token of addrTokens) {
@@ -450,7 +453,7 @@ function collectOwnerMailingLines($) {
   for (let i = 1; i <= 10; i++) {
     const selector = `#OwnerLine${i}`;
     const text = norm($(selector).text());
-    if (!text) break;
+    if (!text) continue;
 
     const looksAddress = isLikelyAddress(text);
     if (looksAddress || addressStarted) {

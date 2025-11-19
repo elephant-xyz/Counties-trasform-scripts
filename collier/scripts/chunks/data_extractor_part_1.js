@@ -15,12 +15,29 @@ function toNumberCurrency(str) {
   const trimmed = String(str).trim();
   if (!trimmed || /^[-–—]+$/.test(trimmed)) return null;
 
+  const upperTrimmed = trimmed.toUpperCase();
+  if (upperTrimmed === "N/A" || upperTrimmed === "NA") return null;
+
   const isAccountingNegative = /^\(.*\)$/.test(trimmed);
   let cleaned = trimmed.replace(/[$,\s()]/g, "");
   if (!cleaned) return null;
 
-  const upper = cleaned.toUpperCase();
-  if (upper === "N/A" || upper === "NA") return null;
+  cleaned = cleaned.replace(/[^0-9.\-]/g, "");
+  cleaned = cleaned.replace(/(?!^)-/g, "");
+  const dotIndex = cleaned.indexOf(".");
+  if (dotIndex !== -1) {
+    cleaned =
+      cleaned.slice(0, dotIndex + 1) +
+      cleaned.slice(dotIndex + 1).replace(/\./g, "");
+  }
+  if (
+    !cleaned ||
+    cleaned === "." ||
+    cleaned === "-" ||
+    cleaned === "-." ||
+    cleaned === ".-"
+  )
+    return null;
 
   const num = Number(cleaned);
   if (!Number.isFinite(num)) return null;
