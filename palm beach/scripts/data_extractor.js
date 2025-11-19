@@ -124,8 +124,6 @@ function sanitizeAddressPayloadForWrite(payload) {
       : "";
 
   let trimmedUnnormalized = directUnnormalized;
-  let rawValueIsFromSource = directUnnormalized.length > 0;
-
   if (!trimmedUnnormalized.length) {
     const fallbackCandidates = [];
     const enqueueCandidate = (value, fromSource = false) => {
@@ -174,14 +172,9 @@ function sanitizeAddressPayloadForWrite(payload) {
     for (const candidate of fallbackCandidates) {
       if (!candidate || typeof candidate.value !== "string") continue;
       trimmedUnnormalized = candidate.value;
-      rawValueIsFromSource = candidate.fromSource;
-      if (rawValueIsFromSource) {
+      if (candidate.fromSource) {
         break;
       }
-    }
-
-    if (!rawValueIsFromSource && trimmedUnnormalized.length) {
-      rawValueIsFromSource = true;
     }
   }
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -240,24 +233,21 @@ function sanitizeAddressPayloadForWrite(payload) {
     normalizedCandidate.country_code = "US";
   }
 
-  const hasNormalizedCoverage =
-    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
-      hasMeaningfulAddressValue(normalizedCandidate[field]),
-    ) && hasNormalizedCountyCoverage(normalizedCandidate);
+  const normalizedProbe = { ...normalizedCandidate };
+  const hasStrongNormalizedCoverage =
+    hasCompleteNormalizedAddress(normalizedProbe) &&
+    hasNormalizedCountyCoverage(normalizedProbe);
 
-  const preferRawVariant =
-    rawValueIsFromSource &&
-    trimmedUnnormalized.length > 0 &&
-    !hasNormalizedCoverage;
+  const shouldPreferRaw =
+    trimmedUnnormalized.length > 0 && !hasStrongNormalizedCoverage;
 
-  if (hasNormalizedCoverage && !preferRawVariant) {
+  if (hasStrongNormalizedCoverage && !shouldPreferRaw) {
     const surfaced =
-      ensureAddressOutputFieldPresence(normalizedCandidate) ||
-      normalizedCandidate;
+      ensureAddressOutputFieldPresence(normalizedProbe) || normalizedProbe;
     return stripAddressRequestMetadata(surfaced);
   }
 
-  if (rawValueIsFromSource && trimmedUnnormalized.length) {
+  if (trimmedUnnormalized.length) {
     const rawSeed = {
       ...normalizedCandidate,
       unnormalized_address: trimmedUnnormalized,
@@ -271,17 +261,19 @@ function sanitizeAddressPayloadForWrite(payload) {
       rawSeed.country_code = "US";
     }
 
+    const defaultedRaw =
+      ensureRawAddressSchemaDefaults(rawSeed) || rawSeed;
     const surfaced =
-      ensureAddressOutputFieldPresence(rawSeed) || rawSeed;
+      ensureAddressOutputFieldPresence(defaultedRaw) || defaultedRaw;
 
     return stripAddressRequestMetadata(surfaced);
   }
 
-  const surfaced =
+  const surfacedFallback =
     ensureAddressOutputFieldPresence(normalizedCandidate) ||
     normalizedCandidate;
 
-  return stripAddressRequestMetadata(surfaced);
+  return stripAddressRequestMetadata(surfacedFallback);
 }
 
 function writeJSON(p, obj) {
