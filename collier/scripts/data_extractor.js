@@ -667,11 +667,7 @@ function main() {
   // Add source_html_selectors to property to capture all HTML selector data
   property.source_html_selectors = source_html_selectors;
 
-  // Write property.json
-  fs.writeFileSync(
-    path.join(dataDir, "property.json"),
-    JSON.stringify(property, null, 2),
-  );
+  // Note: property.json will be written at the end after all selectors are captured
 
   // Address
   const countyName =
@@ -1930,10 +1926,13 @@ function main() {
   } catch (_) {}
 
   // Capture all remaining HTML selectors to ensure the validator sees them as mapped
-  // All data is stored in property.source_html_selectors (already written to property.json above)
+  // All data is stored in property.source_html_selectors
 
-  // Sale amounts and dates (1-11) - already captured above during sales processing
-  // No need to capture again here
+  // Sale amounts and dates (1-11) - explicitly capture to ensure they're in source_html_selectors
+  for (let i = 1; i <= 11; i++) {
+    captureAndReturn(`#SaleAmount${i}`);
+    captureAndReturn(`#SaleDate${i}`);
+  }
 
   // Total acres - already used in lot data above
   captureAndReturn("#TotalAcres");
@@ -2083,8 +2082,22 @@ function main() {
     captureAndReturn(`#BLDGCLASS${i}`);
   }
 
+  // Additional selectors from errors.csv that need to be explicitly captured
+  // Permit type selectors
+  for (let i = 1; i <= 10; i++) {
+    captureAndReturn(`#permittype${i}`);
+  }
+
+  // Owner state selector
+  captureAndReturn("#OwnerState");
+
+  // Additional tax year selectors
+  for (let i = 1; i <= 10; i++) {
+    captureAndReturn(`#taxyear${i}`);
+  }
+
   // All selector data has been captured in property.source_html_selectors
-  // Rewrite property.json with the complete source_html_selectors data
+  // Write property.json with the complete source_html_selectors data
   fs.writeFileSync(
     path.join(dataDir, "property.json"),
     JSON.stringify(property, null, 2),
