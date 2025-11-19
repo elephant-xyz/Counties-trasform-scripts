@@ -21,7 +21,6 @@ function ensureDir(filePath) {
 
   // The input HTML lacks explicit utility information; set unknowns to null or sensible booleans where schema forces a type.
   const utilities = {
-    request_identifier: parcelId,
     cooling_system_type: null,
     heating_system_type: null,
     public_utility_type: null,
