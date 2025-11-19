@@ -15,6 +15,64 @@ const CURRENT_OWNER_SELECTOR = ".module-content .sdw1-owners-container";
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
 const normalizeName = (s) => txt(s).toLowerCase();
 
+const PERSON_PREFIX_MAP = {
+  MR: "Mr.",
+  MRS: "Mrs.",
+  MS: "Ms.",
+  MISS: "Miss",
+  MX: "Mx.",
+  DR: "Dr.",
+  PROF: "Prof.",
+  REV: "Rev.",
+  FR: "Fr.",
+  SR: "Sr.",
+  BR: "Br.",
+  CAPT: "Capt.",
+  CAPTAIN: "Capt.",
+  COL: "Col.",
+  COLONEL: "Col.",
+  MAJ: "Maj.",
+  MAJOR: "Maj.",
+  LT: "Lt.",
+  LIEUTENANT: "Lt.",
+  SGT: "Sgt.",
+  SERGEANT: "Sgt.",
+  HON: "Hon.",
+  HONORABLE: "Hon.",
+  JUDGE: "Judge",
+  RABBI: "Rabbi",
+  IMAM: "Imam",
+  SHEIKH: "Sheikh",
+  SIR: "Sir",
+  DAME: "Dame",
+};
+
+const PERSON_SUFFIX_MAP = {
+  JR: "Jr.",
+  SR: "Sr.",
+  II: "II",
+  2: "II",
+  III: "III",
+  3: "III",
+  IV: "IV",
+  4: "IV",
+  PHD: "PhD",
+  MD: "MD",
+  ESQ: "Esq.",
+  JD: "JD",
+  LLM: "LLM",
+  MBA: "MBA",
+  RN: "RN",
+  DDS: "DDS",
+  DVM: "DVM",
+  CFA: "CFA",
+  CPA: "CPA",
+  PE: "PE",
+  PMP: "PMP",
+  EMERITUS: "Emeritus",
+  RET: "Ret.",
+};
+
 function formatNameForSchema(name) {
   if (!name) return null;
   const formatted = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
@@ -29,17 +87,53 @@ function formatMiddleNameForSchema(name) {
   return pattern.test(formatted) ? formatted : null;
 }
 
+function normalizeAffixToken(token) {
+  return (token || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+}
+
+function mapPrefixToken(token) {
+  const norm = normalizeAffixToken(token);
+  if (!norm) return null;
+  return PERSON_PREFIX_MAP[norm] || null;
+}
+
+function mapSuffixToken(token) {
+  const norm = normalizeAffixToken(token);
+  if (!norm) return null;
+  return PERSON_SUFFIX_MAP[norm] || null;
+}
+
+function extractNameAffixes(tokens) {
+  const remaining = [...tokens];
+  let prefix = null;
+  let suffix = null;
+
+  if (remaining.length) {
+    const maybePrefix = mapPrefixToken(remaining[0]);
+    if (maybePrefix) {
+      prefix = maybePrefix;
+      remaining.shift();
+    }
+  }
+
+  if (remaining.length) {
+    const maybeSuffix = mapSuffixToken(remaining[remaining.length - 1]);
+    if (maybeSuffix) {
+      suffix = maybeSuffix;
+      remaining.pop();
+    }
+  }
+
+  return { tokens: remaining, prefix_name: prefix, suffix_name: suffix };
+}
+
 function cleanRawName(raw) {
   let s = (raw || "").replace(/\s+/g, " ").trim();
   if (!s) return "";
   const noisePatterns = [
-    /\bET\s*AL\b/gi,
-    /\bETAL\b/gi,
     /\bET\s*UX\b/gi,
     /\bET\s*VIR\b/gi,
     /\bET\s+UXOR\b/gi,
-    /\bTRUSTEE[S]?\b/gi,
-    /\bTTEE[S]?\b/gi,
     /\bU\/A\b/gi,
     /\bU\/D\/T\b/gi,
     /\bAKA\b/gi,
@@ -49,8 +143,6 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
-    /\bJR\.?\b/gi,
-    /\bSR\.?\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -96,35 +188,118 @@ function cleanInvalidCharsFromName(raw) {
 }
 
 const COMPANY_KEYWORDS = [
-  "inc",
-  "llc",
-  "l.l.c",
-  "ltd",
-  "foundation",
-  "alliance",
-  "solutions",
-  "corp",
-  "co",
-  "company",
-  "services",
-  "trust",
-  "tr",
-  "associates",
-  "association",
-  "holdings",
-  "group",
-  "partners",
-  "lp",
-  "llp",
-  "plc",
-  "pllc",
-  "bank",
-  "church",
-  "school",
-  "university",
-  "authority",
-  "clerk",
-  "court",
+  // Corporation indicators
+  "inc", "incorporated",
+  "corp", "corporation",
+  "co", "company",
+  
+  // Limited Liability Company indicators
+  "llc", "l.l.c", "l.l.c.",
+  "limited liability company",
+  
+  // Limited Company indicators
+  "ltd", "limited",
+  "ltda", "limitada",
+  
+  // Partnership indicators
+  "lp", "limited partnership",
+  "llp", "limited liability partnership",
+  "l.l.p", "l.l.p.",
+  "gp", "general partnership",
+  "partners", "partnership",
+  
+  // Professional entities
+  "plc", "public limited company",
+  "pllc", "professional limited liability company",
+  "p.l.l.c", "p.l.l.c.",
+  "pc", "professional corporation",
+  "p.c", "p.c.",
+  "pa", "professional association",
+  "p.a", "p.a.",
+  
+  // Trust and estate indicators
+  "trust", "tr", "trustee",
+  "estate", "est",
+  "foundation", "fdn",
+  
+  // Business structure indicators
+  "associates", "assoc",
+  "association", "assn",
+  "holdings", "holding",
+  "group", "grp",
+  "enterprise", "enterprises",
+  "ventures", "venture",
+  "solutions", "sol",
+  "services", "svc", "svcs",
+  "systems", "sys",
+  "technologies", "tech",
+  "consulting", "consultants",
+  "management", "mgmt",
+  "development", "dev",
+  "investments", "inv",
+  "properties", "prop",
+  "realty", "real estate",
+  "construction", "const",
+  "manufacturing", "mfg",
+  "alliance", "all",
+  
+  // Financial institutions
+  "bank", "banking",
+  "credit union", "cu",
+  "savings", "s&l",
+  "financial", "fin",
+  "insurance", "ins",
+  
+  // Non-profit and institutional
+  "church", "parish",
+  "school", "academy",
+  "university", "univ", "college",
+  "hospital", "medical center",
+  "clinic", "healthcare",
+  "authority", "auth",
+  "commission", "comm",
+  "board", "brd",
+  "department", "dept",
+  "division", "div",
+  "bureau", "bur",
+  "agency", "agcy",
+  "administration", "admin",
+  "district", "dist",
+  "municipality", "muni",
+  "county", "co",
+  "city", "town",
+  "state", "federal",
+  "government", "govt",
+  "public", "municipal",
+  
+  // Legal and court related
+  "clerk", "court",
+  "legal", "law",
+  "attorney", "atty",
+  "counsel",
+  
+  // International indicators
+  "sa", "sociedad anonima",
+  "srl", "sociedad de responsabilidad limitada",
+  "gmbh", "gesellschaft mit beschränkter haftung",
+  "ag", "aktiengesellschaft",
+  "bv", "besloten vennootschap",
+  "nv", "naamloze vennootschap",
+  "spa", "società per azioni",
+  "srl", "società a responsabilità limitata",
+  "sarl", "société à responsabilité limitée",
+  "sas", "société par actions simplifiée",
+  "pty", "proprietary",
+  "pvt", "private",
+  
+  // Other common indicators
+  "organization", "org",
+  "institute", "inst",
+  "center", "centre", "ctr",
+  "society", "soc",
+  "union", "local",
+  "cooperative", "coop",
+  "mutual", "mut"
 ];
 
 
@@ -153,7 +328,9 @@ function classifyOwner(raw) {
   if (isCompanyName(cleaned)) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
-  const tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
+  let tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
+  const { tokens: baseTokens, prefix_name, suffix_name } = extractNameAffixes(tokens);
+  tokens = baseTokens;
   if (tokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
@@ -170,6 +347,8 @@ function classifyOwner(raw) {
       first_name: first,
       last_name: last,
       middle_name: middle ? middle : null,
+      prefix_name: prefix_name || null,
+      suffix_name: suffix_name || null,
     };
     return { valid: true, owner: person };
   }
@@ -185,7 +364,9 @@ function dedupeOwners(owners) {
       norm = `company:${normalizeName(o.name)}`;
     } else {
       const middle = o.middle_name ? normalizeName(o.middle_name) : "";
-      norm = `person:${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}`;
+      const prefix = o.prefix_name ? normalizeName(o.prefix_name) : "";
+      const suffix = o.suffix_name ? normalizeName(o.suffix_name) : "";
+      norm = `person:${prefix}|${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}|${suffix}`;
     }
     if (!seen.has(norm)) {
       seen.add(norm);
@@ -205,13 +386,24 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).find('a').each((i, el) => {
-    const ownerText = $(el).text().trim();
-    if (ownerText) {
-      const t = txt(ownerText);
-      owners.push(t);
-    }
-  });
+  
+  // Try the specific selector first
+  const specificOwner = $('#ctlBodyPane_ctl03_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lblSearch').text().trim();
+  if (specificOwner) {
+    owners.push(txt(specificOwner));
+  }
+  
+  // Fallback to original selector
+  if (owners.length === 0) {
+    $(CURRENT_OWNER_SELECTOR).find('a').each((i, el) => {
+      const ownerText = $(el).text().trim();
+      if (ownerText) {
+        const t = txt(ownerText);
+        owners.push(t);
+      }
+    });
+  }
+  
   return owners;
 }
 
@@ -231,8 +423,8 @@ function extractSalesOwnersByDate($) {
     const dd = dm[2].padStart(2, "0");
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    const grantee = txt(tds.eq(7).text());
-    const grantor = txt(tds.eq(6).text());
+    const grantee = txt(tds.eq(8).text());
+    const grantor = txt(tds.eq(7).text());
     if (grantee) {
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(grantee);
@@ -291,7 +483,7 @@ if (priorOwners && priorOwners.length > 0) {
         granteeNamesNorm.add(`company:${normalizeName(o.name)}`);
       else
         granteeNamesNorm.add(
-          `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
+          `person:${o.prefix_name ? normalizeName(o.prefix_name) : ""}|${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}|${o.suffix_name ? normalizeName(o.suffix_name) : ""}`,
         );
     });
   });
@@ -305,7 +497,7 @@ if (priorOwners && priorOwners.length > 0) {
         let key;
         if (o.type === "company") key = `company:${normalizeName(o.name)}`;
         else
-          key = `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`;
+          key = `person:${o.prefix_name ? normalizeName(o.prefix_name) : ""}|${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}|${o.suffix_name ? normalizeName(o.suffix_name) : ""}`;
         if (!granteeNamesNorm.has(key)) {
           placeholderRaw.push(part);
         }
