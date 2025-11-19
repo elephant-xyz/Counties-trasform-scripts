@@ -1032,7 +1032,7 @@ function main() {
     const deedSourceFields = {};
     if (row.bookPageRaw) deedSourceFields.document_identifier_text = row.bookPageRaw;
     if (row.dateRaw) deedSourceFields.sale_date_text = row.dateRaw;
-    if (row.amountRaw) deedSourceFields.sale_amount_text = row.amountRaw;
+    if (row.amountRaw) deedSourceFields.sale_price_amount_text = row.amountRaw;
     const deedDocumentValue = row.bookPageRaw || row.bookPage;
     addSelectorSource(deedSourceFields, row.bookPagePrimarySelector, deedDocumentValue);
     addSelectorSource(
@@ -1076,14 +1076,14 @@ function main() {
       saleObj.ownership_transfer_date = s.iso;
     }
     if (s.amount != null) {
-      saleObj.purchase_price_amount = s.amount;
+      saleObj.sale_price_amount = s.amount;
     }
     if (s.bookPage) {
       saleObj.document_identifier = s.bookPage;
     }
     const saleSourceFields = {};
     if (s.dateRaw) saleSourceFields.sale_date_text = s.dateRaw;
-    if (s.amountRaw) saleSourceFields.purchase_price_amount_text = s.amountRaw;
+    if (s.amountRaw) saleSourceFields.sale_price_amount_text = s.amountRaw;
     if (s.bookPageRaw) saleSourceFields.document_identifier_text = s.bookPageRaw;
     addSelectorSource(
       saleSourceFields,
