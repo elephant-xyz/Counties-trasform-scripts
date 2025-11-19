@@ -326,7 +326,8 @@ function sanitizeAddressPayloadForWrite(payload) {
     hasCompleteNormalizedAddress(normalizedProbe) &&
     hasNormalizedCountyCoverage(normalizedProbe);
 
-  const shouldPreferRaw = trimmedUnnormalized.length > 0;
+  const shouldPreferRaw =
+    trimmedUnnormalized.length > 0 && !hasStrongNormalizedCoverage;
 
   if (hasStrongNormalizedCoverage && !shouldPreferRaw) {
     const surfaced =
