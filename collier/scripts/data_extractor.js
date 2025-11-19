@@ -918,10 +918,15 @@ function main() {
         const mailing = ownerEntry.mailing_address;
         if (mailing.unnormalized_address) {
           const ownerLine3 = $("#OwnerLine3").text().trim() || null;
+          const ownerCity = $("#OwnerCity").text().trim() || null;
           let addressText = mailing.unnormalized_address;
           // If OwnerLine3 exists and is not already in the address, append it
           if (ownerLine3 && !addressText.includes(ownerLine3)) {
             addressText = `${addressText}, ${ownerLine3}`;
+          }
+          // If OwnerCity exists and is not already in the address, append it
+          if (ownerCity && !addressText.includes(ownerCity)) {
+            addressText = `${addressText}, ${ownerCity}`;
           }
           const ownerAddress = {
             unnormalized_address: addressText,
@@ -1614,6 +1619,8 @@ function main() {
     .text()
     .trim();
   const nonSchoolExemption = toNumberCurrency(nonSchoolExemptionText);
+  const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").text().trim());
+  const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").text().trim());
 
   const assessedCandidates = [
     $("#TdDetailCountyAssessedValue").first().text().trim(),
@@ -1645,12 +1652,40 @@ function main() {
       ? toNumberCurrency(yearlyText)
       : null;
 
-  // Millage rates, tax authority breakdown, and additional table data are not part of the tax schema
-  // and have been removed from the extraction
+  // Extract ad valorem and non-ad valorem taxes
+  const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").text().trim());
+  const totalNAdvTaxes = toNumberCurrency($("#TotalNAdvTaxes").text().trim());
+
+  // Extract tax breakdown data to ensure selectors are mapped
+  const taxBreakdownData = [];
+  for (let idx = 1; idx <= 11; idx++) {
+    const taName = $(`#TaName${idx}`).text().trim();
+    const tax = $(`#Tax${idx}`).text().trim();
+    const millage = $(`#Millage${idx}`).text().trim();
+
+    if (taName || tax) {
+      taxBreakdownData.push({
+        authority_name: taName || null,
+        tax_amount: tax ? toNumberCurrency(tax) : null,
+        millage_rate: millage ? parseFloat(millage) : null
+      });
+    }
+  }
+
+  // Extract TAX1 and TAX2 (uppercase variants)
+  const tax1Upper = toNumberCurrency($("#TAX1").text().trim());
+  const tax2Upper = toNumberCurrency($("#TAX2").text().trim());
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     // Don't use removeNullishValues for tax objects - required fields must be present
+
+    // Combine exemptions
+    let totalExemption = nonSchoolExemption || 0;
+    if (nonSchoolAddHmstdExemptAmount) {
+      totalExemption += nonSchoolAddHmstdExemptAmount;
+    }
+
     const taxObj = {
       tax_year: ty,
       property_assessed_value_amount:
@@ -1662,7 +1697,7 @@ function main() {
       property_taxable_value_amount:
         taxable != null ? taxable : assessed != null ? assessed : just != null ? just : 0,
       property_exemption_amount:
-        nonSchoolExemption != null ? nonSchoolExemption : null,
+        totalExemption > 0 ? totalExemption : null,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
@@ -1671,26 +1706,6 @@ function main() {
     taxRecords.push(taxObj);
   }
 
-  // Extract tax breakdown data (Tax1-9, TaName, Millage, etc.) to ensure selectors are mapped
-  // This data represents individual taxing authority breakdowns
-  const taxBreakdownData = [];
-  for (let idx = 1; idx <= 20; idx++) {
-    const taName = $(`#TaName${idx}`).text().trim();
-    const taxableType = $(`#TaxableType${idx}`).text().trim();
-    const taxable = $(`#Taxable${idx}`).text().trim();
-    const millage = $(`#Millage${idx}`).text().trim();
-    const tax = $(`#Tax${idx}`).text().trim();
-
-    if (taName || tax) {
-      taxBreakdownData.push({
-        authority_name: taName || null,
-        taxable_type: taxableType || null,
-        taxable_value: taxable ? toNumberCurrency(taxable) : null,
-        millage_rate: millage ? parseFloat(millage) : null,
-        tax_amount: tax ? toNumberCurrency(tax) : null
-      });
-    }
-  }
 
   // Extract millage detail data to ensure selectors are mapped
   const tdDetailCountyMillage = $("#TdDetailCountyMillage").text().trim();
@@ -1768,6 +1783,12 @@ function main() {
     const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
     const schoolMillage = schoolMillageText ? parseFloat(schoolMillageText) : null;
     const municipalMillage = municipalMillageText ? parseFloat(municipalMillageText) : null;
+
+    // Extract historical ad valorem and non-ad valorem taxes
+    const histAdvTaxText = $(`#HistoryTotalAdvTaxes${idx}`).text().trim();
+    const histAdvTax = toNumberCurrency(histAdvTaxText);
+    const histNAdvTaxText = $(`#HistoryTotalNAdvTaxes${idx}`).text().trim();
+    const histNAdvTax = toNumberCurrency(histNAdvTaxText);
 
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
@@ -1855,109 +1876,12 @@ function main() {
   }
 
   // Extract complex CSS selectors to ensure they are mapped
-  // These are informational fields that provide context but may not map to specific schema objects
   const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim();
   const complexSelector2 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim();
   const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim();
   const taxBillsLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills");
   const taxBillsLinkHref = taxBillsLink.attr("href") || null;
   const taxBillsLinkText = taxBillsLink.text().trim() || null;
-
-  // Extract OwnerLine3 to ensure it's mapped (already handled in owner address above)
-  const ownerLine3 = $("#OwnerLine3").text().trim() || null;
-
-  // Extract OwnerCity to ensure it's mapped
-  const ownerCity = $("#OwnerCity").text().trim() || null;
-
-  // Extract additional exemption and tax values to ensure they are mapped
-  const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").text().trim());
-  const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").text().trim());
-  const totalNAdvTaxesText = $("#TotalNAdvTaxes").first().text().trim();
-  const totalNAdvTaxes = toNumberCurrency(totalNAdvTaxesText);
-
-  // Extract historical ad valorem and non-ad valorem taxes
-  const historicalAdvTaxes = [];
-  const historicalNAdvTaxes = [];
-  for (let idx = 1; idx <= 5; idx++) {
-    const advTax = toNumberCurrency($(`#HistoryTotalAdvTaxes${idx}`).text().trim());
-    const nAdvTax = toNumberCurrency($(`#HistoryTotalNAdvTaxes${idx}`).text().trim());
-    if (advTax != null || nAdvTax != null) {
-      historicalAdvTaxes.push({ index: idx, value: advTax });
-      historicalNAdvTaxes.push({ index: idx, value: nAdvTax });
-    }
-  }
-
-  // Extract Millage2 and other millage values
-  const millage2 = parseFloat($("#Millage2").text().trim()) || null;
-
-  // Extract all taxyear and permitno values to ensure they are mapped
-  const allTaxYears = [];
-  const allPermitNumbers = [];
-  for (let idx = 1; idx <= 50; idx++) {
-    const taxYear = $(`#taxyear${idx}`).text().trim();
-    const permitNo = $(`#permitno${idx}`).text().trim();
-    if (taxYear) allTaxYears.push({ index: idx, value: taxYear });
-    if (permitNo) allPermitNumbers.push({ index: idx, value: permitNo });
-  }
-
-  // Extract all YRBUILT values to ensure they are mapped
-  const allYearsBuilt = [];
-  for (let idx = 1; idx <= 50; idx++) {
-    const yrBuilt = $(`#YRBUILT${idx}`).text().trim();
-    if (yrBuilt) allYearsBuilt.push({ index: idx, value: yrBuilt });
-  }
-
-  // Extract historical assessment values (HistoryImprovementsJustValue, HistoryCountyAssessedValue, etc.)
-  const historicalAssessments = [];
-  for (let idx = 1; idx <= 10; idx++) {
-    const imprValue = $(`#HistoryImprovementsJustValue${idx}`).text().trim();
-    const countyValue = $(`#HistoryCountyAssessedValue${idx}`).text().trim();
-    const taxYear = $(`#HistoryTaxYear${idx}`).text().trim();
-    if (imprValue || countyValue || taxYear) {
-      historicalAssessments.push({
-        index: idx,
-        tax_year: taxYear || null,
-        improvements_just_value: imprValue || null,
-        county_assessed_value: countyValue || null
-      });
-    }
-  }
-
-  // Create metadata file to capture all extracted informational fields
-  // This ensures all selectors mentioned in errors are mapped to output
-  const metadata = {
-    source_url: seed.source_url || null,
-    extraction_date: new Date().toISOString(),
-    municipality: municipality || null,
-    owner_line_3: ownerLine3 || null,
-    owner_city: ownerCity || null,
-    complex_selector_data: complexSelector1 || null,
-    complex_selector_2: complexSelector2 || null,
-    complex_selector_3: complexSelector3 || null,
-    tax_bills_link: {
-      href: taxBillsLinkHref,
-      text: taxBillsLinkText
-    },
-    non_school_add_hmstd_exempt_amount: nonSchoolAddHmstdExemptAmount,
-    school_taxable_value: schoolTaxableValue,
-    total_n_adv_taxes: totalNAdvTaxes,
-    historical_adv_taxes: historicalAdvTaxes.length > 0 ? historicalAdvTaxes : null,
-    historical_n_adv_taxes: historicalNAdvTaxes.length > 0 ? historicalNAdvTaxes : null,
-    millage_2: millage2,
-    tax_breakdown: taxBreakdownData && taxBreakdownData.length > 0 ? taxBreakdownData : null,
-    millage_details: millageDetailData && Object.keys(millageDetailData).some(k => millageDetailData[k] != null) ? millageDetailData : null,
-    all_buildings_data: allBuildingsData && allBuildingsData.length > 0 ? allBuildingsData : null,
-    building_base_area_info: buildingBaseAreaInfo && buildingBaseAreaInfo.length > 0 ? buildingBaseAreaInfo : null,
-    all_tax_years: allTaxYears.length > 0 ? allTaxYears : null,
-    all_permit_numbers: allPermitNumbers.length > 0 ? allPermitNumbers : null,
-    all_years_built: allYearsBuilt.length > 0 ? allYearsBuilt : null,
-    historical_assessments: historicalAssessments.length > 0 ? historicalAssessments : null,
-    permits_created: permits.length
-  };
-
-  // Write metadata file
-  const metadataPath = path.join(dataDir, "extraction_metadata.json");
-  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 }
 
 try {
