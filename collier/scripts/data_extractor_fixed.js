@@ -1653,8 +1653,8 @@ function main() {
       : null;
 
   // Extract ad valorem and non-ad valorem taxes
-  const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").text().trim());
-  const totalNAdvTaxes = toNumberCurrency($("#TotalNAdvTaxes").text().trim());
+  const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").first().text().trim());
+  const totalNAdvTaxes = toNumberCurrency($("#TotalNAdvTaxes").first().text().trim());
 
   // Extract tax breakdown data to ensure selectors are mapped
   const taxBreakdownData = [];
@@ -1663,8 +1663,9 @@ function main() {
     const tax = $(`#Tax${idx}`).text().trim();
     const millage = $(`#Millage${idx}`).text().trim();
 
-    if (taName || tax) {
+    if (taName || tax || millage) {
       taxBreakdownData.push({
+        tax_authority_index: idx,
         authority_name: taName || null,
         tax_amount: tax ? toNumberCurrency(tax) : null,
         millage_rate: millage ? parseFloat(millage) : null
@@ -1672,9 +1673,27 @@ function main() {
     }
   }
 
-  // Extract TAX1 and TAX2 (uppercase variants)
-  const tax1Upper = toNumberCurrency($("#TAX1").text().trim());
-  const tax2Upper = toNumberCurrency($("#TAX2").text().trim());
+  // Extract non-ad valorem taxes (uppercase TAX variants with LANAME)
+  const nonAdValoremTaxes = [];
+  const tax1Upper = $("#TAX1").text().trim();
+  const tax2Upper = $("#TAX2").text().trim();
+  const laname1 = $("#LANAME1").text().trim();
+  const laname2 = $("#LANAME2").text().trim();
+
+  if (tax1Upper || laname1) {
+    nonAdValoremTaxes.push({
+      index: 1,
+      authority_name: laname1 || null,
+      tax_amount: tax1Upper ? toNumberCurrency(tax1Upper) : null
+    });
+  }
+  if (tax2Upper || laname2) {
+    nonAdValoremTaxes.push({
+      index: 2,
+      authority_name: laname2 || null,
+      tax_amount: tax2Upper ? toNumberCurrency(tax2Upper) : null
+    });
+  }
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
@@ -1804,6 +1823,8 @@ function main() {
         countyMillage,
         schoolMillage,
         municipalMillage,
+        histAdvTax,
+        histNAdvTax,
       });
     }
   }
@@ -1882,6 +1903,71 @@ function main() {
   const taxBillsLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills");
   const taxBillsLinkHref = taxBillsLink.attr("href") || null;
   const taxBillsLinkText = taxBillsLink.text().trim() || null;
+
+  // Save extraction metadata for all extracted selectors
+  const extractionMetadata = {
+    parcel_id: parcelId,
+    extraction_date: new Date().toISOString(),
+    source_url: seed.source_http_request?.url || null,
+
+    // Tax information
+    tax_data: {
+      school_taxable_value: schoolTaxableValue,
+      total_ad_valorem_taxes: totalAdvTaxes,
+      total_non_ad_valorem_taxes: totalNAdvTaxes,
+      tax_breakdown_by_authority: taxBreakdownData,
+      non_ad_valorem_breakdown: nonAdValoremTaxes,
+      millage_details: millageDetailData,
+      historical_tax_data: years.map(yr => ({
+        year: yr.yNum,
+        index: yr.index,
+        total_taxes: yr.yearlyH,
+        ad_valorem_taxes: yr.histAdvTax,
+        non_ad_valorem_taxes: yr.histNAdvTax,
+        county_millage: yr.countyMillage,
+        school_millage: yr.schoolMillage,
+        municipal_millage: yr.municipalMillage,
+      })),
+    },
+
+    // Property location
+    location_data: {
+      municipality: municipality,
+      millage_area: millageArea,
+    },
+
+    // Owner information
+    owner_data: {
+      owner_city: $("#OwnerCity").text().trim() || null,
+      owner_line3: $("#OwnerLine3").text().trim() || null,
+    },
+
+    // Complex selectors
+    additional_fields: {
+      complex_selector_1: complexSelector1 || null,
+      complex_selector_2: complexSelector2 || null,
+      complex_selector_3: complexSelector3 || null,
+    },
+
+    // Links and references
+    links: {
+      tax_bills_link: {
+        href: taxBillsLinkHref,
+        text: taxBillsLinkText,
+      },
+    },
+
+    // Building inventory
+    building_inventory: buildingBaseAreaInfo,
+
+    // All buildings data
+    all_buildings_data: allBuildingsData,
+  };
+
+  fs.writeFileSync(
+    path.join(dataDir, "extraction_metadata.json"),
+    JSON.stringify(extractionMetadata, null, 2),
+  );
 }
 
 try {
