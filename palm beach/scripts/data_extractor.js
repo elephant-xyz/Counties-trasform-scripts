@@ -5833,11 +5833,26 @@ function enforceAddressSchemaSurfaceForOutput(address) {
     delete result.unnormalized_address;
   }
 
-  if (!result.postal_code) {
-    result.plus_four_postal_code = null;
-  }
-  if (result.state_code && !result.country_code) {
-    result.country_code = "US";
+  if (!hasUnnormalized) {
+    if (!result.postal_code) {
+      result.plus_four_postal_code = null;
+    }
+    if (result.state_code && !result.country_code) {
+      result.country_code = "US";
+    }
+  } else {
+    if (
+      Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code") &&
+      !hasMeaningfulAddressValue(result.plus_four_postal_code)
+    ) {
+      delete result.plus_four_postal_code;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(result, "country_code") &&
+      !hasMeaningfulAddressValue(result.country_code)
+    ) {
+      delete result.country_code;
+    }
   }
 
   return result;
@@ -6058,6 +6073,44 @@ function ensureAddressOutputFieldPresence(address) {
     : NORMALIZED_ADDRESS_FIELDS;
 
   for (const field of fieldList) {
+    if (hasUnnormalized) {
+      if (!Object.prototype.hasOwnProperty.call(result, field)) {
+        continue;
+      }
+
+      const value = result[field];
+      if (value === undefined || value === null) {
+        delete result[field];
+        continue;
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed.length) {
+          delete result[field];
+          continue;
+        }
+        result[field] = trimmed;
+        continue;
+      }
+
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        if (Number.isFinite(numeric)) {
+          result[field] = numeric;
+        } else {
+          delete result[field];
+        }
+        continue;
+      }
+
+      if (typeof value === "number" && !Number.isFinite(value)) {
+        delete result[field];
+      }
+
+      continue;
+    }
+
     if (!Object.prototype.hasOwnProperty.call(result, field)) {
       result[field] = null;
       continue;
@@ -6085,11 +6138,26 @@ function ensureAddressOutputFieldPresence(address) {
     }
   }
 
-  if (!result.postal_code) {
-    result.plus_four_postal_code = null;
-  }
-  if (result.state_code && !result.country_code) {
-    result.country_code = "US";
+  if (!hasUnnormalized) {
+    if (!result.postal_code) {
+      result.plus_four_postal_code = null;
+    }
+    if (result.state_code && !result.country_code) {
+      result.country_code = "US";
+    }
+  } else {
+    if (
+      Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code") &&
+      !hasMeaningfulAddressValue(result.plus_four_postal_code)
+    ) {
+      delete result.plus_four_postal_code;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(result, "country_code") &&
+      !hasMeaningfulAddressValue(result.country_code)
+    ) {
+      delete result.country_code;
+    }
   }
 
   if (hasUnnormalized && normalizedUnnormalized.length) {
