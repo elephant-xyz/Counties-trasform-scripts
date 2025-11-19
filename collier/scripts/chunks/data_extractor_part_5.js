@@ -3,7 +3,14 @@
   const municipality = getCellText($, "#Municipality");
   const totalAcresText = getCellText($, "#TotalAcres");
   const totalAcres = totalAcresText ? toNumberCurrency(totalAcresText) : null;
-  const totalLandSquareFeet = toNumberCurrency(getCellText($, "#TOTALUNITS1"));
+  const totalLandSquareFeetText = getCellText($, "#TOTALUNITS1");
+  const totalLandSquareFeet = totalLandSquareFeetText
+    ? toNumberCurrency(totalLandSquareFeetText)
+    : null;
+
+  const propertySourceFields = {};
+  const baseAreaRawByBuilding = {};
+  const adjAreaRawByBuilding = {};
 
   // Property JSON
   const property = {
@@ -89,6 +96,7 @@
       const baseAreaSpan = $(`#BASEAREA${buildingNum}`);
       const baseAreaText = baseAreaSpan.text().trim();
       if (baseAreaText) {
+        baseAreaRawByBuilding[buildingNum] = baseAreaText;
         const num = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
         if (!isNaN(num) && num > 0) {
           totalBaseArea += num;
@@ -99,6 +107,7 @@
       const adjAreaSpan = $(`#TYADJAREA${buildingNum}`);
       const adjAreaText = adjAreaSpan.text().trim();
       if (adjAreaText) {
+        adjAreaRawByBuilding[buildingNum] = adjAreaText;
         const num = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
         if (!isNaN(num) && num > 0) {
           totalAdjArea += num;
@@ -123,6 +132,26 @@
   }
   if (totalAcres != null && totalAcres > 0) {
     property.lot_size_acres = totalAcres;
+  }
+
+  Object.entries(baseAreaRawByBuilding).forEach(([buildingNum, raw]) => {
+    if (raw) {
+      propertySourceFields[`base_area_building_${buildingNum}_text`] = raw;
+    }
+  });
+  Object.entries(adjAreaRawByBuilding).forEach(([buildingNum, raw]) => {
+    if (raw) {
+      propertySourceFields[`adjusted_area_building_${buildingNum}_text`] = raw;
+    }
+  });
+  if (totalLandSquareFeetText) {
+    propertySourceFields.lot_size_square_feet_text = totalLandSquareFeetText;
+  }
+  if (totalAcresText) {
+    propertySourceFields.lot_size_acres_text = totalAcresText;
+  }
+  if (Object.keys(propertySourceFields).length > 0) {
+    property.source_fields = propertySourceFields;
   }
 
   // Write property.json
@@ -156,11 +185,18 @@
   for (let idx = 1; idx <= 25; idx++) {
     const dateTxt = getCellText($, `#SaleDate${idx}`);
     const amountTxt = getCellText($, `#SaleAmount${idx}`);
+    const dateRaw = getRawSelectorText($, `#SaleDate${idx}`);
+    const amountRaw = getRawSelectorText($, `#SaleAmount${idx}`);
     const bookPage =
       getCellText(
         $,
         `table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(${idx}) > td.clsLabelnt:nth-child(2) > a`,
       ) || getCellText($, `#TrSale${idx} td:nth-child(2) a`);
+    const bookPageRaw =
+      getRawSelectorText(
+        $,
+        `table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(${idx}) > td.clsLabelnt:nth-child(2) > a`,
+      ) || getRawSelectorText($, `#TrSale${idx} td:nth-child(2) a`);
 
     if (!dateTxt && !amountTxt && !bookPage) {
       if (idx > 5) break;
@@ -170,5 +206,7 @@
     saleRows.push({
       rowIndex: idx,
       dateTxt: dateTxt || null,
+      dateRaw: dateRaw || null,
       iso: parseDateToISO(dateTxt),
       amount: toNumberCurrency(amountTxt),
+      amountRaw: amountRaw || null,

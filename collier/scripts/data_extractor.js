@@ -705,7 +705,14 @@ function main() {
   const municipality = getCellText($, "#Municipality");
   const totalAcresText = getCellText($, "#TotalAcres");
   const totalAcres = totalAcresText ? toNumberCurrency(totalAcresText) : null;
-  const totalLandSquareFeet = toNumberCurrency(getCellText($, "#TOTALUNITS1"));
+  const totalLandSquareFeetText = getCellText($, "#TOTALUNITS1");
+  const totalLandSquareFeet = totalLandSquareFeetText
+    ? toNumberCurrency(totalLandSquareFeetText)
+    : null;
+
+  const propertySourceFields = {};
+  const baseAreaRawByBuilding = {};
+  const adjAreaRawByBuilding = {};
 
   // Property JSON
   const property = {
@@ -791,6 +798,7 @@ function main() {
       const baseAreaSpan = $(`#BASEAREA${buildingNum}`);
       const baseAreaText = baseAreaSpan.text().trim();
       if (baseAreaText) {
+        baseAreaRawByBuilding[buildingNum] = baseAreaText;
         const num = parseFloat(baseAreaText.replace(/[^0-9.]/g, ""));
         if (!isNaN(num) && num > 0) {
           totalBaseArea += num;
@@ -801,6 +809,7 @@ function main() {
       const adjAreaSpan = $(`#TYADJAREA${buildingNum}`);
       const adjAreaText = adjAreaSpan.text().trim();
       if (adjAreaText) {
+        adjAreaRawByBuilding[buildingNum] = adjAreaText;
         const num = parseFloat(adjAreaText.replace(/[^0-9.]/g, ""));
         if (!isNaN(num) && num > 0) {
           totalAdjArea += num;
@@ -825,6 +834,26 @@ function main() {
   }
   if (totalAcres != null && totalAcres > 0) {
     property.lot_size_acres = totalAcres;
+  }
+
+  Object.entries(baseAreaRawByBuilding).forEach(([buildingNum, raw]) => {
+    if (raw) {
+      propertySourceFields[`base_area_building_${buildingNum}_text`] = raw;
+    }
+  });
+  Object.entries(adjAreaRawByBuilding).forEach(([buildingNum, raw]) => {
+    if (raw) {
+      propertySourceFields[`adjusted_area_building_${buildingNum}_text`] = raw;
+    }
+  });
+  if (totalLandSquareFeetText) {
+    propertySourceFields.lot_size_square_feet_text = totalLandSquareFeetText;
+  }
+  if (totalAcresText) {
+    propertySourceFields.lot_size_acres_text = totalAcresText;
+  }
+  if (Object.keys(propertySourceFields).length > 0) {
+    property.source_fields = propertySourceFields;
   }
 
   // Write property.json

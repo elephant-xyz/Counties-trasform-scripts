@@ -1,4 +1,5 @@
       bookPage: bookPage || null,
+      bookPageRaw: bookPageRaw || null,
     });
   }
 
@@ -27,6 +28,19 @@
       recording_page_number: pageNumber,
       request_identifier: folio,
     };
+    const deedSourceFields = {};
+    if (row.bookPageRaw) {
+      deedSourceFields.document_identifier_text = row.bookPageRaw;
+    }
+    if (row.dateRaw) {
+      deedSourceFields.sale_date_text = row.dateRaw;
+    }
+    if (row.amountRaw) {
+      deedSourceFields.sale_amount_text = row.amountRaw;
+    }
+    if (Object.keys(deedSourceFields).length > 0) {
+      deedObj.source_fields = deedSourceFields;
+    }
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
@@ -37,13 +51,25 @@
   const validSales = saleRows.filter(
     (r) => r.amount != null && r.iso,
   );
-  validSales.sort((a, b) => a.iso.localeCompare(b.iso));
   validSales.forEach((s, idx) => {
     const saleObj = {
       ownership_transfer_date: s.iso,
       purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
       request_identifier: folio,
     };
+    const saleSourceFields = {};
+    if (s.dateRaw) {
+      saleSourceFields.sale_date_text = s.dateRaw;
+    }
+    if (s.amountRaw) {
+      saleSourceFields.purchase_price_amount_text = s.amountRaw;
+    }
+    if (s.bookPageRaw) {
+      saleSourceFields.document_identifier_text = s.bookPageRaw;
+    }
+    if (Object.keys(saleSourceFields).length > 0) {
+      saleObj.source_fields = saleSourceFields;
+    }
     fs.writeFileSync(
       path.join(dataDir, `sales_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),

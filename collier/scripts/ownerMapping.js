@@ -575,6 +575,16 @@ function buildOwnersByDate(validOwners) {
   const unnormalizedMailing =
     addressSegments.length > 0 ? addressSegments.join(", ") : null;
 
+  const mailingSourceFields = {};
+  if (mailingLine1) mailingSourceFields.address_line_1_text = mailingLine1;
+  if (mailingLine2) mailingSourceFields.address_line_2_text = mailingLine2;
+  if (mailingCity) mailingSourceFields.city_name_text = mailingCity;
+  if (mailingState) mailingSourceFields.state_code_text = mailingState;
+  if (postalCode) mailingSourceFields.postal_code_text = postalCode;
+  if (plusFour) mailingSourceFields.plus_four_postal_code_text = plusFour;
+  if (unnormalizedMailing)
+    mailingSourceFields.unnormalized_address_text = unnormalizedMailing;
+
   let mailingAddress = null;
   if (canNormalize) {
     mailingAddress = {
@@ -586,6 +596,9 @@ function buildOwnersByDate(validOwners) {
       unnormalized_address: unnormalizedMailing,
       request_identifier: propertyId || null,
     };
+  }
+  if (mailingAddress && Object.keys(mailingSourceFields).length > 0) {
+    mailingAddress.source_fields = mailingSourceFields;
   }
 
   // Build final object

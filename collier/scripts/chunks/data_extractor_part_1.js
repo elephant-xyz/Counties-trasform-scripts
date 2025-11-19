@@ -81,6 +81,49 @@ function getCellText($, selector) {
   return cleaned.length ? cleaned : null;
 }
 
+function getRawSelectorText($, selector) {
+  const nodes = $(selector);
+  if (!nodes || nodes.length === 0) return null;
+  const pieces = [];
+  nodes.each((_, el) => {
+    const raw = $(el).text();
+    if (raw != null) pieces.push(raw);
+  });
+  if (pieces.length === 0) return null;
+  const combined = pieces.join("");
+  const normalized = combined.replace(/\s+/g, " ").trim();
+  if (normalized.length) return normalized;
+  return combined.length ? combined : null;
+}
+
+function mergeTaxRecords(primary, secondary) {
+  const result = { ...primary };
+  for (const [key, value] of Object.entries(secondary)) {
+    if (key === "source_fields" && value && typeof value === "object") {
+      const merged = { ...(result.source_fields || {}) };
+      for (const [fieldKey, fieldValue] of Object.entries(value)) {
+        if (fieldValue == null || fieldValue === "") continue;
+        const current = merged[fieldKey];
+        if (
+          current == null ||
+          current === "" ||
+          String(fieldValue).length > String(current).length
+        ) {
+          merged[fieldKey] = fieldValue;
+        }
+      }
+      result.source_fields = merged;
+      continue;
+    }
+    if ((result[key] === null || result[key] === undefined) && value != null) {
+      result[key] = value;
+    } else if (!(key in result) && value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 function capitalizeProperName(name) {
   if (!name) return "";
 
