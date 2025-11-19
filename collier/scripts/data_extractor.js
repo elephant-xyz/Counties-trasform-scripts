@@ -1949,16 +1949,6 @@ function main() {
     captureAndReturn(`#Tax${i}`);
   }
 
-  // Ensure specific TaName selectors from errors.csv are captured
-  captureAndReturn("#TaName3");
-  captureAndReturn("#TaName4");
-  captureAndReturn("#TaName5");
-  captureAndReturn("#TaName7");
-  captureAndReturn("#TaName8");
-  captureAndReturn("#TaName9");
-  captureAndReturn("#TaName10");
-  captureAndReturn("#TaName11");
-
   // Ensure all historical selectors are captured (1-5)
   for (let i = 1; i <= 5; i++) {
     captureAndReturn(`#HistoryLandJustValue${i}`);
