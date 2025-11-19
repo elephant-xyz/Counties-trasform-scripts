@@ -19,19 +19,13 @@
     const { bookNumber, pageNumber } = parseBookAndPage(row.bookPage);
     const deedObj = {
       parcel_identifier: parcelId,
-      document_identifier: row.bookPage || null,
-      recording_book_number: bookNumber,
-      recording_page_number: pageNumber,
+      instrument_number: row.bookPage || null,
+      book: bookNumber != null ? String(bookNumber) : null,
+      page: pageNumber != null ? String(pageNumber) : null,
     };
     const deedSourceFields = {};
     if (row.bookPageRaw) {
-      deedSourceFields.document_identifier_text = row.bookPageRaw;
-    }
-    if (row.dateRaw) {
-      deedSourceFields.sale_date_text = row.dateRaw;
-    }
-    if (row.amountRaw) {
-      deedSourceFields.sale_price_amount_text = row.amountRaw;
+      deedSourceFields.instrument_number_text = row.bookPageRaw;
     }
     const deedDocumentValue = row.bookPageRaw || row.bookPage;
     addSelectorSource(
@@ -43,16 +37,6 @@
       deedSourceFields,
       row.bookPageFallbackSelector,
       deedDocumentValue,
-    );
-    addSelectorSource(
-      deedSourceFields,
-      `#SaleAmount${row.rowIndex}`,
-      row.amountRaw || row.amountText,
-    );
-    addSelectorSource(
-      deedSourceFields,
-      `#SaleDate${row.rowIndex}`,
-      row.dateRaw || row.dateTxt,
     );
     if (Object.keys(deedSourceFields).length > 0) {
       deedObj.source_fields = deedSourceFields;
@@ -75,41 +59,25 @@
   saleRecords.forEach((s, idx) => {
     const saleObj = {
       parcel_identifier: parcelId,
+      sale_type: "TypicallyMotivated",
     };
     if (s.iso) {
       saleObj.ownership_transfer_date = s.iso;
     }
     if (s.amount != null) {
-      saleObj.sale_price_amount = s.amount;
-    }
-    if (s.bookPage) {
-      saleObj.document_identifier = s.bookPage;
+      saleObj.purchase_price_amount = s.amount;
     }
     const saleSourceFields = {};
     if (s.dateRaw) {
       saleSourceFields.sale_date_text = s.dateRaw;
     }
     if (s.amountRaw) {
-      saleSourceFields.sale_price_amount_text = s.amountRaw;
-    }
-    if (s.bookPageRaw) {
-      saleSourceFields.document_identifier_text = s.bookPageRaw;
+      saleSourceFields.purchase_price_amount_text = s.amountRaw;
     }
     addSelectorSource(
       saleSourceFields,
       `#SaleAmount${s.rowIndex}`,
       s.amountRaw || s.amountText,
-    );
-    const saleDocumentValue = s.bookPageRaw || s.bookPage;
-    addSelectorSource(
-      saleSourceFields,
-      s.bookPagePrimarySelector,
-      saleDocumentValue,
-    );
-    addSelectorSource(
-      saleSourceFields,
-      s.bookPageFallbackSelector,
-      saleDocumentValue,
     );
     addSelectorSource(
       saleSourceFields,
@@ -120,7 +88,7 @@
       saleObj.source_fields = saleSourceFields;
     }
     fs.writeFileSync(
-      path.join(dataDir, `sale_${idx + 1}.json`),
+      path.join(dataDir, `sales_history_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),
     );
   });

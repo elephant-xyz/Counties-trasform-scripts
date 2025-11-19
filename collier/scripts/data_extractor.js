@@ -710,6 +710,9 @@ function main() {
   removeFilesByPattern(dataDir, /^relationship_deed_file_\d+\.json$/);
   removeFilesByPattern(dataDir, /^relationship_sales_.*\.json$/);
   removeFilesByPattern(dataDir, /^sale_\d+\.json$/);
+  removeFilesByPattern(dataDir, /^sales_history_\d+\.json$/);
+  removeFilesByPattern(dataDir, /^permit_\d+\.json$/);
+  removeFilesByPattern(dataDir, /^property_improvement_\d+\.json$/);
   removeFilesByPattern(dataDir, /^sales_\d+\.json$/);
 
   const folio = seed.request_identifier || seed.parcel_id;
@@ -1025,30 +1028,18 @@ function main() {
     const { bookNumber, pageNumber } = parseBookAndPage(row.bookPage);
     const deedObj = {
       parcel_identifier: parcelId,
-      document_identifier: row.bookPage || null,
-      recording_book_number: bookNumber,
-      recording_page_number: pageNumber,
+      instrument_number: row.bookPage || null,
+      book: bookNumber != null ? String(bookNumber) : null,
+      page: pageNumber != null ? String(pageNumber) : null,
     };
     const deedSourceFields = {};
-    if (row.bookPageRaw) deedSourceFields.document_identifier_text = row.bookPageRaw;
-    if (row.dateRaw) deedSourceFields.sale_date_text = row.dateRaw;
-    if (row.amountRaw) deedSourceFields.sale_price_amount_text = row.amountRaw;
+    if (row.bookPageRaw) deedSourceFields.instrument_number_text = row.bookPageRaw;
     const deedDocumentValue = row.bookPageRaw || row.bookPage;
     addSelectorSource(deedSourceFields, row.bookPagePrimarySelector, deedDocumentValue);
     addSelectorSource(
       deedSourceFields,
       row.bookPageFallbackSelector,
       deedDocumentValue,
-    );
-    addSelectorSource(
-      deedSourceFields,
-      `#SaleAmount${row.rowIndex}`,
-      row.amountRaw || row.amountText,
-    );
-    addSelectorSource(
-      deedSourceFields,
-      `#SaleDate${row.rowIndex}`,
-      row.dateRaw || row.dateTxt,
     );
     if (Object.keys(deedSourceFields).length > 0) {
       deedObj.source_fields = deedSourceFields;
@@ -1071,35 +1062,21 @@ function main() {
   saleRecords.forEach((s, idx) => {
     const saleObj = {
       parcel_identifier: parcelId,
+      sale_type: "TypicallyMotivated",
     };
     if (s.iso) {
       saleObj.ownership_transfer_date = s.iso;
     }
     if (s.amount != null) {
-      saleObj.sale_price_amount = s.amount;
-    }
-    if (s.bookPage) {
-      saleObj.document_identifier = s.bookPage;
+      saleObj.purchase_price_amount = s.amount;
     }
     const saleSourceFields = {};
     if (s.dateRaw) saleSourceFields.sale_date_text = s.dateRaw;
-    if (s.amountRaw) saleSourceFields.sale_price_amount_text = s.amountRaw;
-    if (s.bookPageRaw) saleSourceFields.document_identifier_text = s.bookPageRaw;
+    if (s.amountRaw) saleSourceFields.purchase_price_amount_text = s.amountRaw;
     addSelectorSource(
       saleSourceFields,
       `#SaleAmount${s.rowIndex}`,
       s.amountRaw || s.amountText,
-    );
-    const saleDocumentValue = s.bookPageRaw || s.bookPage;
-    addSelectorSource(
-      saleSourceFields,
-      s.bookPagePrimarySelector,
-      saleDocumentValue,
-    );
-    addSelectorSource(
-      saleSourceFields,
-      s.bookPageFallbackSelector,
-      saleDocumentValue,
     );
     addSelectorSource(
       saleSourceFields,
@@ -1110,7 +1087,7 @@ function main() {
       saleObj.source_fields = saleSourceFields;
     }
     fs.writeFileSync(
-      path.join(dataDir, `sale_${idx + 1}.json`),
+      path.join(dataDir, `sales_history_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),
     );
   });
@@ -1493,48 +1470,38 @@ function main() {
     const coDateText = getCellText($, `#codate${idx}`);
     const issueDate = parseDateToISO(issueDateText || "");
     const coDate = parseDateToISO(coDateText || "");
-    const taxYearText = getCellText($, `#taxyear${idx}`);
-    const taxYearPermit = toNumberCurrency(taxYearText);
     const hasAnyRawValue = [
       permitNumber,
       permitType,
       issuer,
       issueDateText,
       coDateText,
-      taxYearText,
     ].some((value) => value != null && String(value).trim().length > 0);
 
-    if (!hasAnyRawValue && taxYearPermit == null) {
+    if (!hasAnyRawValue) {
       return;
     }
 
-    const permitObj = {
+    const improvementObj = {
       parcel_identifier: parcelId,
-      permit_identifier: permitNumber,
-      permit_type_description: permitType,
-      issuing_authority: issuer,
+      permit_number: permitNumber || null,
+      improvement_type: permitType || null,
+      contractor_type: issuer || null,
       permit_issue_date: issueDate,
-      certificate_of_occupancy_date: coDate,
-      tax_year: taxYearPermit != null ? Math.trunc(taxYearPermit) : null,
+      completion_date: coDate,
     };
     const permitSourceFields = {};
-    if (issueDateText) permitSourceFields.permit_issue_date_text = issueDateText;
-    addSelectorSource(
-      permitSourceFields,
-      `#IssuedDate${idx}`,
-      issueDateText,
-    );
-    if (coDateText)
-      permitSourceFields.certificate_of_occupancy_date_text = coDateText;
+    if (issueDateText)
+      permitSourceFields.permit_issue_date_text = issueDateText;
+    addSelectorSource(permitSourceFields, `#IssuedDate${idx}`, issueDateText);
+    if (coDateText) permitSourceFields.completion_date_text = coDateText;
     addSelectorSource(permitSourceFields, `#codate${idx}`, coDateText);
-    if (taxYearText) permitSourceFields.tax_year_text = taxYearText;
-    addSelectorSource(permitSourceFields, `#taxyear${idx}`, taxYearText);
     if (Object.keys(permitSourceFields).length > 0) {
-      permitObj.source_fields = permitSourceFields;
+      improvementObj.source_fields = permitSourceFields;
     }
     fs.writeFileSync(
-      path.join(dataDir, `permit_${idx}.json`),
-      JSON.stringify(permitObj, null, 2),
+      path.join(dataDir, `property_improvement_${idx}.json`),
+      JSON.stringify(improvementObj, null, 2),
     );
   });
 
@@ -1802,19 +1769,17 @@ function main() {
     summaryTaxRecord = {
       parcel_identifier: parcelId,
       tax_year: ty != null ? ty : null,
-      property_assessed_value_amount:
-        assessed != null ? assessed : just != null ? just : null,
-      property_market_value_amount:
-        just != null ? just : assessed != null ? assessed : null,
-      property_building_amount: impr != null ? impr : null,
-      property_land_amount: land != null ? land : null,
-      property_taxable_value_amount:
+      land_just_value_amount: land != null ? land : null,
+      improvements_just_value_amount: impr != null ? impr : null,
+      total_just_value_amount: just != null ? just : null,
+      county_assessed_value_amount: assessed != null ? assessed : null,
+      county_taxable_value_amount:
         taxable != null ? taxable : assessed != null ? assessed : null,
       school_taxable_value_amount:
         schoolTaxableValue != null ? schoolTaxableValue : null,
       non_school_additional_homestead_exemption_amount:
         nonSchoolAddlHomestead != null ? nonSchoolAddlHomestead : null,
-      ad_valorem_tax_total_amount:
+      total_ad_valorem_tax_amount:
         totalAdValoremTaxes != null ? totalAdValoremTaxes : null,
       non_ad_valorem_tax_total_amount:
         totalNonAdValoremTaxes != null ? totalNonAdValoremTaxes : null,
@@ -2108,7 +2073,10 @@ function main() {
     const taxObj = {
       parcel_identifier: parcelId,
       tax_year: rec.yNum,
-      property_assessed_value_amount:
+      land_just_value_amount: rec.landH != null ? rec.landH : null,
+      improvements_just_value_amount: rec.imprH != null ? rec.imprH : null,
+      total_just_value_amount: rec.justH != null ? rec.justH : null,
+      county_assessed_value_amount:
         rec.countyAssessed != null
           ? rec.countyAssessed
           : rec.schoolAssessed != null
@@ -2116,17 +2084,7 @@ function main() {
             : rec.justH != null
               ? rec.justH
               : null,
-      property_market_value_amount:
-        rec.justH != null
-          ? rec.justH
-          : rec.countyAssessed != null
-            ? rec.countyAssessed
-            : rec.schoolAssessed != null
-              ? rec.schoolAssessed
-              : null,
-      property_building_amount: rec.imprH != null ? rec.imprH : null,
-      property_land_amount: rec.landH != null ? rec.landH : null,
-      property_taxable_value_amount:
+      county_taxable_value_amount:
         rec.taxableH != null
           ? rec.taxableH
           : rec.countyAssessed != null
@@ -2138,10 +2096,12 @@ function main() {
         rec.schoolTaxableH != null ? rec.schoolTaxableH : null,
       non_school_additional_homestead_exemption_amount:
         rec.nonSchoolBenefit != null ? rec.nonSchoolBenefit : null,
-      ad_valorem_tax_total_amount:
+      total_ad_valorem_tax_amount:
         rec.totalAdvTaxesH != null ? rec.totalAdvTaxesH : null,
+      non_ad_valorem_tax_total_amount: null,
       other_millage_rate:
         rec.otherMillageH != null ? rec.otherMillageH : null,
+      total_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
