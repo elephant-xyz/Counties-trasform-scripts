@@ -179,6 +179,14 @@ function sanitizeAddressPayloadForWrite(payload) {
   }
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
+  const assignNormalized = (field, value) => {
+    if (hasMeaningfulAddressValue(normalizedCandidate[field])) return;
+    if (!hasMeaningfulAddressValue(value)) return;
+    const normalizedValue = normalizeAddressFieldForSchema(field, value);
+    if (normalizedValue === undefined || normalizedValue === null) return;
+    normalizedCandidate[field] = normalizedValue;
+  };
+
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const hasField = Object.prototype.hasOwnProperty.call(payload, field);
     const rawValue = hasField ? payload[field] : null;
@@ -21325,6 +21333,127 @@ function promoteRawAddressToNormalized(rawAddress, options = {}) {
     }
   }
 
+  const looseParsed = parseLooseUnnormalizedAddress(trimmedRaw);
+  if (looseParsed) {
+    assignNormalized("street_number", looseParsed.streetNumber);
+    if (hasMeaningfulAddressValue(looseParsed.streetName)) {
+      const streetSource = String(looseParsed.streetName);
+      const formattedLooseStreet = formatStreetNameCase(streetSource);
+      const streetValue =
+        formattedLooseStreet && formattedLooseStreet.trim().length
+          ? formattedLooseStreet.toUpperCase()
+          : streetSource.toUpperCase();
+      assignNormalized("street_name", streetValue);
+    }
+    assignNormalized(
+      "street_pre_directional_text",
+      looseParsed.streetPreDirectional,
+    );
+    assignNormalized(
+      "street_post_directional_text",
+      looseParsed.streetPostDirectional,
+    );
+    if (looseParsed.streetSuffix) {
+      const mappedLooseSuffix = mapStreetSuffixType(looseParsed.streetSuffix);
+      assignNormalized(
+        "street_suffix_type",
+        mappedLooseSuffix || looseParsed.streetSuffix,
+      );
+    }
+    assignNormalized("unit_identifier", looseParsed.unitIdentifier);
+    assignNormalized("route_number", looseParsed.routeNumber);
+    assignNormalized("city_name", looseParsed.cityName);
+    assignNormalized("state_code", looseParsed.stateCode);
+    assignNormalized("postal_code", looseParsed.postalCode);
+    assignNormalized("plus_four_postal_code", looseParsed.plus4);
+  }
+
+  if (Array.isArray(options.streetCandidates)) {
+    for (const candidate of options.streetCandidates) {
+      if (typeof candidate !== "string") continue;
+      const trimmedCandidate = normalizeWhitespace(candidate);
+      if (!trimmedCandidate) continue;
+      const parsedStreetCandidate = parseLocationAddress(trimmedCandidate);
+      if (!parsedStreetCandidate) continue;
+      assignNormalized("street_number", parsedStreetCandidate.streetNumber);
+      if (hasMeaningfulAddressValue(parsedStreetCandidate.streetName)) {
+        const candidateStreetSource = String(
+          parsedStreetCandidate.streetName,
+        );
+        const formattedCandidateStreet = formatStreetNameCase(
+          candidateStreetSource,
+        );
+        const candidateStreetValue =
+          formattedCandidateStreet && formattedCandidateStreet.trim().length
+            ? formattedCandidateStreet.toUpperCase()
+            : candidateStreetSource.toUpperCase();
+        assignNormalized("street_name", candidateStreetValue);
+      }
+      assignNormalized(
+        "street_pre_directional_text",
+        parsedStreetCandidate.streetPreDirectional,
+      );
+      assignNormalized(
+        "street_post_directional_text",
+        parsedStreetCandidate.streetPostDirectional,
+      );
+      if (parsedStreetCandidate.streetSuffix) {
+        const mappedCandidateSuffix = mapStreetSuffixType(
+          parsedStreetCandidate.streetSuffix,
+        );
+        assignNormalized(
+          "street_suffix_type",
+          mappedCandidateSuffix || parsedStreetCandidate.streetSuffix,
+        );
+      }
+      assignNormalized("unit_identifier", parsedStreetCandidate.unitIdentifier);
+      assignNormalized("route_number", parsedStreetCandidate.routeNumber);
+    }
+  }
+
+  if (
+    !hasMeaningfulAddressValue(normalizedCandidate.postal_code) ||
+    !hasMeaningfulAddressValue(normalizedCandidate.plus_four_postal_code)
+  ) {
+    const postalPieces = extractPostalPieces(trimmedRaw);
+    if (postalPieces) {
+      assignNormalized("postal_code", postalPieces.postal);
+      assignNormalized("plus_four_postal_code", postalPieces.plus4);
+    }
+  }
+
+  const gridCandidates = [];
+  if (Array.isArray(options.gridFallbacks)) {
+    for (const candidate of options.gridFallbacks) {
+      if (!candidate) continue;
+      gridCandidates.push(candidate);
+    }
+  }
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const gridSource =
+      safeNullIfEmpty(
+        source.FormattedPCN ||
+          source.formatted_pcn ||
+          source.formattedPcn ||
+          source.parcel_identifier ||
+          source.parcelId ||
+          source.ParcelId,
+      ) || null;
+    if (gridSource) {
+      gridCandidates.push(gridSource);
+    }
+  }
+  for (const gridCandidate of gridCandidates) {
+    const parsedGrid = parseGridFromPcn(gridCandidate);
+    if (!parsedGrid) continue;
+    assignNormalized("township", parsedGrid.township);
+    assignNormalized("range", parsedGrid.range);
+    assignNormalized("section", parsedGrid.section);
+    assignNormalized("block", parsedGrid.block);
+    assignNormalized("lot", parsedGrid.lot);
+  }
+
   const stateFallback =
     typeof options.stateFallback === "string"
       ? options.stateFallback
@@ -27071,6 +27200,15 @@ async function main() {
 
                     normalizedOverride = promoteRawAddressToNormalized(finalRaw, {
                       fallbackSources: promotionSources,
+                      streetCandidates: streetFallbackSources,
+                      gridFallbacks: [
+                        fallbackPcnSource,
+                        parcelId,
+                        pcnHyphen,
+                        ...(Array.isArray(parcelIdCandidates)
+                          ? parcelIdCandidates
+                          : []),
+                      ].filter(Boolean),
                       stateFallback: resolvedStateFallback,
                       countyFallback: resolvedCountyFallback,
                       municipalityFallback: resolvedMunicipalityFallback,
@@ -27510,6 +27648,13 @@ async function main() {
                       ? parcelCentroid.longitude
                       : null,
             },
+            streetCandidates: streetFallbackSources,
+            gridFallbacks: [
+              fallbackPcnSource,
+              parcelId,
+              pcnHyphen,
+              ...(Array.isArray(parcelIdCandidates) ? parcelIdCandidates : []),
+            ].filter(Boolean),
             grid: fallbackPcnSource
               ? deriveGridPartsFromPcn(fallbackPcnSource)
               : null,
