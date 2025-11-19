@@ -23,6 +23,7 @@ function ensureDir(filePath) {
   // Use POSITIVE INCLUSION approach: only include known residential building types
   let totalLivableArea = 0;
   let totalUnderAir = 0;
+  let totalAdjustedArea = 0;
   let hasAnyBuildings = false;
 
   // Positive list: These ARE residential structures that should be included
@@ -76,6 +77,15 @@ function ensureDir(filePath) {
           hasAnyBuildings = true;
         }
       }
+
+      const adjustedAreaSpan = $(`#TYADJAREA${buildingNum}`);
+      const adjustedAreaText = adjustedAreaSpan.text().trim();
+      if (adjustedAreaText) {
+        const adjNum = parseFloat(adjustedAreaText.replace(/[^0-9.]/g, ""));
+        if (!isNaN(adjNum) && adjNum > 0) {
+          totalAdjustedArea += adjNum;
+        }
+      }
     }
   });
 
@@ -83,6 +93,7 @@ function ensureDir(filePath) {
   // (values < 10 are unrealistic and fail validation)
   const livableAreaSqFt = hasAnyBuildings && totalLivableArea >= 10 ? totalLivableArea : null;
   const areaUnderAirSqFt = hasAnyBuildings && totalUnderAir >= 10 ? totalUnderAir : null;
+  const totalAreaSqFt = hasAnyBuildings && totalAdjustedArea >= 10 ? totalAdjustedArea : null;
 
   // Create layouts array with Living Area
   const layouts = [];
@@ -90,11 +101,14 @@ function ensureDir(filePath) {
   // ALWAYS add Living Area layout with square footage data
   layouts.push({
     space_type: "Living Area",
+    space_index: 1,
     space_type_index: "1",
     livable_area_sq_ft: livableAreaSqFt,
     area_under_air_sq_ft: areaUnderAirSqFt,
+    total_area_sq_ft: totalAreaSqFt,
     flooring_material_type: null,
     size_square_feet: null,
+    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
