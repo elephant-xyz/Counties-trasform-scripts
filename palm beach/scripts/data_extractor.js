@@ -118,30 +118,32 @@ function sanitizeAddressPayloadForWrite(payload) {
     return payload;
   }
 
-  let trimmedUnnormalized =
+  const directUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
+
+  let trimmedUnnormalized = directUnnormalized;
+  let rawValueIsFromSource = directUnnormalized.length > 0;
+
   if (!trimmedUnnormalized.length) {
     const fallbackCandidates = [];
+    const enqueueCandidate = (value, fromSource = false) => {
+      if (typeof value !== "string") return;
+      const trimmed = value.trim();
+      if (!trimmed.length) return;
+      fallbackCandidates.push({ value: trimmed, fromSource });
+    };
 
-    if (typeof payload.full_address === "string") {
-      fallbackCandidates.push(payload.full_address);
-    }
-
-    const composedFromPayload =
-      composeFallbackUnnormalizedAddressFromFields(payload);
-    if (composedFromPayload) {
-      fallbackCandidates.push(composedFromPayload);
-    }
+    enqueueCandidate(payload.full_address, true);
 
     if (
       ADDRESS_FALLBACK_CONTEXT &&
       Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
     ) {
-      fallbackCandidates.push(
-        ...ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates,
-      );
+      for (const candidate of ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) {
+        enqueueCandidate(candidate, true);
+      }
     }
 
     if (
@@ -150,16 +152,8 @@ function sanitizeAddressPayloadForWrite(payload) {
     ) {
       for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
         if (!source || typeof source !== "object") continue;
-        if (typeof source.unnormalized_address === "string") {
-          fallbackCandidates.push(source.unnormalized_address);
-        }
-        if (typeof source.full_address === "string") {
-          fallbackCandidates.push(source.full_address);
-        }
-        const composed = composeFallbackUnnormalizedAddressFromFields(source);
-        if (composed) {
-          fallbackCandidates.push(composed);
-        }
+        enqueueCandidate(source.unnormalized_address, true);
+        enqueueCandidate(source.full_address, true);
       }
     }
 
@@ -171,16 +165,22 @@ function sanitizeAddressPayloadForWrite(payload) {
       const rawFallbacks =
         ADDRESS_FALLBACK_CONTEXT.fieldFallbacks.unnormalized_address;
       if (Array.isArray(rawFallbacks)) {
-        fallbackCandidates.push(...rawFallbacks);
+        for (const candidate of rawFallbacks) {
+          enqueueCandidate(candidate, true);
+        }
       }
     }
 
-    const fallbackRaw = resolveFirstNonEmptyString(fallbackCandidates);
-    if (typeof fallbackRaw === "string") {
-      const normalizedFallback = fallbackRaw.trim();
-      if (normalizedFallback.length) {
-        trimmedUnnormalized = normalizedFallback;
+    for (const candidate of fallbackCandidates) {
+      trimmedUnnormalized = candidate.value;
+      rawValueIsFromSource = candidate.fromSource;
+      if (rawValueIsFromSource) {
+        break;
       }
+    }
+
+    if (!rawValueIsFromSource) {
+      trimmedUnnormalized = "";
     }
   }
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -245,7 +245,9 @@ function sanitizeAddressPayloadForWrite(payload) {
     ) && hasNormalizedCountyCoverage(normalizedCandidate);
 
   const preferRawVariant =
-    !hasNormalizedCoverage && trimmedUnnormalized.length > 0;
+    rawValueIsFromSource &&
+    trimmedUnnormalized.length > 0 &&
+    !hasNormalizedCoverage;
 
   if (hasNormalizedCoverage && !preferRawVariant) {
     const surfaced =
@@ -254,7 +256,7 @@ function sanitizeAddressPayloadForWrite(payload) {
     return stripAddressRequestMetadata(surfaced);
   }
 
-  if (trimmedUnnormalized.length) {
+  if (rawValueIsFromSource && trimmedUnnormalized.length) {
     const rawSeed = {
       ...normalizedCandidate,
       unnormalized_address: trimmedUnnormalized,
