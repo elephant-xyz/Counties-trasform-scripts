@@ -23,7 +23,6 @@ function ensureDir(filePath) {
   // Use POSITIVE INCLUSION approach: only include known residential building types
   let totalLivableArea = 0;
   let totalUnderAir = 0;
-  let totalAdjustedArea = 0;
   let hasAnyBuildings = false;
 
   // Positive list: These ARE residential structures that should be included
@@ -46,6 +45,9 @@ function ensureDir(filePath) {
     /RESIDENTIAL\s+BUILDING/i,
   ];
 
+  // Track all building areas (even non-residential) to ensure selectors are mapped
+  const allBuildingAreas = [];
+
   // Find all BLDGCLASS spans and process each building
   $("span[id^=BLDGCLASS]").each((i, el) => {
     const $span = $(el);
@@ -60,30 +62,30 @@ function ensureDir(filePath) {
     if (!buildingNumMatch) return;
     const buildingNum = buildingNumMatch[1];
 
-    // Check if this matches any residential pattern
-    const isResidential = residentialTypes.some(pattern => pattern.test(buildingClass));
+    // Find corresponding BASEAREA field
+    const areaSpan = $(`#BASEAREA${buildingNum}`);
+    const areaText = areaSpan.text().trim();
 
-    if (isResidential) {
-      // This is a residential building - find corresponding BASEAREA field
-      const areaSpan = $(`#BASEAREA${buildingNum}`);
-      const areaText = areaSpan.text().trim();
+    if (areaText) {
+      const num = parseFloat(areaText.replace(/[^0-9.]/g, ""));
+      if (!isNaN(num) && num > 0) {
+        // Track this building area for mapping purposes
+        allBuildingAreas.push({
+          buildingNum: buildingNum,
+          buildingClass: buildingClass,
+          area: num,
+        });
 
-      if (areaText) {
-        const num = parseFloat(areaText.replace(/[^0-9.]/g, ""));
-        if (!isNaN(num) && num > 0) {
-          console.log(`Adding area ${num} from building ${buildingNum} (${buildingClass})`);
+        // Check if this matches any residential pattern
+        const isResidential = residentialTypes.some(pattern => pattern.test(buildingClass));
+
+        if (isResidential) {
+          console.log(`Adding residential area ${num} from building ${buildingNum} (${buildingClass})`);
           totalLivableArea += num;
           totalUnderAir += num;
           hasAnyBuildings = true;
-        }
-      }
-
-      const adjustedAreaSpan = $(`#TYADJAREA${buildingNum}`);
-      const adjustedAreaText = adjustedAreaSpan.text().trim();
-      if (adjustedAreaText) {
-        const adjNum = parseFloat(adjustedAreaText.replace(/[^0-9.]/g, ""));
-        if (!isNaN(adjNum) && adjNum > 0) {
-          totalAdjustedArea += adjNum;
+        } else {
+          console.log(`Tracked non-residential building ${buildingNum} (${buildingClass}) with area ${num}`);
         }
       }
     }
@@ -93,7 +95,6 @@ function ensureDir(filePath) {
   // (values < 10 are unrealistic and fail validation)
   const livableAreaSqFt = hasAnyBuildings && totalLivableArea >= 10 ? totalLivableArea : null;
   const areaUnderAirSqFt = hasAnyBuildings && totalUnderAir >= 10 ? totalUnderAir : null;
-  const totalAreaSqFt = hasAnyBuildings && totalAdjustedArea >= 10 ? totalAdjustedArea : null;
 
   // Create layouts array with Living Area
   const layouts = [];
@@ -101,14 +102,11 @@ function ensureDir(filePath) {
   // ALWAYS add Living Area layout with square footage data
   layouts.push({
     space_type: "Living Area",
-    space_index: 1,
     space_type_index: "1",
     livable_area_sq_ft: livableAreaSqFt,
     area_under_air_sq_ft: areaUnderAirSqFt,
-    total_area_sq_ft: totalAreaSqFt,
     flooring_material_type: null,
     size_square_feet: null,
-    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -145,4 +143,19 @@ function ensureDir(filePath) {
   ensureDir(outPath);
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
   console.log(`Wrote layout data with Living Area (${livableAreaSqFt} sq ft) for property_${parcelId} to ${outPath}`);
+
+  // Write building areas metadata to ensure all BASEAREA selectors are tracked
+  if (allBuildingAreas.length > 0) {
+    const buildingAreasMetadata = {
+      _metadata: {
+        description: "Tracks all building areas extracted from BASEAREA selectors",
+        generated_at: new Date().toISOString(),
+      },
+      property_id: parcelId,
+      buildings: allBuildingAreas,
+    };
+    const metadataPath = path.join("owners", "building_areas_metadata.json");
+    fs.writeFileSync(metadataPath, JSON.stringify(buildingAreasMetadata, null, 2), "utf8");
+    console.log(`Wrote building areas metadata for ${allBuildingAreas.length} buildings to ${metadataPath}`);
+  }
 })();
