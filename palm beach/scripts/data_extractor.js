@@ -2020,15 +2020,7 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
 ]);
 const RAW_ADDRESS_FINAL_ALLOWED_FIELDS = [
   "unnormalized_address",
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
 const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
