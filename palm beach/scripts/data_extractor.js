@@ -6067,50 +6067,63 @@ function ensureAddressOutputFieldPresence(address) {
   } else if (Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
     delete result.unnormalized_address;
   }
+  if (hasUnnormalized) {
+    const rawSeed = {
+      ...result,
+      unnormalized_address: normalizedUnnormalized.length
+        ? normalizedUnnormalized
+        : result.unnormalized_address,
+    };
 
-  const fieldList = hasUnnormalized
-    ? RAW_ADDRESS_OUTPUT_FIELDS
-    : NORMALIZED_ADDRESS_FIELDS;
+    const completedRaw =
+      ensureRawAddressSchemaDefaults(rawSeed) || rawSeed;
 
-  for (const field of fieldList) {
-    if (hasUnnormalized) {
-      if (!Object.prototype.hasOwnProperty.call(result, field)) {
-        continue;
-      }
-
-      const value = result[field];
-      if (value === undefined || value === null) {
-        delete result[field];
-        continue;
-      }
-
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        if (!trimmed.length) {
-          delete result[field];
-          continue;
-        }
-        result[field] = trimmed;
-        continue;
-      }
-
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        if (Number.isFinite(numeric)) {
-          result[field] = numeric;
-        } else {
-          delete result[field];
-        }
-        continue;
-      }
-
-      if (typeof value === "number" && !Number.isFinite(value)) {
-        delete result[field];
-      }
-
-      continue;
+    if (!completedRaw.postal_code) {
+      completedRaw.plus_four_postal_code = null;
     }
 
+    if (completedRaw.state_code && !completedRaw.country_code) {
+      completedRaw.country_code = "US";
+    }
+
+    const requestIdentifier = safeNullIfEmpty(
+      Object.prototype.hasOwnProperty.call(rawSeed, "request_identifier")
+        ? rawSeed.request_identifier
+        : completedRaw.request_identifier,
+    );
+    if (requestIdentifier) {
+      completedRaw.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        completedRaw,
+        "request_identifier",
+      )
+    ) {
+      completedRaw.request_identifier = null;
+    }
+
+    const preparedSource = prepareSourceHttpRequest(
+      Object.prototype.hasOwnProperty.call(rawSeed, "source_http_request")
+        ? rawSeed.source_http_request
+        : completedRaw.source_http_request,
+    );
+    if (preparedSource) {
+      completedRaw.source_http_request = deepClone(preparedSource);
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        completedRaw,
+        "source_http_request",
+      )
+    ) {
+      completedRaw.source_http_request = null;
+    }
+
+    return completedRaw;
+  }
+
+  const fieldList = NORMALIZED_ADDRESS_FIELDS;
+
+  for (const field of fieldList) {
     if (!Object.prototype.hasOwnProperty.call(result, field)) {
       result[field] = null;
       continue;
@@ -6144,32 +6157,6 @@ function ensureAddressOutputFieldPresence(address) {
     }
     if (result.state_code && !result.country_code) {
       result.country_code = "US";
-    }
-  } else {
-    if (
-      Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code") &&
-      !hasMeaningfulAddressValue(result.plus_four_postal_code)
-    ) {
-      delete result.plus_four_postal_code;
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(result, "country_code") &&
-      !hasMeaningfulAddressValue(result.country_code)
-    ) {
-      delete result.country_code;
-    }
-  }
-
-  if (hasUnnormalized && normalizedUnnormalized.length) {
-    backfillNormalizedAddressFields(result, {
-      unnormalized: normalizedUnnormalized,
-    });
-
-    // Ensure raw variant payloads do not surface normalized street components.
-    for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(result, field)) {
-        delete result[field];
-      }
     }
   }
 
