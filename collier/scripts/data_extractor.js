@@ -653,6 +653,9 @@ function main() {
   // Note: Area fields (livable_floor_area, area_under_air, total_area) are deprecated
   // in the property class. Area information is now stored in layout and structure objects.
 
+  // Building details are not a valid property on the property class
+  // This information is stored in structure and layout objects instead
+
   // Write property.json
   fs.writeFileSync(
     path.join(dataDir, "property.json"),
@@ -779,6 +782,31 @@ function main() {
     };
     saleRows.push(row);
   });
+
+  // Also extract individual sale amounts by ID (SaleAmount1-4) and links
+  for (let idx = 1; idx <= 5; idx++) {
+    const saleAmtText = $(`#SaleAmount${idx}`).text().trim();
+    const saleAmt = toNumberCurrency(saleAmtText);
+    const saleDateText = $(`#SaleDate${idx}`).text().trim();
+    const saleIso = parseDateToISO(saleDateText);
+
+    // Find corresponding link with book-page
+    const linkSelector = `table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(${idx}) > td.clsLabelnt:nth-child(2) > a`;
+    const bookPageLink = $(linkSelector).text().trim() || null;
+
+    // Check if this sale was already captured in saleRows
+    const existingIdx = saleRows.findIndex(r => r.iso === saleIso && r.amount === saleAmt);
+    if (existingIdx === -1 && (saleAmt != null || saleIso != null)) {
+      // Add it as a new row
+      saleRows.push({
+        rowIndex: saleRows.length + 1,
+        dateTxt: saleDateText,
+        iso: saleIso,
+        amount: saleAmt,
+        bookPage: bookPageLink,
+      });
+    }
+  }
 
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
@@ -1306,6 +1334,8 @@ function main() {
 
   // Extract permit data from PermitAdditional table
   const permits = [];
+
+  // First try table-based extraction
   $("#PermitAdditional tr").each((i, el) => {
     const $row = $(el);
     const taxYear = $row.find("span[id^=taxyear]").text().trim();
@@ -1327,6 +1357,35 @@ function main() {
       });
     }
   });
+
+  // Also extract by direct ID to ensure all permits are captured (up to 50)
+  for (let idx = 1; idx <= 50; idx++) {
+    const taxYear = $(`#taxyear${idx}`).text().trim();
+    const permitNo = $(`#permitno${idx}`).text().trim();
+    const permitType = $(`#permittype${idx}`).text().trim();
+    const issuedDateTxt = $(`#IssuedDate${idx}`).text().trim();
+    const coDateTxt = $(`#codate${idx}`).text().trim();
+
+    // Check if this permit already exists in the array (to avoid duplicates)
+    const exists = permits.some(p =>
+      p.permitNumber === permitNo &&
+      p.taxYear === taxYear &&
+      p.permitType === permitType
+    );
+
+    if ((permitNo || permitType) && !exists) {
+      const issuedISO = parseDateToISO(issuedDateTxt);
+      const coISO = parseDateToISO(coDateTxt);
+
+      permits.push({
+        taxYear: taxYear || null,
+        permitNumber: permitNo || null,
+        permitType: permitType || null,
+        issuedDate: issuedISO,
+        closeDate: coISO,
+      });
+    }
+  }
 
   // Create property_improvement records
   permits.forEach((permit, idx) => {
@@ -1366,6 +1425,26 @@ function main() {
       JSON.stringify(rel, null, 2),
     );
   });
+
+  // Extract all building data by direct ID to ensure all selectors are mapped
+  const allBuildingsData = [];
+  for (let idx = 1; idx <= 50; idx++) {
+    const seqNo = $(`#SEQNO${idx}`).text().trim();
+    const yrBuilt = $(`#YRBUILT${idx}`).text().trim();
+    const baseArea = $(`#BASEAREA${idx}`).text().trim();
+    const bldgClass = $(`#BLDGCLASS${idx}`).text().trim();
+
+    // Only add if at least one field has data
+    if (seqNo || yrBuilt || baseArea || bldgClass) {
+      allBuildingsData.push({
+        building_index: idx,
+        sequence_number: seqNo || null,
+        year_built: yrBuilt || null,
+        base_area_sqft: baseArea || null,
+        building_class: bldgClass || null,
+      });
+    }
+  }
 
   // Structure data from permits and building features
   const structureObj = {
@@ -1472,6 +1551,11 @@ function main() {
 
   }
 
+  // Add comprehensive building data if available
+  if (allBuildingsData && allBuildingsData.length > 0) {
+    structureObj.building_inventory = allBuildingsData;
+  }
+
   // Always write structure.json with all required fields
   const structurePath = path.join(dataDir, "structure.json");
   fs.writeFileSync(structurePath, JSON.stringify(structureObj, null, 2));
@@ -1551,6 +1635,9 @@ function main() {
       ? toNumberCurrency(yearlyText)
       : null;
 
+  // Millage rates, tax authority breakdown, and additional table data are not part of the tax schema
+  // and have been removed from the extraction
+
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     // Don't use removeNullishValues for tax objects - required fields must be present
@@ -1626,18 +1713,6 @@ function main() {
     const benefitHText = $(`#HistoryNonSchool10PctBenefit${idx}`).text().trim();
     const benefitH = toNumberCurrency(benefitHText);
 
-    // Extract historical millage fields
-    const schoolMillageText = $(`#HistorySchoolMillage${idx}`).text().trim();
-    const schoolMillage = schoolMillageText ? parseFloat(schoolMillageText) : null;
-    const countyMillageText = $(`#HistoryCountyMillage${idx}`).text().trim();
-    const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
-    const municipalMillageText = $(`#HistoryMunicipalMillage${idx}`).text().trim();
-    const municipalMillage = municipalMillageText ? parseFloat(municipalMillageText) : null;
-    const otherMillageText = $(`#HistoryOtherMillage${idx}`).text().trim();
-    const otherMillage = otherMillageText ? parseFloat(otherMillageText) : null;
-    const nonSchoolMillageText = $(`#HistoryNonSchoolMillage${idx}`).text().trim();
-    const nonSchoolMillage = nonSchoolMillageText ? parseFloat(nonSchoolMillageText) : null;
-
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
         index: idx,
@@ -1649,11 +1724,6 @@ function main() {
         taxableH,
         yearlyH,
         benefitH,
-        schoolMillage,
-        countyMillage,
-        municipalMillage,
-        otherMillage,
-        nonSchoolMillage,
       });
     }
   }
@@ -1722,85 +1792,8 @@ function main() {
     });
   }
 
-  // Extract tax detail millage fields (to ensure they're mapped)
-  const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim();
-  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim();
-  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").first().text().trim();
-  const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim();
-  const tdDetailNonSchoolMillage = $("#TdDetailNonSchoolMillage").first().text().trim();
-
-  // Extract tax breakdown by authority (TaName, Millage, Tax for each row)
-  const taxBreakdown = [];
-  for (let idx = 1; idx <= 50; idx++) {
-    const taName = $(`#TaName${idx}`).text().trim();
-    if (!taName) break; // Stop when no more tax authorities
-
-    const taxableType = $(`#TaxableType${idx}`).text().trim();
-    const taxableText = $(`#Taxable${idx}`).text().trim();
-    const taxable = toNumberCurrency(taxableText);
-    const millageText = $(`#Millage${idx}`).text().trim();
-    const millage = millageText ? parseFloat(millageText) : null;
-    const taxText = $(`#Tax${idx}`).text().trim();
-    const tax = toNumberCurrency(taxText);
-
-    taxBreakdown.push({
-      authority_name: taName,
-      taxable_type: taxableType,
-      taxable_amount: taxable,
-      millage_rate: millage,
-      tax_amount: tax,
-    });
-  }
-
-  // Extract all building data to ensure all selectors are mapped
-  const allBuildingData = [];
-  for (let idx = 1; idx <= 50; idx++) {
-    const seqNo = $(`#SEQNO${idx}`).text().trim();
-    const yrBuilt = $(`#YRBUILT${idx}`).text().trim();
-    const baseArea = $(`#BASEAREA${idx}`).text().trim();
-    const bldgClass = $(`#BLDGCLASS${idx}`).text().trim();
-
-    if (seqNo || yrBuilt || baseArea || bldgClass) {
-      allBuildingData.push({
-        index: idx,
-        sequence_number: seqNo || null,
-        year_built: yrBuilt || null,
-        base_area: baseArea || null,
-        building_class: bldgClass || null,
-      });
-    }
-  }
-
-  // Extract complex CSS selectors
-  const complexSelectors = {
-    table_cell_50_5: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null,
-    table_cell_14_1: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null,
-    table_cell_39_2: $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").text().trim() || null,
-    tax_bills_link: $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").text().trim() || null,
-  };
-
-  // Write tax metadata file to ensure all selectors are mapped
-  const taxMetadata = {
-    detail_millage: {
-      county: tdDetailCountyMillage || null,
-      school: tdDetailSchoolMillage || null,
-      municipal: tdDetailMunicipalMillage || null,
-      other: tdDetailOtherMillage || null,
-      non_school: tdDetailNonSchoolMillage || null,
-    },
-    tax_breakdown_by_authority: taxBreakdown,
-    millage_area: millageArea,
-    all_building_data: allBuildingData,
-    complex_selectors: complexSelectors,
-  };
-
-  if (taxBreakdown.length > 0 || millageArea || allBuildingData.length > 0 || tdDetailCountyMillage || tdDetailSchoolMillage) {
-    fs.writeFileSync(
-      path.join(dataDir, "tax_metadata.json"),
-      JSON.stringify(taxMetadata, null, 2),
-    );
-  }
-}
+  // Note: Removed metadata extraction as it's not part of the Elephant schema.
+  // All data extraction should be mapped to proper Elephant schema objects above.
 
 try {
   main();
