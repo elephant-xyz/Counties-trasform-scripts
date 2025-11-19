@@ -27471,7 +27471,7 @@ async function main() {
     "relationship_property_has_address.json",
   );
 
-  removeFileIfExists(propertyAddressRelationshipFile);
+  writeJSON(propertyAddressRelationshipFile, null);
 
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
@@ -28750,11 +28750,10 @@ async function main() {
   ensureRawAddressFieldSurface(finalAddressPath);
   enforceCountyAddressSchemaCompliance(finalAddressPath);
   removeFileIfExists(path.join(dataDir, "address_has_fact_sheet.json"));
-  removeFileIfExists(
-    path.join(dataDir, "relationship_property_has_address.json"),
-  );
-  removeFileIfExists(
+  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), null);
+  writeJSON(
     path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    null,
   );
 
   const safeParsedUnnormalizedCityState =
@@ -29352,6 +29351,14 @@ async function main() {
       "FL",
     defaultCountryCode: "US",
   });
+  writeJSON(
+    path.join(dataDir, "relationship_property_has_address.json"),
+    null,
+  );
+  writeJSON(
+    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    null,
+  );
 }
 
 main().catch((error) => {
