@@ -89,6 +89,7 @@ function diffYearsFrom(dateISO) {
     // High-level
     architectural_style_type: null,
     attachment_type: "Detached",
+    request_identifier: parcelId,
 
     // Exterior walls
     exterior_wall_material_primary: null,
