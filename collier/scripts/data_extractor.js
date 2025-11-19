@@ -1833,15 +1833,8 @@ function main() {
       }
     } catch (_) {}
     taxRecords.forEach((taxObj, idx) => {
-      // Add tax breakdown and millage data to the most recent tax record (first one)
-      if (idx === 0) {
-        if (taxBreakdownData && taxBreakdownData.length > 0) {
-          taxObj.tax_breakdown = taxBreakdownData;
-        }
-        if (millageDetailData && Object.keys(millageDetailData).some(k => millageDetailData[k] != null)) {
-          taxObj.millage_details = millageDetailData;
-        }
-      }
+      // Note: tax_breakdown and millage_details are not valid properties in the Elephant tax schema
+      // They are stored in the extraction_metadata.json file instead
 
       const filename = `tax_${idx + 1}.json`;
       const taxPath = path.join(dataDir, filename);
