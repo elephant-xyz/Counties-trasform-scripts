@@ -1,28 +1,22 @@
+            fs.writeFileSync(
+              path.join(
+                dataDir,
+                `relationship_sales_company_${ci + 1}_${si + 1}.json`,
+              ),
+              JSON.stringify(rel, null, 2),
+            );
+          });
+        });
+      }
     }
-  }
-}
-
-  if (ownerEntry && ownerEntry.mailing_address) {
-    const mailing = {
-      ...ownerEntry.mailing_address,
-      parcel_identifier: parcelId,
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "mailing_address.json"),
-      JSON.stringify(mailing, null, 2),
-    );
   }
 
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
   if (utilsEntry) {
-    const utilityRecord = {
-      ...utilsEntry,
-      parcel_identifier: parcelId,
-    };
     fs.writeFileSync(
       path.join(dataDir, "utility.json"),
-      JSON.stringify(utilityRecord, null, 2),
+      JSON.stringify(utilsEntry, null, 2),
     );
   }
 
@@ -43,13 +37,9 @@
           lay.is_finished = lay.is_exterior === false;
         }
 
-        const layoutRecord = {
-          ...lay,
-          parcel_identifier: parcelId,
-        };
         fs.writeFileSync(
           path.join(dataDir, `layout_${layoutIdx}.json`),
-          JSON.stringify(layoutRecord, null, 2),
+          JSON.stringify(lay, null, 2),
         );
         layoutIdx++;
       }
@@ -125,6 +115,7 @@
         pool_surface_type: null,
         pool_type: null,
         pool_water_quality: null,
+        request_identifier: null,
         safety_features: null,
         size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
         spa_installation_date: null,

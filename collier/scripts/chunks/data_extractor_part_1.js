@@ -12,36 +12,11 @@ function readJson(p) {
 
 function toNumberCurrency(str) {
   if (str == null) return null;
-  const trimmed = String(str).trim();
-  if (!trimmed || /^[-–—]+$/.test(trimmed)) return null;
-
-  const upperTrimmed = trimmed.toUpperCase();
-  if (upperTrimmed === "N/A" || upperTrimmed === "NA") return null;
-
-  const isAccountingNegative = /^\(.*\)$/.test(trimmed);
-  let cleaned = trimmed.replace(/[$,\s()]/g, "");
-  if (!cleaned) return null;
-
-  cleaned = cleaned.replace(/[^0-9.\-]/g, "");
-  cleaned = cleaned.replace(/(?!^)-/g, "");
-  const dotIndex = cleaned.indexOf(".");
-  if (dotIndex !== -1) {
-    cleaned =
-      cleaned.slice(0, dotIndex + 1) +
-      cleaned.slice(dotIndex + 1).replace(/\./g, "");
-  }
-  if (
-    !cleaned ||
-    cleaned === "." ||
-    cleaned === "-" ||
-    cleaned === "-." ||
-    cleaned === ".-"
-  )
-    return null;
-
+  const cleaned = String(str).replace(/[$,\s]/g, "");
+  if (cleaned === "" || cleaned.toUpperCase() === "N/A") return null;
   const num = Number(cleaned);
-  if (!Number.isFinite(num)) return null;
-  return isAccountingNegative ? -num : num;
+  if (Number.isNaN(num)) return null;
+  return num;
 }
 
 function round2(n) {
@@ -51,11 +26,9 @@ function round2(n) {
 function parseDateToISO(mdyy) {
   if (!mdyy) return null;
   // Accept MM/DD/YY or MM/DD/YYYY
-  const m = mdyy.trim().match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
+  const m = mdyy.trim().match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
   if (!m) return null;
   let [_, mm, dd, yy] = m;
-  mm = mm.padStart(2, "0");
-  dd = dd.padStart(2, "0");
 
   // Fix invalid month/day: convert 00 to 01
   if (mm === "00") mm = "01";
@@ -87,71 +60,6 @@ function parseDateToISO(mdyy) {
   if (dayNum > daysInMonth[monthNum - 1]) return null;
 
   return `${yyyy}-${mm}-${dd}`;
-}
-
-function getCellText($, selector) {
-  const el = $(selector).first();
-  if (!el || el.length === 0) return null;
-  const raw = el.text();
-  if (!raw) return null;
-  const cleaned = raw.replace(/\s+/g, " ").trim();
-  return cleaned.length ? cleaned : null;
-}
-
-function getRawSelectorText($, selector) {
-  const nodes = $(selector);
-  if (!nodes || nodes.length === 0) return null;
-  for (const el of nodes.toArray()) {
-    const raw = $(el).text();
-    if (raw == null) continue;
-    const normalized = raw.replace(/\s+/g, " ").trim();
-    if (normalized.length > 0) {
-      return normalized;
-    }
-  }
-  const fallback = nodes.first().text();
-  return fallback != null && fallback.length > 0 ? fallback.trim() : null;
-}
-
-function addSelectorSource(sourceFields, selectors, value) {
-  if (!sourceFields) return;
-  if (value == null) return;
-  const normalizedValue =
-    typeof value === "string" ? value.trim() : value;
-  if (normalizedValue === "" || normalizedValue == null) return;
-  const list = Array.isArray(selectors) ? selectors : [selectors];
-  for (const selector of list) {
-    if (!selector) continue;
-    sourceFields[selector] = normalizedValue;
-  }
-}
-
-function mergeTaxRecords(primary, secondary) {
-  const result = { ...primary };
-  for (const [key, value] of Object.entries(secondary)) {
-    if (key === "source_fields" && value && typeof value === "object") {
-      const merged = { ...(result.source_fields || {}) };
-      for (const [fieldKey, fieldValue] of Object.entries(value)) {
-        if (fieldValue == null || fieldValue === "") continue;
-        const current = merged[fieldKey];
-        if (
-          current == null ||
-          current === "" ||
-          String(fieldValue).length > String(current).length
-        ) {
-          merged[fieldKey] = fieldValue;
-        }
-      }
-      result.source_fields = merged;
-      continue;
-    }
-    if ((result[key] === null || result[key] === undefined) && value != null) {
-      result[key] = value;
-    } else if (!(key in result) && value !== undefined) {
-      result[key] = value;
-    }
-  }
-  return result;
 }
 
 function capitalizeProperName(name) {
