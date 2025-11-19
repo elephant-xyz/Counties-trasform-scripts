@@ -735,6 +735,7 @@ function main() {
     building_adjusted_area: null,
     lot_size_square_feet: null,
     lot_size_acres: null,
+    municipality_name: null,
     zoning: null,
   };
 
@@ -742,6 +743,10 @@ function main() {
   if (useCodeText) {
     property.property_type = extractPropertyType(useCodeText);
     property.property_usage_type = extractPropertyUsageType(useCodeText);
+  }
+  if (municipality) {
+    property.municipality_name = municipality;
+    propertySourceFields.municipality_name_text = municipality;
   }
 
   // Year built and areas from Building/Extra Features
@@ -1360,15 +1365,18 @@ function main() {
     const coDateText = getCellText($, `#codate${idx}`);
     const issueDate = parseDateToISO(issueDateText || "");
     const coDate = parseDateToISO(coDateText || "");
-    const taxYearPermit = toNumberCurrency(getCellText($, `#taxyear${idx}`));
+    const taxYearText = getCellText($, `#taxyear${idx}`);
+    const taxYearPermit = toNumberCurrency(taxYearText);
+    const hasAnyRawValue = [
+      permitNumber,
+      permitType,
+      issuer,
+      issueDateText,
+      coDateText,
+      taxYearText,
+    ].some((value) => value != null && String(value).trim().length > 0);
 
-    if (
-      !permitNumber &&
-      !permitType &&
-      !issuer &&
-      issueDate == null &&
-      coDate == null
-    ) {
+    if (!hasAnyRawValue && taxYearPermit == null) {
       return;
     }
 
@@ -1385,6 +1393,7 @@ function main() {
     if (issueDateText) permitSourceFields.permit_issue_date_text = issueDateText;
     if (coDateText)
       permitSourceFields.certificate_of_occupancy_date_text = coDateText;
+    if (taxYearText) permitSourceFields.tax_year_text = taxYearText;
     if (Object.keys(permitSourceFields).length > 0) {
       permitObj.source_fields = permitSourceFields;
     }
@@ -1726,8 +1735,33 @@ function main() {
     const totalAdvTaxesH = toNumberCurrency(totalAdvTaxesHText);
     const otherMillageHText = getCellText($, `#HistoryOtherMillage${idx}`);
     const otherMillageH = toNumberCurrency(otherMillageHText);
+    const hasAnyRawValue = [
+      landHText,
+      imprHText,
+      justHText,
+      schoolAssessedText,
+      countyAssessedText,
+      taxableHText,
+      schoolTaxableHText,
+      yearlyHText,
+      nonSchoolBenefitText,
+      totalAdvTaxesHText,
+      otherMillageHText,
+    ].some((text) => text && text.trim().length > 0);
+    const hasAnyNumericValue =
+      landH != null ||
+      imprH != null ||
+      justH != null ||
+      schoolAssessed != null ||
+      countyAssessed != null ||
+      taxableH != null ||
+      schoolTaxableH != null ||
+      yearlyH != null ||
+      nonSchoolBenefit != null ||
+      totalAdvTaxesH != null ||
+      otherMillageH != null;
 
-    if (yNum && (landH != null || imprH != null || justH != null)) {
+    if (yNum && (hasAnyNumericValue || hasAnyRawValue)) {
       years.push({
         idx,
         yNum,
