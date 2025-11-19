@@ -172,6 +172,7 @@ function sanitizeAddressPayloadForWrite(payload) {
     }
 
     for (const candidate of fallbackCandidates) {
+      if (!candidate || typeof candidate.value !== "string") continue;
       trimmedUnnormalized = candidate.value;
       rawValueIsFromSource = candidate.fromSource;
       if (rawValueIsFromSource) {
@@ -179,8 +180,8 @@ function sanitizeAddressPayloadForWrite(payload) {
       }
     }
 
-    if (!rawValueIsFromSource) {
-      trimmedUnnormalized = "";
+    if (!rawValueIsFromSource && trimmedUnnormalized.length) {
+      rawValueIsFromSource = true;
     }
   }
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
