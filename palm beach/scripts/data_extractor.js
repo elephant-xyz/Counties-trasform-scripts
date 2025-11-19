@@ -18757,6 +18757,174 @@ function deriveNormalizedAddressFieldsFromRaw(raw) {
   return result;
 }
 
+function applyCityStatePostalFromRaw(address, raw) {
+  if (!address || typeof address !== "object") return;
+  if (typeof raw !== "string" || !raw.trim().length) return;
+
+  const parsed = parseCityStatePostal(raw);
+  if (parsed.city) {
+    const normalizedCity = sanitizeCityName(parsed.city);
+    if (!hasMeaningfulAddressValue(address.city_name) && normalizedCity) {
+      address.city_name = normalizedCity;
+    }
+  }
+  if (parsed.state) {
+    const normalizedState = normalizeAddressFieldForSchema("state_code", parsed.state);
+    if (!hasMeaningfulAddressValue(address.state_code) && normalizedState) {
+      address.state_code = normalizedState;
+    }
+  }
+  if (parsed.postal) {
+    const normalizedPostal = sanitizePostalCode(parsed.postal);
+    if (!hasMeaningfulAddressValue(address.postal_code) && normalizedPostal) {
+      address.postal_code = normalizedPostal;
+    }
+  }
+  if (parsed.plus4) {
+    const normalizedPlus4 = sanitizePlus4(parsed.plus4);
+    if (
+      !hasMeaningfulAddressValue(address.plus_four_postal_code) &&
+      normalizedPlus4
+    ) {
+      address.plus_four_postal_code = normalizedPlus4;
+    }
+  }
+}
+
+function hydrateAddressFromUnnormalized(address, rawUnnormalized) {
+  if (!address || typeof address !== "object") return;
+  if (typeof rawUnnormalized !== "string" || !rawUnnormalized.trim().length) {
+    return;
+  }
+
+  const parsed = parseLocationAddress(rawUnnormalized);
+  const hasStreetStructure =
+    hasMeaningfulAddressValue(parsed.streetNumber) ||
+    hasMeaningfulAddressValue(parsed.streetName);
+
+  applyCityStatePostalFromRaw(address, rawUnnormalized);
+
+  if (!hasStreetStructure) {
+    return;
+  }
+
+  const setIfMissing = (field, rawValue, normalizer = null) => {
+    if (!hasMeaningfulAddressValue(rawValue)) return;
+    if (hasMeaningfulAddressValue(address[field])) return;
+    const normalized =
+      typeof normalizer === "function" ? normalizer(rawValue) : rawValue;
+    const sanitized = normalizeAddressFieldForSchema(field, normalized);
+    if (sanitized === undefined || sanitized === null) return;
+    address[field] = sanitized;
+  };
+
+  setIfMissing("street_number", parsed.streetNumber);
+  setIfMissing(
+    "street_pre_directional_text",
+    parsed.streetPreDirectional,
+    (value) => value.toUpperCase(),
+  );
+  setIfMissing(
+    "street_post_directional_text",
+    parsed.streetPostDirectional,
+    (value) => value.toUpperCase(),
+  );
+  setIfMissing("street_suffix_type", parsed.streetSuffix, mapStreetSuffixType);
+  setIfMissing("street_name", parsed.streetName, (value) => {
+    const formatted = formatStreetNameCase
+      ? formatStreetNameCase(value)
+      : value;
+    return formatted ? formatted.toUpperCase() : value.toUpperCase();
+  });
+  if (hasMeaningfulAddressValue(parsed.unitIdentifier)) {
+    const trimmedUnit = String(parsed.unitIdentifier).trim();
+    const numericUnit = trimmedUnit.replace(/\D/g, "");
+    const postalDigits = hasMeaningfulAddressValue(address.postal_code)
+      ? String(address.postal_code).replace(/\D/g, "")
+      : "";
+    const plusFourDigits = hasMeaningfulAddressValue(address.plus_four_postal_code)
+      ? String(address.plus_four_postal_code).replace(/\D/g, "")
+      : "";
+    const resemblesPostal =
+      (numericUnit && postalDigits && numericUnit === postalDigits) ||
+      (numericUnit && plusFourDigits && numericUnit === plusFourDigits);
+    if (!resemblesPostal) {
+      setIfMissing("unit_identifier", trimmedUnit);
+    }
+  }
+  setIfMissing("route_number", parsed.routeNumber);
+}
+
+function extractGridComponentsFromLegalDescription(legalDescription) {
+  if (typeof legalDescription !== "string") return {};
+  const normalized = legalDescription
+    .replace(/[-–—]/g, " ")
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+  if (!normalized.length) return {};
+
+  const result = {};
+
+  const townshipMatch =
+    normalized.match(/\bT(?:WN|WP|OWNSHIP)?\.?\s*0*([0-9]{1,2})\b/) ||
+    normalized.match(/\bT\s*0*([0-9]{1,2})\b/);
+  if (townshipMatch && townshipMatch[1]) {
+    result.township = padGridValue(townshipMatch[1], 2);
+  }
+
+  const rangeMatch =
+    normalized.match(/\bR(?:ANGE)?\.?\s*0*([0-9]{1,2})\b/) ||
+    normalized.match(/\bR\s*0*([0-9]{1,2})\b/);
+  if (rangeMatch && rangeMatch[1]) {
+    result.range = padGridValue(rangeMatch[1], 2);
+  }
+
+  const sectionMatch =
+    normalized.match(/\bS(?:EC(?:TION)?)?\.?\s*0*([0-9]{1,2})\b/) ||
+    normalized.match(/\bSEC(?:TION)?\s*0*([0-9]{1,2})\b/);
+  if (sectionMatch && sectionMatch[1]) {
+    result.section = padGridValue(sectionMatch[1], 2);
+  }
+
+  const blockMatch =
+    normalized.match(/\bBLK\.?\s*([A-Z0-9]+)\b/) ||
+    normalized.match(/\bBLOCK\s+([A-Z0-9]+)\b/);
+  if (blockMatch && blockMatch[1]) {
+    const cleaned = blockMatch[1].replace(/[^A-Z0-9]/g, "");
+    if (cleaned.length) {
+      result.block = padGridValue(cleaned, 3);
+    }
+  }
+
+  const lotMatch = normalized.match(/\bLOT\s+([A-Z0-9\-]+)\b/);
+  if (lotMatch && lotMatch[1]) {
+    const cleaned = lotMatch[1].replace(/[^A-Z0-9]/g, "");
+    if (cleaned.length) {
+      result.lot = padGridValue(cleaned, 4);
+    }
+  }
+
+  return result;
+}
+
+function applyGridComponentsFromLegal(address, legalDescription) {
+  if (!address || typeof address !== "object") return;
+  if (typeof legalDescription !== "string" || !legalDescription.trim().length) {
+    return;
+  }
+
+  const gridComponents = extractGridComponentsFromLegalDescription(
+    legalDescription,
+  );
+  if (!gridComponents || !Object.keys(gridComponents).length) return;
+
+  for (const [field, value] of Object.entries(gridComponents)) {
+    if (!hasMeaningfulAddressValue(value)) continue;
+    if (hasMeaningfulAddressValue(address[field])) continue;
+    address[field] = value;
+  }
+}
+
 function strengthenAddressFromRawCandidates(address, rawCandidates = []) {
   if (!address || typeof address !== "object") return address;
   if (!Array.isArray(rawCandidates) || !rawCandidates.length) return address;
@@ -27020,6 +27188,31 @@ async function main() {
     const canonicalUnnormalized = trimmedUnnormalized.length
       ? trimmedUnnormalized
       : null;
+
+    if (canonicalUnnormalized) {
+      hydrateAddressFromUnnormalized(addressForOutput, canonicalUnnormalized);
+      hydrateAddressFromUnnormalized(address, canonicalUnnormalized);
+      hydrateAddressFromUnnormalized(baseAddressSeed, canonicalUnnormalized);
+    }
+    if (
+      resolvedUnnormalized &&
+      (!canonicalUnnormalized || canonicalUnnormalized !== resolvedUnnormalized)
+    ) {
+      hydrateAddressFromUnnormalized(addressForOutput, resolvedUnnormalized);
+      hydrateAddressFromUnnormalized(address, resolvedUnnormalized);
+      hydrateAddressFromUnnormalized(baseAddressSeed, resolvedUnnormalized);
+    }
+    if (locationLine) {
+      hydrateAddressFromUnnormalized(addressForOutput, locationLine);
+      hydrateAddressFromUnnormalized(address, locationLine);
+      hydrateAddressFromUnnormalized(baseAddressSeed, locationLine);
+    }
+    applyCityStatePostalFromRaw(addressForOutput, canonicalUnnormalized);
+    applyCityStatePostalFromRaw(addressForOutput, resolvedUnnormalized);
+    applyCityStatePostalFromRaw(addressForOutput, locationLine);
+    applyGridComponentsFromLegal(addressForOutput, legalDesc);
+    applyGridComponentsFromLegal(address, legalDesc);
+    applyGridComponentsFromLegal(baseAddressSeed, legalDesc);
 
     const applyStreetFallback = (parsed) => {
       if (!parsed || typeof parsed !== "object") return;
