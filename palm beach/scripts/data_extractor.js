@@ -5160,6 +5160,87 @@ function hasRawAddressRequiredValues(address) {
 
   address.unnormalized_address = trimmedUnnormalized;
 
+  const derivedFromRaw = deriveNormalizedAddressFieldsFromRaw(
+    trimmedUnnormalized,
+  );
+  if (derivedFromRaw && typeof derivedFromRaw === "object") {
+    for (const [field, rawValue] of Object.entries(derivedFromRaw)) {
+      if (hasMeaningfulAddressValue(address[field])) continue;
+      const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+      if (normalizedValue === undefined || normalizedValue === null) continue;
+
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const coordinate = parseCoordinate(normalizedValue);
+        if (Number.isFinite(coordinate)) {
+          address[field] = coordinate;
+        }
+        continue;
+      }
+
+      if (typeof normalizedValue === "string") {
+        const trimmed = normalizedValue.trim();
+        if (trimmed.length) {
+          address[field] = trimmed;
+        }
+        continue;
+      }
+
+      address[field] = normalizedValue;
+    }
+  }
+
+  const ensureFallbackString = (field, fallback) => {
+    if (hasMeaningfulAddressValue(address[field])) return;
+    if (!fallback) return;
+    const normalized = normalizeAddressFieldForSchema(field, fallback);
+    if (normalized === undefined || normalized === null) return;
+    if (typeof normalized === "string") {
+      const trimmed = normalized.trim();
+      if (trimmed.length) {
+        address[field] = trimmed;
+      }
+      return;
+    }
+    address[field] = normalized;
+  };
+
+  if (
+    hasMeaningfulAddressValue(address.city_name) &&
+    !hasMeaningfulAddressValue(address.municipality_name)
+  ) {
+    ensureFallbackString("municipality_name", address.city_name);
+  }
+
+  for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
+    const candidate = hasMeaningfulAddressValue(address[field])
+      ? address[field]
+      : null;
+    if (candidate == null) {
+      return false;
+    }
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (!trimmed.length) {
+        return false;
+      }
+      address[field] = trimmed;
+    }
+  }
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+      continue;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof address[field] === "string") {
+      const trimmed = address[field].trim();
+      address[field] = trimmed.length ? trimmed : null;
+    }
+  }
+
   const parsedLatitude = parseCoordinate(address.latitude);
   const parsedLongitude = parseCoordinate(address.longitude);
   const hasLatitude = Number.isFinite(parsedLatitude);
@@ -5171,6 +5252,13 @@ function hasRawAddressRequiredValues(address) {
   } else {
     address.latitude = null;
     address.longitude = null;
+  }
+
+  if (!address.postal_code) {
+    address.plus_four_postal_code = null;
+  }
+  if (address.state_code && !address.country_code) {
+    address.country_code = "US";
   }
 
   return true;
