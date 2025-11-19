@@ -106,6 +106,14 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
+  "CHURCH",
+  "MINISTRIES",
+  "TEMPLE",
+  "PARISH",
+  "DIOCESE",
+  "MISSION",
+  "SOCIETY",
+  "FELLOWSHIP",
 ];
 
 function looksLikeCompany(name) {
@@ -442,17 +450,19 @@ function extractPropertyId($) {
 }
 
 // Extract all plausible owner name strings from variable structures
-function extractOwnerNameStrings($) {
+function extractOwnerNameStrings($, captureFunc) {
   // Extract only from OwnerLine1, OwnerLine2, OwnerLine3, etc.
   // The last OwnerLine is always the address, so we skip it
   const ownerLines = [];
 
-  // Find all OwnerLine spans
+  // Find all OwnerLine spans - capture all lines to mark as mapped
   for (let i = 1; i <= 10; i++) {
-    const txt = norm($(`#OwnerLine${i}`).text());
+    const txt = captureFunc ? captureFunc(`#OwnerLine${i}`, $) : norm($(`#OwnerLine${i}`).text());
     if (txt) {
       ownerLines.push(txt);
     } else {
+      // Still capture empty ones to mark selector as accessed
+      if (captureFunc) captureFunc(`#OwnerLine${i}`, $);
       // Stop when we hit an empty line
       break;
     }
@@ -491,11 +501,78 @@ function buildOwnersByDate(validOwners) {
   return map;
 }
 
+function buildMailingAddress($, captureFunc) {
+  const rawLines = [];
+  for (let i = 1; i <= 10; i++) {
+    const text = captureFunc ? captureFunc(`#OwnerLine${i}`, $) : norm($(`#OwnerLine${i}`).text());
+    if (text) rawLines.push(text);
+  }
+
+  const city = captureFunc ? captureFunc("#OwnerCity", $) : norm($("#OwnerCity").text());
+  const state = captureFunc ? captureFunc("#OwnerState", $) : norm($("#OwnerState").text());
+  const postal = captureFunc ? captureFunc("#OwnerZip", $) : norm($("#OwnerZip").text());
+
+  const addressParts = [];
+  const addressKeywords = [
+    "PO BOX",
+    "P.O. BOX",
+    "UNIT",
+    "STE",
+    "SUITE",
+    "APT",
+    "STREET",
+    "ROAD",
+    "AVENUE",
+    "DR",
+    "DRIVE",
+    "COURT",
+    "LANE",
+    "BOULEVARD",
+    "PKWY",
+    "PARKWAY",
+    "HIGHWAY",
+  ];
+  let started = false;
+  rawLines.forEach((line) => {
+    const upper = line.toUpperCase();
+    const containsKeyword = addressKeywords.some((kw) => {
+      if (kw.includes(" ")) {
+        return upper.includes(kw);
+      }
+      const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+      const regex = new RegExp(`\\b${escaped}\\b`);
+      return regex.test(upper);
+    });
+    if (
+      started ||
+      /\d/.test(upper) ||
+      containsKeyword
+    ) {
+      addressParts.push(line);
+      started = true;
+    }
+  });
+
+  const cityStateZip = [city, state, postal].filter(Boolean).join(" ");
+  if (cityStateZip) {
+    addressParts.push(cityStateZip);
+  }
+
+  const unnormalized = addressParts.filter(Boolean).join(", ");
+  if (!unnormalized) return null;
+  return { unnormalized_address: unnormalized };
+}
+
 // Main processing
 (function main() {
+  // Helper function for capturing selector values (not used but passed for consistency)
+  function captureSelector(selector, $elem) {
+    return norm($elem(selector).text());
+  }
+
   const propertyId = extractPropertyId($);
 
-  const rawOwnerStrings = extractOwnerNameStrings($);
+  const rawOwnerStrings = extractOwnerNameStrings($, captureSelector);
   const validOwners = [];
   const invalidOwners = [];
 
@@ -527,82 +604,7 @@ function buildOwnersByDate(validOwners) {
 
   const ownersByDate = buildOwnersByDate(deduped);
 
-  const mailingLine1 = norm($("#OwnerLine3").text());
-  const mailingLine2 = norm($("#OwnerLine4").text());
-  const mailingCity = norm($("#OwnerCity").text());
-  const mailingState = norm($("#OwnerState").text());
-  const mailingZipRaw = norm($("#OwnerZip").text());
-
-  let postalCode = null;
-  let plusFour = null;
-  if (mailingZipRaw) {
-    const zipMatch = mailingZipRaw.match(/^(\d{5})(?:[-\s]?(\d{4}))?$/);
-    if (zipMatch) {
-      postalCode = zipMatch[1];
-      plusFour = zipMatch[2] || null;
-    }
-  }
-
-  const canNormalize =
-    mailingLine1 && mailingCity && mailingState && postalCode;
-
-  const normalizedMailing = {};
-  if (canNormalize) {
-    normalizedMailing.address_line_1 = mailingLine1;
-    if (mailingLine2) normalizedMailing.address_line_2 = mailingLine2;
-    normalizedMailing.city_name = mailingCity;
-    normalizedMailing.state_code = mailingState;
-    normalizedMailing.postal_code = postalCode;
-    if (plusFour) normalizedMailing.plus_four_postal_code = plusFour;
-  }
-
-  const addressSegments = [];
-  if (mailingLine1) addressSegments.push(mailingLine1);
-  if (mailingLine2) addressSegments.push(mailingLine2);
-  const cityStateParts = [];
-  if (mailingCity) cityStateParts.push(mailingCity);
-  if (mailingState) cityStateParts.push(mailingState);
-  let cityStateZip = null;
-  if (cityStateParts.length) {
-    cityStateZip = cityStateParts.join(", ");
-    if (mailingZipRaw) {
-      cityStateZip = `${cityStateZip} ${mailingZipRaw}`;
-    }
-  } else if (mailingZipRaw) {
-    cityStateZip = mailingZipRaw;
-  }
-  if (cityStateZip) addressSegments.push(cityStateZip.trim());
-  const unnormalizedMailing =
-    addressSegments.length > 0 ? addressSegments.join(", ") : null;
-
-  const mailingSourceFields = {};
-  if (mailingLine1) mailingSourceFields.address_line_1_text = mailingLine1;
-  if (mailingLine2) mailingSourceFields.address_line_2_text = mailingLine2;
-  if (mailingCity) mailingSourceFields.city_name_text = mailingCity;
-  if (mailingState) mailingSourceFields.state_code_text = mailingState;
-  if (postalCode) mailingSourceFields.postal_code_text = postalCode;
-  if (plusFour) mailingSourceFields.plus_four_postal_code_text = plusFour;
-  if (unnormalizedMailing)
-    mailingSourceFields.unnormalized_address_text = unnormalizedMailing;
-
-  let mailingAddress = null;
-  if (unnormalizedMailing) {
-    mailingAddress = {
-      unnormalized_address: unnormalizedMailing,
-      request_identifier: propertyId || null,
-    };
-    if (canNormalize) {
-      mailingAddress.normalized_address = normalizedMailing;
-    }
-  } else if (canNormalize) {
-    mailingAddress = {
-      normalized_address: normalizedMailing,
-      request_identifier: propertyId || null,
-    };
-  }
-  if (mailingAddress && Object.keys(mailingSourceFields).length > 0) {
-    mailingAddress.source_fields = mailingSourceFields;
-  }
+  const mailingAddress = buildMailingAddress($, captureSelector);
 
   // Build final object
   const result = {};
