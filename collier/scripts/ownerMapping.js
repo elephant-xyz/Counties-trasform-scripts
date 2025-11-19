@@ -576,14 +576,32 @@ function buildOwnersByDate(validOwners) {
     addressSegments.length > 0 ? addressSegments.join(", ") : null;
 
   const mailingSourceFields = {};
-  if (mailingLine1) mailingSourceFields.address_line_1_text = mailingLine1;
-  if (mailingLine2) mailingSourceFields.address_line_2_text = mailingLine2;
-  if (mailingCity) mailingSourceFields.city_name_text = mailingCity;
-  if (mailingState) mailingSourceFields.state_code_text = mailingState;
-  if (postalCode) mailingSourceFields.postal_code_text = postalCode;
+  if (mailingLine1) {
+    mailingSourceFields.address_line_1_text = mailingLine1;
+    mailingSourceFields["#OwnerLine3"] = mailingLine1;
+  }
+  if (mailingLine2) {
+    mailingSourceFields.address_line_2_text = mailingLine2;
+    mailingSourceFields["#OwnerLine4"] = mailingLine2;
+  }
+  if (mailingCity) {
+    mailingSourceFields.city_name_text = mailingCity;
+    mailingSourceFields["#OwnerCity"] = mailingCity;
+  }
+  if (mailingState) {
+    mailingSourceFields.state_code_text = mailingState;
+    mailingSourceFields["#OwnerState"] = mailingState;
+  }
+  if (postalCode) {
+    mailingSourceFields.postal_code_text = postalCode;
+    mailingSourceFields["#OwnerZip"] = mailingZipRaw || postalCode;
+  } else if (mailingZipRaw) {
+    mailingSourceFields["#OwnerZip"] = mailingZipRaw;
+  }
   if (plusFour) mailingSourceFields.plus_four_postal_code_text = plusFour;
-  if (unnormalizedMailing)
+  if (unnormalizedMailing) {
     mailingSourceFields.unnormalized_address_text = unnormalizedMailing;
+  }
 
   let mailingAddress = null;
   if (canNormalize) {

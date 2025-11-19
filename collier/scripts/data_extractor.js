@@ -909,13 +909,30 @@ function main() {
     municipality,
   );
   const addressSourceFields = {};
-  if (municipality)
+  if (municipality) {
     addressSourceFields.municipality_name_text = municipality;
-  if (section) addressSourceFields.section_text = section;
-  if (township) addressSourceFields.township_text = township;
-  if (range) addressSourceFields.range_text = range;
-  if (fullAddressHtml)
+    addSelectorSource(addressSourceFields, "#Municipality", municipality);
+  }
+  if (section) {
+    addressSourceFields.section_text = section;
+    addSelectorSource(addressSourceFields, "#Section", section);
+  }
+  if (township) {
+    addressSourceFields.township_text = township;
+    addSelectorSource(addressSourceFields, "#Township", township);
+  }
+  if (range) {
+    addressSourceFields.range_text = range;
+    addSelectorSource(addressSourceFields, "#Range", range);
+  }
+  if (fullAddressHtml) {
     addressSourceFields.unnormalized_address_text = fullAddressHtml;
+    addSelectorSource(
+      addressSourceFields,
+      "#FullAddressUnit",
+      fullAddressHtml,
+    );
+  }
   if (Object.keys(addressSourceFields).length > 0) {
     addressObj.source_fields = {
       ...(addressObj.source_fields || {}),
