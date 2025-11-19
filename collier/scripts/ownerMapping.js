@@ -59,6 +59,9 @@ function isLikelyAddress(text) {
     " STE ",
     " P.O. ",
     " PO BOX ",
+    " C/O ",
+    " CARE OF ",
+    " ATTN ",
   ];
   const padded = " " + t + " ";
   for (const token of addrTokens) {
@@ -106,14 +109,6 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
-  "CHURCH",
-  "MINISTRIES",
-  "TEMPLE",
-  "PARISH",
-  "DIOCESE",
-  "MISSION",
-  "SOCIETY",
-  "FELLOWSHIP",
 ];
 
 function looksLikeCompany(name) {
@@ -449,30 +444,27 @@ function extractPropertyId($) {
   return best ? best : "unknown_id";
 }
 
-// Extract all plausible owner name strings from variable structures
-function extractOwnerNameStrings($) {
-  // Extract only from OwnerLine1, OwnerLine2, OwnerLine3, etc.
-  // The last OwnerLine is always the address, so we skip it
+// Partition owner lines into owner names vs mailing address lines
+function collectOwnerMailingLines($) {
   const ownerLines = [];
+  const mailingLines = [];
+  let addressStarted = false;
 
-  // Find all OwnerLine spans
   for (let i = 1; i <= 10; i++) {
-    const txt = norm($(`#OwnerLine${i}`).text());
-    if (txt) {
-      ownerLines.push(txt);
+    const selector = `#OwnerLine${i}`;
+    const text = norm($(selector).text());
+    if (!text) continue;
+
+    const looksAddress = isLikelyAddress(text);
+    if (looksAddress || addressStarted) {
+      addressStarted = true;
+      mailingLines.push({ text, selector });
     } else {
-      // Stop when we hit an empty line
-      break;
+      ownerLines.push({ text, selector });
     }
   }
 
-  // Remove the last line (it's always the address/city)
-  if (ownerLines.length > 0) {
-    ownerLines.pop();
-  }
-
-  // Filter out any remaining address-like entries
-  return ownerLines.filter(line => !isLikelyAddress(line));
+  return { ownerLines, mailingLines };
 }
 
 // Deduplicate owners by normalized key
@@ -499,105 +491,186 @@ function buildOwnersByDate(validOwners) {
   return map;
 }
 
-function buildMailingAddress($) {
-  const rawLines = [];
-  for (let i = 1; i <= 10; i++) {
-    const text = norm($(`#OwnerLine${i}`).text());
-    if (text) rawLines.push(text);
-  }
-
-  const city = norm($("#OwnerCity").text());
-  const state = norm($("#OwnerState").text());
-  const postal = norm($("#OwnerZip").text());
-
-  const addressParts = [];
-  const addressKeywords = [
-    "PO BOX",
-    "P.O. BOX",
-    "UNIT",
-    "STE",
-    "SUITE",
-    "APT",
-    "STREET",
-    "ROAD",
-    "AVENUE",
-    "DR",
-    "DRIVE",
-    "COURT",
-    "LANE",
-    "BOULEVARD",
-    "PKWY",
-    "PARKWAY",
-    "HIGHWAY",
-  ];
-  let started = false;
-  rawLines.forEach((line) => {
-    const upper = line.toUpperCase();
-    const containsKeyword = addressKeywords.some((kw) => {
-      if (kw.includes(" ")) {
-        return upper.includes(kw);
-      }
-      const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-      const regex = new RegExp(`\\b${escaped}\\b`);
-      return regex.test(upper);
-    });
-    if (
-      started ||
-      /\d/.test(upper) ||
-      containsKeyword
-    ) {
-      addressParts.push(line);
-      started = true;
-    }
-  });
-
-  const cityStateZip = [city, state, postal].filter(Boolean).join(" ");
-  if (cityStateZip) {
-    addressParts.push(cityStateZip);
-  }
-
-  const unnormalized = addressParts.filter(Boolean).join(", ");
-  if (!unnormalized) return null;
-  return { unnormalized_address: unnormalized };
-}
-
 // Main processing
 (function main() {
   const propertyId = extractPropertyId($);
 
-  const rawOwnerStrings = extractOwnerNameStrings($);
+  const { ownerLines, mailingLines } = collectOwnerMailingLines($);
   const validOwners = [];
   const invalidOwners = [];
 
   // Classify and collect
-  for (const raw of rawOwnerStrings) {
+  for (const entry of ownerLines) {
+    const raw = entry.text;
+    const selector = entry.selector;
     const res = classifyOwner(raw);
     if (res.valid) {
       // Handle case where classifyOwner returns multiple owners (e.g., "LAST, FIRST=& FIRST2")
       if (res.owners && Array.isArray(res.owners)) {
-        res.owners.forEach(owner => validOwners.push(owner));
+        res.owners.forEach(owner => {
+          if (!owner) return;
+          const cleanedOwner = {
+            ...owner,
+          };
+          const sourceFields = {
+            owner_line_text: norm(raw),
+          };
+          if (selector) {
+            sourceFields[selector] = norm(raw);
+          }
+          cleanedOwner.source_fields = sourceFields;
+          validOwners.push(cleanedOwner);
+        });
       } else if (res.owner) {
-        validOwners.push(res.owner);
+        const cleanedOwner = {
+          ...res.owner,
+        };
+        const sourceFields = {
+          owner_line_text: norm(raw),
+        };
+        if (selector) {
+          sourceFields[selector] = norm(raw);
+        }
+        cleanedOwner.source_fields = sourceFields;
+        validOwners.push(cleanedOwner);
       }
     } else {
-      invalidOwners.push({ raw: norm(raw), reason: res.reason || "unknown" });
+      invalidOwners.push({
+        raw: norm(raw),
+        reason: res.reason || "unknown",
+      });
     }
   }
 
   // Deduplicate valid owners
-  const seen = new Set();
+  const seen = new Map();
   const deduped = [];
   for (const o of validOwners) {
     const key = normalizeKeyForDedup(o);
     if (!key) continue;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(o);
+    if (seen.has(key)) {
+      const existing = seen.get(key);
+      if (o.source_fields) {
+        existing.source_fields = existing.source_fields || {};
+        for (const [fieldKey, fieldValue] of Object.entries(o.source_fields)) {
+          if (fieldValue == null || fieldValue === "") continue;
+          if (!(fieldKey in existing.source_fields)) {
+            existing.source_fields[fieldKey] = fieldValue;
+          }
+        }
+      }
+      continue;
+    }
+    const cloned = { ...o };
+    if (o.source_fields) {
+      cloned.source_fields = { ...o.source_fields };
+    }
+    seen.set(key, cloned);
+    deduped.push(cloned);
   }
 
   const ownersByDate = buildOwnersByDate(deduped);
 
-  const mailingAddress = buildMailingAddress($);
+  const mailingLine1Entry = mailingLines[0] || null;
+  const mailingLine2Entry = mailingLines[1] || null;
+  const mailingLine1 = mailingLine1Entry ? mailingLine1Entry.text : null;
+  const mailingLine2 = mailingLine2Entry ? mailingLine2Entry.text : null;
+  const mailingCity = norm($("#OwnerCity").text());
+  const mailingState = norm($("#OwnerState").text());
+  const mailingZipRaw = norm($("#OwnerZip").text());
+
+  let postalCode = null;
+  let plusFour = null;
+  if (mailingZipRaw) {
+    const zipMatch = mailingZipRaw.match(/^(\d{5})(?:[-\s]?(\d{4}))?$/);
+    if (zipMatch) {
+      postalCode = zipMatch[1];
+      plusFour = zipMatch[2] || null;
+    }
+  }
+
+  const addressSegments = [];
+  mailingLines.forEach((entry) => {
+    if (entry.text) addressSegments.push(entry.text);
+  });
+  const cityStateParts = [];
+  if (mailingCity) cityStateParts.push(mailingCity);
+  if (mailingState) cityStateParts.push(mailingState);
+  let cityStateZip = null;
+  if (cityStateParts.length) {
+    cityStateZip = cityStateParts.join(", ");
+    if (mailingZipRaw) {
+      cityStateZip = `${cityStateZip} ${mailingZipRaw}`;
+    }
+  } else if (mailingZipRaw) {
+    cityStateZip = mailingZipRaw;
+  }
+  if (cityStateZip) addressSegments.push(cityStateZip.trim());
+  const unnormalizedMailing =
+    addressSegments.length > 0 ? addressSegments.join(", ") : null;
+
+  const hasNormalizedAddressParts =
+    mailingLine1 || mailingLine2 || mailingCity || mailingState || postalCode;
+
+  const mailingSourceFields = {};
+  if (mailingLine1) {
+    mailingSourceFields.address_line_1_text = mailingLine1;
+    if (mailingLine1Entry) {
+      mailingSourceFields[mailingLine1Entry.selector] = mailingLine1;
+    }
+  }
+  if (mailingLine2) {
+    mailingSourceFields.address_line_2_text = mailingLine2;
+    if (mailingLine2Entry) {
+      mailingSourceFields[mailingLine2Entry.selector] = mailingLine2;
+    }
+  }
+  if (mailingCity) {
+    mailingSourceFields.city_name_text = mailingCity;
+    mailingSourceFields["#OwnerCity"] = mailingCity;
+  }
+  if (mailingState) {
+    mailingSourceFields.state_code_text = mailingState;
+    mailingSourceFields["#OwnerState"] = mailingState;
+  }
+  if (postalCode) {
+    mailingSourceFields.postal_code_text = postalCode;
+    mailingSourceFields["#OwnerZip"] = mailingZipRaw || postalCode;
+  } else if (mailingZipRaw) {
+    mailingSourceFields["#OwnerZip"] = mailingZipRaw;
+  }
+  if (plusFour) {
+    mailingSourceFields.plus_four_postal_code_text = plusFour;
+  }
+  if (mailingLines.length > 2) {
+    mailingLines.slice(2).forEach((entry) => {
+      if (entry.text) {
+        mailingSourceFields[entry.selector] = entry.text;
+      }
+    });
+  }
+  if (unnormalizedMailing) {
+    mailingSourceFields.unnormalized_address_text = unnormalizedMailing;
+  }
+
+  let mailingAddress = null;
+  if (hasNormalizedAddressParts) {
+    const normalizedAddress = {};
+    if (mailingLine1) normalizedAddress.address_line_1 = mailingLine1;
+    if (mailingLine2) normalizedAddress.address_line_2 = mailingLine2;
+    if (mailingCity) normalizedAddress.city_name = mailingCity;
+    if (mailingState) normalizedAddress.state_code = mailingState;
+    if (postalCode) normalizedAddress.postal_code = postalCode;
+    if (plusFour) normalizedAddress.plus_four_postal_code = plusFour;
+    mailingAddress = { normalized_address: normalizedAddress };
+  } else if (unnormalizedMailing) {
+    mailingAddress = {
+      unnormalized_address: unnormalizedMailing,
+    };
+  }
+  if (mailingAddress && Object.keys(mailingSourceFields).length > 0) {
+    mailingAddress.source_fields = mailingSourceFields;
+  }
 
   // Build final object
   const result = {};

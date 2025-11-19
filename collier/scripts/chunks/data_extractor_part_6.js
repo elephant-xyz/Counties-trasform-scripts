@@ -1,70 +1,128 @@
-      bookPage,
-    };
-    saleRows.push(row);
-  });
+  const parseBookAndPage = (value) => {
+    if (!value) {
+      return { bookNumber: null, pageNumber: null };
+    }
+    const tokens = value.split(/[-/]/).map((part) => part.trim()).filter(Boolean);
+    let bookNumber = null;
+    let pageNumber = null;
+    if (tokens.length >= 2) {
+      const bookCandidate = Number(tokens[0].replace(/[^\d]/g, ""));
+      const pageCandidate = Number(tokens[1].replace(/[^\d]/g, ""));
+      bookNumber = Number.isFinite(bookCandidate) && !Number.isNaN(bookCandidate) ? bookCandidate : null;
+      pageNumber = Number.isFinite(pageCandidate) && !Number.isNaN(pageCandidate) ? pageCandidate : null;
+    }
+    return { bookNumber, pageNumber };
+  };
 
-  // Create deed and file files for every sale row (even $0)
+  // Create deed files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
-    const deedObj = {};
+    const { bookNumber, pageNumber } = parseBookAndPage(row.bookPage);
+    const deedObj = {
+      parcel_identifier: parcelId,
+      document_identifier: row.bookPage || null,
+      recording_book_number: bookNumber,
+      recording_page_number: pageNumber,
+    };
+    const deedSourceFields = {};
+    if (row.bookPageRaw) {
+      deedSourceFields.document_identifier_text = row.bookPageRaw;
+    }
+    if (row.dateRaw) {
+      deedSourceFields.sale_date_text = row.dateRaw;
+    }
+    if (row.amountRaw) {
+      deedSourceFields.sale_amount_text = row.amountRaw;
+    }
+    const deedDocumentValue = row.bookPageRaw || row.bookPage;
+    addSelectorSource(
+      deedSourceFields,
+      row.bookPagePrimarySelector,
+      deedDocumentValue,
+    );
+    addSelectorSource(
+      deedSourceFields,
+      row.bookPageFallbackSelector,
+      deedDocumentValue,
+    );
+    addSelectorSource(
+      deedSourceFields,
+      `#SaleAmount${row.rowIndex}`,
+      row.amountRaw || row.amountText,
+    );
+    addSelectorSource(
+      deedSourceFields,
+      `#SaleDate${row.rowIndex}`,
+      row.dateRaw || row.dateTxt,
+    );
+    if (Object.keys(deedSourceFields).length > 0) {
+      deedObj.source_fields = deedSourceFields;
+    }
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
     );
-
-    const fileObj = {
-      file_format: null, // unknown (pdf not in enum)
-      name: row.bookPage || null,
-      original_url: null, // not provided (javascript: link only)
-      ipfs_url: null,
-      document_type: "ConveyanceDeed",
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `file_${idx + 1}.json`),
-      JSON.stringify(fileObj, null, 2),
-    );
-
-    const relDf = {
-      from: { "/": `./deed_${idx + 1}.json` },
-      to: { "/": `./file_${idx + 1}.json` },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
-      JSON.stringify(relDf, null, 2),
-    );
   });
 
-  // Create sales files for all valid sales (including $0 amounts)
-  const validSales = saleRows.filter(
-    (r) => r.amount != null && r.iso,
-  );
-  validSales.sort((a, b) => a.iso.localeCompare(b.iso));
-  validSales.forEach((s, idx) => {
+  // Create sales files for every sale row that contains any usable data
+  const saleRecords = saleRows.filter((row) => {
+    return (
+      row.amount != null ||
+      !!row.iso ||
+      (row.bookPage && row.bookPage.length > 0) ||
+      (row.dateRaw && row.dateRaw.length > 0)
+    );
+  });
+  saleRecords.forEach((s, idx) => {
     const saleObj = {
-      ownership_transfer_date: s.iso,
-      purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
+      parcel_identifier: parcelId,
     };
+    if (s.iso) {
+      saleObj.ownership_transfer_date = s.iso;
+    }
+    if (s.amount != null) {
+      saleObj.purchase_price_amount = s.amount;
+    }
+    if (s.bookPage) {
+      saleObj.document_identifier = s.bookPage;
+    }
+    const saleSourceFields = {};
+    if (s.dateRaw) {
+      saleSourceFields.sale_date_text = s.dateRaw;
+    }
+    if (s.amountRaw) {
+      saleSourceFields.purchase_price_amount_text = s.amountRaw;
+    }
+    if (s.bookPageRaw) {
+      saleSourceFields.document_identifier_text = s.bookPageRaw;
+    }
+    addSelectorSource(
+      saleSourceFields,
+      `#SaleAmount${s.rowIndex}`,
+      s.amountRaw || s.amountText,
+    );
+    const saleDocumentValue = s.bookPageRaw || s.bookPage;
+    addSelectorSource(
+      saleSourceFields,
+      s.bookPagePrimarySelector,
+      saleDocumentValue,
+    );
+    addSelectorSource(
+      saleSourceFields,
+      s.bookPageFallbackSelector,
+      saleDocumentValue,
+    );
+    addSelectorSource(
+      saleSourceFields,
+      `#SaleDate${s.rowIndex}`,
+      s.dateRaw || s.dateTxt,
+    );
+    if (Object.keys(saleSourceFields).length > 0) {
+      saleObj.source_fields = saleSourceFields;
+    }
     fs.writeFileSync(
-      path.join(dataDir, `sales_${idx + 1}.json`),
+      path.join(dataDir, `sale_${idx + 1}.json`),
       JSON.stringify(saleObj, null, 2),
     );
-  });
-
-  // Relationship: sales -> deed for all valid sales (map to original row index)
-  validSales.forEach((s, idx) => {
-    const orig = saleRows.findIndex(
-      (r) => r.iso === s.iso && r.amount === s.amount,
-    );
-    if (orig !== -1) {
-      const deedIdx = orig + 1;
-      const rel = {
-        from: { "/": `./sales_${idx + 1}.json` },
-        to: { "/": `./deed_${deedIdx}.json` },
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
-        JSON.stringify(rel, null, 2),
-      );
-    }
   });
 
   // Owners (company/person) from owners/owner_data.json
@@ -77,39 +135,28 @@
   ) {
     const curr = ownerEntry.owners_by_date.current;
     if (curr.length > 0) {
-      // Cleanup any legacy duplicate relationship files
-      const relFiles = fs.readdirSync(dataDir);
-      for (const f of relFiles) {
-        if (
-          f.startsWith("relationship_sales_person") ||
-          f.startsWith("relationship_sales_company") ||
-          f.startsWith("relationship_sales_history_has_person") ||
-          f.startsWith("relationship_sales_history_has_company")
-        ) {
-          try {
-            fs.unlinkSync(path.join(dataDir, f));
-          } catch (_) {}
-        }
-      }
-
       // Handle mixed owner types (persons and companies)
       let personIdx = 1;
       let companyIdx = 1;
-      const personFiles = [];
-      const companyFiles = [];
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
-          const comp = { name: owner.name || null };
+          const comp = {
+            parcel_identifier: parcelId,
+            name: owner.name || null,
+          };
+          if (owner.source_fields && Object.keys(owner.source_fields).length > 0) {
+            comp.source_fields = { ...owner.source_fields };
+          }
           const filename = `company_${companyIdx}.json`;
           fs.writeFileSync(
             path.join(dataDir, filename),
             JSON.stringify(comp, null, 2),
           );
-          companyFiles.push(`./${filename}`);
           companyIdx++;
         } else if (owner.type === "person") {
           const person = {
+            parcel_identifier: parcelId,
             birth_date: owner.birth_date || null,
             first_name: capitalizeProperName(owner.first_name) || "",
             last_name: capitalizeProperName(owner.last_name) || "",
@@ -119,37 +166,14 @@
             us_citizenship_status: owner.us_citizenship_status || null,
             veteran_status: owner.veteran_status != null ? owner.veteran_status : null,
           };
+          if (owner.source_fields && Object.keys(owner.source_fields).length > 0) {
+            person.source_fields = { ...owner.source_fields };
+          }
           const filename = `person_${personIdx}.json`;
           fs.writeFileSync(
             path.join(dataDir, filename),
             JSON.stringify(person, null, 2),
           );
-          personFiles.push(`./${filename}`);
           personIdx++;
         }
       });
-
-      // Create relationships for valid sales
-      if (validSales.length > 0) {
-        validSales.forEach((s, si) => {
-          // Link to all person files
-          personFiles.forEach((personFile, pi) => {
-            const rel = {
-              to: { "/": `./${personFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
-            fs.writeFileSync(
-              path.join(
-                dataDir,
-                `relationship_sales_person_${pi + 1}_${si + 1}.json`,
-              ),
-              JSON.stringify(rel, null, 2),
-            );
-          });
-
-          // Link to all company files
-          companyFiles.forEach((companyFile, ci) => {
-            const rel = {
-              to: { "/": `./${companyFile}` },
-              from: { "/": `./sales_${si + 1}.json` },
-            };
