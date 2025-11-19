@@ -14570,6 +14570,130 @@ function alignAddressOneOfOutput(addressFilePath) {
   writeJSON(addressFilePath, rawOutput);
 }
 
+function enforceAddressVariantExclusivity(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  const normalizedCandidate = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...payload })
+    : { ...payload };
+
+  const normalizedCoverage = hasNormalizedCountyCoverage
+    ? hasNormalizedCountyCoverage({ ...normalizedCandidate })
+    : NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+        (field) =>
+          typeof normalizedCandidate[field] === "string" &&
+          normalizedCandidate[field].trim().length > 0,
+      );
+
+  if (normalizedCoverage) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const value = normalizedCandidate[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        normalizedOutput[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
+
+      if (value === undefined || value === null) {
+        normalizedOutput[field] = null;
+        continue;
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        normalizedOutput[field] = trimmed.length ? trimmed : null;
+        continue;
+      }
+
+      normalizedOutput[field] = value;
+    }
+
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+
+    if (
+      (normalizedOutput.latitude == null) !==
+      (normalizedOutput.longitude == null)
+    ) {
+      normalizedOutput.latitude = null;
+      normalizedOutput.longitude = null;
+    }
+
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+      const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+      if (requestIdentifier) {
+        normalizedOutput.request_identifier = requestIdentifier;
+      }
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+    ) {
+      const prepared = prepareSourceHttpRequest(payload.source_http_request);
+      if (prepared) {
+        normalizedOutput.source_http_request = deepClone(prepared);
+      }
+    }
+
+    fs.writeFileSync(addressFilePath, JSON.stringify(normalizedOutput, null, 2));
+    return;
+  }
+
+  if (!trimmedRaw.length) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawOutput = {
+    unnormalized_address: trimmedRaw,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+    rawOutput.request_identifier =
+      requestIdentifier !== null && requestIdentifier !== undefined
+        ? requestIdentifier
+        : null;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+  ) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    rawOutput.source_http_request = prepared
+      ? deepClone(prepared)
+      : null;
+  }
+
+  fs.writeFileSync(addressFilePath, JSON.stringify(rawOutput, null, 2));
+}
+
 function finalizeAddressVariantForSchema(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -32623,6 +32747,7 @@ async function main() {
     defaultCountryCode: "US",
   });
   enforceCountyAddressOneOfComplianceFinal(finalAddressPath);
+  enforceAddressVariantExclusivity(finalAddressPath);
 }
 
 main().catch((error) => {
