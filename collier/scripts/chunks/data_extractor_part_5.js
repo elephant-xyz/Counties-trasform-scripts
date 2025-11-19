@@ -194,6 +194,7 @@
     range,
     countyName,
     municipality,
+    null,
   );
   addressObj.parcel_identifier = parcelId;
   const addressSourceFields = {};
@@ -214,7 +215,12 @@
     addSelectorSource(addressSourceFields, "#Range", range);
   }
   if (fullAddressHtml) {
-    addressSourceFields.unnormalized_address_text = fullAddressHtml;
+    if (
+      !addressObj.source_fields ||
+      addressObj.source_fields.unnormalized_address_text == null
+    ) {
+      addressSourceFields.unnormalized_address_text = fullAddressHtml;
+    }
     addSelectorSource(addressSourceFields, "#FullAddressUnit", fullAddressHtml);
   }
   if (Object.keys(addressSourceFields).length > 0) {

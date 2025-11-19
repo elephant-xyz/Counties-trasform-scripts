@@ -573,6 +573,7 @@ function parseAddress(
   range,
   countyNameFromSeed,
   municipality,
+  structuredAddressParts = null,
 ) {
   // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
   const normalizedFullAddress = fullAddress
@@ -655,33 +656,82 @@ function parseAddress(
     township: township || null,
   };
 
-  const hasNormalized =
-    streetNumber &&
-    streetName &&
-    city &&
-    (state || countyNameFromSeed || municipality);
+  const structured = structuredAddressParts || {};
+  const structuredStreetNumber =
+    structured.street_number ||
+    structured.streetNumber ||
+    structured.address_number ||
+    null;
+  const structuredStreetName =
+    structured.street_name ||
+    structured.streetName ||
+    null;
+  const structuredSuffix =
+    structured.street_suffix_type ||
+    structured.streetSuffix ||
+    null;
+  const structuredPreDir =
+    structured.street_pre_directional_text ||
+    structured.pre_directional ||
+    null;
+  const structuredPostDir =
+    structured.street_post_directional_text ||
+    structured.post_directional ||
+    null;
+  const structuredUnit =
+    structured.unit_identifier ||
+    structured.unit ||
+    null;
+  const structuredCity =
+    structured.city_name ||
+    structured.city ||
+    null;
+  const structuredState =
+    structured.state_code ||
+    structured.state ||
+    null;
+  const structuredPostal =
+    structured.postal_code ||
+    structured.zip ||
+    null;
+  const structuredPlusFour =
+    structured.plus_four_postal_code ||
+    structured.plusFour ||
+    null;
 
-  if (hasNormalized) {
+  const hasStructuredNormalized =
+    structuredStreetNumber &&
+    structuredStreetName &&
+    (structuredCity || municipality || countyNameFromSeed);
+
+  if (hasStructuredNormalized) {
     base.normalized_address = {
-      street_number: streetNumber,
-      street_name: streetName,
-      street_suffix_type: suffixType || null,
-      street_pre_directional_text: preDir || null,
-      street_post_directional_text: postDir || null,
-      unit_identifier: unitId || null,
-      city_name: city || null,
-      state_code: state || "FL",
-      postal_code: zip || null,
-      plus_four_postal_code: null,
+      street_number: structuredStreetNumber,
+      street_name: structuredStreetName,
+      street_suffix_type: structuredSuffix || null,
+      street_pre_directional_text: structuredPreDir || null,
+      street_post_directional_text: structuredPostDir || null,
+      unit_identifier: structuredUnit || null,
+      city_name: structuredCity || null,
+      state_code: structuredState || "FL",
+      postal_code: structuredPostal || null,
+      plus_four_postal_code: structuredPlusFour || null,
       route_number: null,
     };
   } else if (normalizedFullAddress) {
     base.unnormalized_address = normalizedFullAddress;
   }
 
-  if (!hasNormalized) {
-    base.postal_code = zip || null;
-    base.state_code = state || (countyNameFromSeed ? "FL" : null);
+  if (!base.normalized_address) {
+    base.postal_code = structuredPostal || zip || null;
+    base.state_code =
+      structuredState || state || (countyNameFromSeed ? "FL" : null);
+  }
+  if (base.unnormalized_address && !base.source_fields) {
+    base.source_fields = {};
+  }
+  if (base.source_fields && normalizedFullAddress) {
+    base.source_fields.unnormalized_address_text = normalizedFullAddress;
   }
 
   return base;
@@ -927,6 +977,7 @@ function main() {
     range,
     countyName,
     municipality,
+    null,
   );
   addressObj.parcel_identifier = parcelId;
   const addressSourceFields = {};
@@ -947,7 +998,12 @@ function main() {
     addSelectorSource(addressSourceFields, "#Range", range);
   }
   if (fullAddressHtml) {
-    addressSourceFields.unnormalized_address_text = fullAddressHtml;
+    if (
+      !addressObj.source_fields ||
+      addressObj.source_fields.unnormalized_address_text == null
+    ) {
+      addressSourceFields.unnormalized_address_text = fullAddressHtml;
+    }
     addSelectorSource(
       addressSourceFields,
       "#FullAddressUnit",

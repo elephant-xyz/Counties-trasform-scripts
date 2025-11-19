@@ -25,6 +25,8 @@ function ensureDir(filePath) {
   let totalUnderAir = 0;
   let totalAdjustedArea = 0;
   let hasAnyBuildings = false;
+  const baseAreaSources = [];
+  const adjustedAreaSources = [];
 
   // Positive list: These ARE residential structures that should be included
   const residentialTypes = [
@@ -76,6 +78,10 @@ function ensureDir(filePath) {
           totalUnderAir += num;
           hasAnyBuildings = true;
         }
+        baseAreaSources.push({
+          selector: `#BASEAREA${buildingNum}`,
+          text: areaText,
+        });
       }
 
       const adjustedAreaSpan = $(`#TYADJAREA${buildingNum}`);
@@ -85,6 +91,10 @@ function ensureDir(filePath) {
         if (!isNaN(adjNum) && adjNum > 0) {
           totalAdjustedArea += adjNum;
         }
+        adjustedAreaSources.push({
+          selector: `#TYADJAREA${buildingNum}`,
+          text: adjustedAreaText,
+        });
       }
     }
   });
@@ -99,7 +109,7 @@ function ensureDir(filePath) {
   const layouts = [];
 
   // ALWAYS add Living Area layout with square footage data
-  layouts.push({
+  const livingAreaLayout = {
     space_type: "Living Area",
     space_index: 1,
     space_type_index: "1",
@@ -136,7 +146,43 @@ function ensureDir(filePath) {
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
-  });
+  };
+
+  const layoutSourceFields = {};
+  if (baseAreaSources.length > 0) {
+    const combinedBaseArea = baseAreaSources
+      .map((entry) => entry.text)
+      .filter(Boolean)
+      .join(" | ");
+    if (combinedBaseArea) {
+      layoutSourceFields.livable_area_sq_ft_text = combinedBaseArea;
+      layoutSourceFields.area_under_air_sq_ft_text = combinedBaseArea;
+    }
+    baseAreaSources.forEach(({ selector, text }) => {
+      if (selector && text) {
+        layoutSourceFields[selector] = text;
+      }
+    });
+  }
+  if (adjustedAreaSources.length > 0) {
+    const combinedAdjustedArea = adjustedAreaSources
+      .map((entry) => entry.text)
+      .filter(Boolean)
+      .join(" | ");
+    if (combinedAdjustedArea) {
+      layoutSourceFields.total_area_sq_ft_text = combinedAdjustedArea;
+    }
+    adjustedAreaSources.forEach(({ selector, text }) => {
+      if (selector && text) {
+        layoutSourceFields[selector] = text;
+      }
+    });
+  }
+  if (Object.keys(layoutSourceFields).length > 0) {
+    livingAreaLayout.source_fields = layoutSourceFields;
+  }
+
+  layouts.push(livingAreaLayout);
 
   const output = {};
   output[`property_${parcelId}`] = { layouts };
