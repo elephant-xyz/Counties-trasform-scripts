@@ -98,19 +98,104 @@ function readText(p) {
 }
 
 function stripAddressRequestMetadata(address) {
-  if (!address || typeof address !== "object") {
-    return address;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    delete address.request_identifier;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    delete address.source_http_request;
-  }
-
   return address;
+}
+
+function gatherRequestIdentifierCandidates(...candidates) {
+  const queue = [];
+  const enqueue = (candidate) => {
+    if (candidate === undefined || candidate === null) return;
+    if (Array.isArray(candidate)) {
+      for (const entry of candidate) {
+        enqueue(entry);
+      }
+      return;
+    }
+    queue.push(candidate);
+  };
+
+  for (const candidate of candidates) {
+    enqueue(candidate);
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+  ) {
+    enqueue(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates);
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
+      if (!source || typeof source !== "object") continue;
+      enqueue(source.request_identifier);
+    }
+  }
+
+  return queue;
+}
+
+function gatherSourceHttpRequestCandidates(...candidates) {
+  const queue = [];
+  const enqueue = (candidate) => {
+    if (!candidate) return;
+    if (Array.isArray(candidate)) {
+      for (const entry of candidate) {
+        enqueue(entry);
+      }
+      return;
+    }
+    if (candidate && typeof candidate === "object") {
+      queue.push(candidate);
+    }
+  };
+
+  for (const candidate of candidates) {
+    enqueue(candidate);
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+  ) {
+    enqueue(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates);
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
+      if (!source || typeof source !== "object") continue;
+      enqueue(source.source_http_request);
+    }
+  }
+
+  return queue;
+}
+
+function resolveRequestIdentifierCandidate(...candidates) {
+  const queue = gatherRequestIdentifierCandidates(...candidates);
+  return safeNullIfEmpty(resolveFirstNonEmptyString(queue));
+}
+
+function resolveSourceHttpRequestCandidate(...candidates) {
+  const queue = gatherSourceHttpRequestCandidates(...candidates);
+  let resolved = resolveSourceHttpRequest(...queue);
+  if (resolved) {
+    return resolved;
+  }
+  for (const candidate of queue) {
+    const prepared = prepareSourceHttpRequest(candidate);
+    if (prepared) {
+      resolved = prepared;
+      break;
+    }
+  }
+  return resolved || null;
 }
 
 function sanitizeAddressPayloadForWrite(payload) {
@@ -391,12 +476,26 @@ function enforceFinalAddressOneOfOutput(filePath) {
     finalOutput.country_code = "US";
   }
 
-  if (Object.prototype.hasOwnProperty.call(finalOutput, "request_identifier")) {
-    delete finalOutput.request_identifier;
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    finalOutput.request_identifier,
+    payload.request_identifier,
+  );
+  finalOutput.request_identifier =
+    resolvedRequestIdentifier !== undefined && resolvedRequestIdentifier !== null
+      ? resolvedRequestIdentifier
+      : null;
+
+  const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    finalOutput.source_http_request,
+    payload.source_http_request,
+  );
+
+  if (!resolvedSourceHttpRequest) {
+    removeFileIfExists(filePath);
+    return;
   }
-  if (Object.prototype.hasOwnProperty.call(finalOutput, "source_http_request")) {
-    delete finalOutput.source_http_request;
-  }
+
+  finalOutput.source_http_request = resolvedSourceHttpRequest;
 
   fs.writeFileSync(filePath, JSON.stringify(finalOutput, null, 2));
 }
@@ -677,6 +776,25 @@ function finalizeCountyAddressNormalization(addressFilePath, options = {}) {
   );
 
   if (normalizedCoverage) {
+    const normalizedRequestIdentifier = resolveRequestIdentifierCandidate(
+      normalizedSurface.request_identifier,
+      payload.request_identifier,
+    );
+    const normalizedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+      normalizedSurface.source_http_request,
+      payload.source_http_request,
+    );
+    if (!normalizedSourceHttpRequest) {
+      removeFileIfExists(addressFilePath);
+      return;
+    }
+    normalizedSurface.request_identifier =
+      normalizedRequestIdentifier !== undefined &&
+      normalizedRequestIdentifier !== null
+        ? normalizedRequestIdentifier
+        : null;
+    normalizedSurface.source_http_request = normalizedSourceHttpRequest;
+
     fs.writeFileSync(
       addressFilePath,
       JSON.stringify(normalizedSurface, null, 2),
@@ -725,6 +843,24 @@ function finalizeCountyAddressNormalization(addressFilePath, options = {}) {
   if (rawSurface.state_code && !rawSurface.country_code) {
     rawSurface.country_code = options.defaultCountryCode || "US";
   }
+
+  const rawRequestIdentifier = resolveRequestIdentifierCandidate(
+    rawSurface.request_identifier,
+    payload.request_identifier,
+  );
+  const rawSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    rawSurface.source_http_request,
+    payload.source_http_request,
+  );
+  if (!rawSourceHttpRequest) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+  rawSurface.request_identifier =
+    rawRequestIdentifier !== undefined && rawRequestIdentifier !== null
+      ? rawRequestIdentifier
+      : null;
+  rawSurface.source_http_request = rawSourceHttpRequest;
 
   fs.writeFileSync(addressFilePath, JSON.stringify(rawSurface, null, 2));
 }
