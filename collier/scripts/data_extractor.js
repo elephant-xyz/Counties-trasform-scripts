@@ -958,9 +958,10 @@ function main() {
     const bookPagePrimary = getCellText($, bookPagePrimarySelector);
     const bookPagePrimaryRaw =
       getRawSelectorText($, bookPagePrimarySelector) || bookPagePrimary || null;
-    const bookPageFallback = getCellText($, `#TrSale${idx} td:nth-child(2) a`);
+    const bookPageFallbackSelector = `#TrSale${idx} td:nth-child(2) a`;
+    const bookPageFallback = getCellText($, bookPageFallbackSelector);
     const bookPageFallbackRaw =
-      getRawSelectorText($, `#TrSale${idx} td:nth-child(2) a`) ||
+      getRawSelectorText($, bookPageFallbackSelector) ||
       bookPageFallback ||
       null;
     const bookPage = bookPagePrimary || bookPageFallback || null;
@@ -982,6 +983,7 @@ function main() {
       bookPage,
       bookPageRaw,
       bookPagePrimarySelector,
+      bookPageFallbackSelector,
     });
   }
 
@@ -1014,10 +1016,12 @@ function main() {
     if (row.bookPageRaw) deedSourceFields.document_identifier_text = row.bookPageRaw;
     if (row.dateRaw) deedSourceFields.sale_date_text = row.dateRaw;
     if (row.amountRaw) deedSourceFields.sale_amount_text = row.amountRaw;
+    const deedDocumentValue = row.bookPageRaw || row.bookPage;
+    addSelectorSource(deedSourceFields, row.bookPagePrimarySelector, deedDocumentValue);
     addSelectorSource(
       deedSourceFields,
-      row.bookPagePrimarySelector,
-      row.bookPageRaw || row.bookPage,
+      row.bookPageFallbackSelector,
+      deedDocumentValue,
     );
     addSelectorSource(
       deedSourceFields,
@@ -1069,10 +1073,16 @@ function main() {
       `#SaleAmount${s.rowIndex}`,
       s.amountRaw || s.amountText,
     );
+    const saleDocumentValue = s.bookPageRaw || s.bookPage;
     addSelectorSource(
       saleSourceFields,
       s.bookPagePrimarySelector,
-      s.bookPageRaw || s.bookPage,
+      saleDocumentValue,
+    );
+    addSelectorSource(
+      saleSourceFields,
+      s.bookPageFallbackSelector,
+      saleDocumentValue,
     );
     addSelectorSource(
       saleSourceFields,
@@ -1709,17 +1719,12 @@ function main() {
     summarySourceFields.total_tax_amount_text = yearlySourceText;
     addSelectorSource(summarySourceFields, "#TotalTaxes", yearlySourceText);
   }
-  if (
-    totalTaxesAltRaw &&
-    totalTaxesAltRaw !== summarySourceFields.total_tax_amount_text
-  ) {
+  const totalTaxesAltSelector =
+    "div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)";
+  if (totalTaxesAltRaw || totalTaxesAltText) {
     const value = totalTaxesAltRaw || totalTaxesAltText;
     summarySourceFields.total_tax_amount_additional_text = value;
-    addSelectorSource(
-      summarySourceFields,
-      "div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)",
-      value,
-    );
+    addSelectorSource(summarySourceFields, totalTaxesAltSelector, value);
   }
   if (countyMillageRaw || countyMillageText) {
     const value = countyMillageRaw || countyMillageText;
