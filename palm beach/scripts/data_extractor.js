@@ -23018,6 +23018,183 @@ function harmonizeCountyAddressOutput(addressFilePath) {
   writeJSON(addressFilePath, rawOutput);
 }
 
+function selectCountyAddressVariantForOneOf(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(
+        Object.prototype.hasOwnProperty.call(payload, field)
+          ? payload[field]
+          : null,
+      );
+      normalizedSurface[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, payload[field]);
+    if (normalizedValue === undefined || normalizedValue === null) {
+      normalizedSurface[field] = null;
+      continue;
+    }
+
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      normalizedSurface[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    normalizedSurface[field] = normalizedValue;
+  }
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
+  }
+
+  if (normalizedSurface.state_code && !normalizedSurface.country_code) {
+    normalizedSurface.country_code = "US";
+  }
+
+  const strictNormalizedFields = [
+    ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
+    "plus_four_postal_code",
+    "street_suffix_type",
+    "township",
+    "range",
+    "section",
+    "block",
+  ];
+
+  const hasStrictStrings = strictNormalizedFields.every((field) =>
+    hasMeaningfulAddressValue(normalizedSurface[field]),
+  );
+  const hasCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((field) =>
+    Number.isFinite(normalizedSurface[field]),
+  );
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (hasStrictStrings && hasCoordinates) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const value = normalizedSurface[field];
+      normalizedOutput[field] =
+        value === undefined || value === null ? null : value;
+    }
+
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
+    }
+
+    fs.writeFileSync(
+      addressFilePath,
+      JSON.stringify(normalizedOutput, null, 2),
+      "utf8",
+    );
+    return;
+  }
+
+  if (trimmedUnnormalized.length) {
+    const rawOutput = { unnormalized_address: trimmedUnnormalized };
+
+    const latitudeSource = Object.prototype.hasOwnProperty.call(payload, "latitude")
+      ? payload.latitude
+      : normalizedSurface.latitude;
+    const longitudeSource = Object.prototype.hasOwnProperty.call(payload, "longitude")
+      ? payload.longitude
+      : normalizedSurface.longitude;
+
+    const numericLatitude = parseCoordinate(latitudeSource);
+    if (Number.isFinite(numericLatitude)) {
+      rawOutput.latitude = numericLatitude;
+    }
+    const numericLongitude = parseCoordinate(longitudeSource);
+    if (Number.isFinite(numericLongitude)) {
+      rawOutput.longitude = numericLongitude;
+    }
+
+    const OPTIONAL_STRING_FIELDS = [
+      "city_name",
+      "state_code",
+      "postal_code",
+      "plus_four_postal_code",
+      "county_name",
+      "municipality_name",
+      "street_number",
+      "street_name",
+      "street_pre_directional_text",
+      "street_post_directional_text",
+      "street_suffix_type",
+      "unit_identifier",
+      "route_number",
+      "township",
+      "range",
+      "section",
+      "block",
+      "lot",
+      "country_code",
+    ];
+
+    for (const field of OPTIONAL_STRING_FIELDS) {
+      const candidate = normalizedSurface[field];
+      if (!hasMeaningfulAddressValue(candidate)) {
+        continue;
+      }
+      let value =
+        typeof candidate === "string"
+          ? candidate.trim()
+          : String(candidate).trim();
+      if (!value.length) {
+        continue;
+      }
+      if (field === "state_code" || field === "country_code") {
+        value = value.toUpperCase();
+      }
+      rawOutput[field] = value;
+    }
+
+    if (rawOutput.state_code && !rawOutput.country_code) {
+      rawOutput.country_code = "US";
+    }
+    if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
+      delete rawOutput.plus_four_postal_code;
+    }
+
+    fs.writeFileSync(
+      addressFilePath,
+      JSON.stringify(rawOutput, null, 2),
+      "utf8",
+    );
+    return;
+  }
+
+  fs.writeFileSync(
+    addressFilePath,
+    JSON.stringify(normalizedSurface, null, 2),
+    "utf8",
+  );
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -28732,6 +28909,7 @@ async function main() {
       "FL",
     defaultCountryCode: "US",
   });
+  selectCountyAddressVariantForOneOf(finalAddressPath);
 }
 
 main().catch((error) => {
