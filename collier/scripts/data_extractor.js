@@ -653,10 +653,8 @@ function main() {
   // Note: Area fields (livable_floor_area, area_under_air, total_area) are deprecated
   // in the property class. Area information is now stored in layout and structure objects.
 
-  // Add building base area info to property for reference
-  if (buildingBaseAreaInfo.length > 0) {
-    property.building_details = buildingBaseAreaInfo;
-  }
+  // Building details are not a valid property on the property class
+  // This information is stored in structure and layout objects instead
 
   // Write property.json
   fs.writeFileSync(
@@ -1581,56 +1579,8 @@ function main() {
       ? toNumberCurrency(yearlyText)
       : null;
 
-  // Extract current year millage rates
-  const schoolMillageText = $("#TdDetailSchoolMillage").first().text().trim();
-  const schoolMillage = schoolMillageText ? parseFloat(schoolMillageText) : null;
-  const countyMillageText = $("#TdDetailCountyMillage").first().text().trim();
-  const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
-  const municipalMillageText = $("#TdDetailMunicipalMillage").first().text().trim();
-  const municipalMillage = municipalMillageText ? parseFloat(municipalMillageText) : null;
-  const otherMillageText = $("#TdDetailOtherMillage").first().text().trim();
-  const otherMillage = otherMillageText ? parseFloat(otherMillageText) : null;
-  const nonSchoolMillageText = $("#TdDetailNonSchoolMillage").first().text().trim();
-  const nonSchoolMillage = nonSchoolMillageText ? parseFloat(nonSchoolMillageText) : null;
-
-  // Extract tax authority breakdown to ensure all selectors are mapped
-  const taxAuthorities = [];
-  for (let idx = 1; idx <= 50; idx++) {
-    const taName = $(`#TaName${idx}`).text().trim();
-    if (!taName) break;
-    const taxableTypeText = $(`#TaxableType${idx}`).text().trim();
-    const taxableText = $(`#Taxable${idx}`).text().trim();
-    const millageText = $(`#Millage${idx}`).text().trim();
-    const taxText = $(`#Tax${idx}`).text().trim();
-    // Extract taxyear for this authority if present
-    const taxyearText = $(`#taxyear${idx}`).text().trim();
-    taxAuthorities.push({
-      authority_name: taName,
-      taxable_type: taxableTypeText,
-      taxable_value: taxableText,
-      millage_rate: millageText,
-      tax_amount: taxText,
-      tax_year: taxyearText || null,
-    });
-  }
-
-  // Extract complex selector values to ensure they're mapped
-  const additionalTableData = [];
-  // tr:nth-child(50) > td:nth-child(5)
-  const tableCell50_5 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim();
-  if (tableCell50_5) additionalTableData.push({ location: "row_50_col_5", value: tableCell50_5 });
-
-  // tr:nth-child(14) > td:nth-child(1)
-  const tableCell14_1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim();
-  if (tableCell14_1) additionalTableData.push({ location: "row_14_col_1", value: tableCell14_1 });
-
-  // tr:nth-child(39) > td:nth-child(2)
-  const tableCell39_2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").text().trim();
-  if (tableCell39_2) additionalTableData.push({ location: "row_39_col_2", value: tableCell39_2 });
-
-  // Tax bills link
-  const taxBillsLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").text().trim();
-  if (taxBillsLink) additionalTableData.push({ location: "tax_bills_link", value: taxBillsLink });
+  // Millage rates, tax authority breakdown, and additional table data are not part of the tax schema
+  // and have been removed from the extraction
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
@@ -1651,13 +1601,6 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
-      school_millage_rate: schoolMillage,
-      county_millage_rate: countyMillage,
-      municipal_millage_rate: municipalMillage,
-      other_millage_rate: otherMillage,
-      non_school_millage_rate: nonSchoolMillage,
-      tax_authority_breakdown: taxAuthorities.length > 0 ? taxAuthorities : null,
-      additional_data: additionalTableData.length > 0 ? additionalTableData : null,
     };
     taxRecords.push(taxObj);
   }
@@ -1714,18 +1657,6 @@ function main() {
     const benefitHText = $(`#HistoryNonSchool10PctBenefit${idx}`).text().trim();
     const benefitH = toNumberCurrency(benefitHText);
 
-    // Extract historical millage fields
-    const schoolMillageText = $(`#HistorySchoolMillage${idx}`).text().trim();
-    const schoolMillage = schoolMillageText ? parseFloat(schoolMillageText) : null;
-    const countyMillageText = $(`#HistoryCountyMillage${idx}`).text().trim();
-    const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
-    const municipalMillageText = $(`#HistoryMunicipalMillage${idx}`).text().trim();
-    const municipalMillage = municipalMillageText ? parseFloat(municipalMillageText) : null;
-    const otherMillageText = $(`#HistoryOtherMillage${idx}`).text().trim();
-    const otherMillage = otherMillageText ? parseFloat(otherMillageText) : null;
-    const nonSchoolMillageText = $(`#HistoryNonSchoolMillage${idx}`).text().trim();
-    const nonSchoolMillage = nonSchoolMillageText ? parseFloat(nonSchoolMillageText) : null;
-
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
         index: idx,
@@ -1737,11 +1668,6 @@ function main() {
         taxableH,
         yearlyH,
         benefitH,
-        schoolMillage,
-        countyMillage,
-        municipalMillage,
-        otherMillage,
-        nonSchoolMillage,
       });
     }
   }
@@ -1777,11 +1703,6 @@ function main() {
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
-      school_millage_rate: rec.schoolMillage,
-      county_millage_rate: rec.countyMillage,
-      municipal_millage_rate: rec.municipalMillage,
-      other_millage_rate: rec.otherMillage,
-      non_school_millage_rate: rec.nonSchoolMillage,
     };
     taxRecords.push(taxObj);
   });
