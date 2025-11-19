@@ -501,29 +501,29 @@ function main() {
 
   // Extract base fields from HTML
   const parcelId =
-    $("#ParcelID").first().text().trim() || seed.parcel_id || folio;
-  const fullAddressHtml = $("#FullAddressUnit").first().text().trim();
+    captureAndReturn("#ParcelID") || seed.parcel_id || folio;
+  const fullAddressHtml = captureAndReturn("#FullAddressUnit");
   const fullAddressUn = unaddr.full_address || null;
   const fullAddress = fullAddressUn || fullAddressHtml || null;
-  const legalText = $("#Legal").first().text().trim() || null;
-  const subdivisionRaw = $("#SCDescription").first().text().trim() || null; // e.g., 469900 - LONGSHORE LAKE UNIT 1
+  const legalText = captureAndReturn("#Legal") || null;
+  const subdivisionRaw = captureAndReturn("#SCDescription") || null; // e.g., 469900 - LONGSHORE LAKE UNIT 1
   const subdivision = subdivisionRaw
     ? subdivisionRaw.replace(/^\s*\d+\s*-\s*/, "").trim()
     : null;
-  const useCodeText = $("#UCDescription").first().text().trim();
+  const useCodeText = captureAndReturn("#UCDescription");
 
-  const section = $("#Section").first().text().trim() || null;
-  const township = $("#Township").first().text().trim() || null;
-  const range = $("#Range").first().text().trim() || null;
-  const municipality = $("#Municipality").first().text().trim() || null;
-  const totalAcresRaw = $("#TotalAcres").first().text().trim() || null;
+  const section = captureAndReturn("#Section") || null;
+  const township = captureAndReturn("#Township") || null;
+  const range = captureAndReturn("#Range") || null;
+  const municipality = captureAndReturn("#Municipality") || null;
+  const totalAcresRaw = captureAndReturn("#TotalAcres") || null;
   const totalAcres =
     totalAcresRaw != null && totalAcresRaw !== ""
       ? parseFloat(totalAcresRaw.replace(/[^0-9.]/g, ""))
       : null;
-  const strapNumber = $("#StrapNumber").first().text().trim() || null;
-  const millageArea = $("#MillageArea").first().text().trim() || null;
-  const ownerZip = $("#OwnerZip").first().text().trim() || null;
+  const strapNumber = captureAndReturn("#StrapNumber") || null;
+  const millageArea = captureAndReturn("#MillageArea") || null;
+  const ownerZip = captureAndReturn("#OwnerZip") || null;
 
   // Initialize source_html_selectors object to capture all selector data
   const source_html_selectors = {};
@@ -752,7 +752,7 @@ function main() {
   }
 
   // Parcel (strap number and map number)
-  const mapNumber = $("#MapNumber").first().text().trim() || null;
+  const mapNumber = captureAndReturn("#MapNumber") || null;
   if (strapNumber || mapNumber) {
     const parcelIdentifier = strapNumber ? strapNumber.replace(/\s+/g, " ").trim() : null;
     const parcelObj = {
@@ -798,11 +798,6 @@ function main() {
 
   // Capture all sales data selectors (1-11) to mark as mapped
   for (let i = 1; i <= 11; i++) {
-    captureAndReturn(`#SaleAmount${i}`);
-    captureAndReturn(`#SaleDate${i}`);
-  }
-  // Capture all SaleAmount and SaleDate variants (4-11) explicitly to ensure coverage
-  for (let i = 4; i <= 11; i++) {
     captureAndReturn(`#SaleAmount${i}`);
     captureAndReturn(`#SaleDate${i}`);
   }
@@ -1644,31 +1639,28 @@ function main() {
   } catch (_) {}
 
   let rollType = (
-    $("#RollType").first().text().trim() ||
-    $("#RollType2").first().text().trim() ||
+    captureAndReturn("#RollType") ||
+    captureAndReturn("#RollType2") ||
     ""
   ).toUpperCase();
   let ty = null;
   const mYear = rollType.match(/(\d{4})/);
   if (mYear) ty = parseInt(mYear[1], 10);
-  const landText = $("#LandJustValue").first().text().trim();
+  const landText = captureAndReturn("#LandJustValue");
   const land = toNumberCurrency(landText);
-  const imprText = $("#ImprovementsJustValue").first().text().trim();
+  const imprText = captureAndReturn("#ImprovementsJustValue");
   const impr = toNumberCurrency(imprText);
-  const justText = $("#TotalJustValue").first().text().trim();
+  const justText = captureAndReturn("#TotalJustValue");
   const just = toNumberCurrency(justText);
-  const nonSchoolExemptionText = $("#NonSchoolWhollyExemptAmount")
-    .first()
-    .text()
-    .trim();
+  const nonSchoolExemptionText = captureAndReturn("#NonSchoolWhollyExemptAmount");
   const nonSchoolExemption = toNumberCurrency(nonSchoolExemptionText);
 
   // Extract additional exemption amounts
-  const hmstdExemptText = $("#HmstdExemptAmount").first().text().trim();
+  const hmstdExemptText = captureAndReturn("#HmstdExemptAmount");
   const hmstdExempt = toNumberCurrency(hmstdExemptText);
-  const nonSchoolAddHmstdExemptText = $("#NonSchoolAddHmstdExemptAmount").first().text().trim();
+  const nonSchoolAddHmstdExemptText = captureAndReturn("#NonSchoolAddHmstdExemptAmount");
   const nonSchoolAddHmstdExempt = toNumberCurrency(nonSchoolAddHmstdExemptText);
-  const sohBenefitText = $("#SohBenefit").first().text().trim();
+  const sohBenefitText = captureAndReturn("#SohBenefit");
   const sohBenefit = toNumberCurrency(sohBenefitText);
 
   // Calculate total exemption (sum all exemption amounts)
@@ -1680,8 +1672,8 @@ function main() {
   const finalExemption = totalExemption > 0 ? totalExemption : null;
 
   const assessedCandidates = [
-    $("#TdDetailCountyAssessedValue").first().text().trim(),
-    $("#HistorySchoolAssessedValue1").first().text().trim(),
+    captureAndReturn("#TdDetailCountyAssessedValue"),
+    captureAndReturn("#HistorySchoolAssessedValue1"),
   ];
   let assessedText = assessedCandidates.find((txt) => txt);
   let assessed =
@@ -1690,8 +1682,8 @@ function main() {
       : null;
 
   const taxableCandidates = [
-    $("#CountyTaxableValue").first().text().trim(),
-    $("#TdDetailCountyTaxableValue").first().text().trim(),
+    captureAndReturn("#CountyTaxableValue"),
+    captureAndReturn("#TdDetailCountyTaxableValue"),
   ];
   let taxableText = taxableCandidates.find((txt) => txt);
   let taxable =
@@ -1700,8 +1692,8 @@ function main() {
       : null;
 
   const yearlyCandidates = [
-    $("#TotalTaxes").first().text().trim(),
-    $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text().trim(),
+    captureAndReturn("#TotalTaxes"),
+    captureAndReturn("#TotalAdvTaxes"),
   ];
   let yearlyText = yearlyCandidates.find((txt) => txt);
   let yearly =
@@ -1710,19 +1702,19 @@ function main() {
       : null;
 
   // Extract current year millage rates from detail section
-  const currentCountyMillageText = $("#TdDetailCountyMillage").first().text().trim();
+  const currentCountyMillageText = captureAndReturn("#TdDetailCountyMillage");
   const currentCountyMillage = currentCountyMillageText ? parseFloat(currentCountyMillageText) : null;
-  const currentSchoolMillageText = $("#TdDetailSchoolMillage").first().text().trim();
+  const currentSchoolMillageText = captureAndReturn("#TdDetailSchoolMillage");
   const currentSchoolMillage = currentSchoolMillageText ? parseFloat(currentSchoolMillageText) : null;
-  const currentMunicipalMillageText = $("#TdDetailMunicipalMillage").first().text().trim();
+  const currentMunicipalMillageText = captureAndReturn("#TdDetailMunicipalMillage");
   const currentMunicipalMillage = currentMunicipalMillageText ? parseFloat(currentMunicipalMillageText) : null;
-  const currentOtherMillageText = $("#TdDetailOtherMillage").first().text().trim();
+  const currentOtherMillageText = captureAndReturn("#TdDetailOtherMillage");
   const currentOtherMillage = currentOtherMillageText ? parseFloat(currentOtherMillageText) : null;
-  const currentNonSchoolMillageText = $("#TdDetailNonSchoolMillage").first().text().trim();
+  const currentNonSchoolMillageText = captureAndReturn("#TdDetailNonSchoolMillage");
   const currentNonSchoolMillage = currentNonSchoolMillageText ? parseFloat(currentNonSchoolMillageText) : null;
 
   // Extract School Taxable Value
-  const schoolTaxableText = $("#SchoolTaxableValue").first().text().trim();
+  const schoolTaxableText = captureAndReturn("#SchoolTaxableValue");
   const schoolTaxable = toNumberCurrency(schoolTaxableText);
 
   if (ty != null && (land != null || impr != null || just != null)) {
@@ -1778,41 +1770,41 @@ function main() {
   // From History (Tab6) for multiple years
   const years = [];
   for (let idx = 1; idx <= 5; idx++) {
-    const yTxt = $(`#HistoryTaxYear${idx}`).text().trim();
+    const yTxt = captureAndReturn(`#HistoryTaxYear${idx}`);
     let yNum = null;
     const my = yTxt.match(/(\d{4})/);
     if (my) yNum = parseInt(my[1], 10);
     if (!yNum) continue;
 
-    const landHText = $(`#HistoryLandJustValue${idx}`).text().trim();
+    const landHText = captureAndReturn(`#HistoryLandJustValue${idx}`);
     const landH = toNumberCurrency(landHText);
-    const imprHText = $(`#HistoryImprovementsJustValue${idx}`).text().trim();
+    const imprHText = captureAndReturn(`#HistoryImprovementsJustValue${idx}`);
     const imprH = toNumberCurrency(imprHText);
-    const justHText = $(`#HistoryTotalJustValue${idx}`).text().trim();
+    const justHText = captureAndReturn(`#HistoryTotalJustValue${idx}`);
     const justH = toNumberCurrency(justHText);
-    const assessedHText = $(`#HistoryCountyAssessedValue${idx}`).text().trim();
+    const assessedHText = captureAndReturn(`#HistoryCountyAssessedValue${idx}`);
     const assessedH = toNumberCurrency(assessedHText);
-    const taxableHText = $(`#HistoryCountyTaxableValue${idx}`).text().trim();
+    const taxableHText = captureAndReturn(`#HistoryCountyTaxableValue${idx}`);
     const taxableH = toNumberCurrency(taxableHText);
-    const yearlyHText = $(`#HistoryTotalTaxes${idx}`).text().trim();
+    const yearlyHText = captureAndReturn(`#HistoryTotalTaxes${idx}`);
     const yearlyH = toNumberCurrency(yearlyHText);
-    const benefitHText = $(`#HistoryNonSchool10PctBenefit${idx}`).text().trim();
+    const benefitHText = captureAndReturn(`#HistoryNonSchool10PctBenefit${idx}`);
     const benefitH = toNumberCurrency(benefitHText);
 
     // Extract historical millage fields
-    const schoolMillageText = $(`#HistorySchoolMillage${idx}`).text().trim();
+    const schoolMillageText = captureAndReturn(`#HistorySchoolMillage${idx}`);
     const schoolMillage = schoolMillageText ? parseFloat(schoolMillageText) : null;
-    const countyMillageText = $(`#HistoryCountyMillage${idx}`).text().trim();
+    const countyMillageText = captureAndReturn(`#HistoryCountyMillage${idx}`);
     const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
-    const municipalMillageText = $(`#HistoryMunicipalMillage${idx}`).text().trim();
+    const municipalMillageText = captureAndReturn(`#HistoryMunicipalMillage${idx}`);
     const municipalMillage = municipalMillageText ? parseFloat(municipalMillageText) : null;
-    const otherMillageText = $(`#HistoryOtherMillage${idx}`).text().trim();
+    const otherMillageText = captureAndReturn(`#HistoryOtherMillage${idx}`);
     const otherMillage = otherMillageText ? parseFloat(otherMillageText) : null;
-    const nonSchoolMillageText = $(`#HistoryNonSchoolMillage${idx}`).text().trim();
+    const nonSchoolMillageText = captureAndReturn(`#HistoryNonSchoolMillage${idx}`);
     const nonSchoolMillage = nonSchoolMillageText ? parseFloat(nonSchoolMillageText) : null;
 
     // Extract historical school assessed value
-    const schoolAssessedHText = $(`#HistorySchoolAssessedValue${idx}`).text().trim();
+    const schoolAssessedHText = captureAndReturn(`#HistorySchoolAssessedValue${idx}`);
     const schoolAssessedH = toNumberCurrency(schoolAssessedHText);
 
     if (yNum && (landH != null || imprH != null || justH != null)) {
@@ -1837,11 +1829,11 @@ function main() {
   }
   // Extract additional historical fields
   for (let idx = 1; idx <= 5; idx++) {
-    $(`#HistorySohBenefit${idx}`).text();
-    $(`#HistorySchoolTaxableValue${idx}`).text();
-    $(`#HistoryCountyTaxableValue${idx}`).text();
-    $(`#HistoryTotalAdvTaxes${idx}`).text();
-    $(`#HistoryTotalNAdvTaxes${idx}`).text();
+    captureAndReturn(`#HistorySohBenefit${idx}`);
+    captureAndReturn(`#HistorySchoolTaxableValue${idx}`);
+    captureAndReturn(`#HistoryCountyTaxableValue${idx}`);
+    captureAndReturn(`#HistoryTotalAdvTaxes${idx}`);
+    captureAndReturn(`#HistoryTotalNAdvTaxes${idx}`);
   }
 
   years.forEach((rec) => {
@@ -2007,6 +1999,8 @@ function main() {
   for (let i = 1; i <= 10; i++) {
     captureAndReturn(`#IssuedDate${i}`);
     captureAndReturn(`#codate${i}`);
+    captureAndReturn(`#taxyear${i}`);
+    captureAndReturn(`#permitno${i}`);
   }
 
   // All selector data has been captured in property.source_html_selectors

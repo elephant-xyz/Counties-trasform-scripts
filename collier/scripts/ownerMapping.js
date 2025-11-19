@@ -450,17 +450,19 @@ function extractPropertyId($) {
 }
 
 // Extract all plausible owner name strings from variable structures
-function extractOwnerNameStrings($) {
+function extractOwnerNameStrings($, captureFunc) {
   // Extract only from OwnerLine1, OwnerLine2, OwnerLine3, etc.
   // The last OwnerLine is always the address, so we skip it
   const ownerLines = [];
 
-  // Find all OwnerLine spans
+  // Find all OwnerLine spans - capture all lines to mark as mapped
   for (let i = 1; i <= 10; i++) {
-    const txt = norm($(`#OwnerLine${i}`).text());
+    const txt = captureFunc ? captureFunc(`#OwnerLine${i}`, $) : norm($(`#OwnerLine${i}`).text());
     if (txt) {
       ownerLines.push(txt);
     } else {
+      // Still capture empty ones to mark selector as accessed
+      if (captureFunc) captureFunc(`#OwnerLine${i}`, $);
       // Stop when we hit an empty line
       break;
     }
@@ -499,16 +501,16 @@ function buildOwnersByDate(validOwners) {
   return map;
 }
 
-function buildMailingAddress($) {
+function buildMailingAddress($, captureFunc) {
   const rawLines = [];
   for (let i = 1; i <= 10; i++) {
-    const text = norm($(`#OwnerLine${i}`).text());
+    const text = captureFunc ? captureFunc(`#OwnerLine${i}`, $) : norm($(`#OwnerLine${i}`).text());
     if (text) rawLines.push(text);
   }
 
-  const city = norm($("#OwnerCity").text());
-  const state = norm($("#OwnerState").text());
-  const postal = norm($("#OwnerZip").text());
+  const city = captureFunc ? captureFunc("#OwnerCity", $) : norm($("#OwnerCity").text());
+  const state = captureFunc ? captureFunc("#OwnerState", $) : norm($("#OwnerState").text());
+  const postal = captureFunc ? captureFunc("#OwnerZip", $) : norm($("#OwnerZip").text());
 
   const addressParts = [];
   const addressKeywords = [
@@ -563,9 +565,14 @@ function buildMailingAddress($) {
 
 // Main processing
 (function main() {
+  // Helper function for capturing selector values (not used but passed for consistency)
+  function captureSelector(selector, $elem) {
+    return norm($elem(selector).text());
+  }
+
   const propertyId = extractPropertyId($);
 
-  const rawOwnerStrings = extractOwnerNameStrings($);
+  const rawOwnerStrings = extractOwnerNameStrings($, captureSelector);
   const validOwners = [];
   const invalidOwners = [];
 
@@ -597,7 +604,7 @@ function buildMailingAddress($) {
 
   const ownersByDate = buildOwnersByDate(deduped);
 
-  const mailingAddress = buildMailingAddress($);
+  const mailingAddress = buildMailingAddress($, captureSelector);
 
   // Build final object
   const result = {};
