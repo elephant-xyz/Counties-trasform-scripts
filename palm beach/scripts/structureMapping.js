@@ -191,7 +191,6 @@ function run() {
         .next()
         .text(),
     );
-  const propKey = `property_${propertyId || "unknown"}`;
 
   // Structural Elements block
   const structHeader = $("h3:contains('Structural Element')").first();
@@ -345,25 +344,25 @@ function run() {
     window_screen_material: null,
   };
 
-  const outObj = {};
-  outObj[propKey] = data;
-
   const ownersDir = path.resolve("owners");
   const dataDir = path.resolve("data");
   fs.mkdirSync(ownersDir, { recursive: true });
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(
     path.join(ownersDir, "structure_data.json"),
-    JSON.stringify(outObj, null, 2),
+    JSON.stringify(data, null, 2),
     "utf8",
   );
   fs.writeFileSync(
     path.join(dataDir, "structure_data.json"),
-    JSON.stringify(outObj, null, 2),
+    JSON.stringify(data, null, 2),
     "utf8",
   );
 
-  console.log("structure_data.json written for", propKey);
+  console.log(
+    "structure_data.json written for property",
+    propertyId || "unknown",
+  );
 }
 
 if (require.main === module) {
