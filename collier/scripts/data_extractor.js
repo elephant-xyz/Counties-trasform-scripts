@@ -595,7 +595,6 @@ function main() {
       : null;
   const strapNumber = $("#StrapNumber").first().text().trim() || null;
   const millageArea = $("#MillageArea").first().text().trim() || null;
-  const ownerZip = $("#OwnerZip").first().text().trim() || null;
 
   // Property JSON
   const property = {
@@ -948,6 +947,7 @@ function main() {
   const ownerLine3 = $("#OwnerLine3").text().trim() || null;
   const ownerCity = $("#OwnerCity").text().trim() || null;
   const ownerState = $("#OwnerState").text().trim() || null;
+  const ownerZip = $("#OwnerZip").first().text().trim() || null;
 
   // Track whether these selectors get mapped to ensure they're always written to output
   let ownerSelectorsNeedMapping = true;
@@ -1616,6 +1616,7 @@ function main() {
   // All permit selectors are now mapped through property_improvement objects created above
 
   // Extract all building data by direct ID and create layout records to map all building selectors to Elephant schema
+  let buildingLayoutsCreated = 0;
   for (let idx = 1; idx <= 50; idx++) {
     const seqNo = $(`#SEQNO${idx}`).text().trim();
     const yrBuilt = $(`#YRBUILT${idx}`).text().trim();
@@ -1689,6 +1690,8 @@ function main() {
         path.join(dataDir, `relationship_property_has_${layoutFileName}`),
         JSON.stringify(relObj, null, 2),
       );
+
+      buildingLayoutsCreated++;
     }
   }
 
@@ -2322,9 +2325,10 @@ function main() {
       },
       building_selectors: {
         note: "Building selectors (YRBUILT1-50, SEQNO1-50, BASEAREA1-50, BLDGCLASS1-50) extracted and written to layout files",
-        YRBUILT1: { value: $(`#YRBUILT1`).text().trim(), mapped_to: "layout_N.json (built_year)", extracted: true, written: buildingBaseAreaInfo.length > 0 },
+        YRBUILT1: { value: $(`#YRBUILT1`).text().trim(), mapped_to: "layout_N.json (built_year)", extracted: true, written: (buildingBaseAreaInfo.length > 0 || buildingLayoutsCreated > 0) },
         all_buildings_extracted: buildingBaseAreaInfo,
         count: buildingBaseAreaInfo.length,
+        building_layouts_created: buildingLayoutsCreated,
         mapped_to: "layout_N.json files (built_year, space_type_index, size_square_feet, etc.)",
       },
       historical_tax_selectors: {
