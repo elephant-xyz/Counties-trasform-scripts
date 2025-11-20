@@ -1091,6 +1091,166 @@ async function fetchParcelCentroid(parcelId) {
   }
 }
 
+async function ensureAddressCoordinates(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const hasLatitude = Number.isFinite(parseCoordinate(payload.latitude));
+  const hasLongitude = Number.isFinite(parseCoordinate(payload.longitude));
+  if (hasLatitude && hasLongitude) {
+    return;
+  }
+
+  const tryApplyCoordinates = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return false;
+    const latitude = parseCoordinate(candidate.latitude);
+    const longitude = parseCoordinate(candidate.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+    payload.latitude = latitude;
+    payload.longitude = longitude;
+    return true;
+  };
+
+  const enqueue = (queue, candidate) => {
+    if (!candidate) return;
+    if (Array.isArray(candidate)) {
+      candidate.forEach((entry) => enqueue(queue, entry));
+      return;
+    }
+    queue.push(candidate);
+  };
+
+  const coordinateQueue = [];
+  enqueue(coordinateQueue, options.coordinateCandidates);
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+  ) {
+    enqueue(coordinateQueue, ADDRESS_FALLBACK_CONTEXT.coordinateCandidates);
+  }
+
+  for (const candidate of coordinateQueue) {
+    if (tryApplyCoordinates(candidate)) {
+      fs.writeFileSync(addressFilePath, JSON.stringify(payload, null, 2));
+      return;
+    }
+  }
+
+  const parcelQueue = [];
+  const enqueueParcelCandidate = (value) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(enqueueParcelCandidate);
+      return;
+    }
+    const normalized = normalizeParcelIdentifierForFetch(value);
+    if (normalized) {
+      parcelQueue.push(normalized);
+    }
+  };
+
+  enqueueParcelCandidate(options.parcelIdCandidates);
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates)
+  ) {
+    enqueueParcelCandidate(ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates);
+  }
+
+  for (const parcelId of parcelQueue) {
+    try {
+      const centroid = await fetchParcelCentroid(parcelId);
+      if (tryApplyCoordinates(centroid)) {
+        fs.writeFileSync(addressFilePath, JSON.stringify(payload, null, 2));
+        return;
+      }
+    } catch {
+      // Fall through to other recovery strategies when centroid lookup fails.
+    }
+  }
+
+  const addressCandidates = [];
+  const enqueueAddressCandidate = (value) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(enqueueAddressCandidate);
+      return;
+    }
+    const normalized = normalizeWhitespace(value);
+    if (normalized) {
+      addressCandidates.push(normalized);
+    }
+  };
+
+  enqueueAddressCandidate(options.addressCandidates);
+  enqueueAddressCandidate(payload.unnormalized_address);
+  enqueueAddressCandidate(composeUnnormalizedAddress(payload));
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    enqueueAddressCandidate(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates);
+  }
+
+  if (!addressCandidates.length) {
+    return;
+  }
+
+  const cityHints = collectNonEmptyStrings(
+    payload.city_name,
+    payload.municipality_name,
+    options.cityHints || [],
+  );
+  const municipalityHints = collectNonEmptyStrings(
+    payload.municipality_name,
+    options.municipalityHints || [],
+  );
+  const countyHints = collectNonEmptyStrings(
+    payload.county_name,
+    options.countyHints || [],
+  );
+  const stateHints = collectNonEmptyStrings(
+    payload.state_code,
+    options.stateHints || [],
+  );
+  if (!stateHints.length) {
+    stateHints.push("FL");
+  }
+  const postalHints = collectNonEmptyStrings(
+    payload.postal_code,
+    payload.plus_four_postal_code,
+    options.postalHints || [],
+  );
+
+  for (const candidate of addressCandidates) {
+    const geocodeResult = await geocodeAddressWithFallbacks({
+      primaryQuery: candidate,
+      address: payload,
+      cityHints,
+      municipalityHints,
+      countyHints,
+      stateHints,
+      postalHints,
+    });
+    if (tryApplyCoordinates(geocodeResult)) {
+      fs.writeFileSync(addressFilePath, JSON.stringify(payload, null, 2));
+      return;
+    }
+  }
+}
+
 function getGeocodeUserAgent() {
   const fromEnv =
     process &&
@@ -35103,7 +35263,9 @@ async function run() {
   await main();
   try {
     const dataDir = path.join("data");
-    finalizeAddressSchemaVariantForOutput(path.join(dataDir, "address.json"));
+    const addressPath = path.join(dataDir, "address.json");
+    await ensureAddressCoordinates(addressPath);
+    finalizeAddressSchemaVariantForOutput(addressPath);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
