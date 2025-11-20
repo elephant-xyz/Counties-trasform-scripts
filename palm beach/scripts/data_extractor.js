@@ -34207,6 +34207,29 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
     ensureNormalizedAddressSchemaSurface(payload) ||
     { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
+  const rawCandidates = [];
+  const enqueueRawCandidate = (candidate) => {
+    if (typeof candidate !== "string") return;
+    const trimmed = candidate.trim();
+    if (!trimmed.length) return;
+    rawCandidates.push(trimmed);
+  };
+
+  enqueueRawCandidate(payload.unnormalized_address);
+  if (Array.isArray(unnormalizedCandidates)) {
+    for (const candidate of unnormalizedCandidates) {
+      enqueueRawCandidate(candidate);
+    }
+  }
+  const rawFallbackPayload = rawFallbackPath
+    ? readJSONIfExists(rawFallbackPath)
+    : null;
+  if (rawFallbackPayload && typeof rawFallbackPayload === "object") {
+    enqueueRawCandidate(rawFallbackPayload.full_address);
+    enqueueRawCandidate(rawFallbackPayload.unnormalized_address);
+    enqueueRawCandidate(rawFallbackPayload.address);
+  }
+
   const resolvedCounty =
     safeNullIfEmpty(normalizedSurface.county_name) ||
     safeNullIfEmpty(
@@ -34307,12 +34330,124 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
     normalizedSurface.plus_four_postal_code = null;
   }
 
-  const normalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(normalizedSurface[field]),
-  );
-  const hasCoordinateCoverage =
+  const evaluateNormalizedCoverage = () =>
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
+      hasMeaningfulAddressValue(normalizedSurface[field]),
+    );
+
+  const assignNormalizedFieldIfMissing = (field, value) => {
+    if (value === undefined || value === null) return;
+    if (hasMeaningfulAddressValue(normalizedSurface[field])) return;
+    const normalizedValue = normalizeAddressFieldForSchema(field, value);
+    if (normalizedValue === undefined || normalizedValue === null) return;
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      normalizedSurface[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    normalizedSurface[field] = normalizedValue;
+  };
+
+  const hydrateNormalizedSurfaceFromRaw = (raw) => {
+    if (typeof raw !== "string") return;
+    const trimmed = raw.trim();
+    if (!trimmed.length) return;
+    const segments = trimmed.split(",");
+    const primaryLine = segments.shift() || "";
+    const trailing = segments.join(",").trim();
+
+    if (primaryLine) {
+      const parsedStreet = parseLocationAddress(primaryLine);
+      assignNormalizedFieldIfMissing("street_number", parsedStreet.streetNumber);
+      assignNormalizedFieldIfMissing("street_name", parsedStreet.streetName);
+      assignNormalizedFieldIfMissing(
+        "street_pre_directional_text",
+        parsedStreet.streetPreDirectional,
+      );
+      assignNormalizedFieldIfMissing(
+        "street_post_directional_text",
+        parsedStreet.streetPostDirectional,
+      );
+      assignNormalizedFieldIfMissing("street_suffix_type", parsedStreet.streetSuffix);
+      assignNormalizedFieldIfMissing("unit_identifier", parsedStreet.unitIdentifier);
+      assignNormalizedFieldIfMissing("route_number", parsedStreet.routeNumber);
+    }
+
+    if (trailing) {
+      const parsedCityState = parseCityStatePostal(trailing);
+      if (parsedCityState.city) {
+        const sanitizedCity = sanitizeCityName(parsedCityState.city);
+        assignNormalizedFieldIfMissing(
+          "city_name",
+          sanitizedCity || parsedCityState.city,
+        );
+        if (!hasMeaningfulAddressValue(normalizedSurface.municipality_name)) {
+          const municipality = sanitizedCity
+            ? toTitleCase(sanitizedCity)
+            : null;
+          if (municipality) {
+            normalizedSurface.municipality_name = municipality;
+          }
+        }
+      }
+      if (parsedCityState.state) {
+        assignNormalizedFieldIfMissing("state_code", parsedCityState.state);
+      }
+      if (parsedCityState.postal) {
+        assignNormalizedFieldIfMissing("postal_code", parsedCityState.postal);
+      }
+      if (parsedCityState.plus4) {
+        assignNormalizedFieldIfMissing(
+          "plus_four_postal_code",
+          parsedCityState.plus4,
+        );
+      }
+    }
+  };
+
+  let normalizedCoverage = evaluateNormalizedCoverage();
+  let hasCoordinateCoverage =
     Number.isFinite(normalizedSurface.latitude) &&
     Number.isFinite(normalizedSurface.longitude);
+
+  if (!normalizedCoverage && rawCandidates.length) {
+    for (const raw of rawCandidates) {
+      hydrateNormalizedSurfaceFromRaw(raw);
+    }
+    normalizedCoverage = evaluateNormalizedCoverage();
+  }
+
+  if ((!normalizedCoverage || !hasCoordinateCoverage) && rawCandidates.length) {
+    const primaryQuery = rawCandidates[0];
+    if (primaryQuery) {
+      const geocodeResult = await geocodeAddressWithFallbacks({
+        primaryQuery,
+        address: normalizedSurface,
+        cityHints: [
+          normalizedSurface.city_name,
+          normalizedSurface.municipality_name,
+        ],
+        municipalityHints: [normalizedSurface.municipality_name],
+        countyHints: [
+          normalizedSurface.county_name,
+          defaultCountyName,
+          rawFallbackPayload && rawFallbackPayload.county_jurisdiction,
+        ],
+        stateHints: [normalizedSurface.state_code, defaultStateCode],
+        postalHints: [
+          normalizedSurface.postal_code,
+          rawFallbackPayload && rawFallbackPayload.postal_code,
+        ],
+      });
+      if (geocodeResult) {
+        applyGeocodeEnhancements(normalizedSurface, geocodeResult);
+      }
+      normalizedCoverage = evaluateNormalizedCoverage();
+      hasCoordinateCoverage =
+        Number.isFinite(normalizedSurface.latitude) &&
+        Number.isFinite(normalizedSurface.longitude);
+    }
+  }
 
   const resolvedRequestIdentifier = safeNullIfEmpty(
     resolveRequestIdentifierCandidate(
@@ -34362,28 +34497,6 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
     return;
   }
 
-  const rawCandidates = [];
-  const enqueueRawCandidate = (candidate) => {
-    if (typeof candidate !== "string") return;
-    const trimmed = candidate.trim();
-    if (trimmed.length) {
-      rawCandidates.push(trimmed);
-    }
-  };
-  enqueueRawCandidate(payload.unnormalized_address);
-  if (Array.isArray(unnormalizedCandidates)) {
-    for (const candidate of unnormalizedCandidates) {
-      enqueueRawCandidate(candidate);
-    }
-  }
-  if (rawFallbackPath) {
-    const fallbackRaw = readJSONIfExists(rawFallbackPath);
-    if (fallbackRaw && typeof fallbackRaw === "object") {
-      enqueueRawCandidate(fallbackRaw.full_address);
-      enqueueRawCandidate(fallbackRaw.unnormalized_address);
-      enqueueRawCandidate(fallbackRaw.address);
-    }
-  }
   const resolvedRaw = safeNullIfEmpty(
     resolveFirstNonEmptyString(rawCandidates),
   );
