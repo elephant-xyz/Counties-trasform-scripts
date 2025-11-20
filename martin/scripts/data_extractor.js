@@ -11,6 +11,12 @@ function readJson(p) {
 function ensureDir(p) {
     if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
+function resetDir(p) {
+    if (fs.existsSync(p)) {
+        fs.rmSync(p, { recursive: true, force: true });
+    }
+    fs.mkdirSync(p, { recursive: true });
+}
 function writeJson(p, obj) {
     ensureDir(path.dirname(p));
     fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
@@ -630,7 +636,7 @@ function main() {
     const utilitiesData = readJson(utilsPath);
     const layoutData = readJson(layoutPath);
 
-    ensureDir("data");
+    resetDir("data");
 
     const addressFilename = "address.json";
     const propertyFilename = "property.json";
@@ -947,20 +953,10 @@ function main() {
     const deedsOut = [];
     const propertySalesTargets = [];
 
-    function addSaleRecord(payload) {
-        if (!payload || typeof payload !== "object") return null;
-        const cleaned = {};
-        Object.keys(payload).forEach((key) => {
-            const value = payload[key];
-            if (value !== undefined && value !== null) {
-                cleaned[key] = value;
-            }
-        });
-        if (!Object.keys(cleaned).length) {
-            return null;
-        }
+    function addSaleRecord(propName, value) {
+        if (!propName || value === undefined || value === null) return null;
         const file = `sales_history_${salesOut.length + 1}.json`;
-        salesOut.push({ file, data: cleaned });
+        salesOut.push({ file, data: { [propName]: value } });
         propertySalesTargets.push(`./${file}`);
         return `./${file}`;
     }
@@ -970,16 +966,15 @@ function main() {
         const price = parseCurrencyToNumber(row.priceTxt);
         const deedType = row.deedTypeRaw ? mapDeedType(row.deedTypeRaw) : null;
 
-        const salePaths = [];
         const saleDatePath = isoDate
-            ? addSaleRecord({ ownership_transfer_date: isoDate })
+            ? addSaleRecord("ownership_transfer_date", isoDate)
             : null;
-        if (saleDatePath) salePaths.push(saleDatePath);
         const salePricePath =
-            price != null ? addSaleRecord({ purchase_price_amount: price }) : null;
-        if (salePricePath) salePaths.push(salePricePath);
+            price != null
+                ? addSaleRecord("purchase_price_amount", price)
+                : null;
 
-        if (!salePaths.length) {
+        if (!saleDatePath && !salePricePath) {
             return;
         }
 
