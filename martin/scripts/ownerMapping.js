@@ -41,7 +41,7 @@ function getPropertyId() {
   ];
   for (const lbl of tryLabels) {
     const item = labeled.find(
-      (x) => x.label.toLowerCase() === lbl.toLowerCase(),
+        (x) => x.label.toLowerCase() === lbl.toLowerCase(),
     );
     if (item && item.valueText) {
       id = item.valueText.split(/\s+/).join(" ").trim();
@@ -55,12 +55,12 @@ function getPropertyId() {
 // Normalize name text: collapse spaces and trim punctuation
 function cleanName(str) {
   return (str || "")
-    .replace(/[\u00A0]/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\s*&\s*/g, " & ")
-    .replace(/\s*,\s*/g, ", ")
-    .replace(/\s+\/\s+/g, " / ")
-    .trim();
+      .replace(/[\u00A0]/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\s*&\s*/g, " & ")
+      .replace(/\s*,\s*/g, ", ")
+      .replace(/\s+\/\s+/g, " / ")
+      .trim();
 }
 
 // Company keyword detection
@@ -109,18 +109,18 @@ function splitRawOwners(raw) {
   const s = cleanName(raw);
   if (!s) return [];
   const parts = s
-    .split(/\s*&\s*|\s+AND\s+|;|\s*\+\s*/i)
-    .map((p) => cleanName(p))
-    .filter(Boolean);
+      .split(/\s*&\s*|\s+AND\s+|;|\s*\+\s*/i)
+      .map((p) => cleanName(p))
+      .filter(Boolean);
   return parts.length ? parts : [s];
 }
 
 // Remove role/suffix tokens from a name
 function stripRoleTokens(s) {
   return s
-    .replace(/\b(TRUSTEE|TTEE|ET AL|ETAL|ESTATE OF|EST OF|EST)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
+      .replace(/\b(TRUSTEE|TTEE|ET AL|ETAL|ESTATE OF|EST OF|EST)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
 }
 
 // Heuristic to detect if looks like a person
@@ -138,8 +138,8 @@ function parsePersonName(raw) {
   let s = stripRoleTokens(cleanName(raw));
   if (!s) return null;
   let first = null,
-    middle = null,
-    last = null;
+      middle = null,
+      last = null;
   if (s.includes(",")) {
     const [lastPart, restPart] = s.split(",").map((t) => t.trim());
     last = lastPart || null;
@@ -185,7 +185,7 @@ function classifyOwner(raw) {
   }
 
   const isCompany =
-    COMPANY_REGEX.test(s) || /\b(revocable|trust|agreement)\b/i.test(s);
+      COMPANY_REGEX.test(s) || /\b(revocable|trust|agreement)\b/i.test(s);
   if (isCompany) {
     return { owners: [{ type: "company", name: s }], invalid: null };
   }
@@ -225,25 +225,31 @@ function dedupeOwners(arr) {
 }
 
 // Extract current owners from the General Information section
+// Extract current owners from the General Information section
 function getCurrentOwners() {
   const labeled = extractLabeledValues($("body"));
   const ownersField = labeled.find((x) =>
-    x.label.toLowerCase().includes("property owners"),
+      x.label.toLowerCase().includes("property owners"),
   );
   const collected = [];
   const invalids = [];
   if (ownersField && ownersField.valueHtml) {
-    const segments = ownersField.valueHtml
-      .replace(/<\/?strong[^>]*>/gi, "")
-      .split(/<br\s*\/?\s*>/i)
-      .map((seg) => cleanName(cheerio.load(`<div>${seg}</div>`)("div").text()))
-      .filter(Boolean);
+    // Remove the "Show additional owners" link before processing
+    let cleanedHtml = ownersField.valueHtml
+        .replace(/<span class="additionalOwners">[\s\S]*?<\/span>/gi, '')
+        .replace(/\+\s*Show additional owners/gi, '');
+
+    const segments = cleanedHtml
+        .replace(/<\/?strong[^>]*>/gi, "")
+        .split(/<br\s*\/?\s*>/i)
+        .map((seg) => cleanName(cheerio.load(`<div>${seg}</div>`)("div").text()))
+        .filter(Boolean);
 
     for (const raw of segments.length
-      ? segments
-      : [
+        ? segments
+        : [
           cleanName(
-            cheerio.load(`<div>${ownersField.valueHtml}</div>`)("div").text(),
+              cheerio.load(`<div>${cleanedHtml}</div>`)("div").text(),
           ),
         ]) {
       const { owners, invalid } = classifyOwner(raw);
@@ -262,37 +268,37 @@ function getHistoricalOwners() {
     const headerCells = $(tbl).find("tr").first().find("th");
     if (headerCells.length >= 3) {
       const headers = headerCells
-        .map((j, th) => $(th).text().trim().toLowerCase())
-        .get();
+          .map((j, th) => $(th).text().trim().toLowerCase())
+          .get();
       const hasSaleDate = headers.some((h) => h.includes("sale date"));
       const hasGrantor = headers.some((h) => h.includes("grantor"));
       if (hasSaleDate && hasGrantor) {
         $(tbl)
-          .find("tr")
-          .slice(1)
-          .each((rIdx, tr) => {
-            const tds = $(tr).find("td");
-            if (tds.length === 0) return;
-            const dateText = $(tds[0]).text().trim();
-            const grantorText = $(tds[2]).text().trim();
-            const dateIso = toISODate(dateText);
-            const { owners, invalid } = classifyOwner(grantorText);
-            const ownersClean = dedupeOwners(owners);
-            let invalidLocal = invalid ? [invalid] : [];
-            if (
-              /^seller\s*-\s*see file for name$/i.test(cleanName(grantorText))
-            ) {
-              invalidLocal.push({
-                raw: grantorText,
-                reason: "placeholder seller name",
+            .find("tr")
+            .slice(1)
+            .each((rIdx, tr) => {
+              const tds = $(tr).find("td");
+              if (tds.length === 0) return;
+              const dateText = $(tds[0]).text().trim();
+              const grantorText = $(tds[2]).text().trim();
+              const dateIso = toISODate(dateText);
+              const { owners, invalid } = classifyOwner(grantorText);
+              const ownersClean = dedupeOwners(owners);
+              let invalidLocal = invalid ? [invalid] : [];
+              if (
+                  /^seller\s*-\s*see file for name$/i.test(cleanName(grantorText))
+              ) {
+                invalidLocal.push({
+                  raw: grantorText,
+                  reason: "placeholder seller name",
+                });
+              }
+              results.push({
+                date: dateIso || dateText || null,
+                owners: ownersClean,
               });
-            }
-            results.push({
-              date: dateIso || dateText || null,
-              owners: ownersClean,
+              invalids.push(...invalidLocal);
             });
-            invalids.push(...invalidLocal);
-          });
       }
     }
   });
@@ -317,13 +323,45 @@ function toISODate(s) {
 
 // Build owners_by_date map sorted chronologically, plus current
 function buildOwnersByDate() {
+  const invalid_owners = [];
+
   const current = getCurrentOwners();
-  return {
-    owners_by_date: {
-      current: current.owners,
-    },
-    invalid_owners: current.invalids,
-  };
+  invalid_owners.push(...current.invalids);
+
+  const hist = getHistoricalOwners();
+  invalid_owners.push(...hist.invalids);
+
+  const map = new Map();
+  for (const entry of hist.entries) {
+    let key = entry.date;
+    if (!key) {
+      let idx = 1;
+      while (map.has(`unknown_date_${idx}`)) idx++;
+      key = `unknown_date_${idx}`;
+    }
+    const arr = map.get(key) || [];
+    for (const o of entry.owners) arr.push(o);
+    map.set(key, dedupeOwners(arr));
+  }
+
+  const keys = Array.from(map.keys());
+  const dateKeys = keys.filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  const unknownKeys = keys
+      .filter((k) => /^unknown_date_\d+$/.test(k))
+      .sort((a, b) => {
+        const ia = parseInt(a.replace(/\D/g, ""), 10);
+        const ib = parseInt(b.replace(/\D/g, ""), 10);
+        return ia - ib;
+      });
+
+  const ordered = {};
+  for (const k of [...dateKeys, ...unknownKeys]) {
+    ordered[k] = map.get(k) || [];
+  }
+
+  ordered["current"] = current.owners;
+
+  return { owners_by_date: ordered, invalid_owners: invalid_owners };
 }
 
 // Compose final object
