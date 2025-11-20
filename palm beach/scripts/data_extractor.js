@@ -18534,18 +18534,33 @@ function resolveNormalizedAddressVariantForOneOf(address) {
   }
 
   const probe = { ...surfaced };
-  if (!hasCompleteNormalizedAddress(probe)) {
+  if (!hasCompleteNormalizedAddress({ ...probe })) {
     return null;
   }
 
-  if (!probe.postal_code) {
-    probe.plus_four_postal_code = null;
-  }
-  if (probe.state_code && !probe.country_code) {
-    probe.country_code = "US";
+  if (!hasRobustNormalizedAddress({ ...probe })) {
+    return null;
   }
 
-  return probe;
+  const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    normalizedOutput[field] = sanitizeAddressFieldValue(
+      field,
+      probe[field],
+    );
+  }
+
+  if (!normalizedOutput.postal_code) {
+    normalizedOutput.plus_four_postal_code = null;
+  }
+  if (
+    normalizedOutput.state_code &&
+    !normalizedOutput.country_code
+  ) {
+    normalizedOutput.country_code = "US";
+  }
+
+  return normalizedOutput;
 }
 
 function buildRawAddressVariantForOneOf(source, rawString) {
