@@ -672,6 +672,15 @@ function main() {
     const addressFilename = "address.json";
     const propertyFilename = "property.json";
     const lotFilename = "lot.json";
+    const addressFilePath = path.join("data", addressFilename);
+    const propertyFilePath = path.join("data", propertyFilename);
+    const lotFilePath = path.join("data", lotFilename);
+    const addressFileRel = `./${addressFilename}`;
+    const propertyFileRel = `./${propertyFilename}`;
+    const lotFileRel = `./${lotFilename}`;
+    let addressWritten = false;
+    let propertyWritten = false;
+    let lotWritten = false;
 
     // Address
     const addressSource = addr || {};
@@ -756,7 +765,8 @@ function main() {
                 delete addressOut[key];
             }
         });
-        writeJson(path.join("data", addressFilename), addressOut);
+        writeJson(addressFilePath, addressOut);
+        addressWritten = true;
     }
     // Property
     const parcelId =
@@ -825,6 +835,12 @@ function main() {
         lotSizeAcre,
         formattedLivable,
     );
+    if (!propertyType) {
+        propertyType =
+            lotSizeAcre && lotSizeAcre > 0.25 && !formattedLivable
+                ? "LandParcel"
+                : "Building";
+    }
     const propertyOut = {
         parcel_identifier: parcelId,
         property_type: propertyType,
@@ -843,7 +859,8 @@ function main() {
     Object.keys(propertyOut).forEach((k) => {
         if (propertyOut[k] === undefined) delete propertyOut[k];
     });
-    writeJson(path.join("data", propertyFilename), propertyOut);
+    writeJson(propertyFilePath, propertyOut);
+    propertyWritten = true;
 
     // Lot
     const lotOut = {
@@ -861,7 +878,29 @@ function main() {
         driveway_condition: null,
         lot_condition_issues: null,
     };
-    writeJson(path.join("data", lotFilename), lotOut);
+    writeJson(lotFilePath, lotOut);
+    lotWritten = true;
+
+    if (propertyWritten && addressWritten) {
+        writeJson(
+            path.join("data", "relationship_property_address.json"),
+            {
+                type: "property_has_address",
+                from: { "/": propertyFileRel },
+                to: { "/": addressFileRel },
+            },
+        );
+    }
+    if (propertyWritten && lotWritten) {
+        writeJson(
+            path.join("data", "relationship_property_lot.json"),
+            {
+                type: "property_has_lot",
+                from: { "/": propertyFileRel },
+                to: { "/": lotFileRel },
+            },
+        );
+    }
 
     // Taxes
     const taxes = [];
