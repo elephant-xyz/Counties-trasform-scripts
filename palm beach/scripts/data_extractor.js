@@ -5916,16 +5916,6 @@ const COUNTY_STRICT_NORMALIZED_FIELDS = [
   ...COUNTY_NORMALIZED_CORE_FIELDS,
   "latitude",
   "longitude",
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
 ];
 
 const NORMALIZED_ADDRESS_STRONG_FIELDS = [
@@ -5951,16 +5941,8 @@ const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 const COUNTY_NORMALIZED_STRICT_FIELDS = [
   ...new Set([
     ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
-    "plus_four_postal_code",
-    "street_suffix_type",
-    "street_pre_directional_text",
-    "street_post_directional_text",
-    "unit_identifier",
-    "route_number",
-    "township",
-    "range",
-    "section",
-    "block",
+    "latitude",
+    "longitude",
   ]),
 ];
 
