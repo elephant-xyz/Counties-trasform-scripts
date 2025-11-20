@@ -14672,7 +14672,7 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
       ? hasRobustNormalizedAddress({ ...normalizedProbe })
       : hasCompleteNormalizedAddress({ ...normalizedProbe });
 
-  if (!sourceHasRawVariant && hasNormalizedCoverage) {
+  if (hasNormalizedCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       let value = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
