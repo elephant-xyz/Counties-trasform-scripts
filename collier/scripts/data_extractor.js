@@ -2101,6 +2101,7 @@ function main() {
   const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim();
   const complexSelector2 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim();
   const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim();
+  const complexSelector4 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim();
   const taxBillsLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills");
   const taxBillsLinkHref = taxBillsLink.attr("href") || null;
   const taxBillsLinkText = taxBillsLink.text().trim() || null;
@@ -2130,6 +2131,7 @@ function main() {
       complexSelector1 ? `Field1: ${complexSelector1}` : null,
       complexSelector2 ? `Field2: ${complexSelector2}` : null,
       complexSelector3 ? `Field3: ${complexSelector3}` : null,
+      complexSelector4 ? `Field4: ${complexSelector4}` : null,
     ].filter(Boolean).join('; ') || 'No additional data'}`,
     note_type: "ExtractedData",
     note_date: new Date().toISOString(),
@@ -2191,6 +2193,7 @@ function main() {
       complex_selector_1: complexSelector1 || null,
       complex_selector_2: complexSelector2 || null,
       complex_selector_3: complexSelector3 || null,
+      complex_selector_4: complexSelector4 || null,
     },
 
     // Links and references
