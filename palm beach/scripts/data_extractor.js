@@ -6008,6 +6008,36 @@ function hasNormalizedCountyCoverage(address) {
   return true;
 }
 
+function hasStrictNormalizedAddressCoverage(address) {
+  if (!address || typeof address !== "object") return false;
+
+  const normalizedProbe = { ...address };
+  const hasStrongCoverage = NORMALIZED_ADDRESS_STRONG_FIELDS.every((field) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(normalizedProbe[field]);
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      normalizedProbe[field] = numeric;
+      return true;
+    }
+
+    return hasMeaningfulAddressValue(normalizedProbe[field]);
+  });
+
+  if (!hasStrongCoverage) {
+    return false;
+  }
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(normalizedProbe, field)) {
+      address[field] = normalizedProbe[field];
+    }
+  }
+
+  return true;
+}
+
 function hasRawAddressRequiredValues(address) {
   if (!address || typeof address !== "object") return false;
 
@@ -14667,16 +14697,15 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
       : "";
   const sourceHasRawVariant = trimmedPayloadRaw.length > 0;
 
-  const hasNormalizedCoverage =
-    typeof hasRobustNormalizedAddress === "function"
-      ? hasRobustNormalizedAddress({ ...normalizedProbe })
-      : hasCompleteNormalizedAddress({ ...normalizedProbe });
+  const hasNormalizedCoverage = hasStrictNormalizedAddressCoverage(
+    normalizedProbe,
+  );
 
   if (hasNormalizedCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      let value = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
-        ? normalizedSurface[field]
+      let value = Object.prototype.hasOwnProperty.call(normalizedProbe, field)
+        ? normalizedProbe[field]
         : null;
 
       if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
