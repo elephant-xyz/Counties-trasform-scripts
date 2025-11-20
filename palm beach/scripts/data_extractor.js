@@ -208,6 +208,34 @@ function resolveSourceHttpRequestCandidate(...candidates) {
   return resolved || null;
 }
 
+function buildRawAddressOneOfPayload(
+  rawValue,
+  requestIdentifier,
+  sourceHttpRequest,
+) {
+  const trimmed =
+    typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!trimmed.length) {
+    return null;
+  }
+
+  const payload = { unnormalized_address: trimmed };
+  if (requestIdentifier !== undefined) {
+    payload.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  } else {
+    payload.request_identifier = null;
+  }
+
+  if (sourceHttpRequest) {
+    payload.source_http_request = deepClone(sourceHttpRequest);
+  } else {
+    payload.source_http_request = null;
+  }
+
+  return payload;
+}
+
 function sanitizeAddressPayloadForWrite(payload) {
   if (!payload || typeof payload !== "object") {
     return payload;
@@ -422,8 +450,9 @@ function enforceFinalAddressOneOfOutput(filePath) {
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const sanitizedValue = sanitizeAddressFieldValue(field, payload[field]);
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      normalizedSurface[field] = Number.isFinite(sanitizedValue)
-        ? sanitizedValue
+      const numeric = parseCoordinate(sanitizedValue);
+      normalizedSurface[field] = Number.isFinite(numeric)
+        ? numeric
         : null;
       continue;
     }
@@ -448,64 +477,69 @@ function enforceFinalAddressOneOfOutput(filePath) {
   if (normalizedSurface.state_code && !normalizedSurface.country_code) {
     normalizedSurface.country_code = "US";
   }
-  if ((normalizedSurface.latitude == null) !== (normalizedSurface.longitude == null)) {
+  if (
+    (normalizedSurface.latitude == null) !==
+    (normalizedSurface.longitude == null)
+  ) {
     normalizedSurface.latitude = null;
     normalizedSurface.longitude = null;
   }
 
-  const hasNormalizedCoverage =
-    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-      (field) =>
-        typeof normalizedSurface[field] === "string" &&
-        normalizedSurface[field].trim().length > 0,
-    ) && hasNormalizedCountyCoverage(normalizedSurface);
-
-  let finalOutput = null;
-  if (hasNormalizedCoverage) {
-    finalOutput = { ...normalizedSurface };
-  } else if (trimmedUnnormalized.length) {
-    finalOutput = {
-      unnormalized_address: trimmedUnnormalized,
-      ...normalizedSurface,
-    };
-  } else {
-    removeFileIfExists(filePath);
-    return;
-  }
-
-  if ((finalOutput.latitude == null) !== (finalOutput.longitude == null)) {
-    finalOutput.latitude = null;
-    finalOutput.longitude = null;
-  }
-  if (!finalOutput.postal_code) {
-    finalOutput.plus_four_postal_code = null;
-  }
-  if (finalOutput.state_code && !finalOutput.country_code) {
-    finalOutput.country_code = "US";
-  }
+  const normalizedProbe = { ...normalizedSurface };
+  const normalizedCoverage =
+    typeof hasRobustNormalizedAddress === "function"
+      ? hasRobustNormalizedAddress({ ...normalizedProbe })
+      : hasNormalizedCountyCoverage(normalizedProbe);
 
   const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
-    finalOutput.request_identifier,
     payload.request_identifier,
+    normalizedSurface.request_identifier,
   );
-  finalOutput.request_identifier =
-    resolvedRequestIdentifier !== undefined && resolvedRequestIdentifier !== null
-      ? resolvedRequestIdentifier
-      : null;
-
   const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
-    finalOutput.source_http_request,
     payload.source_http_request,
+    normalizedSurface.source_http_request,
   );
 
-  if (!resolvedSourceHttpRequest) {
+  if (normalizedCoverage) {
+    if (!resolvedSourceHttpRequest) {
+      removeFileIfExists(filePath);
+      return;
+    }
+    const normalizedOutput = { ...normalizedProbe };
+    normalizedOutput.request_identifier =
+      resolvedRequestIdentifier !== undefined &&
+      resolvedRequestIdentifier !== null
+        ? resolvedRequestIdentifier
+        : null;
+    normalizedOutput.source_http_request = resolvedSourceHttpRequest;
+
+    fs.writeFileSync(filePath, JSON.stringify(normalizedOutput, null, 2));
+    return;
+  }
+
+  const fallbackRaw =
+    trimmedUnnormalized ||
+    (typeof composeFallbackUnnormalizedAddressFromFields === "function"
+      ? composeFallbackUnnormalizedAddressFromFields(normalizedSurface)
+      : null);
+
+  if (!fallbackRaw || !resolvedSourceHttpRequest) {
     removeFileIfExists(filePath);
     return;
   }
 
-  finalOutput.source_http_request = resolvedSourceHttpRequest;
+  const rawPayload = buildRawAddressOneOfPayload(
+    fallbackRaw,
+    resolvedRequestIdentifier ?? null,
+    resolvedSourceHttpRequest,
+  );
 
-  fs.writeFileSync(filePath, JSON.stringify(finalOutput, null, 2));
+  if (!rawPayload) {
+    removeFileIfExists(filePath);
+    return;
+  }
+
+  fs.writeFileSync(filePath, JSON.stringify(rawPayload, null, 2));
 }
 
 function prepareSourceHttpRequest(raw) {
@@ -761,50 +795,52 @@ function finalizeCountyAddressNormalization(addressFilePath, options = {}) {
     normalizedSurface.county_name = options.defaultCountyName;
   }
 
-  const normalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedSurface[field] === "string" &&
-      normalizedSurface[field].trim().length > 0,
-  );
+  const normalizedProbe = { ...normalizedSurface };
+  const normalizedCoverage =
+    typeof hasRobustNormalizedAddress === "function"
+      ? hasRobustNormalizedAddress({ ...normalizedProbe })
+      : hasNormalizedCountyCoverage(normalizedProbe);
 
   if (normalizedCoverage) {
     const normalizedRequestIdentifier = resolveRequestIdentifierCandidate(
-      normalizedSurface.request_identifier,
+      normalizedProbe.request_identifier,
       payload.request_identifier,
+      ...(Array.isArray(options.requestIdentifierCandidates)
+        ? options.requestIdentifierCandidates
+        : []),
     );
     const normalizedSourceHttpRequest = resolveSourceHttpRequestCandidate(
-      normalizedSurface.source_http_request,
+      normalizedProbe.source_http_request,
       payload.source_http_request,
+      ...(Array.isArray(options.sourceHttpRequestCandidates)
+        ? options.sourceHttpRequestCandidates
+        : []),
     );
     if (!normalizedSourceHttpRequest) {
       removeFileIfExists(addressFilePath);
       return;
     }
-    normalizedSurface.request_identifier =
+
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOutput[field] =
+        normalizedProbe[field] === undefined ||
+        normalizedProbe[field] === null
+          ? null
+          : normalizedProbe[field];
+    }
+    normalizedOutput.request_identifier =
       normalizedRequestIdentifier !== undefined &&
       normalizedRequestIdentifier !== null
         ? normalizedRequestIdentifier
         : null;
-    normalizedSurface.source_http_request = normalizedSourceHttpRequest;
+    normalizedOutput.source_http_request = normalizedSourceHttpRequest;
 
     fs.writeFileSync(
       addressFilePath,
-      JSON.stringify(normalizedSurface, null, 2),
+      JSON.stringify(normalizedOutput, null, 2),
     );
     return;
-  }
-
-  const rawSurface = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    const hasField = Object.prototype.hasOwnProperty.call(payload, field);
-    const sanitizedValue = sanitizeAddressFieldValue(
-      field,
-      hasField ? payload[field] : null,
-    );
-    rawSurface[field] =
-      sanitizedValue === undefined || sanitizedValue === null
-        ? null
-        : sanitizedValue;
   }
 
   const finalRawCandidates = [...rawCandidates];
@@ -816,45 +852,44 @@ function finalizeCountyAddressNormalization(addressFilePath, options = {}) {
   }
 
   const resolvedRaw = resolveFirstNonEmptyString(finalRawCandidates);
-  if (hasMeaningfulAddressValue(resolvedRaw)) {
-    rawSurface.unnormalized_address = resolvedRaw;
-  } else if (!rawSurface.unnormalized_address) {
+  const trimmedResolved =
+    typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
+  if (!trimmedResolved.length && !trimmedRaw.length) {
+    removeFileIfExists(addressFilePath);
     return;
   }
-
-  if (
-    (rawSurface.latitude == null) !==
-    (rawSurface.longitude == null)
-  ) {
-    rawSurface.latitude = null;
-    rawSurface.longitude = null;
-  }
-  if (!rawSurface.postal_code) {
-    rawSurface.plus_four_postal_code = null;
-  }
-  if (rawSurface.state_code && !rawSurface.country_code) {
-    rawSurface.country_code = options.defaultCountryCode || "US";
-  }
+  const rawString = trimmedResolved || trimmedRaw;
 
   const rawRequestIdentifier = resolveRequestIdentifierCandidate(
-    rawSurface.request_identifier,
     payload.request_identifier,
+    normalizedSurface.request_identifier,
+    ...(Array.isArray(options.requestIdentifierCandidates)
+      ? options.requestIdentifierCandidates
+      : []),
   );
   const rawSourceHttpRequest = resolveSourceHttpRequestCandidate(
-    rawSurface.source_http_request,
     payload.source_http_request,
+    normalizedSurface.source_http_request,
+    ...(Array.isArray(options.sourceHttpRequestCandidates)
+      ? options.sourceHttpRequestCandidates
+      : []),
   );
   if (!rawSourceHttpRequest) {
     removeFileIfExists(addressFilePath);
     return;
   }
-  rawSurface.request_identifier =
-    rawRequestIdentifier !== undefined && rawRequestIdentifier !== null
-      ? rawRequestIdentifier
-      : null;
-  rawSurface.source_http_request = rawSourceHttpRequest;
 
-  fs.writeFileSync(addressFilePath, JSON.stringify(rawSurface, null, 2));
+  const rawPayload = buildRawAddressOneOfPayload(
+    rawString,
+    rawRequestIdentifier ?? null,
+    rawSourceHttpRequest,
+  );
+  if (!rawPayload) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  fs.writeFileSync(addressFilePath, JSON.stringify(rawPayload, null, 2));
 }
 
 function toISODate(mdy) {
