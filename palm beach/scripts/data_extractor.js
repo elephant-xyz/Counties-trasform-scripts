@@ -219,12 +219,17 @@ function buildRawAddressOneOfPayload(
     return null;
   }
 
-  const payload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-  payload.unnormalized_address = trimmed;
+  const payload = {
+    unnormalized_address: trimmed,
+  };
 
   if (requestIdentifier !== undefined) {
+    const normalizedRequestIdentifier = safeNullIfEmpty(requestIdentifier);
     payload.request_identifier =
-      requestIdentifier === null ? null : requestIdentifier;
+      normalizedRequestIdentifier === undefined ||
+      normalizedRequestIdentifier === null
+        ? null
+        : normalizedRequestIdentifier;
   } else {
     payload.request_identifier = null;
   }
@@ -18723,73 +18728,27 @@ function buildRawAddressVariantForOneOf(source, rawString) {
     return null;
   }
 
-  const rawOutput = { unnormalized_address: trimmed };
-
-  for (const field of RAW_VARIANT_OPTIONAL_FIELDS_FOR_ONE_OF) {
-    const candidate = Object.prototype.hasOwnProperty.call(source, field)
-      ? source[field]
-      : null;
-    const normalized = normalizeAddressFieldForSchema(field, candidate);
-    if (hasMeaningfulAddressValue(normalized)) {
-      rawOutput[field] = normalized;
-    }
-  }
-
-  for (const coordField of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
-    const numeric = parseCoordinate(
-      Object.prototype.hasOwnProperty.call(source, coordField)
-        ? source[coordField]
-        : null,
-    );
-    if (Number.isFinite(numeric)) {
-      rawOutput[coordField] = numeric;
-    }
-  }
+  let requestIdentifier;
+  let sourceHttpRequest;
 
   if (
-    !Object.prototype.hasOwnProperty.call(rawOutput, "postal_code") &&
-    Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")
+    source &&
+    Object.prototype.hasOwnProperty.call(source, "request_identifier")
   ) {
-    rawOutput.plus_four_postal_code = null;
+    requestIdentifier = source.request_identifier;
+  }
+  if (
+    source &&
+    Object.prototype.hasOwnProperty.call(source, "source_http_request")
+  ) {
+    sourceHttpRequest = source.source_http_request;
   }
 
-  if (rawOutput.state_code && !rawOutput.country_code) {
-    rawOutput.country_code = "US";
-  }
-
-  for (const field of RAW_VARIANT_SCHEMA_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
-      rawOutput[field] = null;
-      continue;
-    }
-
-    if (rawOutput[field] === undefined) {
-      rawOutput[field] = null;
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(rawOutput[field]);
-      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (typeof rawOutput[field] === "string") {
-      const normalized = rawOutput[field].trim();
-      rawOutput[field] = normalized.length ? normalized : null;
-    }
-  }
-
-  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
-    rawOutput.latitude = null;
-    rawOutput.longitude = null;
-  }
-
-  if (!rawOutput.postal_code && rawOutput.plus_four_postal_code !== null) {
-    rawOutput.plus_four_postal_code = null;
-  }
-
-  return rawOutput;
+  return buildRawAddressOneOfPayload(
+    trimmed,
+    requestIdentifier,
+    sourceHttpRequest,
+  );
 }
 
 function finalizeAddressSchemaVariantForOutput(addressFilePath) {
