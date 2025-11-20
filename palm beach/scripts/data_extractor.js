@@ -16548,14 +16548,49 @@ function enforceAddressVariantExclusivity(addressFilePath) {
     return;
   }
 
-  const rawOutput = {
-    unnormalized_address: trimmedRaw,
-  };
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const value =
+      normalizedCandidate[field] === undefined ||
+      normalizedCandidate[field] === null
+        ? null
+        : normalizedCandidate[field];
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOutput[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    rawOutput[field] = value;
+  }
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+  if (
+    (rawOutput.latitude == null) !==
+    (rawOutput.longitude == null)
+  ) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  rawOutput.unnormalized_address = trimmedRaw;
 
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
     const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
     rawOutput.request_identifier =
-      requestIdentifier !== null && requestIdentifier !== undefined
+      requestIdentifier !== undefined && requestIdentifier !== null
         ? requestIdentifier
         : null;
   }
