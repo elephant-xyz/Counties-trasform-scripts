@@ -953,6 +953,11 @@ function main() {
     }
   });
 
+  // Extract owner selectors at outer scope to ensure they're available in extraction_metadata
+  let ownerLine1 = $("#OwnerLine1").text().trim() || null;
+  let ownerLine3 = $("#OwnerLine3").text().trim() || null;
+  let ownerCity = $("#OwnerCity").text().trim() || null;
+
   // Owners (company/person) from owners/owner_data.json
   const ownerKey = `property_${folio}`;
   const ownerEntry = owners[ownerKey];
@@ -990,11 +995,6 @@ function main() {
       const personFiles = [];
       const companyFiles = [];
       let ownerMailingFile = null;
-
-      // Always extract OwnerLine1, OwnerLine3 and OwnerCity to ensure selectors are mapped
-      const ownerLine1 = $("#OwnerLine1").text().trim() || null;
-      const ownerLine3 = $("#OwnerLine3").text().trim() || null;
-      const ownerCity = $("#OwnerCity").text().trim() || null;
 
       // OwnerLine1, OwnerLine3, and OwnerCity selectors are mapped through mailing address below
 
@@ -2214,6 +2214,11 @@ function main() {
     },
 
     // Owner information is now properly mapped through address records (OwnerLine1, OwnerLine3, OwnerCity)
+    owner_information: {
+      owner_line_1: ownerLine1 || null,
+      owner_line_3: ownerLine3 || null,
+      owner_city: ownerCity || null,
+    },
 
     // Complex selectors
     additional_fields: {
@@ -2236,6 +2241,9 @@ function main() {
 
     // All buildings data
     all_buildings_data: allBuildingsData,
+
+    // Permits data
+    permits_data: permits,
   };
 
   fs.writeFileSync(
