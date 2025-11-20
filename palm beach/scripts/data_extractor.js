@@ -14480,6 +14480,58 @@ function forceSimpleCountyAddressOutput(addressFilePath, options = {}) {
   writeJSON(addressFilePath, rawOutput);
 }
 
+function buildCountyMinimalRawAddressOutput(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const trimmedRaw = safeNullIfEmpty(address.unnormalized_address);
+  if (!trimmedRaw) return null;
+
+  const minimal = {
+    unnormalized_address: trimmedRaw,
+  };
+
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    minimal.latitude = latitude;
+    minimal.longitude = longitude;
+  }
+
+  const OPTIONAL_RAW_FIELDS = [
+    "city_name",
+    "state_code",
+    "postal_code",
+    "country_code",
+    "county_name",
+    "municipality_name",
+  ];
+
+  for (const field of OPTIONAL_RAW_FIELDS) {
+    if (!hasMeaningfulAddressValue(address[field])) continue;
+    const normalizedValue = normalizeAddressFieldForSchema(field, address[field]);
+    if (normalizedValue === undefined || normalizedValue === null) continue;
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      if (!trimmed.length) continue;
+      minimal[field] = trimmed;
+      continue;
+    }
+    minimal[field] = normalizedValue;
+  }
+
+  const trimmedRequest = safeNullIfEmpty(address.request_identifier);
+  if (trimmedRequest) {
+    minimal.request_identifier = trimmedRequest;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
+  if (preparedSource) {
+    minimal.source_http_request = deepClone(preparedSource);
+  }
+
+  return minimal;
+}
+
 function forceRawAddressOnly(addressFilePath, options = {}) {
   if (!addressFilePath) {
     return;
@@ -14747,7 +14799,21 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
   ) {
     surfaced.municipality_name = toTitleCase(surfaced.city_name);
   }
-  writeJSON(addressFilePath, surfaced);
+  if (
+    typeof rawSeed.unnormalized_address === "string" &&
+    rawSeed.unnormalized_address.trim().length
+  ) {
+    surfaced.unnormalized_address = rawSeed.unnormalized_address.trim();
+  }
+  const minimalRaw = buildCountyMinimalRawAddressOutput(surfaced);
+  if (minimalRaw) {
+    fs.writeFileSync(
+      addressFilePath,
+      JSON.stringify(minimalRaw, null, 2),
+    );
+  } else {
+    removeFileIfExists(addressFilePath);
+  }
 }
 
 function enforceAddressVariantForOneOf(addressFilePath, options = {}) {
