@@ -537,7 +537,6 @@ function main() {
     number_of_units: null,
     subdivision: subdivision || null,
     zoning: millageArea || null,
-    municipality: municipality || null,
   };
   // property_type and property_usage_type
   if (useCodeText) {
@@ -1757,13 +1756,6 @@ function main() {
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
       yearly_tax_amount: yearly != null ? yearly : null,
-      // Include extracted tax breakdown data
-      school_taxable_value: schoolTaxableValue,
-      total_ad_valorem_taxes: totalAdvTaxes,
-      total_non_ad_valorem_taxes: totalNAdvTaxes,
-      tax_breakdown_by_authority: taxBreakdownData.length > 0 ? taxBreakdownData : null,
-      non_ad_valorem_breakdown: nonAdValoremTaxes.length > 0 ? nonAdValoremTaxes : null,
-      millage_details: millageDetailData,
     };
     taxRecords.push(taxObj);
   }
@@ -1898,14 +1890,6 @@ function main() {
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: yearlyAmount != null ? yearlyAmount : null,
-      // Include historical tax breakdown data
-      total_ad_valorem_taxes: rec.histAdvTax,
-      total_non_ad_valorem_taxes: rec.histNAdvTax,
-      millage_details: {
-        county_millage: rec.countyMillage,
-        school_millage: rec.schoolMillage,
-        municipal_millage: rec.municipalMillage,
-      },
     };
     taxRecords.push(taxObj);
   });
@@ -1921,8 +1905,10 @@ function main() {
       }
     } catch (_) {}
     taxRecords.forEach((taxObj, idx) => {
-      // Note: tax_breakdown and millage_details are not valid properties in the Elephant tax schema
-      // They are stored in the extraction_metadata.json file instead
+      // Note: Invalid properties (school_taxable_value, total_ad_valorem_taxes,
+      // total_non_ad_valorem_taxes, tax_breakdown_by_authority, non_ad_valorem_breakdown,
+      // millage_details) are not part of the Elephant tax schema.
+      // They are stored in the extraction_metadata.json file for reference.
 
       const filename = `tax_${idx + 1}.json`;
       const taxPath = path.join(dataDir, filename);
