@@ -22,19 +22,6 @@ function writeJson(p, obj) {
     fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
 }
 
-function writeRelationshipFile(filename, relationshipType, shouldEmit) {
-    const relPath = path.join("data", filename);
-    if (!shouldEmit) {
-        writeJson(relPath, null);
-        return;
-    }
-    writeJson(relPath, {
-        type: relationshipType,
-        from: null,
-        to: null,
-    });
-}
-
 function toISODate(mdY) {
     if (!mdY) return null;
     const parts = mdY
@@ -97,52 +84,56 @@ function errorUnknownEnum(value, cls, prop) {
     throw new Error(JSON.stringify(err));
 }
 
-const PROPERTY_TYPE_ENUM = new Set([
-    "Cooperative",
-    "Condominium",
-    "Modular",
-    "ManufacturedHousingMultiWide",
-    "Pud",
-    "Timeshare",
-    "2Units",
-    "DetachedCondominium",
-    "Duplex",
-    "SingleFamily",
-    "MultipleFamily",
-    "3Units",
-    "ManufacturedHousing",
-    "ManufacturedHousingSingleWide",
-    "4Units",
-    "Townhouse",
-    "NonWarrantableCondo",
-    "VacantLand",
-    "Retirement",
-    "MiscellaneousResidential",
-    "ResidentialCommonElementsAreas",
-    "MobileHome",
-    "Apartment",
-    "MultiFamilyMoreThan10",
-    "MultiFamilyLessThan10",
+const PROPERTY_TYPE_ALLOWED = new Set([
     "LandParcel",
     "Building",
     "Unit",
     "ManufacturedHome",
 ]);
 
-function inferDefaultPropertyType(lotSizeAcre, formattedLivable) {
+const PROPERTY_TYPE_TRANSLATIONS = {
+    LandParcel: "LandParcel",
+    VacantLand: "LandParcel",
+    ResidentialCommonElementsAreas: "LandParcel",
+    Building: "Building",
+    SingleFamily: "Building",
+    MultipleFamily: "Building",
+    MultiFamilyMoreThan10: "Building",
+    MultiFamilyLessThan10: "Building",
+    Apartment: "Building",
+    Duplex: "Building",
+    "3Units": "Building",
+    "4Units": "Building",
+    "2Units": "Building",
+    Townhouse: "Building",
+    MiscellaneousResidential: "Building",
+    Retirement: "Building",
+    Pud: "Building",
+    Modular: "Building",
+    DetachedCondominium: "Unit",
+    Condominium: "Unit",
+    NonWarrantableCondo: "Unit",
+    Cooperative: "Unit",
+    Timeshare: "Unit",
+    Unit: "Unit",
+    ManufacturedHome: "ManufacturedHome",
+    ManufacturedHousing: "ManufacturedHome",
+    ManufacturedHousingSingleWide: "ManufacturedHome",
+    ManufacturedHousingMultiWide: "ManufacturedHome",
+    MobileHome: "ManufacturedHome",
+};
+
+function resolvePropertyType(propertyType, lotSizeAcre, formattedLivable) {
+    if (propertyType) {
+        const normalized =
+            PROPERTY_TYPE_TRANSLATIONS[propertyType] ||
+            (PROPERTY_TYPE_ALLOWED.has(propertyType) ? propertyType : null);
+        if (normalized) return normalized;
+    }
     if (lotSizeAcre && lotSizeAcre > 0.25 && !formattedLivable) {
         return "LandParcel";
     }
     return "Building";
-}
-
-function ensureValidPropertyType(propertyType, lotSizeAcre, formattedLivable) {
-    const fallback = inferDefaultPropertyType(lotSizeAcre, formattedLivable);
-    let resolved = propertyType || fallback;
-    if (!PROPERTY_TYPE_ENUM.has(resolved)) {
-        resolved = fallback;
-    }
-    return resolved;
 }
 
 function mapPropertyType(useCodeText, landUseCode) {
@@ -829,7 +820,7 @@ function main() {
     }
 
     const formattedLivable = formatSquareFeet(livable);
-    propertyType = ensureValidPropertyType(
+    propertyType = resolvePropertyType(
         propertyType,
         lotSizeAcre,
         formattedLivable,
@@ -853,11 +844,6 @@ function main() {
         if (propertyOut[k] === undefined) delete propertyOut[k];
     });
     writeJson(path.join("data", propertyFilename), propertyOut);
-    writeRelationshipFile(
-        "relationship_property_address.json",
-        "property_has_address",
-        hasAddressRecord,
-    );
 
     // Lot
     const lotOut = {
@@ -876,11 +862,6 @@ function main() {
         lot_condition_issues: null,
     };
     writeJson(path.join("data", lotFilename), lotOut);
-    writeRelationshipFile(
-        "relationship_property_lot.json",
-        "property_has_lot",
-        true,
-    );
 
     // Taxes
     const taxes = [];
