@@ -1677,6 +1677,15 @@ function main() {
       path.join(dataDir, "note_total_taxes.json"),
       JSON.stringify(totalTaxNoteObj, null, 2),
     );
+    // Create relationship linking property to note
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./note_total_taxes.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_note_total_taxes.json"),
+      JSON.stringify(rel, null, 2),
+    );
   }
 
   // Extract tax breakdown data to ensure selectors are mapped (including Tax1-12, TaName1-12, Millage1-12)
@@ -1704,9 +1713,19 @@ function main() {
         note_type: "TaxBreakdownData",
         note_date: ty ? `${ty}-01-01` : null,
       };
+      const noteFilename = `note_tax_breakdown_${breakdown.tax_authority_index}.json`;
       fs.writeFileSync(
-        path.join(dataDir, `note_tax_breakdown_${breakdown.tax_authority_index}.json`),
+        path.join(dataDir, noteFilename),
         JSON.stringify(breakdownNoteObj, null, 2),
+      );
+      // Create relationship linking property to note
+      const rel = {
+        from: { "/": "./property.json" },
+        to: { "/": `./${noteFilename}` },
+      };
+      fs.writeFileSync(
+        path.join(dataDir, `relationship_property_has_note_tax_breakdown_${breakdown.tax_authority_index}.json`),
+        JSON.stringify(rel, null, 2),
       );
     });
   }
@@ -1760,6 +1779,15 @@ function main() {
     fs.writeFileSync(
       path.join(dataDir, "note_millage_details.json"),
       JSON.stringify(millageNoteObj, null, 2),
+    );
+    // Create relationship linking property to note
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./note_millage_details.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_note_millage_details.json"),
+      JSON.stringify(rel, null, 2),
     );
   }
 
@@ -2027,6 +2055,15 @@ function main() {
       path.join(dataDir, "file_tax_bills.json"),
       JSON.stringify(taxBillsFileObj, null, 2),
     );
+    // Create relationship linking property to file
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./file_tax_bills.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_file_tax_bills.json"),
+      JSON.stringify(rel, null, 2),
+    );
   }
 
   // Store complex selector values to ensure they're mapped to output
@@ -2045,6 +2082,15 @@ function main() {
     fs.writeFileSync(
       path.join(dataDir, "note_supplementary.json"),
       JSON.stringify(noteObj, null, 2),
+    );
+    // Create relationship linking property to note
+    const rel = {
+      from: { "/": "./property.json" },
+      to: { "/": "./note_supplementary.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_note_supplementary.json"),
+      JSON.stringify(rel, null, 2),
     );
   }
 
