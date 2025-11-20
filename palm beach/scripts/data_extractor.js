@@ -5845,13 +5845,30 @@ function buildStrictRawAddressOneOfPayload(address) {
     return null;
   }
 
-  const strictRaw = {
-    unnormalized_address: trimmedUnnormalized,
-  };
+  let strictRaw =
+    composeMinimalRawAddress({
+      ...address,
+      unnormalized_address: trimmedUnnormalized,
+    }) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedUnnormalized,
+    };
+
+  if (!strictRaw.postal_code) {
+    strictRaw.plus_four_postal_code = null;
+  }
+
+  if (strictRaw.state_code && !strictRaw.country_code) {
+    strictRaw.country_code = "US";
+  }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
   if (requestIdentifier) {
     strictRaw.request_identifier = requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(strictRaw, "request_identifier")
+  ) {
+    strictRaw.request_identifier = null;
   }
 
   const preparedSource = prepareSourceHttpRequest(
@@ -5859,9 +5876,16 @@ function buildStrictRawAddressOneOfPayload(address) {
   );
   if (preparedSource) {
     strictRaw.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(
+      strictRaw,
+      "source_http_request",
+    )
+  ) {
+    delete strictRaw.source_http_request;
   }
 
-  return strictRaw;
+  return ensureAddressOutputFieldPresence(strictRaw) || strictRaw;
 }
 
 function finalizeAddressPayloadForOutput(payload, variantHint = null) {

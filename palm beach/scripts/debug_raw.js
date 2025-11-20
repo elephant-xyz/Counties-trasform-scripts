@@ -631,6 +631,24 @@ function resolveSourceHttpRequest(...candidates) {
   return null;
 }
 
+function flattenCandidateValues(...sources) {
+  const results = [];
+  const visit = (value) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        visit(entry);
+      }
+      return;
+    }
+    results.push(value);
+  };
+  for (const source of sources) {
+    visit(source);
+  }
+  return results;
+}
+
 function writeRelationshipFile(filePath, fromRelative, toRelative) {
   const baseName = path.basename(filePath, ".json");
   const normalizedBaseName = baseName.replace(/_\d+$/, "");
