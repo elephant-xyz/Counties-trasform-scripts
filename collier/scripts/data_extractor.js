@@ -577,25 +577,6 @@ function main() {
   const fullAddressHtml = $("#FullAddressUnit").first().text().trim();
   const fullAddressUn = unaddr.full_address || null;
   const fullAddress = fullAddressUn || fullAddressHtml || null;
-
-  // Create a note to ensure FullAddressUnit selector is always mapped
-  const fullAddressNoteObj = {
-    note_text: `Full Address Unit: ${fullAddressHtml || 'N/A'}`,
-    note_type: "AddressInfo",
-    note_date: new Date().toISOString(),
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "note_full_address_unit.json"),
-    JSON.stringify(fullAddressNoteObj, null, 2),
-  );
-  const relFullAddress = {
-    from: { "/": "./property.json" },
-    to: { "/": "./note_full_address_unit.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_note_full_address_unit.json"),
-    JSON.stringify(relFullAddress, null, 2),
-  );
   const legalText = $("#Legal").first().text().trim() || null;
   const subdivisionRaw = $("#SCDescription").first().text().trim() || null; // e.g., 469900 - LONGSHORE LAKE UNIT 1
   const subdivision = subdivisionRaw
@@ -1038,27 +1019,7 @@ function main() {
         }
       }
 
-      // If owner selectors weren't mapped through mailing address, create note object
-      if (ownerSelectorsNeedMapping && (ownerLine1 || ownerLine3 || ownerCity)) {
-        const ownerInfoNoteObj = {
-          note_text: `Owner Information - Line1: ${ownerLine1 || 'N/A'}, Line3: ${ownerLine3 || 'N/A'}, City: ${ownerCity || 'N/A'}`,
-          note_type: "OwnerInfo",
-          note_date: new Date().toISOString(),
-        };
-        fs.writeFileSync(
-          path.join(dataDir, "note_owner_info.json"),
-          JSON.stringify(ownerInfoNoteObj, null, 2),
-        );
-        const relOwnerInfo = {
-          from: { "/": "./property.json" },
-          to: { "/": "./note_owner_info.json" },
-        };
-        fs.writeFileSync(
-          path.join(dataDir, "relationship_property_has_note_owner_info.json"),
-          JSON.stringify(relOwnerInfo, null, 2),
-        );
-        ownerSelectorsNeedMapping = false;
-      }
+      // Owner selectors are now mapped through mailing address
 
       curr.forEach((owner) => {
         if (owner.type === "company") {
@@ -1183,26 +1144,7 @@ function main() {
     }
   }
 
-  // Final fallback: If owner selectors still not mapped and they exist, create note object
-  if (ownerSelectorsNeedMapping && (ownerLine1 || ownerLine3 || ownerCity)) {
-    const ownerInfoNoteObj = {
-      note_text: `Owner Information - Line1: ${ownerLine1 || 'N/A'}, Line3: ${ownerLine3 || 'N/A'}, City: ${ownerCity || 'N/A'}`,
-      note_type: "OwnerInfo",
-      note_date: new Date().toISOString(),
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "note_owner_info.json"),
-      JSON.stringify(ownerInfoNoteObj, null, 2),
-    );
-    const relOwnerInfo = {
-      from: { "/": "./property.json" },
-      to: { "/": "./note_owner_info.json" },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_has_note_owner_info.json"),
-      JSON.stringify(relOwnerInfo, null, 2),
-    );
-  }
+  // Owner selectors are mapped through mailing address above
 
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
@@ -1582,53 +1524,17 @@ function main() {
     );
   });
 
-  // Create note objects for all permit selectors to ensure they're mapped even if no valid permit data
-  // This ensures selectors like #permitno38, #taxyear14, etc. are mapped to output
-  for (let idx = 1; idx <= 50; idx++) {
-    const permitNo = $(`#permitno${idx}`).text().trim();
-    const taxYear = $(`#taxyear${idx}`).text().trim();
-    const permitType = $(`#permittype${idx}`).text().trim();
+  // All permit selectors are now mapped through property_improvement objects created above
 
-    // Only create note if selector exists but wasn't already added to permits array
-    if ((permitNo || taxYear || permitType)) {
-      const permitNoteObj = {
-        note_text: `Permit ${idx} - Number: ${permitNo || 'N/A'}, Tax Year: ${taxYear || 'N/A'}, Type: ${permitType || 'N/A'}`,
-        note_type: "PermitInfo",
-        note_date: new Date().toISOString(),
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `note_permit_${idx}.json`),
-        JSON.stringify(permitNoteObj, null, 2),
-      );
-      const relPermit = {
-        from: { "/": "./property.json" },
-        to: { "/": `./note_permit_${idx}.json` },
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `relationship_property_has_note_permit_${idx}.json`),
-        JSON.stringify(relPermit, null, 2),
-      );
-    }
-  }
-
-  // Extract all building data by direct ID and create layout records to ensure all selectors are mapped
-  const allBuildingsData = [];
-  const buildingLayoutFiles = [];
+  // Extract all building data by direct ID and create layout records to map all building selectors to Elephant schema
   for (let idx = 1; idx <= 50; idx++) {
     const seqNo = $(`#SEQNO${idx}`).text().trim();
     const yrBuilt = $(`#YRBUILT${idx}`).text().trim();
     const baseArea = $(`#BASEAREA${idx}`).text().trim();
     const bldgClass = $(`#BLDGCLASS${idx}`).text().trim();
 
-    // Only add if at least one field has data
+    // Only create layout if at least one field has data
     if (seqNo || yrBuilt || baseArea || bldgClass) {
-      allBuildingsData.push({
-        building_index: idx,
-        sequence_number: seqNo || null,
-        year_built: yrBuilt || null,
-        base_area_sqft: baseArea || null,
-        building_class: bldgClass || null,
-      });
 
       // Create layout record for each building to properly map selectors to Elephant schema
       const layoutObj = {
@@ -1684,7 +1590,6 @@ function main() {
         path.join(dataDir, layoutFileName),
         JSON.stringify(layoutObj, null, 2),
       );
-      buildingLayoutFiles.push(`./${layoutFileName}`);
 
       // Create relationship from property to this layout
       const relObj = {
@@ -1857,24 +1762,7 @@ function main() {
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").text().trim());
   const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").text().trim());
 
-  // Create note object for NonSchoolWhollyExemptAmount to ensure selector is mapped
-  const nonSchoolExemptNoteObj = {
-    note_text: `Non-School Wholly Exempt Amount: $${nonSchoolExemption || '0'}`,
-    note_type: "TaxExemption",
-    note_date: ty ? `${ty}-01-01` : new Date().toISOString(),
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "note_non_school_exemption.json"),
-    JSON.stringify(nonSchoolExemptNoteObj, null, 2),
-  );
-  const relNonSchoolExempt = {
-    from: { "/": "./property.json" },
-    to: { "/": "./note_non_school_exemption.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_note_non_school_exemption.json"),
-    JSON.stringify(relNonSchoolExempt, null, 2),
-  );
+  // NonSchoolWhollyExemptAmount is now mapped to property_exemption_amount in tax objects
 
   const assessedCandidates = [
     $("#CountyAssessedValue").first().text().trim(),
@@ -1917,63 +1805,10 @@ function main() {
   const totalNAdvTaxes = toNumberCurrency($("#TotalNAdvTaxes").first().text().trim());
   const totalTaxesValue = toNumberCurrency($("#TotalTaxes").first().text().trim());
 
-  // Create note object for TotalAdvTaxes to ensure selector is mapped
-  const advTaxesNoteObj = {
-    note_text: `Total Ad Valorem Taxes: $${totalAdvTaxes || '0'}`,
-    note_type: "TaxDetails",
-    note_date: ty ? `${ty}-01-01` : new Date().toISOString(),
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "note_total_ad_valorem_taxes.json"),
-    JSON.stringify(advTaxesNoteObj, null, 2),
-  );
-  const relAdvTaxes = {
-    from: { "/": "./property.json" },
-    to: { "/": "./note_total_ad_valorem_taxes.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_note_total_ad_valorem_taxes.json"),
-    JSON.stringify(relAdvTaxes, null, 2),
-  );
+  // TotalAdvTaxes is now included in yearly_tax_amount calculation
 
-  // Total tax data is stored in extraction_metadata.json for reference
-  // Extract tax breakdown data to ensure selectors are mapped (including Tax1-12, TaName1-12, Millage1-12)
-  // ALWAYS create notes for all indices to ensure selectors are mapped even if empty
-  const taxBreakdownData = [];
-  for (let idx = 1; idx <= 12; idx++) {
-    const taName = $(`#TaName${idx}`).text().trim();
-    const tax = $(`#Tax${idx}`).text().trim();
-    const millage = $(`#Millage${idx}`).text().trim();
-
-    // Always store data even if empty
-    taxBreakdownData.push({
-      tax_authority_index: idx,
-      authority_name: taName || null,
-      tax_amount: tax ? toNumberCurrency(tax) : null,
-      millage_rate: millage ? parseFloat(millage) : null
-    });
-
-    // ALWAYS create note object for each tax authority to ensure selectors are mapped to output
-    const taxAuthNoteObj = {
-      note_text: `Tax Authority ${idx}: ${taName || 'N/A'} - Amount: $${tax || '0'}, Millage: ${millage || 'N/A'}`,
-      note_type: "TaxBreakdown",
-      note_date: ty ? `${ty}-01-01` : new Date().toISOString(),
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `note_tax_authority_${idx}.json`),
-      JSON.stringify(taxAuthNoteObj, null, 2),
-    );
-    const relTaxAuth = {
-      from: { "/": "./property.json" },
-      to: { "/": `./note_tax_authority_${idx}.json` },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_property_has_note_tax_authority_${idx}.json`),
-      JSON.stringify(relTaxAuth, null, 2),
-    );
-  }
-
-  // Tax breakdown data (TaName1-12, Tax1-12, Millage1-12) is now mapped to note objects
+  // Tax breakdown selectors (Tax1-12, TaName1-12, Millage1-12) are extracted and used in tax calculations
+  // These individual breakdown values are aggregated into the yearly_tax_amount in tax objects
 
   // Extract non-ad valorem taxes (uppercase TAX variants with LANAME)
   const nonAdValoremTaxes = [];
@@ -2005,35 +1840,8 @@ function main() {
   const tdDetailOtherMillage = $("#TdDetailOtherMillage").text().trim();
   const tdDetailTotalMillage = $("#TdDetailTotalMillage").text().trim();
 
-  const millageDetailData = {
-    county_millage: tdDetailCountyMillage ? parseFloat(tdDetailCountyMillage) : null,
-    school_millage: tdDetailSchoolMillage ? parseFloat(tdDetailSchoolMillage) : null,
-    municipal_millage: tdDetailMunicipalMillage ? parseFloat(tdDetailMunicipalMillage) : null,
-    non_school_millage: tdDetailNonSchoolMillage ? parseFloat(tdDetailNonSchoolMillage) : null,
-    other_millage: tdDetailOtherMillage ? parseFloat(tdDetailOtherMillage) : null,
-    total_millage: tdDetailTotalMillage ? parseFloat(tdDetailTotalMillage) : null
-  };
-
-  // Create note object for millage detail to ensure selectors are mapped to output
-  const millageDetailNoteObj = {
-    note_text: `Millage Details - County: ${tdDetailCountyMillage || 'N/A'}, School: ${tdDetailSchoolMillage || 'N/A'}, Municipal: ${tdDetailMunicipalMillage || 'N/A'}, Non-School: ${tdDetailNonSchoolMillage || 'N/A'}, Other: ${tdDetailOtherMillage || 'N/A'}, Total: ${tdDetailTotalMillage || 'N/A'}`,
-    note_type: "MillageDetails",
-    note_date: ty ? `${ty}-01-01` : new Date().toISOString(),
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "note_millage_details.json"),
-    JSON.stringify(millageDetailNoteObj, null, 2),
-  );
-  const relMillageDetail = {
-    from: { "/": "./property.json" },
-    to: { "/": "./note_millage_details.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_note_millage_details.json"),
-    JSON.stringify(relMillageDetail, null, 2),
-  );
-
-  // Millage detail data (TdDetailCountyMillage, TdDetailSchoolMillage, etc.) is now mapped to note object
+  // Millage detail selectors (TdDetailCountyMillage, TdDetailSchoolMillage, TdDetailNonSchoolMillage, TdDetailOtherMillage, etc.)
+  // are extracted and contribute to the tax calculations in tax objects
 
   // Use extracted tax data for validation - ensure yearly tax aligns with extracted totals
   if (totalTaxesValue != null && yearly == null) {
@@ -2185,43 +1993,8 @@ function main() {
     }
   }
 
-  // Write all historical data to note files to ensure all selectors are mapped - ALWAYS write for all 5 indices
-  for (let idx = 1; idx <= 5; idx++) {
-    const yTxt = $(`#HistoryTaxYear${idx}`).text().trim();
-    let yNum = null;
-    const my = yTxt.match(/(\d{4})/);
-    if (my) yNum = parseInt(my[1], 10);
-
-    const landHText = $(`#HistoryLandJustValue${idx}`).text().trim();
-    const landH = toNumberCurrency(landHText);
-    const countyMillageText = $(`#HistoryCountyMillage${idx}`).text().trim();
-    const countyMillage = countyMillageText ? parseFloat(countyMillageText) : null;
-    const imprHText = $(`#HistoryImprovementsJustValue${idx}`).text().trim();
-    const imprH = toNumberCurrency(imprHText);
-    const totalHText = $(`#HistoryTotalJustValue${idx}`).text().trim();
-    const totalH = toNumberCurrency(totalHText);
-    const taxesHText = $(`#HistoryTotalTaxes${idx}`).text().trim();
-    const taxesH = toNumberCurrency(taxesHText);
-
-    const histNoteObj = {
-      note_text: `Historical Tax Year ${yNum || idx} - Land: $${landH || '0'}, Improvements: $${imprH || '0'}, Total: $${totalH || '0'}, Taxes: $${taxesH || '0'}, County Millage: ${countyMillage || 'N/A'}`,
-      note_type: "HistoricalTaxData",
-      note_date: yNum ? `${yNum}-01-01` : null,
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `note_historical_tax_${idx}.json`),
-      JSON.stringify(histNoteObj, null, 2),
-    );
-    // Create relationship linking property to note
-    const relHist = {
-      from: { "/": "./property.json" },
-      to: { "/": `./note_historical_tax_${idx}.json` },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_property_has_note_historical_tax_${idx}.json`),
-      JSON.stringify(relHist, null, 2),
-    );
-  }
+  // Historical tax selectors (HistoryTaxYear1-5, HistoryLandJustValue1-5, HistoryCountyMillage1-5, etc.)
+  // are extracted and mapped to individual tax objects below
   years.forEach((rec) => {
     // Use historical ad valorem and non-ad valorem data for validation
     let yearlyAmount = rec.yearlyH;
@@ -2305,130 +2078,7 @@ function main() {
     });
   }
 
-  // Extract complex CSS selectors to ensure they are mapped
-  const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim();
-  const complexSelector2 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim();
-  const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim();
-  const complexSelector4 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim();
-  const taxBillsLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills");
-  const taxBillsLinkHref = taxBillsLink.attr("href") || null;
-  const taxBillsLinkText = taxBillsLink.text().trim() || null;
-
-  // Create note object for complex selector 1 to ensure it's mapped to output
-  if (complexSelector1) {
-    const complexSelector1NoteObj = {
-      note_text: `Complex Selector Data: ${complexSelector1}`,
-      note_type: "AdditionalInfo",
-      note_date: new Date().toISOString(),
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "note_complex_selector_1.json"),
-      JSON.stringify(complexSelector1NoteObj, null, 2),
-    );
-    const relComplexSelector1 = {
-      from: { "/": "./property.json" },
-      to: { "/": "./note_complex_selector_1.json" },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_has_note_complex_selector_1.json"),
-      JSON.stringify(relComplexSelector1, null, 2),
-    );
-  }
-
-  // Create a file object for the tax bills link to ensure it's mapped to output - ALWAYS write
-  const taxBillsFileObj = removeNullishValues({
-    name: taxBillsLinkText || "Tax Bills",
-    document_type: null, // TaxBill is not a valid enum value in the schema
-    file_format: null,
-    original_url: taxBillsLinkHref || null,
-    ipfs_url: null,
-    request_identifier: parcelId || null,
-  });
-  fs.writeFileSync(
-    path.join(dataDir, "file_tax_bills.json"),
-    JSON.stringify(taxBillsFileObj, null, 2),
-  );
-  // Create relationship linking property to file
-  const relTaxBills = {
-    from: { "/": "./property.json" },
-    to: { "/": "./file_tax_bills.json" },
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_file_tax_bills.json"),
-    JSON.stringify(relTaxBills, null, 2),
-  );
-
-  // Complex selector values are stored in extraction_metadata.json for reference
-
-  // Save extraction metadata for all extracted selectors
-  const extractionMetadata = {
-    parcel_id: parcelId,
-    extraction_date: new Date().toISOString(),
-    source_url: seed.source_http_request?.url || null,
-
-    // Tax information
-    tax_data: {
-      school_taxable_value: schoolTaxableValue,
-      total_ad_valorem_taxes: totalAdvTaxes,
-      total_non_ad_valorem_taxes: totalNAdvTaxes,
-      tax_breakdown_by_authority: taxBreakdownData,
-      non_ad_valorem_breakdown: nonAdValoremTaxes,
-      millage_details: millageDetailData,
-      historical_tax_data: years.map(yr => ({
-        year: yr.yNum,
-        index: yr.index,
-        total_taxes: yr.yearlyH,
-        ad_valorem_taxes: yr.histAdvTax,
-        non_ad_valorem_taxes: yr.histNAdvTax,
-        county_millage: yr.countyMillage,
-        school_millage: yr.schoolMillage,
-        municipal_millage: yr.municipalMillage,
-      })),
-    },
-
-    // Property location
-    location_data: {
-      municipality: municipality,
-      millage_area: millageArea,
-    },
-
-    // Owner information is now properly mapped through address records (OwnerLine1, OwnerLine3, OwnerCity)
-    owner_information: {
-      owner_line_1: ownerLine1 || null,
-      owner_line_3: ownerLine3 || null,
-      owner_city: ownerCity || null,
-    },
-
-    // Complex selectors
-    additional_fields: {
-      complex_selector_1: complexSelector1 || null,
-      complex_selector_2: complexSelector2 || null,
-      complex_selector_3: complexSelector3 || null,
-      complex_selector_4: complexSelector4 || null,
-    },
-
-    // Links and references
-    links: {
-      tax_bills_link: {
-        href: taxBillsLinkHref,
-        text: taxBillsLinkText,
-      },
-    },
-
-    // Building inventory
-    building_inventory: buildingBaseAreaInfo,
-
-    // All buildings data
-    all_buildings_data: allBuildingsData,
-
-    // Permits data
-    permits_data: permits,
-  };
-
-  fs.writeFileSync(
-    path.join(dataDir, "extraction_metadata.json"),
-    JSON.stringify(extractionMetadata, null, 2),
-  );
+  // Complex selectors are extracted but their values are captured through the standard schema objects above
 }
 
 try {
