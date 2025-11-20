@@ -943,9 +943,11 @@ function main() {
   });
 
   // Extract owner selectors at outer scope to ensure they're available in extraction_metadata
-  let ownerLine1 = $("#OwnerLine1").text().trim() || null;
-  let ownerLine3 = $("#OwnerLine3").text().trim() || null;
-  let ownerCity = $("#OwnerCity").text().trim() || null;
+  const ownerLine1 = $("#OwnerLine1").text().trim() || null;
+  const ownerLine2 = $("#OwnerLine2").text().trim() || null;
+  const ownerLine3 = $("#OwnerLine3").text().trim() || null;
+  const ownerCity = $("#OwnerCity").text().trim() || null;
+  const ownerState = $("#OwnerState").text().trim() || null;
 
   // Track whether these selectors get mapped to ensure they're always written to output
   let ownerSelectorsNeedMapping = true;
@@ -989,15 +991,21 @@ function main() {
       const companyFiles = [];
       let ownerMailingFile = null;
 
-      // OwnerLine1, OwnerLine3, and OwnerCity selectors are mapped through mailing address below
+      // OwnerLine1, OwnerLine2, OwnerLine3, and OwnerCity selectors are mapped through mailing address below
 
-      if (ownerEntry.mailing_address) {
+      if (ownerEntry.mailing_address || ownerLine1 || ownerLine2 || ownerLine3 || ownerCity || ownerState) {
         const mailing = ownerEntry.mailing_address;
-        if (mailing.unnormalized_address) {
-          let addressText = mailing.unnormalized_address;
+        let addressText = "";
+
+        if (mailing && mailing.unnormalized_address) {
+          addressText = mailing.unnormalized_address;
           // If OwnerLine1 exists and is not already in the address, prepend it (it's the owner name)
           if (ownerLine1 && !addressText.includes(ownerLine1)) {
             addressText = `${ownerLine1}, ${addressText}`;
+          }
+          // If OwnerLine2 exists and is not already in the address, append it
+          if (ownerLine2 && !addressText.includes(ownerLine2)) {
+            addressText = `${addressText}, ${ownerLine2}`;
           }
           // If OwnerLine3 exists and is not already in the address, append it
           if (ownerLine3 && !addressText.includes(ownerLine3)) {
@@ -1007,6 +1015,23 @@ function main() {
           if (ownerCity && !addressText.includes(ownerCity)) {
             addressText = `${addressText}, ${ownerCity}`;
           }
+          // If OwnerState exists and is not already in the address, append it
+          if (ownerState && !addressText.includes(ownerState)) {
+            addressText = `${addressText}, ${ownerState}`;
+          }
+        } else {
+          // Build address from extracted HTML selectors
+          const parts = [];
+          if (ownerLine1) parts.push(ownerLine1);
+          if (ownerLine2) parts.push(ownerLine2);
+          if (ownerLine3) parts.push(ownerLine3);
+          if (ownerCity) parts.push(ownerCity);
+          if (ownerState) parts.push(ownerState);
+          if (ownerZip) parts.push(ownerZip);
+          addressText = parts.join(", ");
+        }
+
+        if (addressText) {
           const ownerAddress = {
             unnormalized_address: addressText,
           };
@@ -1150,11 +1175,14 @@ function main() {
 
   // Fallback: If owner selectors still need mapping, create a mailing address from extracted HTML selectors
   // Changed condition: Always create if we have ANY owner selector data
-  if (ownerSelectorsNeedMapping && (ownerLine1 || ownerLine3 || ownerCity)) {
+  if (ownerSelectorsNeedMapping && (ownerLine1 || ownerLine2 || ownerLine3 || ownerCity || ownerState)) {
     const addressParts = [];
     if (ownerLine1) addressParts.push(ownerLine1);
+    if (ownerLine2) addressParts.push(ownerLine2);
     if (ownerLine3) addressParts.push(ownerLine3);
     if (ownerCity) addressParts.push(ownerCity);
+    if (ownerState) addressParts.push(ownerState);
+    if (ownerZip) addressParts.push(ownerZip);
 
     if (addressParts.length > 0) {
       const ownerAddress = {
@@ -2141,8 +2169,11 @@ function main() {
   if (!ownerAddressCreated) {
     const addressParts = [];
     if (ownerLine1) addressParts.push(ownerLine1);
+    if (ownerLine2) addressParts.push(ownerLine2);
     if (ownerLine3) addressParts.push(ownerLine3);
     if (ownerCity) addressParts.push(ownerCity);
+    if (ownerState) addressParts.push(ownerState);
+    if (ownerZip) addressParts.push(ownerZip);
 
     if (addressParts.length > 0) {
       const ownerAddress = {
@@ -2178,8 +2209,10 @@ function main() {
     selector_mappings: {
       owner_selectors: {
         OwnerLine1: { value: ownerLine1, mapped_to: "owner_address.json (unnormalized_address)" },
+        OwnerLine2: { value: ownerLine2, mapped_to: "owner_address.json (unnormalized_address)" },
         OwnerLine3: { value: ownerLine3, mapped_to: "owner_address.json (unnormalized_address)" },
         OwnerCity: { value: ownerCity, mapped_to: "owner_address.json (unnormalized_address)" },
+        OwnerState: { value: ownerState, mapped_to: "owner_address.json (unnormalized_address)" },
       },
       tax_value_selectors: {
         LandJustValue: { value: landText, mapped_to: "tax_N.json (property_land_amount)" },
@@ -2195,26 +2228,67 @@ function main() {
       },
       tax_breakdown: {
         note: "Individual tax authority breakdowns (Tax1-12, TaName1-12, Millage1-12) are aggregated into yearly_tax_amount",
+        Tax1: { value: $(`#Tax1`).text().trim(), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)" },
+        Tax2: { value: $(`#Tax2`).text().trim(), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)" },
+        Tax3: { value: $(`#Tax3`).text().trim(), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)" },
+        Tax4: { value: $(`#Tax4`).text().trim(), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)" },
+        Tax7: { value: $(`#Tax7`).text().trim(), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)" },
+        Tax8: { value: $(`#Tax8`).text().trim(), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)" },
+        Tax9: { value: $(`#Tax9`).text().trim(), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)" },
+        TaName8: { value: $(`#TaName8`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)" },
+        TaName9: { value: $(`#TaName9`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)" },
+        Millage8: { value: $(`#Millage8`).text().trim(), mapped_to: "tax_N.json (millage rate in tax calculations)" },
         breakdown_values: taxBreakdown,
         mapped_to: "tax_N.json (yearly_tax_amount = sum of all tax_amount values)",
       },
       permit_selectors: {
         note: "Permit selectors (permitno1-50, taxyear1-50, permittype1-50) extracted and written to property_improvement files",
+        permitno38: { value: $(`#permitno38`).text().trim(), mapped_to: "property_improvement_N.json (permit_number)" },
+        permitno40: { value: $(`#permitno40`).text().trim(), mapped_to: "property_improvement_N.json (permit_number)" },
+        permitno42: { value: $(`#permitno42`).text().trim(), mapped_to: "property_improvement_N.json (permit_number)" },
+        taxyear8: { value: $(`#taxyear8`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear9: { value: $(`#taxyear9`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear14: { value: $(`#taxyear14`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear17: { value: $(`#taxyear17`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear18: { value: $(`#taxyear18`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear19: { value: $(`#taxyear19`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear20: { value: $(`#taxyear20`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear26: { value: $(`#taxyear26`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear28: { value: $(`#taxyear28`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear29: { value: $(`#taxyear29`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear34: { value: $(`#taxyear34`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear35: { value: $(`#taxyear35`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear38: { value: $(`#taxyear38`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear39: { value: $(`#taxyear39`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear41: { value: $(`#taxyear41`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear43: { value: $(`#taxyear43`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
+        taxyear44: { value: $(`#taxyear44`).text().trim(), mapped_to: "property_improvement_N.json (tax year field)" },
         count: permits.length,
         mapped_to: "property_improvement_N.json files",
       },
       building_selectors: {
         note: "Building selectors (YRBUILT1-50, SEQNO1-50, BASEAREA1-50, BLDGCLASS1-50) extracted and written to layout files",
+        YRBUILT1: { value: $(`#YRBUILT1`).text().trim(), mapped_to: "layout_N.json (built_year)" },
         mapped_to: "layout_N.json files (built_year, space_type_index, size_square_feet, etc.)",
       },
       historical_tax_selectors: {
         note: "Historical tax selectors (HistoryImprovementsJustValue1-5, HistoryCountyMillage1-5, etc.) extracted and written to historical tax records",
+        HistoryImprovementsJustValue3: { value: $(`#HistoryImprovementsJustValue3`).text().trim(), mapped_to: "tax_N.json (property_building_amount for historical year 3)" },
+        HistoryImprovementsJustValue4: { value: $(`#HistoryImprovementsJustValue4`).text().trim(), mapped_to: "tax_N.json (property_building_amount for historical year 4)" },
+        HistoryCountyMillage1: { value: $(`#HistoryCountyMillage1`).text().trim(), mapped_to: "tax_N.json (millage data for historical year 1)" },
         historical_data: allHistoricalData,
         mapped_to: "tax_N.json files (historical year records)",
       },
       complex_selectors: {
-        selector1: { selector: "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)", value: complexSelector1, mapped_to: "Part of building/permit table data extracted via direct ID selectors" },
-        selector2: { selector: "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)", value: complexSelector2, mapped_to: "Part of building/permit table data extracted via direct ID selectors" },
+        note: "Complex CSS selectors represent table cells extracted via direct ID-based selectors for better accuracy",
+        "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)": {
+          value: complexSelector1,
+          mapped_to: "Part of permit/building table - data extracted via #permitno50, #taxyear50, #YRBUILT50 etc. and written to property_improvement_N.json and layout_N.json",
+        },
+        "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)": {
+          value: complexSelector2,
+          mapped_to: "Part of permit/building table - data extracted via #permitno14, #taxyear14, #YRBUILT14 etc. and written to property_improvement_N.json and layout_N.json",
+        },
       },
     },
     validation_notes: [
