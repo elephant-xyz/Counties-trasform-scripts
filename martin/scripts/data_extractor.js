@@ -623,29 +623,6 @@ function main() {
 
     // Address
     const addressSource = addr || {};
-    const canonicalRequestIdentifier =
-        addressSource.request_identifier || seed.request_identifier || null;
-    const fileRecords = [];
-    function enqueueFileRecord(payload) {
-        if (!payload || typeof payload !== "object") return;
-        const trimmed = {};
-        Object.entries(payload).forEach(([key, value]) => {
-            if (value === undefined || value === null) return;
-            if (typeof value === "string") {
-                const v = value.trim();
-                if (!v) return;
-                trimmed[key] = v;
-                return;
-            }
-            trimmed[key] = value;
-        });
-        if (!Object.keys(trimmed).length) return;
-        const file = `file_${fileRecords.length + 1}.json`;
-        fileRecords.push({ file, data: trimmed });
-    }
-    if (canonicalRequestIdentifier) {
-        enqueueFileRecord({ request_identifier: canonicalRequestIdentifier });
-    }
     const situsAddress = getValueByStrong($, "Situs Address");
     const rawAddress =
         addressSource.full_address ||
@@ -729,8 +706,6 @@ function main() {
         });
         writeJson(path.join("data", addressFilename), addressOut);
     }
-    const hasAddressFile = Boolean(addressOut);
-
     // Property
     const parcelId =
         getValueByStrong($, "Parcel ID") ||
@@ -935,36 +910,24 @@ function main() {
 
     const salesOut = [];
     const deedsOut = [];
-    const propertySalesTargets = [];
-
-    function addSaleRecord(propName, value) {
-        if (!propName || value === undefined || value === null) return null;
-        const file = `sales_history_${salesOut.length + 1}.json`;
-        salesOut.push({ file, data: { [propName]: value } });
-        propertySalesTargets.push(`./${file}`);
-        return `./${file}`;
-    }
 
     salesRows.forEach((row) => {
         const isoDate = toISODate(row.saleDate);
         const price = parseCurrencyToNumber(row.priceTxt);
         const deedType = row.deedTypeRaw ? mapDeedType(row.deedTypeRaw) : null;
 
-        const saleDatePath = isoDate
-            ? addSaleRecord("ownership_transfer_date", isoDate)
-            : null;
-        const salePricePath =
-            price != null
-                ? addSaleRecord("purchase_price_amount", price)
-                : null;
-
-        if (!saleDatePath && !salePricePath) {
-            return;
-        }
-
         if (!isoDate) {
             return;
         }
+
+        const saleObj = {
+            ownership_transfer_date: isoDate,
+        };
+        if (price != null) {
+            saleObj.purchase_price_amount = price;
+        }
+        const saleFile = `sales_history_${salesOut.length + 1}.json`;
+        salesOut.push({ file: saleFile, data: saleObj });
 
         const deedIndex = deedsOut.length + 1;
         const deedObj = {
@@ -984,7 +947,6 @@ function main() {
 
     salesOut.forEach((s) => writeJson(path.join("data", s.file), s.data));
     deedsOut.forEach((d) => writeJson(path.join("data", d.file), d.data));
-    fileRecords.forEach((f) => writeJson(path.join("data", f.file), f.data));
 
     // Owners and relationships
     const parcelKey = `property_${seed.parcel_id || seed.request_identifier || ""}`;
