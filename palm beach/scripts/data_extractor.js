@@ -29327,6 +29327,24 @@ async function main() {
       ? trimmedUnnormalized
       : null;
 
+    const propagateUnnormalizedAddress = (target, rawValue) => {
+      if (!target || typeof target !== "object") return;
+      if (hasMeaningfulAddressValue(target.unnormalized_address)) {
+        return;
+      }
+      if (typeof rawValue !== "string") return;
+      const trimmedRaw = rawValue.trim();
+      if (!trimmedRaw.length) return;
+      target.unnormalized_address = trimmedRaw;
+    };
+
+    const preferredRawSurface =
+      canonicalUnnormalized ||
+      resolvedUnnormalized ||
+      (typeof fallbackUnnormalizedValue === "string"
+        ? fallbackUnnormalizedValue.trim()
+        : null);
+
     if (canonicalUnnormalized) {
       hydrateAddressFromUnnormalized(addressForOutput, canonicalUnnormalized);
       hydrateAddressFromUnnormalized(address, canonicalUnnormalized);
@@ -29345,6 +29363,17 @@ async function main() {
       hydrateAddressFromUnnormalized(address, locationLine);
       hydrateAddressFromUnnormalized(baseAddressSeed, locationLine);
     }
+
+    if (preferredRawSurface) {
+      propagateUnnormalizedAddress(addressForOutput, preferredRawSurface);
+      propagateUnnormalizedAddress(address, preferredRawSurface);
+      propagateUnnormalizedAddress(baseAddressSeed, preferredRawSurface);
+    } else if (locationLine) {
+      propagateUnnormalizedAddress(addressForOutput, locationLine);
+      propagateUnnormalizedAddress(address, locationLine);
+      propagateUnnormalizedAddress(baseAddressSeed, locationLine);
+    }
+
     applyCityStatePostalFromRaw(addressForOutput, canonicalUnnormalized);
     applyCityStatePostalFromRaw(addressForOutput, resolvedUnnormalized);
     applyCityStatePostalFromRaw(addressForOutput, locationLine);
