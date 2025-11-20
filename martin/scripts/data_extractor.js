@@ -964,6 +964,9 @@ function main() {
         propertySalesTargets.push(`./${saleFilename}`);
 
         const deedObj = {};
+        if (isoDate) {
+            deedObj.ownership_transfer_date = isoDate;
+        }
         if (deedType) {
             deedObj.deed_type = deedType;
         }
