@@ -14487,36 +14487,49 @@ function buildCountyMinimalRawAddressOutput(address) {
   if (!trimmedRaw) return null;
 
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
   };
 
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    minimal.latitude = latitude;
-    minimal.longitude = longitude;
-  }
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    const rawValue = hasField ? address[field] : null;
 
-  const OPTIONAL_RAW_FIELDS = [
-    "city_name",
-    "state_code",
-    "postal_code",
-    "country_code",
-    "county_name",
-    "municipality_name",
-  ];
-
-  for (const field of OPTIONAL_RAW_FIELDS) {
-    if (!hasMeaningfulAddressValue(address[field])) continue;
-    const normalizedValue = normalizeAddressFieldForSchema(field, address[field]);
-    if (normalizedValue === undefined || normalizedValue === null) continue;
-    if (typeof normalizedValue === "string") {
-      const trimmed = normalizedValue.trim();
-      if (!trimmed.length) continue;
-      minimal[field] = trimmed;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(rawValue);
+      minimal[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
+
+    const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
+    if (normalizedValue === undefined || normalizedValue === null) {
+      minimal[field] = null;
+      continue;
+    }
+
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      minimal[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
     minimal[field] = normalizedValue;
+  }
+
+  if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
+  }
+
+  if (minimal.state_code && !minimal.country_code) {
+    minimal.country_code = "US";
+  }
+
+  if (
+    (minimal.latitude == null && minimal.longitude != null) ||
+    (minimal.latitude != null && minimal.longitude == null)
+  ) {
+    minimal.latitude = null;
+    minimal.longitude = null;
   }
 
   const trimmedRequest = safeNullIfEmpty(address.request_identifier);
