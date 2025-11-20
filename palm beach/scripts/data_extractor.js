@@ -14624,24 +14624,130 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
       : []),
   );
 
-  const rawOutput = {
-    unnormalized_address: resolvedRaw.trim(),
+  const rawSeed = { ...payload };
+  rawSeed.unnormalized_address = resolvedRaw.trim();
+
+  const applyCoordinate = (field, resolvedValue) => {
+    if (Number.isFinite(resolvedValue)) {
+      rawSeed[field] = resolvedValue;
+      return;
+    }
+    if (rawSeed[field] === undefined) {
+      rawSeed[field] = null;
+      return;
+    }
+    const numeric = parseCoordinate(rawSeed[field]);
+    rawSeed[field] = Number.isFinite(numeric) ? numeric : null;
   };
 
-  if (Number.isFinite(resolvedLatitude)) {
-    rawOutput.latitude = resolvedLatitude;
-  }
-  if (Number.isFinite(resolvedLongitude)) {
-    rawOutput.longitude = resolvedLongitude;
-  }
-  if (requestIdentifier) {
-    rawOutput.request_identifier = requestIdentifier;
-  }
-  if (sourceHttpRequest) {
-    rawOutput.source_http_request = sourceHttpRequest;
+  applyCoordinate("latitude", resolvedLatitude);
+  applyCoordinate("longitude", resolvedLongitude);
+
+  const fallbackSources = [];
+  if (fallbackRaw && typeof fallbackRaw === "object") fallbackSources.push(fallbackRaw);
+  if (seed && typeof seed === "object") fallbackSources.push(seed);
+
+  for (const source of fallbackSources) {
+    if (!source || typeof source !== "object") continue;
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (hasMeaningfulAddressValue(rawSeed[field])) continue;
+      const candidate = source[field];
+      if (!hasMeaningfulAddressValue(candidate)) continue;
+      rawSeed[field] = candidate;
+    }
   }
 
-  fs.writeFileSync(addressFilePath, JSON.stringify(rawOutput, null, 2));
+  if (requestIdentifier) {
+    rawSeed.request_identifier = requestIdentifier;
+  } else if (
+    !hasMeaningfulAddressValue(rawSeed.request_identifier) &&
+    seed &&
+    hasMeaningfulAddressValue(seed.request_identifier)
+  ) {
+    rawSeed.request_identifier = seed.request_identifier;
+  }
+
+  if (sourceHttpRequest) {
+    rawSeed.source_http_request = sourceHttpRequest;
+  } else if (
+    !rawSeed.source_http_request &&
+    fallbackRaw &&
+    fallbackRaw.source_http_request
+  ) {
+    rawSeed.source_http_request = fallbackRaw.source_http_request;
+  }
+
+  const resolveCountyFallback = () => {
+    if (hasMeaningfulAddressValue(rawSeed.county_name)) return;
+    const candidates = [
+      rawSeed.county_name,
+      payload && payload.county_name,
+      fallbackRaw && fallbackRaw.county_name,
+      fallbackRaw && fallbackRaw.county_jurisdiction,
+      seed && seed.county_name,
+      seed && seed.county_jurisdiction,
+      "Palm Beach",
+    ];
+    for (const candidate of candidates) {
+      if (!hasMeaningfulAddressValue(candidate)) continue;
+      rawSeed.county_name = toTitleCase(String(candidate).trim());
+      break;
+    }
+  };
+  resolveCountyFallback();
+
+  if (
+    !hasMeaningfulAddressValue(rawSeed.municipality_name) &&
+    hasMeaningfulAddressValue(rawSeed.city_name)
+  ) {
+    rawSeed.municipality_name = toTitleCase(rawSeed.city_name);
+  }
+
+  const parcelCandidates = [];
+  const enqueueParcel = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) parcelCandidates.push(trimmed);
+  };
+  enqueueParcel(payload && payload.parcel_identifier);
+  enqueueParcel(payload && payload.pcn);
+  enqueueParcel(seed && seed.parcel_id);
+  enqueueParcel(fallbackRaw && fallbackRaw.parcel_id);
+  if (requestIdentifier) enqueueParcel(requestIdentifier);
+
+  const gridFields = ["township", "range", "section", "block", "lot"];
+  for (const candidate of parcelCandidates) {
+    const parts = deriveGridPartsFromPcn(candidate);
+    if (!parts || typeof parts !== "object") continue;
+    for (const field of gridFields) {
+      if (hasMeaningfulAddressValue(rawSeed[field])) continue;
+      if (!hasMeaningfulAddressValue(parts[field])) continue;
+      rawSeed[field] = parts[field];
+    }
+    const hasAllGrid = gridFields.every((field) =>
+      hasMeaningfulAddressValue(rawSeed[field]),
+    );
+    if (hasAllGrid) {
+      break;
+    }
+  }
+
+  if (rawSeed.state_code && !hasMeaningfulAddressValue(rawSeed.country_code)) {
+    rawSeed.country_code = "US";
+  }
+  if (!hasMeaningfulAddressValue(rawSeed.postal_code)) {
+    rawSeed.plus_four_postal_code = null;
+  }
+
+  const surfaced =
+    ensureAddressOutputFieldPresence(rawSeed) || rawSeed;
+  if (
+    !hasMeaningfulAddressValue(surfaced.municipality_name) &&
+    hasMeaningfulAddressValue(surfaced.city_name)
+  ) {
+    surfaced.municipality_name = toTitleCase(surfaced.city_name);
+  }
+  writeJSON(addressFilePath, surfaced);
 }
 
 function enforceAddressVariantForOneOf(addressFilePath, options = {}) {
