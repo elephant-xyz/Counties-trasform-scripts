@@ -2416,21 +2416,15 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-// County schema expects raw address payloads to surface the same core fields as the
-// normalized branch (with nulls permitted), so do not exclude any of the street
-// components from the raw variant surface.
+// County schema expects the raw/unnormalized branch to keep the full normalized
+// field surface (with nulls allowed) so downstream validators can enforce the
+// oneOf properly. Leave this hook for excluding the rare field that must not be
+// surfaced.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-].filter((field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field));
+const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
+  (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
+);
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
