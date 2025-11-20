@@ -8011,9 +8011,6 @@ function finalizeCountyAddressSchemaSurface(addressFilePath) {
   ]);
 
   const result = {};
-  if (hasRawVariant) {
-    result.unnormalized_address = trimmedUnnormalized;
-  }
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     result[field] = coerceAddressFieldForFinalSurface(
@@ -8057,6 +8054,21 @@ function finalizeCountyAddressSchemaSurface(addressFilePath) {
     Object.prototype.hasOwnProperty.call(payload, "source_http_request")
   ) {
     result.source_http_request = null;
+  }
+
+  const normalizedReady = hasRobustNormalizedAddress({ ...result });
+  if (normalizedReady) {
+    if (
+      Object.prototype.hasOwnProperty.call(result, "unnormalized_address")
+    ) {
+      delete result.unnormalized_address;
+    }
+  } else if (hasRawVariant) {
+    result.unnormalized_address = trimmedUnnormalized;
+  } else if (
+    Object.prototype.hasOwnProperty.call(result, "unnormalized_address")
+  ) {
+    delete result.unnormalized_address;
   }
 
   for (const key of Object.keys(result)) {
@@ -28058,21 +28070,9 @@ function finalizeCountyAddressVariantSimple(addressFilePath, options = {}) {
     }
   }
 
-  const strictRequired = [
-    "street_number",
-    "street_name",
-    "street_suffix_type",
-    "city_name",
-    "state_code",
-    "postal_code",
-    "county_name",
-    "country_code",
-  ];
-  const normalizedCoverage = strictRequired.every(
-    (field) =>
-      typeof normalized[field] === "string" &&
-      normalized[field].trim().length > 0,
-  );
+  const normalizedCoverage = hasRobustNormalizedAddress({
+    ...normalized,
+  });
 
   const requestIdQueue = [];
   const pushRequestIdCandidate = (candidate) => {
