@@ -2660,10 +2660,11 @@ const RAW_ADDRESS_FINAL_ALLOWED_FIELDS = [
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
-// For the raw variant we only want to keep the literal raw string and any
-// request metadata; retaining partially populated normalized fields causes the
-// schema oneOf to misclassify the payload as normalized.
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set();
+// County schema expects raw variants to retain the normalized field surface so
+// validators can inspect every key even when the address is only available as
+// a single string. Keep the entire normalized surface (with nulls) alongside
+// the unnormalized value.
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(RAW_ADDRESS_ALLOWED_FIELDS);
 
 // Raw variant should only expose the subset of normalized fields that the
 // schema allows alongside an unnormalized string.
