@@ -14506,12 +14506,19 @@ function enforceAddressVariantForOneOf(addressFilePath, options = {}) {
       seed.source_http_request,
   );
 
+  const strictStringFields = COUNTY_STRICT_NORMALIZED_FIELDS.filter(
+    (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
+  );
+  const hasStrictStrings = strictStringFields.every((field) =>
+    hasMeaningfulAddressValue(payload[field]),
+  );
+  const hasStrictCoordinates = ADDRESS_COORDINATE_FIELDS.every((field) =>
+    Number.isFinite(parseCoordinate(payload[field])),
+  );
   const normalizedCoverage =
-    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-      (field) =>
-        typeof payload[field] === "string" &&
-        payload[field].trim().length > 0,
-    ) && hasNormalizedCountyCoverage({ ...payload });
+    hasStrictStrings &&
+    hasStrictCoordinates &&
+    hasNormalizedCountyCoverage({ ...payload });
 
   if (normalizedCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
