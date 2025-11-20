@@ -2107,9 +2107,7 @@ function main() {
 
   // Create a file object for the tax bills link to ensure it's mapped to output - ALWAYS write
   const taxBillsFileObj = {
-    file_format: null,
     name: taxBillsLinkText || "Tax Bills",
-    document_type: "TaxBill",
   };
   fs.writeFileSync(
     path.join(dataDir, "file_tax_bills.json"),
