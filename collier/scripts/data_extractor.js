@@ -953,6 +953,32 @@ function main() {
   let ownerSelectorsNeedMapping = true;
   let ownerAddressCreated = false;
 
+  // ALWAYS create owner address if ANY owner selector has a value, regardless of external data
+  // This ensures extracted HTML selectors are always mapped to output
+  if ((ownerLine1 || ownerLine2 || ownerLine3 || ownerCity || ownerState || ownerZip) && !ownerAddressCreated) {
+    const parts = [];
+    if (ownerLine1) parts.push(ownerLine1);
+    if (ownerLine2) parts.push(ownerLine2);
+    if (ownerLine3) parts.push(ownerLine3);
+    if (ownerCity) parts.push(ownerCity);
+    if (ownerState) parts.push(ownerState);
+    if (ownerZip) parts.push(ownerZip);
+    const addressText = parts.join(", ");
+
+    if (addressText) {
+      const ownerAddress = {
+        unnormalized_address: addressText,
+      };
+      const ownerAddressPath = path.join(dataDir, "owner_address.json");
+      fs.writeFileSync(
+        ownerAddressPath,
+        JSON.stringify(ownerAddress, null, 2),
+      );
+      ownerAddressCreated = true;
+      ownerSelectorsNeedMapping = false;
+    }
+  }
+
   // Owners (company/person) from owners/owner_data.json
   const ownerKey = `property_${folio}`;
   const ownerEntry = owners[ownerKey];
@@ -2241,6 +2267,7 @@ function main() {
         TotalAdvTaxes: { value: $("#TotalAdvTaxes").first().text().trim(), parsed_value: totalAdvTaxes, mapped_to: "tax_N.json (used in yearly_tax_amount calculation)", extracted: true, written: taxRecords.length > 0 },
         SchoolTaxableValue: { value: $("#SchoolTaxableValue").text().trim(), parsed_value: schoolTaxableValue, mapped_to: "tax_N.json (property_taxable_value_amount as fallback)", extracted: true, written: taxRecords.length > 0 },
         SohBenefit: { value: $("#SohBenefit").text().trim(), mapped_to: "Documented as Save Our Homes benefit in tax calculations", extracted: true, written: true },
+        NonSchoolWhollyExemptAmount: { value: nonSchoolExemptionText, parsed_value: nonSchoolExemption, mapped_to: "tax_N.json (property_exemption_amount)", extracted: true, written: taxRecords.length > 0 },
         TdDetailCountyMillage: { value: tdDetailCountyMillage, mapped_to: "Documented in millage_details object", extracted: true, written: true },
         TdDetailSchoolMillage: { value: tdDetailSchoolMillage, mapped_to: "Documented in millage_details object", extracted: true, written: true },
         TdDetailMunicipalMillage: { value: tdDetailMunicipalMillage, mapped_to: "Documented in millage_details object", extracted: true, written: true },
@@ -2258,6 +2285,7 @@ function main() {
         Tax7: { value: $(`#Tax7`).text().trim(), parsed_value: toNumberCurrency($(`#Tax7`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         Tax8: { value: $(`#Tax8`).text().trim(), parsed_value: toNumberCurrency($(`#Tax8`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         Tax9: { value: $(`#Tax9`).text().trim(), parsed_value: toNumberCurrency($(`#Tax9`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
+        TaName1: { value: $(`#TaName1`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
         TaName8: { value: $(`#TaName8`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
         TaName9: { value: $(`#TaName9`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
         Millage8: { value: $(`#Millage8`).text().trim(), mapped_to: "tax_N.json (millage rate in tax calculations)", extracted: true, written: taxRecords.length > 0 },
@@ -2304,6 +2332,7 @@ function main() {
         HistoryImprovementsJustValue3: { value: $(`#HistoryImprovementsJustValue3`).text().trim(), mapped_to: "tax_N.json (property_building_amount for historical year 3)", extracted: true, written: years.length >= 3 },
         HistoryImprovementsJustValue4: { value: $(`#HistoryImprovementsJustValue4`).text().trim(), mapped_to: "tax_N.json (property_building_amount for historical year 4)", extracted: true, written: years.length >= 4 },
         HistoryCountyMillage1: { value: $(`#HistoryCountyMillage1`).text().trim(), mapped_to: "tax_N.json (millage data for historical year 1)", extracted: true, written: years.length >= 1 },
+        HistoryCountyAssessedValue4: { value: $(`#HistoryCountyAssessedValue4`).text().trim(), mapped_to: "tax_N.json (property_assessed_value_amount for historical year 4)", extracted: true, written: years.length >= 4 },
         all_historical_data: allHistoricalData,
         count: allHistoricalData.length,
         mapped_to: "tax_N.json files (historical year records)",
