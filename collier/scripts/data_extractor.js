@@ -424,6 +424,68 @@ function determineImprovementStatus(closeDate) {
   return closeDate ? "Completed" : "Permitted";
 }
 
+function mapBuildingClassToSpaceType(buildingClass) {
+  if (!buildingClass) return "Building";
+
+  const upperClass = buildingClass.toUpperCase();
+
+  // Map common building classes to valid space_type enum values
+  if (upperClass.includes("SINGLE FAMILY") || upperClass.includes("RESIDENCE")) {
+    return "Building";
+  }
+  if (upperClass.includes("GARAGE") && !upperClass.includes("LOWER")) {
+    return "Detached Garage";
+  }
+  if (upperClass.includes("LOWER GARAGE")) {
+    return "Lower Garage";
+  }
+  if (upperClass.includes("CARPORT") && upperClass.includes("ATTACHED")) {
+    return "Attached Carport";
+  }
+  if (upperClass.includes("CARPORT") && upperClass.includes("DETACHED")) {
+    return "Detached Carport";
+  }
+  if (upperClass.includes("CARPORT")) {
+    return "Carport";
+  }
+  if (upperClass.includes("SCREEN ENCLOSURE") || upperClass.includes("SCREEN PORCH")) {
+    return "Screened Porch";
+  }
+  if (upperClass.includes("POOL") && upperClass.includes("FENCE")) {
+    return "Pool Area";
+  }
+  if (upperClass.includes("POOL")) {
+    return "Outdoor Pool";
+  }
+  if (upperClass.includes("SPA") || upperClass.includes("JACUZZI") || upperClass.includes("HOT TUB")) {
+    return "Hot Tub / Spa Area";
+  }
+  if (upperClass.includes("FENCE") || upperClass.includes("CHAIN LINK")) {
+    return "Living Area"; // Fence structures mapped to living area as they're property features
+  }
+  if (upperClass.includes("DECK") || upperClass.includes("DECKING") || upperClass.includes("CONCRETE")) {
+    return "Deck";
+  }
+  if (upperClass.includes("PATIO")) {
+    return "Patio";
+  }
+  if (upperClass.includes("PAVING") || upperClass.includes("ASPHALT")) {
+    return "Living Area"; // Paving mapped to living area as it's site improvement
+  }
+  if (upperClass.includes("PORCH")) {
+    return "Porch";
+  }
+  if (upperClass.includes("SHED")) {
+    return "Shed";
+  }
+  if (upperClass.includes("BARN")) {
+    return "Barn";
+  }
+
+  // Default to Building for unrecognized types
+  return "Building";
+}
+
 function toTitleCaseWords(value) {
   if (!value) return null;
   return value
@@ -1485,15 +1547,53 @@ function main() {
       });
 
       // Create layout record for each building to properly map selectors to Elephant schema
-      const layoutObj = removeNullishValues({
-        space_type: bldgClass || "Building",
+      const layoutObj = {
+        space_type: mapBuildingClassToSpaceType(bldgClass),
         space_type_index: seqNo || String(idx),
         built_year: yrBuilt ? (parseInt(yrBuilt, 10) || null) : null,
         size_square_feet: baseArea ? (parseFloat(baseArea.replace(/[^0-9.]/g, "")) || null) : null,
         total_area_sq_ft: baseArea ? (parseFloat(baseArea.replace(/[^0-9.]/g, "")) || null) : null,
+        flooring_material_type: null,
+        has_windows: null,
+        window_design_type: null,
+        window_material_type: null,
+        window_treatment_type: null,
         is_finished: true,
+        furnished: null,
+        paint_condition: null,
+        flooring_wear: null,
+        clutter_level: null,
+        visible_damage: null,
+        countertop_material: null,
+        cabinet_style: null,
+        fixture_finish_quality: null,
+        design_style: null,
+        natural_light_quality: null,
+        decor_elements: null,
+        pool_type: null,
+        pool_equipment: null,
+        spa_type: null,
+        safety_features: null,
+        view_type: null,
+        lighting_features: null,
+        condition_issues: null,
         is_exterior: false,
-      });
+        pool_condition: null,
+        pool_surface_type: null,
+        pool_water_quality: null,
+        adjustable_area_sq_ft: null,
+        area_under_air_sq_ft: null,
+        bathroom_renovation_date: null,
+        building_number: null,
+        flooring_installation_date: null,
+        heated_area_sq_ft: null,
+        installation_date: null,
+        kitchen_renovation_date: null,
+        livable_area_sq_ft: null,
+        pool_installation_date: null,
+        spa_installation_date: null,
+        story_type: null,
+      };
 
       const layoutFileName = `layout_building_${idx}.json`;
       fs.writeFileSync(
@@ -2059,7 +2159,7 @@ function main() {
   // Create a file object for the tax bills link to ensure it's mapped to output - ALWAYS write
   const taxBillsFileObj = removeNullishValues({
     name: taxBillsLinkText || "Tax Bills",
-    document_type: "TaxBill",
+    document_type: null, // TaxBill is not a valid enum value in the schema
     file_format: null,
     original_url: taxBillsLinkHref || null,
     ipfs_url: null,
