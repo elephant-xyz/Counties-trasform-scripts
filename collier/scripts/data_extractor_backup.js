@@ -949,7 +949,6 @@ function main() {
 
   // Track whether these selectors get mapped to ensure they're always written to output
   let ownerSelectorsNeedMapping = true;
-  let ownerAddressCreated = false;
 
   // Owners (company/person) from owners/owner_data.json
   const ownerKey = `property_${folio}`;
@@ -1017,7 +1016,6 @@ function main() {
           );
           ownerMailingFile = "./owner_address.json";
           ownerSelectorsNeedMapping = false; // Mark as mapped
-          ownerAddressCreated = true;
         }
       }
 
@@ -1165,7 +1163,6 @@ function main() {
         JSON.stringify(ownerAddress, null, 2),
       );
       ownerSelectorsNeedMapping = false; // Mark as mapped
-      ownerAddressCreated = true;
     }
   }
 
@@ -1465,11 +1462,10 @@ function main() {
     const issuedDateTxt = $row.find("span[id^=IssuedDate]").text().trim();
     const coDateTxt = $row.find("span[id^=codate]").text().trim();
 
-    const issuedISO = parseDateToISO(issuedDateTxt);
-    const coISO = parseDateToISO(coDateTxt);
+    if (permitNo || permitType) {
+      const issuedISO = parseDateToISO(issuedDateTxt);
+      const coISO = parseDateToISO(coDateTxt);
 
-    // Include permit if ANY field has data to ensure all extracted selectors are mapped to output
-    if (permitNo || permitType || taxYear || issuedISO || coISO) {
       permits.push({
         taxYear: taxYear || null,
         permitNumber: permitNo || null,
@@ -1488,10 +1484,6 @@ function main() {
     const issuedDateTxt = $(`#IssuedDate${idx}`).text().trim();
     const coDateTxt = $(`#codate${idx}`).text().trim();
 
-    // Parse dates to check if we have any data
-    const issuedISO = parseDateToISO(issuedDateTxt);
-    const coISO = parseDateToISO(coDateTxt);
-
     // Check if this permit already exists in the array (to avoid duplicates)
     const exists = permits.some(p =>
       p.permitNumber === permitNo &&
@@ -1499,8 +1491,10 @@ function main() {
       p.permitType === permitType
     );
 
-    // Include permit if ANY field has data to ensure all extracted selectors are mapped to output
-    if ((permitNo || permitType || taxYear || issuedISO || coISO) && !exists) {
+    if ((permitNo || permitType) && !exists) {
+      const issuedISO = parseDateToISO(issuedDateTxt);
+      const coISO = parseDateToISO(coDateTxt);
+
       permits.push({
         taxYear: taxYear || null,
         permitNumber: permitNo || null,
@@ -1908,9 +1902,7 @@ function main() {
     }
   }
 
-  // Create tax record if we have any data from the primary year extraction
-  // This ensures all extracted selector values are written to output
-  if (ty != null || land != null || impr != null || just != null || assessed != null || taxable != null || yearly != null) {
+  if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     // Don't use removeNullishValues for tax objects - required fields must be present
 
@@ -1921,7 +1913,7 @@ function main() {
     }
 
     const taxObj = {
-      tax_year: ty || null,
+      tax_year: ty,
       property_assessed_value_amount:
         assessed != null ? assessed : just != null ? just : 0,
       property_market_value_amount:
@@ -2028,11 +2020,7 @@ function main() {
       });
     }
 
-    // Include record if we have any data from this historical index
-    // This ensures ALL extracted historical selector values are written to output
-    if (yNum || landH != null || imprH != null || justH != null || assessedH != null ||
-        taxableH != null || yearlyH != null || benefitH != null || countyMillage != null ||
-        schoolMillage != null || municipalMillage != null || histAdvTax != null || histNAdvTax != null) {
+    if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
         index: idx,
         yNum,
@@ -2071,7 +2059,7 @@ function main() {
     const monthly = yearlyAmount != null ? round2(yearlyAmount / 12) : null;
     // Don't use removeNullishValues for tax objects - required fields must be present
     const taxObj = {
-      tax_year: rec.yNum || null,
+      tax_year: rec.yNum,
       property_assessed_value_amount:
         rec.assessedH != null
           ? rec.assessedH
@@ -2096,8 +2084,8 @@ function main() {
               : 0,
       property_exemption_amount: rec.benefitH != null ? rec.benefitH : null,
       monthly_tax_amount: monthly,
-      period_end_date: rec.yNum ? `${rec.yNum}-12-31` : null,
-      period_start_date: rec.yNum ? `${rec.yNum}-01-01` : null,
+      period_end_date: `${rec.yNum}-12-31`,
+      period_start_date: `${rec.yNum}-01-01`,
       yearly_tax_amount: yearlyAmount != null ? yearlyAmount : null,
     };
     taxRecords.push(taxObj);
@@ -2137,27 +2125,6 @@ function main() {
     });
   }
 
-  // Final fallback: Ensure owner selectors are ALWAYS written to output
-  if (!ownerAddressCreated && (ownerLine1 || ownerLine3 || ownerCity)) {
-    const addressParts = [];
-    if (ownerLine1) addressParts.push(ownerLine1);
-    if (ownerLine3) addressParts.push(ownerLine3);
-    if (ownerCity) addressParts.push(ownerCity);
-
-    if (addressParts.length > 0) {
-      const ownerAddress = {
-        unnormalized_address: addressParts.join(", "),
-      };
-      const ownerAddressPath = path.join(dataDir, "owner_address.json");
-      if (!fs.existsSync(ownerAddressPath)) {
-        fs.writeFileSync(
-          ownerAddressPath,
-          JSON.stringify(ownerAddress, null, 2),
-        );
-      }
-    }
-  }
-
   // Extract complex CSS selectors to ensure they're mapped
   // These selectors are part of larger table structures and their values are included in the objects above
   const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim();
@@ -2165,36 +2132,9 @@ function main() {
 
   // These complex selector values are captured through:
   // - Permit table extractions (taxyear1-50, permitno1-50) -> property_improvement records
-  // - Building table extractions (YRBUILT1-50, BLDGCLASS1-50, SEQNO1-50, BASEAREA1-50) -> layout records
-  // - Tax breakdown extractions (Tax1-12, TaName1-12, Millage1-12) -> aggregated into yearly_tax_amount in tax records
-  // - Tax detail millage (TdDetailCountyMillage, TdDetailSchoolMillage, TdDetailNonSchoolMillage, TdDetailOtherMillage) -> used in tax calculations
-  // All extracted selector data from the HTML is mapped to output JSON files
-
-  // Write extraction metadata to document all extracted selectors
-  const extractionMetadata = {
-    note: "All HTML selectors extracted by this script have their values mapped to output JSON files",
-    primary_year_selectors_mapped: {
-      TaxYear: ty != null,
-      LandJustValue: land != null,
-      ImprovementsJustValue: impr != null,
-      TotalJustValue: just != null,
-      TotalAdvTaxes: totalAdvTaxes != null,
-      TdDetailNonSchoolMillage: tdDetailNonSchoolMillage ? true : false,
-      TdDetailOtherMillage: tdDetailOtherMillage ? true : false,
-    },
-    tax_breakdown_count: taxBreakdown.length,
-    permits_extracted: permits.length,
-    owner_address_created: true,
-    complex_selectors: {
-      selector1_has_value: complexSelector1 ? true : false,
-      selector2_has_value: complexSelector2 ? true : false,
-    }
-  };
-
-  fs.writeFileSync(
-    path.join(dataDir, "extraction_metadata.json"),
-    JSON.stringify(extractionMetadata, null, 2),
-  );
+  // - Building table extractions (YRBUILT1-13, BLDGCLASS1-13) -> structure records via external JSON
+  // - Tax breakdown extractions (Tax1-12, TaName1-12, Millage1-12) -> tax records
+  // All selector data from the HTML is mapped to output JSON files
 }
 
 
