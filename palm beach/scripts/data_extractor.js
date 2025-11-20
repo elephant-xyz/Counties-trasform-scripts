@@ -14652,14 +14652,94 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
     return;
   }
 
+  const {
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options;
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+  const normalizedProbe = { ...normalizedSurface };
+
+  const hasNormalizedCoverage =
+    typeof hasRobustNormalizedAddress === "function"
+      ? hasRobustNormalizedAddress({ ...normalizedProbe })
+      : hasCompleteNormalizedAddress({ ...normalizedProbe });
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      let value = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
+        ? normalizedSurface[field]
+        : null;
+
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        normalizedOutput[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
+
+      if (value === undefined || value === null) {
+        normalizedOutput[field] = null;
+        continue;
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        normalizedOutput[field] = trimmed.length ? trimmed : null;
+        continue;
+      }
+
+      normalizedOutput[field] = value;
+    }
+
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (
+      normalizedOutput.state_code &&
+      !normalizedOutput.country_code
+    ) {
+      normalizedOutput.country_code = (defaultCountryCode || "US").toUpperCase();
+    } else if (
+      !normalizedOutput.state_code &&
+      typeof defaultStateCode === "string" &&
+      defaultStateCode.trim().length
+    ) {
+      normalizedOutput.state_code = defaultStateCode.trim().toUpperCase();
+      if (!normalizedOutput.country_code) {
+        normalizedOutput.country_code = (defaultCountryCode || "US").toUpperCase();
+      }
+    }
+
+    if (!hasMeaningfulAddressValue(normalizedOutput.county_name)) {
+      if (defaultCountyName && typeof defaultCountyName === "string") {
+        normalizedOutput.county_name = titleCaseCounty(defaultCountyName);
+      } else if (normalizedOutput.county_name) {
+        normalizedOutput.county_name = titleCaseCounty(
+          String(normalizedOutput.county_name),
+        );
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+      normalizedOutput.request_identifier = safeNullIfEmpty(
+        payload.request_identifier,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+      normalizedOutput.source_http_request =
+        prepareSourceHttpRequest(payload.source_http_request) || null;
+    }
+
+    fs.writeFileSync(addressFilePath, JSON.stringify(normalizedOutput, null, 2));
+    return;
+  }
+
   const hasRawString =
     typeof payload.unnormalized_address === "string" &&
     payload.unnormalized_address.trim().length > 0;
-
-  const normalizedProbe = { ...payload };
-  if (!hasRawString && hasRobustNormalizedAddress(normalizedProbe)) {
-    return;
-  }
 
   const fallbackRaw =
     (options.rawFallbackPath && readJSONIfExists(options.rawFallbackPath)) ||
@@ -14848,7 +14928,7 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
       fallbackRaw && fallbackRaw.county_jurisdiction,
       seed && seed.county_name,
       seed && seed.county_jurisdiction,
-      "Palm Beach",
+      defaultCountyName || "Palm Beach",
     ];
     for (const candidate of candidates) {
       if (!hasMeaningfulAddressValue(candidate)) continue;
@@ -14857,6 +14937,14 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
     }
   };
   resolveCountyFallback();
+
+  if (
+    !hasMeaningfulAddressValue(rawSeed.state_code) &&
+    typeof defaultStateCode === "string" &&
+    defaultStateCode.trim().length
+  ) {
+    rawSeed.state_code = defaultStateCode.trim().toUpperCase();
+  }
 
   if (
     !hasMeaningfulAddressValue(rawSeed.municipality_name) &&
@@ -14895,7 +14983,7 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
   }
 
   if (rawSeed.state_code && !hasMeaningfulAddressValue(rawSeed.country_code)) {
-    rawSeed.country_code = "US";
+    rawSeed.country_code = (defaultCountryCode || "US").toUpperCase();
   }
   if (!hasMeaningfulAddressValue(rawSeed.postal_code)) {
     rawSeed.plus_four_postal_code = null;
@@ -34808,6 +34896,9 @@ async function run() {
       coordinateCandidates: coordinateContext,
       requestIdentifierCandidates: requestIdentifierContext,
       sourceHttpRequestCandidates: sourceHttpRequestContext,
+      defaultCountyName,
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
     });
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
