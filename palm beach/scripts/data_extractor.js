@@ -14827,14 +14827,31 @@ function enforceStrictFinalAddressVariant(addressFilePath) {
     return;
   }
 
-  const rawOutput = {
-    unnormalized_address: trimmedUnnormalized,
-    request_identifier:
-      requestIdentifier !== undefined && requestIdentifier !== null
-        ? requestIdentifier
-        : null,
-    source_http_request: deepClone(preparedSource),
-  };
+  // Surface the entire normalized field set even when we only have a raw variant
+  // so the address still satisfies the schema's oneOf branch.
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    rawOutput[field] =
+      normalizedSurface[field] === undefined ||
+      normalizedSurface[field] === null
+        ? null
+        : normalizedSurface[field];
+  }
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+
+  rawOutput.unnormalized_address = trimmedUnnormalized;
+  rawOutput.request_identifier =
+    requestIdentifier !== undefined && requestIdentifier !== null
+      ? requestIdentifier
+      : null;
+  rawOutput.source_http_request = deepClone(preparedSource);
 
   fs.writeFileSync(addressFilePath, JSON.stringify(rawOutput, null, 2));
 }
