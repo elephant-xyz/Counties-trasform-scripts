@@ -5981,13 +5981,11 @@ const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 
-const COUNTY_NORMALIZED_STRICT_FIELDS = [
-  ...new Set([
-    ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
-    "latitude",
-    "longitude",
-  ]),
-];
+// Treat the full normalized surface as required before attempting to emit the
+// normalized branch. Partial coverage causes schema validation to fail the
+// oneOf guard, so fall back to the raw variant unless every normalized field
+// is populated with a meaningful value.
+const COUNTY_NORMALIZED_STRICT_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
   (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
