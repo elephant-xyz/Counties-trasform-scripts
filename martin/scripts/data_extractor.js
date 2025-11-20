@@ -947,26 +947,50 @@ function main() {
     const deedsOut = [];
     const propertySalesTargets = [];
 
+    function addSaleRecord(payload) {
+        if (!payload || typeof payload !== "object") return null;
+        const cleaned = {};
+        Object.keys(payload).forEach((key) => {
+            const value = payload[key];
+            if (value !== undefined && value !== null) {
+                cleaned[key] = value;
+            }
+        });
+        if (!Object.keys(cleaned).length) {
+            return null;
+        }
+        const file = `sales_history_${salesOut.length + 1}.json`;
+        salesOut.push({ file, data: cleaned });
+        propertySalesTargets.push(`./${file}`);
+        return `./${file}`;
+    }
+
     salesRows.forEach((row) => {
         const isoDate = toISODate(row.saleDate);
         const price = parseCurrencyToNumber(row.priceTxt);
         const deedType = row.deedTypeRaw ? mapDeedType(row.deedTypeRaw) : null;
 
-        const saleIndex = salesOut.length + 1;
-        const deedIndex = deedsOut.length + 1;
+        const salePaths = [];
+        const saleDatePath = isoDate
+            ? addSaleRecord({ ownership_transfer_date: isoDate })
+            : null;
+        if (saleDatePath) salePaths.push(saleDatePath);
+        const salePricePath =
+            price != null ? addSaleRecord({ purchase_price_amount: price }) : null;
+        if (salePricePath) salePaths.push(salePricePath);
 
-        const saleObj = {
-            ownership_transfer_date: isoDate,
-            purchase_price_amount: price ?? null,
-        };
-        const saleFilename = `sales_history_${saleIndex}.json`;
-        salesOut.push({ file: saleFilename, data: saleObj });
-        propertySalesTargets.push(`./${saleFilename}`);
-
-        const deedObj = {};
-        if (isoDate) {
-            deedObj.ownership_transfer_date = isoDate;
+        if (!salePaths.length) {
+            return;
         }
+
+        if (!isoDate) {
+            return;
+        }
+
+        const deedIndex = deedsOut.length + 1;
+        const deedObj = {
+            ownership_transfer_date: isoDate,
+        };
         if (deedType) {
             deedObj.deed_type = deedType;
         }
