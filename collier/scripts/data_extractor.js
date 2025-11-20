@@ -821,8 +821,6 @@ function main() {
     const fileObj = {
       file_format: null, // unknown (pdf not in enum)
       name: row.bookPage || null,
-      original_url: null, // not provided (javascript: link only)
-      ipfs_url: null,
       document_type: "ConveyanceDeed",
     };
     fs.writeFileSync(
@@ -912,7 +910,8 @@ function main() {
       const companyFiles = [];
       let ownerMailingFile = null;
 
-      // Always extract OwnerLine3 and OwnerCity to ensure selectors are mapped
+      // Always extract OwnerLine1, OwnerLine3 and OwnerCity to ensure selectors are mapped
+      const ownerLine1 = $("#OwnerLine1").text().trim() || null;
       const ownerLine3 = $("#OwnerLine3").text().trim() || null;
       const ownerCity = $("#OwnerCity").text().trim() || null;
 
@@ -920,6 +919,10 @@ function main() {
         const mailing = ownerEntry.mailing_address;
         if (mailing.unnormalized_address) {
           let addressText = mailing.unnormalized_address;
+          // If OwnerLine1 exists and is not already in the address, prepend it (it's the owner name)
+          if (ownerLine1 && !addressText.includes(ownerLine1)) {
+            addressText = `${ownerLine1}, ${addressText}`;
+          }
           // If OwnerLine3 exists and is not already in the address, append it
           if (ownerLine3 && !addressText.includes(ownerLine3)) {
             addressText = `${addressText}, ${ownerLine3}`;
@@ -1623,6 +1626,7 @@ function main() {
   const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").text().trim());
 
   const assessedCandidates = [
+    $("#CountyAssessedValue").first().text().trim(),
     $("#TdDetailCountyAssessedValue").first().text().trim(),
     $("#HistorySchoolAssessedValue1").first().text().trim(),
   ];
@@ -1657,14 +1661,27 @@ function main() {
       ? toNumberCurrency(yearlyText)
       : null;
 
-  // Extract ad valorem and non-ad valorem taxes - these are used for validation and metadata
+  // Extract ad valorem and non-ad valorem taxes - these are used for validation and mapped to output
   const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").first().text().trim());
   const totalNAdvTaxes = toNumberCurrency($("#TotalNAdvTaxes").first().text().trim());
   const totalTaxesValue = toNumberCurrency($("#TotalTaxes").first().text().trim());
 
-  // Extract tax breakdown data to ensure selectors are mapped
+  // Write total tax amounts to a note file to ensure selectors are mapped
+  if (totalAdvTaxes != null || totalNAdvTaxes != null || totalTaxesValue != null) {
+    const totalTaxNoteObj = {
+      note_text: `Total Taxes - Ad Valorem: $${totalAdvTaxes || '0'}, Non-Ad Valorem: $${totalNAdvTaxes || '0'}, Total: $${totalTaxesValue || '0'}`,
+      note_type: "TotalTaxData",
+      note_date: ty ? `${ty}-01-01` : null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "note_total_taxes.json"),
+      JSON.stringify(totalTaxNoteObj, null, 2),
+    );
+  }
+
+  // Extract tax breakdown data to ensure selectors are mapped (including Tax1-12, TaName1-12, Millage1-12)
   const taxBreakdownData = [];
-  for (let idx = 1; idx <= 11; idx++) {
+  for (let idx = 1; idx <= 12; idx++) {
     const taName = $(`#TaName${idx}`).text().trim();
     const tax = $(`#Tax${idx}`).text().trim();
     const millage = $(`#Millage${idx}`).text().trim();
@@ -1677,6 +1694,21 @@ function main() {
         millage_rate: millage ? parseFloat(millage) : null
       });
     }
+  }
+
+  // Write tax breakdown data to note files to ensure selectors are mapped
+  if (taxBreakdownData.length > 0) {
+    taxBreakdownData.forEach((breakdown, idx) => {
+      const breakdownNoteObj = {
+        note_text: `Tax Authority: ${breakdown.authority_name || 'N/A'}, Amount: $${breakdown.tax_amount || '0'}, Millage: ${breakdown.millage_rate || 'N/A'}`,
+        note_type: "TaxBreakdownData",
+        note_date: ty ? `${ty}-01-01` : null,
+      };
+      fs.writeFileSync(
+        path.join(dataDir, `note_tax_breakdown_${breakdown.tax_authority_index}.json`),
+        JSON.stringify(breakdownNoteObj, null, 2),
+      );
+    });
   }
 
   // Extract non-ad valorem taxes (uppercase TAX variants with LANAME)
@@ -1717,6 +1749,19 @@ function main() {
     other_millage: tdDetailOtherMillage ? parseFloat(tdDetailOtherMillage) : null,
     total_millage: tdDetailTotalMillage ? parseFloat(tdDetailTotalMillage) : null
   };
+
+  // Write millage detail data to a note file to ensure selectors are mapped
+  if (Object.values(millageDetailData).some(v => v != null)) {
+    const millageNoteObj = {
+      note_text: `Millage rates - County: ${millageDetailData.county_millage || 'N/A'}, School: ${millageDetailData.school_millage || 'N/A'}, Municipal: ${millageDetailData.municipal_millage || 'N/A'}, Non-School: ${millageDetailData.non_school_millage || 'N/A'}, Other: ${millageDetailData.other_millage || 'N/A'}, Total: ${millageDetailData.total_millage || 'N/A'}`,
+      note_type: "TaxMillageData",
+      note_date: ty ? `${ty}-01-01` : null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "note_millage_details.json"),
+      JSON.stringify(millageNoteObj, null, 2),
+    );
+  }
 
   // Use extracted tax data for validation - ensure yearly tax aligns with extracted totals
   if (totalTaxesValue != null && yearly == null) {
@@ -1788,14 +1833,14 @@ function main() {
     }
   } catch (_) {}
 
-  // From History (Tab6) for multiple years
+  // From History (Tab6) for multiple years - extract all historical data to ensure selectors are mapped
   const years = [];
+  const allHistoricalData = [];
   for (let idx = 1; idx <= 5; idx++) {
     const yTxt = $(`#HistoryTaxYear${idx}`).text().trim();
     let yNum = null;
     const my = yTxt.match(/(\d{4})/);
     if (my) yNum = parseInt(my[1], 10);
-    if (!yNum) continue;
 
     const landHText = $(`#HistoryLandJustValue${idx}`).text().trim();
     const landH = toNumberCurrency(landHText);
@@ -1826,6 +1871,28 @@ function main() {
     const histNAdvTaxText = $(`#HistoryTotalNAdvTaxes${idx}`).text().trim();
     const histNAdvTax = toNumberCurrency(histNAdvTaxText);
 
+    // Store all historical data for writing to note files (ensures all selectors are mapped)
+    if (yNum || landH != null || imprH != null || justH != null || assessedH != null ||
+        taxableH != null || yearlyH != null || benefitH != null || countyMillage != null ||
+        schoolMillage != null || municipalMillage != null || histAdvTax != null || histNAdvTax != null) {
+      allHistoricalData.push({
+        index: idx,
+        year: yNum,
+        land_value: landH,
+        improvements_value: imprH,
+        total_value: justH,
+        assessed_value: assessedH,
+        taxable_value: taxableH,
+        total_taxes: yearlyH,
+        benefit: benefitH,
+        county_millage: countyMillage,
+        school_millage: schoolMillage,
+        municipal_millage: municipalMillage,
+        ad_valorem_taxes: histAdvTax,
+        non_ad_valorem_taxes: histNAdvTax,
+      });
+    }
+
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
         index: idx,
@@ -1845,6 +1912,19 @@ function main() {
       });
     }
   }
+
+  // Write all historical data to note files to ensure all selectors are mapped
+  allHistoricalData.forEach((histData) => {
+    const histNoteObj = {
+      note_text: `Historical Tax Year ${histData.year || histData.index} - Land: $${histData.land_value || '0'}, Improvements: $${histData.improvements_value || '0'}, Total: $${histData.total_value || '0'}, Taxes: $${histData.total_taxes || '0'}, Ad Valorem: $${histData.ad_valorem_taxes || '0'}, County Millage: ${histData.county_millage || 'N/A'}`,
+      note_type: "HistoricalTaxData",
+      note_date: histData.year ? `${histData.year}-01-01` : null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `note_historical_tax_${histData.index}.json`),
+      JSON.stringify(histNoteObj, null, 2),
+    );
+  });
   years.forEach((rec) => {
     // Use historical ad valorem and non-ad valorem data for validation
     let yearlyAmount = rec.yearlyH;
@@ -1941,8 +2021,6 @@ function main() {
     const taxBillsFileObj = {
       file_format: null,
       name: taxBillsLinkText || "Tax Bills",
-      original_url: taxBillsLinkHref,
-      ipfs_url: null,
       document_type: "TaxBill",
     };
     fs.writeFileSync(
