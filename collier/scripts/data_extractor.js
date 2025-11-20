@@ -571,6 +571,14 @@ function main() {
   const folio = seed.request_identifier || seed.parcel_id;
   const buildingBaseAreaInfo = [];
 
+  // Extract owner selectors FIRST - needed throughout the script
+  const ownerLine1 = $("#OwnerLine1").text().trim() || null;
+  const ownerLine2 = $("#OwnerLine2").text().trim() || null;
+  const ownerLine3 = $("#OwnerLine3").text().trim() || null;
+  const ownerCity = $("#OwnerCity").text().trim() || null;
+  const ownerState = $("#OwnerState").text().trim() || null;
+  const ownerZip = $("#OwnerZip").first().text().trim() || null;
+
   // Extract base fields from HTML
   const parcelId =
     $("#ParcelID").first().text().trim() || seed.parcel_id || folio;
@@ -941,15 +949,8 @@ function main() {
     }
   });
 
-  // Extract owner selectors at outer scope to ensure they're available in extraction_metadata
-  const ownerLine1 = $("#OwnerLine1").text().trim() || null;
-  const ownerLine2 = $("#OwnerLine2").text().trim() || null;
-  const ownerLine3 = $("#OwnerLine3").text().trim() || null;
-  const ownerCity = $("#OwnerCity").text().trim() || null;
-  const ownerState = $("#OwnerState").text().trim() || null;
-  const ownerZip = $("#OwnerZip").first().text().trim() || null;
-
-  // Track whether these selectors get mapped to ensure they're always written to output
+  // Track whether owner selectors get mapped to ensure they're always written to output
+  // (owner selectors already extracted at the top of main function)
   let ownerSelectorsNeedMapping = true;
   let ownerAddressCreated = false;
 
