@@ -590,6 +590,27 @@ function enforceFinalAddressOneOfOutput(filePath) {
   fs.writeFileSync(filePath, JSON.stringify(rawPayload, null, 2));
 }
 
+function rewriteAddressWithSchemaGuard(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  writeJSON(addressFilePath, payload);
+}
+
 function prepareSourceHttpRequest(raw) {
   if (!raw || typeof raw !== "object") return null;
   const allowedKeys = new Set([
@@ -35305,6 +35326,8 @@ async function run() {
     const addressPath = path.join(dataDir, "address.json");
     await ensureAddressCoordinates(addressPath);
     finalizeAddressSchemaVariantForOutput(addressPath);
+    enforceFinalAddressOneOfOutput(addressPath);
+    rewriteAddressWithSchemaGuard(addressPath);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
