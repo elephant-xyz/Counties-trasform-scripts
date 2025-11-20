@@ -14661,13 +14661,18 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
   const normalizedSurface =
     ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
   const normalizedProbe = { ...normalizedSurface };
+  const trimmedPayloadRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const sourceHasRawVariant = trimmedPayloadRaw.length > 0;
 
   const hasNormalizedCoverage =
     typeof hasRobustNormalizedAddress === "function"
       ? hasRobustNormalizedAddress({ ...normalizedProbe })
       : hasCompleteNormalizedAddress({ ...normalizedProbe });
 
-  if (hasNormalizedCoverage) {
+  if (!sourceHasRawVariant && hasNormalizedCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       let value = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
@@ -14737,10 +14742,6 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
     return;
   }
 
-  const hasRawString =
-    typeof payload.unnormalized_address === "string" &&
-    payload.unnormalized_address.trim().length > 0;
-
   const fallbackRaw =
     (options.rawFallbackPath && readJSONIfExists(options.rawFallbackPath)) ||
     null;
@@ -14756,7 +14757,11 @@ function forceRawAddressOnly(addressFilePath, options = {}) {
     }
   };
 
-  enqueueRawCandidate(payload.unnormalized_address);
+  if (sourceHasRawVariant) {
+    enqueueRawCandidate(trimmedPayloadRaw);
+  } else {
+    enqueueRawCandidate(payload.unnormalized_address);
+  }
   enqueueRawCandidate(composeFallbackUnnormalizedAddressFromFields(payload));
 
   if (fallbackRaw && typeof fallbackRaw === "object") {
