@@ -117,6 +117,9 @@ function mapPropertyType(useCodeText, landUseCode) {
         "0400RM": "MobileHome",
         "2800": "MobileHome",
 
+        // Street / right-of-way style parcels
+        "8700": "LandParcel",
+
         // Condominiums
         "0400": "Condominium",
         "0482": "Condominium",
@@ -549,15 +552,6 @@ function mapDeedType(raw) {
     return null;
 }
 
-function mapDocTypeForFile(deedType) {
-    if (deedType === "Warranty Deed") return "ConveyanceDeedWarrantyDeed";
-    if (deedType === "Quitclaim Deed") return "ConveyanceDeedQuitClaimDeed";
-    if (deedType === "Special Warranty Deed") return "ConveyanceDeed";
-    if (deedType === "Trustee's Deed") return "ConveyanceDeed";
-    if (deedType === "Transfer on Death Deed") return "ConveyanceDeed";
-    return "ConveyanceDeed";
-}
-
 function mapRoofCovering(raw) {
     if (!raw) return null;
     const t = raw.toLowerCase();
@@ -588,23 +582,36 @@ function toNumberOrNull(value) {
     return Number.isFinite(num) ? num : null;
 }
 
-function asRelationshipPointer(relPath) {
-    if (!relPath) return null;
-    return { "/": relPath };
+function writeRelationshipFile(filename, type, fromPath, toPath) {
+    if (!type || !fromPath || !toPath) return;
+    const relObj = {
+        type,
+        from: fromPath,
+        to: toPath,
+    };
+    writeJson(path.join("data", filename), relObj);
 }
 
-function writeRelationshipSet(baseFilename, relations) {
-    if (!relations || !relations.length) return;
-    const [first, ...rest] = relations;
-    writeJson(path.join("data", baseFilename), first);
-    if (!rest.length) return;
-    const baseName = baseFilename.endsWith(".json")
-        ? baseFilename.slice(0, -5)
-        : baseFilename;
-    rest.forEach((rel, idx) => {
-        const suffixName = `${baseName}_${idx + 2}.json`;
-        writeJson(path.join("data", suffixName), rel);
+function writeRelationshipSeries(baseFilename, type, fromPath, targets) {
+    if (!targets || !targets.length) return;
+    targets.forEach((targetPath, idx) => {
+        const suffix = idx === 0 ? "" : `_${idx + 1}`;
+        const filename = baseFilename.endsWith(".json")
+            ? baseFilename.replace(/\.json$/, `${suffix}.json`)
+            : `${baseFilename}${suffix}.json`;
+        writeRelationshipFile(filename, type, fromPath, targetPath);
     });
+}
+
+function parseBookPage(raw) {
+    if (!raw) return { book: null, page: null };
+    const cleaned = raw.replace(/\s+/g, " ").trim();
+    if (!cleaned) return { book: null, page: null };
+    const parts = cleaned.split(/[\/\-]/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+        return { book: parts[0], page: parts[1] };
+    }
+    return { book: cleaned, page: null };
 }
 
 function main() {
@@ -733,7 +740,7 @@ function main() {
             propertyUseCode = match[1];
         }
     }
-    const propertyType = mapPropertyType(useCodeText, propertyUseCode);
+    let propertyType = mapPropertyType(useCodeText, propertyUseCode);
 
     let livable =
         getValueByStrong($, "Total Finished Area") ||
@@ -763,7 +770,31 @@ function main() {
 
     const neighborhood = getValueByStrong($, "Neighborhood");
 
+    const legalAcresText = getValueByStrong($, "Legal Acres");
+    let lotSizeAcre = legalAcresText
+        ? parseFloat(legalAcresText.replace(/[^0-9.]/g, ""))
+        : null;
+    if (isNaN(lotSizeAcre)) lotSizeAcre = null;
+    let lotAreaSqft = null;
+    if (lotSizeAcre != null) {
+        lotAreaSqft = Math.round(lotSizeAcre * 43560);
+    }
+    let lotType = null;
+    if (lotSizeAcre != null) {
+        lotType =
+            lotSizeAcre <= 0.25
+                ? "LessThanOrEqualToOneQuarterAcre"
+                : "GreaterThanOneQuarterAcre";
+    }
+
     const formattedLivable = formatSquareFeet(livable);
+    if (!propertyType) {
+        if (lotSizeAcre && lotSizeAcre > 0.25 && !formattedLivable) {
+            propertyType = "LandParcel";
+        } else {
+            propertyType = "Building";
+        }
+    }
     const propertyOut = {
         parcel_identifier: parcelId,
         property_type: propertyType,
@@ -785,23 +816,6 @@ function main() {
     writeJson(path.join("data", propertyFilename), propertyOut);
 
     // Lot
-    const legalAcresText = getValueByStrong($, "Legal Acres");
-    let lotSizeAcre = legalAcresText
-        ? parseFloat(legalAcresText.replace(/[^0-9.]/g, ""))
-        : null;
-    if (isNaN(lotSizeAcre)) lotSizeAcre = null;
-    let lotAreaSqft = null;
-    if (lotSizeAcre != null) {
-        lotAreaSqft = Math.round(lotSizeAcre * 43560);
-    }
-    let lotType = null;
-    if (lotSizeAcre != null) {
-        lotType =
-            lotSizeAcre <= 0.25
-                ? "LessThanOrEqualToOneQuarterAcre"
-                : "GreaterThanOneQuarterAcre";
-    }
-
     const lotOut = {
         lot_type: lotType || null,
         lot_length_feet: null,
@@ -820,20 +834,18 @@ function main() {
     writeJson(path.join("data", lotFilename), lotOut);
 
     if (hasAddressFile) {
-        writeJson(
-            path.join("data", "relationship_property_address.json"),
-            {
-                from: asRelationshipPointer(propertyRelPath),
-                to: asRelationshipPointer(addressRelPath),
-            },
+        writeRelationshipFile(
+            "relationship_property_has_address.json",
+            "property_has_address",
+            propertyRelPath,
+            addressRelPath,
         );
     }
-    writeJson(
-        path.join("data", "relationship_property_lot.json"),
-        {
-            from: asRelationshipPointer(propertyRelPath),
-            to: asRelationshipPointer(lotRelPath),
-        },
+    writeRelationshipFile(
+        "relationship_property_has_lot.json",
+        "property_has_lot",
+        propertyRelPath,
+        lotRelPath,
     );
 
     // Taxes
@@ -933,9 +945,7 @@ function main() {
 
     const salesOut = [];
     const deedsOut = [];
-    const filesOut = [];
-    const relSalesDeed = [];
-    const relDeedFile = [];
+    const propertySalesTargets = [];
 
     salesRows.forEach((row) => {
         const isoDate = toISODate(row.saleDate);
@@ -949,45 +959,31 @@ function main() {
             ownership_transfer_date: isoDate,
             purchase_price_amount: price ?? null,
         };
-        salesOut.push({ file: `sales_${saleIndex}.json`, data: saleObj });
+        const saleFilename = `sales_history_${saleIndex}.json`;
+        salesOut.push({ file: saleFilename, data: saleObj });
+        propertySalesTargets.push(`./${saleFilename}`);
 
         const deedObj = {};
         if (deedType) {
             deedObj.deed_type = deedType;
         }
-        deedsOut.push({ file: `deed_${deedIndex}.json`, data: deedObj });
-
-        relSalesDeed.push({
-            to: { "/": `./sales_${saleIndex}.json` },
-            from: { "/": `./deed_${deedIndex}.json` },
-        });
-
-        if (row.link) {
-            const fileIndex = filesOut.length + 1;
-            const docType = mapDocTypeForFile(deedType || null);
-            const name = row.bookPageText
-                ? `Book ${row.bookPageText.replace(/\s+/g, " ").trim().replace(" ", " Page ")}`
-                : `Deed ${saleIndex}`;
-            const fileObj = {
-                document_type: docType,
-                file_format: null,
-                ipfs_url: null,
-                name: name,
-                original_url: row.link,
-            };
-            filesOut.push({ file: `file_${fileIndex}.json`, data: fileObj });
-            relDeedFile.push({
-                to: { "/": `./deed_${deedIndex}.json` },
-                from: { "/": `./file_${fileIndex}.json` },
-            });
+        if (row.docNum) {
+            deedObj.instrument_number = row.docNum;
         }
+        const bookPage = parseBookPage(row.bookPageText);
+        if (bookPage.book) deedObj.book = bookPage.book;
+        if (bookPage.page) deedObj.page = bookPage.page;
+        deedsOut.push({ file: `deed_${deedIndex}.json`, data: deedObj });
     });
 
     salesOut.forEach((s) => writeJson(path.join("data", s.file), s.data));
     deedsOut.forEach((d) => writeJson(path.join("data", d.file), d.data));
-    filesOut.forEach((f) => writeJson(path.join("data", f.file), f.data));
-    writeRelationshipSet("relationship_sales_deed.json", relSalesDeed);
-    writeRelationshipSet("relationship_deed_file.json", relDeedFile);
+    writeRelationshipSeries(
+        "relationship_property_has_sales_history.json",
+        "property_has_sales_history",
+        propertyRelPath,
+        propertySalesTargets,
+    );
 
     // Owners and relationships
     const parcelKey = `property_${seed.parcel_id || seed.request_identifier || ""}`;
@@ -1051,84 +1047,8 @@ function main() {
         });
     companies.forEach((c) => writeJson(path.join("data", c.file), c.data));
 
-    // Relationships
-    const relSalesPersons = [];
-    const relSalesCompanies = [];
-
-    // Link latest sale to current owners (prefer company if present)
-    const parseISO = (s) => (s ? new Date(s).getTime() : 0);
-    let latestIdx = -1,
-        latestTs = -1;
-    salesOut.forEach((sObj, i) => {
-        const ts = parseISO(sObj.data.ownership_transfer_date);
-        if (ts > latestTs) {
-            latestTs = ts;
-            latestIdx = i;
-        }
-    });
-    if (latestIdx >= 0) {
-        const sObj = salesOut[latestIdx];
-        const companiesHere = currentOwners.filter((o) => o.type === "company");
-        if (companiesHere.length) {
-            companiesHere.forEach((c) => {
-                const cFile = companyMap.get(c.name);
-                if (cFile) {
-                    relSalesCompanies.push({
-                        to: { "/": `./${cFile}` },
-                        from: { "/": `./${sObj.file}` },
-                    });
-                }
-            });
-        } else {
-            currentOwners
-                .filter((o) => o.type === "person")
-                .forEach((o) => {
-                    const file = personMap.get(personKey(o));
-                    if (file) {
-                        relSalesPersons.push({
-                            to: { "/": `./${file}` },
-                            from: { "/": `./${sObj.file}` },
-                        });
-                    }
-                });
-        }
-    }
-
-    // Chain-based buyers: for each non-latest sale, link to next sale's sellers (owners_by_date at next sale date), but avoid linking when next seller equals current seller (no transfer)
-    const combined = salesOut
-        .map((sObj, idx) => ({
-            file: sObj.file,
-            iso: sObj.data.ownership_transfer_date,
-            seller: (salesRows[idx] && salesRows[idx].grantor
-                    ? salesRows[idx].grantor
-                    : ""
-            )
-                .toUpperCase()
-                .replace(/\s+/g, " ")
-                .trim(),
-        }))
-        .filter((x) => x.iso);
-    combined.sort((a, b) => new Date(a.iso) - new Date(b.iso));
-    for (let i = 0; i < combined.length - 1; i++) {
-        const curr = combined[i];
-        const next = combined[i + 1];
-        if (!next.iso) continue;
-        if (next.seller && curr.seller && next.seller === curr.seller) continue; // same seller -> ambiguous, skip
-        const buyers = ownersByDate[next.iso] || [];
-        const personsHere = buyers.filter((o) => o.type === "person");
-        personsHere.forEach((p) => {
-            const pFile = personMap.get(personKey(p));
-            if (pFile) {
-                relSalesPersons.push({
-                    to: { "/": `./${pFile}` },
-                    from: { "/": `./${curr.file}` },
-                });
-            }
-        });
-    }
-
-    writeRelationshipSet("relationship_sales_person.json", relSalesPersons);
-    writeRelationshipSet("relationship_sales_company.json", relSalesCompanies);
+    // Relationships between property and owner entities are not emitted here
+    // because the downstream process populates them using validated CIDs.
 
     // Utilities
     const utilsRoot =
