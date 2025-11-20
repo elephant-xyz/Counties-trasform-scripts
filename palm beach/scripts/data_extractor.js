@@ -6204,6 +6204,30 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
   return finalized;
 }
 
+const COUNTY_ADDRESS_ENSURE_FIELDS = [
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "postal_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "county_name",
+  "city_name",
+  "state_code",
+  "country_code",
+  "municipality_name",
+];
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -6225,9 +6249,7 @@ const COUNTY_NORMALIZED_CORE_FIELDS = [
 ];
 
 const COUNTY_STRICT_NORMALIZED_FIELDS = [
-  ...COUNTY_NORMALIZED_CORE_FIELDS,
-  "latitude",
-  "longitude",
+  ...new Set(COUNTY_ADDRESS_ENSURE_FIELDS),
 ];
 
 const NORMALIZED_ADDRESS_STRONG_FIELDS = [
@@ -9713,6 +9735,43 @@ function overwriteAddressWithRawBaseline(addressFilePath, options = {}) {
   if (!payload) return;
 
   writeJSON(addressFilePath, payload);
+}
+
+function hasUsableAddressPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+
+  if (hasNormalizedCountyCoverage({ ...payload })) {
+    return true;
+  }
+
+  if (hasRawAddressRequiredFields({ ...payload })) {
+    return true;
+  }
+
+  return false;
+}
+
+function ensureFallbackRawAddressOutput(addressFilePath, options = {}) {
+  if (!addressFilePath) {
+    return;
+  }
+
+  let existingPayload = null;
+  if (fs.existsSync(addressFilePath)) {
+    try {
+      existingPayload = readJSON(addressFilePath);
+    } catch {
+      existingPayload = null;
+    }
+  }
+
+  if (hasUsableAddressPayload(existingPayload)) {
+    return;
+  }
+
+  overwriteAddressWithRawBaseline(addressFilePath, options);
 }
 
 function enforceRawAddressSurface(addressFilePath) {
@@ -13634,30 +13693,6 @@ function enforceCountyAddressCanonicalSurface(addressFilePath) {
 
   writeJSON(addressFilePath, output);
 }
-
-const COUNTY_ADDRESS_ENSURE_FIELDS = [
-  "latitude",
-  "longitude",
-  "plus_four_postal_code",
-  "postal_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
-  "city_name",
-  "state_code",
-  "country_code",
-  "municipality_name",
-];
 
 function hardenCountyAddressSurface(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
@@ -35458,6 +35493,7 @@ async function run() {
     rewriteAddressWithSchemaGuard(addressPath);
 
     const fallbackRawData = readJSONIfExists("unnormalized_address.json");
+    const fallbackSeedData = readJSONIfExists("property_seed.json");
     const fallbackRawCandidates = [];
     if (fallbackRawData && typeof fallbackRawData === "object") {
       const candidateFields = [
@@ -35486,6 +35522,53 @@ async function run() {
         );
       }
     }
+    const fallbackFieldSources = [
+      fallbackRawData && typeof fallbackRawData === "object"
+        ? fallbackRawData
+        : null,
+      fallbackSeedData && typeof fallbackSeedData === "object"
+        ? fallbackSeedData
+        : null,
+    ].filter(Boolean);
+    const fallbackCoordinateCandidates = [];
+    if (fallbackRawData && typeof fallbackRawData === "object") {
+      fallbackCoordinateCandidates.push({
+        latitude: fallbackRawData.latitude,
+        longitude: fallbackRawData.longitude,
+      });
+    }
+    const fallbackParcelCandidates = [];
+    const enqueueParcel = (value) => {
+      if (!value) return;
+      const trimmed = String(value).trim();
+      if (!trimmed.length) return;
+      fallbackParcelCandidates.push(trimmed);
+    };
+    enqueueParcel(fallbackSeedData && fallbackSeedData.parcel_id);
+    enqueueParcel(fallbackRawData && fallbackRawData.parcel_id);
+    const fallbackFieldFallbacks = {
+      county_name: [
+        fallbackRawData && fallbackRawData.county_jurisdiction,
+        "Palm Beach",
+      ],
+      state_code: [
+        fallbackRawData && fallbackRawData.state_code,
+        "FL",
+      ],
+      postal_code: [
+        fallbackRawData && fallbackRawData.postal_code,
+      ],
+      municipality_name: [
+        fallbackRawData && fallbackRawData.city_name,
+      ],
+    };
+    ensureFallbackRawAddressOutput(addressPath, {
+      unnormalizedCandidates: fallbackRawCandidates,
+      fieldSources: fallbackFieldSources,
+      coordinateCandidates: fallbackCoordinateCandidates,
+      parcelIdCandidates: fallbackParcelCandidates,
+      fieldFallbacks: fallbackFieldFallbacks,
+    });
     enforceRawAddressFieldCompletenessForOutput(addressPath, {
       unnormalizedCandidates: fallbackRawCandidates,
     });
