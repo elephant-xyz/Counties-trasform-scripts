@@ -383,43 +383,25 @@ function writeJSON(p, obj) {
     typeof obj === "object";
 
   if (isAddressFile) {
-    const hasRawOnly =
-      typeof obj.unnormalized_address === "string" &&
-      obj.unnormalized_address.trim().length > 0 &&
-      !hasRobustNormalizedAddress(obj);
-
-    if (hasRawOnly) {
-      const trimmedRaw = obj.unnormalized_address.trim();
-      payload = { unnormalized_address: trimmedRaw };
-
-      const latitude = parseCoordinate(obj.latitude);
-      if (Number.isFinite(latitude)) {
-        payload.latitude = latitude;
+    payload = sanitizeAddressPayloadForWrite(obj);
+    if (payload && typeof payload === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(obj, "request_identifier") &&
+        !Object.prototype.hasOwnProperty.call(payload, "request_identifier")
+      ) {
+        payload.request_identifier = obj.request_identifier;
       }
-      const longitude = parseCoordinate(obj.longitude);
-      if (Number.isFinite(longitude)) {
-        payload.longitude = longitude;
+      if (
+        Object.prototype.hasOwnProperty.call(obj, "source_http_request") &&
+        !Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+      ) {
+        payload.source_http_request = obj.source_http_request;
       }
 
-      const requestIdentifier = safeNullIfEmpty(obj.request_identifier);
-      if (requestIdentifier) {
-        payload.request_identifier = requestIdentifier;
-      }
-
-      const normalizedSource = prepareSourceHttpRequest(
-        obj.source_http_request,
-      );
-      if (normalizedSource) {
-        payload.source_http_request = deepClone(normalizedSource);
-      }
-    } else {
-      payload = sanitizeAddressPayloadForWrite(obj);
-      if (payload && typeof payload === "object") {
-        const completed =
-          ensureAddressOutputFieldPresence(payload) || payload;
-        if (completed && typeof completed === "object") {
-          payload = completed;
-        }
+      const completed =
+        ensureAddressOutputFieldPresence(payload) || payload;
+      if (completed && typeof completed === "object") {
+        payload = completed;
       }
     }
   }
@@ -14562,31 +14544,54 @@ function enforceMinimalRawAddressVariant(addressFilePath, options = {}) {
   }
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw.trim(),
   };
 
-  const pickCoordinate = (field) => {
-    const candidates = [
-      payload && payload[field],
-      normalizedSurface && normalizedSurface[field],
-      unnormalizedSource && unnormalizedSource[field],
-    ];
+  const resolveFieldValue = (field) => {
+    const candidates = [];
+    const enqueue = (container) => {
+      if (!container || typeof container !== "object") return;
+      if (!Object.prototype.hasOwnProperty.call(container, field)) return;
+      candidates.push(container[field]);
+    };
+
+    enqueue(payload);
+    enqueue(normalizedSurface);
+    enqueue(unnormalizedSource);
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      for (const candidate of candidates) {
+        const numeric = parseCoordinate(candidate);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+      }
+      return null;
+    }
+
     for (const candidate of candidates) {
-      const numeric = parseCoordinate(candidate);
-      if (Number.isFinite(numeric)) {
-        return numeric;
+      const normalized = normalizeAddressFieldForSchema(field, candidate);
+      if (normalized !== undefined && normalized !== null) {
+        return normalized;
       }
     }
+
     return null;
   };
 
-  const latitude = pickCoordinate("latitude");
-  if (Number.isFinite(latitude)) {
-    rawOutput.latitude = latitude;
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    const resolved = resolveFieldValue(field);
+    if (resolved !== undefined && resolved !== null) {
+      rawOutput[field] = resolved;
+    }
   }
-  const longitude = pickCoordinate("longitude");
-  if (Number.isFinite(longitude)) {
-    rawOutput.longitude = longitude;
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
   }
 
   const seed = readJSONIfExists(options.seedPath);
