@@ -368,13 +368,6 @@ function writeJSON(p, obj) {
   if (isAddressFile) {
     payload = sanitizeAddressPayloadForWrite(obj);
     if (payload && typeof payload === "object") {
-      const hasUnnormalized =
-        typeof payload.unnormalized_address === "string" &&
-        payload.unnormalized_address.trim().length > 0;
-      const hasNormalizedKeys = NORMALIZED_ADDRESS_FIELDS.some((field) =>
-        Object.prototype.hasOwnProperty.call(payload, field),
-      );
-
       if (
         Object.prototype.hasOwnProperty.call(obj, "request_identifier") &&
         !Object.prototype.hasOwnProperty.call(payload, "request_identifier")
@@ -388,12 +381,10 @@ function writeJSON(p, obj) {
         payload.source_http_request = obj.source_http_request;
       }
 
-      if (!(hasUnnormalized && !hasNormalizedKeys)) {
-        const completed =
-          ensureAddressOutputFieldPresence(payload) || payload;
-        if (completed && typeof completed === "object") {
-          payload = completed;
-        }
+      const completed =
+        ensureAddressOutputFieldPresence(payload) || payload;
+      if (completed && typeof completed === "object") {
+        payload = completed;
       }
     }
   }
@@ -34238,6 +34229,10 @@ async function run() {
       sourceHttpRequest: resolvedSourceHttpRequest,
     });
     collapseAddressToSchemaVariant(addressPath);
+    // Guarantee the persisted raw variant keeps every schema field (even when null)
+    // so the County address oneOf branch doesn't report missing properties.
+    ensureAddressFileFieldCompleteness(addressPath);
+    enforceRawAddressSurface(addressPath);
   } catch (error) {
     console.error("Failed to finalize raw address variant:", error);
     if (!process.exitCode) {
