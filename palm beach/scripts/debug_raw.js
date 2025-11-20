@@ -4225,9 +4225,16 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 // Fields that may accompany the raw (unnormalized) address payload.
 // Keep the list aligned with the schema requirements so every nullable property is present,
 // even when we only have an unnormalized string available.
-const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
-  (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
-);
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+].filter((field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field));
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 

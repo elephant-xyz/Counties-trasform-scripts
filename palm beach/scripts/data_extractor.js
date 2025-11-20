@@ -2421,9 +2421,16 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 // components from the raw variant surface.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
-  (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
-);
+const RAW_ADDRESS_ALLOWED_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+].filter((field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field));
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
@@ -18617,6 +18624,88 @@ function buildRawAddressVariantForOneOf(source, rawString) {
   }
 
   return rawOutput;
+}
+
+function finalizeAddressSchemaVariantForOutput(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  const normalizedVariant = resolveNormalizedAddressVariantForOneOf(payload);
+  if (normalizedVariant) {
+    if (requestIdentifier) {
+      normalizedVariant.request_identifier = requestIdentifier;
+    } else if (hadRequestIdentifier) {
+      normalizedVariant.request_identifier = null;
+    }
+
+    if (preparedSource) {
+      normalizedVariant.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      normalizedVariant.source_http_request = null;
+    }
+
+    writeJSON(addressFilePath, normalizedVariant);
+    return;
+  }
+
+  const unnormalizedString =
+    (typeof payload.unnormalized_address === "string" &&
+      payload.unnormalized_address.trim()) ||
+    composeFallbackUnnormalizedAddressFromFields(payload);
+  if (!unnormalizedString) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawVariant = buildRawAddressVariantForOneOf(
+    payload,
+    unnormalizedString,
+  );
+  if (!rawVariant) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (requestIdentifier) {
+    rawVariant.request_identifier = requestIdentifier;
+  } else if (hadRequestIdentifier) {
+    rawVariant.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    rawVariant.source_http_request = deepClone(preparedSource);
+  } else if (hadSourceHttpRequest) {
+    rawVariant.source_http_request = null;
+  }
+
+  writeJSON(addressFilePath, rawVariant);
 }
 
 function finalizeCountyAddressVariantForOneOf(addressFilePath) {
@@ -34853,87 +34942,7 @@ async function run() {
   await main();
   try {
     const dataDir = path.join("data");
-    const addressPath = path.join(dataDir, "address.json");
-    const contextUnnormalized =
-      ADDRESS_FALLBACK_CONTEXT &&
-      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
-        ? [...ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates]
-        : [];
-    const coordinateContext =
-      ADDRESS_FALLBACK_CONTEXT &&
-      Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
-        ? [...ADDRESS_FALLBACK_CONTEXT.coordinateCandidates]
-        : [];
-    const requestIdentifierContext =
-      ADDRESS_FALLBACK_CONTEXT &&
-      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
-        ? [...ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates]
-        : [];
-    const sourceHttpRequestContext =
-      ADDRESS_FALLBACK_CONTEXT &&
-      Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
-        ? [...ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates]
-        : [];
-    const parcelContext =
-      ADDRESS_FALLBACK_CONTEXT &&
-      Array.isArray(ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates)
-        ? [...ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates]
-        : [];
-
-    const seedPayload = readJSONIfExists("property_seed.json");
-    const rawAddressPayload = readJSONIfExists("unnormalized_address.json");
-    const parcelCandidates = new Set(
-      [
-        ...(Array.isArray(parcelContext) ? parcelContext : []),
-        seedPayload && seedPayload.parcel_id,
-        seedPayload && seedPayload.request_identifier,
-        rawAddressPayload && rawAddressPayload.parcel_id,
-        rawAddressPayload && rawAddressPayload.request_identifier,
-      ].filter(Boolean),
-    );
-
-    const defaultCountyName =
-      (rawAddressPayload &&
-        rawAddressPayload.county_jurisdiction &&
-        titleCaseCounty(rawAddressPayload.county_jurisdiction)) ||
-      "Palm Beach";
-
-    await finalizeCountyAddressOneOfSelection(addressPath, {
-      unnormalizedCandidates: contextUnnormalized,
-      coordinateCandidates: coordinateContext,
-      parcelIdCandidates: [...parcelCandidates],
-      requestIdentifierCandidates: requestIdentifierContext,
-      sourceHttpRequestCandidates: sourceHttpRequestContext,
-      defaultCountyName,
-      defaultStateCode: "FL",
-      defaultCountryCode: "US",
-      rawFallbackPath: path.resolve("unnormalized_address.json"),
-    });
-    coerceFinalCountyAddressVariant(addressPath, {
-      rawCandidates: [
-        ...(Array.isArray(contextUnnormalized) ? contextUnnormalized : []),
-        rawAddressPayload && rawAddressPayload.full_address,
-        rawAddressPayload && rawAddressPayload.unnormalized_address,
-      ],
-      defaultCountyName,
-      defaultStateCode: "FL",
-      defaultCountryCode: "US",
-    });
-    forceRawAddressOnly(addressPath, {
-      rawFallbackPath: path.resolve("unnormalized_address.json"),
-      seedPath: path.resolve("property_seed.json"),
-      unnormalizedCandidates: [
-        ...(Array.isArray(contextUnnormalized) ? contextUnnormalized : []),
-        rawAddressPayload && rawAddressPayload.full_address,
-        rawAddressPayload && rawAddressPayload.unnormalized_address,
-      ],
-      coordinateCandidates: coordinateContext,
-      requestIdentifierCandidates: requestIdentifierContext,
-      sourceHttpRequestCandidates: sourceHttpRequestContext,
-      defaultCountyName,
-      defaultStateCode: "FL",
-      defaultCountryCode: "US",
-    });
+    finalizeAddressSchemaVariantForOutput(path.join(dataDir, "address.json"));
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
