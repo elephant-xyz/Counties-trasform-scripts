@@ -212,6 +212,7 @@ function buildRawAddressOneOfPayload(
   rawValue,
   requestIdentifier,
   sourceHttpRequest,
+  fieldSource = null,
 ) {
   const trimmed =
     typeof rawValue === "string" ? rawValue.trim() : "";
@@ -219,9 +220,23 @@ function buildRawAddressOneOfPayload(
     return null;
   }
 
-  const payload = {
-    unnormalized_address: trimmed,
-  };
+  const payload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+  if (fieldSource && typeof fieldSource === "object") {
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(fieldSource, field)) {
+        continue;
+      }
+      const sanitized = sanitizeAddressFieldValue(
+        field,
+        fieldSource[field],
+      );
+      payload[field] =
+        sanitized === undefined || sanitized === null ? null : sanitized;
+    }
+  }
+
+  payload.unnormalized_address = trimmed;
 
   if (requestIdentifier !== undefined) {
     const normalizedRequestIdentifier = safeNullIfEmpty(requestIdentifier);
@@ -564,6 +579,7 @@ function enforceFinalAddressOneOfOutput(filePath) {
     fallbackRaw,
     resolvedRequestIdentifier ?? null,
     resolvedSourceHttpRequest,
+    payload,
   );
 
   if (!rawPayload) {
@@ -915,6 +931,7 @@ function finalizeCountyAddressNormalization(addressFilePath, options = {}) {
     rawString,
     rawRequestIdentifier ?? null,
     rawSourceHttpRequest,
+    payload,
   );
   if (!rawPayload) {
     removeFileIfExists(addressFilePath);
@@ -18748,6 +18765,7 @@ function buildRawAddressVariantForOneOf(source, rawString) {
     trimmed,
     requestIdentifier,
     sourceHttpRequest,
+    source,
   );
 }
 
