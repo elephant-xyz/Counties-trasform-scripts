@@ -14220,7 +14220,7 @@ function enforceRawAddressSurfaceCompleteness(addressFilePath) {
   writeJSON(addressFilePath, surfaced);
 }
 
-function enforceCountyAddressSchemaCompliance(addressFilePath) {
+function enforceCountyAddressSchemaCompliance(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
   }
@@ -14322,37 +14322,26 @@ function enforceCountyAddressSchemaCompliance(addressFilePath) {
     return;
   }
 
-  const rawOutput = {
-    unnormalized_address: resolvedUnnormalized,
-  };
-
-  const latitudeCandidate = parseCoordinate(
-    Object.prototype.hasOwnProperty.call(payload, "latitude")
-      ? payload.latitude
-      : normalizedSurface.latitude,
-  );
-  if (Number.isFinite(latitudeCandidate)) {
-    rawOutput.latitude = latitudeCandidate;
+  const rawSeed = { ...payload, unnormalized_address: resolvedUnnormalized };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    rawSeed[field] =
+      normalizedSurface[field] === undefined || normalizedSurface[field] === null
+        ? null
+        : normalizedSurface[field];
   }
-
-  const longitudeCandidate = parseCoordinate(
-    Object.prototype.hasOwnProperty.call(payload, "longitude")
-      ? payload.longitude
-      : normalizedSurface.longitude,
-  );
-  if (Number.isFinite(longitudeCandidate)) {
-    rawOutput.longitude = longitudeCandidate;
-  }
-
   if (requestIdentifier) {
-    rawOutput.request_identifier = requestIdentifier;
+    rawSeed.request_identifier = requestIdentifier;
   }
-
   if (preparedSource) {
-    rawOutput.source_http_request = deepClone(preparedSource);
+    rawSeed.source_http_request = deepClone(preparedSource);
   }
 
-  writeJSON(addressFilePath, rawOutput);
+  const minimalRaw = buildCountyMinimalRawAddressOutput(rawSeed);
+  if (minimalRaw) {
+    writeJSON(addressFilePath, minimalRaw);
+  } else {
+    removeFileIfExists(addressFilePath);
+  }
 }
 
 function forceSimpleCountyAddressOutput(addressFilePath, options = {}) {
@@ -14463,37 +14452,28 @@ function forceSimpleCountyAddressOutput(addressFilePath, options = {}) {
     return;
   }
 
-  const rawOutput = {
-    unnormalized_address: resolvedUnnormalized,
-  };
-
-  const latitudeCandidate = parseCoordinate(
-    Object.prototype.hasOwnProperty.call(payload, "latitude")
-      ? payload.latitude
-      : normalizedSurface.latitude,
-  );
-  if (Number.isFinite(latitudeCandidate)) {
-    rawOutput.latitude = latitudeCandidate;
-  }
-
-  const longitudeCandidate = parseCoordinate(
-    Object.prototype.hasOwnProperty.call(payload, "longitude")
-      ? payload.longitude
-      : normalizedSurface.longitude,
-  );
-  if (Number.isFinite(longitudeCandidate)) {
-    rawOutput.longitude = longitudeCandidate;
+  const rawSeed = { ...payload, unnormalized_address: resolvedUnnormalized };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    rawSeed[field] =
+      normalizedSurface[field] === undefined || normalizedSurface[field] === null
+        ? null
+        : normalizedSurface[field];
   }
 
   if (requestIdentifier) {
-    rawOutput.request_identifier = requestIdentifier;
+    rawSeed.request_identifier = requestIdentifier;
   }
 
   if (preparedSource) {
-    rawOutput.source_http_request = deepClone(preparedSource);
+    rawSeed.source_http_request = deepClone(preparedSource);
   }
 
-  writeJSON(addressFilePath, rawOutput);
+  const minimalRaw = buildCountyMinimalRawAddressOutput(rawSeed);
+  if (minimalRaw) {
+    writeJSON(addressFilePath, minimalRaw);
+  } else {
+    removeFileIfExists(addressFilePath);
+  }
 }
 
 function buildCountyMinimalRawAddressOutput(address) {
@@ -15146,27 +15126,51 @@ function coerceAddressToOneOfVariant(addressFilePath, options = {}) {
     ...sourceHttpRequestCandidates,
   );
 
-  const rawOutput = {
+  const rawSeed = {
+    ...payload,
     unnormalized_address: resolvedRaw.trim(),
   };
 
-  if (
-    Number.isFinite(resolvedLatitude) &&
-    Number.isFinite(resolvedLongitude)
-  ) {
-    rawOutput.latitude = resolvedLatitude;
-    rawOutput.longitude = resolvedLongitude;
+  if (Number.isFinite(resolvedLatitude)) {
+    rawSeed.latitude = resolvedLatitude;
+  }
+  if (Number.isFinite(resolvedLongitude)) {
+    rawSeed.longitude = resolvedLongitude;
+  }
+
+  const fallbackSources = [];
+  if (rawFallback && typeof rawFallback === "object") {
+    fallbackSources.push(rawFallback);
+  }
+  if (seed && typeof seed === "object") {
+    fallbackSources.push(seed);
+  }
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (hasMeaningfulAddressValue(rawSeed[field])) {
+      continue;
+    }
+    for (const source of fallbackSources) {
+      if (source && hasMeaningfulAddressValue(source[field])) {
+        rawSeed[field] = source[field];
+        break;
+      }
+    }
   }
 
   if (requestIdentifier) {
-    rawOutput.request_identifier = requestIdentifier;
+    rawSeed.request_identifier = requestIdentifier;
   }
-
   if (sourceHttpRequest) {
-    rawOutput.source_http_request = deepClone(sourceHttpRequest);
+    rawSeed.source_http_request = deepClone(sourceHttpRequest);
   }
 
-  fs.writeFileSync(addressFilePath, JSON.stringify(rawOutput, null, 2));
+  const minimalRaw = buildCountyMinimalRawAddressOutput(rawSeed);
+  if (minimalRaw) {
+    writeJSON(addressFilePath, minimalRaw);
+  } else {
+    removeFileIfExists(addressFilePath);
+  }
 }
 
 function enforceAddressVariantForOneOf(addressFilePath, options = {}) {
@@ -15279,7 +15283,8 @@ function enforceAddressVariantForOneOf(addressFilePath, options = {}) {
     return;
   }
 
-  const rawOutput = {
+  const rawSeed = {
+    ...payload,
     unnormalized_address: resolvedRaw.trim(),
   };
 
@@ -15287,25 +15292,50 @@ function enforceAddressVariantForOneOf(addressFilePath, options = {}) {
     payload.latitude ?? fallbackRaw.latitude ?? seed.latitude,
   );
   if (Number.isFinite(latitude)) {
-    rawOutput.latitude = latitude;
+    rawSeed.latitude = latitude;
   }
 
   const longitude = parseCoordinate(
     payload.longitude ?? fallbackRaw.longitude ?? seed.longitude,
   );
   if (Number.isFinite(longitude)) {
-    rawOutput.longitude = longitude;
+    rawSeed.longitude = longitude;
+  }
+
+  const fallbackSources = [];
+  if (fallbackRaw && typeof fallbackRaw === "object") {
+    fallbackSources.push(fallbackRaw);
+  }
+  if (seed && typeof seed === "object") {
+    fallbackSources.push(seed);
+  }
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (hasMeaningfulAddressValue(rawSeed[field])) {
+      continue;
+    }
+    for (const source of fallbackSources) {
+      if (source && hasMeaningfulAddressValue(source[field])) {
+        rawSeed[field] = source[field];
+        break;
+      }
+    }
   }
 
   if (requestIdentifier) {
-    rawOutput.request_identifier = requestIdentifier;
+    rawSeed.request_identifier = requestIdentifier;
   }
 
   if (preparedSource) {
-    rawOutput.source_http_request = deepClone(preparedSource);
+    rawSeed.source_http_request = deepClone(preparedSource);
   }
 
-  fs.writeFileSync(addressFilePath, JSON.stringify(rawOutput, null, 2));
+  const minimalRaw = buildCountyMinimalRawAddressOutput(rawSeed);
+  if (minimalRaw) {
+    writeJSON(addressFilePath, minimalRaw);
+  } else {
+    removeFileIfExists(addressFilePath);
+  }
 }
 
 function enforceMinimalRawAddressVariant(addressFilePath, options = {}) {
@@ -34065,6 +34095,14 @@ async function run() {
       Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
         ? [...ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates]
         : [];
+    const resolvedRequestIdentifier =
+      Array.isArray(requestIdentifierContext) && requestIdentifierContext.length
+        ? resolveRequestIdentifierCandidate(...requestIdentifierContext)
+        : null;
+    const resolvedSourceHttpRequest =
+      Array.isArray(sourceHttpRequestContext) && sourceHttpRequestContext.length
+        ? resolveSourceHttpRequestCandidate(...sourceHttpRequestContext)
+        : null;
     enforceAddressVariantForOneOf(addressPath, {
       rawFallbackPath: path.resolve("unnormalized_address.json"),
       seedPath: path.resolve("property_seed.json"),
@@ -34090,6 +34128,13 @@ async function run() {
       requestIdentifierCandidates: requestIdentifierContext,
       sourceHttpRequestCandidates: sourceHttpRequestContext,
       forceRawVariant: true,
+    });
+    enforceMinimalRawAddressVariant(addressPath, {
+      unnormalizedAddressPath: path.resolve("unnormalized_address.json"),
+      seedPath: path.resolve("property_seed.json"),
+      unnormalizedCandidates: contextUnnormalized,
+      requestIdentifier: resolvedRequestIdentifier,
+      sourceHttpRequest: resolvedSourceHttpRequest,
     });
   } catch (error) {
     console.error("Failed to finalize raw address variant:", error);
