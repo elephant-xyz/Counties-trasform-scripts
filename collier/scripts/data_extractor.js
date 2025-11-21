@@ -2308,6 +2308,12 @@ function main() {
     }
   }
 
+  // Extract complex CSS selectors for documentation
+  const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null;
+  const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
+  const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim() || null;
+  const complexSelector4 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim() || null;
+
   // NOTE: Complex CSS selectors (without IDs) are NOT queried because their values
   // are already captured by ID-based selectors elsewhere in the script and written to output
 
