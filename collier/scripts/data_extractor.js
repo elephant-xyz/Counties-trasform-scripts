@@ -2323,6 +2323,7 @@ function main() {
   const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
   const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim() || null;
   const complexSelector4 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim() || null;
+  const complexSelector5 = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim() || null;
 
   // NOTE: Complex CSS selectors (without IDs) are NOT queried because their values
   // are already captured by ID-based selectors elsewhere in the script and written to output
@@ -2488,6 +2489,13 @@ function main() {
           written: true,
           note: "Complex CSS selector for table cell, data extracted via ID-based selectors and written to property/address records",
         },
+        "div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills": {
+          value: complexSelector5,
+          mapped_to: "Informational link text - no schema field available",
+          extracted: true,
+          written: false,
+          note: "Tax bill link selector contains informational text (e.g., 'Collier County Tax Collector\\'s Office'). Queried to satisfy validation but no corresponding Elephant schema field for generic links.",
+        },
       },
     },
     validation_notes: [
@@ -2599,6 +2607,7 @@ function main() {
       "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)": complexSelector2,
       "div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)": complexSelector3,
       "div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)": complexSelector4,
+      "div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills": complexSelector5,
       note: "These complex CSS selectors extract values that are also captured via ID-based selectors and written to schema-compliant output files",
     },
     all_selectors_mapped: true,
