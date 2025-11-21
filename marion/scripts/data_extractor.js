@@ -762,82 +762,30 @@ function extractLegalDescription($) {
   return desc || null;
 }
 
-function parseAddress(full) {
-  if (!full) return null;
-  const m = full.match(
-    /^(\d+)\s+([NSEW]{1,2})\s+(.+?)\s*,\s*([A-Z .'-]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/,
-  );
-  if (!m) return null;
-  const streetNumber = m[1];
-  const preDir = m[2];
-  const streetFull = m[3];
-  const parts = streetFull.split(/\s+/);
-  let streetSuffix = null;
-  let streetNameParts = parts;
-  if (parts.length > 1) {
-    streetSuffix = parts[parts.length - 1];
-    streetNameParts = parts.slice(0, parts.length - 1);
+function parsePropertyAddress(html) {
+  if (!html) {
+    return null;
   }
-  const streetName = streetNameParts.join(" ");
-  const city = m[4].trim().toUpperCase();
-  const state = m[5];
-  const zip = m[6];
-  const plus4 = m[7] || null;
-  const suffixMap = {
-    ST: "St",
-    RD: "Rd",
-    AVE: "Ave",
-    AV: "Ave",
-    DR: "Dr",
-    LN: "Ln",
-    BLVD: "Blvd",
-    HWY: "Hwy",
-    CT: "Ct",
-    TER: "Ter",
-    PL: "Pl",
-    CIR: "Cir",
-    PKWY: "Pkwy",
-    WAY: "Way",
-    TRL: "Trl",
-    XING: "Xing",
-    SQ: "Sq",
-    RDG: "Rdg",
-    MALL: "Mall",
-    RUN: "Run",
-    WALK: "Walk",
-    PATH: "Path",
-    RTE: "Rte",
-  };
-  const street_suffix_type =
-    suffixMap[(streetSuffix || "").toUpperCase()] || null;
-  return {
-    streetNumber,
-    preDir,
-    streetName,
-    street_suffix_type,
-    city,
-    state,
-    zip,
-    plus4,
-  };
+  const match = html.match(/Situs:\s*([^<]+)<br\s*\/?>/i);
+  if (!match) {
+    return null;
+  }
+  return match[1].replace(/\s+/g, " ").trim() || null;
 }
 
-function parseSTRB(legal) {
-  if (!legal)
-    return { section: null, township: null, range: null, block: null };
-  let section = null,
-    township = null,
-    range = null,
-    block = null;
-  const secM = legal.match(/SEC\s*(\d{1,2})/i);
-  if (secM) section = secM[1];
-  const twpM = legal.match(/TWP\s*(\d{1,2})/i);
-  if (twpM) township = twpM[1];
-  const rgeM = legal.match(/RGE\s*(\d{1,2})/i);
-  if (rgeM) range = rgeM[1];
-  const blkM = legal.match(/BLK\s*(\w+)/i);
-  if (blkM) block = blkM[1];
-  return { section, township, range, block };
+function titleCaseName(s) {
+  if (!s) return s;
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function writeOut(filePath, obj) {
+  const outPath = path.join("data", filePath);
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, JSON.stringify(obj, null, 2), "utf8");
 }
 
 function main() {
@@ -846,9 +794,10 @@ function main() {
 
   const inputHtml = readText("input.html");
   const $ = cheerio.load(inputHtml);
-  const unaddr = fs.existsSync("unnormalized_address.json")
+  const unnorm = fs.existsSync("unnormalized_address.json")
     ? readJSON("unnormalized_address.json")
     : {};
+  const address = parsePropertyAddress(inputHtml);
   const seed = fs.existsSync("property_seed.json")
     ? readJSON("property_seed.json")
     : null;
@@ -856,9 +805,11 @@ function main() {
 
   const ownersPath = path.join("owners", "owner_data.json");
   const utilsPath = path.join("owners", "utilities_data.json");
+  const structuresPath = path.join("owners", "structure_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
   const ownersData = fs.existsSync(ownersPath) ? readJSON(ownersPath) : null;
   const utilsData = fs.existsSync(utilsPath) ? readJSON(utilsPath) : null;
+  const structuresData = fs.existsSync(structuresPath) ? readJSON(structuresPath) : null;
   const layoutData = fs.existsSync(layoutPath) ? readJSON(layoutPath) : null;
 
   const parcelIdFromPage = extractParcelId($, inputHtml);
@@ -875,8 +826,7 @@ function main() {
   const taxesAssess = extractTaxesAssessments($);
   const history = extractHistoryTaxes($);
   const sales = extractSalesPrecise($);
-  const addrParsed = parseAddress(unaddr.full_address || "");
-  const strb = parseSTRB(legalDescription || "");
+  // const addrParsed = parseAddress(unaddr.full_address || "");
   const parcelIdentifier =
     (seed && (seed.parcel_id || seed.parcel_identifier)) ||
     (parcelSeed && parcelSeed.parcel_identifier) ||
@@ -886,20 +836,10 @@ function main() {
     (parcelSeed && parcelSeed.request_identifier != null
       ? parcelSeed.request_identifier
       : null);
-  let sourceHttpRequest =
-    (seed && (seed.source_http_request || seed.entry_http_request)) || null;
-  if (!sourceHttpRequest && parcelSeed && parcelSeed.source_http_request) {
-    sourceHttpRequest = parcelSeed.source_http_request;
-  }
-  if (!sourceHttpRequest && seed && seed.url) {
-    sourceHttpRequest = {
-      method: seed.method || "GET",
-      url: seed.url,
-    };
-    if (seed.multiValueQueryString && typeof seed.multiValueQueryString === "object") {
-      sourceHttpRequest.multiValueQueryString = seed.multiValueQueryString;
-    }
-  }
+  const key_part = requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
+  const key = `property_${key_part}`;
+  const util = utilsData[key];
+  const struct = structuresData[key];
 
   // property.json
   const property = {
@@ -914,8 +854,6 @@ function main() {
       property_structure_built_year: yearBuilt || null,
       property_type: propertyType,
       property_usage_type: propertyUsageType,
-      request_identifier: requestIdentifier,
-      source_http_request: sourceHttpRequest,
       structure_form: structureForm,
       subdivision: null,
       total_area: null,
@@ -925,31 +863,18 @@ function main() {
   
 
   // address.json
-  if (addrParsed) {
-    const address = {
-      block: strb.block || null,
-      city_name: addrParsed.city || null,
-      country_code: null,
+  if (address) {
+    const addressObj = {
       county_name: "Marion",
-      latitude: null,
-      longitude: null,
-      lot: null,
-      municipality_name: null,
-      plus_four_postal_code: addrParsed.plus4 || null,
-      postal_code: addrParsed.zip || null,
-      range: strb.range || null,
-      route_number: null,
-      section: strb.section || null,
-      state_code: addrParsed.state || null,
-      street_name: addrParsed.streetName || null,
-      street_post_directional_text: null,
-      street_pre_directional_text: addrParsed.preDir || null,
-      street_number: addrParsed.streetNumber || null,
-      street_suffix_type: addrParsed.street_suffix_type || null,
-      township: strb.township || null,
-      unit_identifier: null,
+      latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+      longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+      unnormalized_address: address,
     };
-    writeJSON(path.join(dataDir, "address.json"), address);
+    writeJSON(path.join(dataDir, "address.json"), addressObj);
+    writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
+                to: { "/": `./address.json` },
+                from: { "/": `./property.json` },
+              });
   }
 
   // tax_*.json from history
@@ -992,43 +917,41 @@ function main() {
     if (inst.includes("SPECIAL WARRANTY")) deed_type = "Special Warranty Deed";
     else if (inst.includes("WARRANTY")) deed_type = "Warranty Deed";
     else if (inst.includes("QUIT")) deed_type = "Quitclaim Deed";
+    else deed_type = "Miscellaneous";
 
-    if (deed_type) {
-      deedIdx += 1;
-      const deedPath = path.join(dataDir, `deed_${deedIdx}.json`);
-      writeJSON(deedPath, { deed_type });
-      saleToDeed.push({ saleIndex: idx + 1, deedIndex: deedIdx });
-
-      if (s.url) {
-        fileIdx += 1;
-        let document_type = null;
-        if (deed_type === "Warranty Deed")
-          document_type = "ConveyanceDeedWarrantyDeed";
-        else if (deed_type === "Quitclaim Deed")
-          document_type = "ConveyanceDeedQuitClaimDeed";
-        else if (deed_type === "Special Warranty Deed")
-          document_type = "ConveyanceDeed";
-        const fileObj = {
-          document_type: document_type,
-          file_format: null,
-          ipfs_url: null,
-          name: s.bookPage || null,
-          original_url: encodeURI(s.url) || null,
-          source_http_request: sourceHttpRequest,
-          request_identifier: requestIdentifier,
-        };
-        const filePath = path.join(dataDir, `file_${fileIdx}.json`);
-        writeJSON(filePath, fileObj);
-        const relDF = {
-          from: { "/": `./deed_${deedIdx}.json` },
-          to: { "/": `./file_${fileIdx}.json` },
-        };
-        writeJSON(
-          path.join(dataDir, `relationship_deed_file_${fileIdx}.json`),
-          relDF,
-        );
-      }
+    // if (deed_type) {
+    deedIdx += 1;
+    const deedPath = path.join(dataDir, `deed_${deedIdx}.json`);
+    let deed = { deed_type }
+    if (s.bookPage && s.bookPage.split("/").length === 2) {
+      deed.book = s.bookPage.split("/")[0];
+      deed.page = s.bookPage.split("/")[1];
     }
+    writeJSON(deedPath, deed);
+    saleToDeed.push({ saleIndex: idx + 1, deedIndex: deedIdx });
+
+    if (s.url) {
+      fileIdx += 1;
+      let document_type = null;
+      const fileObj = {
+        document_type: document_type,
+        file_format: null,
+        ipfs_url: null,
+        name: s.bookPage || null,
+        original_url: encodeURI(s.url) || null,
+      };
+      const filePath = path.join(dataDir, `file_${fileIdx}.json`);
+      writeJSON(filePath, fileObj);
+      const relDF = {
+        from: { "/": `./deed_${deedIdx}.json` },
+        to: { "/": `./file_${fileIdx}.json` },
+      };
+      writeJSON(
+        path.join(dataDir, `relationship_deed_file_${fileIdx}.json`),
+        relDF,
+      );
+    }
+    // }
   });
 
   // relationship_sales_deed (numbered only to avoid duplicates)
@@ -1040,16 +963,6 @@ function main() {
     writeJSON(path.join(dataDir, `relationship_sales_deed_${i + 1}.json`), rel);
   });
 
-  // owners → link to best sale (highest price)
-  let bestSaleIndex = null;
-  let bestPrice = -1;
-  sales.forEach((s, idx) => {
-    if (typeof s.price === "number" && s.price > bestPrice) {
-      bestPrice = s.price;
-      bestSaleIndex = idx + 1;
-    }
-  });
-
   if (ownersData && parcelIdentifier) {
     const ownerKey = `property_${parcelIdentifier}`;
     const rec = ownersData[ownerKey];
@@ -1059,25 +972,27 @@ function main() {
       Array.isArray(rec.owners_by_date.current)
     ) {
       const owners = rec.owners_by_date.current;
-      let companyIdx = 0,
-        relIdx = 0;
+      let companyIdx = 0;
+      let personIdx = 0
       owners.forEach((o) => {
         if (o.type === "company") {
           companyIdx += 1;
           writeJSON(path.join(dataDir, `company_${companyIdx}.json`), {
             name: o.name || null,
           });
-          if (bestSaleIndex != null) {
-            relIdx += 1;
-            const rel = {
-              from: { "/": `./sales_${bestSaleIndex}.json` },
-              to: { "/": `./company_${companyIdx}.json` },
-            };
-            writeJSON(
-              path.join(dataDir, `relationship_sales_company_${relIdx}.json`),
-              rel,
-            );
-          }
+        }
+        if (o.type === "person") {
+          personIdx += 1;
+          writeJSON(path.join(dataDir, `person_${personIdx}.json`), {
+            first_name: o.first_name ? titleCaseName(o.first_name) : null,
+            middle_name: o.middle_name ? titleCaseName(o.middle_name) : null,
+            last_name: o.last_name ? titleCaseName(o.last_name) : null,
+            birth_date: null,
+            prefix_name: null,
+            suffix_name: null,
+            us_citizenship_status: null,
+            veteran_status: null,
+          });
         }
       });
     }
@@ -1112,98 +1027,190 @@ function main() {
   };
   writeJSON(path.join(dataDir, "lot.json"), lot);
 
-  // structure.json (minimal)
-  const struct = {
-    architectural_style_type: null,
-    attachment_type: null,
-    ceiling_condition: null,
-    ceiling_height_average: null,
-    ceiling_insulation_type: null,
-    ceiling_structure_material: null,
-    ceiling_surface_material: null,
-    exterior_door_installation_date: null,
-    exterior_door_material: null,
-    exterior_wall_condition: "Fair",
-    exterior_wall_condition_primary: null,
-    exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type: null,
-    exterior_wall_insulation_type_primary: null,
-    exterior_wall_insulation_type_secondary: null,
-    exterior_wall_material_primary: null,
-    exterior_wall_material_secondary: null,
-    finished_base_area: null,
-    finished_basement_area: null,
-    finished_upper_story_area: null,
-    flooring_condition: null,
-    flooring_material_primary: null,
-    flooring_material_secondary: null,
-    foundation_condition: "Unknown",
-    foundation_material: null,
-    foundation_repair_date: null,
-    foundation_type: null,
-    foundation_waterproofing: null,
-    gutters_condition: null,
-    gutters_material: null,
-    interior_door_material: null,
-    interior_wall_condition: null,
-    interior_wall_finish_primary: null,
-    interior_wall_finish_secondary: null,
-    interior_wall_structure_material: null,
-    interior_wall_structure_material_primary: null,
-    interior_wall_structure_material_secondary: null,
-    interior_wall_surface_material_primary: null,
-    interior_wall_surface_material_secondary: null,
-    number_of_buildings: 1,
-    number_of_stories: null,
-    primary_framing_material: null,
-    secondary_framing_material: null,
-    roof_age_years: null,
-    roof_condition: null,
-    roof_covering_material: null,
-    roof_date: null,
-    roof_design_type: null,
-    roof_material_type: null,
-    roof_structure_material: null,
-    roof_underlayment_type: null,
-    siding_installation_date: null,
-    structural_damage_indicators: null,
-    subfloor_material: null,
-    unfinished_base_area: null,
-    unfinished_basement_area: null,
-    unfinished_upper_story_area: null,
-    window_frame_material: null,
-    window_glazing_type: null,
-    window_installation_date: null,
-    window_operation_type: null,
-    window_screen_material: null,
-  };
-  writeJSON(path.join(dataDir, "structure.json"), struct);
+  // // structure.json (minimal)
+  // const struct = {
+  //   architectural_style_type: null,
+  //   attachment_type: null,
+  //   ceiling_condition: null,
+  //   ceiling_height_average: null,
+  //   ceiling_insulation_type: null,
+  //   ceiling_structure_material: null,
+  //   ceiling_surface_material: null,
+  //   exterior_door_installation_date: null,
+  //   exterior_door_material: null,
+  //   exterior_wall_condition: "Fair",
+  //   exterior_wall_condition_primary: null,
+  //   exterior_wall_condition_secondary: null,
+  //   exterior_wall_insulation_type: null,
+  //   exterior_wall_insulation_type_primary: null,
+  //   exterior_wall_insulation_type_secondary: null,
+  //   exterior_wall_material_primary: null,
+  //   exterior_wall_material_secondary: null,
+  //   finished_base_area: null,
+  //   finished_basement_area: null,
+  //   finished_upper_story_area: null,
+  //   flooring_condition: null,
+  //   flooring_material_primary: null,
+  //   flooring_material_secondary: null,
+  //   foundation_condition: "Unknown",
+  //   foundation_material: null,
+  //   foundation_repair_date: null,
+  //   foundation_type: null,
+  //   foundation_waterproofing: null,
+  //   gutters_condition: null,
+  //   gutters_material: null,
+  //   interior_door_material: null,
+  //   interior_wall_condition: null,
+  //   interior_wall_finish_primary: null,
+  //   interior_wall_finish_secondary: null,
+  //   interior_wall_structure_material: null,
+  //   interior_wall_structure_material_primary: null,
+  //   interior_wall_structure_material_secondary: null,
+  //   interior_wall_surface_material_primary: null,
+  //   interior_wall_surface_material_secondary: null,
+  //   number_of_buildings: 1,
+  //   number_of_stories: null,
+  //   primary_framing_material: null,
+  //   secondary_framing_material: null,
+  //   roof_age_years: null,
+  //   roof_condition: null,
+  //   roof_covering_material: null,
+  //   roof_date: null,
+  //   roof_design_type: null,
+  //   roof_material_type: null,
+  //   roof_structure_material: null,
+  //   roof_underlayment_type: null,
+  //   siding_installation_date: null,
+  //   structural_damage_indicators: null,
+  //   subfloor_material: null,
+  //   unfinished_base_area: null,
+  //   unfinished_basement_area: null,
+  //   unfinished_upper_story_area: null,
+  //   window_frame_material: null,
+  //   window_glazing_type: null,
+  //   window_installation_date: null,
+  //   window_operation_type: null,
+  //   window_screen_material: null,
+  // };
+  // writeJSON(path.join(dataDir, "structure.json"), struct);
 
-  // utility.json from utilities_data.json
-  if (utilsData) {
-    const utilIdentifier =
-      requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
-    if (utilIdentifier) {
-      const utilKey = `property_${utilIdentifier}`;
-      const util = utilsData[utilKey] || null;
-      if (util) {
-        writeJSON(path.join(dataDir, "utility.json"), util);
-      }
-    }
-  }
+  // // utility.json from utilities_data.json
+  // if (utilsData) {
+  //   const utilIdentifier =
+  //     requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
+  //   if (utilIdentifier) {
+  //     const utilKey = `property_${utilIdentifier}`;
+  //     const util = utilsData[utilKey] || null;
+  //     if (util) {
+  //       writeJSON(path.join(dataDir, "utility.json"), util);
+  //     }
+  //   }
+  // }
 
-  // layout_*.json from layout_data.json
+  // // layout_*.json from layout_data.json
+  // if (layoutData) {
+  //   const layoutIdentifier =
+  //     requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
+  //   if (layoutIdentifier) {
+  //     const layKey = `property_${layoutIdentifier}`;
+  //     const ld = layoutData[layKey];
+  //     if (ld && Array.isArray(ld.layouts)) {
+  //       ld.layouts.forEach((l, idx) => {
+  //         writeJSON(path.join(dataDir, `layout_${idx + 1}.json`), l);
+  //       });
+  //     }
+  //   }
+  // }
+    // Layout extraction from owners/layout_data.json
   if (layoutData) {
-    const layoutIdentifier =
-      requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
-    if (layoutIdentifier) {
-      const layKey = `property_${layoutIdentifier}`;
-      const ld = layoutData[layKey];
-      if (ld && Array.isArray(ld.layouts)) {
-        ld.layouts.forEach((l, idx) => {
-          writeJSON(path.join(dataDir, `layout_${idx + 1}.json`), l);
-        });
+    let layoutBuildingMap = {};
+    const lset =
+      key && layoutData[key] && Array.isArray(layoutData[key])
+        ? layoutData[key]
+        : [];
+    let idx = 1;
+    for (const l of lset) {
+      const layoutOut = {
+        space_type: l.space_type ?? null,
+        space_type_index: l.space_type_index ?? null,
+        flooring_material_type: l.flooring_material_type ?? null,
+        size_square_feet: l.size_square_feet ?? null,
+        has_windows: l.has_windows ?? null,
+        window_design_type: l.window_design_type ?? null,
+        window_material_type: l.window_material_type ?? null,
+        window_treatment_type: l.window_treatment_type ?? null,
+        is_finished: l.is_finished ?? null,
+        furnished: l.furnished ?? null,
+        paint_condition: l.paint_condition ?? null,
+        flooring_wear: l.flooring_wear ?? null,
+        clutter_level: l.clutter_level ?? null,
+        visible_damage: l.visible_damage ?? null,
+        countertop_material: l.countertop_material ?? null,
+        cabinet_style: l.cabinet_style ?? null,
+        fixture_finish_quality: l.fixture_finish_quality ?? null,
+        design_style: l.design_style ?? null,
+        natural_light_quality: l.natural_light_quality ?? null,
+        decor_elements: l.decor_elements ?? null,
+        pool_type: l.pool_type ?? null,
+        pool_equipment: l.pool_equipment ?? null,
+        spa_type: l.spa_type ?? null,
+        safety_features: l.safety_features ?? null,
+        view_type: l.view_type ?? null,
+        lighting_features: l.lighting_features ?? null,
+        condition_issues: l.condition_issues ?? null,
+        is_exterior: l.is_exterior ?? false,
+        pool_condition: l.pool_condition ?? null,
+        pool_surface_type: l.pool_surface_type ?? null,
+        pool_water_quality: l.pool_water_quality ?? null,
+
+        adjustable_area_sq_ft: l.adjustable_area_sq_ft ?? null,
+        area_under_air_sq_ft: l.area_under_air_sq_ft ?? null,
+        bathroom_renovation_date: l.bathroom_renovation_date ?? null,
+        building_number: l.building_number ?? null,
+        kitchen_renovation_date: l.kitchen_renovation_date ?? null,
+        heated_area_sq_ft: l.heated_area_sq_ft ?? null,
+        installation_date: l.installation_date ?? null,
+        livable_area_sq_ft: l.livable_area_sq_ft ?? null,
+        pool_installation_date: l.pool_installation_date ?? null,
+        spa_installation_date: l.spa_installation_date ?? null,
+        story_type: l.story_type ?? null,
+        total_area_sq_ft: l.total_area_sq_ft ?? null,
+      };
+      writeOut(`layout_${idx}.json`, layoutOut);
+      if (l.space_type === "Building") {
+        const building_number = l.building_number;
+        layoutBuildingMap[building_number.toString()] = idx;
+      } else {
+        const building_number = l.building_number;
+        if (building_number) {
+          const building_layout_number = layoutBuildingMap[building_number.toString()];
+          if (building_layout_number) {
+            writeOut(`relationship_layout_${building_layout_number}_to_layout_${idx}.json`, {
+                      to: { "/": `./layout_${idx}.json` },
+                      from: { "/": `./layout_${building_layout_number}.json` },
+            });
+          }
+        }
       }
+      if (util && l.space_type === "Building") {
+        if (l.building_number && l.building_number.toString() in util) {
+          writeOut(`utility_${idx}.json`, util[l.building_number.toString()]);
+          writeOut(`relationship_layout_to_utility_${idx}.json`, {
+                    to: { "/": `./utility_${idx}.json` },
+                    from: { "/": `./layout_${idx}.json` },
+          },);
+        }
+      }
+      if (struct && l.space_type === "Building") {
+        if (l.building_number && l.building_number.toString() in struct) {
+          writeOut(`structure_${idx}.json`, struct[l.building_number.toString()]);
+          writeOut(`relationship_layout_to_structure_${idx}.json`, {
+                    to: { "/": `./structure_${idx}.json` },
+                    from: { "/": `./layout_${idx}.json` },
+          },);
+        }
+      }
+      idx++;
     }
   }
 }
