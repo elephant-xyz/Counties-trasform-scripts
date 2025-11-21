@@ -31331,6 +31331,7 @@ async function main() {
       (addressLine2 && addressLine2.length) ||
       (addressLine3 && addressLine3.length),
   );
+  ADDRESS_FALLBACK_CONTEXT.hasStructuredAddressInput = hasStructuredAddressInput;
 
   const rawLocAddr = extractBetween(
     inputHTML,
@@ -38882,6 +38883,90 @@ function buildFinalRawAddressPayload(addressPath, options = {}) {
   return ensureAddressOutputFieldPresence(payload);
 }
 
+function enforceSchemaReadyAddressOutput(addressPath, options = {}) {
+  if (!addressPath) {
+    return;
+  }
+
+  const {
+    allowNormalized = true,
+    extraUnnormalizedCandidates = [],
+    ...payloadOptions
+  } = options || {};
+
+  const preparedPayload = buildFinalRawAddressPayload(addressPath, {
+    ...payloadOptions,
+    extraUnnormalizedCandidates,
+  });
+
+  if (!preparedPayload || typeof preparedPayload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedCandidate =
+    allowNormalized && typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...preparedPayload })
+      : null;
+
+  if (
+    allowNormalized &&
+    normalizedCandidate &&
+    hasNormalizedCountyCoverage({ ...normalizedCandidate })
+  ) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    const alignedNormalized =
+      ensureAddressOutputFieldPresence(normalizedCandidate) ||
+      normalizedCandidate;
+    writeJSON(addressPath, alignedNormalized);
+    return;
+  }
+
+  const rawValue =
+    typeof preparedPayload.unnormalized_address === "string"
+      ? preparedPayload.unnormalized_address.trim()
+      : "";
+
+  if (!rawValue.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawSurface =
+    ensureAddressOutputFieldPresence({
+      ...preparedPayload,
+      unnormalized_address: rawValue,
+    }) ||
+    pruneRawVariantToSchemaSurface({
+      ...preparedPayload,
+      unnormalized_address: rawValue,
+    });
+
+  if (!rawSurface || typeof rawSurface !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  rawSurface.unnormalized_address = rawValue;
+
+  if (
+    (rawSurface.latitude == null && rawSurface.longitude != null) ||
+    (rawSurface.latitude != null && rawSurface.longitude == null)
+  ) {
+    rawSurface.latitude = null;
+    rawSurface.longitude = null;
+  }
+
+  writeJSON(addressPath, rawSurface);
+}
+
 function enforceRawAddressPreference(addressPath, options = {}) {
   const {
     unnormalizedPath = "unnormalized_address.json",
@@ -39848,6 +39933,18 @@ async function run() {
       // Ignore cleanup failures; downstream validation will catch residual files.
     }
     enforceMinimalRawAddressSurface(addressPath);
+    enforceSchemaReadyAddressOutput(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraUnnormalizedCandidates: fallbackRawCandidates,
+      allowNormalized:
+        ADDRESS_FALLBACK_CONTEXT &&
+        ADDRESS_FALLBACK_CONTEXT.hasStructuredAddressInput === true,
+    });
+    ensureRelationshipPlaceholders(dataDir);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
