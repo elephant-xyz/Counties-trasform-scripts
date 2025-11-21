@@ -29,30 +29,65 @@ function cleanText(str) {
   }
 }
 
-function mapRoofDesign(val) {
-  if (!val) return null;
-  const t = val.toLowerCase();
-  if (t.includes("gable") && t.includes("hip")) return "Combination";
-  if (t.includes("gable")) return "Gable";
-  if (t.includes("hip")) return "Hip";
-  if (t.includes("flat")) return "Flat";
-  return null;
+function mapRoofDesignType(value) {
+  if(!value || !value.trim()) {
+    return [null, null];
+  }
+  value = value.trim().toUpperCase();
+  const roofDesignMap = {
+    "FLAT": ["Flat", null],
+    "SHED": ["Shed", null],
+    "GABLE/HIP": ["Combination", null],
+    "MANSFORD/GAMBLE": ["Mansard", null],
+    "WOOD FRAME/TRUSS": [null, "Wood Truss"],
+    "BAR JOIST/RIGID FRAME": [null, null],
+    "STEEL TRUSS": [null, "Steel Truss"],
+    "REINFORCED CONCRETE": [null, "Concrete Beam"],
+    "PRESTRUCTURED CONCRETE": [null, "Concrete Beam"],
+    "IRREGULAR": [null, null],
+  }
+  if (value in roofDesignMap) {
+    return roofDesignMap[value];
+  }
+  return [null, null];
 }
 
-function mapExteriorWallMaterial(values) {
-  // Given descriptions like "CONCRETE BLOCK STUCCO" or "FRAME STUCCO" map to cladding
-  if (!Array.isArray(values)) return { primary: null, secondary: null };
-  const txt = values.map((v) => (v || "").toLowerCase());
-  if (txt.some((v) => v.includes("stucco"))) {
-    return { primary: "Stucco", secondary: null };
+function parseExteriorWall(value) {
+  if(!value || !value.trim()) {
+    return null;
   }
-  if (txt.some((v) => v.includes("brick"))) {
-    return { primary: "Brick", secondary: null };
+  value = value.trim().toUpperCase();
+  const exteriorWallMap = {
+    "UNFINISHED": null,
+    "CORRUGATED METAL": "Metal Siding",
+    "SIDING MINIMAL": null,
+    "SIDING BELOW AVERAGE": null,
+    "SIDING AVERAGE": null,
+    "SIDING ABOVE AVERAGE": null,
+    "FRAME STUCCO": "Stucco",
+    "CONCRETE BLOCK": "Concrete Block",
+    "FRAME STUCCO/BRICK": "Stucco",
+    "CONCRETE BLOCK STUCCO": "Concrete Block",
+    "CONCRETE BLOCK SIDING": "Concrete Block",
+    "CONCRETE BLOCK METAL SIDING": "Concrete Block",
+    "BRICK": "Brick",
+    "CONCRETE BLOCK STUCCO/BRICK": "Concrete Block",
+    "POURED CONCRETE": null,
+    "CEMENT BRICK": "Brick",
+    "PREFINISHED METAL": "Metal Siding",
+    "PRECAST CONCRETE": "Precast Concrete",
+    "GLASS": null,
+    "LOG": "Log",
+    "STONE": "Manufactured Stone",
+    "ALUMINUM SIDING": "Metal Siding",
+    "VINYL SIDING": "Vinyl Siding",
+    "FRAME HARDIBOARD": null,
+    "CONCRETE BLOCK HARDIBOARD": "Concrete Block",
   }
-  if (txt.some((v) => v.includes("vinyl"))) {
-    return { primary: "Vinyl Siding", secondary: null };
+  if (value in exteriorWallMap) {
+    return exteriorWallMap[value];
   }
-  return { primary: null, secondary: null };
+  return null;
 }
 
 (function main() {
@@ -86,10 +121,20 @@ function mapExteriorWallMaterial(values) {
       .filter((e) => e?.tp_dscr === "EXTERIOR WALL")
       .map((e) => cleanText(e?.cd_dscr))
       .filter(Boolean);
-    console.log(roofStructs);
-    console.log(exteriorWalls);
-    const roofDesignType = mapRoofDesign(roofStructs[0] || null);
-    const wallMat = mapExteriorWallMaterial(exteriorWalls);
+    let roofValue = [null, null];
+    let extValue = null;
+    for(let roofStruct of roofStructs) {
+      roofValue = mapRoofDesignType(roofStruct);
+      if (roofValue[0] || roofValue[1]) {
+        break;
+      }
+    }
+    for(let exteriorWall of exteriorWalls) {
+      extValue = parseExteriorWall(exteriorWall);
+      if (extValue) {
+        break;
+      }
+    }
     // Build structure object following schema with explicit keys
     const structure = {
       architectural_style_type: null,
@@ -107,7 +152,7 @@ function mapExteriorWallMaterial(values) {
       exterior_wall_insulation_type: null,
       exterior_wall_insulation_type_primary: null,
       exterior_wall_insulation_type_secondary: null,
-      exterior_wall_material_primary: wallMat.primary,
+      exterior_wall_material_primary: extValue,
       exterior_wall_material_secondary: null,
       finished_base_area: null,
       finished_basement_area: null,
@@ -138,9 +183,9 @@ function mapExteriorWallMaterial(values) {
       roof_condition: null,
       roof_covering_material: null,
       roof_date: null,
-      roof_design_type: roofDesignType,
+      roof_design_type: roofValue[0],
       roof_material_type: null,
-      roof_structure_material: null,
+      roof_structure_material: roofValue[1],
       roof_underlayment_type: null,
       secondary_framing_material: null,
       siding_installation_date: null,

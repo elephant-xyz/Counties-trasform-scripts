@@ -128,9 +128,8 @@ function parseNumber(val) {
   return Number.isFinite(n) ? n : null;
 }
 
-function buildStructureRecord($, buildings, parcelId) {
-  // Defaults per schema requirements (all present, many null)
-  const rec = {
+function baseStructure(parcelId, buildingNumber, totalBuildings) {
+  return {
     source_http_request: {
       method: "GET",
       url: "https://qpublic.schneidercorp.com/application.aspx",
@@ -144,6 +143,8 @@ function buildStructureRecord($, buildings, parcelId) {
       }
     },
     request_identifier: parcelId,
+    building_number: buildingNumber,
+    number_of_buildings: totalBuildings ?? null,
     architectural_style_type: null,
     attachment_type: null,
     ceiling_condition: null,
@@ -206,56 +207,41 @@ function buildStructureRecord($, buildings, parcelId) {
     window_operation_type: null,
     window_screen_material: null,
   };
+}
 
-  // Aggregate from buildings
-  const extTokens = [];
-  const intWallTokens = [];
-  const floorTokens = [];
+function buildStructureForBuilding(building, parcelId, buildingNumber, totalBuildings) {
+  const rec = baseStructure(parcelId, buildingNumber, totalBuildings);
+
+  const extTokens = building["Exterior Walls"]
+    ? building["Exterior Walls"].split(";").map((s) => s.trim())
+    : [];
+  const intWallTokens = building["Interior Walls"]
+    ? building["Interior Walls"].split(";").map((s) => s.trim())
+    : [];
+  const floorTokens = building["Floor Cover"]
+    ? building["Floor Cover"].split(";").map((s) => s.trim())
+    : [];
   const roofTokens = [];
+  if (building["Roof Cover"]) roofTokens.push(building["Roof Cover"]);
+  if (building["Roof Type"]) roofTokens.push(building["Roof Type"]);
   const frameTokens = [];
-  const stories = [];
-
-  buildings.forEach((b) => {
-    if (b["Exterior Walls"])
-      extTokens.push(...b["Exterior Walls"].split(";").map((s) => s.trim()));
-    if (b["Interior Walls"])
-      intWallTokens.push(
-        ...b["Interior Walls"].split(";").map((s) => s.trim()),
-      );
-    if (b["Floor Cover"])
-      floorTokens.push(...b["Floor Cover"].split(";").map((s) => s.trim()));
-    if (b["Roof Cover"]) roofTokens.push(b["Roof Cover"]);
-    if (b["Roof Type"]) roofTokens.push(b["Roof Type"]);
-    if (b["Frame Type"]) frameTokens.push(b["Frame Type"]);
-    if (b["Stories"]) {
-      const st = parseNumber(b["Stories"]);
-      if (st != null) stories.push(st);
-    }
-  });
+  if (building["Frame Type"]) frameTokens.push(building["Frame Type"]);
 
   // Exterior materials
   const ext = mapExteriorMaterials(extTokens);
-  if (ext.length) {
-    // Choose primary material as the most common/first detected
-    rec.exterior_wall_material_primary = ext[0] || null;
-  }
+  if (ext.length) rec.exterior_wall_material_primary = ext[0] || null;
 
   // Interior wall surface
   const intSurf = mapInteriorSurface(intWallTokens);
-  if (intSurf.length) {
-    rec.interior_wall_surface_material_primary = intSurf[0] || null;
-  }
+  if (intSurf.length) rec.interior_wall_surface_material_primary = intSurf[0] || null;
 
   // Flooring
   const floors = mapFlooring(floorTokens);
-  if (floors.length) {
-    rec.flooring_material_primary = floors[0] || null;
-  }
+  if (floors.length) rec.flooring_material_primary = floors[0] || null;
 
   // Roof covering and type mapping
   if (roofTokens.length) {
     const u = roofTokens.join(" ").toUpperCase();
-    // Roof covering material
     if (u.includes("3-TAB") && u.includes("SHINGLE")) rec.roof_covering_material = "3-Tab Asphalt Shingle";
     else if (u.includes("SHINGLE")) rec.roof_covering_material = "Architectural Asphalt Shingle";
     if (u.includes("METAL") && (u.includes("STANDING") || u.includes("RIB"))) rec.roof_covering_material = "Metal Standing Seam";
@@ -267,14 +253,12 @@ function buildStructureRecord($, buildings, parcelId) {
     if (u.includes("WOOD") && u.includes("SHINGLE")) rec.roof_covering_material = "Wood Shingle";
     if (u.includes("TPO")) rec.roof_covering_material = "TPO Membrane";
     if (u.includes("EPDM")) rec.roof_covering_material = "EPDM Membrane";
-    
-    // Roof structure material
+
     if (u.includes("WOOD TRUSS")) rec.roof_structure_material = "Wood Truss";
     if (u.includes("WOOD RAFTER")) rec.roof_structure_material = "Wood Rafter";
     if (u.includes("STEEL TRUSS")) rec.roof_structure_material = "Steel Truss";
     if (u.includes("CONCRETE BEAM")) rec.roof_structure_material = "Concrete Beam";
-    
-    // Roof design type
+
     if (u.includes("GABLE")) rec.roof_design_type = "Gable";
     if (u.includes("HIP")) rec.roof_design_type = "Hip";
     if (u.includes("FLAT")) rec.roof_design_type = "Flat";
@@ -307,13 +291,10 @@ function buildStructureRecord($, buildings, parcelId) {
   }
 
   // Stories
-  if (stories.length) {
-    // Use max stories across buildings
-    rec.number_of_stories = Math.max(...stories);
+  if (building["Stories"]) {
+    const st = parseNumber(building["Stories"]);
+    if (st != null) rec.number_of_stories = st;
   }
-
-  // Subfloor unknown; if any heated area present and FL likely slab, but leave null to avoid assumption
-  // rec.subfloor_material = null;
 
   return rec;
 }
@@ -326,14 +307,16 @@ function main() {
     throw new Error("Parcel ID not found");
   }
   const buildings = collectBuildings($);
-  console.log(buildings)
-  const structureRecord = buildStructureRecord($, buildings, parcelId);
+  const totalBuildings = buildings.length;
+  const structures = buildings.map((building, idx) =>
+    buildStructureForBuilding(building, parcelId, idx + 1, totalBuildings),
+  );
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "structure_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = structureRecord;
+  outObj[`property_${parcelId}`] = { structures };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
