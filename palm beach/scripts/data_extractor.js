@@ -33,7 +33,76 @@ function finalizeAddressWritePayload(rawPayload) {
 
   const completed =
     ensureAddressOutputFieldPresence(workingPayload) || workingPayload;
-  return completed && typeof completed === "object" ? completed : null;
+  if (!completed || typeof completed !== "object") {
+    return null;
+  }
+
+  const attachMetadata = (target) => {
+    if (!target || typeof target !== "object") {
+      return target;
+    }
+
+    const reference =
+      typeof workingPayload === "object" && workingPayload
+        ? workingPayload
+        : completed;
+
+    const resolvedRequestIdentifier = safeNullIfEmpty(
+      Object.prototype.hasOwnProperty.call(reference, "request_identifier")
+        ? reference.request_identifier
+        : null,
+    );
+
+    if (resolvedRequestIdentifier) {
+      target.request_identifier = resolvedRequestIdentifier;
+    } else if (Object.prototype.hasOwnProperty.call(target, "request_identifier")) {
+      target.request_identifier = null;
+    }
+
+    const preparedSource = prepareSourceHttpRequest(
+      Object.prototype.hasOwnProperty.call(reference, "source_http_request")
+        ? reference.source_http_request
+        : null,
+    );
+
+    if (preparedSource) {
+      target.source_http_request = deepClone(preparedSource);
+    } else if (Object.prototype.hasOwnProperty.call(target, "source_http_request")) {
+      delete target.source_http_request;
+    }
+
+    return target;
+  };
+
+  const normalizedProbe = deepClone(completed) || { ...completed };
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(normalizedProbe);
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema(normalizedProbe) || normalizedProbe;
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    return attachMetadata(normalizedOutput);
+  }
+
+  const rawValue =
+    typeof completed.unnormalized_address === "string"
+      ? completed.unnormalized_address.trim()
+      : "";
+  if (rawValue.length) {
+    const rawOutput = pruneRawVariantToSchemaSurface({
+      ...completed,
+      unnormalized_address: rawValue,
+    });
+    if (rawOutput) {
+      return attachMetadata(rawOutput);
+    }
+  }
+
+  return attachMetadata(completed);
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
