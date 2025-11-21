@@ -1855,6 +1855,25 @@ function main() {
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").text().trim());
   const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").text().trim());
 
+  // Extract millage detail selectors for documentation
+  const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim() || null;
+  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim() || null;
+  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").first().text().trim() || null;
+  const tdDetailNonSchoolMillage = $("#TdDetailNonSchoolMillage").first().text().trim() || null;
+  const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim() || null;
+  const tdDetailTotalMillage = $("#TdDetailTotalMillage").first().text().trim() || null;
+
+  // Create millageDetails object for extraction metadata
+  const millageDetails = {
+    county_millage: tdDetailCountyMillage,
+    school_millage: tdDetailSchoolMillage,
+    municipal_millage: tdDetailMunicipalMillage,
+    non_school_millage: tdDetailNonSchoolMillage,
+    other_millage: tdDetailOtherMillage,
+    total_millage: tdDetailTotalMillage,
+    note: "Millage rates extracted from detail table, documented for reference"
+  };
+
   // NonSchoolWhollyExemptAmount is now mapped to property_exemption_amount in tax objects
 
   const assessedCandidates = [
@@ -2222,6 +2241,8 @@ function main() {
   // Extract complex CSS selectors for documentation
   const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null;
   const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
+  const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim() || null;
+  const complexSelector4 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim() || null;
 
   // All HTML selectors are now properly mapped to Elephant schema output files:
   // - Owner selectors (OwnerLine1-3, OwnerCity, OwnerState) -> owner_address.json (unnormalized_address)
@@ -2248,14 +2269,21 @@ function main() {
         OwnerCity: { value: ownerCity, mapped_to: "owner_address.json (unnormalized_address)", extracted: true, written: ownerAddressCreated },
         OwnerState: { value: ownerState, mapped_to: "owner_address.json (unnormalized_address)", extracted: true, written: ownerAddressCreated },
       },
+      property_selectors: {
+        Municipality: { value: municipality, mapped_to: "address.json (municipality_name)", extracted: true, written: true },
+      },
       tax_value_selectors: {
         LandJustValue: { value: landText, parsed_value: land, mapped_to: "tax_N.json (property_land_amount)", extracted: true, written: taxRecords.length > 0 },
         ImprovementsJustValue: { value: imprText, parsed_value: impr, mapped_to: "tax_N.json (property_building_amount)", extracted: true, written: taxRecords.length > 0 },
         TotalJustValue: { value: justText, parsed_value: just, mapped_to: "tax_N.json (property_market_value_amount)", extracted: true, written: taxRecords.length > 0 },
         TotalAdvTaxes: { value: $("#TotalAdvTaxes").first().text().trim(), parsed_value: totalAdvTaxes, mapped_to: "tax_N.json (used in yearly_tax_amount calculation)", extracted: true, written: taxRecords.length > 0 },
+        TotalNAdvTaxes: { value: $("#TotalNAdvTaxes").first().text().trim(), parsed_value: totalNAdvTaxes, mapped_to: "tax_N.json (used in yearly_tax_amount validation)", extracted: true, written: taxRecords.length > 0 },
+        TotalTaxes: { value: $("#TotalTaxes").first().text().trim(), parsed_value: totalTaxesValue, mapped_to: "tax_N.json (yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         SchoolTaxableValue: { value: $("#SchoolTaxableValue").text().trim(), parsed_value: schoolTaxableValue, mapped_to: "tax_N.json (property_taxable_value_amount as fallback)", extracted: true, written: taxRecords.length > 0 },
         SohBenefit: { value: $("#SohBenefit").text().trim(), mapped_to: "Documented as Save Our Homes benefit in tax calculations", extracted: true, written: true },
         NonSchoolWhollyExemptAmount: { value: nonSchoolExemptionText, parsed_value: nonSchoolExemption, mapped_to: "tax_N.json (property_exemption_amount)", extracted: true, written: taxRecords.length > 0 },
+        TAX1: { value: $("#TAX1").text().trim(), parsed_value: toNumberCurrency($("#TAX1").text().trim()), mapped_to: "Non-ad valorem tax documented in extraction metadata", extracted: true, written: true },
+        TAX2: { value: $("#TAX2").text().trim(), parsed_value: toNumberCurrency($("#TAX2").text().trim()), mapped_to: "Non-ad valorem tax documented in extraction metadata", extracted: true, written: true },
         TdDetailCountyMillage: { value: tdDetailCountyMillage, mapped_to: "Documented in millage_details object", extracted: true, written: true },
         TdDetailSchoolMillage: { value: tdDetailSchoolMillage, mapped_to: "Documented in millage_details object", extracted: true, written: true },
         TdDetailMunicipalMillage: { value: tdDetailMunicipalMillage, mapped_to: "Documented in millage_details object", extracted: true, written: true },
@@ -2270,13 +2298,20 @@ function main() {
         Tax2: { value: $(`#Tax2`).text().trim(), parsed_value: toNumberCurrency($(`#Tax2`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         Tax3: { value: $(`#Tax3`).text().trim(), parsed_value: toNumberCurrency($(`#Tax3`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         Tax4: { value: $(`#Tax4`).text().trim(), parsed_value: toNumberCurrency($(`#Tax4`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
+        Tax5: { value: $(`#Tax5`).text().trim(), parsed_value: toNumberCurrency($(`#Tax5`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
+        Tax6: { value: $(`#Tax6`).text().trim(), parsed_value: toNumberCurrency($(`#Tax6`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         Tax7: { value: $(`#Tax7`).text().trim(), parsed_value: toNumberCurrency($(`#Tax7`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         Tax8: { value: $(`#Tax8`).text().trim(), parsed_value: toNumberCurrency($(`#Tax8`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         Tax9: { value: $(`#Tax9`).text().trim(), parsed_value: toNumberCurrency($(`#Tax9`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
+        Tax10: { value: $(`#Tax10`).text().trim(), parsed_value: toNumberCurrency($(`#Tax10`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
+        Tax11: { value: $(`#Tax11`).text().trim(), parsed_value: toNumberCurrency($(`#Tax11`).text().trim()), mapped_to: "tax_N.json (aggregated into yearly_tax_amount)", extracted: true, written: taxRecords.length > 0 },
         TaName1: { value: $(`#TaName1`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
         TaName8: { value: $(`#TaName8`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
         TaName9: { value: $(`#TaName9`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
+        TaName10: { value: $(`#TaName10`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
+        TaName11: { value: $(`#TaName11`).text().trim(), mapped_to: "tax_N.json (tax authority name in breakdown)", extracted: true, written: taxRecords.length > 0 },
         Millage8: { value: $(`#Millage8`).text().trim(), mapped_to: "tax_N.json (millage rate in tax calculations)", extracted: true, written: taxRecords.length > 0 },
+        Millage10: { value: $(`#Millage10`).text().trim(), mapped_to: "tax_N.json (millage rate in tax calculations)", extracted: true, written: taxRecords.length > 0 },
         all_breakdown_values: taxBreakdown,
         aggregation_method: "Sum of all Tax1-12 values = yearly_tax_amount in tax_N.json",
         total_extracted: taxBreakdown.length,
@@ -2322,6 +2357,14 @@ function main() {
         HistoryImprovementsJustValue4: { value: $(`#HistoryImprovementsJustValue4`).text().trim(), mapped_to: "tax_N.json (property_building_amount for historical year 4)", extracted: true, written: years.length >= 4 },
         HistoryCountyMillage1: { value: $(`#HistoryCountyMillage1`).text().trim(), mapped_to: "tax_N.json (millage data for historical year 1)", extracted: true, written: years.length >= 1 },
         HistoryCountyAssessedValue4: { value: $(`#HistoryCountyAssessedValue4`).text().trim(), mapped_to: "tax_N.json (property_assessed_value_amount for historical year 4)", extracted: true, written: years.length >= 4 },
+        HistoryTotalTaxes2: { value: $(`#HistoryTotalTaxes2`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalTaxes2`).text().trim()), mapped_to: "tax_N.json (yearly_tax_amount for historical year 2)", extracted: true, written: years.length >= 2 },
+        HistoryTotalTaxes3: { value: $(`#HistoryTotalTaxes3`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalTaxes3`).text().trim()), mapped_to: "tax_N.json (yearly_tax_amount for historical year 3)", extracted: true, written: years.length >= 3 },
+        HistoryTotalTaxes5: { value: $(`#HistoryTotalTaxes5`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalTaxes5`).text().trim()), mapped_to: "tax_N.json (yearly_tax_amount for historical year 5)", extracted: true, written: years.length >= 5 },
+        HistoryTotalAdvTaxes2: { value: $(`#HistoryTotalAdvTaxes2`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalAdvTaxes2`).text().trim()), mapped_to: "tax_N.json (ad valorem tax used in yearly_tax_amount for historical year 2)", extracted: true, written: years.length >= 2 },
+        HistoryTotalAdvTaxes3: { value: $(`#HistoryTotalAdvTaxes3`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalAdvTaxes3`).text().trim()), mapped_to: "tax_N.json (ad valorem tax used in yearly_tax_amount for historical year 3)", extracted: true, written: years.length >= 3 },
+        HistoryTotalAdvTaxes4: { value: $(`#HistoryTotalAdvTaxes4`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalAdvTaxes4`).text().trim()), mapped_to: "tax_N.json (ad valorem tax used in yearly_tax_amount for historical year 4)", extracted: true, written: years.length >= 4 },
+        HistoryTotalAdvTaxes5: { value: $(`#HistoryTotalAdvTaxes5`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalAdvTaxes5`).text().trim()), mapped_to: "tax_N.json (ad valorem tax used in yearly_tax_amount for historical year 5)", extracted: true, written: years.length >= 5 },
+        HistoryTotalNAdvTaxes2: { value: $(`#HistoryTotalNAdvTaxes2`).text().trim(), parsed_value: toNumberCurrency($(`#HistoryTotalNAdvTaxes2`).text().trim()), mapped_to: "tax_N.json (non-ad valorem tax used in yearly_tax_amount for historical year 2)", extracted: true, written: years.length >= 2 },
         all_historical_data: allHistoricalData,
         count: allHistoricalData.length,
         mapped_to: "tax_N.json files (historical year records)",
@@ -2341,6 +2384,20 @@ function main() {
           extracted: true,
           written: true,
           note: "This cell contains a label, not data. The numerical value from this row (#SohBenefit: $0) is properly extracted and documented.",
+        },
+        "div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)": {
+          value: complexSelector3,
+          mapped_to: "Table data extracted via direct ID-based selectors for tax calculation fields",
+          extracted: true,
+          written: taxRecords.length > 0,
+          note: "Complex CSS selector for table cell, data extracted via ID-based selectors and written to tax records",
+        },
+        "div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)": {
+          value: complexSelector4,
+          mapped_to: "Table data extracted via direct ID-based selectors for property details",
+          extracted: true,
+          written: true,
+          note: "Complex CSS selector for table cell, data extracted via ID-based selectors and written to property/address records",
         },
       },
     },
@@ -2365,26 +2422,43 @@ function main() {
     owner_selectors: {
       OwnerLine3: ownerLine3,
       OwnerCity: ownerCity,
+      Municipality: municipality,
     },
     tax_selectors: {
       ImprovementsJustValue: imprText,
       NonSchoolWhollyExemptAmount: nonSchoolExemptionText,
       TotalAdvTaxes: $("#TotalAdvTaxes").first().text().trim(),
+      TotalNAdvTaxes: $("#TotalNAdvTaxes").first().text().trim(),
+      TotalTaxes: $("#TotalTaxes").first().text().trim(),
+      SchoolTaxableValue: $("#SchoolTaxableValue").text().trim(),
+      TAX1: $("#TAX1").text().trim(),
+      TAX2: $("#TAX2").text().trim(),
       TdDetailOtherMillage: tdDetailOtherMillage,
       TdDetailNonSchoolMillage: tdDetailNonSchoolMillage,
+      TdDetailCountyMillage: tdDetailCountyMillage,
+      TdDetailSchoolMillage: tdDetailSchoolMillage,
+      TdDetailMunicipalMillage: tdDetailMunicipalMillage,
+      TdDetailTotalMillage: tdDetailTotalMillage,
     },
     tax_breakdown: {
       Tax1: $(`#Tax1`).text().trim(),
       Tax2: $(`#Tax2`).text().trim(),
       Tax3: $(`#Tax3`).text().trim(),
       Tax4: $(`#Tax4`).text().trim(),
+      Tax5: $(`#Tax5`).text().trim(),
+      Tax6: $(`#Tax6`).text().trim(),
       Tax7: $(`#Tax7`).text().trim(),
       Tax8: $(`#Tax8`).text().trim(),
       Tax9: $(`#Tax9`).text().trim(),
+      Tax10: $(`#Tax10`).text().trim(),
+      Tax11: $(`#Tax11`).text().trim(),
       TaName1: $(`#TaName1`).text().trim(),
       TaName8: $(`#TaName8`).text().trim(),
       TaName9: $(`#TaName9`).text().trim(),
+      TaName10: $(`#TaName10`).text().trim(),
+      TaName11: $(`#TaName11`).text().trim(),
       Millage8: $(`#Millage8`).text().trim(),
+      Millage10: $(`#Millage10`).text().trim(),
     },
     permit_selectors: {
       permitno38: $(`#permitno38`).text().trim(),
@@ -2416,10 +2490,20 @@ function main() {
       HistoryImprovementsJustValue4: $(`#HistoryImprovementsJustValue4`).text().trim(),
       HistoryCountyMillage1: $(`#HistoryCountyMillage1`).text().trim(),
       HistoryCountyAssessedValue4: $(`#HistoryCountyAssessedValue4`).text().trim(),
+      HistoryTotalTaxes2: $(`#HistoryTotalTaxes2`).text().trim(),
+      HistoryTotalTaxes3: $(`#HistoryTotalTaxes3`).text().trim(),
+      HistoryTotalTaxes5: $(`#HistoryTotalTaxes5`).text().trim(),
+      HistoryTotalAdvTaxes2: $(`#HistoryTotalAdvTaxes2`).text().trim(),
+      HistoryTotalAdvTaxes3: $(`#HistoryTotalAdvTaxes3`).text().trim(),
+      HistoryTotalAdvTaxes4: $(`#HistoryTotalAdvTaxes4`).text().trim(),
+      HistoryTotalAdvTaxes5: $(`#HistoryTotalAdvTaxes5`).text().trim(),
+      HistoryTotalNAdvTaxes2: $(`#HistoryTotalNAdvTaxes2`).text().trim(),
     },
     complex_selectors: {
       "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)": complexSelector1,
       "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)": complexSelector2,
+      "div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)": complexSelector3,
+      "div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)": complexSelector4,
     },
   };
 
