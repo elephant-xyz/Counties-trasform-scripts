@@ -17906,6 +17906,119 @@ function ensureRawAddressFieldSurface(addressFilePath) {
   }
 }
 
+function enforceRawAddressFieldSurfaceFromCandidates(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (hasNormalizedCoverage || !trimmedUnnormalized.length) {
+    return;
+  }
+
+  const {
+    unnormalizedCandidates = [],
+    parcelIdCandidates = [],
+    coordinateCandidates = [],
+    fieldFallbacks = {},
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const rawQueue = [trimmedUnnormalized];
+  if (Array.isArray(unnormalizedCandidates)) {
+    for (const candidate of unnormalizedCandidates) {
+      if (typeof candidate !== "string") continue;
+      const trimmed = candidate.trim();
+      if (!trimmed.length) continue;
+      if (!rawQueue.includes(trimmed)) {
+        rawQueue.push(trimmed);
+      }
+    }
+  }
+
+  if (rawQueue.length) {
+    strengthenAddressFromRawCandidates(payload, rawQueue);
+  }
+
+  if (fieldFallbacks && typeof fieldFallbacks === "object") {
+    for (const [field, values] of Object.entries(fieldFallbacks)) {
+      const candidates = Array.isArray(values) ? values : [values];
+      for (const candidate of candidates) {
+        assignAddressFieldIfMissing(payload, field, candidate);
+      }
+    }
+  }
+
+  if (Array.isArray(parcelIdCandidates)) {
+    for (const candidate of parcelIdCandidates) {
+      const grid = parseGridFromPcn(candidate);
+      if (!grid) continue;
+      assignAddressFieldIfMissing(payload, "township", grid.township);
+      assignAddressFieldIfMissing(payload, "range", grid.range);
+      assignAddressFieldIfMissing(payload, "section", grid.section);
+      assignAddressFieldIfMissing(payload, "block", grid.block);
+      assignAddressFieldIfMissing(payload, "lot", grid.lot);
+    }
+  }
+
+  if (Array.isArray(coordinateCandidates)) {
+    for (const candidate of coordinateCandidates) {
+      if (!candidate || typeof candidate !== "object") continue;
+      assignAddressFieldIfMissing(payload, "latitude", candidate.latitude);
+      assignAddressFieldIfMissing(payload, "longitude", candidate.longitude);
+    }
+  }
+
+  if (defaultCountyName) {
+    assignAddressFieldIfMissing(
+      payload,
+      "county_name",
+      titleCaseCounty(defaultCountyName),
+    );
+  }
+  if (defaultStateCode) {
+    assignAddressFieldIfMissing(
+      payload,
+      "state_code",
+      String(defaultStateCode).trim().toUpperCase(),
+    );
+  }
+  if (defaultCountryCode) {
+    assignAddressFieldIfMissing(
+      payload,
+      "country_code",
+      String(defaultCountryCode).trim().toUpperCase(),
+    );
+  }
+
+  if (!hasMeaningfulAddressValue(payload.postal_code)) {
+    payload.plus_four_postal_code = null;
+  }
+
+  const ensured =
+    ensureAddressOutputFieldPresence(payload) || payload;
+
+  writeJSON(addressFilePath, ensured);
+}
+
 function enforceRawAddressFieldCompletenessForOutput(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -37102,6 +37215,18 @@ async function run() {
     enforceTerminalAddressVariant(addressPath, {
       rawCandidates: fallbackRawCandidates,
       fieldSources: fallbackFieldSources,
+      defaultCountyName: "Palm Beach",
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+    enforceRawAddressFieldSurfaceFromCandidates(addressPath, {
+      unnormalizedCandidates: [
+        ...fallbackRawCandidates,
+        ...(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates || []),
+      ],
+      parcelIdCandidates: fallbackParcelCandidates,
+      coordinateCandidates: fallbackCoordinateCandidates,
+      fieldFallbacks: fallbackFieldFallbacks,
       defaultCountyName: "Palm Beach",
       defaultStateCode: "FL",
       defaultCountryCode: "US",
