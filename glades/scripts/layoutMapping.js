@@ -63,7 +63,7 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx, parcelId) {
+function defaultLayout(space_type, space_type_index, parcelId, overrides = {}) {
   return {
     source_http_request: {
       method: "GET",
@@ -79,7 +79,7 @@ function defaultLayout(space_type, idx, parcelId) {
     },
     request_identifier: parcelId,
     space_type,
-    space_index: idx,
+    space_type_index: space_type_index != null ? String(space_type_index) : null,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -109,42 +109,100 @@ function defaultLayout(space_type, idx, parcelId) {
     is_exterior: false,
     pool_condition: null,
     pool_surface_type: null,
-    pool_water_quality: null
+    pool_water_quality: null,
+    bathroom_renovation_date: null,
+    kitchen_renovation_date: null,
+    flooring_installation_date: null,
+    installation_date: null,
+    livable_area_sq_ft: null,
+    area_under_air_sq_ft: null,
+    adjustable_area_sq_ft: null,
+    total_area_sq_ft: null,
+    heated_area_sq_ft: null,
+    story_type: null,
+    built_year: null,
+    building_number: null,
+    pool_installation_date: null,
+    spa_installation_date: null,
+    ...overrides
   };
 }
 
 function buildLayoutsFromBuildings(buildings, parcelId) {
-  // Sum across all buildings
-  let totalBeds = 0;
-  let totalBaths = 0;
-  let heatedArea = null;
-  
-  buildings.forEach((b) => {
-    totalBeds += toInt(b["Bedrooms"]);
-    totalBaths += toInt(b["Bathrooms"]);
-    if (b["Heated Area"]) {
-      heatedArea = toInt(b["Heated Area"]);
+  const layouts = [];
+
+  buildings.forEach((building, idx) => {
+    const buildingNumber = idx + 1;
+    const buildingIndex = String(buildingNumber);
+    const bedrooms = toInt(building["Bedrooms"]);
+    const bathroomsRaw = toInt(building["Bathrooms"]);
+    const fullBathrooms = Math.floor(bathroomsRaw);
+    const halfBathrooms = bathroomsRaw - fullBathrooms >= 0.5 ? 1 : 0;
+    const heatedArea = building["Heated Area"] ? toInt(building["Heated Area"]) : null;
+    const totalArea = building["Total Area"] ? toInt(building["Total Area"]) : null;
+    const builtYear = toInt(building["Actual Year Built"]) || null;
+
+    const baseOverrides = {
+      built_year: builtYear,
+      building_number: buildingNumber
+    };
+
+    // Building layout (carry heated area here only)
+    layouts.push(
+      defaultLayout("Building", buildingIndex, parcelId, {
+        ...baseOverrides,
+        heated_area_sq_ft: heatedArea,
+        total_area_sq_ft: totalArea,
+      }),
+    );
+
+    // Full bathrooms per building (e.g., 1.1, 1.2)
+    for (let i = 1; i <= fullBathrooms; i++) {
+      layouts.push(
+        defaultLayout(
+          "Full Bathroom",
+          `${buildingNumber}.${i}`,
+          parcelId,
+          baseOverrides,
+        ),
+      );
+    }
+
+    // Half bathroom if present (e.g., 1.3 after two full baths)
+    if (halfBathrooms) {
+      const halfIndex = fullBathrooms + 1;
+      layouts.push(
+        defaultLayout(
+          "Half Bathroom / Powder Room",
+          `${buildingNumber}.${halfIndex}`,
+          parcelId,
+          baseOverrides,
+        ),
+      );
+    }
+
+    // Bedrooms per building (e.g., 1.1, 1.2, ...)
+    for (let i = 1; i <= bedrooms; i++) {
+      layouts.push(
+        defaultLayout(
+          "Bedroom",
+          `${buildingNumber}.${i}`,
+          parcelId,
+          baseOverrides,
+        ),
+      );
     }
   });
 
-  const layouts = [];
-  let idx = 1;
-  
-  // Add bedrooms
-  for (let i = 0; i < totalBeds; i++) {
-    const layout = defaultLayout("Bedroom", idx++, parcelId);
-    layout.heated_area_sq_ft = heatedArea;
-    layouts.push(layout);
-  }
-  
-  // Add bathrooms
-  for (let i = 0; i < totalBaths; i++) {
-    const layout = defaultLayout("Full Bathroom", idx++, parcelId);
-    layout.heated_area_sq_ft = heatedArea;
-    layouts.push(layout);
-  }
-  
   return layouts;
+}
+
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
 }
 
 function main() {
@@ -152,6 +210,16 @@ function main() {
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
   if (!parcelId) throw new Error("Parcel ID not found");
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: "Request identifier and parcel id don't match.",
+      path: "property.request_identifier",
+    };
+  }
+
+  
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings, parcelId);
   
