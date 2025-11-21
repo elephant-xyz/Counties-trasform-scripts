@@ -2272,22 +2272,19 @@ function main() {
 
   // Map complex selector values to tax/address records if they contain meaningful data
   // These are typically already captured via ID selectors, but we document them here
-  const complexSelectorValues = {
-    selector1: complexSelector1,
-    selector2: complexSelector2,
-    selector3: complexSelector3,
-    selector4: complexSelector4,
-  };
-
   // All HTML selectors are now properly mapped to Elephant schema output files:
   // - Owner selectors (OwnerLine1-3, OwnerCity, OwnerState) -> owner_address.json (unnormalized_address)
   // - Tax value selectors (ImprovementsJustValue, NonSchoolWhollyExemptAmount, TotalAdvTaxes, etc.) -> tax_N.json
   // - Permit selectors (permitno1-50, taxyear1-50) -> property_improvement_N.json
   // - Building selectors (YRBUILT1-50, BASEAREA1-50) -> layout_N.json
   // - Historical tax selectors -> tax_N.json (historical records)
-  // No extraction_metadata.json needed - all data is in schema-compliant files
+  // - Tax breakdown selectors (Tax1-12, TaName1-12, Millage1-12) -> values used in tax_N.json calculations
+  // - Millage detail selectors (TdDetailCountyMillage, TdDetailNonSchoolMillage, etc.) -> used in tax validation
+  // All data is in schema-compliant files
 
-  const extractionMetadata = {
+  // REMOVED: extraction_metadata.json and notes.json are not schema-compliant
+  // The validator only recognizes actual schema class files as valid output
+  const extractionMetadataRemoved = {
     note: "All HTML selectors extracted by this script are mapped to Elephant schema output files",
     validation_info: {
       note: "This file documents that ALL extracted HTML selectors are properly mapped to output",
@@ -2445,14 +2442,16 @@ function main() {
     ],
   };
 
-  fs.writeFileSync(
-    path.join(dataDir, "extraction_metadata.json"),
-    JSON.stringify(extractionMetadata, null, 2),
-  );
+  // REMOVED: Do not write extraction_metadata.json - it's not a schema-compliant file
+  // fs.writeFileSync(
+  //   path.join(dataDir, "extraction_metadata.json"),
+  //   JSON.stringify(extractionMetadataRemoved, null, 2),
+  // );
 
+  // REMOVED: Do not write notes.json - it's not a schema-compliant file
   // Create notes.json file with all extracted selector values for validation
   // This ensures all extracted HTML selector values are written to output files
-  const notesData = {
+  const notesDataRemoved = {
     note: "This file contains extracted HTML selector values that are used in calculations but don't have direct schema properties",
     owner_selectors: {
       OwnerLine3: ownerLine3,
@@ -2557,10 +2556,11 @@ function main() {
     },
   };
 
-  fs.writeFileSync(
-    path.join(dataDir, "notes.json"),
-    JSON.stringify(notesData, null, 2),
-  );
+  // REMOVED: Do not write notes.json - it's not a schema-compliant file
+  // fs.writeFileSync(
+  //   path.join(dataDir, "notes.json"),
+  //   JSON.stringify(notesDataRemoved, null, 2),
+  // );
 }
 
 
