@@ -1,6 +1,3 @@
-// Layout mapping script
-// Reads input.html, parses with cheerio, outputs layouts JSON per schema
-
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
@@ -24,68 +21,412 @@ function getPrimeKey($, html) {
   return key || "unknown";
 }
 
-function getLabelCount($, label) {
-  // Find a <b> whose exact text (trimmed) equals label (with trailing colon)
-  let count = 0;
-  const b = $("b")
-    .filter(
-      (i, el) => $(el).text().trim().toLowerCase() === label.toLowerCase(),
-    )
-    .first();
-  if (b.length) {
-    // The count is the immediate text node after the <b> inside the same TD
-    const node = b.get(0).nextSibling;
-    if (node && node.nodeValue) {
-      const num = parseInt(String(node.nodeValue).trim(), 10);
-      if (!Number.isNaN(num)) count = num;
-    } else {
-      // Fallback: search the parent td text
-      const txt = b.parent().text();
-      const m = txt.match(
-        new RegExp(
-          label.replace(/[-/\\^$*+?.()|[\]{}]/g, (r) => r),
-          "i",
-        ),
-      );
-      if (m) {
-        const numMatch = txt
-          .replace(m[0], "")
-          .trim()
-          .match(/^(\d+)/);
-        if (numMatch) {
-          const n = parseInt(numMatch[1], 10);
-          if (!Number.isNaN(n)) count = n;
-        }
-      }
+const BUILDING_HEADER_RE = /^Building\s+(\d+)\s+of\s+(\d+)/i;
+const allowedValues = {
+  heating_system_type: new Set([
+    "ElectricFurnace",
+    "Electric",
+    "GasFurnace",
+    "Ductless",
+    "Radiant",
+    "Solar",
+    "HeatPump",
+    "Central",
+    "Baseboard",
+    "Gas",
+    null,
+  ]),
+  heating_fuel_type: new Set([
+    "Electric",
+    "NaturalGas",
+    "Propane",
+    "Oil",
+    "Kerosene",
+    "WoodPellet",
+    "Wood",
+    "Geothermal",
+    "Solar",
+    "DistrictSteam",
+    "Other",
+    null,
+  ]),
+};
+
+const rulesByField = {
+  heating_system_type: [
+    { pattern: /heat pump/i, value: "HeatPump" },
+    { pattern: /baseboard/i, value: "Baseboard" },
+    { pattern: /nonducted/i, value: "Ductless" },
+    { pattern: /ducted/i, value: "Central" },
+    { pattern: /convection/i, value: "Central" },
+    { pattern: /radiant/i, value: "Radiant" },
+    { pattern: /(floor|wall)\s+furnace/i, value: "GasFurnace" },
+    { pattern: /steam|hot water/i, value: "Central" },
+  ],
+  heating_fuel_type: [
+    { pattern: /electric/i, value: "Electric" },
+    { pattern: /wood/i, value: "Wood" },
+    { pattern: /solar/i, value: "Solar" },
+    { pattern: /oil/i, value: "Oil" },
+    { pattern: /gas/i, value: "NaturalGas" },
+  ],
+};
+
+function mapValue(label, rules, allowedSet) {
+  const target = label || "";
+  for (const { pattern, value } of rules) {
+    if (pattern.test(target)) {
+      return allowedSet.has(value) ? value : null;
     }
   }
-  return count;
+  return null;
 }
 
-function extractBathCounts($) {
-  const fourFixture = getLabelCount($, "4 Fixture Baths:");
-  const threeFixture = getLabelCount($, "3 Fixture Baths:");
-  const twoFixture = getLabelCount($, "2 Fixture Baths:");
-  return { fourFixture, threeFixture, twoFixture };
+function normalizeLabel(rawValue) {
+  if (!rawValue) {
+    return "";
+  }
+  return rawValue.replace(/^\s*\d+\s*[-:]?\s*/, "").trim();
 }
 
-
-function extractBedrooms($) {
-  return getLabelCount($, "Bedrooms:");
+function mapFieldValue(fieldName, rawValue) {
+  if (!rawValue) {
+    return null;
+  }
+  const rules = rulesByField[fieldName];
+  const allowed = allowedValues[fieldName];
+  if (!rules || !allowed) {
+    return null;
+  }
+  const normalized = normalizeLabel(rawValue);
+  return mapValue(normalized, rules, allowed);
 }
 
+function parseBuildings($) {
+  const notesByBuilding = extractBuildingNotes($);
+  const headers = $('b u')
+    .filter((i, el) => BUILDING_HEADER_RE.test($(el).text().trim()))
+    .toArray();
 
-function extractKitchens($) {
-  return getLabelCount($, "Kitchens:");
+  return headers
+    .map((header) => parseBuildingBlock($, header, notesByBuilding))
+    .filter(Boolean);
 }
 
-function defaultLayout(space_index, space_type, size) {
+function parseBuildingBlock($root, headerNode, notesByBuilding) {
+  const headerTag = $root(headerNode).closest('b');
+  if (!headerTag.length) {
+    return null;
+  }
+
+  const chunkNodes = collectChunkNodes($root, headerTag.get(0));
+  if (!chunkNodes.length) {
+    return null;
+  }
+
+  const chunkHtml = `<section>${chunkNodes
+    .map((node) => serializeNode($root, node))
+    .join('')}</section>`;
+  const $ = cheerio.load(chunkHtml);
+  const container = $('section').first();
+  const headerText = container.find('b u').first().text().trim();
+  const match = headerText.match(BUILDING_HEADER_RE);
+
+  if (!match) {
+    return null;
+  }
+
+  const number = Number(match[1]);
+  const totalBuildings = Number(match[2]);
+  const traverse = extractTraverse($, container);
+  // const sketchSrc = container.find('img').first().attr('src') || null;
+  const sketchSrc = null;
+  const characteristics = extractCharacteristics($);
+  const typeRows = extractTypeRows($);
+  const sectionDetails = extractSectionDetails($);
+
   return {
-    space_type,
-    space_index,
+    number,
+    totalBuildings,
+    traverse,
+    sketchSrc,
+    characteristics,
+    typeRows,
+    sectionDetails,
+    note: notesByBuilding[number] || null,
+  };
+}
+
+function collectChunkNodes($, startNode) {
+  const nodes = [];
+  let current = startNode;
+  nodes.push(current);
+
+  while (current && current.nextSibling) {
+    current = current.nextSibling;
+    if (
+      current.type === 'tag' &&
+      current.name === 'b' &&
+      BUILDING_HEADER_RE.test($(current).text().trim())
+    ) {
+      break;
+    }
+    nodes.push(current);
+  }
+
+  return nodes;
+}
+
+function serializeNode($, node) {
+  return node.type === 'text' ? node.data : $.html(node);
+}
+
+function extractTraverse($, container) {
+  const header = container.children('b').first().get(0);
+  const nodes = container.contents().toArray();
+  let seenHeader = false;
+
+  for (const node of nodes) {
+    if (node === header) {
+      seenHeader = true;
+      continue;
+    }
+    if (!seenHeader) {
+      continue;
+    }
+    if (node.type === 'tag' && node.name === 'img') {
+      break;
+    }
+    const text = $(node).text().replace(/\s+/g, ' ').trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return null;
+}
+
+function extractCharacteristics($) {
+  const center = $('center')
+    .filter((i, el) => $(el).text().includes('Building Characteristics'))
+    .first();
+  const table = center.length ? center.nextAll('table').first() : $('table').first();
+
+  if (!table.length) {
+    return {};
+  }
+
+  const outerRow = table.find('tr').first();
+  const outerCells = outerRow.children('td');
+  const leftCell = outerCells.eq(0);
+  const rightCell = outerCells.eq(1);
+  const nestedTds = leftCell.find('td');
+  const leftLabels = extractLines($(nestedTds.get(0)));
+  const leftValues = extractLines($(nestedTds.get(1)));
+  const data = {};
+
+  leftLabels.forEach((label, idx) => {
+    const key = toCamelCase(label);
+    if (key) {
+      data[key] = leftValues[idx] || null;
+    }
+  });
+
+  Object.assign(data, extractInlinePairs($, rightCell));
+
+  return data;
+}
+
+function extractTypeRows($) {
+  let targetTable;
+  $('table').each((i, el) => {
+    const headers = $(el)
+      .find('tr')
+      .first()
+      .find('th')
+      .map((_, th) => $(th).text().trim())
+      .get();
+    if (headers.length && headers[0] === 'Type' && headers.includes('Exterior Walls')) {
+      targetTable = $(el);
+      return false;
+    }
+    return undefined;
+  });
+
+  if (!targetTable) {
+    return [];
+  }
+
+  return parseHeaderTable($, targetTable);
+}
+
+function extractSectionDetails($) {
+  const sectionHeader = $('b')
+    .filter((i, el) => $(el).text().trim().startsWith('Section:'))
+    .first();
+  const table = sectionHeader.length ? sectionHeader.nextAll('table').first() : null;
+
+  if (!table || !table.length) {
+    return {};
+  }
+
+  const details = {};
+  table.find('td').each((_, cell) => {
+    Object.assign(details, extractInlinePairs($, $(cell)));
+  });
+
+  return details;
+}
+
+function parseHeaderTable($, table) {
+  const headerCells = table.find('tr').first().find('th');
+  const headers = headerCells.map((_, th) => toCamelCase($(th).text().trim())).get();
+
+  return table
+    .find('tr')
+    .slice(1)
+    .map((_, row) => {
+      const cells = $(row).find('td');
+      const rowObj = {};
+      headers.forEach((header, idx) => {
+        if (!header) {
+          return;
+        }
+        rowObj[header] = cells.eq(idx).text().replace(/\s+/g, ' ').trim() || null;
+      });
+      return rowObj;
+    })
+    .get();
+}
+
+function extractLines(cell) {
+  if (!cell || !cell.length) {
+    return [];
+  }
+
+  const html = cell.html() || '';
+  return html
+    .split(/<br\s*\/?>/i)
+    .map((part) => cheerio.load(`<span>${part}</span>`).text().replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+}
+
+function extractInlinePairs($, cell) {
+  if (!cell || !cell.length) {
+    return {};
+  }
+
+  const result = {};
+  let currentKey = null;
+
+  cell.contents().each((_, node) => {
+    if (node.type === 'tag' && node.name === 'b') {
+      currentKey = toCamelCase($(node).text().replace(/:/g, '').trim()) || null;
+      if (currentKey && !(currentKey in result)) {
+        result[currentKey] = '';
+      }
+      return;
+    }
+
+    if (node.type === 'tag' && node.name === 'br') {
+      currentKey = null;
+      return;
+    }
+
+    if (currentKey) {
+      const text = $(node).text().replace(/\s+/g, ' ').trim();
+      if (text) {
+        result[currentKey] = result[currentKey]
+          ? `${result[currentKey]} ${text}`.trim()
+          : text;
+      }
+    }
+  });
+
+  Object.keys(result).forEach((key) => {
+    if (!result[key]) {
+      result[key] = null;
+    }
+  });
+
+  return result;
+}
+
+function extractBuildingNotes($) {
+  const notes = {};
+  const notesCenter = $('center')
+    .filter((i, el) => $(el).text().trim() === 'Appraiser Notes')
+    .first();
+
+  if (!notesCenter.length) {
+    return notes;
+  }
+
+  let node = notesCenter.get(0).nextSibling;
+  while (node) {
+    if (node.type === 'tag' && node.name === 'hr') {
+      break;
+    }
+    if (node.type === 'text') {
+      const text = node.data.trim();
+      const match = /^BLDG0*([0-9]+)\s*=\s*(.+)$/i.exec(text);
+      if (match) {
+        notes[Number(match[1])] = match[2].trim();
+      }
+    }
+    node = node.nextSibling;
+  }
+
+  return notes;
+}
+
+function toCamelCase(label) {
+  if (!label) {
+    return '';
+  }
+
+  const cleaned = label.replace(/[:]/g, ' ').trim();
+  const parts = cleaned.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  if (!parts.length) {
+    return '';
+  }
+
+  return parts
+    .map((part, idx) =>
+      idx === 0 ? part.toLowerCase() : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase(),
+    )
+    .join('');
+}
+
+function parseIntOrNull(val) {
+  if (!val) {
+    return null;
+  }
+  const normalized = val.replace(/,/gi, '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsedVal = parseInt(normalized, 10);
+  return Number.isNaN(parsedVal) ? null : parsedVal;
+}
+
+function parseFloatOrNull(val) {
+  if (!val) {
+    return null;
+  }
+  const normalized = val.replace(/,/gi, '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsedVal = parseFloat(normalized);
+  return Number.isNaN(parsedVal) ? null : parsedVal;
+}
+
+function baseLayoutDefaults() {
+  return {
+    // Required fields per schema (allowing null where permitted)
     flooring_material_type: null,
-    size_square_feet: size,
-    floor_level: null,
+    size_square_feet: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -113,66 +454,96 @@ function defaultLayout(space_index, space_type, size) {
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
-
-    adjustable_area_sq_ft: null,
-    area_under_air_sq_ft: null,
-    bathroom_renovation_date: null,
-    building_number: null,
-    kitchen_renovation_date: null,
-    heated_area_sq_ft: null,
-    livable_area_sq_ft: null,
-    story_type: null,
-    total_area_sq_ft: null,
   };
 }
 
 function buildLayouts($) {
-  const layouts = [];
+  const parsedBuildings = parseBuildings($);
+  let layouts = [];
 
-  const { fourFixture, threeFixture, twoFixture } = extractBathCounts($);
-  console.log(
-    `Extracted baths -> 4fx:${fourFixture}, 3fx:${threeFixture}, 2fx:${twoFixture}`,
-  );
-  let idx = 1;
-  for (let i = 0; i < fourFixture; i++) {
-    layouts.push(defaultLayout(idx++, "Full Bathroom", null));
-  }
-  for (let i = 0; i < threeFixture; i++) {
-    layouts.push(defaultLayout(idx++, "Three-Quarter Bathroom", null));
-  }
-  for (let i = 0; i < twoFixture; i++) {
-    layouts.push(defaultLayout(idx++, "Half Bathroom / Powder Room", null));
-  }
+  parsedBuildings.forEach((parsedBuilding, index) => {
+    const buildIndex = index + 1;
+    const typeRow = (parsedBuilding.typeRows && parsedBuilding.typeRows[0]) || {};
+    const sectionDetails = parsedBuilding.sectionDetails || {};
+    const characteristics = parsedBuilding.characteristics || {};
+    const property_structure_built_year = parseIntOrNull(characteristics.yearBuilt);
+    const number_of_stories = parseFloatOrNull(typeRow.stories);
+    const finished_base_area = parseIntOrNull(typeRow.groundFloorArea);
+    const total_area = parseIntOrNull(typeRow.totalFlrArea);
+    const bedrooms = parseIntOrNull(sectionDetails.bedrooms);
+    const bathrooms = (parseIntOrNull(sectionDetails["4FixtureBaths"]) ?? 0) + (parseIntOrNull(sectionDetails["3FixtureBaths"]) ?? 0) + (parseIntOrNull(sectionDetails["2FixtureBaths"]) ?? 0);
+    const hasKitchen = sectionDetails["bltInKitchen"] && sectionDetails["bltInKitchen"] === "Y";
+    const buildingLayout = Object.assign(baseLayoutDefaults(), {
+      space_type: "Building",
+      space_type_index: buildIndex.toString(),
+      size_square_feet: finished_base_area,
+      heated_area_sq_ft: null,
+      total_area_sq_ft: total_area,
+      built_year: property_structure_built_year,
+      building_number: buildIndex,
+      is_finished: true,
+    });
+    layouts.push(buildingLayout);
+    if (number_of_stories) {
+      for (let roomIndex = 0; roomIndex < number_of_stories; roomIndex++) {
+        const roomLayout = Object.assign(baseLayoutDefaults(), {
+          space_type: "Floor",
+          space_type_index: `${buildIndex.toString()}.${roomIndex+1}`,
+          size_square_feet: null,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          built_year: null,
+          building_number: buildIndex,
+          is_finished: true,
+        });
+        layouts.push(roomLayout);
+      }
+    }
+    if (bedrooms) {
+      for (let roomIndex = 0; roomIndex < bedrooms; roomIndex++) {
+        const roomLayout = Object.assign(baseLayoutDefaults(), {
+          space_type: "Bedroom",
+          space_type_index: `${buildIndex.toString()}.${roomIndex+1}`,
+          size_square_feet: null,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          built_year: null,
+          building_number: buildIndex,
+          is_finished: true,
+        });
+        layouts.push(roomLayout);
+      }
+    }
+    if (bathrooms) {
+      for (let roomIndex = 0; roomIndex < bathrooms; roomIndex++) {
+        const roomLayout = Object.assign(baseLayoutDefaults(), {
+          space_type: "Full Bathroom",
+          space_type_index: `${buildIndex.toString()}.${roomIndex+1}`,
+          size_square_feet: null,
+          heated_area_sq_ft: null,
+          total_area_sq_ft: null,
+          built_year: null,
+          building_number: buildIndex,
+          is_finished: true,
+        });
+        layouts.push(roomLayout);
+      }
+    }
+    if (hasKitchen) {
+      const roomLayout = Object.assign(baseLayoutDefaults(), {
+        space_type: "Kitchen",
+        space_type_index: `${buildIndex.toString()}.1`,
+        size_square_feet: null,
+        heated_area_sq_ft: null,
+        total_area_sq_ft: null,
+        built_year: null,
+        building_number: buildIndex,
+        is_finished: true,
+      });
+      layouts.push(roomLayout);
+    }
 
-  const kitchens = extractKitchens($);
-  console.log(`Extracted kitchens -> ${kitchens}`);
-  for (let i = 0; i < kitchens; i++) {
-    layouts.push(defaultLayout(idx++, "Kitchen", null));
-  }
-
-  
-  const bedroomCount = extractBedrooms($);
-
-  for (let i = 0; i < bedroomCount; i++) {
-  layouts.push(defaultLayout(idx++, "Bedroom", null));
-  }
-  
-  
-  if (bedroomCount === 0 && (fourFixture + threeFixture + twoFixture) > 0) {
-    console.log("No bedrooms found, but bathrooms exist. Adding placeholder bedroom.");
-    layouts.push(defaultLayout(idx++, "Bedroom", null));
-  }
-
-  const hasLodge =
-    $("td").filter((i, el) => /M77 CLUB\/HALL\/LODGE/i.test($(el).text()))
-      .length > 0;
-  if (hasLodge) {
-    layouts.push(defaultLayout(idx++, "Great Room", null));
-  }
-
-  if (layouts.length === 0) {
-    layouts.push(defaultLayout(idx++, "Living Area", null));
-  }
+  });
 
   return layouts;
 }
@@ -181,22 +552,15 @@ function buildLayouts($) {
   const inputPath = path.join(process.cwd(), "input.html");
   const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
-
   const id = getPrimeKey($, html);
-  const layouts = buildLayouts($);
+  const data = buildLayouts($);
 
   const outObj = {};
-  outObj[`property_${id}`] = { layouts };
+  outObj[`property_${id}`] = data;
 
   const ownersDir = path.join(process.cwd(), "owners");
-  const dataDir = path.join(process.cwd(), "data");
   ensureDir(ownersDir);
-  ensureDir(dataDir);
 
-  const ownersOut = path.join(ownersDir, "layout_data.json");
-  const dataOut = path.join(dataDir, "layout_data.json");
-  const json = JSON.stringify(outObj, null, 2);
-  fs.writeFileSync(ownersOut, json);
-  fs.writeFileSync(dataOut, json);
-  console.log(`Wrote layout data for property_${id} to owners/ and data/`);
+  fs.writeFileSync(path.join(ownersDir, "layout_data.json"), JSON.stringify(outObj, null, 2));
+  console.log(`Wrote utilities data for property_${id} to owners/`);
 })();

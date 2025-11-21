@@ -40,6 +40,129 @@ function titleCasePhrase(str) {
   return lower;
 }
 
+// Elephant Person enum values for prefix_name and suffix_name
+const PERSON_PREFIX_ENUM_VALUES = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Miss",
+  "Mx.",
+  "Dr.",
+  "Prof.",
+  "Rev.",
+  "Fr.",
+  "Sr.",
+  "Br.",
+  "Capt.",
+  "Col.",
+  "Maj.",
+  "Lt.",
+  "Sgt.",
+  "Hon.",
+  "Judge",
+  "Rabbi",
+  "Imam",
+  "Sheikh",
+  "Sir",
+  "Dame",
+];
+
+const PERSON_SUFFIX_ENUM_VALUES = [
+  "Jr.",
+  "Sr.",
+  "II",
+  "III",
+  "IV",
+  "PhD",
+  "MD",
+  "Esq.",
+  "JD",
+  "LLM",
+  "MBA",
+  "RN",
+  "DDS",
+  "DVM",
+  "CFA",
+  "CPA",
+  "PE",
+  "PMP",
+  "Emeritus",
+  "Ret.",
+];
+
+const PREFIX_NAME_LOOKUP = buildEnumLookup(PERSON_PREFIX_ENUM_VALUES);
+const SUFFIX_NAME_LOOKUP = buildEnumLookup(PERSON_SUFFIX_ENUM_VALUES);
+
+function buildEnumLookup(values) {
+  const map = new Map();
+  for (const value of values) {
+    const normalized = normalizeAffixValue(value);
+    if (normalized && !map.has(normalized)) {
+      map.set(normalized, value);
+    }
+  }
+  return map;
+}
+
+function normalizeAffixValue(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function isGenerationalSuffix(value) {
+  return ["Jr.", "Sr.", "II", "III", "IV"].includes(value);
+}
+
+function extractPersonAffixes(tokens) {
+  const working = [...tokens];
+  let prefix = null;
+  let suffix = null;
+  let suffixIndex = null;
+
+  if (working.length) {
+    const firstCandidate = working[0];
+    const normalizedFirst = normalizeAffixValue(firstCandidate);
+    if (normalizedFirst && PREFIX_NAME_LOOKUP.has(normalizedFirst)) {
+      prefix = PREFIX_NAME_LOOKUP.get(normalizedFirst);
+      working.shift();
+    }
+  }
+
+  if (working.length) {
+    let fallbackSuffix = null;
+    let fallbackIndex = null;
+    for (let i = working.length - 1; i >= 0; i--) {
+      const candidate = working[i];
+      const normalized = normalizeAffixValue(candidate);
+      if (!normalized || !SUFFIX_NAME_LOOKUP.has(normalized)) continue;
+      const canonical = SUFFIX_NAME_LOOKUP.get(normalized);
+      if (isGenerationalSuffix(canonical)) {
+        suffix = canonical;
+        suffixIndex = i;
+        break;
+      }
+      if (!fallbackSuffix) {
+        fallbackSuffix = canonical;
+        fallbackIndex = i;
+      }
+    }
+    if (!suffix && fallbackSuffix) {
+      suffix = fallbackSuffix;
+      suffixIndex = fallbackIndex;
+    }
+    if (suffixIndex !== null) {
+      working.splice(suffixIndex, 1);
+    }
+  }
+
+  return {
+    tokens: working,
+    prefix,
+    suffix,
+  };
+}
+
 // Check if owner string should be ignored (generic placeholders)
 function shouldIgnoreOwner(raw) {
   const s = String(raw || "").trim().toLowerCase();
@@ -140,21 +263,42 @@ function parsePersonName(raw) {
     const restPart = (restPartRaw || "").trim();
     if (!lastPart || !restPart) return null;
     const tokens = restPart.split(/\s+/).filter(Boolean);
+    const cleanedTokens = tokens
+      .map((t) => t.replace(/^[-_]+|[-_]+$/g, ""))
+      .filter(Boolean);
+    const {
+      tokens: coreTokens,
+      prefix: prefixFromRest,
+      suffix: suffixFromRest,
+    } = extractPersonAffixes(cleanedTokens);
 
-    // Clean leading/trailing special characters from each token
-    const cleanedTokens = tokens.map(t => t.replace(/^[-_]+|[-_]+$/g, "")).filter(Boolean);
+    if (!coreTokens.length) return null;
 
-    const firstName = cleanedTokens[0] || null;
-    const middleName =
-      cleanedTokens.length > 2
-        ? cleanedTokens.slice(1).join(" ")
-        : cleanedTokens.length === 2
-          ? cleanedTokens[1]
-          : null;
+    const firstName = coreTokens[0] || null;
+    const middleTokens = coreTokens.slice(1);
+    const middleName = middleTokens.length ? middleTokens.join(" ") : null;
 
-    // Clean last name as well
-    const cleanedLastPart = lastPart.replace(/^[-_]+|[-_]+$/g, "");
+    const lastTokens = lastPart
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((t) => t.replace(/^[-_]+|[-_]+$/g, ""))
+      .filter(Boolean);
+    const {
+      tokens: remainingLastTokens,
+      prefix: prefixFromLast,
+      suffix: suffixFromLast,
+    } = extractPersonAffixes(lastTokens);
 
+    if (!remainingLastTokens.length) return null;
+
+    const suffixCandidates = [suffixFromRest, suffixFromLast].filter(Boolean);
+    const suffix =
+      suffixCandidates.find((s) => isGenerationalSuffix(s)) ||
+      suffixCandidates[0] ||
+      null;
+
+    const prefix = prefixFromRest || prefixFromLast || null;
+    const cleanedLastPart = remainingLastTokens.join(" ");
     const last = titleCasePhrase(cleanedLastPart);
     const first = titleCasePhrase(firstName);
     // Exclude middle name if it contains "/" symbol (e.g., "H/E" is not a valid middle name)
@@ -170,6 +314,8 @@ function parsePersonName(raw) {
       first_name: first,
       last_name: last,
       middle_name: middle || null,
+      prefix_name: prefix || null,
+      suffix_name: suffix || null,
     };
   }
 
@@ -181,9 +327,17 @@ function parsePersonName(raw) {
   const cleanedTokens = tokens.map(t => t.replace(/^[-_]+|[-_]+$/g, "")).filter(Boolean);
   if (cleanedTokens.length < 2) return null;
 
-  const first = titleCasePhrase(cleanedTokens[0]);
-  const last = titleCasePhrase(cleanedTokens[cleanedTokens.length - 1]);
-  const middleTokens = cleanedTokens.slice(1, -1);
+  const {
+    tokens: coreTokens,
+    prefix,
+    suffix,
+  } = extractPersonAffixes(cleanedTokens);
+
+  if (coreTokens.length < 2) return null;
+
+  const first = titleCasePhrase(coreTokens[0]);
+  const last = titleCasePhrase(coreTokens[coreTokens.length - 1]);
+  const middleTokens = coreTokens.slice(1, -1);
   const middleStr = middleTokens.length ? middleTokens.join(" ") : null;
   // Exclude middle name if it contains "/" symbol (e.g., "H/E" is not a valid middle name)
   const middle = middleStr && !middleStr.includes("/")
@@ -200,6 +354,8 @@ function parsePersonName(raw) {
     first_name: first,
     last_name: last,
     middle_name: middle || null,
+    prefix_name: prefix || null,
+    suffix_name: suffix || null,
   };
 }
 
@@ -211,6 +367,33 @@ function canonicalOwner(owner) {
   const mn = normalizeName(owner.middle_name || "");
   const ln = normalizeName(owner.last_name || "");
   return `person:${fn}:${mn}:${ln}`;
+}
+
+function upsertStructuredOwner(list, owner) {
+  const cano = canonicalOwner(owner);
+  const existingIndex = list.findIndex((o) => canonicalOwner(o) === cano);
+  if (existingIndex === -1) {
+    list.push(owner);
+    return;
+  }
+
+  const existing = list[existingIndex];
+  if (
+    existing &&
+    owner &&
+    existing.type === "person" &&
+    owner.type === "person"
+  ) {
+    if (!existing.middle_name && owner.middle_name) {
+      existing.middle_name = owner.middle_name;
+    }
+    if (!existing.prefix_name && owner.prefix_name) {
+      existing.prefix_name = owner.prefix_name;
+    }
+    if (!existing.suffix_name && owner.suffix_name) {
+      existing.suffix_name = owner.suffix_name;
+    }
+  }
 }
 
 // Extract potential date strings in format MM/DD/YYYY and convert to YYYY-MM-DD
@@ -370,9 +553,7 @@ for (const raw of uniqueRawOwners) {
     const splitOwners = splitAmpersandOwners(trimmed);
     if (splitOwners && splitOwners.length) {
       for (const o of splitOwners) {
-        const cano = canonicalOwner(o);
-        if (!structuredOwners.some((x) => canonicalOwner(x) === cano))
-          structuredOwners.push(o);
+        upsertStructuredOwner(structuredOwners, o);
       }
       continue;
     }
@@ -380,17 +561,13 @@ for (const raw of uniqueRawOwners) {
 
   if (isCompany(trimmed)) {
     const company = { type: "company", name: titleCasePhrase(trimmed) };
-    const cano = canonicalOwner(company);
-    if (!structuredOwners.some((o) => canonicalOwner(o) === cano))
-      structuredOwners.push(company);
+    upsertStructuredOwner(structuredOwners, company);
     continue;
   }
 
   const person = parsePersonName(trimmed);
   if (person) {
-    const cano = canonicalOwner(person);
-    if (!structuredOwners.some((o) => canonicalOwner(o) === cano))
-      structuredOwners.push(person);
+    upsertStructuredOwner(structuredOwners, person);
   } else {
     invalidOwners.push({
       raw: trimmed,
