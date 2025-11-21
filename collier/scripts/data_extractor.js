@@ -1925,23 +1925,9 @@ function main() {
     });
   }
 
-  // Extract millage detail data before creating tax objects
-  const tdDetailCountyMillage = $("#TdDetailCountyMillage").text().trim();
-  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").text().trim();
-  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").text().trim();
-  const tdDetailNonSchoolMillage = $("#TdDetailNonSchoolMillage").text().trim();
-  const tdDetailOtherMillage = $("#TdDetailOtherMillage").text().trim();
-  const tdDetailTotalMillage = $("#TdDetailTotalMillage").text().trim();
-
-  // Store millage details for metadata (these are now captured and documented)
-  const millageDetails = {
-    county_millage: tdDetailCountyMillage || null,
-    school_millage: tdDetailSchoolMillage || null,
-    municipal_millage: tdDetailMunicipalMillage || null,
-    non_school_millage: tdDetailNonSchoolMillage || null,
-    other_millage: tdDetailOtherMillage || null,
-    total_millage: tdDetailTotalMillage || null,
-  };
+  // Note: Millage detail selectors (#TdDetailCountyMillage, #TdDetailSchoolMillage, etc.)
+  // are not extracted because there are no corresponding fields in the Elephant tax schema.
+  // Tax calculations use only valuation amounts and exemptions.
 
   // Extract individual tax breakdown fields (Tax1-9, TaName1-9, Millage1-9) to ensure selectors are mapped
   const taxBreakdown = [];
