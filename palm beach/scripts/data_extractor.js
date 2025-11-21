@@ -4074,21 +4074,14 @@ function pruneRawVariantToSchemaSurface(address) {
     address.unnormalized_address.trim().length > 0;
   if (!hasRaw) return address;
 
-  const enforceMinimalSurface =
-    Object.prototype.hasOwnProperty.call(address, "__prune_raw_surface") &&
-    address.__prune_raw_surface === true;
-  if (enforceMinimalSurface) {
+  if (Object.prototype.hasOwnProperty.call(address, "__prune_raw_surface")) {
     delete address.__prune_raw_surface;
   }
 
   address.unnormalized_address = address.unnormalized_address.trim();
 
-  const allowedFieldSet = enforceMinimalSurface
-    ? RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET
-    : RAW_VARIANT_SCHEMA_FIELD_SET;
-  const allowedFieldList = enforceMinimalSurface
-    ? RAW_VARIANT_MINIMAL_SURFACE_FIELDS
-    : RAW_VARIANT_SCHEMA_FIELDS;
+  const allowedFieldSet = RAW_VARIANT_SCHEMA_FIELD_SET;
+  const allowedFieldList = RAW_VARIANT_SCHEMA_FIELDS;
 
   for (const key of Object.keys(address)) {
     if (

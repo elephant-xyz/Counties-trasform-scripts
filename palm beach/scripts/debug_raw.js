@@ -1025,6 +1025,10 @@ function pruneRawVariantToSchemaSurface(address) {
     address.unnormalized_address.trim().length > 0;
   if (!hasRaw) return address;
 
+  if (Object.prototype.hasOwnProperty.call(address, "__prune_raw_surface")) {
+    delete address.__prune_raw_surface;
+  }
+
   address.unnormalized_address = address.unnormalized_address.trim();
 
   for (const key of Object.keys(address)) {
@@ -1040,17 +1044,17 @@ function pruneRawVariantToSchemaSurface(address) {
   }
 
   for (const field of RAW_VARIANT_SCHEMA_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
-    }
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    const sanitizedValue = hasField
+      ? sanitizeAddressFieldValue(field, address[field])
+      : null;
 
-    const sanitizedValue = sanitizeAddressFieldValue(field, address[field]);
     if (
       sanitizedValue === undefined ||
       sanitizedValue === null ||
       (typeof sanitizedValue === "string" && !sanitizedValue.trim().length)
     ) {
-      delete address[field];
+      address[field] = null;
       continue;
     }
 
@@ -1058,33 +1062,23 @@ function pruneRawVariantToSchemaSurface(address) {
       ADDRESS_COORDINATE_FIELDS.includes(field) &&
       !Number.isFinite(sanitizedValue)
     ) {
-      delete address[field];
+      address[field] = null;
       continue;
     }
 
     address[field] = sanitizedValue;
   }
 
-  const hasLatitude = Object.prototype.hasOwnProperty.call(
-    address,
-    "latitude",
-  );
-  const hasLongitude = Object.prototype.hasOwnProperty.call(
-    address,
-    "longitude",
-  );
-  if (hasLatitude || hasLongitude) {
-    if (
-      !Number.isFinite(address.latitude) ||
-      !Number.isFinite(address.longitude)
-    ) {
-      delete address.latitude;
-      delete address.longitude;
-    }
+  if (
+    !Number.isFinite(address.latitude) ||
+    !Number.isFinite(address.longitude)
+  ) {
+    address.latitude = null;
+    address.longitude = null;
   }
 
   if (!hasMeaningfulAddressValue(address.postal_code)) {
-    delete address.plus_four_postal_code;
+    address.plus_four_postal_code = null;
   }
 
   if (hasMeaningfulAddressValue(address.state_code)) {
@@ -1095,7 +1089,7 @@ function pruneRawVariantToSchemaSurface(address) {
     Object.prototype.hasOwnProperty.call(address, "country_code") &&
     !hasMeaningfulAddressValue(address.country_code)
   ) {
-    delete address.country_code;
+    address.country_code = null;
   }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
