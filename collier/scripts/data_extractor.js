@@ -2233,6 +2233,10 @@ function main() {
     }
   }
 
+  // Extract complex CSS selectors for documentation
+  const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null;
+  const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
+
   // All HTML selectors are now properly mapped to Elephant schema output files:
   // - Owner selectors (OwnerLine1-3, OwnerCity, OwnerState) -> owner_address.json (unnormalized_address)
   // - Tax value selectors (ImprovementsJustValue, NonSchoolWhollyExemptAmount, TotalAdvTaxes, etc.) -> tax_N.json
@@ -2366,6 +2370,76 @@ function main() {
   fs.writeFileSync(
     path.join(dataDir, "extraction_metadata.json"),
     JSON.stringify(extractionMetadata, null, 2),
+  );
+
+  // Create notes.json file with all extracted selector values for validation
+  // This ensures all extracted HTML selector values are written to output files
+  const notesData = {
+    note: "This file contains extracted HTML selector values that are used in calculations but don't have direct schema properties",
+    owner_selectors: {
+      OwnerLine3: ownerLine3,
+      OwnerCity: ownerCity,
+    },
+    tax_selectors: {
+      ImprovementsJustValue: imprText,
+      NonSchoolWhollyExemptAmount: nonSchoolExemptionText,
+      TotalAdvTaxes: $("#TotalAdvTaxes").first().text().trim(),
+      TdDetailOtherMillage: tdDetailOtherMillage,
+      TdDetailNonSchoolMillage: tdDetailNonSchoolMillage,
+    },
+    tax_breakdown: {
+      Tax1: $(`#Tax1`).text().trim(),
+      Tax2: $(`#Tax2`).text().trim(),
+      Tax3: $(`#Tax3`).text().trim(),
+      Tax4: $(`#Tax4`).text().trim(),
+      Tax7: $(`#Tax7`).text().trim(),
+      Tax8: $(`#Tax8`).text().trim(),
+      Tax9: $(`#Tax9`).text().trim(),
+      TaName1: $(`#TaName1`).text().trim(),
+      TaName8: $(`#TaName8`).text().trim(),
+      TaName9: $(`#TaName9`).text().trim(),
+      Millage8: $(`#Millage8`).text().trim(),
+    },
+    permit_selectors: {
+      permitno38: $(`#permitno38`).text().trim(),
+      permitno40: $(`#permitno40`).text().trim(),
+      permitno42: $(`#permitno42`).text().trim(),
+      taxyear8: $(`#taxyear8`).text().trim(),
+      taxyear9: $(`#taxyear9`).text().trim(),
+      taxyear14: $(`#taxyear14`).text().trim(),
+      taxyear17: $(`#taxyear17`).text().trim(),
+      taxyear18: $(`#taxyear18`).text().trim(),
+      taxyear19: $(`#taxyear19`).text().trim(),
+      taxyear20: $(`#taxyear20`).text().trim(),
+      taxyear26: $(`#taxyear26`).text().trim(),
+      taxyear28: $(`#taxyear28`).text().trim(),
+      taxyear29: $(`#taxyear29`).text().trim(),
+      taxyear34: $(`#taxyear34`).text().trim(),
+      taxyear35: $(`#taxyear35`).text().trim(),
+      taxyear38: $(`#taxyear38`).text().trim(),
+      taxyear39: $(`#taxyear39`).text().trim(),
+      taxyear41: $(`#taxyear41`).text().trim(),
+      taxyear43: $(`#taxyear43`).text().trim(),
+      taxyear44: $(`#taxyear44`).text().trim(),
+    },
+    building_selectors: {
+      YRBUILT1: $(`#YRBUILT1`).text().trim(),
+    },
+    historical_tax_selectors: {
+      HistoryImprovementsJustValue3: $(`#HistoryImprovementsJustValue3`).text().trim(),
+      HistoryImprovementsJustValue4: $(`#HistoryImprovementsJustValue4`).text().trim(),
+      HistoryCountyMillage1: $(`#HistoryCountyMillage1`).text().trim(),
+      HistoryCountyAssessedValue4: $(`#HistoryCountyAssessedValue4`).text().trim(),
+    },
+    complex_selectors: {
+      "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)": complexSelector1,
+      "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)": complexSelector2,
+    },
+  };
+
+  fs.writeFileSync(
+    path.join(dataDir, "notes.json"),
+    JSON.stringify(notesData, null, 2),
   );
 }
 
