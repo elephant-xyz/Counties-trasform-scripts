@@ -3904,25 +3904,27 @@ function buildStrictRawAddressOutput(source, rawValue) {
   }
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmed,
   };
 
-  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     const hasField = Object.prototype.hasOwnProperty.call(source, field);
     if (!hasField) continue;
     const candidate = sanitizeAddressFieldValue(field, source[field]);
-    if (candidate === undefined || candidate === null) {
-      continue;
-    }
-    if (typeof candidate === "string") {
-      const trimmedCandidate = candidate.trim();
-      if (!trimmedCandidate.length) {
-        continue;
-      }
-      rawOutput[field] = trimmedCandidate;
-      continue;
-    }
+    if (candidate === undefined) continue;
     rawOutput[field] = candidate;
+  }
+
+  if (
+    (rawOutput.latitude == null) !== (rawOutput.longitude == null)
+  ) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
+    rawOutput.plus_four_postal_code = null;
   }
 
   if (
@@ -3930,10 +3932,6 @@ function buildStrictRawAddressOutput(source, rawValue) {
     !hasMeaningfulAddressValue(rawOutput.country_code)
   ) {
     rawOutput.country_code = "US";
-  }
-
-  if (!hasMeaningfulAddressValue(rawOutput.county_name)) {
-    rawOutput.county_name = null;
   }
 
   return rawOutput;
