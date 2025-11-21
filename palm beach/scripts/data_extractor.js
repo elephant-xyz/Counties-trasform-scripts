@@ -38144,7 +38144,6 @@ async function run() {
       process.exitCode = 1;
     }
   }
-  return;
   try {
     const dataDir = path.join("data");
     const addressPath = path.join(dataDir, "address.json");
