@@ -251,15 +251,23 @@ function stripAddressRequestMetadata(address) {
     return address;
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    delete address.request_identifier;
+  const sanitized = { ...address };
+
+  if (Object.prototype.hasOwnProperty.call(sanitized, "request_identifier")) {
+    if (typeof sanitized.request_identifier === "string") {
+      const trimmed = sanitized.request_identifier.trim();
+      sanitized.request_identifier = trimmed.length ? trimmed : null;
+    }
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    delete address.source_http_request;
+  if (Object.prototype.hasOwnProperty.call(sanitized, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(sanitized.source_http_request);
+    if (prepared) {
+      sanitized.source_http_request = prepared;
+    }
   }
 
-  return address;
+  return sanitized;
 }
 
 function gatherRequestIdentifierCandidates(...candidates) {
@@ -39116,6 +39124,91 @@ function ensureRelationshipPlaceholders(dataDir) {
   }
 }
 
+function ensureAddressRequestMetadata(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressPath);
+  } catch {
+    return;
+  }
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    extraRequestIdentifierCandidates = [],
+    extraSourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+
+  const requestCandidates = [
+    payload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+  ];
+  if (Array.isArray(extraRequestIdentifierCandidates)) {
+    requestCandidates.push(...extraRequestIdentifierCandidates);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+  ) {
+    requestCandidates.push(
+      ...ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates,
+    );
+  }
+
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    ...requestCandidates,
+  );
+  if (resolvedRequestIdentifier) {
+    payload.request_identifier = resolvedRequestIdentifier;
+  }
+
+  const sourceCandidates = [
+    payload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  ];
+  if (Array.isArray(extraSourceHttpRequestCandidates)) {
+    sourceCandidates.push(...extraSourceHttpRequestCandidates);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+  ) {
+    sourceCandidates.push(
+      ...ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates,
+    );
+  }
+
+  const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    ...sourceCandidates,
+  );
+  if (resolvedSourceHttpRequest) {
+    payload.source_http_request = deepClone(
+      prepareSourceHttpRequest(resolvedSourceHttpRequest),
+    );
+  }
+
+  if (
+    typeof payload.request_identifier === "string" &&
+    !payload.request_identifier.trim()
+  ) {
+    payload.request_identifier = null;
+  }
+
+  writeJSON(addressPath, payload);
+}
+
 async function run() {
   await main();
   try {
@@ -39408,6 +39501,18 @@ async function run() {
       fallbackRawPath: "unnormalized_address.json",
       seedPath: "property_seed.json",
       additionalRawCandidates: fallbackRawCandidates,
+    });
+    ensureAddressRequestMetadata(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      extraRequestIdentifierCandidates: [
+        fallbackRawData && fallbackRawData.request_identifier,
+        fallbackSeedData && fallbackSeedData.request_identifier,
+      ],
+      extraSourceHttpRequestCandidates: [
+        fallbackRawData && fallbackRawData.source_http_request,
+        fallbackSeedData && fallbackSeedData.source_http_request,
+      ],
     });
 
     try {
