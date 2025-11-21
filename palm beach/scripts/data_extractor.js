@@ -6913,15 +6913,11 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
 const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "latitude",
   "longitude",
-  "plus_four_postal_code",
   "postal_code",
   "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
   "street_number",
   "street_suffix_type",
   "unit_identifier",
-  "route_number",
   "township",
   "range",
   "section",
@@ -6931,7 +6927,6 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "city_name",
   "state_code",
   "country_code",
-  "municipality_name",
 ];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -39208,6 +39203,7 @@ function ensureAddressRequestMetadata(addressPath, options = {}) {
 
   writeJSON(addressPath, payload);
 }
+
 
 async function run() {
   await main();
