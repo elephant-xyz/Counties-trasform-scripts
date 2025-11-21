@@ -39215,6 +39215,126 @@ function collapseAddressToMinimalRawVariant(addressPath, options = {}) {
   writeJSON(addressPath, minimalRaw);
 }
 
+function rewriteAddressOneOfVariant(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    normalizedCandidate[field] = sanitizeAddressFieldValue(
+      field,
+      Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null,
+    );
+  }
+
+  if (!normalizedCandidate.postal_code) {
+    normalizedCandidate.plus_four_postal_code = null;
+  }
+
+  if (
+    (normalizedCandidate.latitude == null) !==
+    (normalizedCandidate.longitude == null)
+  ) {
+    normalizedCandidate.latitude = null;
+    normalizedCandidate.longitude = null;
+  }
+
+  const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) =>
+      typeof normalizedCandidate[field] === "string" &&
+      normalizedCandidate[field].trim().length > 0,
+  );
+  const hasCoordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (field) => Number.isFinite(normalizedCandidate[field]),
+  );
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const requestIdentifierWasPresent = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const sourceHttpWasPresent = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  if (hasNormalizedStrings && hasCoordinateCoverage) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOutput[field] =
+        normalizedCandidate[field] === undefined ||
+        normalizedCandidate[field] === null
+          ? null
+          : normalizedCandidate[field];
+    }
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    } else if (requestIdentifierWasPresent) {
+      normalizedOutput.request_identifier = null;
+    }
+    if (preparedSource) {
+      normalizedOutput.source_http_request = deepClone(preparedSource);
+    } else if (sourceHttpWasPresent) {
+      normalizedOutput.source_http_request = null;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOutput);
+    return;
+  }
+
+  if (!trimmedUnnormalized.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOutput = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  if (hasCoordinateCoverage) {
+    rawOutput.latitude = normalizedCandidate.latitude;
+    rawOutput.longitude = normalizedCandidate.longitude;
+  }
+
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
+  } else if (requestIdentifierWasPresent) {
+    rawOutput.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  } else if (sourceHttpWasPresent) {
+    rawOutput.source_http_request = null;
+  }
+
+  writeJSON(addressPath, rawOutput);
+}
+
 function enforceRawAddressPreference(addressPath, options = {}) {
   const {
     unnormalizedPath = "unnormalized_address.json",
@@ -40197,6 +40317,7 @@ async function run() {
       defaultCountryCode: "US",
       extraUnnormalizedCandidates: fallbackRawCandidates,
     });
+    rewriteAddressOneOfVariant(addressPath);
     ensureRelationshipPlaceholders(dataDir);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
