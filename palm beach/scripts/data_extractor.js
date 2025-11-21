@@ -3019,6 +3019,20 @@ const RAW_ADDRESS_SURFACE_FIELDS = [
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const RAW_ADDRESS_OUTPUT_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
 const RAW_VARIANT_ALLOWED_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
+const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "municipality_name",
+  "county_name",
+  "state_code",
+  "country_code",
+  "postal_code",
+  "plus_four_postal_code",
+];
+const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
+  RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
+);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
@@ -4060,21 +4074,35 @@ function pruneRawVariantToSchemaSurface(address) {
     address.unnormalized_address.trim().length > 0;
   if (!hasRaw) return address;
 
+  const enforceMinimalSurface =
+    Object.prototype.hasOwnProperty.call(address, "__prune_raw_surface") &&
+    address.__prune_raw_surface === true;
+  if (enforceMinimalSurface) {
+    delete address.__prune_raw_surface;
+  }
+
   address.unnormalized_address = address.unnormalized_address.trim();
+
+  const allowedFieldSet = enforceMinimalSurface
+    ? RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET
+    : RAW_VARIANT_SCHEMA_FIELD_SET;
+  const allowedFieldList = enforceMinimalSurface
+    ? RAW_VARIANT_MINIMAL_SURFACE_FIELDS
+    : RAW_VARIANT_SCHEMA_FIELDS;
 
   for (const key of Object.keys(address)) {
     if (
       key === "unnormalized_address" ||
       key === "request_identifier" ||
       key === "source_http_request" ||
-      RAW_VARIANT_SCHEMA_FIELD_SET.has(key)
+      allowedFieldSet.has(key)
     ) {
       continue;
     }
     delete address[key];
   }
 
-  for (const field of RAW_VARIANT_SCHEMA_FIELDS) {
+  for (const field of allowedFieldList) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
       continue;
     }
@@ -39156,6 +39184,49 @@ function ensureRelationshipPlaceholders(dataDir) {
   }
 }
 
+function enforceMinimalRawAddressSurface(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressPath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return;
+  }
+
+  const normalizedProbe =
+    ensureAddressOutputFieldPresence &&
+    typeof ensureAddressOutputFieldPresence === "function"
+      ? ensureAddressOutputFieldPresence({ ...payload })
+      : { ...payload };
+
+  if (hasNormalizedCountyCoverage({ ...normalizedProbe })) {
+    return;
+  }
+
+  const nextPayload = {
+    ...payload,
+    unnormalized_address: trimmedUnnormalized,
+    __prune_raw_surface: true,
+  };
+
+  writeJSON(addressPath, nextPayload);
+}
+
 function ensureAddressRequestMetadata(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -39786,6 +39857,7 @@ async function run() {
     } catch {
       // Ignore cleanup failures; downstream validation will catch residual files.
     }
+    enforceMinimalRawAddressSurface(addressPath);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
