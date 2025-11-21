@@ -14,11 +14,12 @@ const cheerio = require("cheerio");
  * @typedef {Object} LayoutEntry
  * @property {string} space_type - Descriptive type of the space (e.g. Building, Bedroom, Office).
  * @property {number} space_index - Sequential index of the space within the exported structure.
- * @property {string|null} flooring_material_type - Flooring material description if known.
+ * @property {number|string|null} space_type_index - Index within a specific space type grouping.
+ * @property {string|null} building_number - Building identifier when part of a multi-building property.
+  * @property {string|null} flooring_material_type - Flooring material description if known.
  * @property {number|null} size_square_feet - Primary size metric for the space when available.
  * @property {number|null} total_area_sq_ft - Total enclosed area represented by this layout entry.
  * @property {number|null} livable_area_sq_ft - Habitable or business area associated with the space.
- * @property {string|null} floor_level - Floor level descriptor (e.g. `1st Floor`).
  * @property {boolean|null} has_windows - Whether the space includes windows.
  * @property {string|null} window_design_type - Window design descriptor if known.
  * @property {string|null} window_material_type - Window material descriptor if known.
@@ -62,7 +63,6 @@ const cheerio = require("cheerio");
  * @property {string} spaceType - Elephant-compliant `layout.space_type` value.
  * @property {boolean} isExterior - Whether the addition is exterior to the primary structure.
  * @property {boolean} isFinished - Whether the addition is a finished space.
- * @property {string|null} floorLevel - Optional floor level string associated with the addition.
  */
 
 /**
@@ -117,12 +117,12 @@ function toTitleCase(value) {
 function createBaseLayoutEntry(spaceType) {
   return {
     space_type: spaceType,
-    space_index: 0,
+    space_type_index: null,
+    building_number: null,
     flooring_material_type: null,
     size_square_feet: null,
     total_area_sq_ft: null,
     livable_area_sq_ft: null,
-    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -152,6 +152,13 @@ function createBaseLayoutEntry(spaceType) {
     pool_water_quality: null,
   };
 }
+
+/**
+ * Represents a parsed row from the "Summary of Commercial Sections Data" table.
+ * @typedef {Object} SectionLayoutRow
+ * @property {string} descriptor - Raw Section Finish descriptor text.
+ * @property {LayoutEntry} layout - Base layout entry populated with size/area values.
+ */
 
 /**
  * Extract the alternate key (property identifier) from the document.
@@ -298,23 +305,6 @@ function parseAreaPair(value) {
 }
 
 /**
- * Format a floor reference string (e.g., "01 -01") into a human-readable label.
- * @param {string|null|undefined} raw - Raw floor indicator text.
- * @returns {string|null} Normalized floor label or null when unavailable.
- */
-function formatFloorLabel(raw) {
-  if (!raw) return null;
-  const digits = raw.match(/\d+/);
-  if (digits && digits.length > 0) {
-    const floorNum = Number.parseInt(digits[0], 10);
-    if (Number.isFinite(floorNum)) {
-      return `Floor ${floorNum}`;
-    }
-  }
-  return toTitleCase(raw);
-}
-
-/**
  * Normalize a section finish descriptor by removing classification codes.
  * @param {string|null|undefined} raw - Raw section finish descriptor.
  * @returns {string} Cleaned layout space type label.
@@ -339,7 +329,7 @@ function stripLeadingClassificationCode(descriptor) {
 /**
  * Build AdditionLayoutMetadata with sensible defaults.
  * @param {string} spaceType - Elephant-compliant space type value.
- * @param {{ isExterior?: boolean; isFinished?: boolean; floorLevel?: string|null }} [overrides] - Optional metadata overrides.
+ * @param {{ isExterior?: boolean; isFinished?: boolean }} [overrides] - Optional metadata overrides.
  * @returns {AdditionLayoutMetadata} Addition layout metadata instance.
  */
 function createAdditionMetadata(spaceType, overrides) {
@@ -353,10 +343,6 @@ function createAdditionMetadata(spaceType, overrides) {
       overrides && typeof overrides.isFinished === "boolean"
         ? overrides.isFinished
         : false,
-    floorLevel:
-      overrides && typeof overrides.floorLevel === "string"
-        ? overrides.floorLevel
-        : null,
   };
 }
 
@@ -670,7 +656,6 @@ function extractAdditionLayouts($, sectionNodes) {
       const layoutEntry = createBaseLayoutEntry(metadata.spaceType);
       layoutEntry.is_exterior = metadata.isExterior;
       layoutEntry.is_finished = metadata.isFinished;
-      layoutEntry.floor_level = metadata.floorLevel;
       if (area != null) {
         layoutEntry.size_square_feet = area;
         layoutEntry.total_area_sq_ft = area;
@@ -773,10 +758,10 @@ function findValueWithinSection($, sectionNodes, label) {
  * Extract interior layout entries from summary tables within a building card.
  * @param {CheerioAPI} $ - Cheerio page instance.
  * @param {CheerioCollection[]} sectionNodes - Nodes belonging to the building card.
- * @returns {LayoutEntry[]} Parsed layout entries for the building interior.
+ * @returns {SectionLayoutRow[]} Parsed layout rows for the building interior.
  */
 function extractSectionTableLayouts($, sectionNodes) {
-  /** @type {LayoutEntry[]} */
+  /** @type {SectionLayoutRow[]} */
   const layouts = [];
   let sequence = 2;
 
@@ -795,25 +780,131 @@ function extractSectionTableLayouts($, sectionNodes) {
       const cells = $row.find("td");
       if (cells.length < 7) return;
 
-      const floorText = cleanText(cells.eq(1).text());
       const finishText = cleanText(cells.eq(2).text());
       const areaText = cleanText(cells.eq(4).text());
       const totalAreaText = cleanText(cells.eq(5).text());
       const businessAreaText = cleanText(cells.eq(6).text());
 
       const entry = createBaseLayoutEntry(formatSectionFinish(finishText));
-      entry.space_index = sequence++;
       entry.size_square_feet = parseIntSafe(areaText);
       entry.total_area_sq_ft = parseIntSafe(totalAreaText);
       entry.livable_area_sq_ft = parseIntSafe(businessAreaText);
-      entry.floor_level = formatFloorLabel(floorText);
       entry.is_finished = true;
       entry.is_exterior = false;
-      layouts.push(entry);
+      layouts.push({ descriptor: finishText, layout: entry });
     });
   });
 
   return layouts;
+}
+
+/**
+ * Map a raw section finish descriptor to Elephant-compliant layout metadata.
+ * @param {string} rawDescriptor - Raw descriptor text (may include classification codes).
+ * @returns {{ spaceType: string; isExterior: boolean; isFinished: boolean }|null} Mapping metadata or null when unmapped.
+ */
+function mapSectionFinishDescriptor(rawDescriptor) {
+  if (!rawDescriptor) return null;
+  const descriptor = stripLeadingClassificationCode(rawDescriptor);
+  const normalized = cleanText(descriptor).toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized.includes("office")) {
+    return { spaceType: "Office Room", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("conference")) {
+    return { spaceType: "Conference Room", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("class")) {
+    return { spaceType: "Class Room", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("lobby") || normalized.includes("entry")) {
+    return { spaceType: "Lobby / Entry Hall", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("laundry")) {
+    return { spaceType: "Laundry Room", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("utility")) {
+    return { spaceType: "Utility Closet", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("screen") && normalized.includes("porch")) {
+    return { spaceType: "Screened Porch", isExterior: true, isFinished: false };
+  }
+
+  if (normalized.includes("open") && normalized.includes("porch")) {
+    return { spaceType: "Open Porch", isExterior: true, isFinished: false };
+  }
+
+  if (normalized.includes("porch")) {
+    return { spaceType: "Porch", isExterior: true, isFinished: false };
+  }
+
+  if (normalized.includes("apartment")) {
+    return { spaceType: "Living Area", isExterior: false, isFinished: true };
+  }
+
+  if (normalized.includes("deck")) {
+    return { spaceType: "Deck", isExterior: true, isFinished: false };
+  }
+
+  if (normalized.includes("balcony")) {
+    return { spaceType: "Balcony", isExterior: true, isFinished: false };
+  }
+
+  if (normalized.includes("patio")) {
+    return { spaceType: "Patio", isExterior: true, isFinished: false };
+  }
+
+  if (normalized.includes("garage")) {
+    const isDetached = normalized.includes("detached");
+    return {
+      spaceType: isDetached ? "Detached Garage" : "Attached Garage",
+      isExterior: false,
+      isFinished: false,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Convert section layout rows into Elephant-compliant layout entries with indexed space types.
+ * @param {SectionLayoutRow[]} sectionRows - Parsed section rows for a building.
+ * @param {string|null} buildingNumber - Building number/string identifier.
+ * @returns {LayoutEntry[]} Layout entries suitable for export.
+ */
+function convertSectionRowsToLayouts(sectionRows, buildingNumber) {
+  /** @type {LayoutEntry[]} */
+  const mappedLayouts = [];
+  /** @type {Map<string, number>} */
+  const typeCounters = new Map();
+
+  sectionRows.forEach(({ descriptor, layout }) => {
+    const metadata =
+      mapSectionFinishDescriptor(descriptor) ??
+      mapSectionFinishDescriptor(layout.space_type);
+    if (!metadata) return;
+
+    const clonedLayout = { ...layout };
+    clonedLayout.space_type = metadata.spaceType;
+    clonedLayout.is_exterior = metadata.isExterior;
+    clonedLayout.is_finished = metadata.isFinished;
+    clonedLayout.building_number = parseIntSafe(buildingNumber);
+
+    const index = (typeCounters.get(metadata.spaceType) ?? 0) + 1;
+    typeCounters.set(metadata.spaceType, index);
+    clonedLayout.space_type_index = `${buildingNumber}.${index}`;
+
+    mappedLayouts.push(clonedLayout);
+  });
+
+  return mappedLayouts;
 }
 
 /**
@@ -830,7 +921,12 @@ function buildBuildingLayoutGroups($) {
 
   cards.forEach((card) => {
     const sectionLayouts = extractSectionTableLayouts($, card.sectionNodes);
-    const additionLayouts = extractAdditionLayouts($, card.sectionNodes);
+    const additionLayouts = extractAdditionLayouts($, card.sectionNodes).map(
+      (layout) => ({
+        ...layout,
+        building_number: card.buildingIndex,
+      }),
+    );
     const totalBusinessText = findValueWithinSection(
       $,
       card.sectionNodes,
@@ -838,7 +934,8 @@ function buildBuildingLayoutGroups($) {
     );
     const areaPair = parseAreaPair(totalBusinessText);
     const buildingLayout = createBaseLayoutEntry("Building");
-    buildingLayout.space_index = 1;
+    buildingLayout.space_type_index = String(card.buildingIndex);
+    buildingLayout.building_number = card.buildingIndex;
     buildingLayout.size_square_feet = areaPair.total;
     buildingLayout.total_area_sq_ft = areaPair.total;
     buildingLayout.livable_area_sq_ft = areaPair.business;
@@ -846,13 +943,13 @@ function buildBuildingLayoutGroups($) {
     buildingLayout.is_exterior = false;
 
     const summedTotalArea = sectionLayouts.reduce(
-      (acc, entry) =>
-        acc + (entry.total_area_sq_ft ?? entry.size_square_feet ?? 0),
+      (acc, row) =>
+        acc + (row.layout.total_area_sq_ft ?? row.layout.size_square_feet ?? 0),
       0,
     );
     const summedLivableArea = sectionLayouts.reduce(
-      (acc, entry) =>
-        acc + (entry.livable_area_sq_ft ?? entry.size_square_feet ?? 0),
+      (acc, row) =>
+        acc + (row.layout.livable_area_sq_ft ?? row.layout.size_square_feet ?? 0),
       0,
     );
     buildingLayout.space_type = "Building";
@@ -885,16 +982,30 @@ function buildBuildingLayoutGroups($) {
       buildingLayout.livable_area_sq_ft = areaPair.business;
     }
 
-    if (additionLayouts.length > 0) {
-      additionLayouts.forEach((entry, additionIdx) => {
-        entry.space_index = additionIdx + 2;
-      });
-    }
+
+
+    const sectionInteriorLayouts = convertSectionRowsToLayouts(
+      sectionLayouts,
+      card.buildingIndex,
+    );
+    
+    // Apply building-prefixed indexing to addition layouts
+    const typeCounters = new Map();
+    additionLayouts.forEach(layout => {
+      const index = (typeCounters.get(layout.space_type) ?? 0) + 1;
+      typeCounters.set(layout.space_type, index);
+      layout.space_type_index = `${card.buildingIndex}.${index}`;
+    });
+    
+    const combinedInteriorLayouts = [
+      ...sectionInteriorLayouts,
+      ...additionLayouts,
+    ];
 
     groups.push({
       building_index: card.buildingIndex,
       building_layout: buildingLayout,
-      interior_layouts: additionLayouts,
+      interior_layouts: combinedInteriorLayouts,
     });
   });
 
@@ -959,9 +1070,7 @@ function buildDefaultRoomLayouts($) {
   let index = 1;
 
   const livingArea = createBaseLayoutEntry("Living Area");
-  livingArea.space_index = index++;
   livingArea.size_square_feet = sfla ? Math.round(sfla * 0.25) : null;
-  livingArea.floor_level = "1st Floor";
   livingArea.has_windows = true;
   livingArea.is_finished = true;
   livingArea.is_exterior = false;
@@ -969,9 +1078,7 @@ function buildDefaultRoomLayouts($) {
 
   for (let i = 0; i < bedroomsCount; i += 1) {
     const bedroom = createBaseLayoutEntry("Bedroom");
-    bedroom.space_index = index++;
     bedroom.size_square_feet = null;
-    bedroom.floor_level = "1st Floor";
     bedroom.has_windows = true;
     bedroom.is_finished = true;
     bedroom.is_exterior = false;
@@ -980,9 +1087,7 @@ function buildDefaultRoomLayouts($) {
 
   for (let i = 0; i < totalFullBaths; i += 1) {
     const bathroom = createBaseLayoutEntry("Full Bathroom");
-    bathroom.space_index = index++;
     bathroom.size_square_feet = null;
-    bathroom.floor_level = "1st Floor";
     bathroom.has_windows = false;
     bathroom.is_finished = true;
     bathroom.is_exterior = false;
@@ -991,9 +1096,7 @@ function buildDefaultRoomLayouts($) {
 
   for (let i = 0; i < totalThreeQuarterBaths; i += 1) {
     const bathroom = createBaseLayoutEntry("Three-Quarter Bathroom");
-    bathroom.space_index = index++;
     bathroom.size_square_feet = null;
-    bathroom.floor_level = "1st Floor";
     bathroom.has_windows = false;
     bathroom.is_finished = true;
     bathroom.is_exterior = false;
@@ -1001,10 +1104,8 @@ function buildDefaultRoomLayouts($) {
   }
 
   for (let i = 0; i < totalHalfBaths; i += 1) {
-    const bathroom = createBaseLayoutEntry("Half Bathroom");
-    bathroom.space_index = index++;
+    const bathroom = createBaseLayoutEntry("Half Bathroom / Powder Room");
     bathroom.size_square_feet = null;
-    bathroom.floor_level = "1st Floor";
     bathroom.has_windows = false;
     bathroom.is_finished = true;
     bathroom.is_exterior = false;
@@ -1031,35 +1132,34 @@ function main() {
   const parcelIdText = findValueByLabel($, "Parcel ID");
   const parcelId = parcelIdText ? parcelIdText.replace(/[^0-9]/g, "") : null;
 
-  const buildingCount = extractBuildingCount($);
-  const buildingGroupsCandidate =
-    buildingCount != null && buildingCount > 1
-      ? buildBuildingLayoutGroups($)
-      : [];
-  const hasMultipleBuildings =
-    (buildingCount != null && buildingCount > 1) ||
-    buildingGroupsCandidate.length > 1;
-  const useBuildingGroups =
-    hasMultipleBuildings && buildingGroupsCandidate.length > 0;
-
-  const defaultLayouts = buildDefaultRoomLayouts($);
+  const buildingCards = extractBuildingCards($);
+  
   /** @type {LayoutEntry[]} */
-  let layoutsToPersist = defaultLayouts;
-  /** @type {BuildingLayoutGroup[]|null} */
-  let buildingGroupsToPersist = null;
+  let layoutsToPersist = [];
+  
+  // Always try to generate default layouts first
+  // const defaultLayouts = buildDefaultRoomLayouts($);
+  // layoutsToPersist = defaultLayouts;
+  
+  if (!buildingCards.length) {
+    console.warn("No building cards detected; using default layouts.");
+  } else {
+    const buildingCount = extractBuildingCount($);
+    const buildingGroupsCandidate = buildBuildingLayoutGroups($);
+    const hasMultipleBuildings =
+      (buildingCount != null && buildingCount > 1) ||
+      buildingGroupsCandidate.length > 1;
+    const useBuildingGroups = buildingGroupsCandidate.length > 0;
 
-  if (useBuildingGroups) {
-    buildingGroupsCandidate.forEach((group) => {
-      group.building_layout.space_type = "Building";
-      group.building_layout.space_index = 1;
-      group.interior_layouts.forEach((entry, idx) => {
-        entry.space_index = idx + 2;
+    if (useBuildingGroups) {
+      buildingGroupsCandidate.forEach((group) => {
+        group.building_layout.space_type = "Building";
       });
-    });
-    layoutsToPersist = buildingGroupsCandidate.flatMap(
-      (group) => group.interior_layouts,
-    );
-    buildingGroupsToPersist = buildingGroupsCandidate;
+      layoutsToPersist = buildingGroupsCandidate.flatMap((group) => [
+        group.building_layout,
+        ...group.interior_layouts,
+      ]);
+    }
   }
 
   const outDir = path.join(process.cwd(), "owners");
@@ -1070,22 +1170,13 @@ function main() {
     ? JSON.parse(fs.readFileSync(outPath, "utf8"))
     : {};
 
-  /** @type {Set<string>} */
-  const keys = new Set();
-  if (altkey) keys.add(`property_${altkey}`);
-  if (parcelId) keys.add(`property_${parcelId}`);
-
-  if (keys.size === 0) {
+  const key = parcelId ? `property_${parcelId}` : (altkey ? `property_${altkey}` : null);
+  
+  if (!key) {
     throw new Error("Unable to determine an identifier for layout data.");
   }
 
-  keys.forEach((key) => {
-    const record = { layouts: layoutsToPersist };
-    if (buildingGroupsToPersist && buildingGroupsToPersist.length > 0) {
-      record.building_layouts = buildingGroupsToPersist;
-    }
-    payload[key] = record;
-  });
+  payload[key] = { layouts: layoutsToPersist };
 
   fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);

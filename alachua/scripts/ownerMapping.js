@@ -53,7 +53,7 @@ function extractPropertyId($) {
 
 // Owner classification heuristics
 const COMPANY_KEYWORDS =
-  /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|tr\b|associates|partners|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings)(\b|\s)/i;
+  /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate)(\b|\s)/i;
 const SUFFIXES_IGNORE =
   /^(jr|sr|ii|iii|iv|v|vi|vii|viii|ix|x|md|phd|esq|esquire)$/i;
 
@@ -262,17 +262,20 @@ function findOwnerSection($) {
 
 function extractCurrentOwners($) {
   const sec = findOwnerSection($);
-  let nameText = "";
+  const namePieces = [];
   if (sec && sec.length) {
-    // Prefer spans with ids containing OwnerName
-    const nameSpans = sec
-      .find("span")
+    // Prefer anchors or spans with ids containing OwnerName
+    sec
+      .find("a, span")
       .filter((i, el) =>
         /ownername/i.test((el.attribs && el.attribs.id) || ""),
-      );
-    if (nameSpans.length) {
-      nameText = cleanText($(nameSpans.get(0)).text());
-    } else {
+      )
+      .each((i, el) => {
+        const txt = cleanText($(el).text());
+        if (txt) namePieces.push(txt);
+      });
+
+    if (!namePieces.length) {
       // Fallback: find the first span in owner block that is not address and has alpha
       const spans = sec.find("span");
       spans.each((i, el) => {
@@ -280,11 +283,17 @@ function extractCurrentOwners($) {
         const t = cleanText($(el).text());
         if (id.toLowerCase().includes("address")) return;
         if (/\d{3,}/.test(t)) return;
-        if (/[a-zA-Z]/.test(t) && t.length >= 3 && !nameText) nameText = t;
+        if (/[a-zA-Z]/.test(t) && t.length >= 3) namePieces.push(t);
       });
     }
   }
-  return parseOwnersFromText(nameText);
+  const combined =
+    namePieces.length === 1
+      ? namePieces[0]
+      : namePieces.length > 1
+        ? namePieces.join(" & ")
+        : "";
+  return parseOwnersFromText(combined);
 }
 
 function extractSalesHistory($) {
@@ -317,7 +326,16 @@ function extractSalesHistory($) {
     let granteeText = "";
     const granteeSpan = $tr.find('span[id*="sprGrantee"]');
     if (granteeSpan.length) {
-      granteeText = cleanText(granteeSpan.text());
+      const html = granteeSpan.html() || "";
+      if (/<br\s*\/?>/i.test(html)) {
+        granteeText = html
+          .split(/<br\s*\/?>/i)
+          .map((piece) => cleanText(piece))
+          .filter(Boolean)
+          .join(" & ");
+      } else {
+        granteeText = cleanText(granteeSpan.text());
+      }
     } else {
       // fallback by 9th column (index 8)
       const tds = $tr.find("td");
