@@ -14281,6 +14281,150 @@ function ensureCountyAddressFieldCompleteness(addressFilePath) {
   writeJSON(addressFilePath, aligned);
 }
 
+function enforceAddressOneOfReadiness(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const {
+    unnormalizedCandidates = [],
+    fieldFallbacks = {},
+    defaultCountyName = "Palm Beach",
+    defaultStateCode = "FL",
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const resolvedUnnormalized = resolveFirstNonEmptyString([
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address
+      : null,
+    ...(Array.isArray(unnormalizedCandidates)
+      ? unnormalizedCandidates
+      : []),
+  ]);
+
+  let working =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  const normalizedSatisfied = hasStrictNormalizedAddressCoverage({
+    ...working,
+  });
+
+  if (normalizedSatisfied) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        working,
+        "unnormalized_address",
+      )
+    ) {
+      delete working.unnormalized_address;
+    }
+  } else if (resolvedUnnormalized) {
+    working.unnormalized_address = resolvedUnnormalized;
+  }
+
+  if (
+    !normalizedSatisfied &&
+    (!working.unnormalized_address ||
+      !working.unnormalized_address.trim())
+  ) {
+    const fallbackRaw =
+      composeFallbackUnnormalizedAddressFromFields(working);
+    if (fallbackRaw) {
+      working.unnormalized_address = fallbackRaw;
+    }
+  }
+
+  const applyFallback = (field) => {
+    if (hasMeaningfulAddressValue(working[field])) {
+      return;
+    }
+    if (!fieldFallbacks || !fieldFallbacks[field]) {
+      return;
+    }
+    const fallbackValues = Array.isArray(fieldFallbacks[field])
+      ? fieldFallbacks[field]
+      : [fieldFallbacks[field]];
+    const resolved = resolveFirstNonEmptyString(fallbackValues);
+    if (resolved) {
+      working[field] = resolved;
+    }
+  };
+
+  [
+    "city_name",
+    "municipality_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "county_name",
+  ].forEach(applyFallback);
+
+  if (
+    !hasMeaningfulAddressValue(working.county_name) &&
+    defaultCountyName
+  ) {
+    working.county_name = defaultCountyName;
+  }
+
+  if (
+    !hasMeaningfulAddressValue(working.state_code) &&
+    defaultStateCode
+  ) {
+    working.state_code = defaultStateCode;
+  }
+
+  if (
+    hasMeaningfulAddressValue(working.state_code) &&
+    !hasMeaningfulAddressValue(working.country_code)
+  ) {
+    working.country_code = defaultCountryCode || "US";
+  }
+
+  if (!hasMeaningfulAddressValue(working.postal_code)) {
+    working.plus_four_postal_code = null;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (requestIdentifier) {
+    working.request_identifier = requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(working, "request_identifier")
+  ) {
+    working.request_identifier = null;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  if (preparedSource) {
+    working.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(
+      working,
+      "source_http_request",
+    )
+  ) {
+    delete working.source_http_request;
+  }
+
+  working =
+    ensureAddressOutputFieldPresence(working) || working;
+
+  writeJSON(addressFilePath, working);
+}
+
 function ensureCountyAddressFallback(addressFilePath, options = {}) {
   if (!addressFilePath) return;
 
@@ -36123,6 +36267,13 @@ async function run() {
         fallbackRawData && fallbackRawData.source_http_request,
         fallbackSeedData && fallbackSeedData.source_http_request,
       ],
+      defaultCountyName: "Palm Beach",
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+    enforceAddressOneOfReadiness(addressPath, {
+      unnormalizedCandidates: fallbackRawCandidates,
+      fieldFallbacks: fallbackFieldFallbacks,
       defaultCountyName: "Palm Beach",
       defaultStateCode: "FL",
       defaultCountryCode: "US",
