@@ -15366,7 +15366,33 @@ function collapseAddressToSchemaVariant(addressFilePath) {
     return;
   }
 
-  const rawOutput = { unnormalized_address: trimmedUnnormalized };
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const sanitizedValue = sanitizeAddressFieldValue(
+      field,
+      Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null,
+    );
+    rawOutput[field] =
+      sanitizedValue === undefined || sanitizedValue === null
+        ? null
+        : sanitizedValue;
+  }
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (rawOutput.state_code && !rawOutput.country_code) {
+    rawOutput.country_code = "US";
+  }
+  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  rawOutput.unnormalized_address = trimmedUnnormalized;
+
   if (resolvedRequestIdentifier) {
     rawOutput.request_identifier = resolvedRequestIdentifier;
   } else if (requestIdentifierPresent) {
@@ -36881,6 +36907,8 @@ async function run() {
       defaultStateCode: "FL",
       defaultCountryCode: "US",
     });
+    ensureRawAddressFieldSurface(addressPath);
+    enforceAddressOutputFieldCoverage(addressPath);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
