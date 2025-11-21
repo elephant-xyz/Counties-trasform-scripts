@@ -7249,15 +7249,7 @@ function hasRobustNormalizedAddress(address) {
   const normalized = { ...surface };
   const hasValidCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
     (field) => {
-      if (!Object.prototype.hasOwnProperty.call(normalized, field)) {
-        return true;
-      }
-      const value = normalized[field];
-      if (value === null || value === undefined || value === "") {
-        normalized[field] = null;
-        return true;
-      }
-      const numeric = parseCoordinate(value);
+      const numeric = parseCoordinate(normalized[field]);
       if (!Number.isFinite(numeric)) {
         return false;
       }
@@ -7270,9 +7262,9 @@ function hasRobustNormalizedAddress(address) {
     return false;
   }
 
-  for (const field of COUNTY_STRICT_NORMALIZED_FIELDS) {
-    if (!hasMeaningfulAddressValue(normalized[field])) {
-      return false;
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(normalized, field)) {
+      address[field] = normalized[field];
     }
   }
 
