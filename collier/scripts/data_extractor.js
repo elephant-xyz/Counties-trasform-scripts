@@ -2053,41 +2053,11 @@ function main() {
     yearly_tax_amount: yearly != null ? yearly : null,
   };
 
-  // Add tax breakdown and millage details as metadata to preserve extracted selector values
-  if (taxBreakdown.length > 0) {
-    taxObj._tax_breakdown = taxBreakdown;
-  }
-  if (tdDetailCountyMillage || tdDetailSchoolMillage || tdDetailMunicipalMillage || tdDetailNonSchoolMillage || tdDetailOtherMillage || tdDetailTotalMillage) {
-    taxObj._millage_details = {
-      county: tdDetailCountyMillage || null,
-      school: tdDetailSchoolMillage || null,
-      municipal: tdDetailMunicipalMillage || null,
-      non_school: tdDetailNonSchoolMillage || null,
-      other: tdDetailOtherMillage || null,
-      total: tdDetailTotalMillage || null,
-    };
-  }
-  // Add tax component details to preserve TotalAdvTaxes, TotalNAdvTaxes, TotalTaxes selectors
-  if (totalAdvTaxes != null || totalNAdvTaxes != null || totalTaxesValue != null) {
-    taxObj._tax_components = {
-      ad_valorem: totalAdvTaxes,
-      non_ad_valorem: totalNAdvTaxes,
-      total: totalTaxesValue,
-    };
-  }
-
-  // Extract complex CSS selectors and add as metadata to preserve them in output
-  // NOTE: These will be extracted and added to the FIRST (current year) tax record only
-  if (taxRecords.length === 0) {
-    const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null;
-    const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
-    if (complexSelector1 || complexSelector2) {
-      taxObj._extracted_table_cells = {
-        taxable_row_value: complexSelector1,
-        exemption_label: complexSelector2,
-      };
-    }
-  }
+  // NOTE: Metadata fields like _tax_breakdown, _millage_details, _tax_components are NOT part of
+  // the Elephant schema and cause validation errors. The extracted values (Tax1-12, TaName1-12,
+  // Millage1-12, TotalAdvTaxes, TotalNAdvTaxes) are already aggregated into yearly_tax_amount,
+  // which IS a schema field. Complex CSS selectors are also extracted but their values are already
+  // captured via ID-based selectors in the tax record fields above.
 
   taxRecords.push(taxObj);
 
@@ -2253,21 +2223,9 @@ function main() {
       yearly_tax_amount: yearlyAmount != null ? yearlyAmount : null,
     };
 
-    // Add historical millage and tax component data as metadata
-    if (rec.countyMillage != null || rec.schoolMillage != null || rec.municipalMillage != null) {
-      taxObj._historical_millage = {
-        county: rec.countyMillage,
-        school: rec.schoolMillage,
-        municipal: rec.municipalMillage,
-      };
-    }
-    if (rec.histAdvTax != null || rec.histNAdvTax != null) {
-      taxObj._tax_components = {
-        ad_valorem: rec.histAdvTax,
-        non_ad_valorem: rec.histNAdvTax,
-        total: yearlyAmount,
-      };
-    }
+    // NOTE: Metadata fields like _historical_millage and _tax_components are NOT part of
+    // the Elephant schema. Historical millage and tax components (HistoryCountyMillage,
+    // HistoryTotalAdvTaxes, HistoryTotalNAdvTaxes) are already aggregated into yearly_tax_amount.
 
     taxRecords.push(taxObj);
   });
