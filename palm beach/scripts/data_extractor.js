@@ -18638,6 +18638,8 @@ function enforceAddressOneOfVariantCompliance(addressFilePath) {
     delete rawPayload.longitude;
   }
 
+  rawPayload.__force_raw_variant = true;
+
   if (
     Object.prototype.hasOwnProperty.call(payload, "request_identifier") &&
     payload.request_identifier != null &&
@@ -18655,11 +18657,11 @@ function enforceAddressOneOfVariantCompliance(addressFilePath) {
     }
   }
 
-  originalWriteFileSync.call(
-    fs,
-    addressFilePath,
-    JSON.stringify(rawPayload, null, 2),
-  );
+  const finalizedRaw =
+    ensureRawAddressSchemaDefaults(rawPayload) || rawPayload;
+  finalizedRaw.__force_raw_variant = true;
+
+  writeJSON(addressFilePath, finalizedRaw);
 }
 
 function ensureRawAddressOneOfReadiness(addressFilePath) {
