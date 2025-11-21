@@ -38641,8 +38641,11 @@ function enforceAddressVariantSelection(addressPath, options = {}) {
       : null;
 
   let normalizedCandidate = null;
-  if (normalizedProbe && hasCompleteNormalizedAddress({ ...normalizedProbe })) {
-    normalizedCandidate = normalizedProbe;
+  if (normalizedProbe) {
+    const normalizedSnapshot = { ...normalizedProbe };
+    if (hasMinimalNormalizedAddressCoverage(normalizedSnapshot)) {
+      normalizedCandidate = normalizedSnapshot;
+    }
   }
 
   const rawCandidates = [];
