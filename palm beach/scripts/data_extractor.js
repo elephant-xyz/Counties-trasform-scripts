@@ -618,6 +618,33 @@ function rewriteAddressWithSchemaGuard(addressFilePath) {
   writeJSON(addressFilePath, payload);
 }
 
+function enforceAddressOutputFieldCoverage(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const completedPayload = ensureAddressOutputFieldPresence(payload);
+  if (!completedPayload || typeof completedPayload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  writeJSON(addressFilePath, completedPayload);
+}
+
 function prepareSourceHttpRequest(raw) {
   if (!raw || typeof raw !== "object") return null;
   const allowedKeys = new Set([
@@ -35876,6 +35903,7 @@ async function run() {
       defaultCountyName: "Palm Beach",
       defaultCountryCode: "US",
     });
+    enforceAddressOutputFieldCoverage(addressPath);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
