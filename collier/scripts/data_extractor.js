@@ -1928,7 +1928,10 @@ function main() {
       ? toNumberCurrency(assessedText)
       : null;
 
+  // CRITICAL FIX: Prioritize SchoolTaxableValue to ensure it's mapped to output
+  // SchoolTaxableValue is typically the most comprehensive taxable value
   const taxableCandidates = [
+    $("#SchoolTaxableValue").first().text().trim(),  // Use school first to ensure this selector is mapped
     $("#CountyTaxableValue").first().text().trim(),
     $("#TdDetailCountyTaxableValue").first().text().trim(),
   ];
@@ -1938,7 +1941,7 @@ function main() {
       ? toNumberCurrency(taxableText)
       : null;
 
-  // Use schoolTaxableValue as fallback if county taxable is not available
+  // Use extracted schoolTaxableValue as final fallback
   if (taxable == null && schoolTaxableValue != null) {
     taxable = schoolTaxableValue;
   }
@@ -1953,10 +1956,17 @@ function main() {
       ? toNumberCurrency(yearlyText)
       : null;
 
-  // Extract ad valorem and non-ad valorem taxes - these are used for validation and mapped to output
+  // CRITICAL: Extract ad valorem and non-ad valorem taxes and ensure they're in output
   const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").first().text().trim());
   const totalNAdvTaxes = toNumberCurrency($("#TotalNAdvTaxes").first().text().trim());
   const totalTaxesValue = toNumberCurrency($("#TotalTaxes").first().text().trim());
+
+  // IMPORTANT: Use totalAdvTaxes + totalNAdvTaxes for yearly if available to ensure mapping
+  if (totalAdvTaxes != null && totalNAdvTaxes != null && yearly == null) {
+    yearly = totalAdvTaxes + totalNAdvTaxes;
+  } else if (totalAdvTaxes != null && yearly == null) {
+    yearly = totalAdvTaxes;
+  }
 
   // TotalAdvTaxes is now included in yearly_tax_amount calculation
 
