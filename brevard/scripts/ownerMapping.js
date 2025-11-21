@@ -42,6 +42,91 @@ const companyIndicators = [
   "group",
 ];
 
+const PREFIX_ENUMS = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Miss",
+  "Mx.",
+  "Dr.",
+  "Prof.",
+  "Rev.",
+  "Fr.",
+  "Sr.",
+  "Br.",
+  "Capt.",
+  "Col.",
+  "Maj.",
+  "Lt.",
+  "Sgt.",
+  "Hon.",
+  "Judge",
+  "Rabbi",
+  "Imam",
+  "Sheikh",
+  "Sir",
+  "Dame",
+];
+
+const PREFIX_SYNONYMS = {
+  mister: "Mr.",
+  missus: "Mrs.",
+  misses: "Mrs.",
+  madam: "Mrs.",
+  madame: "Mrs.",
+  mistress: "Mrs.",
+  doctor: "Dr.",
+  professor: "Prof.",
+  reverend: "Rev.",
+  father: "Fr.",
+  sister: "Sr.",
+  brother: "Br.",
+  captain: "Capt.",
+  colonel: "Col.",
+  major: "Maj.",
+  lieutenant: "Lt.",
+  sergeant: "Sgt.",
+  honorable: "Hon.",
+  honourable: "Hon.",
+  sheik: "Sheikh",
+};
+
+const SUFFIX_ENUMS = [
+  "Jr.",
+  "Sr.",
+  "II",
+  "III",
+  "IV",
+  "PhD",
+  "MD",
+  "Esq.",
+  "JD",
+  "LLM",
+  "MBA",
+  "RN",
+  "DDS",
+  "DVM",
+  "CFA",
+  "CPA",
+  "PE",
+  "PMP",
+  "Emeritus",
+  "Ret.",
+];
+
+const SUFFIX_SYNONYMS = {
+  junior: "Jr.",
+  senior: "Sr.",
+  second: "II",
+  "2nd": "II",
+  third: "III",
+  "3rd": "III",
+  fourth: "IV",
+  "4th": "IV",
+  esquire: "Esq.",
+  retired: "Ret.",
+};
+
 function toTitleCase(str) {
   return str
     .toLowerCase()
@@ -49,6 +134,37 @@ function toTitleCase(str) {
       /\b([A-Za-z][A-Za-z'\-]*)/g,
       (m) => m.charAt(0).toUpperCase() + m.slice(1),
     );
+}
+
+function normalizeAffixKey(value) {
+  return value ? value.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+}
+
+function buildAffixMap(values, aliases = {}) {
+  const map = {};
+  const assign = (token, canonical) => {
+    const key = normalizeAffixKey(token);
+    if (key) map[key] = canonical;
+  };
+  for (const value of values) {
+    if (!value) continue;
+    const canonical = value;
+    assign(canonical, canonical);
+    if (canonical.endsWith(".")) {
+      assign(canonical.slice(0, -1), canonical);
+    }
+  }
+  for (const [alias, canonical] of Object.entries(aliases)) {
+    assign(alias, canonical);
+  }
+  return map;
+}
+
+const PREFIX_MAPPING = buildAffixMap(PREFIX_ENUMS, PREFIX_SYNONYMS);
+const SUFFIX_MAPPING = buildAffixMap(SUFFIX_ENUMS, SUFFIX_SYNONYMS);
+
+function normalizeAffixToken(token) {
+  return normalizeAffixKey(token);
 }
 
 function normalizeSpace(s) {
@@ -60,9 +176,11 @@ function isCompany(nameRaw) {
   return companyIndicators.some((ind) => n.includes(" " + ind + " "));
 }
 
-function stripSuffixes(s) {
-  // Remove common suffixes like JR, SR, II, III at end of segment
-  return s.replace(/\b(JR|SR|II|III|IV|V)\.?$/i, "").trim();
+function isAllCaps(str) {
+  const letters = str.replace(/[^A-Za-z]/g, "");
+  if (!letters) return false;
+  const caps = letters.replace(/[^A-Z]/g, "").length;
+  return caps / letters.length > 0.9;
 }
 
 function splitCompoundAndNames(segment) {
@@ -96,40 +214,105 @@ function splitCompoundAndNames(segment) {
 }
 
 function classifyPersonName(name) {
-  let first = "",
-    middle = "",
-    last = "";
-  const s = normalizeSpace(name);
-  if (!s) return null;
-  if (s.includes(",")) {
-    // Format: LAST, FIRST [MIDDLE]
-    const parts = s.split(",");
-    last = stripSuffixes(parts[0].trim());
-    const rest = normalizeSpace(parts.slice(1).join(","))
-      .split(" ")
-      .filter(Boolean);
-    if (rest.length >= 1) {
-      first = rest[0];
-      if (rest.length > 1) middle = rest.slice(1).join(" ");
+  const raw = normalizeSpace(name).replace(/&/g, " ");
+  if (!raw) return null;
+
+  let prefix_name = null;
+  let suffix_name = null;
+  let first = "";
+  let middle = "";
+  let last = "";
+
+  const commaParts = raw
+    .split(",")
+    .map((part) => normalizeSpace(part))
+    .filter(Boolean);
+
+  if (commaParts.length > 1) {
+    last = commaParts[0];
+    let remainder = commaParts.slice(1).join(" ");
+    let tokens = remainder.split(" ").filter(Boolean);
+    if (!tokens.length) return null;
+
+    const lastToken = tokens[tokens.length - 1];
+    const suffixCandidate = SUFFIX_MAPPING[normalizeAffixToken(lastToken)];
+    if (suffixCandidate) {
+      suffix_name = suffixCandidate;
+      tokens.pop();
+    }
+
+    if (!tokens.length) return null;
+
+    const firstToken = tokens[0];
+    const prefixCandidate = PREFIX_MAPPING[normalizeAffixToken(firstToken)];
+    if (prefixCandidate) {
+      prefix_name = prefixCandidate;
+      tokens.shift();
+    }
+
+    if (!tokens.length) return null;
+
+    first = tokens.shift() || "";
+    middle = tokens.join(" ");
+
+    const lastTokens = last.split(" ").filter(Boolean);
+    if (lastTokens.length) {
+      const lastSuffixCandidate =
+        SUFFIX_MAPPING[normalizeAffixToken(lastTokens[lastTokens.length - 1])];
+      if (lastSuffixCandidate) {
+        suffix_name = suffix_name || lastSuffixCandidate;
+        lastTokens.pop();
+        last = lastTokens.join(" ");
+      }
     }
   } else {
-    // Format: FIRST [MIDDLE] LAST
-    const tokens = s.split(" ").filter(Boolean);
-    if (tokens.length === 1) {
-      // Single token cannot confidently classify as person
-      return null;
+    let tokens = raw.split(" ").filter(Boolean);
+    if (tokens.length < 2) return null;
+
+    const firstToken = tokens[0];
+    const prefixCandidate = PREFIX_MAPPING[normalizeAffixToken(firstToken)];
+    if (prefixCandidate) {
+      prefix_name = prefixCandidate;
+      tokens.shift();
     }
-    first = tokens[0];
-    last = stripSuffixes(tokens[tokens.length - 1]);
-    if (tokens.length > 2) middle = tokens.slice(1, -1).join(" ");
+
+    if (!tokens.length) return null;
+
+    const lastToken = tokens[tokens.length - 1];
+    const suffixCandidate = SUFFIX_MAPPING[normalizeAffixToken(lastToken)];
+    if (suffixCandidate) {
+      suffix_name = suffixCandidate;
+      tokens.pop();
+    }
+
+    if (tokens.length < 2) return null;
+
+    const coreString = tokens.join(" ");
+    if (isAllCaps(coreString)) {
+      last = tokens[0] || "";
+      first = tokens[1] || "";
+      middle = tokens.slice(2).join(" ");
+    } else {
+      first = tokens[0] || "";
+      last = tokens[tokens.length - 1] || "";
+      middle = tokens.slice(1, -1).join(" ");
+    }
   }
-  first = toTitleCase(first);
-  last = toTitleCase(last);
+
+  first = normalizeSpace(first);
+  last = normalizeSpace(last);
   middle = normalizeSpace(middle);
-  const obj = { type: "person", first_name: first, last_name: last };
-  if (middle) obj.middle_name = toTitleCase(middle);
-  if (!obj.first_name || !obj.last_name) return null;
-  return obj;
+
+  if (!first || !last) return null;
+
+  return {
+    type: "person",
+    first_name: toTitleCase(first),
+    last_name: toTitleCase(last),
+    middle_name: middle ? toTitleCase(middle) : null,
+    prefix_name,
+    suffix_name,
+  };
 }
 
 function classifyOwner(name) {
