@@ -108,6 +108,18 @@ function readText(p) {
 }
 
 function stripAddressRequestMetadata(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    delete address.request_identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    delete address.source_http_request;
+  }
+
   return address;
 }
 
@@ -2760,6 +2772,20 @@ const RAW_VARIANT_OPTIONAL_FIELDS_FOR_ONE_OF = [
   "lot",
 ];
 
+const RAW_VARIANT_OUTPUT_ALLOWLIST = [
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "county_name",
+  "country_code",
+  "township",
+  "range",
+  "section",
+  "lot",
+  "block",
+];
+
 function applyAddressSchemaDefaultsForVariant(address, variantHint) {
   if (!address || typeof address !== "object") return null;
 
@@ -3868,6 +3894,118 @@ function buildNormalizedAddressOutputForSchema(source) {
   }
 
   return normalized;
+}
+
+function buildStrictRawAddressOutput(source, rawValue) {
+  const trimmed =
+    typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!trimmed.length) {
+    return null;
+  }
+
+  const rawOutput = {
+    unnormalized_address: trimmed,
+  };
+
+  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
+    const hasField = Object.prototype.hasOwnProperty.call(source, field);
+    if (!hasField) continue;
+    const candidate = sanitizeAddressFieldValue(field, source[field]);
+    if (candidate === undefined || candidate === null) {
+      continue;
+    }
+    if (typeof candidate === "string") {
+      const trimmedCandidate = candidate.trim();
+      if (!trimmedCandidate.length) {
+        continue;
+      }
+      rawOutput[field] = trimmedCandidate;
+      continue;
+    }
+    rawOutput[field] = candidate;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOutput.state_code) &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = "US";
+  }
+
+  if (!hasMeaningfulAddressValue(rawOutput.county_name)) {
+    rawOutput.county_name = null;
+  }
+
+  return rawOutput;
+}
+
+function enforceAddressBranchOutput(addressFilePath) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const normalizedSnapshot = { ...payload };
+  const normalizedReady = hasStrictNormalizedAddressCoverage(
+    normalizedSnapshot,
+  );
+
+  if (normalizedReady) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema(normalizedSnapshot) ||
+      resolveNormalizedAddressVariantForOneOf(normalizedSnapshot);
+    if (normalizedOutput && typeof normalizedOutput === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+      const sanitized = stripAddressRequestMetadata(normalizedOutput);
+      ensureDir(path.dirname(addressFilePath));
+      fs.writeFileSync(
+        addressFilePath,
+        JSON.stringify(sanitized, null, 2),
+      );
+      return;
+    }
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const fallbackRaw =
+    trimmedUnnormalized.length > 0
+      ? trimmedUnnormalized
+      : composeFallbackUnnormalizedAddressFromFields(payload);
+
+  const rawOutput = buildStrictRawAddressOutput(payload, fallbackRaw);
+  if (!rawOutput) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const sanitizedRaw = stripAddressRequestMetadata(rawOutput);
+  ensureDir(path.dirname(addressFilePath));
+  fs.writeFileSync(
+    addressFilePath,
+    JSON.stringify(sanitizedRaw, null, 2),
+  );
 }
 
 function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
@@ -36278,6 +36416,7 @@ async function run() {
       defaultStateCode: "FL",
       defaultCountryCode: "US",
     });
+    enforceAddressBranchOutput(addressPath);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
