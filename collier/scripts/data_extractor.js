@@ -548,24 +548,44 @@ function parseAddress(
   return structured;
 }
 
+function readJsonSafe(p) {
+  try {
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, "utf8"));
+    }
+  } catch (e) {
+    console.warn(`Warning: Could not read ${p}: ${e.message}`);
+  }
+  return null;
+}
+
 function main() {
-  const inHtmlPath = path.join("input.html");
-  const unaddrPath = path.join("unnormalized_address.json");
-  const seedPath = path.join("property_seed.json");
-  const ownersPath = path.join("owners", "owner_data.json");
-  const utilsPath = path.join("owners", "utilities_data.json");
-  const layoutPath = path.join("owners", "layout_data.json");
+  // Look for HTML file in input directory (relative to script location)
+  const inputDir = path.join(__dirname, "..", "..", "input");
+  const htmlFiles = fs.readdirSync(inputDir).filter(f => f.endsWith('.html'));
+  const htmlFileName = htmlFiles.length > 0 ? htmlFiles[0] : null;
+
+  if (!htmlFileName) {
+    throw new Error("No HTML file found in input directory");
+  }
+
+  const inHtmlPath = path.join(inputDir, htmlFileName);
+  const unaddrPath = path.join(inputDir, "unnormalized_address.json");
+  const seedPath = path.join(inputDir, "property_seed.json");
+  const ownersPath = path.join(inputDir, "owners", "owner_data.json");
+  const utilsPath = path.join(inputDir, "owners", "utilities_data.json");
+  const layoutPath = path.join(inputDir, "owners", "layout_data.json");
 
   const html = fs.readFileSync(inHtmlPath, "utf8");
   const $ = cheerio.load(html);
 
-  const unaddr = readJson(unaddrPath);
-  const seed = readJson(seedPath);
-  const owners = readJson(ownersPath);
-  const utils = readJson(utilsPath);
-  const layouts = readJson(layoutPath);
+  const unaddr = readJsonSafe(unaddrPath) || {};
+  const seed = readJsonSafe(seedPath) || {};
+  const owners = readJsonSafe(ownersPath) || {};
+  const utils = readJsonSafe(utilsPath) || {};
+  const layouts = readJsonSafe(layoutPath) || {};
 
-  const dataDir = path.join(".", "data");
+  const dataDir = path.join(__dirname, "..", "..", "data");
   ensureDir(dataDir);
 
   const folio = seed.request_identifier || seed.parcel_id;

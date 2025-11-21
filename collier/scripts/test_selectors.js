@@ -1,7 +1,13 @@
 const fs = require('fs');
 const cheerio = require('cheerio');
+const path = require('path');
 
-const html = fs.readFileSync('../input/16059920002.html', 'utf8');
+// Find HTML file in input directory
+const inputDir = path.join(__dirname, '..', 'input');
+const htmlFiles = fs.readdirSync(inputDir).filter(f => f.endsWith('.html'));
+const htmlFile = htmlFiles[0] || '16059920002.html';
+
+const html = fs.readFileSync(path.join(inputDir, htmlFile), 'utf8');
 const $ = cheerio.load(html);
 
 console.log('taxyear38:', $('#taxyear38').text().trim());
