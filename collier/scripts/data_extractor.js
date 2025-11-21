@@ -2308,17 +2308,8 @@ function main() {
     }
   }
 
-  // Extract remaining complex CSS selectors
-  // These selectors represent the same data as ID-based selectors, already written to tax/address files
-  const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null;
-  const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
-  const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim() || null;
-  const complexSelector4 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim() || null;
-
-  // These complex selectors are extracted and their data is already in output via ID selectors
-  // complexSelector1 typically contains taxable values (already in tax_N.json)
-  // complexSelector2 typically contains exemption labels (data already in tax_N.json via ID selectors)
-  // complexSelector3 and complexSelector4 represent table cells with data already captured via ID-based selectors
+  // NOTE: Complex CSS selectors (without IDs) are NOT queried because their values
+  // are already captured by ID-based selectors elsewhere in the script and written to output
 
   // Map complex selector values to tax/address records if they contain meaningful data
   // These are typically already captured via ID selectors, but we document them here
