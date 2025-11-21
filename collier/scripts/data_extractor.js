@@ -558,6 +558,7 @@ function parseAddress(
     street_suffix_type: suffixType || null,
     township: township || null,
     unit_identifier: unitId || null,
+    // unnormalized_address: fullAddress || null,
   };
 }
 
@@ -773,8 +774,8 @@ function main() {
     );
 
     const relDf = {
-      to: { "/": `./deed_${idx + 1}.json` },
-      from: { "/": `./file_${idx + 1}.json` },
+      from: { "/": `./deed_${idx + 1}.json` },
+      to: { "/": `./file_${idx + 1}.json` },
     };
     fs.writeFileSync(
       path.join(dataDir, `relationship_deed_file_${idx + 1}.json`),
@@ -806,8 +807,8 @@ function main() {
     if (orig !== -1) {
       const deedIdx = orig + 1;
       const rel = {
-        to: { "/": `./sales_${idx + 1}.json` },
-        from: { "/": `./deed_${deedIdx}.json` },
+        from: { "/": `./sales_${idx + 1}.json` },
+        to: { "/": `./deed_${deedIdx}.json` },
       };
       fs.writeFileSync(
         path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`),
@@ -1020,6 +1021,7 @@ function main() {
         spa_installation_date: null,
         spa_type: null,
         space_index: idx, // Use the layout index as space_index
+        space_type_index: "1",
         space_type: spaceType,
         story_type: null,
         total_area_sq_ft: null,
