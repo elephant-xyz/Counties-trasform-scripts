@@ -4076,22 +4076,61 @@ function pruneRawVariantToSchemaSurface(address) {
 
   for (const field of RAW_VARIANT_SCHEMA_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      address[field] = null;
       continue;
     }
 
-    const candidate = address[field];
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(candidate);
-      address[field] = Number.isFinite(numeric) ? numeric : null;
+    const sanitizedValue = sanitizeAddressFieldValue(field, address[field]);
+    if (
+      sanitizedValue === undefined ||
+      sanitizedValue === null ||
+      (typeof sanitizedValue === "string" && !sanitizedValue.trim().length)
+    ) {
+      delete address[field];
       continue;
     }
 
-    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
-    address[field] =
-      normalizedValue === undefined || normalizedValue === null
-        ? null
-        : normalizedValue;
+    if (
+      ADDRESS_COORDINATE_FIELDS.includes(field) &&
+      !Number.isFinite(sanitizedValue)
+    ) {
+      delete address[field];
+      continue;
+    }
+
+    address[field] = sanitizedValue;
+  }
+
+  const hasLatitude = Object.prototype.hasOwnProperty.call(
+    address,
+    "latitude",
+  );
+  const hasLongitude = Object.prototype.hasOwnProperty.call(
+    address,
+    "longitude",
+  );
+  if (hasLatitude || hasLongitude) {
+    if (
+      !Number.isFinite(address.latitude) ||
+      !Number.isFinite(address.longitude)
+    ) {
+      delete address.latitude;
+      delete address.longitude;
+    }
+  }
+
+  if (!hasMeaningfulAddressValue(address.postal_code)) {
+    delete address.plus_four_postal_code;
+  }
+
+  if (hasMeaningfulAddressValue(address.state_code)) {
+    if (!hasMeaningfulAddressValue(address.country_code)) {
+      address.country_code = "US";
+    }
+  } else if (
+    Object.prototype.hasOwnProperty.call(address, "country_code") &&
+    !hasMeaningfulAddressValue(address.country_code)
+  ) {
+    delete address.country_code;
   }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
@@ -4100,12 +4139,10 @@ function pruneRawVariantToSchemaSurface(address) {
   } else if (
     Object.prototype.hasOwnProperty.call(address, "request_identifier")
   ) {
-    address.request_identifier = null;
+    delete address.request_identifier;
   }
 
-  const preparedSource = prepareSourceHttpRequest(
-    address.source_http_request,
-  );
+  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
   if (preparedSource) {
     address.source_http_request = deepClone(preparedSource);
   } else if (
