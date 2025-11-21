@@ -7,10 +7,8 @@ const htmlPath = path.join(process.cwd(), "input.html");
 const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
-const PARCEL_SELECTOR =
-  "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
-const CURRENT_OWNER_SELECTOR =
-  "#ctlBodyPane_ctl05_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lblSearch";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl05_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lblSearch";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl12_ctl01_grdSales tbody tr";
 
 // Utility helpers
@@ -71,15 +69,13 @@ function normalizeWhitespace(str) {
 
 function cleanInvalidCharsFromName(raw) {
   let parsedName = normalizeWhitespace(raw)
-    .replace(/\([^)]*\)/g, "") // Remove anything in parentheses
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
     .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
     .trim();
-  while (/^[\-', .]/i.test(parsedName)) {
-    // Cannot start or end with special characters
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
     parsedName = parsedName.slice(1);
   }
-  while (/[\-', .]$/i.test(parsedName)) {
-    // Cannot start or end with special characters
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
     parsedName = parsedName.slice(0, parsedName.length - 1);
   }
   return parsedName;
@@ -114,6 +110,7 @@ const COMPANY_KEYWORDS = [
   "university",
   "authority",
 ];
+
 
 function isCompanyName(name) {
   const n = name.toLowerCase();
@@ -152,13 +149,13 @@ function classifyOwner(raw) {
   // }
   const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
   if (first && last) {
-    const person = {
-      type: "person",
-      first_name: first,
-      last_name: last,
-      middle_name: middle ? middle : null,
-    };
-    return { valid: true, owner: person };
+  const person = {
+    type: "person",
+    first_name: first,
+    last_name: last,
+    middle_name: middle ? middle : null,
+  };
+  return { valid: true, owner: person };
   }
   return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
@@ -193,7 +190,7 @@ function getParcelId($) {
 function extractCurrentOwners($) {
   const owners = [];
   $(CURRENT_OWNER_SELECTOR).each((i, el) => {
-    const owner_text_split = $(el).text().split("\n");
+    const owner_text_split = $(el).text().split('\n');
     for (const owner of owner_text_split) {
       if (owner.trim() && !owner.toLowerCase().includes("primary")) {
         const t = txt(owner.trim());

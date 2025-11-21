@@ -2566,11 +2566,16 @@ function writeTaxes(input) {
   valuation.cols.forEach((c, i) => {
     idx[c.title] = i;
   });
-  if (!idx.hasOwnProperty("Tax Year") || !idx.hasOwnProperty("Non-School Assessed Value") || !idx.hasOwnProperty("County Taxable Value")) {
+  if ((!idx.hasOwnProperty("Tax Year") && !idx.hasOwnProperty("January 1 Tax Year")) || !idx.hasOwnProperty("Non-School Assessed Value") || !idx.hasOwnProperty("County Taxable Value")) {
     return; // Check for Mandatory properties
   }
   valuation.rows.forEach((v, i) => {
-    const taxYear = parseInt(v[idx["Tax Year"]], 10);
+    let taxYear = null;
+    if ("Tax Year" in idx) {
+      taxYear = parseInt(v[idx["Tax Year"]], 10);
+    } else {
+      taxYear = parseInt(v[idx["January 1 Tax Year"]], 10);
+    }
     const assessedValue = parseCurrencyToNumber(v[idx["Non-School Assessed Value"]]);
     const taxableValue = parseCurrencyToNumber(v[idx["County Taxable Value"]]);
     let marketValue = null;

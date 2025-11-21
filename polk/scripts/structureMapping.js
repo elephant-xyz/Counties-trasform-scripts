@@ -32,139 +32,390 @@ function getParcelId($) {
   return "unknown_property_id";
 }
 
-function extractBuildings($) {
-  const result = [];
-  $("#bldngs h4").each((i, el) => {
-    const h4 = $(el);
-    if (!/BUILDING\s+\d+/i.test(h4.text())) return;
-    const container = h4.nextAll("table").first();
-    if (container.length === 0) return;
+function parsePolkHtml($) {
+  return {
+    parcelInformation: parseParcelInformation($),
+    buildings: parseBuildings($),
+    extraFeatures: parseExtraFeatures($),
+    valueSummary: parseValueSummary($),
+    priorYearFinalValues: parsePriorYearValues($),
+  };
+}
 
-    let livingArea = null;
-    let yearBuilt = null;
-    let buildingValue = null; // Added buildingValue
-    const charBlockText = container.text();
-    const laMatch = charBlockText.match(/Living\s*Area:\s*([0-9,]+)/i);
-    if (laMatch) livingArea = parseNumber(laMatch[1]);
-    const ybMatch = charBlockText.match(/Actual\s*Year\s*Built:\s*(\d{4})/i);
-    if (ybMatch) yearBuilt = parseNumber(ybMatch[1]);
-    const bvMatch = charBlockText.match(/Building\s*Value:\s*\$([0-9,]+)/i); // Extract Building Value
-    if (bvMatch) buildingValue = parseNumber(bvMatch[1]);
+function parseParcelInformation($) {
+  const infoHeading = $("h4")
+    .filter((_, el) => cleanText($(el).text()) === "Parcel Information")
+    .first();
+  if (!infoHeading.length) {
+    return {};
+  }
 
-    // Element table
-    const elementTable = container
-      .find("table")
-      .filter((_, t) =>
-        $(t)
-          .find("tr.header td")
-          .first()
-          .text()
-          .toUpperCase()
-          .includes("ELEMENT"),
-      )
-      .first();
-    let substruct = null;
-    let frameType = null;
-    let exteriorWall = null;
-    let roofStructure = null;
-    let bedrooms = null; // Added bedrooms
-    let fullBaths = null; // Added fullBaths
-    let halfBaths = null; // Added halfBaths
-    let fireplace = null; // Added fireplace
-    let centralHeatingAc = null; // Added centralHeatingAc
-    let style = null; // Added style
-    let units = null; // Added units
-    let storyHeightInfo = null; // Added storyHeightInfo
+  const table = infoHeading.nextAll("table").first();
+  if (!table.length) {
+    return {};
+  }
 
-    if (elementTable.length) {
-      elementTable.find("tr").each((_, tr) => {
-        const tds = $(tr).find("td");
-        if (tds.length >= 3) {
-          const label = $(tds[0]).text().trim().toUpperCase();
-          const info = $(tds[2]).text().trim().toUpperCase();
-          const unitsVal = $(tds[1]).text().trim(); // Get units value
-
-          if (label.includes("SUBSTRUCT")) substruct = info;
-          if (label.includes("FRAME") || label.includes("CONST TYPE"))
-            frameType = info;
-          if (label.includes("EXTERIOR WALL")) exteriorWall = info;
-          if (label.includes("ROOF STRUCTURE")) roofStructure = info;
-          if (label.includes("BEDROOM")) bedrooms = parseNumber(unitsVal);
-          if (label.includes("FULL BATH")) fullBaths = parseNumber(unitsVal);
-          if (label.includes("HALF BATH")) halfBaths = parseNumber(unitsVal);
-          if (label.includes("FIREPLACE")) fireplace = unitsVal === 'Y';
-          if (label.includes("CNTRL HEATING / AC")) centralHeatingAc = unitsVal === 'Y';
-          if (label.includes("STYLE")) style = info;
-          if (label.includes("UNITS")) units = parseNumber(unitsVal);
-          if (label.includes("STORY HEIGHT INFO ONLY")) storyHeightInfo = info;
-        }
-      });
+  const data = {};
+  table.find("tr").each((_, row) => {
+    const cells = $(row).find("td");
+    if (cells.length < 2) {
+      return;
     }
-
-    // Subareas table to compute base and upper story
-    let baseArea = null;
-    let upperArea = 0;
-    let totalUnderRoof = null; // Added totalUnderRoof
-    let totalLivingArea = null; // Added totalLivingArea
-
-    const subareasTable = container
-      .find("table.center")
-      .filter((_, t) =>
-        $(t)
-          .find("tr.header td")
-          .first()
-          .text()
-          .toUpperCase()
-          .includes("CODE/DESCRIPTION"),
-      )
-      .first();
-    if (subareasTable.length) {
-      subareasTable.find("tr").each((_, tr) => {
-        const tds = $(tr).find("td");
-        if (tds.length >= 3) {
-          const name = $(tds[0]).text().trim().toUpperCase();
-          const totalTxt = $(tds[2]).text();
-          const total = parseNumber(totalTxt) || 0;
-          if (name.startsWith("BASE AREA")) baseArea = total;
-          if (name.startsWith("TWO")) upperArea = total;
-        }
-      });
-      // Extract Total Under Roof and Total Living Area from the footer of the subareas table
-      const footerRows = subareasTable.find('tr.header');
-      footerRows.each((_, row) => {
-        const rowText = $(row).text().trim().toUpperCase();
-        const turMatch = rowText.match(/TOTAL UNDER ROOF\s*([0-9,]+)\s*SQ FT/);
-        if (turMatch) totalUnderRoof = parseNumber(turMatch[1]);
-        const tlaMatch = rowText.match(/TOTAL LIVING AREA\s*([0-9,]+)\s*SQ FT/);
-        if (tlaMatch) totalLivingArea = parseNumber(tlaMatch[1]);
-      });
+    const key = toCamelCase(getCellText(cells.eq(0)));
+    if (!key) {
+      return;
     }
-
-    result.push({
-      idx: i + 1,
-      title: h4.text().trim(),
-      livingArea,
-      yearBuilt,
-      buildingValue, // Added
-      substruct,
-      frameType,
-      exteriorWall,
-      roofStructure,
-      bedrooms, // Added
-      fullBaths, // Added
-      halfBaths, // Added
-      fireplace, // Added
-      centralHeatingAc, // Added
-      style, // Added
-      units, // Added
-      storyHeightInfo, // Added
-      baseArea,
-      upperArea,
-      totalUnderRoof, // Added
-      totalLivingArea, // Added
-    });
+    const value = getCellText(cells.eq(1));
+    data[key] = value || null;
   });
+
+  return data;
+}
+
+function parseBuildings($) {
+  const buildingSections = $("#bldngs .pagebreak").filter((_, section) => {
+    const header = $(section).children("h4").first();
+    return header.length && /building/i.test(header.text());
+  });
+
+  return buildingSections
+    .map((_, section) => parseBuildingSection($, $(section)))
+    .get()
+    .filter(Boolean);
+}
+
+function parseBuildingSection($, section) {
+  const heading = section.children("h4").first();
+  if (!heading.length) {
+    return null;
+  }
+
+  const label = cleanText(heading.clone().children().remove().end().text());
+  const type = cleanText(heading.find("a").text());
+  const characteristicsHeading = section
+    .find("h4")
+    .filter((_, el) => cleanText($(el).text()) === "Building Characteristics")
+    .first();
+  const charContainer = characteristicsHeading.length ? characteristicsHeading.parent() : $();
+  const characteristics = charContainer.length ? extractCharacteristicPairs($, charContainer) : {};
+  const elementsTable = charContainer.length ? charContainer.find("table").first() : $();
+  const elements = parseStandardTable($, elementsTable);
+
+  const subareaHeading = section
+    .find("h4")
+    .filter((_, el) => cleanText($(el).text()) === "Building Subareas")
+    .first();
+  const subareaTable = subareaHeading.length ? subareaHeading.nextAll("table").first() : $();
+  const { rows: subareas, totals: subareaTotals } = parseSubareaTable($, subareaTable);
+
+  const situsAddress = cleanText(
+    section.find("td").eq(1).find("h4").first().text()
+  );
+
+  return {
+    label: label || null,
+    type: type || null,
+    situsAddress: situsAddress || null,
+    characteristics,
+    elements,
+    subareas,
+    subareaTotals,
+  };
+}
+
+function extractCharacteristicPairs($, container) {
+  if (!container || !container.length) {
+    return {};
+  }
+  const result = {};
+
+  container.find("b").each((_, bold) => {
+    const label = cleanText($(bold).text()).replace(/:$/, "");
+    const key = toCamelCase(label);
+    if (!key) {
+      return;
+    }
+
+    const value = cleanText(readSiblingText(bold));
+    if (!value) {
+      return;
+    }
+    result[key] = value;
+  });
+
   return result;
+}
+
+function readSiblingText(node) {
+  let text = "";
+  let current = node.nextSibling;
+  while (current) {
+    if (current.type === "text") {
+      text += current.data;
+      current = current.nextSibling;
+      continue;
+    }
+
+    if (current.type === "tag") {
+      const tagName = current.name ? current.name.toLowerCase() : "";
+      if (tagName === "br") {
+        break;
+      }
+      if (/^h\d$/.test(tagName) || tagName === "b" || tagName === "table" || tagName === "div") {
+        break;
+      }
+    }
+    current = current.nextSibling;
+  }
+  return text;
+}
+
+function parseStandardTable($, table) {
+  if (!table || !table.length) {
+    return [];
+  }
+
+  const rows = table.find("tr");
+  if (!rows.length) {
+    return [];
+  }
+
+  const headerCells = rows.first().find("th, td");
+  if (!headerCells.length) {
+    return [];
+  }
+
+  const headers = headerCells
+    .map((idx, cell) => {
+      const headerText = getCellText($(cell));
+      const key = toCamelCase(headerText) || `column${idx + 1}`;
+      return key;
+    })
+    .get();
+
+  return rows
+    .slice(1)
+    .map((_, row) => {
+      const cells = $(row).find("td");
+      if (cells.length !== headers.length) {
+        return null;
+      }
+
+      const record = {};
+      headers.forEach((header, idx) => {
+        const value = getCellText(cells.eq(idx));
+        record[header] = value || null;
+      });
+      return record;
+    })
+    .get()
+    .filter(Boolean);
+}
+
+function parseSubareaTable($, table) {
+  if (!table || !table.length) {
+    return { rows: [], totals: {} };
+  }
+
+  const rows = table.find("tr");
+  if (!rows.length) {
+    return { rows: [], totals: {} };
+  }
+
+  const headerCells = rows.first().find("th, td");
+  const headers = headerCells
+    .map((idx, cell) => {
+      const headerText = getCellText($(cell));
+      return toCamelCase(headerText) || `column${idx + 1}`;
+    })
+    .get();
+
+  const data = [];
+  const totals = {};
+
+  rows.slice(1).each((_, row) => {
+    const cells = $(row).find("td");
+    if (!cells.length) {
+      return;
+    }
+
+    const hasColspan = cells.filter((_, cell) => $(cell).attr("colspan")).length > 0;
+    if (hasColspan) {
+      const label = getCellText(cells.first());
+      const key = toCamelCase(label);
+      if (key) {
+        totals[key] = getCellText(cells.last()) || null;
+      }
+      return;
+    }
+
+    if (cells.length !== headers.length) {
+      return;
+    }
+
+    const record = {};
+    headers.forEach((header, idx) => {
+      record[header] = getCellText(cells.eq(idx)) || null;
+    });
+    data.push(record);
+  });
+
+  return { rows: data, totals };
+}
+
+function parseExtraFeatures($) {
+  const heading = $("h3")
+    .filter((_, el) => cleanText($(el).text()).startsWith("Extra Features"))
+    .first();
+  if (!heading.length) {
+    return [];
+  }
+  const table = heading.nextAll("table").first();
+  return parseStandardTable($, table);
+}
+
+function parseValueSummary($) {
+  const table = $("#valueSummary table").first();
+  if (!table.length) {
+    return { rows: [], note: null };
+  }
+
+  const rows = parseStandardTable($, table);
+  const noteRow = table.find("tr").filter((_, row) => $(row).find("td[colspan]").length).first();
+
+  return {
+    rows,
+    note: noteRow.length ? cleanText(noteRow.text()) || null : null,
+  };
+}
+
+function parsePriorYearValues($) {
+  const table = $("#priorValues table").first();
+  return parseStandardTable($, table);
+}
+
+function getCellText(cell) {
+  if (!cell || !cell.length) {
+    return "";
+  }
+  const clone = cell.clone();
+  clone.find("br").replaceWith(" ");
+  return cleanText(clone.text());
+}
+
+function cleanText(value) {
+  if (!value) {
+    return "";
+  }
+  return value.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function toCamelCase(text) {
+  if (!text) {
+    return "";
+  }
+  const cleaned = text.replace(/[^a-zA-Z0-9]+/g, " ").trim();
+  if (!cleaned) {
+    return "";
+  }
+  return cleaned
+    .split(" ")
+    .map((part, idx) => {
+      if (!part) {
+        return "";
+      }
+      return idx === 0
+        ? part.toLowerCase()
+        : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join("");
+}
+
+function mapPolkBuildings(parsedBuildings = []) {
+  return parsedBuildings
+    .map((building, idx) => convertParsedBuilding(building, idx))
+    .filter(Boolean);
+}
+
+function convertParsedBuilding(building, index) {
+  if (!building) {
+    return null;
+  }
+
+  const layoutBuilding = {
+    index: index + 1,
+    beds: 0,
+    full: 0,
+    half: 0,
+    livingArea: null,
+    totalUnderRoof: null,
+    yearBuilt: null,
+    style: null,
+    storyHeightInfo: null,
+    substructure: null,
+    frameConstType: null,
+    exteriorWall: null,
+    roofStructure: null,
+    subareas: [],
+  };
+
+  const characteristics = building.characteristics || {};
+  layoutBuilding.livingArea = parseNumber(characteristics.livingArea);
+  layoutBuilding.totalUnderRoof = parseNumber(characteristics.totalUnderRoof);
+  layoutBuilding.yearBuilt = parseNumber(characteristics.actualYearBuilt);
+
+  (building.elements || []).forEach(element => {
+    const label = cleanText(element.element || "").toUpperCase();
+    if (!label) {
+      return;
+    }
+    const unitValue = parseNumber(element.units);
+    const infoValue = cleanText(element.information || "") || null;
+
+    if (label === "BEDROOM") {
+      layoutBuilding.beds = unitValue ?? layoutBuilding.beds;
+    } else if (label === "FULL BATH") {
+      layoutBuilding.full = unitValue ?? layoutBuilding.full;
+    } else if (label === "HALF BATH") {
+      layoutBuilding.half = unitValue ?? layoutBuilding.half;
+    } else if (label === "STYLE") {
+      layoutBuilding.style = infoValue;
+    } else if (label === "SUBSTRUCT") {
+      layoutBuilding.substructure = infoValue;
+    } else if (label === "FRAME / CONST TYPE") {
+      layoutBuilding.frameConstType = infoValue;
+    } else if (label === "EXTERIOR WALL") {
+      layoutBuilding.exteriorWall = infoValue;
+    } else if (label === "ROOF STRUCTURE") {
+      layoutBuilding.roofStructure = infoValue;
+    } else if (label === "STORY HEIGHT INFO ONLY") {
+      layoutBuilding.storyHeightInfo = infoValue;
+    }
+  });
+
+  layoutBuilding.subareas = (building.subareas || [])
+    .map(sub => {
+      const codeDesc = cleanText(sub.codeDescription || "").toUpperCase();
+      if (!codeDesc) {
+        return null;
+      }
+      const heatedValue =
+        typeof sub.heated === "string"
+          ? sub.heated.trim().toUpperCase() === "Y"
+          : Boolean(sub.heated);
+      const total = parseNumber(sub.total);
+      if (total == null) {
+        return null;
+      }
+      return {
+        codeDesc,
+        heated: heatedValue,
+        total,
+      };
+    })
+    .filter(Boolean);
+
+  return layoutBuilding;
 }
 
 function mapExteriorWallToEnum(val) {
@@ -218,18 +469,6 @@ function mapFoundationType(val) {
   return null;
 }
 
-// Function to extract roof age from the HTML
-function getRoofAgeYears($) {
-  const effectiveYearText = $('span:contains("Effective Year:")').text();
-  const match = effectiveYearText.match(/Effective Year:\s*(\d{4})/);
-  if (match) {
-    const effectiveYear = parseInt(match[1], 10);
-    const currentYear = new Date().getFullYear();
-    return currentYear - effectiveYear;
-  }
-  return null;
-}
-
 // Function to determine roof covering material
 function getRoofCoveringMaterial(roofStructure) {
   if (!roofStructure) return null;
@@ -240,103 +479,92 @@ function getRoofCoveringMaterial(roofStructure) {
   return null;
 }
 
-// Function to determine ceiling height (placeholder, as it's not directly in HTML)
-function getCeilingHeightAverage($) {
-  // This information is not directly available in the provided HTML.
-  // You might need to infer it from other data or leave it as null.
-  return null;
-}
+function buildStructureRecord(buildings) {
+  let structures = {};
+  buildings.forEach((b, bIdx) => {
+    const exteriorPrimary = mapExteriorWallToEnum(b.exteriorWall);
+    const primaryFrame = mapFrameToEnum(b.frameType);
+    const roofDesign = mapRoofDesign(b.roofStructure);
+    const roofMaterialType = mapRoofMaterialType(b.roofStructure);
+    const foundationType = mapFoundationType(b.substruct);
+    const roofCoveringMaterial = getRoofCoveringMaterial(b.roofStructure);
+    const structure = {
+      architectural_style_type: null,
+      attachment_type: null,
+      ceiling_condition: null,
+      ceiling_height_average: null,
+      ceiling_insulation_type: null,
+      ceiling_structure_material: null,
+      ceiling_surface_material: null,
+      exterior_door_installation_date: null,
+      exterior_door_material: null,
+      exterior_wall_condition: null,
+      exterior_wall_condition_primary: null,
+      exterior_wall_condition_secondary: null,
+      exterior_wall_insulation_type: null,
+      exterior_wall_insulation_type_primary: null,
+      exterior_wall_insulation_type_secondary: null,
+      exterior_wall_material_primary: exteriorPrimary,
+      exterior_wall_material_secondary: null,
+      finished_base_area: null,
+      finished_basement_area: null,
+      finished_upper_story_area: null,
+      flooring_condition: null,
+      flooring_material_primary: null,
+      flooring_material_secondary: null,
+      foundation_condition: null,
+      foundation_material: null,
+      foundation_repair_date: null,
+      foundation_type: foundationType,
+      foundation_waterproofing: null,
+      gutters_condition: null,
+      gutters_material: null,
+      interior_door_material: null,
+      interior_wall_condition: null,
+      interior_wall_finish_primary: null,
+      interior_wall_finish_secondary: null,
+      interior_wall_structure_material: null,
+      interior_wall_structure_material_primary: null,
+      interior_wall_structure_material_secondary: null,
+      interior_wall_surface_material_primary: null,
+      interior_wall_surface_material_secondary: null,
+      number_of_stories: null,
+      primary_framing_material: primaryFrame,
+      roof_age_years: null,
+      roof_condition: null,
+      roof_covering_material: roofCoveringMaterial,
+      roof_date: null,
+      roof_design_type: roofDesign,
+      roof_material_type: roofMaterialType,
+      roof_structure_material: null,
+      roof_underlayment_type: null,
+      secondary_framing_material: null,
+      siding_installation_date: null,
+      structural_damage_indicators: null,
+      subfloor_material: null,
+      unfinished_base_area: null,
+      unfinished_basement_area: null,
+      unfinished_upper_story_area: null,
+      window_frame_material: null,
+      window_glazing_type: null,
+      window_installation_date: null,
+      window_operation_type: null,
+      window_screen_material: null,
+    };
+    structures[(bIdx + 1).toString()] = structure;
+  });
 
-function buildStructureObject(primaryBuilding, $) {
-  const exteriorPrimary = mapExteriorWallToEnum(primaryBuilding.exteriorWall);
-  const primaryFrame = mapFrameToEnum(primaryBuilding.frameType);
-  const roofDesign = mapRoofDesign(primaryBuilding.roofStructure);
-  const roofMaterialType = mapRoofMaterialType(primaryBuilding.roofStructure);
-  const foundationType = mapFoundationType(primaryBuilding.substruct);
-  const roofAgeYears = getRoofAgeYears($); // Fetch roof age
-
-  const upperVal =
-    Number.isFinite(primaryBuilding.upperArea) && primaryBuilding.upperArea > 0
-      ? Math.round(primaryBuilding.upperArea)
-      : null;
-
-  const roofCoveringMaterial = getRoofCoveringMaterial(primaryBuilding.roofStructure);
-
-  const obj = {
-    architectural_style_type: null, // Not directly available, could be inferred from 'style'
-    attachment_type: "Detached", // Assumed from "Single Family"
-    ceiling_condition: null, // Not available
-    ceiling_height_average: getCeilingHeightAverage($), // Not directly available
-    ceiling_insulation_type: null, // Not available
-    ceiling_structure_material: null, // Not available
-    ceiling_surface_material: null, // Not available
-    exterior_door_material: null, // Not available
-    exterior_wall_condition: null, // Not available
-    exterior_wall_condition_primary: null, // Not available
-    exterior_wall_condition_secondary: null, // Not available
-    exterior_wall_insulation_type: null, // Not available
-    exterior_wall_insulation_type_primary: null, // Not available
-    exterior_wall_insulation_type_secondary: null, // Not available
-    exterior_wall_material_primary: exteriorPrimary,
-    exterior_wall_material_secondary: null, // Not available
-    finished_base_area: Number.isFinite(primaryBuilding.baseArea)
-      ? Math.round(primaryBuilding.baseArea)
-      : null,
-    finished_basement_area: null, // Not available
-    finished_upper_story_area: upperVal,
-    flooring_condition: null, // Not available
-    flooring_material_primary: null, // Not available
-    flooring_material_secondary: null, // Not available
-    foundation_condition: null, // Not available
-    foundation_material: null, // Not available
-    foundation_type: foundationType,
-    foundation_waterproofing: null, // Not available
-    gutters_condition: null, // Not available
-    gutters_material: null, // Not available
-    interior_door_material: null, // Not available
-    interior_wall_condition: null, // Not available
-    interior_wall_finish_primary: null, // Not available
-    interior_wall_finish_secondary: null, // Not available
-    interior_wall_structure_material: null, // Not available
-    interior_wall_structure_material_primary: null, // Not available
-    interior_wall_structure_material_secondary: null, // Not available
-    interior_wall_surface_material_primary: null, // Not available
-    interior_wall_surface_material_secondary: null, // Not available
-    primary_framing_material: primaryFrame,
-    roof_age_years: roofAgeYears, // Added
-    roof_condition: null, // Not available
-    roof_covering_material: roofCoveringMaterial, // Added
-    roof_design_type: roofDesign,
-    roof_material_type: roofMaterialType,
-    roof_structure_material: null, // Not available
-    roof_underlayment_type: null, // Not available
-    secondary_framing_material: null, // Not available
-    structural_damage_indicators: null, // Not available
-    subfloor_material: null, // Not available
-    unfinished_base_area: null, // Not available
-    unfinished_basement_area: null, // Not available
-    unfinished_upper_story_area: null, // Not available
-    window_frame_material: null, // Not available
-    window_glazing_type: null, // Not available
-    window_operation_type: null, // Not available
-    window_screen_material: null, // Not available
-  };
-  return obj;
+  return structures;
 }
 
 function main() {
   const html = readInputHtml();
   const $ = cheerio.load(html);
   const parcelId = getParcelId($);
-  const buildings = extractBuildings($);
-  // Choose largest living area as primary
-  let primary = null;
-  buildings.forEach((b) => {
-    if (!primary || (b.livingArea || 0) > (primary.livingArea || 0))
-      primary = b;
-  });
-  if (!primary && buildings.length) primary = buildings[0];
-  const structureObj = buildStructureObject(primary || {}, $); // Pass $ to access other parts of the HTML
+
+  const parsedData = parsePolkHtml($);
+  const buildings = mapPolkBuildings(parsedData.buildings || []);
+  const structureObj = buildStructureRecord(buildings || []);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
