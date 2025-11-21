@@ -83,7 +83,9 @@ function finalizeAddressWritePayload(rawPayload) {
 
   const normalizedProbe = deepClone(completed) || { ...completed };
   const hasNormalizedCoverage =
-    !forceRawVariant && hasNormalizedCountyCoverage(normalizedProbe);
+    !forceRawVariant &&
+    (hasMinimalNormalizedAddressCoverage(normalizedProbe) ||
+      hasNormalizedCountyCoverage(normalizedProbe));
 
   if (hasNormalizedCoverage) {
     const normalizedOutput =
@@ -6802,6 +6804,39 @@ function hasNormalizedCountyCoverage(address) {
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(normalizedProbe, field)) {
       address[field] = normalizedProbe[field];
+    }
+  }
+
+  return true;
+}
+
+function hasMinimalNormalizedAddressCoverage(address) {
+  if (!address || typeof address !== "object") return false;
+
+  const normalizedSurface = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...address })
+    : { ...address };
+
+  const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(normalizedSurface[field]),
+  );
+  if (!hasRequiredStrings) {
+    return false;
+  }
+
+  const coordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (field) =>
+      hasMeaningfulAddressValue(
+        sanitizeAddressFieldValue(field, normalizedSurface[field]),
+      ),
+  );
+  if (!coordinateCoverage) {
+    return false;
+  }
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(normalizedSurface, field)) {
+      address[field] = normalizedSurface[field];
     }
   }
 
@@ -38408,6 +38443,7 @@ async function run() {
       process.exitCode = 1;
     }
   }
+
 }
 
 run().catch((error) => {
