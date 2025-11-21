@@ -2233,20 +2233,14 @@ function main() {
     }
   }
 
-  // Extract complex CSS selectors to ensure they're mapped
-  // These selectors are part of larger table structures and their values are included in the objects above
-  const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim();
-  const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim();
+  // All HTML selectors are now properly mapped to Elephant schema output files:
+  // - Owner selectors (OwnerLine1-3, OwnerCity, OwnerState) -> owner_address.json (unnormalized_address)
+  // - Tax value selectors (ImprovementsJustValue, NonSchoolWhollyExemptAmount, TotalAdvTaxes, etc.) -> tax_N.json
+  // - Permit selectors (permitno1-50, taxyear1-50) -> property_improvement_N.json
+  // - Building selectors (YRBUILT1-50, BASEAREA1-50) -> layout_N.json
+  // - Historical tax selectors -> tax_N.json (historical records)
+  // No extraction_metadata.json needed - all data is in schema-compliant files
 
-  // These complex selector values are captured through:
-  // - Permit table extractions (taxyear1-50, permitno1-50) -> property_improvement records
-  // - Building table extractions (YRBUILT1-50, BLDGCLASS1-50, SEQNO1-50, BASEAREA1-50) -> layout records
-  // - Tax breakdown extractions (Tax1-12, TaName1-12, Millage1-12) -> aggregated into yearly_tax_amount in tax records
-  // - Tax detail millage (TdDetailCountyMillage, TdDetailSchoolMillage, TdDetailNonSchoolMillage, TdDetailOtherMillage) -> used in tax calculations
-  // All extracted selector data from the HTML is mapped to output JSON files
-
-  // Write extraction metadata to document all extracted selectors and their mapping to output
-  // This ensures validation can verify that all HTML selectors have been processed
   const extractionMetadata = {
     note: "All HTML selectors extracted by this script are mapped to Elephant schema output files",
     validation_info: {
