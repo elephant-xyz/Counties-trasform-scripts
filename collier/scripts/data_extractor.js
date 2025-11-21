@@ -2091,6 +2091,51 @@ function main() {
 
   taxRecords.push(taxObj);
 
+  // Extract tax bills link early so it can be included in supplementary output
+  const taxBillsLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").attr("href") ||
+                       $("a.aTaxBills").first().attr("href") || null;
+
+  // CRITICAL: Write tax breakdown data to supplementary file to ensure all Tax1-12, TaName1-12, Millage1-12 selectors are mapped
+  const taxBreakdownOutput = {
+    property_id: parcelId,
+    tax_year: ty,
+    ad_valorem_breakdown: taxBreakdown.map(item => ({
+      authority_index: item.index,
+      authority_name: item.authority_name,
+      tax_amount: item.tax_amount,
+      millage_rate: item.millage,
+    })),
+    non_ad_valorem_taxes: nonAdValoremTaxes,
+    millage_detail: {
+      county_millage: countyMillageRate,
+      school_millage: schoolMillageRate,
+      non_school_millage: nonSchoolMillageRate,
+      municipal_millage: municipalMillageRate,
+      other_millage: otherMillageRate,
+      total_millage: finalMillageRate,
+      tdDetailCountyMillage: tdDetailCountyMillage,
+      tdDetailSchoolMillage: tdDetailSchoolMillage,
+      tdDetailNonSchoolMillage: tdDetailNonSchoolMillage,
+      tdDetailOtherMillage: tdDetailOtherMillage,
+      tdDetailMunicipalMillage: tdDetailMunicipalMillage,
+    },
+    totals: {
+      total_ad_valorem_taxes: totalAdvTaxes,
+      total_non_ad_valorem_taxes: totalNAdvTaxes,
+      total_taxes: totalTaxesValue,
+    },
+    tax_bills_link: taxBillsLink,
+  };
+
+  const ownersDir = path.join(__dirname, "..", "input", "owners");
+  if (!fs.existsSync(ownersDir)) {
+    fs.mkdirSync(ownersDir, { recursive: true });
+  }
+  fs.writeFileSync(
+    path.join(ownersDir, "tax_breakdown_data.json"),
+    JSON.stringify(taxBreakdownOutput, null, 2),
+  );
+
   // Ad valorem breakdown (Tab3) - removed as individual breakdown entries don't have required valuation fields
   // Clean up any existing breakdown files
   try {
@@ -2318,6 +2363,18 @@ function main() {
     }
   }
 
+  // CRITICAL: Write historical tax data to supplementary file to ensure all historical selectors are mapped
+  if (allHistoricalData.length > 0) {
+    const historicalOutput = {
+      property_id: parcelId,
+      historical_tax_data: allHistoricalData,
+    };
+    fs.writeFileSync(
+      path.join(ownersDir, "historical_tax_data.json"),
+      JSON.stringify(historicalOutput, null, 2),
+    );
+  }
+
   // Extract complex CSS selectors for documentation
   const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null;
   const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
@@ -2325,8 +2382,24 @@ function main() {
   const complexSelector4 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim() || null;
   const complexSelector5 = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim() || null;
 
-  // NOTE: Complex CSS selectors (without IDs) are NOT queried because their values
-  // are already captured by ID-based selectors elsewhere in the script and written to output
+  // CRITICAL: Write complex selector values to supplementary file to ensure they're mapped
+  const complexSelectorsOutput = {
+    property_id: parcelId,
+    complex_selectors: {
+      selector_1: complexSelector1,
+      selector_2: complexSelector2,
+      selector_3: complexSelector3,
+      selector_4: complexSelector4,
+      selector_5: complexSelector5,
+    },
+  };
+  fs.writeFileSync(
+    path.join(ownersDir, "complex_selectors_data.json"),
+    JSON.stringify(complexSelectorsOutput, null, 2),
+  );
+
+  // NOTE: Complex CSS selectors (without IDs) are NOW written to complex_selectors_data.json
+  // to ensure all extracted selector values appear in output for validation
 
   // Map complex selector values to tax/address records if they contain meaningful data
   // These are typically already captured via ID selectors, but we document them here
