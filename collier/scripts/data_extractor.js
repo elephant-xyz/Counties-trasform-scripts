@@ -2288,8 +2288,10 @@ function main() {
     }
   }
 
-  // Extract remaining complex CSS selectors (1 and 2 already extracted in tax object above)
+  // Extract remaining complex CSS selectors
   // These selectors represent the same data as ID-based selectors, already written to tax/address files
+  const complexSelector1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(50) > td.clsFieldR:nth-child(5)").text().trim() || null;
+  const complexSelector2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").text().trim() || null;
   const complexSelector3 = $("div:nth-child(1) > table.clsWide:nth-child(3) > tbody > tr > td.clsFieldR:nth-child(1)").text().trim() || null;
   const complexSelector4 = $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)").text().trim() || null;
 
