@@ -25589,64 +25589,11 @@ function composeMinimalRawAddress(address) {
 
 function buildRawAddressSubmissionPayload(address) {
   if (!address || typeof address !== "object") return null;
-
-  const trimmedUnnormalized =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!trimmedUnnormalized.length) {
-    return null;
+  const composed = composeMinimalRawAddress(address);
+  if (composed) {
+    return composed;
   }
-
-  const rawOutput = {
-    unnormalized_address: trimmedUnnormalized,
-  };
-
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    rawOutput.latitude = latitude;
-    rawOutput.longitude = longitude;
-  }
-
-  for (const field of RAW_ADDRESS_SUBMISSION_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
-    }
-    const normalizedValue = sanitizeAddressFieldValue(field, address[field]);
-    if (normalizedValue === undefined || normalizedValue === null) {
-      continue;
-    }
-    rawOutput[field] = normalizedValue;
-  }
-
-  if (
-    hasMeaningfulAddressValue(rawOutput.state_code) &&
-    !hasMeaningfulAddressValue(rawOutput.country_code)
-  ) {
-    rawOutput.country_code = "US";
-  }
-
-  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
-    delete rawOutput.postal_code;
-    if (Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")) {
-      delete rawOutput.plus_four_postal_code;
-    }
-  } else if (!hasMeaningfulAddressValue(rawOutput.plus_four_postal_code)) {
-    delete rawOutput.plus_four_postal_code;
-  }
-
-  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-  if (requestIdentifier !== undefined) {
-    rawOutput.request_identifier = requestIdentifier;
-  }
-
-  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
-  if (preparedSource) {
-    rawOutput.source_http_request = deepClone(preparedSource);
-  }
-
-  return rawOutput;
+  return null;
 }
 
 function buildRawAddressFallbackPayload(source, options = {}) {
