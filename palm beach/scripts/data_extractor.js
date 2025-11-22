@@ -30,16 +30,16 @@ function finalizeAddressWritePayload(rawPayload) {
     delete completed.__force_raw_variant;
   }
 
-  const hasRawSourceAddress =
-    typeof completed.unnormalized_address === "string" &&
-    completed.unnormalized_address.trim().length > 0;
-  const shouldPreferRawVariant = forceRawVariant || hasRawSourceAddress;
-
   const normalizedProbe = deepClone(completed) || { ...completed };
   const hasNormalizedCoverage =
-    !shouldPreferRawVariant &&
+    !forceRawVariant &&
     (hasMinimalNormalizedAddressCoverage(normalizedProbe) ||
       hasNormalizedCountyCoverage(normalizedProbe));
+
+  const requestIdentifier = safeNullIfEmpty(completed.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    completed.source_http_request,
+  );
 
   if (hasNormalizedCoverage) {
     const normalizedOutput =
@@ -49,23 +49,45 @@ function finalizeAddressWritePayload(rawPayload) {
     ) {
       delete normalizedOutput.unnormalized_address;
     }
+    if (requestIdentifier !== null && requestIdentifier !== undefined) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(normalizedOutput, "request_identifier")
+    ) {
+      delete normalizedOutput.request_identifier;
+    }
+    if (preparedSource) {
+      normalizedOutput.source_http_request = deepClone(preparedSource);
+    } else if (
+      Object.prototype.hasOwnProperty.call(normalizedOutput, "source_http_request")
+    ) {
+      delete normalizedOutput.source_http_request;
+    }
     return stripAddressRequestMetadata(normalizedOutput);
   }
 
-  const rawValue = hasRawSourceAddress
-    ? completed.unnormalized_address.trim()
-    : "";
-  if (rawValue.length) {
-    const rawOutput = pruneRawVariantToSchemaSurface({
-      ...completed,
-      unnormalized_address: rawValue,
-    });
-    if (rawOutput) {
-      return stripAddressRequestMetadata(rawOutput);
-    }
+  const rawValue =
+    typeof completed.unnormalized_address === "string"
+      ? completed.unnormalized_address.trim()
+      : "";
+
+  if (!rawValue.length) {
+    return null;
   }
 
-  return stripAddressRequestMetadata(completed);
+  const rawOutput = {
+    unnormalized_address: rawValue,
+  };
+  if (requestIdentifier !== null && requestIdentifier !== undefined) {
+    rawOutput.request_identifier = requestIdentifier;
+  }
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  }
+
+  // Raw branch intentionally keeps only the unnormalized string plus metadata so the
+  // address instance satisfies the schema's oneOf without requiring structured fields.
+  return stripAddressRequestMetadata(rawOutput);
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -40435,11 +40457,7 @@ function forceRawAddressOutputFromSource(addressPath, options = {}) {
     ) {
       delete normalizedVariant.unnormalized_address;
     }
-    originalWriteFileSync(
-      addressPath,
-      JSON.stringify(normalizedVariant, null, 2),
-      "utf8",
-    );
+    writeJSON(addressPath, normalizedVariant);
     return;
   }
 
@@ -40550,11 +40568,7 @@ function forceRawAddressOutputFromSource(addressPath, options = {}) {
   ) {
     delete sanitized.__force_raw_variant;
   }
-  originalWriteFileSync(
-    addressPath,
-    JSON.stringify(sanitized, null, 2),
-    "utf8",
-  );
+  writeJSON(addressPath, sanitized);
 }
 
 function enforceSourceDrivenAddressVariant(addressPath, options = {}) {
@@ -41248,11 +41262,7 @@ function finalizeCountyAddressOneOfShape(addressPath, options = {}) {
     normalizedVariant.source_http_request = sourceHttpRequest
       ? deepClone(sourceHttpRequest)
       : null;
-    originalWriteFileSync.call(
-      fs,
-      addressPath,
-      JSON.stringify(normalizedVariant, null, 2),
-    );
+    writeJSON(addressPath, normalizedVariant);
     return;
   }
 
@@ -41413,11 +41423,7 @@ function finalizeCountyAddressOneOfShape(addressPath, options = {}) {
     ? deepClone(sourceHttpRequest)
     : null;
 
-  originalWriteFileSync.call(
-    fs,
-    addressPath,
-    JSON.stringify(rawOutput, null, 2),
-  );
+  writeJSON(addressPath, rawOutput);
 }
 
 function enforceRawAddressFallbackVariant(addressPath, options = {}) {
