@@ -41150,17 +41150,11 @@ function rewriteAddressOneOfVariant(addressPath) {
     normalizedCandidate.longitude = null;
   }
 
-  const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof normalizedCandidate[field] === "string" &&
-      normalizedCandidate[field].trim().length > 0,
-  );
-  const hasCoordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-    (field) =>
-      normalizedCandidate[field] === undefined ||
-      normalizedCandidate[field] === null ||
-      Number.isFinite(normalizedCandidate[field]),
-  );
+  const normalizedSurface = { ...normalizedCandidate };
+  const normalizedCoverage =
+    typeof hasRobustNormalizedAddress === "function"
+      ? hasRobustNormalizedAddress(normalizedSurface)
+      : false;
 
   const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
   const requestIdentifierWasPresent = Object.prototype.hasOwnProperty.call(
@@ -41175,14 +41169,14 @@ function rewriteAddressOneOfVariant(addressPath) {
     payload.source_http_request,
   );
 
-  if (hasNormalizedStrings && hasCoordinateCoverage) {
+  if (normalizedCoverage) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       normalizedOutput[field] =
-        normalizedCandidate[field] === undefined ||
-        normalizedCandidate[field] === null
+        normalizedSurface[field] === undefined ||
+        normalizedSurface[field] === null
           ? null
-          : normalizedCandidate[field];
+          : normalizedSurface[field];
     }
     if (requestIdentifier) {
       normalizedOutput.request_identifier = requestIdentifier;
@@ -41217,21 +41211,20 @@ function rewriteAddressOneOfVariant(addressPath) {
   };
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+    if (!Object.prototype.hasOwnProperty.call(normalizedSurface, field)) {
       continue;
     }
-    const value = normalizedCandidate[field];
+    const value = normalizedSurface[field];
     rawOutput[field] =
       value === undefined || value === null ? null : value;
   }
 
-  if (hasCoordinateCoverage) {
-    rawOutput.latitude = normalizedCandidate.latitude;
-    rawOutput.longitude = normalizedCandidate.longitude;
-  } else {
-    rawOutput.latitude = null;
-    rawOutput.longitude = null;
-  }
+  const parsedLatitude = parseCoordinate(rawOutput.latitude);
+  const parsedLongitude = parseCoordinate(rawOutput.longitude);
+  const hasCoordinatePair =
+    Number.isFinite(parsedLatitude) && Number.isFinite(parsedLongitude);
+  rawOutput.latitude = hasCoordinatePair ? parsedLatitude : null;
+  rawOutput.longitude = hasCoordinatePair ? parsedLongitude : null;
 
   if (!rawOutput.postal_code) {
     rawOutput.plus_four_postal_code = null;
