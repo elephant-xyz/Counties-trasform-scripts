@@ -41121,6 +41121,47 @@ async function run() {
         fallbackSeedData && fallbackSeedData.source_http_request,
       ],
     });
+    emitFinalCountyAddressPayload(addressPath, {
+      unnormalizedCandidates: [
+        ...fallbackRawCandidates,
+        ...((ADDRESS_FALLBACK_CONTEXT &&
+          Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)) ?
+          ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates :
+          []),
+      ],
+      fallbackCountyName: [
+        fallbackRawData && fallbackRawData.county_name,
+        fallbackRawData && fallbackRawData.county_jurisdiction,
+        "Palm Beach",
+      ],
+      fallbackStateCode: [
+        fallbackRawData && fallbackRawData.state_code,
+        "FL",
+      ],
+      fallbackCountryCode: "US",
+      fallbackCityName: [
+        fallbackRawData && fallbackRawData.city_name,
+        fallbackRawData && fallbackRawData.municipality_name,
+      ],
+      fallbackMunicipalityName: [
+        fallbackRawData && fallbackRawData.municipality_name,
+      ],
+      fallbackPostalCode: [
+        fallbackRawData && fallbackRawData.postal_code,
+      ],
+      fallbackPlusFour: [
+        fallbackRawData && fallbackRawData.plus_four_postal_code,
+      ],
+      coordinateCandidates: fallbackCoordinateCandidates,
+      requestIdentifierCandidates: [
+        fallbackRawData && fallbackRawData.request_identifier,
+        fallbackSeedData && fallbackSeedData.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        fallbackRawData && fallbackRawData.source_http_request,
+        fallbackSeedData && fallbackSeedData.source_http_request,
+      ],
+    });
     ensureRelationshipPlaceholders(dataDir);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
