@@ -333,6 +333,13 @@ function stripAddressRequestMetadata(address) {
     }
   }
 
+  if (
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...sanitized })
+  ) {
+    delete sanitized.unnormalized_address;
+  }
+
   return sanitized;
 }
 
@@ -7904,17 +7911,16 @@ const NORMALIZED_ADDRESS_STRONG_FIELDS = [
 ];
 
 const COUNTY_STRICT_NORMALIZED_FIELDS = [
-  ...NORMALIZED_ADDRESS_STRONG_FIELDS,
+  ...COUNTY_ADDRESS_ENSURE_FIELDS,
 ];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 
-// The normalized branch only needs the county's core address fields; requiring
-// every optional attribute prevented us from emitting normalized payloads even
-// when the schema could accept them.
-const COUNTY_NORMALIZED_STRICT_FIELDS = [...COUNTY_NORMALIZED_CORE_FIELDS];
+// County schema expects the complete strict set when emitting a normalized
+// address. Reuse the same list everywhere so we never drift from the schema.
+const COUNTY_NORMALIZED_STRICT_FIELDS = [...COUNTY_STRICT_NORMALIZED_FIELDS];
 
 const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
   (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
@@ -8159,6 +8165,12 @@ function hasRobustNormalizedAddress(address) {
       for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
         normalized[field] = null;
       }
+    }
+  }
+
+  for (const field of COUNTY_STRICT_NORMALIZED_FIELDS) {
+    if (!hasMeaningfulAddressValue(normalized[field])) {
+      return false;
     }
   }
 
@@ -43809,12 +43821,6 @@ async function run() {
     } catch {
       // Ignore cleanup failures; downstream validation will catch residual files.
     }
-    ensureNullRelationshipPlaceholders(dataDir, [
-      "address_has_fact_sheet",
-      "property_has_address",
-      "relationship_address_has_fact_sheet",
-      "relationship_property_has_address",
-    ]);
     enforceMinimalRawAddressSurface(addressPath);
     enforceSchemaReadyAddressOutput(addressPath, {
       unnormalizedPath: "unnormalized_address.json",
