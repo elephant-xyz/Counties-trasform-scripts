@@ -3877,22 +3877,9 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 
 // County schema expects the raw/unnormalized branch to keep the full normalized
 // field surface (with nulls allowed) so downstream validators can enforce the
-// oneOf properly. Leave this hook for excluding the rare field that must not be
-// surfaced.
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([
-  "street_name",
-  "street_number",
-  "street_suffix_type",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
+// oneOf properly. Since Palm Beach inputs rarely contain the structured pieces,
+// keep the exclusion list empty so the serializer always emits every field.
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
   (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
