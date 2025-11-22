@@ -40668,9 +40668,7 @@ async function run() {
       defaultStateCode: "FL",
       defaultCountryCode: "US",
       extraUnnormalizedCandidates: fallbackRawCandidates,
-      allowNormalized:
-        ADDRESS_FALLBACK_CONTEXT &&
-        ADDRESS_FALLBACK_CONTEXT.hasStructuredAddressInput === true,
+      allowNormalized: true,
     });
     collapseAddressToMinimalRawVariant(addressPath, {
       unnormalizedPath: "unnormalized_address.json",
