@@ -25957,6 +25957,117 @@ function buildRawAddressSubmissionPayload(address) {
   return null;
 }
 
+function enforceAddressSchemaOneOfGuard(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const workingPayload = { ...payload };
+  if (Object.prototype.hasOwnProperty.call(workingPayload, "__force_raw_variant")) {
+    delete workingPayload.__force_raw_variant;
+  }
+
+  const normalizedCandidate =
+    buildNormalizedAddressOutputForSchema({
+      ...workingPayload,
+      unnormalized_address: undefined,
+    }) || null;
+
+  if (normalizedCandidate) {
+    const requestIdentifier = safeNullIfEmpty(workingPayload.request_identifier);
+    if (requestIdentifier !== undefined && requestIdentifier !== null) {
+      normalizedCandidate.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(workingPayload, "request_identifier")
+    ) {
+      normalizedCandidate.request_identifier = null;
+    }
+
+    const preparedSource = prepareSourceHttpRequest(
+      workingPayload.source_http_request,
+    );
+    if (preparedSource) {
+      normalizedCandidate.source_http_request = deepClone(preparedSource);
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        workingPayload,
+        "source_http_request",
+      )
+    ) {
+      normalizedCandidate.source_http_request = null;
+    }
+
+    writeJSON(addressPath, normalizedCandidate);
+    return;
+  }
+
+  const trimmedRaw =
+    typeof workingPayload.unnormalized_address === "string"
+      ? workingPayload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawCandidate =
+    composeMinimalRawAddress({
+      ...workingPayload,
+      unnormalized_address: trimmedRaw,
+    }) || null;
+
+  if (!rawCandidate) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  rawCandidate.unnormalized_address = trimmedRaw;
+
+  const rawRequestIdentifier = safeNullIfEmpty(workingPayload.request_identifier);
+  if (rawRequestIdentifier !== undefined && rawRequestIdentifier !== null) {
+    rawCandidate.request_identifier = rawRequestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(workingPayload, "request_identifier")
+  ) {
+    rawCandidate.request_identifier = null;
+  }
+
+  const preparedRawSource = prepareSourceHttpRequest(
+    workingPayload.source_http_request,
+  );
+  if (preparedRawSource) {
+    rawCandidate.source_http_request = deepClone(preparedRawSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(
+      workingPayload,
+      "source_http_request",
+    )
+  ) {
+    rawCandidate.source_http_request = null;
+  }
+
+  if (!rawCandidate.postal_code) {
+    rawCandidate.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawCandidate.state_code) &&
+    !hasMeaningfulAddressValue(rawCandidate.country_code)
+  ) {
+    rawCandidate.country_code = "US";
+  }
+
+  const surfacedRaw =
+    ensureAddressOutputFieldPresence(rawCandidate) || rawCandidate;
+
+  writeJSON(addressPath, surfacedRaw);
+}
+
 function buildRawAddressFallbackPayload(source, options = {}) {
   if (!source || typeof source !== "object") return null;
 
@@ -43915,6 +44026,7 @@ async function run() {
       defaultCountryCode: "US",
       extraRawCandidates,
     });
+    enforceAddressSchemaOneOfGuard(addressPath);
   } catch (error) {
     console.error("Failed to finalize county address variant:", error);
     if (!process.exitCode) {
