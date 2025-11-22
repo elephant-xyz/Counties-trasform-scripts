@@ -24948,6 +24948,7 @@ function ensureRawAddressSchemaDefaults(address) {
   }
 
   const rawSurface = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
@@ -24993,10 +24994,6 @@ function ensureRawAddressSchemaDefaults(address) {
     rawSurface.country_code = "US";
   }
 
-  if (!hasMeaningfulAddressValue(rawSurface.postal_code)) {
-    delete rawSurface.plus_four_postal_code;
-  }
-
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
   if (requestIdentifier) {
     rawSurface.request_identifier = requestIdentifier;
@@ -25015,12 +25012,8 @@ function ensureRawAddressSchemaDefaults(address) {
     (rawSurface.latitude == null && rawSurface.longitude != null) ||
     (rawSurface.latitude != null && rawSurface.longitude == null)
   ) {
-    delete rawSurface.latitude;
-    delete rawSurface.longitude;
-  }
-
-  if (!hasMeaningfulAddressValue(rawSurface.postal_code)) {
-    delete rawSurface.plus_four_postal_code;
+    rawSurface.latitude = null;
+    rawSurface.longitude = null;
   }
 
   return rawSurface;
