@@ -34,15 +34,10 @@ function finalizeAddressWritePayload(rawPayload) {
   const hasNormalizedCoverage =
     !forceRawVariant &&
     (hasMinimalNormalizedAddressCoverage(normalizedProbe) ||
-      hasNormalizedCountyCoverage(normalizedProbe));
+      hasNormalizedCountyCoverage(normalizedProbe) ||
+      hasNormalizedStringSurface(normalizedProbe));
 
-  const hasCountyEnsureCoverage =
-    hasNormalizedCoverage &&
-    COUNTY_ADDRESS_ENSURE_FIELDS.every((field) =>
-      hasMeaningfulAddressValue(normalizedProbe[field]),
-    );
-
-  if (hasCountyEnsureCoverage) {
+  if (hasNormalizedCoverage) {
     const normalizedOutput =
       buildNormalizedAddressOutputForSchema(normalizedProbe) || normalizedProbe;
     if (
@@ -7232,6 +7227,16 @@ function hasMinimalNormalizedAddressCoverage(address) {
   }
 
   return true;
+}
+
+function hasNormalizedStringSurface(address) {
+  if (!address || typeof address !== "object") return false;
+  const normalizedSurface = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...address })
+    : { ...address };
+  return NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
+    hasMeaningfulAddressValue(normalizedSurface[field]),
+  );
 }
 
 function hasStrictNormalizedAddressCoverage(address) {
