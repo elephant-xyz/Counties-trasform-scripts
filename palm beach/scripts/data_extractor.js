@@ -31,7 +31,7 @@ function finalizeAddressWritePayload(rawPayload) {
   }
 
   const normalizedProbe = deepClone(completed) || { ...completed };
-  const hasNormalizedCoverage =
+  const shouldAttemptNormalized =
     !forceRawVariant &&
     (hasMinimalNormalizedAddressCoverage(normalizedProbe) ||
       hasNormalizedCountyCoverage(normalizedProbe));
@@ -41,9 +41,12 @@ function finalizeAddressWritePayload(rawPayload) {
     completed.source_http_request,
   );
 
-  if (hasNormalizedCoverage) {
-    const normalizedOutput =
-      buildNormalizedAddressOutputForSchema(normalizedProbe) || normalizedProbe;
+  let normalizedOutput = null;
+  if (shouldAttemptNormalized) {
+    normalizedOutput = buildNormalizedAddressOutputForSchema(normalizedProbe);
+  }
+
+  if (normalizedOutput) {
     if (
       Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")
     ) {
