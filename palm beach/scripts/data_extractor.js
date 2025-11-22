@@ -3105,20 +3105,6 @@ const RAW_ADDRESS_SURFACE_FIELDS = [
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const RAW_ADDRESS_OUTPUT_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
 const RAW_VARIANT_ALLOWED_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
-const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "country_code",
-  "postal_code",
-  "plus_four_postal_code",
-];
-const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
-  RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
-);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
@@ -4163,12 +4149,11 @@ function pruneRawVariantToSchemaSurface(address) {
   if (Object.prototype.hasOwnProperty.call(address, "__prune_raw_surface")) {
     delete address.__prune_raw_surface;
   }
-  const forceMinimalRawVariant =
-    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
-    address.__force_raw_variant === true;
   if (Object.prototype.hasOwnProperty.call(address, "__force_raw_variant")) {
     delete address.__force_raw_variant;
   }
+  // Keep the full normalized surface available (with null fallbacks) so the
+  // schema's oneOf branch for raw variants can still inspect every field.
 
   address.unnormalized_address = address.unnormalized_address.trim();
 
@@ -4249,49 +4234,6 @@ function pruneRawVariantToSchemaSurface(address) {
     Object.prototype.hasOwnProperty.call(address, "source_http_request")
   ) {
     delete address.source_http_request;
-  }
-
-  const hasNormalizedStringCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(address[field]),
-  );
-  const hasCoordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-    (field) => Number.isFinite(address[field]),
-  );
-  const shouldCollapseToMinimalRaw =
-    forceMinimalRawVariant || !hasNormalizedStringCoverage || !hasCoordinateCoverage;
-
-  if (shouldCollapseToMinimalRaw) {
-    for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      if (!RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET.has(field)) {
-        if (Object.prototype.hasOwnProperty.call(address, field)) {
-          delete address[field];
-        }
-      }
-    }
-
-    for (const field of RAW_VARIANT_MINIMAL_SURFACE_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(address, field)) {
-        address[field] = null;
-        continue;
-      }
-
-      const value = address[field];
-      if (value === undefined || value === null) {
-        address[field] = null;
-        continue;
-      }
-
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        address[field] = Number.isFinite(numeric) ? numeric : null;
-        continue;
-      }
-
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        address[field] = trimmed.length ? trimmed : null;
-      }
-    }
   }
 
   return address;
