@@ -748,15 +748,43 @@ function selectAddressVariantForSchema(address) {
     return null;
   }
 
-  const rawOutput = {
-    unnormalized_address: trimmedRaw,
-  };
+  const rawOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    rawOutput[field] =
+      normalizedSurface[field] === undefined ||
+      normalizedSurface[field] === null
+        ? null
+        : normalizedSurface[field];
+  }
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOutput.state_code) &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = "US";
+  }
+
+  if (
+    (rawOutput.latitude == null) !==
+    (rawOutput.longitude == null)
+  ) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  rawOutput.unnormalized_address = trimmedRaw;
+
   if (requestIdentifier) {
     rawOutput.request_identifier = requestIdentifier;
   }
   if (sourceHttpRequest) {
     rawOutput.source_http_request = sourceHttpRequest;
   }
+
   return rawOutput;
 }
 
