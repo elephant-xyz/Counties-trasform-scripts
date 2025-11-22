@@ -42063,6 +42063,152 @@ function enforceAddressVariantPreferences(addressPath, options = {}) {
   writeJSON(addressPath, rawOutput);
 }
 
+function finalizeCountyAddressSchemaCompliance(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    extraRawCandidates = [],
+    extraRequestIdentifierCandidates = [],
+    extraSourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+
+  const workingSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  const normalizedCandidate =
+    hasRobustNormalizedAddress &&
+    hasRobustNormalizedAddress({ ...workingSurface })
+      ? buildNormalizedAddressOutputForSchema({ ...workingSurface })
+      : null;
+
+  if (normalizedCandidate) {
+    if (!normalizedCandidate.postal_code) {
+      normalizedCandidate.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedCandidate.state_code) &&
+      !hasMeaningfulAddressValue(normalizedCandidate.country_code)
+    ) {
+      normalizedCandidate.country_code = defaultCountryCode || "US";
+    }
+    writeJSON(addressPath, normalizedCandidate);
+    return;
+  }
+
+  const rawCandidates = [
+    workingSurface.unnormalized_address,
+    composeFallbackUnnormalizedAddressFromFields(workingSurface),
+    unnormalizedSource && unnormalizedSource.unnormalized_address,
+    unnormalizedSource && unnormalizedSource.full_address,
+    seedSource && seedSource.unnormalized_address,
+    seedSource && seedSource.full_address,
+  ];
+  if (Array.isArray(extraRawCandidates) && extraRawCandidates.length) {
+    rawCandidates.push(...extraRawCandidates);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    rawCandidates.push(...ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates);
+  }
+
+  const fallbackRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!fallbackRaw) {
+    return;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    workingSurface.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    ...(Array.isArray(extraRequestIdentifierCandidates)
+      ? extraRequestIdentifierCandidates
+      : []),
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    workingSurface.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+    ...(Array.isArray(extraSourceHttpRequestCandidates)
+      ? extraSourceHttpRequestCandidates
+      : []),
+  );
+
+  const rawSeed = {
+    ...workingSurface,
+    unnormalized_address: fallbackRaw,
+  };
+
+  if (requestIdentifier !== undefined) {
+    rawSeed.request_identifier = requestIdentifier;
+  }
+
+  if (sourceHttpRequest) {
+    rawSeed.source_http_request = deepClone(
+      prepareSourceHttpRequest(sourceHttpRequest),
+    );
+  }
+
+  if (
+    !hasMeaningfulAddressValue(rawSeed.county_name) &&
+    hasMeaningfulAddressValue(defaultCountyName)
+  ) {
+    rawSeed.county_name = defaultCountyName;
+  }
+
+  if (
+    !hasMeaningfulAddressValue(rawSeed.state_code) &&
+    hasMeaningfulAddressValue(defaultStateCode)
+  ) {
+    rawSeed.state_code = defaultStateCode;
+  }
+
+  const rawVariant =
+    ensureRawAddressSchemaDefaults(rawSeed) ||
+    buildStrictRawAddressOutput(rawSeed, fallbackRaw) ||
+    rawSeed;
+
+  rawVariant.__force_raw_variant = true;
+
+  if ((rawVariant.latitude == null) !== (rawVariant.longitude == null)) {
+    rawVariant.latitude = null;
+    rawVariant.longitude = null;
+  }
+
+  if (!rawVariant.postal_code) {
+    rawVariant.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawVariant.state_code) &&
+    !hasMeaningfulAddressValue(rawVariant.country_code)
+  ) {
+    rawVariant.country_code = defaultCountryCode || "US";
+  }
+
+  const finalPayload =
+    ensureAddressOutputFieldPresence(rawVariant) || rawVariant;
+
+  writeJSON(addressPath, finalPayload);
+}
+
 
 async function run() {
   await main();
@@ -42553,6 +42699,22 @@ async function run() {
     });
     enforceCountyAddressTerminalSurface(addressPath, {
       defaultCountryCode: "US",
+    });
+    finalizeCountyAddressSchemaCompliance(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates: fallbackRawCandidates,
+      extraRequestIdentifierCandidates: [
+        fallbackRawData && fallbackRawData.request_identifier,
+        fallbackSeedData && fallbackSeedData.request_identifier,
+      ],
+      extraSourceHttpRequestCandidates: [
+        fallbackRawData && fallbackRawData.source_http_request,
+        fallbackSeedData && fallbackSeedData.source_http_request,
+      ],
     });
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
