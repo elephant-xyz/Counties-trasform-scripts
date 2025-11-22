@@ -4163,6 +4163,12 @@ function pruneRawVariantToSchemaSurface(address) {
   if (Object.prototype.hasOwnProperty.call(address, "__prune_raw_surface")) {
     delete address.__prune_raw_surface;
   }
+  const forceMinimalRawVariant =
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true;
+  if (Object.prototype.hasOwnProperty.call(address, "__force_raw_variant")) {
+    delete address.__force_raw_variant;
+  }
 
   address.unnormalized_address = address.unnormalized_address.trim();
 
@@ -4243,6 +4249,49 @@ function pruneRawVariantToSchemaSurface(address) {
     Object.prototype.hasOwnProperty.call(address, "source_http_request")
   ) {
     delete address.source_http_request;
+  }
+
+  const hasNormalizedStringCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(address[field]),
+  );
+  const hasCoordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (field) => Number.isFinite(address[field]),
+  );
+  const shouldCollapseToMinimalRaw =
+    forceMinimalRawVariant || !hasNormalizedStringCoverage || !hasCoordinateCoverage;
+
+  if (shouldCollapseToMinimalRaw) {
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (!RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET.has(field)) {
+        if (Object.prototype.hasOwnProperty.call(address, field)) {
+          delete address[field];
+        }
+      }
+    }
+
+    for (const field of RAW_VARIANT_MINIMAL_SURFACE_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(address, field)) {
+        address[field] = null;
+        continue;
+      }
+
+      const value = address[field];
+      if (value === undefined || value === null) {
+        address[field] = null;
+        continue;
+      }
+
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        address[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        address[field] = trimmed.length ? trimmed : null;
+      }
+    }
   }
 
   return address;
