@@ -3297,6 +3297,25 @@ const RAW_ADDRESS_FINAL_ALLOWED_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
+const RAW_ADDRESS_SUBMISSION_FIELDS = Object.freeze([
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+]);
+const RAW_ADDRESS_SUBMISSION_FIELD_SET = new Set(
+  RAW_ADDRESS_SUBMISSION_FIELDS,
+);
 
 function hasStructuredAddressCoverage(address) {
   if (!address || typeof address !== "object") {
@@ -10989,6 +11008,52 @@ function overwriteAddressWithRawBaseline(addressFilePath, options = {}) {
   if (!payload) return;
 
   writeJSON(addressFilePath, payload);
+}
+
+function finalizeAddressSubmissionVariant(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const trimmedUnnormalized =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (trimmedUnnormalized.length) {
+    const rawPayload = buildRawAddressSubmissionPayload({
+      ...payload,
+      unnormalized_address: trimmedUnnormalized,
+    });
+    if (!rawPayload) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+    const sanitizedRaw = stripAddressRequestMetadata(rawPayload);
+    fs.writeFileSync(addressPath, JSON.stringify(sanitizedRaw, null, 2));
+    return;
+  }
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      normalizedSurface,
+      "unnormalized_address",
+    )
+  ) {
+    delete normalizedSurface.unnormalized_address;
+  }
+
+  const sanitizedNormalized = stripAddressRequestMetadata(normalizedSurface);
+  fs.writeFileSync(addressPath, JSON.stringify(sanitizedNormalized, null, 2));
 }
 
 function hasUsableAddressPayload(payload) {
@@ -25213,6 +25278,62 @@ function composeMinimalRawAddress(address) {
   }
 
   return minimal;
+}
+
+function buildRawAddressSubmissionPayload(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const rawOutput = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of RAW_ADDRESS_SUBMISSION_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+    const normalizedValue = sanitizeAddressFieldValue(field, address[field]);
+    if (normalizedValue === undefined || normalizedValue === null) {
+      continue;
+    }
+    rawOutput[field] = normalizedValue;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOutput.state_code) &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = "US";
+  }
+
+  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
+    delete rawOutput.postal_code;
+    if (Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")) {
+      delete rawOutput.plus_four_postal_code;
+    }
+  } else if (!hasMeaningfulAddressValue(rawOutput.plus_four_postal_code)) {
+    delete rawOutput.plus_four_postal_code;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
+  if (requestIdentifier !== undefined) {
+    rawOutput.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
+  rawOutput.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  return rawOutput;
 }
 
 function buildRawAddressFallbackPayload(source, options = {}) {
@@ -43107,6 +43228,7 @@ async function run() {
       ],
     });
     enforceAddressSchemaVariantSelection(addressPath);
+    finalizeAddressSubmissionVariant(addressPath);
 
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
