@@ -32,9 +32,7 @@ function finalizeAddressWritePayload(rawPayload) {
 
   const normalizedProbe = deepClone(completed) || { ...completed };
   const shouldAttemptNormalized =
-    !forceRawVariant &&
-    (hasMinimalNormalizedAddressCoverage(normalizedProbe) ||
-      hasNormalizedCountyCoverage(normalizedProbe));
+    !forceRawVariant && hasNormalizedCountyCoverage(normalizedProbe);
 
   const requestIdentifier = safeNullIfEmpty(completed.request_identifier);
   const preparedSource = prepareSourceHttpRequest(
@@ -41118,7 +41116,7 @@ function enforceAddressVariantSelection(addressPath, options = {}) {
   let normalizedCandidate = null;
   if (normalizedProbe) {
     const normalizedSnapshot = { ...normalizedProbe };
-    if (hasMinimalNormalizedAddressCoverage(normalizedSnapshot)) {
+    if (hasNormalizedCountyCoverage(normalizedSnapshot)) {
       normalizedCandidate = normalizedSnapshot;
     }
   }
@@ -42204,7 +42202,7 @@ function enforceCountyAddressFieldSaturation(addressPath, options = {}) {
   }
 
   if (
-    hasMinimalNormalizedAddressCoverage({ ...working }) &&
+    hasNormalizedCountyCoverage({ ...working }) &&
     COUNTY_ADDRESS_ENSURE_FIELDS.every((field) =>
       hasMeaningfulAddressValue(working[field]),
     )
