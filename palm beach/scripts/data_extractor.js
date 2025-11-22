@@ -43075,6 +43075,7 @@ async function run() {
         ...(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates || []),
       ],
     });
+    enforceAddressSchemaVariantSelection(addressPath);
 
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
