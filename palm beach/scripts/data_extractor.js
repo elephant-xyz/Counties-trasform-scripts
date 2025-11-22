@@ -39867,6 +39867,126 @@ function ensureRelationshipPlaceholders(dataDir) {
   }
 }
 
+function enforceFinalAddressOneOfCompliance(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const {
+    rawCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    payload.request_identifier,
+    ...requestIdentifierCandidates,
+  );
+  const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    payload.source_http_request,
+    ...sourceHttpRequestCandidates,
+  );
+
+  const normalizedVariant = resolveNormalizedAddressVariantForOneOf({
+    ...payload,
+  });
+
+  if (normalizedVariant) {
+    if (resolvedRequestIdentifier !== null && resolvedRequestIdentifier !== undefined) {
+      normalizedVariant.request_identifier = resolvedRequestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(payload, "request_identifier")
+    ) {
+      normalizedVariant.request_identifier = null;
+    }
+
+    if (resolvedSourceHttpRequest) {
+      normalizedVariant.source_http_request = resolvedSourceHttpRequest;
+    } else if (
+      Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+    ) {
+      normalizedVariant.source_http_request = null;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedVariant,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedVariant.unnormalized_address;
+    }
+
+    writeJSON(addressFilePath, normalizedVariant);
+    return;
+  }
+
+  const rawQueue = [];
+  const enqueueRawCandidate = (candidate) => {
+    if (typeof candidate !== "string") return;
+    const trimmed = candidate.trim();
+    if (!trimmed.length) return;
+    rawQueue.push(trimmed);
+  };
+
+  enqueueRawCandidate(payload.unnormalized_address);
+  if (Array.isArray(rawCandidates)) {
+    for (const candidate of rawCandidates) {
+      enqueueRawCandidate(candidate);
+    }
+  }
+
+  const fallbackRaw = rawQueue.length ? rawQueue[0] : null;
+  if (!fallbackRaw) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const rawVariant = buildRawAddressOneOfPayload(
+    fallbackRaw,
+    resolvedRequestIdentifier ?? null,
+    resolvedSourceHttpRequest || null,
+    payload,
+  );
+
+  if (!rawVariant || typeof rawVariant !== "object") {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if ((rawVariant.latitude == null) !== (rawVariant.longitude == null)) {
+    rawVariant.latitude = null;
+    rawVariant.longitude = null;
+  }
+
+  if (!rawVariant.postal_code) {
+    rawVariant.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawVariant.state_code) &&
+    !hasMeaningfulAddressValue(rawVariant.country_code)
+  ) {
+    rawVariant.country_code = defaultCountryCode || "US";
+  }
+
+  writeJSON(addressFilePath, rawVariant);
+}
+
 function enforceMinimalRawAddressSurface(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -40565,6 +40685,18 @@ async function run() {
       unnormalizedPath: "unnormalized_address.json",
       coordinateCandidates: fallbackCoordinateCandidates,
       extraRawCandidates: fallbackRawCandidates,
+    });
+    enforceFinalAddressOneOfCompliance(addressPath, {
+      rawCandidates: fallbackRawCandidates,
+      requestIdentifierCandidates: [
+        fallbackRawData && fallbackRawData.request_identifier,
+        fallbackSeedData && fallbackSeedData.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        fallbackRawData && fallbackRawData.source_http_request,
+        fallbackSeedData && fallbackSeedData.source_http_request,
+      ],
+      defaultCountryCode: "US",
     });
     ensureRelationshipPlaceholders(dataDir);
   } catch (error) {
