@@ -4249,102 +4249,37 @@ function sanitizeAddressFieldValue(field, value) {
 function pruneRawVariantToSchemaSurface(address) {
   if (!address || typeof address !== "object") return null;
 
-  const hasRaw =
-    typeof address.unnormalized_address === "string" &&
-    address.unnormalized_address.trim().length > 0;
-  if (!hasRaw) return address;
-
-  if (Object.prototype.hasOwnProperty.call(address, "__prune_raw_surface")) {
-    delete address.__prune_raw_surface;
-  }
-  if (Object.prototype.hasOwnProperty.call(address, "__force_raw_variant")) {
-    delete address.__force_raw_variant;
-  }
-  // Keep the full normalized surface available (with null fallbacks) so the
-  // schema's oneOf branch for raw variants can still inspect every field.
-
-  address.unnormalized_address = address.unnormalized_address.trim();
-
-  const allowedFieldSet = RAW_VARIANT_SCHEMA_FIELD_SET;
-  const allowedFieldList = RAW_VARIANT_SCHEMA_FIELDS;
-
-  for (const key of Object.keys(address)) {
-    if (
-      key === "unnormalized_address" ||
-      key === "request_identifier" ||
-      key === "source_http_request" ||
-      allowedFieldSet.has(key)
-    ) {
-      continue;
-    }
-    delete address[key];
+  const trimmedRaw =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    return null;
   }
 
-  for (const field of allowedFieldList) {
-    const hasField = Object.prototype.hasOwnProperty.call(address, field);
-    const sanitizedValue = hasField
-      ? sanitizeAddressFieldValue(field, address[field])
-      : null;
+  const sanitized =
+    ensureRawAddressSchemaDefaults({
+      ...address,
+      unnormalized_address: trimmedRaw,
+    }) || null;
 
-    if (
-      sanitizedValue === undefined ||
-      sanitizedValue === null ||
-      (typeof sanitizedValue === "string" && !sanitizedValue.trim().length)
-    ) {
-      address[field] = null;
-      continue;
-    }
-
-    if (
-      ADDRESS_COORDINATE_FIELDS.includes(field) &&
-      !Number.isFinite(sanitizedValue)
-    ) {
-      address[field] = null;
-      continue;
-    }
-
-    address[field] = sanitizedValue;
+  if (!sanitized || typeof sanitized !== "object") {
+    return null;
   }
 
   if (
-    !Number.isFinite(address.latitude) ||
-    !Number.isFinite(address.longitude)
+    (sanitized.latitude == null && sanitized.longitude != null) ||
+    (sanitized.latitude != null && sanitized.longitude == null)
   ) {
-    address.latitude = null;
-    address.longitude = null;
+    delete sanitized.latitude;
+    delete sanitized.longitude;
   }
 
-  if (!hasMeaningfulAddressValue(address.postal_code)) {
-    address.plus_four_postal_code = null;
+  if (!hasMeaningfulAddressValue(sanitized.postal_code)) {
+    delete sanitized.plus_four_postal_code;
   }
 
-  if (hasMeaningfulAddressValue(address.state_code)) {
-    if (!hasMeaningfulAddressValue(address.country_code)) {
-      address.country_code = "US";
-    }
-  } else {
-    address.country_code = null;
-  }
-
-  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-  if (requestIdentifier) {
-    address.request_identifier = requestIdentifier;
-  } else if (
-    Object.prototype.hasOwnProperty.call(address, "request_identifier")
-  ) {
-    delete address.request_identifier;
-  }
-
-  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
-  if (preparedSource) {
-    address.source_http_request = deepClone(preparedSource);
-  } else if (
-    Object.prototype.hasOwnProperty.call(address, "source_http_request")
-  ) {
-    delete address.source_http_request;
-  }
-
-  return address;
+  return stripAddressRequestMetadata(sanitized);
 }
 
 function buildNormalizedAddressOutputForSchema(source) {
@@ -25012,50 +24947,83 @@ function ensureRawAddressSchemaDefaults(address) {
     return null;
   }
 
-  const result = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    ...address,
+  const rawSurface = {
     unnormalized_address: trimmedUnnormalized,
   };
 
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(result, field)) {
-      result[field] = null;
-      continue;
+  const assignFieldIfMeaningful = (field, value) => {
+    if (!hasMeaningfulAddressValue(value)) {
+      return;
     }
-
-    const currentValue = result[field];
-    if (currentValue === undefined || currentValue === null) {
-      result[field] = null;
-      continue;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) return;
+      rawSurface[field] = trimmed;
+      return;
     }
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        rawSurface[field] = value;
+      }
+      return;
+    }
+    rawSurface[field] = value;
+  };
 
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(currentValue);
-      result[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
-
-    if (typeof currentValue === "string") {
-      const trimmed = currentValue.trim();
-      result[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
+    const sanitized = sanitizeAddressFieldValue(field, address[field]);
+    assignFieldIfMeaningful(field, sanitized);
   }
 
-  if (!result.postal_code) {
-    result.plus_four_postal_code = null;
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    rawSurface.latitude = latitude;
+    rawSurface.longitude = longitude;
   }
 
-  if (result.state_code && !result.country_code) {
-    result.country_code = "US";
+  if (
+    hasMeaningfulAddressValue(rawSurface.state_code) &&
+    !hasMeaningfulAddressValue(rawSurface.country_code)
+  ) {
+    rawSurface.country_code = "US";
   }
 
-  backfillNormalizedAddressFields(result, {
+  if (!hasMeaningfulAddressValue(rawSurface.postal_code)) {
+    delete rawSurface.plus_four_postal_code;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
+  if (requestIdentifier) {
+    rawSurface.request_identifier = requestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
+  if (preparedSource) {
+    rawSurface.source_http_request = deepClone(preparedSource);
+  }
+
+  backfillNormalizedAddressFields(rawSurface, {
     unnormalized: trimmedUnnormalized,
   });
 
-  return result;
+  if (
+    (rawSurface.latitude == null && rawSurface.longitude != null) ||
+    (rawSurface.latitude != null && rawSurface.longitude == null)
+  ) {
+    delete rawSurface.latitude;
+    delete rawSurface.longitude;
+  }
+
+  if (!hasMeaningfulAddressValue(rawSurface.postal_code)) {
+    delete rawSurface.plus_four_postal_code;
+  }
+
+  return rawSurface;
 }
 
 function composeMinimalRawAddress(address) {
