@@ -3223,6 +3223,38 @@ const RAW_ADDRESS_FINAL_ALLOWED_FIELDS = [
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
+function hasStructuredAddressCoverage(address) {
+  if (!address || typeof address !== "object") {
+    return false;
+  }
+
+  const working =
+    ensureAddressOutputFieldPresence &&
+    typeof ensureAddressOutputFieldPresence === "function"
+      ? ensureAddressOutputFieldPresence({ ...address })
+      : { ...address };
+
+  for (const field of STRUCTURED_ADDRESS_STRICT_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(working[field]);
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      working[field] = numeric;
+      continue;
+    }
+
+    const sanitized = sanitizeAddressFieldValue(field, working[field]);
+    if (!hasMeaningfulAddressValue(sanitized)) {
+      return false;
+    }
+    working[field] = sanitized;
+  }
+
+  Object.assign(address, working);
+  return true;
+}
+
 // County schema expects raw variants to retain the normalized field surface so
 // validators can inspect every key even when the address is only available as
 // a single string. Keep the entire normalized surface (with nulls) alongside
@@ -7079,10 +7111,14 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "latitude",
   "longitude",
   "postal_code",
+  "plus_four_postal_code",
   "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
   "street_number",
   "street_suffix_type",
   "unit_identifier",
+  "route_number",
   "township",
   "range",
   "section",
@@ -21442,11 +21478,16 @@ function resolveNormalizedAddressVariantForOneOf(address) {
     return null;
   }
 
+  const structuredProbe = { ...probe };
+  if (!hasStructuredAddressCoverage(structuredProbe)) {
+    return null;
+  }
+
   const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     normalizedOutput[field] = sanitizeAddressFieldValue(
       field,
-      probe[field],
+      structuredProbe[field],
     );
   }
 
