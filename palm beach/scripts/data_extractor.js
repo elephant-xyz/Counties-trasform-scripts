@@ -3044,6 +3044,30 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
+const RAW_ADDRESS_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "unnormalized_address",
+];
+
+const STRUCTURED_ADDRESS_STRICT_FIELDS = [
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "postal_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+];
+
 // Raw variant only requires the persisted unnormalized string. Downstream
 // validators will populate normalized fields when available, but their absence
 // should not disqualify the raw payload.
@@ -8538,6 +8562,156 @@ function ensureAddressOutputFieldPresence(address) {
   }
 
   return stripAddressRequestMetadata(result);
+}
+
+function resolveCoordinateFromCandidates(candidates = []) {
+  if (!Array.isArray(candidates)) {
+    return null;
+  }
+
+  const latitudeQueue = [];
+  const longitudeQueue = [];
+  const enqueue = (entry) => {
+    if (entry === undefined || entry === null) return;
+    if (Array.isArray(entry)) {
+      entry.forEach(enqueue);
+      return;
+    }
+    if (typeof entry === "object") {
+      if (Object.prototype.hasOwnProperty.call(entry, "latitude")) {
+        latitudeQueue.push(entry.latitude);
+      }
+      if (Object.prototype.hasOwnProperty.call(entry, "longitude")) {
+        longitudeQueue.push(entry.longitude);
+      }
+      return;
+    }
+    if (typeof entry === "number" || typeof entry === "string") {
+      // When only a single numeric/string is provided we can't infer
+      // whether it belongs to latitude or longitude, so ignore it.
+      return;
+    }
+  };
+
+  for (const candidate of candidates) {
+    enqueue(candidate);
+  }
+
+  const resolvedLatitude = resolveFirstCoordinate(latitudeQueue);
+  const resolvedLongitude = resolveFirstCoordinate(longitudeQueue);
+  if (Number.isFinite(resolvedLatitude) && Number.isFinite(resolvedLongitude)) {
+    return { latitude: resolvedLatitude, longitude: resolvedLongitude };
+  }
+  return null;
+}
+
+function enforceAddressSchemaSurfaceCompliance(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = null,
+    coordinateCandidates = [],
+    extraRawCandidates = [],
+  } = options || {};
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  const rawCandidateQueue = [];
+  const enqueueRawCandidate = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidateQueue.push(trimmed);
+    }
+  };
+
+  if (typeof normalizedSurface.unnormalized_address === "string") {
+    enqueueRawCandidate(normalizedSurface.unnormalized_address);
+  }
+  if (Array.isArray(extraRawCandidates)) {
+    for (const candidate of extraRawCandidates) {
+      enqueueRawCandidate(candidate);
+    }
+  }
+  if (!rawCandidateQueue.length && unnormalizedPath) {
+    const fallbackRaw = readJSONIfExists(unnormalizedPath);
+    if (fallbackRaw && typeof fallbackRaw === "object") {
+      enqueueRawCandidate(fallbackRaw.unnormalized_address);
+      enqueueRawCandidate(fallbackRaw.full_address);
+      enqueueRawCandidate(fallbackRaw.site_address);
+      enqueueRawCandidate(fallbackRaw.address);
+    }
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidateQueue);
+
+  const coordinateSource = [
+    { latitude: normalizedSurface.latitude, longitude: normalizedSurface.longitude },
+  ];
+
+  if (Array.isArray(coordinateCandidates)) {
+    coordinateSource.push(...coordinateCandidates);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+  ) {
+    coordinateSource.push(...ADDRESS_FALLBACK_CONTEXT.coordinateCandidates);
+  }
+
+  const resolvedCoordinate = resolveCoordinateFromCandidates(coordinateSource);
+  if (resolvedCoordinate) {
+    normalizedSurface.latitude = resolvedCoordinate.latitude;
+    normalizedSurface.longitude = resolvedCoordinate.longitude;
+  } else {
+    normalizedSurface.latitude = null;
+    normalizedSurface.longitude = null;
+  }
+
+  const hasStructuredCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every((field) =>
+    hasMeaningfulAddressValue(normalizedSurface[field]),
+  );
+
+  if (hasStructuredCoverage) {
+    if (Object.prototype.hasOwnProperty.call(normalizedSurface, "unnormalized_address")) {
+      delete normalizedSurface.unnormalized_address;
+    }
+    fs.writeFileSync(addressFilePath, JSON.stringify(normalizedSurface, null, 2));
+    return;
+  }
+
+  if (!resolvedRaw || !resolvedRaw.trim().length) {
+    fs.writeFileSync(addressFilePath, JSON.stringify(normalizedSurface, null, 2));
+    return;
+  }
+
+  const rawPayload =
+    ensureRawAddressSchemaDefaults({
+      ...normalizedSurface,
+      unnormalized_address: resolvedRaw.trim(),
+    }) || {
+      ...normalizedSurface,
+      unnormalized_address: resolvedRaw.trim(),
+    };
+  rawPayload.__force_raw_variant = true;
+
+  fs.writeFileSync(addressFilePath, JSON.stringify(rawPayload, null, 2));
 }
 
 function enforceAddressVariantFieldSurface(addressFilePath) {
@@ -40387,6 +40561,11 @@ async function run() {
       extraUnnormalizedCandidates: fallbackRawCandidates,
     });
     rewriteAddressOneOfVariant(addressPath);
+    enforceAddressSchemaSurfaceCompliance(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      coordinateCandidates: fallbackCoordinateCandidates,
+      extraRawCandidates: fallbackRawCandidates,
+    });
     ensureRelationshipPlaceholders(dataDir);
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
