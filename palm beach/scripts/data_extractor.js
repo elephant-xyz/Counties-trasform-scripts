@@ -31,8 +31,15 @@ function finalizeAddressWritePayload(rawPayload) {
   }
 
   const normalizedProbe = deepClone(completed) || { ...completed };
+  const normalizedCoverage = hasNormalizedCountyCoverage(normalizedProbe);
+  // County schema's normalized branch demands a usable lat/lng pair, so skip
+  // normalized attempts when either coordinate is missing to keep the oneOf valid.
+  const hasCoordinatePair =
+    Number.isFinite(parseCoordinate(normalizedProbe.latitude)) &&
+    Number.isFinite(parseCoordinate(normalizedProbe.longitude));
   const shouldAttemptNormalized =
-    !forceRawVariant && hasNormalizedCountyCoverage(normalizedProbe);
+    normalizedCoverage &&
+    hasCoordinatePair;
 
   const requestIdentifier = safeNullIfEmpty(completed.request_identifier);
   const preparedSource = prepareSourceHttpRequest(
@@ -7580,11 +7587,10 @@ const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 
-// Treat the full normalized surface as required before attempting to emit the
-// normalized branch. Partial coverage causes schema validation to fail the
-// oneOf guard, so fall back to the raw variant unless every normalized field
-// is populated with a meaningful value.
-const COUNTY_NORMALIZED_STRICT_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+// The normalized branch only needs the county's core address fields; requiring
+// every optional attribute prevented us from emitting normalized payloads even
+// when the schema could accept them.
+const COUNTY_NORMALIZED_STRICT_FIELDS = [...COUNTY_NORMALIZED_CORE_FIELDS];
 
 const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
   (field) => !ADDRESS_COORDINATE_FIELDS.includes(field),
@@ -43580,6 +43586,40 @@ async function run() {
 
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const payload = readJSONIfExists(addressPath);
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    const normalizedCandidate = buildNormalizedAddressOutputForSchema(payload);
+    if (!normalizedCandidate) {
+      return;
+    }
+    const normalizedOutput = { ...normalizedCandidate };
+    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    }
+    if (payload.source_http_request && typeof payload.source_http_request === "object") {
+      normalizedOutput.source_http_request = deepClone(
+        prepareSourceHttpRequest(payload.source_http_request),
+      );
+    }
+    const surfacedOutput =
+      ensureAddressOutputFieldPresence(normalizedOutput) || normalizedOutput;
+    const sanitizedOutput =
+      stripAddressRequestMetadata(surfacedOutput) || surfacedOutput;
+    const serialized = JSON.stringify(sanitizedOutput, null, 2);
+    originalWriteFileSync.call(fs, addressPath, serialized);
+  } catch (error) {
+    console.error("Failed to emit normalized county address:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
