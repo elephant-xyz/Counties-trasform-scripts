@@ -75,19 +75,36 @@ function finalizeAddressWritePayload(rawPayload) {
     return null;
   }
 
-  const rawOutput = {
-    unnormalized_address: rawValue,
-  };
-  if (requestIdentifier !== null && requestIdentifier !== undefined) {
-    rawOutput.request_identifier = requestIdentifier;
-  }
-  if (preparedSource) {
-    rawOutput.source_http_request = deepClone(preparedSource);
+  let rawOutput =
+    buildRawAddressOutputForSchema(rawValue, completed) || null;
+
+  if (!rawOutput) {
+    rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+    for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(completed, field)) {
+        rawOutput[field] = completed[field];
+      }
+    }
   }
 
-  // Raw branch intentionally keeps only the unnormalized string plus metadata so the
-  // address instance satisfies the schema's oneOf without requiring structured fields.
-  return stripAddressRequestMetadata(rawOutput);
+  if (requestIdentifier !== null && requestIdentifier !== undefined) {
+    rawOutput.request_identifier = requestIdentifier;
+  } else if (Object.prototype.hasOwnProperty.call(rawOutput, "request_identifier")) {
+    rawOutput.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")
+  ) {
+    rawOutput.source_http_request = null;
+  }
+
+  const surfacedRaw =
+    ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
+
+  return stripAddressRequestMetadata(surfacedRaw);
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
