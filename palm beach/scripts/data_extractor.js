@@ -7318,14 +7318,20 @@ function hasMinimalNormalizedAddressCoverage(address) {
     return false;
   }
 
-  const coordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-    (field) =>
-      hasMeaningfulAddressValue(
-        sanitizeAddressFieldValue(field, normalizedSurface[field]),
-      ),
-  );
-  if (!coordinateCoverage) {
-    return false;
+  let coordinateCount = 0;
+  NORMALIZED_ADDRESS_COORDINATE_FIELDS.forEach((field) => {
+    const numeric = parseCoordinate(normalizedSurface[field]);
+    if (Number.isFinite(numeric)) {
+      normalizedSurface[field] = numeric;
+      coordinateCount += 1;
+    } else {
+      normalizedSurface[field] = null;
+    }
+  });
+  if (coordinateCount === 1) {
+    for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
+      normalizedSurface[field] = null;
+    }
   }
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
@@ -7348,33 +7354,7 @@ function hasNormalizedStringSurface(address) {
 }
 
 function hasStrictNormalizedAddressCoverage(address) {
-  if (!address || typeof address !== "object") return false;
-
-  const normalizedProbe = { ...address };
-  const hasStrongCoverage = NORMALIZED_ADDRESS_STRONG_FIELDS.every((field) => {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(normalizedProbe[field]);
-      if (!Number.isFinite(numeric)) {
-        return false;
-      }
-      normalizedProbe[field] = numeric;
-      return true;
-    }
-
-    return hasMeaningfulAddressValue(normalizedProbe[field]);
-  });
-
-  if (!hasStrongCoverage) {
-    return false;
-  }
-
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(normalizedProbe, field)) {
-      address[field] = normalizedProbe[field];
-    }
-  }
-
-  return true;
+  return hasRobustNormalizedAddress(address);
 }
 
 function hasRawAddressRequiredValues(address) {
@@ -7516,19 +7496,37 @@ function hasRobustNormalizedAddress(address) {
   }
 
   const normalized = { ...surface };
-  const hasValidCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-    (field) => {
-      const numeric = parseCoordinate(normalized[field]);
-      if (!Number.isFinite(numeric)) {
-        return false;
-      }
-      normalized[field] = numeric;
-      return true;
-    },
-  );
+  let invalidCoordinate = false;
+  let hasCoordinateValue = false;
 
-  if (!hasValidCoordinates) {
+  for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
+    const candidate = normalized[field];
+    if (candidate === undefined || candidate === null || candidate === "") {
+      normalized[field] = null;
+      continue;
+    }
+    const numeric = parseCoordinate(candidate);
+    if (!Number.isFinite(numeric)) {
+      invalidCoordinate = true;
+      break;
+    }
+    normalized[field] = numeric;
+    hasCoordinateValue = true;
+  }
+
+  if (invalidCoordinate) {
     return false;
+  }
+
+  if (hasCoordinateValue) {
+    const hasPair = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((field) =>
+      Number.isFinite(normalized[field]),
+    );
+    if (!hasPair) {
+      for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
+        normalized[field] = null;
+      }
+    }
   }
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
@@ -40385,7 +40383,10 @@ function rewriteAddressOneOfVariant(addressPath) {
       normalizedCandidate[field].trim().length > 0,
   );
   const hasCoordinateCoverage = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-    (field) => Number.isFinite(normalizedCandidate[field]),
+    (field) =>
+      normalizedCandidate[field] === undefined ||
+      normalizedCandidate[field] === null ||
+      Number.isFinite(normalizedCandidate[field]),
   );
 
   const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
