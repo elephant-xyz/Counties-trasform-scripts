@@ -4271,12 +4271,12 @@ function pruneRawVariantToSchemaSurface(address) {
     (sanitized.latitude == null && sanitized.longitude != null) ||
     (sanitized.latitude != null && sanitized.longitude == null)
   ) {
-    delete sanitized.latitude;
-    delete sanitized.longitude;
+    sanitized.latitude = null;
+    sanitized.longitude = null;
   }
 
   if (!hasMeaningfulAddressValue(sanitized.postal_code)) {
-    delete sanitized.plus_four_postal_code;
+    sanitized.plus_four_postal_code = null;
   }
 
   return stripAddressRequestMetadata(sanitized);
@@ -39556,6 +39556,157 @@ function enforceSchemaReadyAddressOutput(addressPath, options = {}) {
   writeJSON(addressPath, rawSurface);
 }
 
+function enforceCountyAddressTerminalSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressPath);
+  } catch {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const { defaultCountryCode = "US" } = options || {};
+  const normalizedCountryCode =
+    typeof defaultCountryCode === "string" && defaultCountryCode.trim().length
+      ? defaultCountryCode.trim().toUpperCase()
+      : "US";
+
+  const hadRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  const hadSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    payload,
+    "source_http_request",
+  );
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    payload.request_identifier,
+  );
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (trimmedRaw.length) {
+    const surfacedRaw =
+      ensureRawAddressSchemaDefaults({
+        ...payload,
+        unnormalized_address: trimmedRaw,
+      }) ||
+      buildRawAddressOneOfPayload(
+        trimmedRaw,
+        resolvedRequestIdentifier ?? null,
+        preparedSource,
+        payload,
+      );
+
+    if (!surfacedRaw || typeof surfacedRaw !== "object") {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    surfacedRaw.unnormalized_address = trimmedRaw;
+
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(surfacedRaw, field)) {
+        surfacedRaw[field] = null;
+      }
+    }
+
+    if (!surfacedRaw.postal_code) {
+      surfacedRaw.plus_four_postal_code = null;
+    }
+
+    if (
+      hasMeaningfulAddressValue(surfacedRaw.state_code) &&
+      !hasMeaningfulAddressValue(surfacedRaw.country_code)
+    ) {
+      surfacedRaw.country_code = normalizedCountryCode;
+    }
+
+    if (
+      (surfacedRaw.latitude == null && surfacedRaw.longitude != null) ||
+      (surfacedRaw.latitude != null && surfacedRaw.longitude == null)
+    ) {
+      surfacedRaw.latitude = null;
+      surfacedRaw.longitude = null;
+    }
+
+    if (resolvedRequestIdentifier !== undefined) {
+      surfacedRaw.request_identifier = resolvedRequestIdentifier;
+    } else if (hadRequestIdentifier) {
+      surfacedRaw.request_identifier = null;
+    }
+
+    if (preparedSource) {
+      surfacedRaw.source_http_request = deepClone(preparedSource);
+    } else if (hadSourceHttpRequest) {
+      surfacedRaw.source_http_request = null;
+    }
+
+    writeJSON(addressPath, surfacedRaw);
+    return;
+  }
+
+  const normalizedSurface =
+    buildNormalizedAddressOutputForSchema(payload) ||
+    resolveNormalizedAddressVariantForOneOf(payload);
+  if (!normalizedSurface || typeof normalizedSurface !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(normalizedSurface.state_code) &&
+    !hasMeaningfulAddressValue(normalizedSurface.country_code)
+  ) {
+    normalizedSurface.country_code = normalizedCountryCode;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      normalizedSurface,
+      "unnormalized_address",
+    )
+  ) {
+    delete normalizedSurface.unnormalized_address;
+  }
+
+  if (
+    resolvedRequestIdentifier !== undefined &&
+    resolvedRequestIdentifier !== null
+  ) {
+    normalizedSurface.request_identifier = resolvedRequestIdentifier;
+  } else if (hadRequestIdentifier) {
+    normalizedSurface.request_identifier = null;
+  }
+
+  if (preparedSource) {
+    normalizedSurface.source_http_request = deepClone(preparedSource);
+  } else if (hadSourceHttpRequest) {
+    normalizedSurface.source_http_request = null;
+  }
+
+  writeJSON(addressPath, normalizedSurface);
+}
+
 function collapseAddressToMinimalRawVariant(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -41912,6 +42063,9 @@ async function run() {
       defaultStateCode: "FL",
       defaultCountryCode: "US",
     });
+    enforceCountyAddressTerminalSurface(addressPath, {
+      defaultCountryCode: "US",
+    });
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
@@ -42354,6 +42508,9 @@ async function run() {
       seedPath: "property_seed.json",
       defaultCountyName: titleCaseCounty("Palm Beach"),
       defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+    enforceCountyAddressTerminalSurface(addressPath, {
       defaultCountryCode: "US",
     });
   } catch (error) {
