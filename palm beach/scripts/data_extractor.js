@@ -39619,6 +39619,42 @@ function collapseAddressToMinimalRawVariant(addressPath, options = {}) {
   const latitude = resolveFirstCoordinate(latitudeCandidates);
   const longitude = resolveFirstCoordinate(longitudeCandidates);
 
+  const parcelCandidates = [];
+  const enqueueParcelCandidate = (value) => {
+    if (value === undefined || value === null) return;
+    const normalized = String(value).trim();
+    if (!normalized.length) return;
+    parcelCandidates.push(normalized);
+  };
+  const enqueueParcelIdsFromRequest = (source) => {
+    if (
+      !source ||
+      !source.source_http_request ||
+      !source.source_http_request.multiValueQueryString
+    ) {
+      return;
+    }
+    const ids = source.source_http_request.multiValueQueryString.parcelId;
+    if (Array.isArray(ids)) {
+      ids.forEach(enqueueParcelCandidate);
+    }
+  };
+
+  enqueueParcelCandidate(payload && payload.parcel_identifier);
+  enqueueParcelCandidate(payload && payload.parcel_id);
+  enqueueParcelCandidate(seedSource && seedSource.parcel_id);
+  enqueueParcelCandidate(unnormalizedSource && unnormalizedSource.parcel_id);
+  enqueueParcelIdsFromRequest(seedSource);
+  enqueueParcelIdsFromRequest(unnormalizedSource);
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates.forEach(
+      enqueueParcelCandidate,
+    );
+  }
+
   const minimalRaw = {
     ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     __force_raw_variant: true,
@@ -39709,6 +39745,27 @@ function collapseAddressToMinimalRawVariant(addressPath, options = {}) {
     minimalRaw.country_code = countryCode.toUpperCase();
   }
 
+  if (parcelCandidates.length) {
+    for (const parcelId of parcelCandidates) {
+      const grid = deriveGridPartsFromPcn(parcelId);
+      if (!hasMeaningfulAddressValue(minimalRaw.township) && grid.township) {
+        minimalRaw.township = grid.township;
+      }
+      if (!hasMeaningfulAddressValue(minimalRaw.range) && grid.range) {
+        minimalRaw.range = grid.range;
+      }
+      if (!hasMeaningfulAddressValue(minimalRaw.section) && grid.section) {
+        minimalRaw.section = grid.section;
+      }
+      if (!hasMeaningfulAddressValue(minimalRaw.block) && grid.block) {
+        minimalRaw.block = grid.block;
+      }
+      if (!hasMeaningfulAddressValue(minimalRaw.lot) && grid.lot) {
+        minimalRaw.lot = grid.lot;
+      }
+    }
+  }
+
   const requestIdentifier = resolveRequestIdentifierCandidate(
     payload.request_identifier,
     unnormalizedSource && unnormalizedSource.request_identifier,
@@ -39734,6 +39791,53 @@ function collapseAddressToMinimalRawVariant(addressPath, options = {}) {
       prepareSourceHttpRequest(sourceHttp),
     );
   }
+
+  backfillNormalizedAddressFields(minimalRaw, {
+    unnormalized: resolvedRaw,
+    fallbackCity:
+      minimalRaw.city_name ||
+      payload.city_name ||
+      (unnormalizedSource && unnormalizedSource.city_name) ||
+      (seedSource && seedSource.city_name),
+    fallbackState:
+      minimalRaw.state_code ||
+      payload.state_code ||
+      (unnormalizedSource && unnormalizedSource.state_code) ||
+      (seedSource && seedSource.state_code) ||
+      defaultStateCode,
+    fallbackPostal:
+      minimalRaw.postal_code ||
+      payload.postal_code ||
+      (unnormalizedSource && unnormalizedSource.postal_code) ||
+      (seedSource && seedSource.postal_code),
+    fallbackPlus4:
+      minimalRaw.plus_four_postal_code ||
+      payload.plus_four_postal_code ||
+      (unnormalizedSource && unnormalizedSource.plus_four_postal_code) ||
+      (seedSource && seedSource.plus_four_postal_code),
+    fallbackCounty:
+      minimalRaw.county_name ||
+      payload.county_name ||
+      (unnormalizedSource && unnormalizedSource.county_jurisdiction) ||
+      defaultCountyName,
+    fallbackMunicipality:
+      minimalRaw.municipality_name ||
+      payload.municipality_name ||
+      (unnormalizedSource && unnormalizedSource.municipality_name),
+    fallbackUnit:
+      payload.unit_identifier ||
+      (unnormalizedSource && unnormalizedSource.unit_identifier),
+    fallbackRoute:
+      payload.route_number ||
+      (unnormalizedSource && unnormalizedSource.route_number),
+    fallbackLatitude: latitude,
+    fallbackLongitude: longitude,
+    fallbackTownship: minimalRaw.township,
+    fallbackRange: minimalRaw.range,
+    fallbackSection: minimalRaw.section,
+    fallbackBlock: minimalRaw.block,
+    fallbackLot: minimalRaw.lot,
+  });
 
   const surfacedRaw =
     ensureRawAddressSchemaDefaults(minimalRaw) || minimalRaw;
