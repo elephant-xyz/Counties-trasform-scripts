@@ -3874,21 +3874,15 @@ const RAW_ADDRESS_REQUIRED_FIELDS = [
 ];
 
 const STRUCTURED_ADDRESS_STRICT_FIELDS = [
+  "street_number",
+  "street_name",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
   "latitude",
   "longitude",
-  "plus_four_postal_code",
-  "postal_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
 ];
 
 // Raw variant only requires the persisted unnormalized string. Downstream
@@ -11658,39 +11652,76 @@ function finalizeAddressSubmissionVariant(addressPath) {
     return;
   }
 
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  const resolvedLatitude = parseCoordinate(normalizedSurface.latitude);
+  const resolvedLongitude = parseCoordinate(normalizedSurface.longitude);
+  const hasCoordinatePair =
+    Number.isFinite(resolvedLatitude) && Number.isFinite(resolvedLongitude);
+  normalizedSurface.latitude = hasCoordinatePair ? resolvedLatitude : null;
+  normalizedSurface.longitude = hasCoordinatePair ? resolvedLongitude : null;
+
+  const hasNormalizedCoverage =
+    hasCoordinatePair &&
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...normalizedSurface });
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...normalizedSurface }) || null;
+    if (normalizedOutput) {
+      const requestIdentifier = Object.prototype.hasOwnProperty.call(
+        payload,
+        "request_identifier",
+      )
+        ? safeNullIfEmpty(payload.request_identifier)
+        : undefined;
+      const preparedSource = prepareSourceHttpRequest(
+        payload.source_http_request,
+      );
+      if (requestIdentifier !== undefined) {
+        normalizedOutput.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+      if (preparedSource) {
+        normalizedOutput.source_http_request = deepClone(preparedSource);
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "source_http_request",
+        )
+      ) {
+        delete normalizedOutput.source_http_request;
+      }
+      const sanitizedNormalized =
+        stripAddressRequestMetadata({ ...normalizedOutput }) ||
+        { ...normalizedOutput };
+      fs.writeFileSync(addressPath, JSON.stringify(sanitizedNormalized, null, 2));
+      return;
+    }
+  }
+
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
 
-  if (trimmedUnnormalized.length) {
-    const rawPayload = buildRawAddressSubmissionPayload({
-      ...payload,
-      unnormalized_address: trimmedUnnormalized,
-    });
-    if (!rawPayload) {
-      removeFileIfExists(addressPath);
-      return;
-    }
-    const sanitizedRaw = stripAddressRequestMetadata(rawPayload);
-    fs.writeFileSync(addressPath, JSON.stringify(sanitizedRaw, null, 2));
+  if (!trimmedUnnormalized.length) {
+    removeFileIfExists(addressPath);
     return;
   }
 
-  const normalizedSurface =
-    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
-
-  if (
-    Object.prototype.hasOwnProperty.call(
-      normalizedSurface,
-      "unnormalized_address",
-    )
-  ) {
-    delete normalizedSurface.unnormalized_address;
+  const rawPayload = buildRawAddressSubmissionPayload({
+    ...payload,
+    unnormalized_address: trimmedUnnormalized,
+  });
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    return;
   }
-
-  const sanitizedNormalized = stripAddressRequestMetadata(normalizedSurface);
-  fs.writeFileSync(addressPath, JSON.stringify(sanitizedNormalized, null, 2));
+  const sanitizedRaw = stripAddressRequestMetadata(rawPayload);
+  fs.writeFileSync(addressPath, JSON.stringify(sanitizedRaw, null, 2));
 }
 
 function hasUsableAddressPayload(payload) {
