@@ -342,17 +342,36 @@ function buildRawVariantSubmissionPayload(address) {
     return null;
   }
 
-  const payload = { unnormalized_address: unnormalized };
+  const payload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: unnormalized,
+  };
 
-  for (const field of RAW_VARIANT_SUBMISSION_FIELD_SET) {
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
       continue;
     }
-    const value = address[field];
-    if (!hasMeaningfulAddressValue(value)) {
-      continue;
-    }
-    payload[field] = value;
+    const normalizedValue = normalizeAddressFieldForSchema(field, address[field]);
+    payload[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
+
+  if (
+    (payload.latitude == null && payload.longitude != null) ||
+    (payload.latitude != null && payload.longitude == null)
+  ) {
+    payload.latitude = null;
+    payload.longitude = null;
+  }
+
+  if (!payload.postal_code) {
+    payload.plus_four_postal_code = null;
+  }
+
+  if (payload.state_code && !payload.country_code) {
+    payload.country_code = "US";
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
@@ -361,9 +380,8 @@ function buildRawVariantSubmissionPayload(address) {
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    payload.source_http_request = address.source_http_request
-      ? deepClone(address.source_http_request)
-      : null;
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    payload.source_http_request = prepared ? deepClone(prepared) : null;
   }
 
   return payload;
@@ -3247,27 +3265,6 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "county_name",
   "municipality_name",
 ];
-
-const RAW_VARIANT_SUBMISSION_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "unit_identifier",
-  "route_number",
-  "lot",
-  "block",
-  "section",
-  "range",
-  "township",
-];
-
-const RAW_VARIANT_SUBMISSION_FIELD_SET = new Set(RAW_VARIANT_SUBMISSION_FIELDS);
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
