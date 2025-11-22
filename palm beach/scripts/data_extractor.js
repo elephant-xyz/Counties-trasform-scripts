@@ -14239,7 +14239,7 @@ function removeUnnormalizedWhenNormalized(addressFilePath) {
   writeJSON(addressFilePath, normalizedOutput);
 }
 
-function preferRawCountyAddressVariantWhenIncomplete(addressFilePath) {
+function preferRawCountyAddressVariantWhenIncomplete(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
   }
@@ -14259,6 +14259,66 @@ function preferRawCountyAddressVariantWhenIncomplete(addressFilePath) {
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
+
+  const rawCandidateValues = [];
+  const enqueueRawCandidate = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidateValues.push(trimmed);
+    }
+  };
+
+  if (trimmedUnnormalized.length) {
+    enqueueRawCandidate(trimmedUnnormalized);
+  }
+
+  if (Array.isArray(options.unnormalizedCandidates)) {
+    for (const candidate of options.unnormalizedCandidates) {
+      enqueueRawCandidate(candidate);
+    }
+  }
+
+  const hydrateRawCandidatesFromPayload = (source) => {
+    if (!source || typeof source !== "object") return;
+    const candidateFields = [
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+      "raw_address",
+      "location_address",
+      "mail_address",
+    ];
+    for (const field of candidateFields) {
+      if (
+        Object.prototype.hasOwnProperty.call(source, field) &&
+        typeof source[field] === "string"
+      ) {
+        enqueueRawCandidate(source[field]);
+      }
+    }
+    if (Array.isArray(source.lines)) {
+      const joined = source.lines
+        .map((line) => (typeof line === "string" ? line.trim() : ""))
+        .filter(Boolean)
+        .join(", ");
+      enqueueRawCandidate(joined);
+    }
+  };
+
+  if (!rawCandidateValues.length && options.rawFallbackPath) {
+    const fallbackPayload = readJSONIfExists(options.rawFallbackPath);
+    hydrateRawCandidatesFromPayload(fallbackPayload);
+  }
+
+  if (
+    !rawCandidateValues.length &&
+    options.rawFallbackPayload &&
+    typeof options.rawFallbackPayload === "object"
+  ) {
+    hydrateRawCandidatesFromPayload(options.rawFallbackPayload);
+  }
 
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
@@ -14311,7 +14371,10 @@ function preferRawCountyAddressVariantWhenIncomplete(addressFilePath) {
     return;
   }
 
-  if (!trimmedUnnormalized.length) {
+  const resolvedUnnormalized =
+    resolveFirstNonEmptyString(rawCandidateValues) || null;
+
+  if (!resolvedUnnormalized) {
     return;
   }
 
@@ -14378,7 +14441,7 @@ function preferRawCountyAddressVariantWhenIncomplete(addressFilePath) {
     rawOutput.longitude = longitude;
   }
 
-  rawOutput.unnormalized_address = trimmedUnnormalized;
+  rawOutput.unnormalized_address = resolvedUnnormalized;
 
   if (requestIdentifier) {
     rawOutput.request_identifier = requestIdentifier;
@@ -36565,6 +36628,32 @@ async function main() {
       ],
   };
   registerAddressFallbackContext(postProcessRawOptions);
+  const strictVariantUnnormalizedCandidates = [
+    ...(Array.isArray(finalUnnormalizedCandidates)
+      ? finalUnnormalizedCandidates
+      : []),
+    ...(Array.isArray(postProcessRawOptions.unnormalizedCandidates)
+      ? postProcessRawOptions.unnormalizedCandidates
+      : []),
+    ...(ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+      : []),
+    typeof unnormalizedAddressCandidate === "string"
+      ? unnormalizedAddressCandidate
+      : null,
+    typeof fullAddr === "string" ? fullAddr : null,
+    typeof fullAddrInput === "string" ? fullAddrInput : null,
+    typeof siteLocationLine === "string" ? siteLocationLine : null,
+    typeof combinedModelAddress === "string" ? combinedModelAddress : null,
+    typeof addressLineCombined === "string" ? addressLineCombined : null,
+    unAddr && typeof unAddr.full_address === "string"
+      ? unAddr.full_address
+      : null,
+    unAddr && typeof unAddr.unnormalized_address === "string"
+      ? unAddr.unnormalized_address
+      : null,
+  ];
   preferRawAddressVariant(finalAddressPath, postProcessRawOptions);
   enforceCountyAddressCanonicalSurface(finalAddressPath);
   ensureCountyAddressFieldCompleteness(finalAddressPath);
@@ -37122,7 +37211,10 @@ async function main() {
         : []),
     ],
   });
-  preferRawCountyAddressVariantWhenIncomplete(finalAddressPath);
+  preferRawCountyAddressVariantWhenIncomplete(finalAddressPath, {
+    unnormalizedCandidates: strictVariantUnnormalizedCandidates,
+    rawFallbackPath: "unnormalized_address.json",
+  });
   finalizeCountyAddressVariantOutput(finalAddressPath);
   ensureCountyAddressFallback(finalAddressPath, {
     unnormalizedCandidates: [
@@ -37681,32 +37773,6 @@ async function main() {
   enforceCountyAddressOneOfComplianceFinal(finalAddressPath);
   enforceAddressVariantExclusivity(finalAddressPath);
   solidifyCountyAddressSchemaSurface(finalAddressPath);
-  const strictVariantUnnormalizedCandidates = [
-    ...(Array.isArray(finalUnnormalizedCandidates)
-      ? finalUnnormalizedCandidates
-      : []),
-    ...(Array.isArray(postProcessRawOptions.unnormalizedCandidates)
-      ? postProcessRawOptions.unnormalizedCandidates
-      : []),
-    ...(ADDRESS_FALLBACK_CONTEXT &&
-    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
-      ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
-      : []),
-    typeof unnormalizedAddressCandidate === "string"
-      ? unnormalizedAddressCandidate
-      : null,
-    typeof fullAddr === "string" ? fullAddr : null,
-    typeof fullAddrInput === "string" ? fullAddrInput : null,
-    typeof siteLocationLine === "string" ? siteLocationLine : null,
-    typeof combinedModelAddress === "string" ? combinedModelAddress : null,
-    typeof addressLineCombined === "string" ? addressLineCombined : null,
-    unAddr && typeof unAddr.full_address === "string"
-      ? unAddr.full_address
-      : null,
-    unAddr && typeof unAddr.unnormalized_address === "string"
-      ? unAddr.unnormalized_address
-      : null,
-  ];
   forceSimpleCountyAddressOutput(finalAddressPath, {
     unnormalizedCandidates: strictVariantUnnormalizedCandidates,
   });
