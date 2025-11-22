@@ -30,12 +30,16 @@ function finalizeAddressWritePayload(rawPayload) {
     delete completed.__force_raw_variant;
   }
 
+  const hasRawSourceAddress =
+    typeof completed.unnormalized_address === "string" &&
+    completed.unnormalized_address.trim().length > 0;
+  const shouldPreferRawVariant = forceRawVariant || hasRawSourceAddress;
+
   const normalizedProbe = deepClone(completed) || { ...completed };
   const hasNormalizedCoverage =
-    !forceRawVariant &&
+    !shouldPreferRawVariant &&
     (hasMinimalNormalizedAddressCoverage(normalizedProbe) ||
-      hasNormalizedCountyCoverage(normalizedProbe) ||
-      hasNormalizedStringSurface(normalizedProbe));
+      hasNormalizedCountyCoverage(normalizedProbe));
 
   if (hasNormalizedCoverage) {
     const normalizedOutput =
@@ -48,10 +52,9 @@ function finalizeAddressWritePayload(rawPayload) {
     return stripAddressRequestMetadata(normalizedOutput);
   }
 
-  const rawValue =
-    typeof completed.unnormalized_address === "string"
-      ? completed.unnormalized_address.trim()
-      : "";
+  const rawValue = hasRawSourceAddress
+    ? completed.unnormalized_address.trim()
+    : "";
   if (rawValue.length) {
     const rawOutput = pruneRawVariantToSchemaSurface({
       ...completed,
@@ -4609,6 +4612,9 @@ function enforceFinalAddressSurface(addressFilePath) {
     return;
   }
 
+  const normalizedProbe =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
@@ -5527,6 +5533,9 @@ function stabilizeAddressForSchema(addressFilePath) {
     return;
   }
 
+  const normalizedProbe =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
@@ -6305,6 +6314,9 @@ function enforceFinalCountyAddressSchemaCompliance(addressFilePath) {
     removeFileIfExists(addressFilePath);
     return;
   }
+
+  const normalizedProbe =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
 
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
@@ -8918,13 +8930,14 @@ function solidifyCountyAddressSchemaSurface(addressFilePath) {
     return;
   }
 
+  const normalizedProbe =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
   const trimmedUnnormalized =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
 
-  const normalizedProbe =
-    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
   const hasNormalizedCoverage = hasRobustNormalizedAddress
     ? hasRobustNormalizedAddress({ ...normalizedProbe })
     : false;
@@ -40297,10 +40310,6 @@ function enforceRawAddressPreference(addressPath, options = {}) {
 
   const normalizedProbe =
     ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
-  const hasNormalizedCoverage = hasMinimalNormalizedAddressCoverage({
-    ...normalizedProbe,
-  });
-
   const rawCandidates = [];
   const pushCandidate = (value) => {
     if (typeof value !== "string") return;
@@ -40347,7 +40356,7 @@ function enforceRawAddressPreference(addressPath, options = {}) {
 
   const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
 
-  if (!hasNormalizedCoverage && resolvedRaw) {
+  if (resolvedRaw) {
     const forcedRawPayload = {
       ...payload,
       unnormalized_address: resolvedRaw,
@@ -40358,6 +40367,138 @@ function enforceRawAddressPreference(addressPath, options = {}) {
   }
 
   writeJSON(addressPath, stripAddressRequestMetadata({ ...payload }));
+}
+
+function forceRawAddressOutputFromSource(addressPath, options = {}) {
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    extraRawCandidates = [],
+  } = options || {};
+
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const existingPayload = readJSONIfExists(addressPath);
+  if (!existingPayload || typeof existingPayload !== "object") {
+    return;
+  }
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+
+  const candidateQueue = [];
+  const pushCandidate = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      candidateQueue.push(trimmed);
+    }
+  };
+
+  const enqueueSource = (source) => {
+    if (!source || typeof source !== "object") return;
+    const fields = [
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+      "raw_address",
+      "location_address",
+      "mail_address",
+    ];
+    for (const field of fields) {
+      if (typeof source[field] === "string") {
+        pushCandidate(source[field]);
+      }
+    }
+    if (Array.isArray(source.lines)) {
+      pushCandidate(
+        source.lines
+          .map((line) => (typeof line === "string" ? line.trim() : ""))
+          .filter(Boolean)
+          .join(", "),
+      );
+    }
+  };
+
+  pushCandidate(existingPayload.unnormalized_address);
+  enqueueSource(unnormalizedSource);
+  enqueueSource(seedSource);
+
+  if (Array.isArray(extraRawCandidates)) {
+    for (const candidate of extraRawCandidates) {
+      pushCandidate(candidate);
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    for (const candidate of ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) {
+      pushCandidate(candidate);
+    }
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(candidateQueue);
+  if (!resolvedRaw) {
+    return;
+  }
+
+  const resolvedLatitude = parseCoordinate(
+    existingPayload.latitude ??
+      (unnormalizedSource && unnormalizedSource.latitude) ??
+      (seedSource && seedSource.latitude),
+  );
+  const resolvedLongitude = parseCoordinate(
+    existingPayload.longitude ??
+      (unnormalizedSource && unnormalizedSource.longitude) ??
+      (seedSource && seedSource.longitude),
+  );
+
+  const forcedPayload = {
+    ...existingPayload,
+    latitude: Number.isFinite(resolvedLatitude) ? resolvedLatitude : null,
+    longitude: Number.isFinite(resolvedLongitude) ? resolvedLongitude : null,
+    county_name:
+      existingPayload.county_name ||
+      (unnormalizedSource &&
+        (unnormalizedSource.county_name || unnormalizedSource.county_jurisdiction)) ||
+      defaultCountyName ||
+      null,
+    state_code:
+      existingPayload.state_code ||
+      (unnormalizedSource && unnormalizedSource.state_code) ||
+      defaultStateCode ||
+      null,
+    country_code:
+      existingPayload.country_code ||
+      (unnormalizedSource && unnormalizedSource.country_code) ||
+      defaultCountryCode ||
+      null,
+    unnormalized_address: resolvedRaw,
+    __force_raw_variant: true,
+  };
+
+  const sanitized =
+    sanitizeAddressPayloadForWrite({ ...forcedPayload }) || forcedPayload;
+  if (
+    sanitized &&
+    typeof sanitized === "object" &&
+    Object.prototype.hasOwnProperty.call(sanitized, "__force_raw_variant")
+  ) {
+    delete sanitized.__force_raw_variant;
+  }
+  originalWriteFileSync(
+    addressPath,
+    JSON.stringify(sanitized, null, 2),
+    "utf8",
+  );
 }
 
 function enforceSourceDrivenAddressVariant(addressPath, options = {}) {
@@ -42721,6 +42862,19 @@ async function run() {
         fallbackSeedData && fallbackSeedData.source_http_request,
       ],
     });
+
+    forceRawAddressOutputFromSource(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates: [
+        ...fallbackRawCandidates,
+        ...(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates || []),
+      ],
+    });
+
   } catch (error) {
     console.error("Failed to finalize address variant:", error);
     if (!process.exitCode) {
