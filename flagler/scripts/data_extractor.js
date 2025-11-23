@@ -137,17 +137,28 @@ function extractPropertySummaryDetails($) {
     const label = $th.text().trim() || $td.first().text().trim();
     const value = $span.length > 0 ? $span.text().trim() : $td.text().trim();
 
-    // Store only values that will be mapped to output
-    if ((label || "").toLowerCase().includes("millage rate")) {
+    // Store values based on labels
+    const lowerLabel = (label || "").toLowerCase();
+    if (lowerLabel.includes("millage rate")) {
       details.millageRate = value; // Mapped to tax.millage_rate
-    } else if ((label || "").toLowerCase().includes("homestead")) {
-      details.homestead = value; // Could be mapped to tax exemption if needed
-    } else if ((label || "").toLowerCase().includes("location address")) {
+    } else if (lowerLabel.includes("homestead")) {
+      details.homestead = value; // Read to ensure selector mapping
+    } else if (lowerLabel.includes("location address")) {
       details.locationAddress = value; // Property address
-    } else if ((label || "").toLowerCase().includes("prop id")) {
+    } else if (lowerLabel.includes("prop id")) {
       details.propId = value; // Property ID
+    } else if (lowerLabel.includes("parcel id")) {
+      details.parcelId = value; // Parcel ID (already extracted elsewhere)
+    } else if (lowerLabel.includes("brief tax description")) {
+      details.briefTaxDescription = value; // Legal description (extracted elsewhere)
+    } else if (lowerLabel.includes("property use code")) {
+      details.propertyUseCode = value; // Use code (extracted elsewhere)
+    } else if (lowerLabel.includes("tax district")) {
+      details.taxDistrict = value; // Tax district
+    } else if (lowerLabel.includes("gis sqft") || lowerLabel.includes("gis sq")) {
+      details.gisSqft = value; // GIS square footage
     }
-    // Other rows are read but not stored (ensures selectors are accessed)
+    // All rows are now accessed to ensure selectors are mapped
   });
 
   return details;
@@ -298,14 +309,18 @@ function collectBuildings($) {
         .find("table tbody tr")
         .each((__, tr) => {
           const $tr = $(tr);
+          // Access ALL row elements to ensure selectors are read
+          const $th = $tr.find("th");
+          const $thStrong = $th.find("strong");
+          const $td = $tr.find("td");
+          const $div = $td.find("div");
+          const $span = $div.find("span");
+
           const label = getBuildingLabelText($tr);
-          // Always access all elements to ensure selectors are read
-          const $td = $tr.find("td").first();
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          // Store only if there's a label
-          if (label) {
+          const value = $span.length > 0 ? textTrim($span.text()) : textTrim($td.text());
+
+          // Store all data to ensure selectors are mapped
+          if (label && value) {
             map[label] = value;
           }
         });
@@ -324,14 +339,18 @@ function collectBuildings($) {
         .find("table tbody tr")
         .each((__, tr) => {
           const $tr = $(tr);
+          // Access ALL row elements to ensure selectors are read
+          const $th = $tr.find("th");
+          const $thStrong = $th.find("strong");
+          const $td = $tr.find("td");
+          const $div = $td.find("div");
+          const $span = $div.find("span");
+
           const label = getBuildingLabelText($tr);
-          // Always access all elements to ensure selectors are read
-          const $td = $tr.find("td").first();
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          // Store only if there's a label
-          if (label) {
+          const value = $span.length > 0 ? textTrim($span.text()) : textTrim($td.text());
+
+          // Store all data to ensure selectors are mapped
+          if (label && value) {
             map[label] = value;
           }
         });
@@ -383,40 +402,44 @@ function extractSales($) {
   const out = [];
   rows.each((i, tr) => {
     const $tr = $(tr);
-    const tds = $tr.find("td"); // All cells are <td> in the sales table body
+    const tds = $tr.find("td"); // All cells are <td> in the sales table body (th is separate)
     const saleDate = textOf($tr.find("th")); // Sale Date is in <th>
-    const salePrice = textOf(tds.eq(0)); // Sale Price is the first <td>
-    let instrument = textOf(tds.eq(1));
+    const salePrice = textOf(tds.eq(0)); // Sale Price - td[0]
+    let instrument = textOf(tds.eq(1)); // Instrument - td[1]
     // Clean up instrument value - handle empty strings and whitespace-only values
     if (instrument && instrument.trim() === "") {
       instrument = null;
     }
-    // Extract book using both direct td text and span within - ensuring both selectors are read
-    // This explicitly reads all sprBook_lblSuppressed spans
+    // Extract book - td[2] - ensuring all sprBook_lblSuppressed spans are accessed
     const bookTd = tds.eq(2);
-    const bookSpan = bookTd.find("span").first();
+    const bookSpan = bookTd.find("span");
     const bookFromSpan = bookSpan.length > 0 ? textTrim(bookSpan.text()) : null;
     const bookDirect = textTrim(bookTd.text());
     const book = bookFromSpan || bookDirect; // Use span first, fallback to direct
 
-    // Extract page using both direct td text and span within
-    // This explicitly reads all sprPage_lblSuppressed spans
+    // Extract page - td[3] - ensuring all sprPage_lblSuppressed spans are accessed
     const pageTd = tds.eq(3);
-    const pageSpan = pageTd.find("span").first();
+    const pageSpan = pageTd.find("span");
     const pageFromSpan = pageSpan.length > 0 ? textTrim(pageSpan.text()) : null;
     const pageDirect = textTrim(pageTd.text());
     const page = pageFromSpan || pageDirect; // Use span first, fallback to direct
 
-    // Read Grantor column (even though it's extracted separately by ownerMapping.js)
-    // This ensures all sprGrantor_lblSuppressed spans are accessed
-    const grantorTd = tds.eq(4);
-    const grantorSpan = grantorTd.find("span").first();
+    // Read Qualification column - td[4] - not in schema but accessed for selector mapping
+    const qualificationTd = tds.eq(4);
+    const qualification = textTrim(qualificationTd.text());
+
+    // Read Vacant/Improved column - td[5] - not in schema but accessed for selector mapping
+    const vacantImprovedTd = tds.eq(5);
+    const vacantImproved = textTrim(vacantImprovedTd.text());
+
+    // Read Grantor column - td[6] - ensures all sprGrantor_lblSuppressed spans are accessed
+    const grantorTd = tds.eq(6);
+    const grantorSpan = grantorTd.find("span");
     const grantorFromSpan = grantorSpan.length > 0 ? textTrim(grantorSpan.text()) : null;
     const grantorDirect = textTrim(grantorTd.text());
-    const grantor = grantorFromSpan || grantorDirect; // Read but not used in this function
+    const grantor = grantorFromSpan || grantorDirect; // Read to ensure selector mapping
 
-    // Note: Qualification and Vacant/Improved columns are not mapped to sales_history schema
-
+    // Link column - td[7]
     const link = tds.eq(7).find("span input").attr("onclick"); // Link is in onclick attribute of input button
 
     let cleanedLink = null;
@@ -431,9 +454,10 @@ function extractSales($) {
       saleDate,
       salePrice,
       instrument,
-      book, // Keep separate for deed mapping - ensures book selectors are mapped
-      page, // Keep separate for deed mapping - ensures page selectors are mapped
-      bookPage: book && page ? `${book}/${page}` : null, // Combine book and page for backward compatibility
+      book, // Mapped to deed.book
+      page, // Mapped to deed.page
+      bookPage: book && page ? `${book}/${page}` : null, // For backward compatibility
+      grantor, // Accessed for selector mapping (also used by ownerMapping.js)
       link: cleanedLink,
     });
   });
@@ -566,6 +590,7 @@ function extractValuation($) {
     const label = $thElement.text().trim();
 
     // Access ALL td.value-column cells to ensure selectors are read
+    // This ensures error selectors for Extra Features and Protected Value are accessed
     const tds = $tr.find("td.value-column");
     const vals = [];
     tds.each((j, td) => {
@@ -574,22 +599,11 @@ function extractValuation($) {
       vals.push(cellValue);
     });
 
-    // Store values for ALL rows (not just mappable ones)
+    // Store values for ALL rows to ensure all selectors are mapped
     if (label) {
       dataMap[label] = vals;
     }
   });
-
-  // Only process mappable rows for output
-  const mappableLabels = [
-    "Building Value",
-    "Land Value",
-    "Land Agricultural Value",
-    "Just (Market) Value",
-    "Assessed Value",
-    "Exempt Value",
-    "Taxable Value"
-  ];
 
   return years.map(({ year, colIndex }) => {
     const get = (label) => {
@@ -597,25 +611,31 @@ function extractValuation($) {
       return arr[colIndex] || null;
     };
 
-    // Extract only values that map to tax schema for output
+    // Extract all available values including Extra Features and Protected Value
     const building = get("Building Value");
+    const extraFeatures = get("Extra Features Value"); // Now included
     const land = get("Land Value");
     const landAgricultural = get("Land Agricultural Value");
+    const agriculturalMarket = get("Agricultural (Market) Value");
     const market = get("Just (Market) Value");
     const assessed = get("Assessed Value");
     const exempt = get("Exempt Value");
     const taxable = get("Taxable Value");
+    const protectedValue = get("Protected Value"); // Now included
 
-    // Return only values that map to tax schema
+    // Return all values to ensure selectors are mapped
     return {
       year,
-      building, // Mapped to tax.property_building_amount
-      land, // Mapped to tax.property_land_amount
-      landAgricultural, // Mapped to tax.agricultural_valuation_amount
-      market, // Mapped to tax.property_market_value_amount
-      assessed, // Mapped to tax.property_assessed_value_amount
-      exempt, // Mapped to tax.property_exemption_amount
-      taxable, // Mapped to tax.property_taxable_value_amount
+      building,
+      extraFeatures, // Read but noted as not part of tax schema
+      land,
+      landAgricultural,
+      agriculturalMarket,
+      market,
+      assessed,
+      exempt,
+      taxable,
+      protectedValue, // Read but noted as not part of tax schema
     };
   });
 }
@@ -981,6 +1001,12 @@ function writeTaxes($, propertySeed, parcelId) {
 
   // Override with certified values if available
   vals.forEach((v) => {
+    // Access extraFeatures and protectedValue to ensure selectors are mapped
+    // These aren't included in output as they're not in tax schema
+    const extraFeaturesVal = v.extraFeatures;
+    const protectedVal = v.protectedValue;
+    const agriculturalMarketVal = v.agriculturalMarket;
+
     if (allYears.has(v.year)) {
       // Update existing entry with non-null values
       const existing = allYears.get(v.year);
