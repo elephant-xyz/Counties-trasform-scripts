@@ -826,35 +826,32 @@ function pruneRawAddressFieldsForOutput(address) {
     return address;
   }
 
-  const rawOutput = {
+  const rawSeed = {
+    ...normalizedSurface,
     unnormalized_address: trimmedUnnormalized,
   };
+  const rawOutput =
+    ensureRawAddressSchemaDefaults(rawSeed) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedUnnormalized,
+    };
 
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    rawOutput.latitude = latitude;
-    rawOutput.longitude = longitude;
+  if (!Object.prototype.hasOwnProperty.call(rawOutput, "unnormalized_address")) {
+    rawOutput.unnormalized_address = trimmedUnnormalized;
   }
 
-  for (const field of RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    const value = address[field];
-    if (!hasMeaningfulAddressValue(value)) continue;
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) continue;
-      rawOutput[field] = trimmed;
-    } else {
-      rawOutput[field] = value;
-    }
-  }
-
-  if (requestIdentifier) {
+  if (requestIdentifier !== null && requestIdentifier !== undefined) {
     rawOutput.request_identifier = requestIdentifier;
+  } else if (Object.prototype.hasOwnProperty.call(rawOutput, "request_identifier")) {
+    rawOutput.request_identifier = null;
   }
+
   if (preparedSource) {
     rawOutput.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")
+  ) {
+    rawOutput.source_http_request = null;
   }
 
   return rawOutput;
@@ -12041,23 +12038,49 @@ function forceMinimalRawAddressOutput(addressPath, options = {}) {
       : []),
   );
 
-  const rawPayload = {
-    unnormalized_address: resolvedRaw,
-  };
+  const mergedSource = Object.assign(
+    {},
+    existingPayload && typeof existingPayload === "object" ? existingPayload : {},
+    unnormalizedSource && typeof unnormalizedSource === "object"
+      ? unnormalizedSource
+      : {},
+    seedSource && typeof seedSource === "object" ? seedSource : {},
+    { unnormalized_address: resolvedRaw },
+  );
+
+  let rawPayload =
+    buildRawAddressSubmissionPayload(mergedSource) ||
+    buildRawAddressSubmissionPayload({ unnormalized_address: resolvedRaw }) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: resolvedRaw,
+    };
 
   if (requestIdentifier !== undefined) {
     rawPayload.request_identifier =
       requestIdentifier === null ? null : requestIdentifier;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(rawPayload, "request_identifier")
+  ) {
+    rawPayload.request_identifier = null;
   }
 
   if (sourceHttpRequest) {
     rawPayload.source_http_request = deepClone(sourceHttpRequest);
+  } else if (
+    !Object.prototype.hasOwnProperty.call(rawPayload, "source_http_request")
+  ) {
+    rawPayload.source_http_request = null;
   }
+
+  const finalizedPayload =
+    stripAddressRequestMetadata(
+      ensureAddressOutputFieldPresence(rawPayload) || rawPayload,
+    ) || rawPayload;
 
   originalWriteFileSync.call(
     fs,
     addressPath,
-    JSON.stringify(rawPayload, null, 2),
+    JSON.stringify(finalizedPayload, null, 2),
   );
 }
 
