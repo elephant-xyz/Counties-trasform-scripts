@@ -4112,6 +4112,23 @@ const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
   "lot",
 ]);
 const RAW_VARIANT_MINIMAL_FIELD_SET = new Set(RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST);
+const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+]);
+const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
 const RAW_ADDRESS_SURFACE_FIELDS = [
   "unnormalized_address",
@@ -12081,6 +12098,132 @@ function forceMinimalRawAddressOutput(addressPath, options = {}) {
     fs,
     addressPath,
     JSON.stringify(finalizedPayload, null, 2),
+  );
+}
+
+function coerceAddressToSingleVariant(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+  const hasNormalizedCoverage = hasNormalizedCountyCoverage({
+    ...normalizedSurface,
+  });
+
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOutput[field] =
+        normalizedSurface[field] === undefined ||
+        normalizedSurface[field] === null
+          ? null
+          : normalizedSurface[field];
+    }
+
+    const normalizedLatitude = parseCoordinate(normalizedOutput.latitude);
+    const normalizedLongitude = parseCoordinate(normalizedOutput.longitude);
+    if (
+      Number.isFinite(normalizedLatitude) &&
+      Number.isFinite(normalizedLongitude)
+    ) {
+      normalizedOutput.latitude = normalizedLatitude;
+      normalizedOutput.longitude = normalizedLongitude;
+    } else {
+      normalizedOutput.latitude = null;
+      normalizedOutput.longitude = null;
+    }
+
+    const normalizedRequestIdentifier = safeNullIfEmpty(
+      payload.request_identifier,
+    );
+    if (
+      normalizedRequestIdentifier !== undefined &&
+      normalizedRequestIdentifier !== null
+    ) {
+      normalizedOutput.request_identifier = normalizedRequestIdentifier;
+    }
+
+    const normalizedSource = prepareSourceHttpRequest(
+      payload.source_http_request,
+    );
+    if (normalizedSource) {
+      normalizedOutput.source_http_request = deepClone(normalizedSource);
+    }
+
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      JSON.stringify(normalizedOutput, null, 2),
+    );
+    return;
+  }
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOutput = {
+    unnormalized_address: trimmedRaw,
+  };
+
+  for (const field of RAW_VARIANT_PRESERVED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) continue;
+    const normalizedValue =
+      typeof sanitizeAddressFieldValue === "function"
+        ? sanitizeAddressFieldValue(field, payload[field])
+        : payload[field];
+    if (hasMeaningfulAddressValue(normalizedValue)) {
+      rawOutput[field] = normalizedValue;
+    }
+  }
+
+  const latitude = parseCoordinate(payload.latitude);
+  const longitude = parseCoordinate(payload.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    rawOutput.latitude = latitude;
+    rawOutput.longitude = longitude;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOutput.state_code) &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = "US";
+  }
+  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
+    rawOutput.plus_four_postal_code = null;
+  }
+
+  const rawRequestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (
+    rawRequestIdentifier !== undefined &&
+    rawRequestIdentifier !== null
+  ) {
+    rawOutput.request_identifier = rawRequestIdentifier;
+  }
+
+  const rawSource = prepareSourceHttpRequest(payload.source_http_request);
+  if (rawSource) {
+    rawOutput.source_http_request = deepClone(rawSource);
+  }
+
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    JSON.stringify(rawOutput, null, 2),
   );
 }
 
@@ -44980,6 +45123,17 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to enforce minimal raw address output:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    coerceAddressToSingleVariant(addressPath);
+  } catch (error) {
+    console.error("Failed to coerce final address variant:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
