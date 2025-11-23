@@ -251,7 +251,11 @@ function extractSales($) {
     const tds = $tr.find("td"); // All cells are <td> in the sales table body
     const saleDate = textOf($tr.find("th")); // Sale Date is in <th>
     const salePrice = textOf(tds.eq(0)); // Sale Price is the first <td>
-    const instrument = textOf(tds.eq(1));
+    let instrument = textOf(tds.eq(1));
+    // Clean up instrument value - handle empty strings and whitespace-only values
+    if (instrument && instrument.trim() === "") {
+      instrument = null;
+    }
     const book = textOf(tds.eq(2).find("span")); // Book is in a span
     const page = textOf(tds.eq(3).find("span")); // Page is in a span
     const link = tds.eq(4).find("span input").attr("onclick"); // Link is in onclick attribute of input button
@@ -283,21 +287,18 @@ function extractSales($) {
 }
 
 function mapInstrumentToDeedType(instr) {
-  if (!instr) return null;
+  if (!instr || instr.trim() === "") return "Miscellaneous";
   const u = instr.trim().toUpperCase();
   if (u === "WD") return "Warranty Deed";
   if (u == "TD") return "Tax Deed";
   if (u == "QC") return "Quitclaim Deed";
   if (u == "SW") return "Special Warranty Deed";
-  if (u == "WM") return "Warranty Deed"; // Added for the provided HTML example
-  if (u == "QM") return "Quitclaim Deed"; // Added for the provided HTML example
-  if (u == "QD") return "Quitclaim Deed"; // Added for the provided HTML example
-  return null;
-  // throw {
-  //   type: "error",
-  //   message: `Unknown enum value ${instr}.`,
-  //   path: "deed.deed_type",
-  // };
+  if (u == "WM") return "Warranty Deed";
+  if (u == "QM") return "Quitclaim Deed";
+  if (u == "QD") return "Quitclaim Deed";
+  if (u == "CT") return "Miscellaneous"; // Certificate or other unspecified deed type
+  // Default to Miscellaneous for any unmapped instrument types
+  return "Miscellaneous";
 }
 
 function extractValuation($) {
