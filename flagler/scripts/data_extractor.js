@@ -630,24 +630,22 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     const idx = i + 1;
 
     // Populate sales_history with ownership_transfer_date and purchase_price_amount
+    // Only include fields that have valid values
     const saleHistory = {
       source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
       request_identifier: parcelId || "",
       ownership_transfer_date: parseDateToISO(s.saleDate),
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
-      sale_type: null,
     };
+    // Note: sale_type is not included because it's not available in the source data
+    // The schema requires sale_type to be one of the enum values if present, so we omit it when unavailable
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleHistory);
 
     // Populate deed with book, page, deed_type, and instrument_number
+    // Only include fields that have valid non-empty values
     const deed = {
       source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
       request_identifier: parcelId || "",
-      book: null,
-      page: null,
-      volume: null,
-      instrument_number: null,
-      deed_type: null,
     };
 
     // Use book and page directly from extraction
@@ -664,10 +662,13 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
       deed.deed_type = deedType;
     }
 
-    // Add instrument_number if available
+    // Add instrument_number if available (must be non-empty string)
     if (s.instrument && s.instrument.trim()) {
       deed.instrument_number = s.instrument.trim();
     }
+
+    // Note: volume is not included because it's not available in the source data
+    // The schema requires volume to be a non-empty string if present, so we omit it when unavailable
 
     // Always write deed (relationships require it)
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
