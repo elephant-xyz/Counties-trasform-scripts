@@ -329,45 +329,104 @@ function stripAddressRequestMetadata(address) {
     return address;
   }
 
-  const hasRawValue =
-    typeof address.unnormalized_address === "string" &&
-    address.unnormalized_address.trim().length > 0;
+  const working = { ...address };
+  const rawValue =
+    typeof working.unnormalized_address === "string"
+      ? working.unnormalized_address.trim()
+      : "";
 
-  if (hasRawValue) {
-    const normalizedUnnormalized = address.unnormalized_address.trim();
-    const surfacedRaw =
-      buildRawVariantOneOfPayload({
-        ...address,
-        unnormalized_address: normalizedUnnormalized,
-      }) || null;
-
-    return surfacedRaw;
+  if (rawValue.length) {
+    working.unnormalized_address = rawValue;
+  } else if (Object.prototype.hasOwnProperty.call(working, "unnormalized_address")) {
+    delete working.unnormalized_address;
   }
 
-  const sanitized = { ...address };
-
-  if (Object.prototype.hasOwnProperty.call(sanitized, "request_identifier")) {
-    if (typeof sanitized.request_identifier === "string") {
-      const trimmed = sanitized.request_identifier.trim();
-      sanitized.request_identifier = trimmed.length ? trimmed : null;
-    }
+  const hasRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    working,
+    "request_identifier",
+  );
+  const requestIdentifier = hasRequestIdentifier
+    ? safeNullIfEmpty(working.request_identifier)
+    : undefined;
+  if (hasRequestIdentifier) {
+    working.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
   }
 
-  if (Object.prototype.hasOwnProperty.call(sanitized, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(sanitized.source_http_request);
-    if (prepared) {
-      sanitized.source_http_request = prepared;
-    }
+  const hasSourceRequest = Object.prototype.hasOwnProperty.call(
+    working,
+    "source_http_request",
+  );
+  const preparedSource = hasSourceRequest
+    ? prepareSourceHttpRequest(working.source_http_request)
+    : null;
+  if (hasSourceRequest) {
+    working.source_http_request = preparedSource || null;
   }
 
-  if (
+  const canUseNormalized =
     typeof hasNormalizedCountyCoverage === "function" &&
-    hasNormalizedCountyCoverage({ ...sanitized })
-  ) {
-    delete sanitized.unnormalized_address;
+    hasNormalizedCountyCoverage({ ...working });
+
+  if (canUseNormalized) {
+    const normalizedSurface = ensureNormalizedAddressSchemaSurface
+      ? ensureNormalizedAddressSchemaSurface({ ...working })
+      : { ...working };
+
+    if (Object.prototype.hasOwnProperty.call(normalizedSurface, "unnormalized_address")) {
+      delete normalizedSurface.unnormalized_address;
+    }
+
+    if (requestIdentifier !== undefined) {
+      normalizedSurface.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(normalizedSurface, "request_identifier") &&
+      normalizedSurface.request_identifier === undefined
+    ) {
+      normalizedSurface.request_identifier = null;
+    }
+
+    if (hasSourceRequest) {
+      normalizedSurface.source_http_request = preparedSource || null;
+    } else if (
+      Object.prototype.hasOwnProperty.call(normalizedSurface, "source_http_request") &&
+      normalizedSurface.source_http_request === undefined
+    ) {
+      normalizedSurface.source_http_request = null;
+    }
+
+    return normalizedSurface;
   }
 
-  return sanitized;
+  if (!rawValue.length) {
+    return working;
+  }
+
+  const rawPayload =
+    buildRawVariantOneOfPayload({
+      ...working,
+      unnormalized_address: rawValue,
+    }) || null;
+
+  const surfacedRaw = rawPayload || {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: rawValue,
+  };
+
+  if (requestIdentifier !== undefined) {
+    surfacedRaw.request_identifier = requestIdentifier;
+  }
+
+  if (hasSourceRequest) {
+    surfacedRaw.source_http_request = preparedSource || null;
+  } else if (
+    Object.prototype.hasOwnProperty.call(surfacedRaw, "source_http_request") &&
+    surfacedRaw.source_http_request === undefined
+  ) {
+    surfacedRaw.source_http_request = null;
+  }
+
+  return surfacedRaw;
 }
 
 function buildRawVariantOneOfPayload(address) {
