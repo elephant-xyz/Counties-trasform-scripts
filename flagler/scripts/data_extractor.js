@@ -888,9 +888,7 @@ function writeTaxes($, propertySeed, parcelId) {
       yearly_tax_amount: null,
       first_year_building_on_tax_roll: null,
       first_year_on_tax_roll: null,
-      building_depreciated_value_amount: null,
-      building_replacement_cost_amount: null,
-      homestead_cap_loss_amount: null,
+      // building_depreciated_value_amount, building_replacement_cost_amount, and homestead_cap_loss_amount omitted - not available in source data
     });
   });
 
@@ -926,9 +924,7 @@ function writeTaxes($, propertySeed, parcelId) {
         yearly_tax_amount: null,
         first_year_building_on_tax_roll: null,
         first_year_on_tax_roll: null,
-        building_depreciated_value_amount: null,
-        building_replacement_cost_amount: null,
-        homestead_cap_loss_amount: null,
+        // building_depreciated_value_amount, building_replacement_cost_amount, and homestead_cap_loss_amount omitted - not available in source data
       });
       // Note: extraFeatures, agriculturalMarket, and protected values are extracted but not mapped to schema
       // Note: homestead, taxDistrict, and gisSqft are extracted but not in tax schema
@@ -966,7 +962,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       permit_issue_date: null,
       private_provider_inspections: null,
       private_provider_plan_review: null,
-      fee: null,
+      // fee field omitted - not available in source data
     };
     writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
     counter++;
@@ -991,7 +987,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       permit_issue_date: null,
       private_provider_inspections: null,
       private_provider_plan_review: null,
-      fee: null,
+      // fee field omitted - not available in source data
     };
     writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
     counter++;
