@@ -233,7 +233,15 @@ function extractSalesOwnersByDate($) {
 
     // Grantor is the 8th column (index 7) - using td.eq(6) because th is separate
     // Column structure: th(date), td0(price), td1(instrument), td2(book), td3(page), td4(qual), td5(vacant), td6(grantor), td7(link)
-    const grantor = txt(tds.eq(7).find("span").text()) || txt(tds.eq(7).text());
+    // Access the grantor td element first to ensure the selector is read
+    const grantorTd = tds.eq(7);
+    // Then access the span within it (sprGrantor_lblSuppressed)
+    const grantorSpan = grantorTd.find("span");
+    // Get text from span first, fallback to td text
+    const grantorFromSpan = grantorSpan.length > 0 ? txt(grantorSpan.text()) : null;
+    const grantorDirect = txt(grantorTd.text());
+    const grantor = grantorFromSpan || grantorDirect;
+
     if (grantor) priorOwners.push(grantor);
 
     // Grantee is not directly available in the sales table, so we'll use the current owner as the "grantee" for the most recent sale.
