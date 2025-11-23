@@ -42853,9 +42853,6 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
   const {
     unnormalizedPath = "unnormalized_address.json",
     seedPath = "property_seed.json",
-    defaultCountyName = null,
-    defaultStateCode = null,
-    defaultCountryCode = "US",
   } = options || {};
 
   if (!addressPath || !fs.existsSync(addressPath)) {
@@ -42948,109 +42945,25 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
   }
 
   const rawOutput = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw,
   };
 
-  const latitude = parseCoordinate(payload.latitude);
-  const longitude = parseCoordinate(payload.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    rawOutput.latitude = latitude;
-    rawOutput.longitude = longitude;
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    payload.request_identifier,
+    sourceCandidates.map((source) => source.request_identifier),
+  );
+  if (requestIdentifier !== undefined) {
+    rawOutput.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
   }
 
-  const assignField = (field, ...candidates) => {
-    const resolved = resolveFirstNonEmptyString(
-      collectCandidates(...candidates),
-    );
-    if (!resolved) {
-      return;
-    }
-    rawOutput[field] = resolved;
-  };
-
-  assignField(
-    "city_name",
-    payload.city_name,
-    payload.municipality_name,
-    sourceCandidates.map((source) => source.city_name),
-    sourceCandidates.map((source) => source.municipality_name),
-  );
-
-  assignField(
-    "municipality_name",
-    payload.municipality_name,
-    sourceCandidates.map((source) => source.municipality_name),
-  );
-
-  assignField(
-    "postal_code",
-    payload.postal_code,
-    sourceCandidates.map((source) => source.postal_code),
-  );
-
-  assignField(
-    "plus_four_postal_code",
-    payload.plus_four_postal_code,
-    sourceCandidates.map((source) => source.plus_four_postal_code),
-  );
-
-  assignField(
-    "county_name",
-    payload.county_name,
-    sourceCandidates.map((source) => source.county_name),
-    sourceCandidates.map((source) => source.county_jurisdiction),
-    defaultCountyName,
-  );
-
-  assignField(
-    "state_code",
-    payload.state_code,
-    sourceCandidates.map((source) => source.state_code),
-    defaultStateCode,
-  );
-
-  const resolvedCountry =
-    resolveFirstNonEmptyString(
-      collectCandidates(
-        payload.country_code,
-        sourceCandidates.map((source) => source.country_code),
-        defaultCountryCode,
-      ),
-    ) || defaultCountryCode || "US";
-  if (resolvedCountry) {
-    rawOutput.country_code = resolvedCountry.toUpperCase();
-  }
-
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      continue;
-    }
-    if (hasMeaningfulAddressValue(rawOutput[field])) {
-      continue;
-    }
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
-      continue;
-    }
-    const sanitized = sanitizeAddressFieldValue(field, payload[field]);
-    if (sanitized === undefined) {
-      continue;
-    }
-    rawOutput[field] = sanitized === "" ? null : sanitized;
-  }
-
-  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
-    rawOutput.plus_four_postal_code = null;
-  }
-
-  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
-  rawOutput.request_identifier =
-    requestIdentifier === undefined ? null : requestIdentifier;
-
-  const preparedSource = prepareSourceHttpRequest(
+  const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
     payload.source_http_request,
+    sourceCandidates.map((source) => source.source_http_request),
   );
-  rawOutput.source_http_request = preparedSource || null;
+  if (resolvedSourceHttpRequest) {
+    rawOutput.source_http_request = resolvedSourceHttpRequest;
+  }
 
   originalWriteFileSync(
     addressPath,
