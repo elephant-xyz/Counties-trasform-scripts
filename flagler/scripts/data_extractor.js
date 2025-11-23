@@ -519,26 +519,41 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     const deedRequestId = parcelId ? `${parcelId}_deed_${idx}` : `deed_${idx}`;
     const fileRequestId = parcelId ? `${parcelId}_file_${idx}` : `file_${idx}`;
 
+    // Populate sales_history with ownership_transfer_date and purchase_price_amount
     const saleObj = {
       request_identifier: saleRequestId,
-    };
-    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
-
-    // Populate deed with ownership_transfer_date and purchase_price_amount
-    const deed = {
       ownership_transfer_date: parseDateToISO(s.saleDate),
-      request_identifier: deedRequestId,
     };
     const purchasePrice = parseCurrencyToNumber(s.salePrice);
     if (purchasePrice !== null) {
-      deed.purchase_price_amount = purchasePrice;
+      saleObj.purchase_price_amount = purchasePrice;
+    }
+    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
+
+    // Populate deed with deed_type, book, and page
+    const deed = {
+      request_identifier: deedRequestId,
+    };
+    const deedType = mapInstrumentToDeedType(s.instrument);
+    if (deedType) {
+      deed.deed_type = deedType;
+    }
+    // Parse book and page from bookPage field
+    const bookPageParts = (s.bookPage || '').split('/');
+    if (bookPageParts.length === 2 && bookPageParts[0].trim() && bookPageParts[1].trim()) {
+      deed.book = bookPageParts[0].trim();
+      deed.page = bookPageParts[1].trim();
     }
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     // Only create file if there's a link
     if (s.link) {
       const file = {
-        ipfs_url: null,
+        document_type: "Title",
+        file_format: null,
+        name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
+        original_url: s.link || null,
+        request_identifier: fileRequestId,
       };
       writeJSON(path.join("data", `file_${idx}.json`), file);
 
