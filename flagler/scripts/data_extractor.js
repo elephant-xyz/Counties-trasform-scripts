@@ -516,14 +516,32 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
   sales.forEach((s, i) => {
     const idx = i + 1;
 
-    // Populate sales_history - empty object as it's just a reference node
-    const saleObj = {};
-    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
-
-    // Populate deed with only ownership_transfer_date and instrument_number
-    const deed = {
+    // Populate sales_history with ownership_transfer_date and purchase_price_amount
+    const saleHistory = {
       ownership_transfer_date: parseDateToISO(s.saleDate),
+      purchase_price_amount: parseCurrencyToNumber(s.salePrice),
     };
+    writeJSON(path.join("data", `sales_history_${idx}.json`), saleHistory);
+
+    // Populate deed with book, page, deed_type, and instrument_number
+    const deed = {};
+
+    // Parse book and page from bookPage
+    if (s.bookPage) {
+      const parts = s.bookPage.split('/');
+      if (parts.length === 2) {
+        const book = parts[0].trim();
+        const page = parts[1].trim();
+        if (book) deed.book = book;
+        if (page) deed.page = page;
+      }
+    }
+
+    // Add deed_type from instrument
+    const deedType = mapInstrumentToDeedType(s.instrument);
+    if (deedType) {
+      deed.deed_type = deedType;
+    }
 
     // Add instrument_number if available
     if (s.instrument && s.instrument.trim()) {
