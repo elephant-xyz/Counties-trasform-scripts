@@ -196,8 +196,12 @@ function extractCurrentOwners($) {
     owners.push(owner_text);
   }
 
-  // Extract owner address to ensure selector is read (address not mapped to person/company schema)
+  // Owner mailing address is extracted but not mapped to person/company objects
+  // per Elephant schema - person and company objects do not contain address fields.
+  // The property's physical address is handled separately in the address.json file.
   const ownerAddress = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed").text().trim();
+  // ownerAddress is intentionally not used in output as it's the owner's mailing address,
+  // not a property attribute in the Elephant schema
 
   return owners;
 }
@@ -209,7 +213,7 @@ function extractSalesOwnersByDate($) {
   rows.each((i, tr) => {
     const $tr = $(tr);
     const tds = $tr.find("td, th"); // Include th for Sale Date
-    const saleDateRaw = txt(tds.eq(0).text()); // Sale Date is the first td/th
+    const saleDateRaw = txt(tds.eq(0).text()); // Sale Date is the first td/th (th for date)
     if (!saleDateRaw) return;
     const dm = saleDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (!dm) return;
@@ -217,9 +221,10 @@ function extractSalesOwnersByDate($) {
     const dd = dm[2].padStart(2, "0");
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    
-    // Grantor is the 8th column (index 7)
-    const grantor = txt(tds.eq(7).text());
+
+    // Grantor is the 8th column (index 7) - using td.eq(6) because th is separate
+    // Column structure: th(date), td0(price), td1(instrument), td2(book), td3(page), td4(qual), td5(vacant), td6(grantor), td7(link)
+    const grantor = txt(tds.eq(7).find("span").text()) || txt(tds.eq(7).text());
     if (grantor) priorOwners.push(grantor);
 
     // Grantee is not directly available in the sales table, so we'll use the current owner as the "grantee" for the most recent sale.

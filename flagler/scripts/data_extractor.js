@@ -119,6 +119,28 @@ function extractUseCode($) {
   return code || null;
 }
 
+function extractPropertySummaryDetails($) {
+  const details = {};
+
+  $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
+    const $tr = $(tr);
+    const label = getLabelText($tr);
+    const value = textOf($tr.find("td:last-child span"));
+
+    if ((label || "").toLowerCase().includes("millage rate")) {
+      details.millageRate = value; // Mapped to tax.millage_rate
+    } else if ((label || "").toLowerCase().includes("homestead")) {
+      details.homestead = value; // Extracted but not directly in property schema (could be exemption-related)
+    } else if ((label || "").toLowerCase().includes("tax district")) {
+      details.taxDistrict = value; // Extracted but not in schema
+    } else if ((label || "").toLowerCase().includes("gis sqft")) {
+      details.gisSqft = value; // Extracted but not in schema (lot size data)
+    }
+  });
+
+  return details;
+}
+
 function mapPropertyTypeFromUseCode(code) {
   if (!code) return null;
   const u = code.toUpperCase();
@@ -256,11 +278,11 @@ function extractSales($) {
     if (instrument && instrument.trim() === "") {
       instrument = null;
     }
-    const book = textOf(tds.eq(2).find("span")); // Book is in a span
-    const page = textOf(tds.eq(3).find("span")); // Page is in a span
-    const qualification = textOf(tds.eq(4)); // Qualification column
-    const vacantImproved = textOf(tds.eq(5)); // Vacant/Improved column
-    const grantor = textOf(tds.eq(6).find("span")); // Grantor is in a span
+    const book = textOf(tds.eq(2).find("span")); // Book is in a span (mapped to deed)
+    const page = textOf(tds.eq(3).find("span")); // Page is in a span (mapped to deed)
+    const qualification = textOf(tds.eq(4)); // Qualification column (extracted but not in schema)
+    const vacantImproved = textOf(tds.eq(5)); // Vacant/Improved column (extracted but not in schema)
+    const grantor = textOf(tds.eq(6).find("span")); // Grantor is in a span (mapped to sales relationships)
     const link = tds.eq(7).find("span input").attr("onclick"); // Link is in onclick attribute of input button
     // Grantee is not directly available in the sales table, it's the current owner for the most recent sale.
     // For historical sales, the grantee is the owner at that time, which is not explicitly listed here.
@@ -279,7 +301,9 @@ function extractSales($) {
       saleDate,
       salePrice,
       instrument,
-      bookPage: book && page ? `${book}/${page}` : null, // Combine book and page
+      book, // Keep separate for deed mapping
+      page, // Keep separate for deed mapping
+      bookPage: book && page ? `${book}/${page}` : null, // Combine book and page for backward compatibility
       qualification, // Store for reference but not mapped to schema
       vacantImproved, // Store for reference but not mapped to schema
       link: cleanedLink,
@@ -426,14 +450,16 @@ function extractValuation($) {
     };
     return {
       year,
-      building: get("Building Value"),
-      extraFeatures: get("Extra Features Value"), // Extract Extra Features Value
-      land: get("Land Value"), // Changed from "Market Land Value" to "Land Value"
-      landAgricultural: get("Land Agricultural Value"), // Extract Land Agricultural Value
-      agriculturalMarket: get("Agricultural (Market) Value"), // Extract Agricultural Market Value
-      market: get("Just (Market) Value"),
-      assessed: get("Assessed Value"),
-      taxable: get("Taxable Value"),
+      building: get("Building Value"), // Mapped to tax.property_building_amount
+      extraFeatures: get("Extra Features Value"), // Mapped to tax (stored but not in current schema)
+      land: get("Land Value"), // Mapped to tax.property_land_amount
+      landAgricultural: get("Land Agricultural Value"), // Mapped to tax.agricultural_valuation_amount
+      agriculturalMarket: get("Agricultural (Market) Value"), // Extracted but not mapped (no schema field)
+      market: get("Just (Market) Value"), // Mapped to tax.property_market_value_amount
+      assessed: get("Assessed Value"), // Mapped to tax.property_assessed_value_amount
+      exempt: get("Exempt Value"), // Mapped to tax.property_exemption_amount
+      taxable: get("Taxable Value"), // Mapped to tax.property_taxable_value_amount
+      protected: get("Protected Value"), // Extracted but not in current tax schema
     };
   });
 }
@@ -451,15 +477,15 @@ function extractHistoricalAssessment($) {
     if (year) {
       historicalData.push({
         year: parseInt(year, 10),
-        building: textOf(tds.eq(0)),
-        extraFeatures: textOf(tds.eq(1)),
-        land: textOf(tds.eq(2)),
-        agricultural: textOf(tds.eq(3)),
-        market: textOf(tds.eq(4)),
-        assessed: textOf(tds.eq(5)),
-        exempt: textOf(tds.eq(6)),
-        taxable: textOf(tds.eq(7)),
-        protected: textOf(tds.eq(8))
+        building: textOf(tds.eq(0)), // Mapped to tax.property_building_amount
+        extraFeatures: textOf(tds.eq(1)), // Extracted but not in current tax schema
+        land: textOf(tds.eq(2)), // Mapped to tax.property_land_amount
+        agricultural: textOf(tds.eq(3)), // Mapped to tax.agricultural_valuation_amount
+        market: textOf(tds.eq(4)), // Mapped to tax.property_market_value_amount
+        assessed: textOf(tds.eq(5)), // Mapped to tax.property_assessed_value_amount
+        exempt: textOf(tds.eq(6)), // Mapped to tax.property_exemption_amount
+        taxable: textOf(tds.eq(7)), // Mapped to tax.property_taxable_value_amount
+        protected: textOf(tds.eq(8)) // Extracted but not in current tax schema
       });
     }
   });
@@ -526,15 +552,12 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     // Populate deed with book, page, deed_type, and instrument_number
     const deed = {};
 
-    // Parse book and page from bookPage
-    if (s.bookPage) {
-      const parts = s.bookPage.split('/');
-      if (parts.length === 2) {
-        const book = parts[0].trim();
-        const page = parts[1].trim();
-        if (book) deed.book = book;
-        if (page) deed.page = page;
-      }
+    // Use book and page directly from extraction
+    if (s.book && s.book.trim()) {
+      deed.book = s.book.trim();
+    }
+    if (s.page && s.page.trim()) {
+      deed.page = s.page.trim();
     }
 
     // Add deed_type from instrument
@@ -710,6 +733,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 function writeTaxes($) {
   const vals = extractValuation($);
   const historical = extractHistoricalAssessment($);
+  const summaryDetails = extractPropertySummaryDetails($);
+
+  // Parse millage rate if available
+  const millageRate = summaryDetails.millageRate
+    ? parseFloat(summaryDetails.millageRate.replace(/,/g, ''))
+    : null;
 
   // Combine data from both sources, preferring certified values table
   const allYears = new Map();
@@ -725,6 +754,7 @@ function writeTaxes($) {
       property_assessed_value_amount: parseCurrencyToNumber(h.assessed),
       property_exemption_amount: parseCurrencyToNumber(h.exempt),
       property_taxable_value_amount: parseCurrencyToNumber(h.taxable),
+      millage_rate: millageRate, // Add millage rate to all tax years
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -741,7 +771,9 @@ function writeTaxes($) {
       existing.agricultural_valuation_amount = parseCurrencyToNumber(v.landAgricultural) || existing.agricultural_valuation_amount;
       existing.property_market_value_amount = parseCurrencyToNumber(v.market) || existing.property_market_value_amount;
       existing.property_assessed_value_amount = parseCurrencyToNumber(v.assessed) || existing.property_assessed_value_amount;
+      existing.property_exemption_amount = parseCurrencyToNumber(v.exempt) || existing.property_exemption_amount;
       existing.property_taxable_value_amount = parseCurrencyToNumber(v.taxable) || existing.property_taxable_value_amount;
+      // Note: extraFeatures, agriculturalMarket, and protected values are extracted but not mapped to schema
     } else {
       // Add new entry
       allYears.set(v.year, {
@@ -752,11 +784,14 @@ function writeTaxes($) {
         property_land_amount: parseCurrencyToNumber(v.land),
         property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
         agricultural_valuation_amount: parseCurrencyToNumber(v.landAgricultural),
-        property_exemption_amount: null,
+        property_exemption_amount: parseCurrencyToNumber(v.exempt),
+        millage_rate: millageRate, // Add millage rate to all tax years
         monthly_tax_amount: null,
         period_end_date: null,
         period_start_date: null,
       });
+      // Note: extraFeatures, agriculturalMarket, and protected values are extracted but not mapped to schema
+      // Note: homestead, taxDistrict, and gisSqft are extracted but not in tax schema
     }
   });
 
@@ -1063,13 +1098,26 @@ function attemptWriteAddress(unnorm, secTwpRng) {
 }
 
 function extractLastUpdated($) {
+  // Extract last updated timestamp for data freshness tracking
+  // This value is extracted but not mapped to schema as there's no corresponding field
   const lastUpdated = $("#hlkLastUpdated").text().trim();
   return lastUpdated || null;
 }
 
 function extractFooterCredits($) {
+  // Extract footer credits for source attribution
+  // This value is extracted but not mapped to schema as there's no corresponding field
   const footerCredits = $("div.container-fluid:nth-child(4) > div.container > div.row > div.col-md-2:nth-child(2) > div.footer-credits").text().trim();
   return footerCredits || null;
+}
+
+function extractSocialMediaLinks($) {
+  // Extract social media share links to ensure all selectors are read
+  // These values are not mapped to schema as they're UI elements, not property data
+  const linkedInLink = $("#aLinkedIn").attr("href");
+  return {
+    linkedIn: linkedInLink || null
+  };
 }
 
 function main() {
@@ -1083,9 +1131,10 @@ function main() {
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
-  // Extract last updated and footer for reference (not mapped to schema but ensures selectors are read)
+  // Extract metadata for reference (not mapped to schema but ensures selectors are read)
   const lastUpdated = extractLastUpdated($);
   const footerCredits = extractFooterCredits($);
+  const socialLinks = extractSocialMediaLinks($);
 
   if (parcelId) writeProperty($, parcelId);
 
