@@ -4684,18 +4684,7 @@ const RAW_VARIANT_OUTPUT_ALLOWLIST = [
 ];
 
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
-  "unnormalized_address",
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-  "request_identifier",
-  "source_http_request",
+  ...RAW_VARIANT_FIELD_WHITELIST,
 ];
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET = new Set(
   RAW_VARIANT_ALLOWED_OUTPUT_FIELDS,
@@ -42945,6 +42934,7 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
   }
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw,
   };
 
@@ -42962,12 +42952,20 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
     sourceCandidates.map((source) => source.source_http_request),
   );
   if (resolvedSourceHttpRequest) {
-    rawOutput.source_http_request = resolvedSourceHttpRequest;
+    const preparedSource = prepareSourceHttpRequest(
+      resolvedSourceHttpRequest,
+    );
+    if (preparedSource) {
+      rawOutput.source_http_request = deepClone(preparedSource);
+    }
   }
+
+  const surfacedRaw =
+    ensureAddressOutputFieldPresence(rawOutput) || rawOutput;
 
   originalWriteFileSync(
     addressPath,
-    JSON.stringify(rawOutput, null, 2),
+    JSON.stringify(surfacedRaw, null, 2),
   );
 }
 
