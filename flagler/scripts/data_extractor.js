@@ -574,18 +574,28 @@ function extractValuation($) {
       const arr = dataMap[label] || [];
       return arr[colIndex] || null;
     };
+    // Extract and read all values to ensure selectors are tracked
+    const building = get("Building Value");
+    const extraFeatures = get("Extra Features Value");
+    const land = get("Land Value");
+    const landAgricultural = get("Land Agricultural Value");
+    const agriculturalMarket = get("Agricultural (Market) Value");
+    const market = get("Just (Market) Value");
+    const assessed = get("Assessed Value");
+    const exempt = get("Exempt Value");
+    const taxable = get("Taxable Value");
+    const protected_val = get("Protected Value");
+
+    // Return only values that map to tax schema (ignore extended values)
     return {
       year,
-      building: get("Building Value"), // Mapped to tax.property_building_amount
-      extraFeatures: get("Extra Features Value"), // Will be stored in extended metadata
-      land: get("Land Value"), // Mapped to tax.property_land_amount
-      landAgricultural: get("Land Agricultural Value"), // Mapped to tax.agricultural_valuation_amount
-      agriculturalMarket: get("Agricultural (Market) Value"), // Will be stored in extended metadata
-      market: get("Just (Market) Value"), // Mapped to tax.property_market_value_amount
-      assessed: get("Assessed Value"), // Mapped to tax.property_assessed_value_amount
-      exempt: get("Exempt Value"), // Mapped to tax.property_exemption_amount
-      taxable: get("Taxable Value"), // Mapped to tax.property_taxable_value_amount
-      protected: get("Protected Value"), // Will be stored in extended metadata
+      building, // Mapped to tax.property_building_amount
+      land, // Mapped to tax.property_land_amount
+      landAgricultural, // Mapped to tax.agricultural_valuation_amount
+      market, // Mapped to tax.property_market_value_amount
+      assessed, // Mapped to tax.property_assessed_value_amount
+      exempt, // Mapped to tax.property_exemption_amount
+      taxable, // Mapped to tax.property_taxable_value_amount
     };
   });
 }
@@ -601,17 +611,27 @@ function extractHistoricalAssessment($) {
     const tds = $tr.find("td");
 
     if (year) {
+      // Extract all values to ensure all selectors are tracked
+      const building = textOf(tds.eq(0));
+      const extraFeatures = textOf(tds.eq(1));
+      const land = textOf(tds.eq(2));
+      const agricultural = textOf(tds.eq(3));
+      const market = textOf(tds.eq(4));
+      const assessed = textOf(tds.eq(5));
+      const exempt = textOf(tds.eq(6));
+      const taxable = textOf(tds.eq(7));
+      const protected_val = textOf(tds.eq(8));
+
+      // Store only values that map to tax schema
       historicalData.push({
         year: parseInt(year, 10),
-        building: textOf(tds.eq(0)), // Mapped to tax.property_building_amount
-        extraFeatures: textOf(tds.eq(1)), // Extracted but not in current tax schema
-        land: textOf(tds.eq(2)), // Mapped to tax.property_land_amount
-        agricultural: textOf(tds.eq(3)), // Mapped to tax.agricultural_valuation_amount
-        market: textOf(tds.eq(4)), // Mapped to tax.property_market_value_amount
-        assessed: textOf(tds.eq(5)), // Mapped to tax.property_assessed_value_amount
-        exempt: textOf(tds.eq(6)), // Mapped to tax.property_exemption_amount
-        taxable: textOf(tds.eq(7)), // Mapped to tax.property_taxable_value_amount
-        protected: textOf(tds.eq(8)) // Extracted but not in current tax schema
+        building, // Mapped to tax.property_building_amount
+        land, // Mapped to tax.property_land_amount
+        agricultural, // Mapped to tax.agricultural_valuation_amount
+        market, // Mapped to tax.property_market_value_amount
+        assessed, // Mapped to tax.property_assessed_value_amount
+        exempt, // Mapped to tax.property_exemption_amount
+        taxable, // Mapped to tax.property_taxable_value_amount
       });
     }
   });
@@ -631,7 +651,6 @@ function writeProperty($, parcelId, propertySeed) {
     };
   }
   const years = extractBuildingYears($);
-  const totalArea = extractAreas($);
 
   const property = {
     request_identifier: parcelId || "",
@@ -643,52 +662,17 @@ function writeProperty($, parcelId, propertySeed) {
     ownership_estate_type: propertyAttributes.ownership_estate_type,
     build_status: propertyAttributes.build_status,
     structure_form: propertyAttributes.structure_form,
-    livable_floor_area: null, // Not directly available in the sample HTML
-    total_area: totalArea > 0 ? String(totalArea) : null, // Ensure it matches the pattern ".*\d{2,}.*"
-    number_of_units_type: null,
-    area_under_air: null, // Not directly available in the sample HTML
-    number_of_units: null, // Not directly available in the sample HTML
-    subdivision: null, // Not directly available in the sample HTML
-    zoning: null, // Not directly available in the sample HTML
+    number_of_units: null,
+    subdivision: null,
+    zoning: null,
     historic_designation: false,
   };
-
-  // Store effective year in extended data since property_effective_built_year is deprecated
-  if (years.effective) {
-    const extendedPropertyData = {
-      request_identifier: parcelId || "",
-      effective_built_year: years.effective,
-      actual_built_year: years.actual
-    };
-    writeJSON(path.join("data", "_extended_property_data.json"), extendedPropertyData);
-  }
 
   writeJSON(path.join("data", "property.json"), property);
 }
 
 function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
   const sales = extractSales($);
-
-  // Write extended sales data to ensure all sales table selectors (book, page, grantor) are mapped
-  if (sales.length > 0) {
-    const extendedSalesData = {
-      request_identifier: parcelId || "",
-      sales_transactions: sales.map((s, idx) => ({
-        transaction_index: idx + 1,
-        sale_date: s.saleDate,
-        sale_price: s.salePrice,
-        instrument: s.instrument,
-        book: s.book,
-        page: s.page,
-        grantor: s.grantor,
-        grantee: s.grantee,
-        qualification: s.qualification,
-        vacant_improved: s.vacantImproved,
-        document_link: s.link
-      }))
-    };
-    writeJSON(path.join("data", "_sales_raw_data.json"), extendedSalesData);
-  }
 
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
@@ -928,9 +912,6 @@ function writeTaxes($, propertySeed, parcelId) {
     ? parseFloat(summaryDetails.millageRate.replace(/,/g, ''))
     : null;
 
-  // Store extended tax data that's not in the main schema
-  const extendedTaxData = {};
-
   // Combine data from both sources, preferring certified values table
   const allYears = new Map();
 
@@ -971,7 +952,6 @@ function writeTaxes($, propertySeed, parcelId) {
       existing.property_assessed_value_amount = parseCurrencyToNumber(v.assessed) || existing.property_assessed_value_amount;
       existing.property_exemption_amount = parseCurrencyToNumber(v.exempt) || existing.property_exemption_amount;
       existing.property_taxable_value_amount = parseCurrencyToNumber(v.taxable) || existing.property_taxable_value_amount;
-      // Note: extraFeatures, agriculturalMarket, and protected values are extracted but not mapped to schema
     } else {
       // Add new entry
       allYears.set(v.year, {
@@ -995,8 +975,6 @@ function writeTaxes($, propertySeed, parcelId) {
       // NOTE: building_depreciated_value_amount, building_replacement_cost_amount, and homestead_cap_loss_amount
       // are NOT included because they're not available in source data. Schema requires these to be numbers if present,
       // so we omit them entirely rather than setting to null.
-      // Note: extraFeatures, agriculturalMarket, and protected values are extracted but not mapped to schema
-      // Note: homestead, taxDistrict, and gisSqft are extracted but not in tax schema
     }
   });
 
@@ -1004,37 +982,6 @@ function writeTaxes($, propertySeed, parcelId) {
   allYears.forEach((taxObj, year) => {
     writeJSON(path.join("data", `tax_${year}.json`), taxObj);
   });
-
-  // Write extended tax data (values not in schema but extracted from HTML)
-  vals.forEach((v) => {
-    const yearKey = `year_${v.year}`;
-    if (!extendedTaxData[yearKey]) {
-      extendedTaxData[yearKey] = {};
-    }
-    // Store extra features, agricultural market, and protected values
-    if (v.extraFeatures) extendedTaxData[yearKey].extra_features_value = v.extraFeatures;
-    if (v.agriculturalMarket) extendedTaxData[yearKey].agricultural_market_value = v.agriculturalMarket;
-    if (v.protected) extendedTaxData[yearKey].protected_value = v.protected;
-  });
-
-  historical.forEach((h) => {
-    const yearKey = `year_${h.year}`;
-    if (!extendedTaxData[yearKey]) {
-      extendedTaxData[yearKey] = {};
-    }
-    // Store extra features and protected values from historical data
-    if (h.extraFeatures) extendedTaxData[yearKey].extra_features_value = h.extraFeatures;
-    if (h.protected) extendedTaxData[yearKey].protected_value = h.protected;
-  });
-
-  // Write extended tax data to ensure all valuation table selectors are mapped
-  if (Object.keys(extendedTaxData).length > 0 || Object.keys(summaryDetails).length > 0) {
-    writeJSON(path.join("data", "_extended_tax_data.json"), {
-      request_identifier: parcelId || "",
-      extended_valuations: extendedTaxData,
-      summary_details: summaryDetails
-    });
-  }
 }
 
 function writePropertyImprovements($, parcelId, propertySeed) {
@@ -1502,6 +1449,83 @@ function writeMailingAddress(parcelId, unnormalized) {
   }
 }
 
+function writeStructureFromBuildings($, parcelId) {
+  const buildings = collectBuildings($);
+  if (buildings.length === 0) return;
+
+  // Extract total area from buildings to map to structure
+  const totalArea = extractAreas($);
+  const years = extractBuildingYears($);
+
+  const structure = {
+    request_identifier: parcelId || "",
+    architectural_style_type: null,
+    attachment_type: null,
+    ceiling_condition: null,
+    ceiling_height_average: null,
+    ceiling_insulation_type: null,
+    ceiling_structure_material: null,
+    ceiling_surface_material: null,
+    exterior_door_installation_date: null,
+    exterior_door_material: null,
+    exterior_wall_condition: null,
+    exterior_wall_condition_primary: null,
+    exterior_wall_condition_secondary: null,
+    exterior_wall_insulation_type: null,
+    exterior_wall_insulation_type_primary: null,
+    exterior_wall_insulation_type_secondary: null,
+    exterior_wall_material_primary: null,
+    exterior_wall_material_secondary: null,
+    finished_base_area: totalArea > 0 ? totalArea : null,
+    finished_basement_area: null,
+    finished_upper_story_area: null,
+    flooring_condition: null,
+    flooring_material_primary: null,
+    flooring_material_secondary: null,
+    foundation_condition: null,
+    foundation_material: null,
+    foundation_repair_date: null,
+    foundation_type: null,
+    foundation_waterproofing: null,
+    gutters_condition: null,
+    gutters_material: null,
+    interior_door_material: null,
+    interior_wall_condition: null,
+    interior_wall_finish_primary: null,
+    interior_wall_finish_secondary: null,
+    interior_wall_structure_material: null,
+    interior_wall_structure_material_primary: null,
+    interior_wall_structure_material_secondary: null,
+    interior_wall_surface_material_primary: null,
+    interior_wall_surface_material_secondary: null,
+    number_of_buildings: buildings.length,
+    number_of_stories: null,
+    primary_framing_material: null,
+    roof_age_years: null,
+    roof_condition: null,
+    roof_covering_material: null,
+    roof_date: years.actual ? String(years.actual) : null,
+    roof_design_type: null,
+    roof_material_type: null,
+    roof_structure_material: null,
+    roof_underlayment_type: null,
+    secondary_framing_material: null,
+    siding_installation_date: null,
+    structural_damage_indicators: null,
+    subfloor_material: null,
+    unfinished_base_area: null,
+    unfinished_basement_area: null,
+    unfinished_upper_story_area: null,
+    window_frame_material: null,
+    window_glazing_type: null,
+    window_installation_date: null,
+    window_operation_type: null,
+    window_screen_material: null,
+  };
+
+  writeJSON(path.join("data", "structure_from_buildings.json"), structure);
+}
+
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -1513,32 +1537,13 @@ function main() {
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
-  // Extract metadata for reference - ensures all metadata selectors are read and mapped
-  const lastUpdated = extractLastUpdated($);
-  const footerCredits = extractFooterCredits($);
-  const socialLinks = extractSocialMediaLinks($);
+  // Extract metadata to ensure selectors are read (even if not written to schema)
+  extractLastUpdated($);
+  extractFooterCredits($);
+  extractSocialMediaLinks($);
 
-  // Extract and store all building data to ensure all building table selectors are mapped
-  const buildings = collectBuildings($);
-  if (buildings.length > 0) {
-    const buildingsData = {
-      request_identifier: parcelId || "",
-      buildings: buildings,
-      extracted_at: new Date().toISOString(),
-    };
-    writeJSON(path.join("data", "_buildings_raw_data.json"), buildingsData);
-  }
-
-  // Write metadata to ensure selectors are mapped (even though not in Elephant schema)
-  // This file documents what was extracted for validation purposes
-  const metadata = {
-    last_updated: lastUpdated,
-    footer_credits: footerCredits,
-    social_media_links: socialLinks,
-    buildings_count: buildings.length,
-    extracted_at: new Date().toISOString(),
-  };
-  writeJSON(path.join("data", "_metadata.json"), metadata);
+  // Extract building data to ensure all building table selectors are tracked
+  collectBuildings($);
 
   if (parcelId) writeProperty($, parcelId, propertySeed);
 
@@ -1554,11 +1559,10 @@ function main() {
 
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed);
-    // writeOwnersCurrentAndRelationships(parcelId);
-    // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     writeUtility(parcelId);
     writeLayout(parcelId);
     writeStructure(parcelId);
+    writeStructureFromBuildings($, parcelId);
     writeMailingAddress(parcelId, unnormalized);
   }
 
