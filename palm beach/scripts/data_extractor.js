@@ -11953,6 +11953,114 @@ function finalizeAddressSubmissionVariant(addressPath) {
   fs.writeFileSync(addressPath, JSON.stringify(sanitizedRaw, null, 2));
 }
 
+function forceMinimalRawAddressOutput(addressPath, options = {}) {
+  if (!addressPath) return;
+
+  const {
+    unnormalizedPath = null,
+    seedPath = null,
+    extraRawCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const existingPayload = readJSONIfExists(addressPath);
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+
+  const rawCandidates = [];
+  const enqueueRawCandidate = (value) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach(enqueueRawCandidate);
+      return;
+    }
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidates.push(trimmed);
+    }
+  };
+
+  const collectSourceFields = (source) => {
+    if (!source || typeof source !== "object") return;
+    enqueueRawCandidate(source.unnormalized_address);
+    enqueueRawCandidate(source.full_address);
+    enqueueRawCandidate(source.address);
+    enqueueRawCandidate(source.site_address);
+    enqueueRawCandidate(source.raw_address);
+    enqueueRawCandidate(source.location_address);
+    enqueueRawCandidate(source.mail_address);
+    if (Array.isArray(source.lines) && source.lines.length) {
+      const joined = source.lines
+        .map((line) => (typeof line === "string" ? line.trim() : ""))
+        .filter(Boolean)
+        .join(", ");
+      enqueueRawCandidate(joined);
+      source.lines.forEach(enqueueRawCandidate);
+    }
+  };
+
+  collectSourceFields(existingPayload);
+  collectSourceFields(unnormalizedSource);
+  collectSourceFields(seedSource);
+  if (
+    typeof composeFallbackUnnormalizedAddressFromFields === "function" &&
+    existingPayload &&
+    typeof existingPayload === "object"
+  ) {
+    enqueueRawCandidate(
+      composeFallbackUnnormalizedAddressFromFields(existingPayload),
+    );
+  }
+  if (Array.isArray(extraRawCandidates)) {
+    extraRawCandidates.forEach(enqueueRawCandidate);
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    ...(Array.isArray(requestIdentifierCandidates)
+      ? requestIdentifierCandidates
+      : []),
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
+      : []),
+  );
+
+  const rawPayload = {
+    unnormalized_address: resolvedRaw,
+  };
+
+  if (requestIdentifier !== undefined) {
+    rawPayload.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+
+  if (sourceHttpRequest) {
+    rawPayload.source_http_request = deepClone(sourceHttpRequest);
+  }
+
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    JSON.stringify(rawPayload, null, 2),
+  );
+}
+
 function hasUsableAddressPayload(payload) {
   if (!payload || typeof payload !== "object") {
     return false;
@@ -44829,6 +44937,26 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to enforce final county address branch:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const fallbackRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    forceMinimalRawAddressOutput(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      extraRawCandidates: fallbackRawCandidates,
+    });
+  } catch (error) {
+    console.error("Failed to enforce minimal raw address output:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
