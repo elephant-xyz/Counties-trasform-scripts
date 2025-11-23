@@ -7926,6 +7926,19 @@ const COUNTY_STRICT_NORMALIZED_FIELDS = [
   ...COUNTY_ADDRESS_ENSURE_FIELDS,
 ];
 
+const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [
+  "plus_four_postal_code",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+];
+
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
@@ -8181,6 +8194,12 @@ function hasRobustNormalizedAddress(address) {
   }
 
   for (const field of COUNTY_STRICT_NORMALIZED_FIELDS) {
+    if (!hasMeaningfulAddressValue(normalized[field])) {
+      return false;
+    }
+  }
+
+  for (const field of COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS) {
     if (!hasMeaningfulAddressValue(normalized[field])) {
       return false;
     }
@@ -41556,9 +41575,9 @@ function enforceFinalCountyAddressVariantChoice(addressPath, options = {}) {
     return;
   }
 
-  const hasStrictNormalizedCoverage = COUNTY_ADDRESS_ENSURE_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(payload[field]),
-  );
+  const hasStrictNormalizedCoverage = hasRobustNormalizedAddress({
+    ...payload,
+  });
 
   if (hasStrictNormalizedCoverage) {
     const normalized = buildNormalizedAddressOutputForSchema({ ...payload });
