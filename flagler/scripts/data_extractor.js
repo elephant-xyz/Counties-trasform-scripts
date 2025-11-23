@@ -36,7 +36,25 @@ function textTrim(s) {
 
 function writeJSON(p, obj) {
   ensureDir(path.dirname(p));
-  fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
+  // Remove any null or undefined values to ensure clean output
+  const cleaned = removeNullFields(obj);
+  fs.writeFileSync(p, JSON.stringify(cleaned, null, 2), "utf8");
+}
+
+function removeNullFields(obj) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(removeNullFields);
+
+  const result = {};
+  for (const key in obj) {
+    if (obj[key] !== null && obj[key] !== undefined) {
+      result[key] = typeof obj[key] === 'object' && !Array.isArray(obj[key])
+        ? removeNullFields(obj[key])
+        : obj[key];
+    }
+  }
+  return result;
 }
 
 function parseCurrencyToNumber(txt) {
@@ -630,9 +648,12 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
 
     // Populate sales_history with ownership_transfer_date and purchase_price_amount
     // Only include fields that have valid non-null values
-    const saleHistory = {
-      request_identifier: parcelId || "",
-    };
+    const saleHistory = {};
+
+    // Always include request_identifier
+    if (parcelId) {
+      saleHistory.request_identifier = parcelId;
+    }
 
     // Only add ownership_transfer_date if it's a valid date string
     const transferDate = parseDateToISO(s.saleDate);
@@ -650,14 +671,18 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     // The HTML provides "Qualification" (like "Unqualified (U)") which doesn't directly map
     // to the schema's sale_type enum values (ProbateSale, ShortSale, etc.).
     // Per schema requirements, we only include properties when they have valid values.
+    // Do NOT set sale_type to null - omit it entirely.
 
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleHistory);
 
-    // Populate deed with book, page, deed_type, and instrument_number
+    // Populate deed with book, page, and deed_type
     // Only include fields that have valid non-empty values
-    const deed = {
-      request_identifier: parcelId || "",
-    };
+    const deed = {};
+
+    // Always include request_identifier
+    if (parcelId) {
+      deed.request_identifier = parcelId;
+    }
 
     // Use book and page directly from extraction
     // Only add if they are non-null and non-empty strings
@@ -678,6 +703,7 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     // The source HTML only provides instrument codes (like "WD", "QC") which are used for deed_type
     // but not instrument_number values. Volume is also not available.
     // Per schema requirements, we only include properties when they have valid non-null values.
+    // Do NOT set instrument_number or volume to null - omit them entirely.
 
     // Always write deed (relationships require it)
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
