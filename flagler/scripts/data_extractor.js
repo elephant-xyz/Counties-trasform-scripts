@@ -920,6 +920,9 @@ function writeTaxes($, propertySeed, parcelId) {
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
+      monthly_tax_amount: null,
+      period_start_date: null,
+      period_end_date: null,
     };
 
     // Only add fields with valid values
@@ -950,8 +953,7 @@ function writeTaxes($, propertySeed, parcelId) {
     // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
     // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
     // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
-    // - monthly_tax_amount, yearly_tax_amount, period_end_date, period_start_date
-    // - first_year_building_on_tax_roll, first_year_on_tax_roll
+    // - yearly_tax_amount, first_year_building_on_tax_roll, first_year_on_tax_roll
 
     allYears.set(h.year, taxEntry);
   });
@@ -987,6 +989,9 @@ function writeTaxes($, propertySeed, parcelId) {
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
+        monthly_tax_amount: null,
+        period_start_date: null,
+        period_end_date: null,
       };
 
       // Only add fields with valid values
@@ -1017,8 +1022,7 @@ function writeTaxes($, propertySeed, parcelId) {
       // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
       // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
       // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
-      // - monthly_tax_amount, yearly_tax_amount, period_end_date, period_start_date
-      // - first_year_building_on_tax_roll, first_year_on_tax_roll
+      // - yearly_tax_amount, first_year_building_on_tax_roll, first_year_on_tax_roll
 
       allYears.set(v.year, taxEntry);
     }
@@ -1044,6 +1048,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       improvement_action: null,
       improvement_status: "Completed",
       permit_required: feature.code ? true : false,
+      contractor_type: null,
     };
 
     // Only add optional fields if they have non-null values
@@ -1056,7 +1061,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
 
     // NOTE: The following fields are NOT included because they're not available in source data:
     // - fee (type: number) - must be omitted entirely when not available
-    // - application_received_date, final_inspection_date, contractor_type, is_disaster_recovery
+    // - application_received_date, final_inspection_date, is_disaster_recovery
     // - is_owner_builder, permit_close_date, permit_issue_date, private_provider_inspections
     // - private_provider_plan_review
 
@@ -1072,6 +1077,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       improvement_action: null,
       improvement_status: "Completed",
       permit_required: subArea.type ? true : false,
+      contractor_type: null,
     };
 
     // Only add optional fields if they have non-null values
@@ -1084,7 +1090,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
 
     // NOTE: The following fields are NOT included because they're not available in source data:
     // - fee (type: number) - must be omitted entirely when not available
-    // - application_received_date, final_inspection_date, contractor_type, is_disaster_recovery
+    // - application_received_date, final_inspection_date, is_disaster_recovery
     // - is_owner_builder, permit_close_date, permit_issue_date, private_provider_inspections
     // - private_provider_plan_review
 
