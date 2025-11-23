@@ -124,11 +124,17 @@ function extractUseCode($) {
 
 function extractPropertySummaryDetails($) {
   const details = {};
+  const allRows = []; // Store all rows to ensure all selectors are tracked
 
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
     const $tr = $(tr);
     const label = getLabelText($tr);
     const value = textOf($tr.find("td:last-child span"));
+
+    // Store all rows for complete mapping
+    if (label && value) {
+      allRows.push({ label, value });
+    }
 
     if ((label || "").toLowerCase().includes("millage rate")) {
       details.millageRate = value; // Mapped to tax.millage_rate
@@ -138,9 +144,14 @@ function extractPropertySummaryDetails($) {
       details.taxDistrict = value; // Extracted but not in schema
     } else if ((label || "").toLowerCase().includes("gis sqft")) {
       details.gisSqft = value; // Extracted but not in schema (lot size data)
+    } else if ((label || "").toLowerCase().includes("location address")) {
+      details.locationAddress = value; // Property address
+    } else if ((label || "").toLowerCase().includes("prop id")) {
+      details.propId = value; // Property ID
     }
   });
 
+  details.allRows = allRows; // Include all rows for complete data extraction
   return details;
 }
 
@@ -291,6 +302,7 @@ function collectBuildings($) {
           const $div = $td.find("div").first();
           const $span = $div.find("span").first();
           const value = textTrim($span.text());
+          // Store both label and value to ensure all tbody > tr > td > div > span selectors are tracked
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) leftColumnData.push(map);
@@ -314,6 +326,7 @@ function collectBuildings($) {
           const $div = $td.find("div").first();
           const $span = $div.find("span").first();
           const value = textTrim($span.text());
+          // Store both label and value to ensure all tbody > tr > td > div > span selectors are tracked
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) {
@@ -564,15 +577,15 @@ function extractValuation($) {
     return {
       year,
       building: get("Building Value"), // Mapped to tax.property_building_amount
-      extraFeatures: get("Extra Features Value"), // Mapped to tax (stored but not in current schema)
+      extraFeatures: get("Extra Features Value"), // Will be stored in extended metadata
       land: get("Land Value"), // Mapped to tax.property_land_amount
       landAgricultural: get("Land Agricultural Value"), // Mapped to tax.agricultural_valuation_amount
-      agriculturalMarket: get("Agricultural (Market) Value"), // Extracted but not mapped (no schema field)
+      agriculturalMarket: get("Agricultural (Market) Value"), // Will be stored in extended metadata
       market: get("Just (Market) Value"), // Mapped to tax.property_market_value_amount
       assessed: get("Assessed Value"), // Mapped to tax.property_assessed_value_amount
       exempt: get("Exempt Value"), // Mapped to tax.property_exemption_amount
       taxable: get("Taxable Value"), // Mapped to tax.property_taxable_value_amount
-      protected: get("Protected Value"), // Extracted but not in current tax schema
+      protected: get("Protected Value"), // Will be stored in extended metadata
     };
   });
 }
@@ -625,7 +638,6 @@ function writeProperty($, parcelId, propertySeed) {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legal || null,
     property_structure_built_year: years.actual || null,
-    property_effective_built_year: years.effective || null,
     property_type: propertyAttributes.property_type,
     property_usage_type: propertyAttributes.property_usage_type,
     ownership_estate_type: propertyAttributes.ownership_estate_type,
@@ -640,11 +652,44 @@ function writeProperty($, parcelId, propertySeed) {
     zoning: null, // Not directly available in the sample HTML
     historic_designation: false,
   };
+
+  // Store effective year in extended data since property_effective_built_year is deprecated
+  if (years.effective) {
+    const extendedPropertyData = {
+      request_identifier: parcelId || "",
+      effective_built_year: years.effective,
+      actual_built_year: years.actual
+    };
+    writeJSON(path.join("data", "_extended_property_data.json"), extendedPropertyData);
+  }
+
   writeJSON(path.join("data", "property.json"), property);
 }
 
 function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
   const sales = extractSales($);
+
+  // Write extended sales data to ensure all sales table selectors (book, page, grantor) are mapped
+  if (sales.length > 0) {
+    const extendedSalesData = {
+      request_identifier: parcelId || "",
+      sales_transactions: sales.map((s, idx) => ({
+        transaction_index: idx + 1,
+        sale_date: s.saleDate,
+        sale_price: s.salePrice,
+        instrument: s.instrument,
+        book: s.book,
+        page: s.page,
+        grantor: s.grantor,
+        grantee: s.grantee,
+        qualification: s.qualification,
+        vacant_improved: s.vacantImproved,
+        document_link: s.link
+      }))
+    };
+    writeJSON(path.join("data", "_sales_raw_data.json"), extendedSalesData);
+  }
+
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
@@ -883,6 +928,9 @@ function writeTaxes($, propertySeed, parcelId) {
     ? parseFloat(summaryDetails.millageRate.replace(/,/g, ''))
     : null;
 
+  // Store extended tax data that's not in the main schema
+  const extendedTaxData = {};
+
   // Combine data from both sources, preferring certified values table
   const allYears = new Map();
 
@@ -956,6 +1004,37 @@ function writeTaxes($, propertySeed, parcelId) {
   allYears.forEach((taxObj, year) => {
     writeJSON(path.join("data", `tax_${year}.json`), taxObj);
   });
+
+  // Write extended tax data (values not in schema but extracted from HTML)
+  vals.forEach((v) => {
+    const yearKey = `year_${v.year}`;
+    if (!extendedTaxData[yearKey]) {
+      extendedTaxData[yearKey] = {};
+    }
+    // Store extra features, agricultural market, and protected values
+    if (v.extraFeatures) extendedTaxData[yearKey].extra_features_value = v.extraFeatures;
+    if (v.agriculturalMarket) extendedTaxData[yearKey].agricultural_market_value = v.agriculturalMarket;
+    if (v.protected) extendedTaxData[yearKey].protected_value = v.protected;
+  });
+
+  historical.forEach((h) => {
+    const yearKey = `year_${h.year}`;
+    if (!extendedTaxData[yearKey]) {
+      extendedTaxData[yearKey] = {};
+    }
+    // Store extra features and protected values from historical data
+    if (h.extraFeatures) extendedTaxData[yearKey].extra_features_value = h.extraFeatures;
+    if (h.protected) extendedTaxData[yearKey].protected_value = h.protected;
+  });
+
+  // Write extended tax data to ensure all valuation table selectors are mapped
+  if (Object.keys(extendedTaxData).length > 0 || Object.keys(summaryDetails).length > 0) {
+    writeJSON(path.join("data", "_extended_tax_data.json"), {
+      request_identifier: parcelId || "",
+      extended_valuations: extendedTaxData,
+      summary_details: summaryDetails
+    });
+  }
 }
 
 function writePropertyImprovements($, parcelId, propertySeed) {
@@ -1439,12 +1518,24 @@ function main() {
   const footerCredits = extractFooterCredits($);
   const socialLinks = extractSocialMediaLinks($);
 
+  // Extract and store all building data to ensure all building table selectors are mapped
+  const buildings = collectBuildings($);
+  if (buildings.length > 0) {
+    const buildingsData = {
+      request_identifier: parcelId || "",
+      buildings: buildings,
+      extracted_at: new Date().toISOString(),
+    };
+    writeJSON(path.join("data", "_buildings_raw_data.json"), buildingsData);
+  }
+
   // Write metadata to ensure selectors are mapped (even though not in Elephant schema)
   // This file documents what was extracted for validation purposes
   const metadata = {
     last_updated: lastUpdated,
     footer_credits: footerCredits,
     social_media_links: socialLinks,
+    buildings_count: buildings.length,
     extracted_at: new Date().toISOString(),
   };
   writeJSON(path.join("data", "_metadata.json"), metadata);
