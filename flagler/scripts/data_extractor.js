@@ -305,6 +305,43 @@ function mapInstrumentToDeedType(instr) {
   return "Miscellaneous";
 }
 
+function mapImprovementType(description) {
+  if (!description) return null;
+  const desc = description.toUpperCase().trim();
+
+  // Driveway
+  if (desc.includes("DRWAY") || desc.includes("DRIVEWAY")) return "SiteDevelopment";
+
+  // Walkway/Sidewalk
+  if (desc.includes("WLKWAY") || desc.includes("WALKWAY") || desc.includes("SIDEWALK")) return "SiteDevelopment";
+
+  // Patio
+  if (desc.includes("PATIO")) return "SiteDevelopment";
+
+  // Porch (enclosed or screened)
+  if (desc.includes("PRCH") || desc.includes("PORCH")) {
+    if (desc.includes("ENC") || desc.includes("SCRN") || desc.includes("SCREEN")) {
+      return "ScreenEnclosure";
+    }
+    return "BuildingAddition";
+  }
+
+  // Garage
+  if (desc.includes("GARAGE") || desc.includes("GAR")) return "GeneralBuilding";
+
+  // Base area (main structure)
+  if (desc.includes("BASE AREA") || desc.includes("BASE")) return "GeneralBuilding";
+
+  // Pool/Spa
+  if (desc.includes("POOL") || desc.includes("SPA")) return "PoolSpaInstallation";
+
+  // Fence
+  if (desc.includes("FENCE") || desc.includes("FNC")) return "Fencing";
+
+  // Default to general building if no specific match
+  return "GeneralBuilding";
+}
+
 function extractExtraFeatures($) {
   const features = [];
   const table = $("#ctlBodyPane_ctl14_ctl01_gvwExtraFeatures");
@@ -507,10 +544,10 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     // Only create file if there's a link
     if (s.link) {
       const file = {
-        file_format: "pdf",
+        file_format: null,
         name: `Deed Document ${idx}`,
         original_url: s.link,
-        document_type: "Deed",
+        document_type: "ConveyanceDeed",
         request_identifier: fileRequestId,
       };
       writeJSON(path.join("data", `file_${idx}.json`), file);
@@ -732,10 +769,9 @@ function writePropertyImprovements($, parcelId) {
   // Write extra features as property improvements
   extraFeatures.forEach((feature) => {
     const improv = {
-      improvement_type: feature.description || null,
+      improvement_type: mapImprovementType(feature.description),
       completion_date: feature.year ? `${feature.year}-01-01` : null,
       request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
-      fee: null,
       improvement_action: null,
       improvement_status: "Completed",
       permit_number: feature.code || null,
@@ -746,7 +782,6 @@ function writePropertyImprovements($, parcelId) {
       is_owner_builder: null,
       permit_close_date: null,
       permit_issue_date: null,
-      permit_required: null,
       private_provider_inspections: null,
       private_provider_plan_review: null,
     };
@@ -757,10 +792,9 @@ function writePropertyImprovements($, parcelId) {
   // Write sub-areas as property improvements
   subAreas.forEach((subArea) => {
     const improv = {
-      improvement_type: subArea.description || null,
+      improvement_type: mapImprovementType(subArea.description),
       completion_date: subArea.actYear ? `${subArea.actYear}-01-01` : null,
       request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
-      fee: null,
       improvement_action: null,
       improvement_status: "Completed",
       permit_number: subArea.type || null,
@@ -771,7 +805,6 @@ function writePropertyImprovements($, parcelId) {
       is_owner_builder: null,
       permit_close_date: null,
       permit_issue_date: null,
-      permit_required: null,
       private_provider_inspections: null,
       private_provider_plan_review: null,
     };
