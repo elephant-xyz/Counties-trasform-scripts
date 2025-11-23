@@ -44978,40 +44978,51 @@ function buildFinalCountyAddressPayload(options = {}) {
     normalizedSurface.plus_four_postal_code = null;
   }
 
-  const hasLatLng = Number.isFinite(latitude) && Number.isFinite(longitude);
-  const normalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(normalizedSurface[field]),
-  );
+  const normalizedProbe = {
+    ...normalizedSurface,
+    latitude: Number.isFinite(latitude) ? latitude : null,
+    longitude: Number.isFinite(longitude) ? longitude : null,
+  };
 
-  if (normalizedCoverage && hasLatLng) {
-    const normalizedOutput = {
-      ...normalizedSurface,
-      latitude,
-      longitude,
-    };
-    if (requestIdentifier) {
-      normalizedOutput.request_identifier = requestIdentifier;
+  const normalizedCoverage =
+    Number.isFinite(normalizedProbe.latitude) &&
+    Number.isFinite(normalizedProbe.longitude) &&
+    typeof hasNormalizedCountyCoverage === "function"
+      ? hasNormalizedCountyCoverage({ ...normalizedProbe })
+      : false;
+
+  if (normalizedCoverage) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...normalizedProbe }) || null;
+    if (normalizedOutput) {
+      if (requestIdentifier) {
+        normalizedOutput.request_identifier = requestIdentifier;
+      }
+      if (preparedSourceRequest) {
+        normalizedOutput.source_http_request = preparedSourceRequest;
+      }
+      return (
+        stripAddressRequestMetadata(
+          ensureAddressOutputFieldPresence(normalizedOutput) || normalizedOutput,
+        ) || normalizedOutput
+      );
     }
-    if (preparedSourceRequest) {
-      normalizedOutput.source_http_request = preparedSourceRequest;
-    }
-    return (
-      stripAddressRequestMetadata(
-        ensureAddressOutputFieldPresence(normalizedOutput) || normalizedOutput,
-      ) || normalizedOutput
-    );
   }
+
+  const hasLatLng =
+    Number.isFinite(normalizedProbe.latitude) &&
+    Number.isFinite(normalizedProbe.longitude);
 
   const fallbackRawAddress =
     resolvedRaw ||
     composeUnnormalizedAddress({
-      ...normalizedSurface,
+      ...normalizedProbe,
       county_name:
-        normalizedSurface.county_name || fallbackCountyName || null,
-      state_code: normalizedSurface.state_code || fallbackStateCode || null,
-      city_name: normalizedSurface.city_name || null,
-      postal_code: normalizedSurface.postal_code || null,
-      plus_four_postal_code: normalizedSurface.plus_four_postal_code || null,
+        normalizedProbe.county_name || fallbackCountyName || null,
+      state_code: normalizedProbe.state_code || fallbackStateCode || null,
+      city_name: normalizedProbe.city_name || null,
+      postal_code: normalizedProbe.postal_code || null,
+      plus_four_postal_code: normalizedProbe.plus_four_postal_code || null,
     });
 
   if (!fallbackRawAddress) {
@@ -45019,9 +45030,9 @@ function buildFinalCountyAddressPayload(options = {}) {
   }
 
   const rawOutput = {
-    ...normalizedSurface,
-    latitude: hasLatLng ? latitude : null,
-    longitude: hasLatLng ? longitude : null,
+    ...normalizedProbe,
+    latitude: hasLatLng ? normalizedProbe.latitude : null,
+    longitude: hasLatLng ? normalizedProbe.longitude : null,
     unnormalized_address: fallbackRawAddress,
     __force_raw_variant: true,
   };
