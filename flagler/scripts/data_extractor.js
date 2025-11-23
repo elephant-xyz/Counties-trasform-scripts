@@ -552,10 +552,10 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
       };
       writeJSON(path.join("data", `file_${idx}.json`), file);
 
-      // Create deed_has_file relationship (from: deed, to: file)
+      // Create deed_has_file relationship (from: file, to: deed)
       const relDeedFile = {
-        from: { "/": `./deed_${idx}.json` },
-        to: { "/": `./file_${idx}.json` },
+        from: { "/": `./file_${idx}.json` },
+        to: { "/": `./deed_${idx}.json` },
       };
       writeJSON(
         path.join("data", `relationship_deed_file_${idx}.json`),
@@ -563,10 +563,10 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
       );
     }
 
-    // Create sales_history_has_deed relationship (from: sales_history, to: deed)
+    // Create sales_history_has_deed relationship (from: deed, to: sales_history)
     const relSalesHistoryDeed = {
-      from: { "/": `./sales_history_${idx}.json` },
-      to: { "/": `./deed_${idx}.json` },
+      from: { "/": `./deed_${idx}.json` },
+      to: { "/": `./sales_history_${idx}.json` },
     };
     writeJSON(
       path.join("data", `relationship_sales_history_deed_${idx}.json`),
@@ -880,7 +880,7 @@ function writeLayout(parcelId) {
     const out = {
       space_type: l.space_type ?? null,
       space_index: l.space_index ?? null,
-      space_type_index: l.space_type_index || `${idx + 1}`,
+      space_type_index: l.space_type_index || `${idx + 1}.1`,
       flooring_material_type: l.flooring_material_type ?? null,
       size_square_feet: l.size_square_feet ?? null,
       floor_level: l.floor_level ?? null,
