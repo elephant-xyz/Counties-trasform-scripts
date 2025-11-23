@@ -403,19 +403,12 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     };
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
-    const deedType = mapInstrumentToDeedType(s.instrument);
     const deed = {
-      deed_type: deedType,
       request_identifier: deedRequestId,
     };
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
-      document_type: null,
-      file_format: null,
-      ipfs_url: null,
-      name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
-      original_url: s.link || null,
       request_identifier: fileRequestId,
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
