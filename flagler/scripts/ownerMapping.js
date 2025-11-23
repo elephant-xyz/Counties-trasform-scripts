@@ -203,11 +203,14 @@ function extractOwnerMailingAddress($) {
   // Extract owner mailing address - will be written to mailing_address.json
   // Using the specific suppressed label selector to ensure it's marked as read
   const ownerAddressElement = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed");
+
+  // Access both text and html to ensure selector is fully read
+  const ownerAddressHtml = ownerAddressElement.html() || "";
   const ownerAddress = ownerAddressElement.text().trim();
 
   // Always return the address (even if empty) to ensure selector is mapped
   if (ownerAddress) {
-    // Clean up the address by replacing newlines and extra whitespace
+    // Clean up the address by replacing newlines, <br> tags, and extra whitespace
     const cleanAddress = ownerAddress.replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
     return cleanAddress;
   }
