@@ -39097,6 +39097,34 @@ async function main() {
     unnormalizedCandidates: strictVariantUnnormalizedCandidates,
   });
   enforceStrictFinalAddressVariant(finalAddressPath);
+
+  try {
+    const existingFinalAddress = readJSONIfExists(finalAddressPath);
+    const rebuiltAddress = buildFinalCountyAddressPayload({
+      existingAddress: existingFinalAddress,
+      unnormalizedSource: unAddr,
+      seedSource: seed,
+      parcelId,
+      htmlCoordinates,
+      fallbackCountyName,
+      fallbackStateCode,
+      fallbackCountryCode: "US",
+      siteLocationLine,
+    });
+    if (rebuiltAddress) {
+      fs.writeFileSync(
+        finalAddressPath,
+        JSON.stringify(rebuiltAddress, null, 2),
+      );
+    } else {
+      removeFileIfExists(finalAddressPath);
+    }
+  } catch (error) {
+    console.error("Failed to rebuild deterministic county address:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
 }
 
 async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}) {
@@ -43658,6 +43686,355 @@ function enforceStrictNormalizedCoverageOrForceRaw(addressPath, options = {}) {
   writeJSON(addressPath, rawPayload);
 }
 
+function buildFinalCountyAddressPayload(options = {}) {
+  const {
+    existingAddress = null,
+    unnormalizedSource = null,
+    seedSource = null,
+    parcelId = null,
+    htmlCoordinates = null,
+    fallbackCountyName = null,
+    fallbackStateCode = null,
+    fallbackCountryCode = "US",
+    siteLocationLine = null,
+  } = options || {};
+
+  const existingSurface =
+    existingAddress && typeof existingAddress === "object"
+      ? ensureAddressOutputFieldPresence({ ...existingAddress }) ||
+        { ...existingAddress }
+      : {};
+
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+
+  const rawStrings = [];
+  const enqueueRawString = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawStrings.push(trimmed);
+    }
+  };
+
+  enqueueRawString(existingSurface.unnormalized_address);
+  if (unnormalizedSource && typeof unnormalizedSource === "object") {
+    enqueueRawString(unnormalizedSource.unnormalized_address);
+    enqueueRawString(unnormalizedSource.full_address);
+    enqueueRawString(unnormalizedSource.site_address);
+    enqueueRawString(unnormalizedSource.address);
+    if (Array.isArray(unnormalizedSource.lines)) {
+      unnormalizedSource.lines.forEach(enqueueRawString);
+      enqueueRawString(unnormalizedSource.lines.join(", "));
+    }
+  }
+  enqueueRawString(siteLocationLine);
+  enqueueRawString(composeUnnormalizedAddress(existingSurface));
+
+  const resolvedRaw =
+    rawStrings.length > 0 ? resolveFirstNonEmptyString(rawStrings) : null;
+
+  const parsedFull =
+    resolvedRaw && typeof resolvedRaw === "string"
+      ? extractComponentsFromFullAddress(resolvedRaw)
+      : null;
+  const looseParsed =
+    resolvedRaw && typeof resolvedRaw === "string"
+      ? parseLooseUnnormalizedAddress(resolvedRaw)
+      : null;
+
+  const pickStringValue = (...candidates) => {
+    const queue = [];
+    const enqueue = (candidate) => {
+      if (candidate === undefined || candidate === null) return;
+      if (Array.isArray(candidate)) {
+        candidate.forEach(enqueue);
+        return;
+      }
+      if (typeof candidate === "string" || typeof candidate === "number") {
+        queue.push(String(candidate));
+      }
+    };
+    candidates.forEach(enqueue);
+    if (!queue.length) return null;
+    const resolved = resolveFirstNonEmptyString(queue);
+    return safeNullIfEmpty(resolved);
+  };
+
+  const pickCoordinateValue = (...candidates) => {
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) continue;
+      if (Array.isArray(candidate)) {
+        const nested = pickCoordinateValue(...candidate);
+        if (Number.isFinite(nested)) return nested;
+        continue;
+      }
+      const numeric = parseCoordinate(candidate);
+      if (Number.isFinite(numeric)) {
+        return numeric;
+      }
+    }
+    return null;
+  };
+
+  normalizedSurface.street_number = pickStringValue(
+    existingSurface.street_number,
+    parsedFull && parsedFull.streetNumber,
+    looseParsed && looseParsed.streetNumber,
+    unnormalizedSource && unnormalizedSource.street_number,
+  );
+
+  const streetNameCandidate = pickStringValue(
+    existingSurface.street_name,
+    parsedFull && parsedFull.streetName,
+    looseParsed && looseParsed.streetName,
+    unnormalizedSource && unnormalizedSource.street_name,
+  );
+  if (streetNameCandidate) {
+    const formatted = formatStreetNameCase(streetNameCandidate);
+    normalizedSurface.street_name = formatted
+      ? formatted.toUpperCase()
+      : streetNameCandidate.toUpperCase();
+  } else {
+    normalizedSurface.street_name = null;
+  }
+
+  const streetSuffixCandidate = pickStringValue(
+    existingSurface.street_suffix_type,
+    parsedFull && parsedFull.streetSuffix,
+    looseParsed && looseParsed.streetSuffix,
+  );
+  normalizedSurface.street_suffix_type = streetSuffixCandidate
+    ? mapStreetSuffixType(streetSuffixCandidate) || null
+    : null;
+
+  const streetPreCandidate = pickStringValue(
+    existingSurface.street_pre_directional_text,
+    parsedFull && parsedFull.streetPreDirectional,
+    looseParsed && looseParsed.streetPreDirectional,
+  );
+  normalizedSurface.street_pre_directional_text = streetPreCandidate
+    ? streetPreCandidate.toUpperCase()
+    : null;
+
+  const streetPostCandidate = pickStringValue(
+    existingSurface.street_post_directional_text,
+    parsedFull && parsedFull.streetPostDirectional,
+    looseParsed && looseParsed.streetPostDirectional,
+  );
+  normalizedSurface.street_post_directional_text = streetPostCandidate
+    ? streetPostCandidate.toUpperCase()
+    : null;
+
+  normalizedSurface.unit_identifier = pickStringValue(
+    existingSurface.unit_identifier,
+    parsedFull && parsedFull.unitIdentifier,
+    looseParsed && looseParsed.unitIdentifier,
+    unnormalizedSource && unnormalizedSource.unit_identifier,
+  );
+
+  normalizedSurface.route_number = pickStringValue(
+    existingSurface.route_number,
+    parsedFull && parsedFull.routeNumber,
+    looseParsed && looseParsed.routeNumber,
+  );
+
+  const cityCandidate = pickStringValue(
+    existingSurface.city_name,
+    parsedFull && parsedFull.cityName,
+    looseParsed && looseParsed.cityName,
+    unnormalizedSource && unnormalizedSource.city_name,
+  );
+  normalizedSurface.city_name = cityCandidate
+    ? sanitizeCityName(cityCandidate)
+    : null;
+
+  const municipalityCandidate = pickStringValue(
+    existingSurface.municipality_name,
+    unnormalizedSource && unnormalizedSource.municipality_name,
+    normalizedSurface.city_name
+      ? toTitleCase(normalizedSurface.city_name)
+      : null,
+  );
+  normalizedSurface.municipality_name = municipalityCandidate
+    ? toTitleCase(municipalityCandidate)
+    : null;
+
+  const stateCandidate = pickStringValue(
+    existingSurface.state_code,
+    parsedFull && parsedFull.stateCode,
+    looseParsed && looseParsed.stateCode,
+    unnormalizedSource && unnormalizedSource.state_code,
+    fallbackStateCode,
+  );
+  normalizedSurface.state_code = stateCandidate
+    ? stateCandidate.toUpperCase()
+    : null;
+
+  const postalCandidate = pickStringValue(
+    existingSurface.postal_code,
+    parsedFull && parsedFull.postalCode,
+    looseParsed && looseParsed.postalCode,
+    unnormalizedSource && unnormalizedSource.postal_code,
+  );
+  normalizedSurface.postal_code = sanitizePostalCode(postalCandidate);
+
+  const plus4Candidate = pickStringValue(
+    existingSurface.plus_four_postal_code,
+    parsedFull && parsedFull.plus4,
+    looseParsed && looseParsed.plus4,
+    unnormalizedSource && unnormalizedSource.plus_four_postal_code,
+  );
+  normalizedSurface.plus_four_postal_code = normalizedSurface.postal_code
+    ? sanitizePlus4(plus4Candidate)
+    : null;
+
+  const countyCandidate = pickStringValue(
+    existingSurface.county_name,
+    unnormalizedSource && unnormalizedSource.county_name,
+    unnormalizedSource && unnormalizedSource.county_jurisdiction,
+    fallbackCountyName,
+  );
+  normalizedSurface.county_name = countyCandidate
+    ? titleCaseCounty(countyCandidate)
+    : null;
+
+  const countryCandidate = pickStringValue(
+    existingSurface.country_code,
+    unnormalizedSource && unnormalizedSource.country_code,
+    fallbackCountryCode,
+  );
+  normalizedSurface.country_code = countryCandidate
+    ? countryCandidate.toUpperCase()
+    : null;
+
+  const gridFromParcel = deriveGridPartsFromPcn(parcelId);
+  normalizedSurface.township = pickStringValue(
+    existingSurface.township,
+    gridFromParcel && gridFromParcel.township,
+  );
+  normalizedSurface.range = pickStringValue(
+    existingSurface.range,
+    gridFromParcel && gridFromParcel.range,
+  );
+  normalizedSurface.section = pickStringValue(
+    existingSurface.section,
+    gridFromParcel && gridFromParcel.section,
+  );
+  normalizedSurface.block = pickStringValue(
+    existingSurface.block,
+    gridFromParcel && gridFromParcel.block,
+  );
+  normalizedSurface.lot = pickStringValue(
+    existingSurface.lot,
+    gridFromParcel && gridFromParcel.lot,
+  );
+
+  const latitude = pickCoordinateValue(
+    existingSurface.latitude,
+    htmlCoordinates && htmlCoordinates.latitude,
+    unnormalizedSource && unnormalizedSource.latitude,
+    seedSource && seedSource.latitude,
+  );
+  const longitude = pickCoordinateValue(
+    existingSurface.longitude,
+    htmlCoordinates && htmlCoordinates.longitude,
+    unnormalizedSource && unnormalizedSource.longitude,
+    seedSource && seedSource.longitude,
+  );
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingSurface && existingSurface.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    parcelId,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingSurface && existingSurface.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+  const preparedSourceRequest = sourceHttpRequest
+    ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
+    : null;
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
+  }
+
+  const hasLatLng = Number.isFinite(latitude) && Number.isFinite(longitude);
+  const normalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(normalizedSurface[field]),
+  );
+
+  if (normalizedCoverage && hasLatLng) {
+    const normalizedOutput = {
+      ...normalizedSurface,
+      latitude,
+      longitude,
+    };
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    }
+    if (preparedSourceRequest) {
+      normalizedOutput.source_http_request = preparedSourceRequest;
+    }
+    return (
+      stripAddressRequestMetadata(
+        ensureAddressOutputFieldPresence(normalizedOutput) || normalizedOutput,
+      ) || normalizedOutput
+    );
+  }
+
+  const fallbackRawAddress =
+    resolvedRaw ||
+    composeUnnormalizedAddress({
+      ...normalizedSurface,
+      county_name:
+        normalizedSurface.county_name || fallbackCountyName || null,
+      state_code: normalizedSurface.state_code || fallbackStateCode || null,
+      city_name: normalizedSurface.city_name || null,
+      postal_code: normalizedSurface.postal_code || null,
+      plus_four_postal_code: normalizedSurface.plus_four_postal_code || null,
+    });
+
+  if (!fallbackRawAddress) {
+    return null;
+  }
+
+  const rawOutput = {
+    ...normalizedSurface,
+    latitude: hasLatLng ? latitude : null,
+    longitude: hasLatLng ? longitude : null,
+    unnormalized_address: fallbackRawAddress,
+    __force_raw_variant: true,
+  };
+
+  if (
+    rawOutput.state_code &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = fallbackCountryCode
+      ? fallbackCountryCode.toUpperCase()
+      : "US";
+  }
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
+  }
+  if (preparedSourceRequest) {
+    rawOutput.source_http_request = preparedSourceRequest;
+  }
+
+  return (
+    stripAddressRequestMetadata(
+      ensureAddressOutputFieldPresence(rawOutput) || rawOutput,
+    ) || rawOutput
+  );
+}
+
 
 async function run() {
   await main();
@@ -44270,6 +44647,7 @@ async function run() {
       process.exitCode = 1;
     }
   }
+
 }
 
 run().catch((error) => {
