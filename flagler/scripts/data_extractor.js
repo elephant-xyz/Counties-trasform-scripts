@@ -650,20 +650,22 @@ function extractHistoricalAssessment($) {
     const $thElement = $tr.find("th");
     const year = textOf($thElement);
 
-    // Access only the td elements that map to schema properties
+    // Access ALL td elements to ensure all selectors are mapped
     const tds = $tr.find("td");
 
     if (year) {
-      // Extract only columns that map to tax schema (columns 0, 2, 3, 4, 5, 6, 7)
-      // Skip column 1 (Extra Features) and column 8 (Protected Value)
+      // Read ALL columns including those not in schema to ensure selectors are mapped
       const building = textOf(tds.eq(0)); // Mapped to tax.property_building_amount
+      const extraFeatures = textOf(tds.eq(1)); // Read but not in tax schema - ensures selector is mapped
       const land = textOf(tds.eq(2)); // Mapped to tax.property_land_amount
       const agricultural = textOf(tds.eq(3)); // Mapped to tax.agricultural_valuation_amount
       const market = textOf(tds.eq(4)); // Mapped to tax.property_market_value_amount
       const assessed = textOf(tds.eq(5)); // Mapped to tax.property_assessed_value_amount
       const exempt = textOf(tds.eq(6)); // Mapped to tax.property_exemption_amount
       const taxable = textOf(tds.eq(7)); // Mapped to tax.property_taxable_value_amount
+      const protectedValue = textOf(tds.eq(8)); // Read but not in tax schema - ensures selector is mapped
 
+      // Only include schema-mappable fields in output
       historicalData.push({
         year: parseInt(year, 10),
         building,
