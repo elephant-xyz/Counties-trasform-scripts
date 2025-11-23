@@ -124,34 +124,28 @@ function extractUseCode($) {
 
 function extractPropertySummaryDetails($) {
   const details = {};
-  const allRows = []; // Store all rows to ensure all selectors are tracked
 
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
     const $tr = $(tr);
     const label = getLabelText($tr);
-    const value = textOf($tr.find("td:last-child span"));
 
-    // Store all rows for complete mapping
-    if (label && value) {
-      allRows.push({ label, value });
-    }
-
+    // Only extract values for labels that will be mapped to output
     if ((label || "").toLowerCase().includes("millage rate")) {
+      const value = textOf($tr.find("td:last-child span"));
       details.millageRate = value; // Mapped to tax.millage_rate
     } else if ((label || "").toLowerCase().includes("homestead")) {
-      details.homestead = value; // Extracted but not directly in property schema (could be exemption-related)
-    } else if ((label || "").toLowerCase().includes("tax district")) {
-      details.taxDistrict = value; // Extracted but not in schema
-    } else if ((label || "").toLowerCase().includes("gis sqft")) {
-      details.gisSqft = value; // Extracted but not in schema (lot size data)
+      const value = textOf($tr.find("td:last-child span"));
+      details.homestead = value; // Could be mapped to tax exemption if needed
     } else if ((label || "").toLowerCase().includes("location address")) {
+      const value = textOf($tr.find("td:last-child span"));
       details.locationAddress = value; // Property address
     } else if ((label || "").toLowerCase().includes("prop id")) {
+      const value = textOf($tr.find("td:last-child span"));
       details.propId = value; // Property ID
     }
+    // Skip other rows to avoid unmapped selector errors
   });
 
-  details.allRows = allRows; // Include all rows for complete data extraction
   return details;
 }
 
@@ -297,24 +291,14 @@ function collectBuildings($) {
         .each((__, tr) => {
           const $tr = $(tr);
           const label = getBuildingLabelText($tr);
-          // Explicitly access td, all divs, and all spans to ensure all selectors are read
-          const $td = $tr.find("td").first();
-
-          // Access all div elements (both nth-child(1) and direct div)
-          const $allDivs = $td.find("div");
-          $allDivs.each((divIdx, divEl) => {
-            // Access all spans within each div
-            $(divEl).find("span").each((spanIdx, spanEl) => {
-              // This ensures selectors like tbody > tr:nth-child(N) > td > div:nth-child(1) > span are accessed
-            });
-          });
-
-          // Get the value from the first div/span as before
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          // Store both label and value to ensure all tbody > tr > td > div > span selectors are tracked
-          if (label) map[label] = value;
+          // Only access elements if there's a label to map
+          if (label) {
+            const $td = $tr.find("td").first();
+            const $div = $td.find("div").first();
+            const $span = $div.find("span").first();
+            const value = textTrim($span.text());
+            map[label] = value;
+          }
         });
       if (Object.keys(map).length) leftColumnData.push(map);
     });
@@ -332,24 +316,14 @@ function collectBuildings($) {
         .each((__, tr) => {
           const $tr = $(tr);
           const label = getBuildingLabelText($tr);
-          // Explicitly access td, all divs, and all spans to ensure all selectors are read
-          const $td = $tr.find("td").first();
-
-          // Access all div elements (both nth-child(1) and direct div)
-          const $allDivs = $td.find("div");
-          $allDivs.each((divIdx, divEl) => {
-            // Access all spans within each div
-            $(divEl).find("span").each((spanIdx, spanEl) => {
-              // This ensures selectors like tbody > tr:nth-child(N) > td > div:nth-child(1) > span are accessed
-            });
-          });
-
-          // Get the value from the first div/span as before
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          // Store both label and value to ensure all tbody > tr > td > div > span selectors are tracked
-          if (label) map[label] = value;
+          // Only access elements if there's a label to map
+          if (label) {
+            const $td = $tr.find("td").first();
+            const $div = $td.find("div").first();
+            const $span = $div.find("span").first();
+            const value = textTrim($span.text());
+            map[label] = value;
+          }
         });
       if (Object.keys(map).length) {
         // Combine with the corresponding building from the left column
@@ -578,49 +552,33 @@ function extractValuation($) {
 
   const rows = table.find("tbody tr");
   const dataMap = {};
+
+  // Define which labels should be mapped to avoid accessing unmapped cells
+  const mappedLabels = [
+    "Building Value",
+    "Land Value",
+    "Land Agricultural Value",
+    "Just (Market) Value",
+    "Assessed Value",
+    "Exempt Value",
+    "Taxable Value"
+  ];
+
   rows.each((i, tr) => {
     const $tr = $(tr);
-    // Valuation table labels are always <th> - explicitly access th to ensure selector is read
+    // Valuation table labels are always <th>
     const $thElement = $tr.find("th");
     const label = $thElement.text().trim();
 
-    // All labels need to be extracted to ensure all th selectors are accessed
-    // But only mapped labels will be stored in dataMap
-    const allLabels = [
-      "Building Value",
-      "Extra Features Value",
-      "Land Value",
-      "Land Agricultural Value",
-      "Agricultural (Market) Value",
-      "Just (Market) Value",
-      "Assessed Value",
-      "Exempt Value",
-      "Taxable Value",
-      "Protected Value"
-    ];
-
-    const mappedLabels = [
-      "Building Value",
-      "Land Value",
-      "Land Agricultural Value",
-      "Just (Market) Value",
-      "Assessed Value",
-      "Exempt Value",
-      "Taxable Value"
-    ];
-
-    // Access ALL td.value-column elements to ensure selectors are marked as read
-    const tds = $tr.find("td.value-column");
-    const vals = [];
-    tds.each((j, td) => {
-      const $td = $(td);
-      const cellValue = $td.text().trim();
-      vals.push(cellValue);
-      // Explicitly access the td element to ensure nth-child selectors are tracked
-    });
-
-    // Only store mapped labels in dataMap
+    // Only access and store data for labels that map to the tax schema
     if (mappedLabels.includes(label)) {
+      const tds = $tr.find("td.value-column");
+      const vals = [];
+      tds.each((j, td) => {
+        const $td = $(td);
+        const cellValue = $td.text().trim();
+        vals.push(cellValue);
+      });
       dataMap[label] = vals;
     }
   });
@@ -668,28 +626,26 @@ function extractHistoricalAssessment($) {
     const tds = $tr.find("td");
 
     if (year) {
-      // Access all td elements to ensure nth-child selectors are tracked
-      // Extract all values even if not all are mapped to schema
-      const building = textOf(tds.eq(0)); // Mapped
-      const extraFeatures = textOf(tds.eq(1)); // Not mapped but accessed
-      const land = textOf(tds.eq(2)); // Mapped
-      const agricultural = textOf(tds.eq(3)); // Mapped
-      const market = textOf(tds.eq(4)); // Mapped
-      const assessed = textOf(tds.eq(5)); // Mapped
-      const exempt = textOf(tds.eq(6)); // Mapped
-      const taxable = textOf(tds.eq(7)); // Mapped
-      const protectedValue = textOf(tds.eq(8)); // Not mapped but accessed
+      // Only access td elements that map to schema fields
+      const building = textOf(tds.eq(0)); // Mapped to tax.property_building_amount
+      // Skip tds.eq(1) - Extra Features (not in schema)
+      const land = textOf(tds.eq(2)); // Mapped to tax.property_land_amount
+      const agricultural = textOf(tds.eq(3)); // Mapped to tax.agricultural_valuation_amount
+      const market = textOf(tds.eq(4)); // Mapped to tax.property_market_value_amount
+      const assessed = textOf(tds.eq(5)); // Mapped to tax.property_assessed_value_amount
+      const exempt = textOf(tds.eq(6)); // Mapped to tax.property_exemption_amount
+      const taxable = textOf(tds.eq(7)); // Mapped to tax.property_taxable_value_amount
+      // Skip tds.eq(8) - Protected Value (not in schema)
 
-      // Store only values that map to tax schema
       historicalData.push({
         year: parseInt(year, 10),
-        building, // Mapped to tax.property_building_amount
-        land, // Mapped to tax.property_land_amount
-        agricultural, // Mapped to tax.agricultural_valuation_amount
-        market, // Mapped to tax.property_market_value_amount
-        assessed, // Mapped to tax.property_assessed_value_amount
-        exempt, // Mapped to tax.property_exemption_amount
-        taxable, // Mapped to tax.property_taxable_value_amount
+        building,
+        land,
+        agricultural,
+        market,
+        assessed,
+        exempt,
+        taxable,
       });
     }
   });
@@ -1494,15 +1450,8 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   writeJSON(path.join("data", "address.json"), address);
 }
 
-// Read social media links to ensure selectors are mapped (even though they're not stored)
-function readSocialMediaLinks($) {
-  // Access social media link selectors to ensure they're marked as read
-  const linkedInLink = $("#aLinkedIn").attr("href");
-  const facebookLink = $("#aFacebook").attr("href");
-  const twitterLink = $("#aTwitter").attr("href");
-  // These are UI elements and not stored in the data model
-  return { linkedInLink, facebookLink, twitterLink };
-}
+// Social media links are not part of the Elephant schema and should not be accessed
+// Removed readSocialMediaLinks() function to avoid unmapped selector errors
 
 function extractMailingAddressFromHTML($) {
   // Extract mailing address directly from HTML to ensure selector mapping
@@ -1652,9 +1601,6 @@ function writeStructureFromBuildings($, parcelId) {
 function main() {
   ensureDir("data");
   const $ = loadHTML();
-
-  // Read social media links to ensure selectors are mapped
-  readSocialMediaLinks($);
 
   const propertySeed = readJSON("property_seed.json");
   const unnormalized = readJSON("unnormalized_address.json");

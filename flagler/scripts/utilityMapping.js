@@ -50,12 +50,14 @@ function collectBuildings($) {
         .each((__, tr) => {
           const $tr = $(tr);
           const label = textTrim($tr.find("th strong").first().text());
-          // Explicitly access td, div, and span to ensure all selectors are read
-          const $td = $tr.find("td").first();
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          if (label) map[label] = value;
+          // Only access elements if there's a label to map
+          if (label) {
+            const $td = $tr.find("td").first();
+            const $div = $td.find("div").first();
+            const $span = $div.find("span").first();
+            const value = textTrim($span.text());
+            map[label] = value;
+          }
         });
       if (Object.keys(map).length) leftColumnData.push(map);
     });
@@ -73,12 +75,14 @@ function collectBuildings($) {
         .each((__, tr) => {
           const $tr = $(tr);
           const label = textTrim($tr.find("th strong").first().text());
-          // Explicitly access td, div, and span to ensure all selectors are read
-          const $td = $tr.find("td").first();
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          if (label) map[label] = value;
+          // Only access elements if there's a label to map
+          if (label) {
+            const $td = $tr.find("td").first();
+            const $div = $td.find("div").first();
+            const $span = $div.find("span").first();
+            const value = textTrim($span.text());
+            map[label] = value;
+          }
         });
       if (Object.keys(map).length) {
         // Combine with the corresponding building from the left column
