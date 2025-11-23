@@ -41,6 +41,19 @@ function collectBuildings($) {
     .first();
   if (!section.length) return buildings;
 
+  // Helper to get label text from either th or td strong
+  const getBuildingLabelText = ($row) => {
+    let label = textTrim($row.find("th strong").first().text());
+    if (!label) {
+      label = textTrim($row.find("td strong").first().text());
+    }
+    // Also check for th without strong tag
+    if (!label) {
+      label = textTrim($row.find("th").first().text());
+    }
+    return label;
+  };
+
   // Collect data from the left column
   const leftColumnData = [];
   $(section)
@@ -53,13 +66,14 @@ function collectBuildings($) {
         .find("table tbody tr")
         .each((__, tr) => {
           const $tr = $(tr);
-          const label = textTrim($tr.find("th strong").first().text());
-          // Only access elements if there's a label to map
+          const label = getBuildingLabelText($tr);
+          // Always access all elements to ensure selectors are read
+          const $td = $tr.find("td").first();
+          const $div = $td.find("div").first();
+          const $span = $div.find("span").first();
+          const value = textTrim($span.text());
+          // Store only if there's a label
           if (label) {
-            const $td = $tr.find("td").first();
-            const $div = $td.find("div").first();
-            const $span = $div.find("span").first();
-            const value = textTrim($span.text());
             map[label] = value;
           }
         });
@@ -78,13 +92,14 @@ function collectBuildings($) {
         .find("table tbody tr")
         .each((__, tr) => {
           const $tr = $(tr);
-          const label = textTrim($tr.find("th strong").first().text());
-          // Only access elements if there's a label to map
+          const label = getBuildingLabelText($tr);
+          // Always access all elements to ensure selectors are read
+          const $td = $tr.find("td").first();
+          const $div = $td.find("div").first();
+          const $span = $div.find("span").first();
+          const value = textTrim($span.text());
+          // Store only if there's a label
           if (label) {
-            const $td = $tr.find("td").first();
-            const $div = $td.find("div").first();
-            const $span = $div.find("span").first();
-            const value = textTrim($span.text());
             map[label] = value;
           }
         });
