@@ -933,16 +933,12 @@ function writeTaxes($, propertySeed, parcelId) {
 
   // Add historical data first
   historical.forEach((h) => {
-    // Calculate period dates based on tax year (Jan 1 to Dec 31)
-    const periodStart = h.year ? `${h.year}-01-01` : null;
-    const periodEnd = h.year ? `${h.year}-12-31` : null;
-
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
-      monthly_tax_amount: null, // Required field - set to null when not available
-      period_start_date: periodStart, // Required field - calculated from tax year
-      period_end_date: periodEnd, // Required field - calculated from tax year
+      monthly_tax_amount: null,
+      period_start_date: null,
+      period_end_date: null,
     };
 
     // Only add fields with valid values
@@ -1006,16 +1002,12 @@ function writeTaxes($, propertySeed, parcelId) {
       if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
       // Add new entry
-      // Calculate period dates based on tax year (Jan 1 to Dec 31)
-      const periodStart = v.year ? `${v.year}-01-01` : null;
-      const periodEnd = v.year ? `${v.year}-12-31` : null;
-
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
-        monthly_tax_amount: null, // Required field - set to null when not available
-        period_start_date: periodStart, // Required field - calculated from tax year
-        period_end_date: periodEnd, // Required field - calculated from tax year
+        monthly_tax_amount: null,
+        period_start_date: null,
+        period_end_date: null,
       };
 
       // Only add fields with valid values
