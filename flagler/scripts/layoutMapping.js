@@ -126,6 +126,15 @@ function defaultLayout(space_type, space_index, space_type_index) {
     bathroom_renovation_date: null,
     kitchen_renovation_date: null,
     flooring_installation_date: null,
+    adjustable_area_sq_ft: null,
+    area_under_air_sq_ft: null,
+    heated_area_sq_ft: null,
+    installation_date: null,
+    livable_area_sq_ft: null,
+    pool_installation_date: null,
+    spa_installation_date: null,
+    story_type: null,
+    total_area_sq_ft: null,
   };
 }
 

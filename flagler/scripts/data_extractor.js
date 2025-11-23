@@ -888,6 +888,9 @@ function writeTaxes($, propertySeed, parcelId) {
       yearly_tax_amount: null,
       first_year_building_on_tax_roll: null,
       first_year_on_tax_roll: null,
+      building_depreciated_value_amount: null,
+      building_replacement_cost_amount: null,
+      homestead_cap_loss_amount: null,
     });
   });
 
@@ -923,6 +926,9 @@ function writeTaxes($, propertySeed, parcelId) {
         yearly_tax_amount: null,
         first_year_building_on_tax_roll: null,
         first_year_on_tax_roll: null,
+        building_depreciated_value_amount: null,
+        building_replacement_cost_amount: null,
+        homestead_cap_loss_amount: null,
       });
       // Note: extraFeatures, agriculturalMarket, and protected values are extracted but not mapped to schema
       // Note: homestead, taxDistrict, and gisSqft are extracted but not in tax schema
@@ -960,6 +966,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       permit_issue_date: null,
       private_provider_inspections: null,
       private_provider_plan_review: null,
+      fee: null,
     };
     writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
     counter++;
@@ -984,6 +991,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       permit_issue_date: null,
       private_provider_inspections: null,
       private_provider_plan_review: null,
+      fee: null,
     };
     writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
     counter++;
@@ -1088,6 +1096,21 @@ function writeLayout(parcelId) {
       pool_condition: l.pool_condition ?? null,
       pool_surface_type: l.pool_surface_type ?? null,
       pool_water_quality: l.pool_water_quality ?? null,
+      adjustable_area_sq_ft: l.adjustable_area_sq_ft ?? null,
+      area_under_air_sq_ft: l.area_under_air_sq_ft ?? null,
+      bathroom_renovation_date: l.bathroom_renovation_date ?? null,
+      built_year: l.built_year ?? null,
+      building_number: l.building_number ?? null,
+      flooring_installation_date: l.flooring_installation_date ?? null,
+      heated_area_sq_ft: l.heated_area_sq_ft ?? null,
+      installation_date: l.installation_date ?? null,
+      kitchen_renovation_date: l.kitchen_renovation_date ?? null,
+      livable_area_sq_ft: l.livable_area_sq_ft ?? null,
+      pool_installation_date: l.pool_installation_date ?? null,
+      request_identifier: l.request_identifier ?? null,
+      spa_installation_date: l.spa_installation_date ?? null,
+      story_type: l.story_type ?? null,
+      total_area_sq_ft: l.total_area_sq_ft ?? null,
     };
     writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
   });
