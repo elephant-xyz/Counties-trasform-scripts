@@ -4218,21 +4218,13 @@ const RAW_ADDRESS_FINAL_ALLOWED_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
+// Keep the raw variant surface aligned with the normalized schema plus the
+// unnormalized string so every property defined in the lexicon is emitted.
+// Validators expect these keys to be present (even when null) in order for the
+// address object to satisfy the oneOf clause, so we reuse the allowed-field
+// list instead of cherry-picking a reduced subset.
 const RAW_ADDRESS_SUBMISSION_FIELDS = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 const RAW_ADDRESS_SUBMISSION_FIELD_SET = new Set(
   RAW_ADDRESS_SUBMISSION_FIELDS,
