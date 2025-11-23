@@ -4118,17 +4118,7 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 
 const RAW_VARIANT_FIELD_WHITELIST = [
   "unnormalized_address",
-  "county_name",
-  "country_code",
-  "latitude",
-  "longitude",
-  "unit_identifier",
-  "route_number",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
+  ...RAW_ADDRESS_OUTPUT_FIELDS,
 ];
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
 const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
