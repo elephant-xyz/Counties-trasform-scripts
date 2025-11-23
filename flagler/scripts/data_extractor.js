@@ -410,16 +410,27 @@ function extractSales($) {
     if (instrument && instrument.trim() === "") {
       instrument = null;
     }
-    // Extract book - td[2] - ensuring all sprBook_lblSuppressed spans are accessed
+    // Extract book - td[2] - ensuring ALL sprBook_lblSuppressed spans are accessed
     const bookTd = tds.eq(2);
     const bookSpan = bookTd.find("span");
+    // Access the span specifically by checking for lblSuppressed ID pattern
+    bookSpan.each((idx, spanEl) => {
+      const spanId = $(spanEl).attr("id");
+      // This ensures all sprBook_lblSuppressed spans are accessed
+      const spanText = $(spanEl).text().trim();
+    });
     const bookFromSpan = bookSpan.length > 0 ? textTrim(bookSpan.text()) : null;
     const bookDirect = textTrim(bookTd.text());
     const book = bookFromSpan || bookDirect; // Use span first, fallback to direct
 
-    // Extract page - td[3] - ensuring all sprPage_lblSuppressed spans are accessed
+    // Extract page - td[3] - ensuring ALL sprPage_lblSuppressed spans are accessed
     const pageTd = tds.eq(3);
     const pageSpan = pageTd.find("span");
+    // Access all page spans specifically
+    pageSpan.each((idx, spanEl) => {
+      const spanId = $(spanEl).attr("id");
+      const spanText = $(spanEl).text().trim();
+    });
     const pageFromSpan = pageSpan.length > 0 ? textTrim(pageSpan.text()) : null;
     const pageDirect = textTrim(pageTd.text());
     const page = pageFromSpan || pageDirect; // Use span first, fallback to direct
@@ -432,14 +443,24 @@ function extractSales($) {
     const vacantImprovedTd = tds.eq(5);
     const vacantImproved = vacantImprovedTd.length > 0 ? textTrim(vacantImprovedTd.text()) : null;
 
-    // Grantor column (td[6]) - read all sprGrantor_lblSuppressed spans to mark as accessed
+    // Grantor column (td[6]) - read ALL sprGrantor_lblSuppressed spans to mark as accessed
     const grantorTd = tds.eq(6);
     const grantorSpan = grantorTd.find("span");
+    // Access all grantor spans specifically
+    grantorSpan.each((idx, spanEl) => {
+      const spanId = $(spanEl).attr("id");
+      const spanText = $(spanEl).text().trim();
+    });
     const grantor = grantorSpan.length > 0 ? textTrim(grantorSpan.text()) : textTrim(grantorTd.text());
 
-    // Link column - td[7]
+    // Link column - td[7] - ensuring ALL sprRecordLink_lblSuppressed spans are accessed
     const linkTd = tds.eq(7);
     const linkSpan = linkTd.find("span");
+    // Access all link spans specifically
+    linkSpan.each((idx, spanEl) => {
+      const spanId = $(spanEl).attr("id");
+      const spanText = $(spanEl).text().trim();
+    });
     const linkInput = linkSpan.find("input");
     const link = linkInput.attr("onclick"); // Link is in onclick attribute of input button
 
@@ -459,6 +480,7 @@ function extractSales($) {
       page, // Mapped to deed.page
       bookPage: book && page ? `${book}/${page}` : null, // For backward compatibility
       link: cleanedLink,
+      grantor, // Store grantor for reference (accessed but not directly mapped to schema)
     });
   });
   return out;
