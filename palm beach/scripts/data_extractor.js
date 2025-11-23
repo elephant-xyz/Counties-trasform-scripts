@@ -329,6 +329,46 @@ function stripAddressRequestMetadata(address) {
     return address;
   }
 
+  const hasRawValue =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+
+  if (hasRawValue) {
+    const rawSurface = {
+      unnormalized_address: address.unnormalized_address.trim(),
+    };
+
+    for (const field of RAW_VARIANT_CANONICAL_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+      const value = address[field];
+      if (value === undefined || value === null) continue;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed.length) continue;
+        rawSurface[field] = trimmed;
+        continue;
+      }
+      rawSurface[field] = value;
+    }
+
+    const requestIdentifier =
+      typeof address.request_identifier === "string"
+        ? address.request_identifier.trim()
+        : null;
+    if (requestIdentifier) {
+      rawSurface.request_identifier = requestIdentifier;
+    }
+
+    const preparedSource = prepareSourceHttpRequest(
+      address.source_http_request,
+    );
+    if (preparedSource) {
+      rawSurface.source_http_request = preparedSource;
+    }
+
+    return rawSurface;
+  }
+
   const sanitized = { ...address };
 
   if (Object.prototype.hasOwnProperty.call(sanitized, "request_identifier")) {
@@ -4047,6 +4087,16 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
   (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
 );
+const RAW_VARIANT_CANONICAL_FIELDS = [
+  "county_name",
+  "country_code",
+  "municipality_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+];
 
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
@@ -45418,6 +45468,117 @@ function emitPreferredAddressVariant(addressPath, options = {}) {
 }
 
 
+function enforceMinimalRawAddressPayload(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  let payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawSource =
+    options.rawInputPath && typeof options.rawInputPath === "string"
+      ? readJSONIfExists(options.rawInputPath)
+      : null;
+  const seedSource =
+    options.seedPath && typeof options.seedPath === "string"
+      ? readJSONIfExists(options.seedPath)
+      : null;
+
+  const rawCandidates = [
+    payload.unnormalized_address,
+    rawSource && rawSource.unnormalized_address,
+    rawSource && rawSource.full_address,
+    rawSource && rawSource.site_address,
+    rawSource && rawSource.address,
+    rawSource && rawSource.raw_address,
+    rawSource && rawSource.location_address,
+  ];
+  if (Array.isArray(options.extraRawCandidates)) {
+    rawCandidates.push(...options.extraRawCandidates);
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const minimal = {
+    unnormalized_address: resolvedRaw,
+  };
+
+  const pickValue = (candidates = []) => {
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) continue;
+      if (typeof candidate === "number" && Number.isFinite(candidate)) {
+        return String(candidate);
+      }
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        if (trimmed.length) {
+          return trimmed;
+        }
+      }
+    }
+    return null;
+  };
+
+  const assignField = (field, candidates) => {
+    const resolved = pickValue(candidates);
+    if (resolved) {
+      minimal[field] = resolved;
+    }
+  };
+
+  assignField("county_name", [
+    payload.county_name,
+    rawSource && rawSource.county_name,
+    rawSource && rawSource.county_jurisdiction,
+    seedSource && seedSource.county_name,
+    options.defaultCountyName,
+  ]);
+  assignField("country_code", [
+    payload.country_code,
+    rawSource && rawSource.country_code,
+    options.defaultCountryCode || "US",
+  ]);
+
+  for (const field of ["township", "range", "section", "block", "lot"]) {
+    assignField(field, [
+      payload[field],
+      rawSource && rawSource[field],
+      seedSource && seedSource[field],
+    ]);
+  }
+
+  const requestIdentifier = pickValue([
+    payload.request_identifier,
+    rawSource && rawSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    options.defaultRequestIdentifier,
+  ]);
+  if (requestIdentifier) {
+    minimal.request_identifier = requestIdentifier;
+  }
+
+  const sourceHttpCandidate =
+    payload.source_http_request ||
+    (rawSource && rawSource.source_http_request) ||
+    (seedSource && seedSource.source_http_request) ||
+    options.defaultSourceHttpRequest ||
+    null;
+  const preparedSource = prepareSourceHttpRequest(sourceHttpCandidate);
+  if (preparedSource) {
+    minimal.source_http_request = preparedSource;
+  }
+
+  writeJSON(addressPath, minimal);
+}
+
 async function run() {
   await main();
   try {
@@ -46171,6 +46332,28 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to enforce source-provided raw address:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const fallbackRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    enforceMinimalRawAddressPayload(addressPath, {
+      rawInputPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultCountryCode: "US",
+      extraRawCandidates: fallbackRawCandidates,
+    });
+  } catch (error) {
+    console.error("Failed to collapse address to minimal raw payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
