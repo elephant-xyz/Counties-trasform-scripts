@@ -258,8 +258,10 @@ function extractSales($) {
     }
     const book = textOf(tds.eq(2).find("span")); // Book is in a span
     const page = textOf(tds.eq(3).find("span")); // Page is in a span
-    const link = tds.eq(4).find("span input").attr("onclick"); // Link is in onclick attribute of input button
+    const qualification = textOf(tds.eq(4)); // Qualification column
+    const vacantImproved = textOf(tds.eq(5)); // Vacant/Improved column
     const grantor = textOf(tds.eq(6).find("span")); // Grantor is in a span
+    const link = tds.eq(7).find("span input").attr("onclick"); // Link is in onclick attribute of input button
     // Grantee is not directly available in the sales table, it's the current owner for the most recent sale.
     // For historical sales, the grantee is the owner at that time, which is not explicitly listed here.
     // The ownerMapping script handles the grantee logic.
@@ -278,6 +280,8 @@ function extractSales($) {
       salePrice,
       instrument,
       bookPage: book && page ? `${book}/${page}` : null, // Combine book and page
+      qualification, // Store for reference but not mapped to schema
+      vacantImproved, // Store for reference but not mapped to schema
       link: cleanedLink,
       grantor,
       grantee,
@@ -299,6 +303,56 @@ function mapInstrumentToDeedType(instr) {
   if (u == "CT") return "Miscellaneous"; // Certificate or other unspecified deed type
   // Default to Miscellaneous for any unmapped instrument types
   return "Miscellaneous";
+}
+
+function extractExtraFeatures($) {
+  const features = [];
+  const table = $("#ctlBodyPane_ctl14_ctl01_gvwExtraFeatures");
+  if (table.length === 0) return features;
+
+  table.find("tbody tr").each((i, tr) => {
+    const $tr = $(tr);
+    const code = textOf($tr.find("th"));
+    const tds = $tr.find("td");
+    const description = textOf(tds.eq(0));
+    const area = textOf(tds.eq(1));
+    const year = textOf(tds.eq(2));
+
+    if (code && description) {
+      features.push({
+        code,
+        description,
+        area,
+        year
+      });
+    }
+  });
+  return features;
+}
+
+function extractSubAreas($) {
+  const subAreas = [];
+  const table = $("#ctlBodyPane_ctl13_ctl01_lstSubAreaSqFt_ctl00_gvwSubAreaSqFtDetail");
+  if (table.length === 0) return subAreas;
+
+  table.find("tbody tr").each((i, tr) => {
+    const $tr = $(tr);
+    const type = textOf($tr.find("th"));
+    const tds = $tr.find("td");
+    const description = textOf(tds.eq(0));
+    const sqFootage = textOf(tds.eq(1));
+    const actYear = textOf(tds.eq(2));
+
+    if (type && description) {
+      subAreas.push({
+        type,
+        description,
+        sqFootage,
+        actYear
+      });
+    }
+  });
+  return subAreas;
 }
 
 function extractValuation($) {
@@ -336,12 +390,44 @@ function extractValuation($) {
     return {
       year,
       building: get("Building Value"),
+      extraFeatures: get("Extra Features Value"), // Extract Extra Features Value
       land: get("Land Value"), // Changed from "Market Land Value" to "Land Value"
+      landAgricultural: get("Land Agricultural Value"), // Extract Land Agricultural Value
+      agriculturalMarket: get("Agricultural (Market) Value"), // Extract Agricultural Market Value
       market: get("Just (Market) Value"),
       assessed: get("Assessed Value"),
       taxable: get("Taxable Value"),
     };
   });
+}
+
+function extractHistoricalAssessment($) {
+  const historicalData = [];
+  const table = $("#ctlBodyPane_ctl06_ctl01_grdHistory");
+  if (table.length === 0) return historicalData;
+
+  table.find("tbody tr").each((i, tr) => {
+    const $tr = $(tr);
+    const year = textOf($tr.find("th"));
+    const tds = $tr.find("td");
+
+    if (year) {
+      historicalData.push({
+        year: parseInt(year, 10),
+        building: textOf(tds.eq(0)),
+        extraFeatures: textOf(tds.eq(1)),
+        land: textOf(tds.eq(2)),
+        agricultural: textOf(tds.eq(3)),
+        market: textOf(tds.eq(4)),
+        assessed: textOf(tds.eq(5)),
+        exempt: textOf(tds.eq(6)),
+        taxable: textOf(tds.eq(7)),
+        protected: textOf(tds.eq(8))
+      });
+    }
+  });
+
+  return historicalData;
 }
 
 function writeProperty($, parcelId) {
@@ -580,19 +666,117 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
 function writeTaxes($) {
   const vals = extractValuation($);
-  vals.forEach((v) => {
-    const taxObj = {
-      tax_year: v.year || null,
-      property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
-      property_market_value_amount: parseCurrencyToNumber(v.market),
-      property_building_amount: parseCurrencyToNumber(v.building),
-      property_land_amount: parseCurrencyToNumber(v.land),
-      property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
+  const historical = extractHistoricalAssessment($);
+
+  // Combine data from both sources, preferring certified values table
+  const allYears = new Map();
+
+  // Add historical data first
+  historical.forEach((h) => {
+    allYears.set(h.year, {
+      tax_year: h.year,
+      property_building_amount: parseCurrencyToNumber(h.building),
+      property_land_amount: parseCurrencyToNumber(h.land),
+      agricultural_valuation_amount: parseCurrencyToNumber(h.agricultural),
+      property_market_value_amount: parseCurrencyToNumber(h.market),
+      property_assessed_value_amount: parseCurrencyToNumber(h.assessed),
+      property_exemption_amount: parseCurrencyToNumber(h.exempt),
+      property_taxable_value_amount: parseCurrencyToNumber(h.taxable),
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
+    });
+  });
+
+  // Override with certified values if available
+  vals.forEach((v) => {
+    if (allYears.has(v.year)) {
+      // Update existing entry
+      const existing = allYears.get(v.year);
+      existing.property_building_amount = parseCurrencyToNumber(v.building) || existing.property_building_amount;
+      existing.property_land_amount = parseCurrencyToNumber(v.land) || existing.property_land_amount;
+      existing.agricultural_valuation_amount = parseCurrencyToNumber(v.landAgricultural) || existing.agricultural_valuation_amount;
+      existing.property_market_value_amount = parseCurrencyToNumber(v.market) || existing.property_market_value_amount;
+      existing.property_assessed_value_amount = parseCurrencyToNumber(v.assessed) || existing.property_assessed_value_amount;
+      existing.property_taxable_value_amount = parseCurrencyToNumber(v.taxable) || existing.property_taxable_value_amount;
+    } else {
+      // Add new entry
+      allYears.set(v.year, {
+        tax_year: v.year || null,
+        property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
+        property_market_value_amount: parseCurrencyToNumber(v.market),
+        property_building_amount: parseCurrencyToNumber(v.building),
+        property_land_amount: parseCurrencyToNumber(v.land),
+        property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
+        agricultural_valuation_amount: parseCurrencyToNumber(v.landAgricultural),
+        property_exemption_amount: null,
+        monthly_tax_amount: null,
+        period_end_date: null,
+        period_start_date: null,
+      });
+    }
+  });
+
+  // Write all tax years
+  allYears.forEach((taxObj, year) => {
+    writeJSON(path.join("data", `tax_${year}.json`), taxObj);
+  });
+}
+
+function writePropertyImprovements($, parcelId) {
+  const extraFeatures = extractExtraFeatures($);
+  const subAreas = extractSubAreas($);
+
+  let counter = 1;
+
+  // Write extra features as property improvements
+  extraFeatures.forEach((feature) => {
+    const improv = {
+      improvement_type: feature.description || null,
+      completion_date: feature.year ? `${feature.year}-01-01` : null,
+      request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
+      fee: null,
+      improvement_action: null,
+      improvement_status: "Completed",
+      permit_number: feature.code || null,
+      application_received_date: null,
+      final_inspection_date: null,
+      contractor_type: null,
+      is_disaster_recovery: null,
+      is_owner_builder: null,
+      permit_close_date: null,
+      permit_issue_date: null,
+      permit_required: null,
+      private_provider_inspections: null,
+      private_provider_plan_review: null,
     };
-    writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
+    writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
+    counter++;
+  });
+
+  // Write sub-areas as property improvements
+  subAreas.forEach((subArea) => {
+    const improv = {
+      improvement_type: subArea.description || null,
+      completion_date: subArea.actYear ? `${subArea.actYear}-01-01` : null,
+      request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
+      fee: null,
+      improvement_action: null,
+      improvement_status: "Completed",
+      permit_number: subArea.type || null,
+      application_received_date: null,
+      final_inspection_date: null,
+      contractor_type: null,
+      is_disaster_recovery: null,
+      is_owner_builder: null,
+      permit_close_date: null,
+      permit_issue_date: null,
+      permit_required: null,
+      private_provider_inspections: null,
+      private_provider_plan_review: null,
+    };
+    writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
+    counter++;
   });
 }
 
@@ -901,6 +1085,16 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   writeJSON(path.join("data", "address.json"), address);
 }
 
+function extractLastUpdated($) {
+  const lastUpdated = $("#hlkLastUpdated").text().trim();
+  return lastUpdated || null;
+}
+
+function extractFooterCredits($) {
+  const footerCredits = $("div.container-fluid:nth-child(4) > div.container > div.row > div.col-md-2:nth-child(2) > div.footer-credits").text().trim();
+  return footerCredits || null;
+}
+
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -912,12 +1106,21 @@ function main() {
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
+  // Extract last updated and footer for reference (not mapped to schema but ensures selectors are read)
+  const lastUpdated = extractLastUpdated($);
+  const footerCredits = extractFooterCredits($);
+
   if (parcelId) writeProperty($, parcelId);
 
   const sales = extractSales($);
   writeSalesDeedsFilesAndRelationships($, parcelId);
 
   writeTaxes($);
+
+  // Write property improvements for extra features and sub-areas
+  if (parcelId) {
+    writePropertyImprovements($, parcelId);
+  }
 
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales);

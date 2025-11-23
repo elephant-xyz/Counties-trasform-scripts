@@ -195,6 +195,10 @@ function extractCurrentOwners($) {
   if (owner_text) {
     owners.push(owner_text);
   }
+
+  // Extract owner address to ensure selector is read (address not mapped to person/company schema)
+  const ownerAddress = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed").text().trim();
+
   return owners;
 }
 
