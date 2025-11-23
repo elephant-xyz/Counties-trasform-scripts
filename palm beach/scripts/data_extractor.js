@@ -71,7 +71,9 @@ function finalizeAddressWritePayload(rawPayload) {
     ) {
       delete normalizedOutput.source_http_request;
     }
-    return stripAddressRequestMetadata(normalizedOutput);
+    const preparedOutput =
+      pruneRawAddressFieldsForOutput(normalizedOutput) || normalizedOutput;
+    return stripAddressRequestMetadata(preparedOutput);
   }
 
   const rawValue =
@@ -125,7 +127,9 @@ function finalizeAddressWritePayload(rawPayload) {
     }
   }
 
-  return stripAddressRequestMetadata(minimalRaw);
+  const preparedOutput =
+    pruneRawAddressFieldsForOutput(minimalRaw) || minimalRaw;
+  return stripAddressRequestMetadata(preparedOutput);
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -789,26 +793,71 @@ function pruneRawAddressFieldsForOutput(address) {
     return address;
   }
 
-  if (!hasRawAddressRequiredFields(address)) {
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...address }) || { ...address };
+  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
+
+  if (hasNormalizedCountyCoverage({ ...normalizedSurface })) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const value = normalizedSurface[field];
+      normalizedOutput[field] =
+        value === undefined || value === null ? null : value;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    if (requestIdentifier) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    }
+    if (preparedSource) {
+      normalizedOutput.source_http_request = deepClone(preparedSource);
+    }
+    return normalizedOutput;
+  }
+
+  if (!trimmedUnnormalized.length) {
     return address;
   }
 
-  if (hasNormalizedCountyCoverage({ ...address })) {
-    return address;
+  const rawOutput = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    rawOutput.latitude = latitude;
+    rawOutput.longitude = longitude;
   }
 
-  const pruned = { ...address };
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (!hasMeaningfulAddressValue(pruned[field])) {
-      delete pruned[field];
+  for (const field of RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    const value = address[field];
+    if (!hasMeaningfulAddressValue(value)) continue;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) continue;
+      rawOutput[field] = trimmed;
+    } else {
+      rawOutput[field] = value;
     }
   }
-  for (const field of ADDRESS_COORDINATE_FIELDS) {
-    if (!hasMeaningfulAddressValue(pruned[field])) {
-      delete pruned[field];
-    }
+
+  if (requestIdentifier) {
+    rawOutput.request_identifier = requestIdentifier;
   }
-  return pruned;
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  }
+
+  return rawOutput;
 }
 
 function writeJSON(p, obj) {
@@ -4039,11 +4088,6 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 
 const RAW_VARIANT_FIELD_WHITELIST = [
   "unnormalized_address",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
   "county_name",
   "country_code",
   "latitude",
@@ -4058,6 +4102,19 @@ const RAW_VARIANT_FIELD_WHITELIST = [
 ];
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
 const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
+
+const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
+  "county_name",
+  "country_code",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+]);
+const RAW_VARIANT_MINIMAL_FIELD_SET = new Set(RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST);
 
 const RAW_ADDRESS_SURFACE_FIELDS = [
   "unnormalized_address",
