@@ -45568,6 +45568,105 @@ function enforceMinimalRawAddressPayload(addressPath, options = {}) {
     minimal.source_http_request = preparedSource;
   }
 
+  const candidateSources = [payload, rawSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const collectFieldCandidates = (field) => {
+    const values = [];
+    for (const source of candidateSources) {
+      if (!source || typeof source !== "object") continue;
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      values.push(source[field]);
+    }
+    return values;
+  };
+
+  const pickCoordinateValue = (candidates = []) => {
+    for (const candidate of candidates) {
+      const numeric = parseCoordinate(candidate);
+      if (Number.isFinite(numeric)) {
+        return numeric;
+      }
+    }
+    return null;
+  };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const alreadyHasValue =
+      Object.prototype.hasOwnProperty.call(minimal, field) &&
+      minimal[field] !== undefined &&
+      minimal[field] !== null;
+    if (alreadyHasValue) {
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const coordinateCandidates = [
+        ...collectFieldCandidates(field),
+        ...(Array.isArray(options.coordinateCandidates)
+          ? options.coordinateCandidates
+              .map((candidate) =>
+                candidate && typeof candidate === "object"
+                  ? candidate[field]
+                  : undefined,
+              )
+              .filter((value) => value !== undefined)
+          : []),
+      ];
+      const numeric = pickCoordinateValue(coordinateCandidates);
+      minimal[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const fallbackCandidates = [
+      ...collectFieldCandidates(field),
+      ...(field === "county_name" && options.defaultCountyName
+        ? [options.defaultCountyName]
+        : []),
+      ...(field === "country_code"
+        ? [options.defaultCountryCode || "US"]
+        : []),
+    ];
+    const resolved = pickValue(fallbackCandidates);
+    minimal[field] =
+      resolved === undefined || resolved === null ? null : resolved;
+  }
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(minimal, field)) {
+      minimal[field] = null;
+      continue;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(minimal[field]);
+      minimal[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    const value = minimal[field];
+    if (value === undefined || value === null) {
+      minimal[field] = null;
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      minimal[field] = trimmed.length ? trimmed : null;
+    }
+  }
+
+  if (!minimal.country_code) {
+    minimal.country_code = options.defaultCountryCode || "US";
+  }
+  if (!minimal.county_name && options.defaultCountyName) {
+    minimal.county_name = options.defaultCountyName;
+  }
+  if (minimal.state_code && !minimal.country_code) {
+    minimal.country_code = options.defaultCountryCode || "US";
+  }
+  if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
+  }
+
   writeJSON(addressPath, minimal);
 }
 
@@ -46342,6 +46441,22 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to collapse address to minimal raw payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    ensureDir(dataDir);
+    ensureNullRelationshipPlaceholders(dataDir, [
+      "address_has_fact_sheet",
+      "property_has_address",
+      "relationship_address_has_fact_sheet",
+      "relationship_property_has_address",
+    ]);
+  } catch (error) {
+    console.error("Failed to ensure null relationship placeholders:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
