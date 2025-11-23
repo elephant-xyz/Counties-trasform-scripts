@@ -10669,14 +10669,20 @@ function upgradeRawAddressToNormalized(addressFilePath, options = {}) {
     payload.plus_four_postal_code = null;
   }
 
-  const upgradedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof payload[field] === "string" &&
-      payload[field].trim().length > 0,
-  );
+  const upgradedProbe = { ...payload };
+  const upgradedCoverage = hasNormalizedCountyCoverage(upgradedProbe);
 
   if (upgradedCoverage) {
-    delete payload.unnormalized_address;
+    // Normalize only when the strict County surface (including route/township/lat/lng)
+    // is satisfied so we don't emit half-populated structured addresses.
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(upgradedProbe, field)) {
+        payload[field] = upgradedProbe[field];
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")) {
+      delete payload.unnormalized_address;
+    }
   } else {
     payload.unnormalized_address = trimmedUnnormalized;
   }
@@ -19372,13 +19378,13 @@ function enforceFinalAddressVariant(addressFilePath, options = {}) {
     }
   }
 
-  const normalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof payload[field] === "string" &&
-      payload[field].trim().length > 0,
-  );
+  const normalizedProbe = { ...payload };
+  const normalizedCoverage = hasNormalizedCountyCoverage(normalizedProbe);
 
   if (normalizedCoverage) {
+    // Only emit the normalized branch when the county strict surface is present
+    // (lat/lng pair plus all other required strings). Otherwise stay on the raw branch.
+    payload = normalizedProbe;
     if (payload.state_code && !payload.country_code) {
       payload.country_code = "US";
     }
@@ -19386,10 +19392,10 @@ function enforceFinalAddressVariant(addressFilePath, options = {}) {
       payload.postal_code = null;
       payload.plus_four_postal_code = null;
     }
-    if (hasRawVariant) {
+    if (Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")) {
       delete payload.unnormalized_address;
-      hasRawVariant = false;
     }
+    hasRawVariant = false;
   } else {
     if (!hasRawVariant) {
       const fallbackRaw = composeFallbackUnnormalizedAddressFromFields(payload);
