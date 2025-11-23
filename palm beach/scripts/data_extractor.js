@@ -372,51 +372,23 @@ function projectRawVariantFieldSurface(address) {
     unnormalized_address: trimmedUnnormalized,
   };
 
-  for (const field of RAW_VARIANT_FIELD_WHITELIST) {
-    if (field === "unnormalized_address") continue;
-    if (!RAW_VARIANT_FIELD_WHITELIST_SET.has(field)) continue;
+  for (const field of RAW_VARIANT_PRESERVED_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    projected[field] = address[field];
+    const rawValue = address[field];
+    if (!hasMeaningfulAddressValue(rawValue)) continue;
+    projected[field] =
+      typeof rawValue === "string" ? rawValue.trim() : rawValue;
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(address, "request_identifier") &&
-    address.request_identifier != null
-  ) {
-    const trimmed = safeNullIfEmpty(address.request_identifier);
-    if (trimmed) {
-      projected.request_identifier = trimmed;
-    }
+  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
+  if (requestIdentifier) {
+    projected.request_identifier = requestIdentifier;
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(address.source_http_request);
     if (prepared) {
       projected.source_http_request = deepClone(prepared);
-    }
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(projected, "latitude") ||
-    Object.prototype.hasOwnProperty.call(projected, "longitude")
-  ) {
-    const latitude = parseCoordinate(projected.latitude);
-    const longitude = parseCoordinate(projected.longitude);
-    const hasLat = Number.isFinite(latitude);
-    const hasLng = Number.isFinite(longitude);
-    if (hasLat && hasLng) {
-      projected.latitude = latitude;
-      projected.longitude = longitude;
-    } else {
-      projected.latitude = null;
-      projected.longitude = null;
-    }
-  }
-
-  for (const field of RAW_VARIANT_FIELD_WHITELIST) {
-    if (field === "unnormalized_address") continue;
-    if (!Object.prototype.hasOwnProperty.call(projected, field)) {
-      projected[field] = null;
     }
   }
 
