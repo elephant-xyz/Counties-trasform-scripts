@@ -1035,7 +1035,14 @@ function selectAddressVariantForSchema(address) {
     normalizedSurface.country_code = "US";
   }
 
-  const hasNormalizedCoverage = COUNTY_ADDRESS_ENSURE_FIELDS.every((field) => {
+  const normalizedCoverageFields = Array.from(
+    new Set([
+      ...COUNTY_NORMALIZED_STRICT_FIELDS,
+      ...COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS,
+    ]),
+  );
+
+  const hasNormalizedCoverage = normalizedCoverageFields.every((field) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       return Number.isFinite(normalizedSurface[field]);
     }
@@ -2039,7 +2046,14 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
   const trimmedRaw =
     typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
 
-  const hasNormalizedCoverage = COUNTY_ADDRESS_ENSURE_FIELDS.every((field) => {
+  const normalizedCoverageFields = Array.from(
+    new Set([
+      ...COUNTY_NORMALIZED_STRICT_FIELDS,
+      ...COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS,
+    ]),
+  );
+
+  const hasNormalizedCoverage = normalizedCoverageFields.every((field) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       return Number.isFinite(normalizedSurface[field]);
     }
@@ -2085,8 +2099,19 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
     return;
   }
 
-  basePayload.unnormalized_address = trimmedRaw;
-  originalWriteFileSync(addressPath, JSON.stringify(basePayload, null, 2));
+  const rawPayload =
+    buildRawAddressOneOfPayload(
+      trimmedRaw,
+      resolvedRequestIdentifier,
+      resolvedSourceHttpRequest,
+      basePayload,
+    ) || null;
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  originalWriteFileSync(addressPath, JSON.stringify(rawPayload, null, 2));
 }
 
 function toISODate(mdy) {
