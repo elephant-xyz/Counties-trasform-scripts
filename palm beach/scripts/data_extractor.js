@@ -409,27 +409,70 @@ function buildMinimalRawAddressVariant(address) {
   }
 
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
+    }
+    const normalizedValue = normalizeAddressFieldForSchema(
+      field,
+      address[field],
+    );
+    if (normalizedValue === undefined || normalizedValue === null) {
+      continue;
+    }
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      if (!trimmed.length) continue;
+      minimal[field] = trimmed;
+      continue;
+    }
+    if (typeof normalizedValue === "number") {
+      minimal[field] = Number.isFinite(normalizedValue)
+        ? normalizedValue
+        : null;
+      continue;
+    }
+    minimal[field] = normalizedValue;
+  }
 
   const latitude = parseCoordinate(address.latitude);
   const longitude = parseCoordinate(address.longitude);
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
     minimal.latitude = latitude;
     minimal.longitude = longitude;
+  } else {
+    minimal.latitude = null;
+    minimal.longitude = null;
+  }
+
+  if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
+  }
+  if (minimal.state_code && !minimal.country_code) {
+    minimal.country_code = "US";
   }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-  if (requestIdentifier) {
-    minimal.request_identifier = requestIdentifier;
+  if (requestIdentifier !== undefined) {
+    minimal.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  } else if (!Object.prototype.hasOwnProperty.call(minimal, "request_identifier")) {
+    minimal.request_identifier = null;
   }
 
   const preparedSource = prepareSourceHttpRequest(
     address.source_http_request,
   );
-  if (preparedSource) {
-    minimal.source_http_request = deepClone(preparedSource);
-  }
+  minimal.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
 
   return minimal;
 }
