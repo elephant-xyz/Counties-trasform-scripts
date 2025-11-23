@@ -385,30 +385,28 @@ function projectRawVariantFieldSurface(address) {
   }
 
   const projected = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: minimal.unnormalized_address.trim(),
   };
 
-  const assignMinimalField = (field) => {
-    if (!RAW_VARIANT_MINIMAL_FIELD_SET.has(field)) return;
-    if (!Object.prototype.hasOwnProperty.call(minimal, field)) return;
-    const value = minimal[field];
-    if (value === undefined || value === null) return;
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) return;
-      projected[field] = trimmed;
-      return;
-    }
-    if (typeof value === "number") {
-      if (Number.isFinite(value)) {
-        projected[field] = value;
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(minimal, field)) {
+      const value = minimal[field];
+      if (value === undefined) {
+        projected[field] = RAW_ADDRESS_SCHEMA_TEMPLATE[field] ?? null;
+        continue;
       }
-      return;
+      if (typeof value === "string") {
+        projected[field] = value.trim();
+        continue;
+      }
+      projected[field] = value;
+      continue;
     }
-    projected[field] = value;
-  };
-
-  RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST.forEach(assignMinimalField);
+    if (!Object.prototype.hasOwnProperty.call(projected, field)) {
+      projected[field] = RAW_ADDRESS_SCHEMA_TEMPLATE[field] ?? null;
+    }
+  }
 
   if (!projected.country_code) {
     const normalizedCountry = hasMeaningfulAddressValue(minimal.country_code)
@@ -4217,22 +4215,6 @@ const RAW_VARIANT_FIELD_WHITELIST = [
 const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
 const RAW_VARIANT_METADATA_FIELD_SET = new Set(RAW_VARIANT_METADATA_FIELDS);
 
-const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
-  "city_name",
-  "county_name",
-  "country_code",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "unit_identifier",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
-const RAW_VARIANT_MINIMAL_FIELD_SET = new Set(RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST);
 const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
   ...RAW_ADDRESS_OUTPUT_FIELDS,
 ]);
