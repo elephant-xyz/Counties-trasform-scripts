@@ -42948,6 +42948,7 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
   }
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw,
   };
 
@@ -43019,6 +43020,27 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
     ) || defaultCountryCode || "US";
   if (resolvedCountry) {
     rawOutput.country_code = resolvedCountry.toUpperCase();
+  }
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
+    }
+    if (hasMeaningfulAddressValue(rawOutput[field])) {
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      continue;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, payload[field]);
+    if (sanitized === undefined) {
+      continue;
+    }
+    rawOutput[field] = sanitized === "" ? null : sanitized;
+  }
+
+  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
+    rawOutput.plus_four_postal_code = null;
   }
 
   const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
