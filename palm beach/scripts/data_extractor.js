@@ -334,39 +334,24 @@ function stripAddressRequestMetadata(address) {
     address.unnormalized_address.trim().length > 0;
 
   if (hasRawValue) {
-    const rawSurface = {
-      unnormalized_address: address.unnormalized_address.trim(),
-    };
+    const normalizedUnnormalized = address.unnormalized_address.trim();
+    const surfacedRaw =
+      ensureRawAddressSchemaDefaults({
+        ...address,
+        unnormalized_address: normalizedUnnormalized,
+      }) || {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        unnormalized_address: normalizedUnnormalized,
+      };
 
-    for (const field of RAW_VARIANT_CANONICAL_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-      const value = address[field];
-      if (value === undefined || value === null) continue;
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        if (!trimmed.length) continue;
-        rawSurface[field] = trimmed;
-        continue;
-      }
-      rawSurface[field] = value;
+    if (!surfacedRaw.postal_code) {
+      surfacedRaw.plus_four_postal_code = null;
+    }
+    if (surfacedRaw.state_code && !surfacedRaw.country_code) {
+      surfacedRaw.country_code = "US";
     }
 
-    const requestIdentifier =
-      typeof address.request_identifier === "string"
-        ? address.request_identifier.trim()
-        : null;
-    if (requestIdentifier) {
-      rawSurface.request_identifier = requestIdentifier;
-    }
-
-    const preparedSource = prepareSourceHttpRequest(
-      address.source_http_request,
-    );
-    if (preparedSource) {
-      rawSurface.source_http_request = preparedSource;
-    }
-
-    return rawSurface;
+    return surfacedRaw;
   }
 
   const sanitized = { ...address };
@@ -4087,17 +4072,6 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
   (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
 );
-const RAW_VARIANT_CANONICAL_FIELDS = [
-  "county_name",
-  "country_code",
-  "municipality_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
-
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
