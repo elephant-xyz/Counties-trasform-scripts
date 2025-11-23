@@ -1911,6 +1911,7 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
     defaultCountryCode = "US",
     extraRawCandidates = [],
     preferNormalized: preferNormalizedOption,
+    coordinateCandidates = [],
   } = options || {};
 
   const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -2007,6 +2008,44 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
     ...sourceHttpCandidates,
   );
 
+  const coordinateQueue = [];
+  const enqueueCoordinateCandidate = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return;
+    const hasLatitude = Object.prototype.hasOwnProperty.call(
+      candidate,
+      "latitude",
+    );
+    const hasLongitude = Object.prototype.hasOwnProperty.call(
+      candidate,
+      "longitude",
+    );
+    if (!hasLatitude && !hasLongitude) return;
+    coordinateQueue.push({
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+    });
+  };
+
+  enqueueCoordinateCandidate(normalizedSurface);
+  candidateSources.forEach(enqueueCoordinateCandidate);
+  if (Array.isArray(coordinateCandidates)) {
+    coordinateCandidates.forEach(enqueueCoordinateCandidate);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.coordinateCandidates.forEach(
+      enqueueCoordinateCandidate,
+    );
+  }
+
+  const resolvedCoordinate = resolveCoordinateFromCandidates(coordinateQueue);
+  if (resolvedCoordinate) {
+    normalizedSurface.latitude = resolvedCoordinate.latitude;
+    normalizedSurface.longitude = resolvedCoordinate.longitude;
+  }
+
   const rawCandidates = [];
   const pushRawCandidate = (value) => {
     if (typeof value !== "string") return;
@@ -2060,15 +2099,6 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
   const trimmedRaw =
     typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
 
-  const normalizedCoverageFields = [...COUNTY_ADDRESS_ENSURE_FIELDS];
-
-  const hasNormalizedCoverage = normalizedCoverageFields.every((field) => {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      return Number.isFinite(normalizedSurface[field]);
-    }
-    return hasMeaningfulAddressValue(normalizedSurface[field]);
-  });
-
   const basePayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     basePayload[field] =
@@ -2085,17 +2115,48 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
     ? deepClone(resolvedSourceHttpRequest)
     : null;
 
+  const normalizedCandidate =
+    buildNormalizedAddressOutputForSchema({
+      ...normalizedSurface,
+      unnormalized_address: undefined,
+    }) || null;
+  const normalizedReady =
+    normalizedCandidate &&
+    hasRobustNormalizedAddress({ ...normalizedCandidate });
+
   const preferNormalized =
     preferNormalizedOption !== undefined
       ? Boolean(preferNormalizedOption)
-      : true;
-  const shouldEmitNormalized =
-    hasNormalizedCoverage && (preferNormalized || !trimmedRaw.length);
+      : trimmedRaw.length === 0;
+  const shouldEmitNormalized = normalizedReady && preferNormalized;
 
   if (shouldEmitNormalized) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOutput[field] =
+        normalizedCandidate[field] === undefined ||
+        normalizedCandidate[field] === null
+          ? null
+          : normalizedCandidate[field];
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    normalizedOutput.request_identifier =
+      resolvedRequestIdentifier === undefined
+        ? null
+        : resolvedRequestIdentifier;
+    normalizedOutput.source_http_request = resolvedSourceHttpRequest
+      ? deepClone(resolvedSourceHttpRequest)
+      : null;
     originalWriteFileSync(
       addressPath,
-      JSON.stringify(basePayload, null, 2),
+      JSON.stringify(normalizedOutput, null, 2),
     );
     return;
   }
@@ -46020,6 +46081,7 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  let fallbackCoordinateCandidates = [];
   try {
     const dataDir = path.join("data");
     const addressPath = path.join(dataDir, "address.json");
@@ -46072,7 +46134,7 @@ async function run() {
         ? fallbackSeedData
         : null,
     ].filter(Boolean);
-    const fallbackCoordinateCandidates = [];
+    fallbackCoordinateCandidates = [];
     if (fallbackRawData && typeof fallbackRawData === "object") {
       fallbackCoordinateCandidates.push({
         latitude: fallbackRawData.latitude,
@@ -46777,6 +46839,7 @@ async function run() {
       seedPath: "property_seed.json",
       defaultCountryCode: "US",
       extraRawCandidates,
+      coordinateCandidates: fallbackCoordinateCandidates,
     });
   } catch (error) {
     console.error("Failed to emit schema-compliant county address:", error);
