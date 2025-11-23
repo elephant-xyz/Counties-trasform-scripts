@@ -371,11 +371,69 @@ function stripAddressRequestMetadata(address) {
 }
 
 function buildRawVariantOneOfPayload(address) {
-  return buildMinimalRawAddressVariant(address);
+  return projectRawVariantFieldSurface(address);
 }
 
 function projectRawVariantFieldSurface(address) {
-  return buildMinimalRawAddressVariant(address);
+  const minimal = buildMinimalRawAddressVariant(address);
+  if (
+    !minimal ||
+    typeof minimal.unnormalized_address !== "string" ||
+    !minimal.unnormalized_address.trim().length
+  ) {
+    return null;
+  }
+
+  const projected = {
+    unnormalized_address: minimal.unnormalized_address.trim(),
+  };
+
+  const assignMinimalField = (field) => {
+    if (!RAW_VARIANT_MINIMAL_FIELD_SET.has(field)) return;
+    if (!Object.prototype.hasOwnProperty.call(minimal, field)) return;
+    const value = minimal[field];
+    if (value === undefined || value === null) return;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) return;
+      projected[field] = trimmed;
+      return;
+    }
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) {
+        projected[field] = value;
+      }
+      return;
+    }
+    projected[field] = value;
+  };
+
+  RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST.forEach(assignMinimalField);
+
+  if (!projected.country_code) {
+    const normalizedCountry = hasMeaningfulAddressValue(minimal.country_code)
+      ? minimal.country_code
+      : null;
+    if (normalizedCountry) {
+      projected.country_code = normalizedCountry;
+    } else if (hasMeaningfulAddressValue(minimal.state_code)) {
+      projected.country_code = "US";
+    }
+  }
+
+  const requestIdentifier = safeNullIfEmpty(minimal.request_identifier);
+  if (requestIdentifier) {
+    projected.request_identifier = requestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    minimal.source_http_request,
+  );
+  if (preparedSource) {
+    projected.source_http_request = deepClone(preparedSource);
+  }
+
+  return projected;
 }
 
 function buildRawVariantSubmissionPayload(address) {
@@ -4160,9 +4218,14 @@ const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
 const RAW_VARIANT_METADATA_FIELD_SET = new Set(RAW_VARIANT_METADATA_FIELDS);
 
 const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
+  "city_name",
   "county_name",
   "country_code",
   "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "unit_identifier",
   "township",
   "range",
   "section",
