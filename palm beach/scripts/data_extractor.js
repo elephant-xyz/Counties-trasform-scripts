@@ -712,6 +712,33 @@ function sanitizeAddressPayloadForWrite(payload) {
   return surfaced;
 }
 
+function pruneRawAddressFieldsForOutput(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  if (!hasRawAddressRequiredFields(address)) {
+    return address;
+  }
+
+  if (hasNormalizedCountyCoverage({ ...address })) {
+    return address;
+  }
+
+  const pruned = { ...address };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!hasMeaningfulAddressValue(pruned[field])) {
+      delete pruned[field];
+    }
+  }
+  for (const field of ADDRESS_COORDINATE_FIELDS) {
+    if (!hasMeaningfulAddressValue(pruned[field])) {
+      delete pruned[field];
+    }
+  }
+  return pruned;
+}
+
 function writeJSON(p, obj) {
   let payload = obj;
   const isAddressFile =
@@ -726,7 +753,9 @@ function writeJSON(p, obj) {
       const completed =
         ensureAddressOutputFieldPresence(payload) || payload;
       if (completed && typeof completed === "object") {
-        payload = stripAddressRequestMetadata(completed);
+        const pruned =
+          pruneRawAddressFieldsForOutput(completed) || completed;
+        payload = stripAddressRequestMetadata(pruned);
       }
     }
   }
