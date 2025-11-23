@@ -591,7 +591,6 @@ function writeProperty($, parcelId, propertySeed) {
   const totalArea = extractAreas($);
 
   const property = {
-    source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
     request_identifier: parcelId || "",
     parcel_identifier: parcelId || "",
     property_legal_description_text: legal || null,
@@ -632,7 +631,6 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     // Populate sales_history with ownership_transfer_date and purchase_price_amount
     // Only include fields that have valid values
     const saleHistory = {
-      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
       request_identifier: parcelId || "",
       ownership_transfer_date: parseDateToISO(s.saleDate),
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
@@ -644,7 +642,6 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     // Populate deed with book, page, deed_type, and instrument_number
     // Only include fields that have valid non-empty values
     const deed = {
-      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
       request_identifier: parcelId || "",
     };
 
@@ -676,12 +673,11 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     // Only create file if there's a link
     if (s.link) {
       const file = {
-        source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
         request_identifier: parcelId || "",
         document_type: null,
         file_format: null,
         name: null,
-        original_url: null,
+        original_url: s.link,
         ipfs_url: null,
       };
       writeJSON(path.join("data", `file_${idx}.json`), file);
@@ -765,7 +761,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     });
   });
   people = Array.from(personMap.values()).map((p) => ({
-    source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
     request_identifier: parcelId || "",
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -787,7 +782,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     });
   });
   companies = Array.from(companyNames).map((n) => ({
-    source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
     request_identifier: parcelId || "",
     name: n,
   }));
@@ -855,7 +849,6 @@ function writeTaxes($, propertySeed, parcelId) {
   // Add historical data first
   historical.forEach((h) => {
     allYears.set(h.year, {
-      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
       request_identifier: parcelId || "",
       tax_year: h.year,
       property_building_amount: parseCurrencyToNumber(h.building),
@@ -891,7 +884,6 @@ function writeTaxes($, propertySeed, parcelId) {
     } else {
       // Add new entry
       allYears.set(v.year, {
-        source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
         request_identifier: parcelId || "",
         tax_year: v.year || null,
         property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
@@ -929,7 +921,6 @@ function writePropertyImprovements($, parcelId, propertySeed) {
   // Write extra features as property improvements
   extraFeatures.forEach((feature) => {
     const improv = {
-      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
       request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_type: mapImprovementType(feature.description),
       completion_date: feature.year ? `${feature.year}-01-01` : null,
@@ -954,7 +945,6 @@ function writePropertyImprovements($, parcelId, propertySeed) {
   // Write sub-areas as property improvements
   subAreas.forEach((subArea) => {
     const improv = {
-      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
       request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_type: mapImprovementType(subArea.description),
       completion_date: subArea.actYear ? `${subArea.actYear}-01-01` : null,
@@ -1280,7 +1270,6 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   const county_name = inputCounty || null;
 
   const address = {
-    source_http_request: unnorm && unnorm.source_http_request ? unnorm.source_http_request : null,
     request_identifier: unnorm && unnorm.request_identifier ? unnorm.request_identifier : null,
     unnormalized_address: full,
     country_code: "US",
@@ -1324,14 +1313,56 @@ function writeMailingAddress(parcelId, unnormalized) {
   const record = ownerData[key];
   if (!record || !record.mailing_address) return;
 
+  const mailingAddressText = record.mailing_address;
+
+  // Get current owners to link mailing addresses
+  const currentOwners = record.owners_by_date && record.owners_by_date.current
+    ? record.owners_by_date.current
+    : [];
+
+  if (currentOwners.length === 0) {
+    // No owners, just write a single mailing address
+    const mailingAddress = {
+      request_identifier: parcelId || null,
+      unnormalized_address: mailingAddressText,
+    };
+    writeJSON(path.join("data", "mailing_address_1.json"), mailingAddress);
+    return;
+  }
+
+  // Write one mailing address (all owners share the same address based on the data structure)
   const mailingAddress = {
-    source_http_request: unnormalized && unnormalized.source_http_request ? unnormalized.source_http_request : null,
     request_identifier: parcelId || null,
-    unnormalized_address: record.mailing_address,
-    latitude: null,
-    longitude: null,
+    unnormalized_address: mailingAddressText,
   };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+  writeJSON(path.join("data", "mailing_address_1.json"), mailingAddress);
+
+  // Create relationships between owners and mailing address
+  currentOwners.forEach((owner, idx) => {
+    if (owner.type === "person") {
+      const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+      if (pIdx) {
+        writeJSON(
+          path.join("data", `relationship_person_${pIdx}_has_mailing_address.json`),
+          {
+            from: { "/": `./person_${pIdx}.json` },
+            to: { "/": `./mailing_address_1.json` },
+          },
+        );
+      }
+    } else if (owner.type === "company") {
+      const cIdx = findCompanyIndexByName(owner.name);
+      if (cIdx) {
+        writeJSON(
+          path.join("data", `relationship_company_${cIdx}_has_mailing_address.json`),
+          {
+            from: { "/": `./company_${cIdx}.json` },
+            to: { "/": `./mailing_address_1.json` },
+          },
+        );
+      }
+    }
+  });
 }
 
 function main() {
