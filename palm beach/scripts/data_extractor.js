@@ -4071,8 +4071,6 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
 ];
 
 const RAW_ADDRESS_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
   "unnormalized_address",
 ];
 
@@ -4116,22 +4114,12 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
 const RAW_VARIANT_FIELD_WHITELIST = [
   "unnormalized_address",
-  "latitude",
-  "longitude",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-  "county_name",
-  "country_code",
-  "municipality_name",
-  "request_identifier",
-  "source_http_request",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
+  ...RAW_VARIANT_METADATA_FIELDS,
 ];
-const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
 const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
 const RAW_VARIANT_METADATA_FIELD_SET = new Set(RAW_VARIANT_METADATA_FIELDS);
 
