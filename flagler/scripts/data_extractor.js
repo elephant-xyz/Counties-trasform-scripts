@@ -404,19 +404,10 @@ function extractSales($) {
     const qualification = textOf(tds.eq(4)); // Qualification column (extracted but not in schema)
     const vacantImproved = textOf(tds.eq(5)); // Vacant/Improved column (extracted but not in schema)
 
-    // Extract grantor using both span and direct td - ensuring both selectors are read
-    // This explicitly reads all sprGrantor_lblSuppressed spans
-    const grantorTd = tds.eq(6);
-    const grantorSpan = grantorTd.find("span").first();
-    const grantorFromSpan = grantorSpan.length > 0 ? textTrim(grantorSpan.text()) : null;
-    const grantorDirect = textTrim(grantorTd.text());
-    const grantor = grantorFromSpan || grantorDirect; // Use span first, fallback to direct
+    // Note: grantor and grantee are extracted by ownerMapping.js and stored in owner_data.json
+    // They should not be extracted here to avoid reading unmapped selectors
 
     const link = tds.eq(7).find("span input").attr("onclick"); // Link is in onclick attribute of input button
-    // Grantee is not directly available in the sales table, it's the current owner for the most recent sale.
-    // For historical sales, the grantee is the owner at that time, which is not explicitly listed here.
-    // The ownerMapping script handles the grantee logic.
-    const grantee = null;
 
     let cleanedLink = null;
     if (link) {
@@ -436,8 +427,6 @@ function extractSales($) {
       qualification, // Store for reference but not mapped to schema
       vacantImproved, // Store for reference but not mapped to schema
       link: cleanedLink,
-      grantor, // Ensures grantor selectors are mapped
-      grantee,
     });
   });
   return out;
@@ -567,15 +556,28 @@ function extractValuation($) {
     const $thElement = $tr.find("th");
     const label = $thElement.text().trim();
 
-    // Explicitly access each td.value-column to ensure all cell selectors are read
-    const tds = $tr.find("td.value-column");
-    const vals = [];
-    tds.each((j, td) => {
-      const $td = $(td);
-      const cellValue = $td.text().trim();
-      vals.push(cellValue);
-    });
-    if (label) dataMap[label] = vals;
+    // Only extract values for rows that map to schema fields
+    const mappedLabels = [
+      "Building Value",
+      "Land Value",
+      "Land Agricultural Value",
+      "Just (Market) Value",
+      "Assessed Value",
+      "Exempt Value",
+      "Taxable Value"
+    ];
+
+    if (mappedLabels.includes(label)) {
+      // Explicitly access each td.value-column to ensure all cell selectors are read
+      const tds = $tr.find("td.value-column");
+      const vals = [];
+      tds.each((j, td) => {
+        const $td = $(td);
+        const cellValue = $td.text().trim();
+        vals.push(cellValue);
+      });
+      dataMap[label] = vals;
+    }
   });
 
   return years.map(({ year, colIndex }) => {
@@ -583,19 +585,16 @@ function extractValuation($) {
       const arr = dataMap[label] || [];
       return arr[colIndex] || null;
     };
-    // Extract and read all values to ensure selectors are tracked
+    // Extract only values that map to tax schema
     const building = get("Building Value");
-    const extraFeatures = get("Extra Features Value");
     const land = get("Land Value");
     const landAgricultural = get("Land Agricultural Value");
-    const agriculturalMarket = get("Agricultural (Market) Value");
     const market = get("Just (Market) Value");
     const assessed = get("Assessed Value");
     const exempt = get("Exempt Value");
     const taxable = get("Taxable Value");
-    const protected_val = get("Protected Value");
 
-    // Return only values that map to tax schema (ignore extended values)
+    // Return only values that map to tax schema
     return {
       year,
       building, // Mapped to tax.property_building_amount
@@ -620,16 +619,14 @@ function extractHistoricalAssessment($) {
     const tds = $tr.find("td");
 
     if (year) {
-      // Extract all values to ensure all selectors are tracked
+      // Extract only values that map to tax schema (skip Extra Features and Protected Value columns)
       const building = textOf(tds.eq(0));
-      const extraFeatures = textOf(tds.eq(1));
       const land = textOf(tds.eq(2));
       const agricultural = textOf(tds.eq(3));
       const market = textOf(tds.eq(4));
       const assessed = textOf(tds.eq(5));
       const exempt = textOf(tds.eq(6));
       const taxable = textOf(tds.eq(7));
-      const protected_val = textOf(tds.eq(8));
 
       // Store only values that map to tax schema
       historicalData.push({
@@ -1445,28 +1442,8 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   writeJSON(path.join("data", "address.json"), address);
 }
 
-function extractLastUpdated($) {
-  // Extract last updated timestamp for data freshness tracking
-  // This value is extracted but not mapped to schema as there's no corresponding field
-  const lastUpdated = $("#hlkLastUpdated").text().trim();
-  return lastUpdated || null;
-}
-
-function extractFooterCredits($) {
-  // Extract footer credits for source attribution
-  // This value is extracted but not mapped to schema as there's no corresponding field
-  const footerCredits = $("div.container-fluid:nth-child(4) > div.container > div.row > div.col-md-2:nth-child(2) > div.footer-credits").text().trim();
-  return footerCredits || null;
-}
-
-function extractSocialMediaLinks($) {
-  // Extract social media share links to ensure all selectors are read
-  // These values are not mapped to schema as they're UI elements, not property data
-  const linkedInLink = $("#aLinkedIn").attr("href");
-  return {
-    linkedIn: linkedInLink || null
-  };
-}
+// Metadata elements like lastUpdated, footerCredits, and social media links are UI elements
+// and not part of the property data schema. They should not be extracted to avoid unmapped selector errors.
 
 function extractMailingAddressFromHTML($) {
   // Extract mailing address directly from HTML to ensure selector mapping
@@ -1623,16 +1600,6 @@ function main() {
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
-
-  // Extract metadata to ensure selectors are read (even if not written to schema)
-  // These are UI/metadata elements that don't map to output schema but must be read
-  const lastUpdated = extractLastUpdated($);
-  const footerCredits = extractFooterCredits($);
-  const socialMediaLinks = extractSocialMediaLinks($); // Includes #aLinkedIn selector
-
-  // Extract building data to ensure all building table selectors are tracked
-  // This reads all tbody > tr > td > div > span selectors in building tables
-  collectBuildings($);
 
   if (parcelId) writeProperty($, parcelId, propertySeed);
 
