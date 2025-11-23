@@ -520,35 +520,25 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     const fileRequestId = parcelId ? `${parcelId}_file_${idx}` : `file_${idx}`;
 
     const saleObj = {
-      ownership_transfer_date: parseDateToISO(s.saleDate),
-      purchase_price_amount: parseCurrencyToNumber(s.salePrice),
       request_identifier: saleRequestId,
     };
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
-    // Populate deed with deed_type, book, and page
+    // Populate deed with ownership_transfer_date and purchase_price_amount
     const deed = {
-      deed_type: mapInstrumentToDeedType(s.instrument),
+      ownership_transfer_date: parseDateToISO(s.saleDate),
       request_identifier: deedRequestId,
     };
-    // Extract book and page from bookPage (format: "book/page")
-    if (s.bookPage) {
-      const parts = s.bookPage.split("/");
-      if (parts.length === 2) {
-        if (parts[0]) deed.book = parts[0];
-        if (parts[1]) deed.page = parts[1];
-      }
+    const purchasePrice = parseCurrencyToNumber(s.salePrice);
+    if (purchasePrice !== null) {
+      deed.purchase_price_amount = purchasePrice;
     }
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     // Only create file if there's a link
     if (s.link) {
       const file = {
-        file_format: null,
-        name: `Deed Document ${idx}`,
-        original_url: s.link,
-        document_type: "ConveyanceDeed",
-        request_identifier: fileRequestId,
+        ipfs_url: null,
       };
       writeJSON(path.join("data", `file_${idx}.json`), file);
 
@@ -775,6 +765,7 @@ function writePropertyImprovements($, parcelId) {
       improvement_action: null,
       improvement_status: "Completed",
       permit_number: feature.code || null,
+      permit_required: feature.code ? true : false,
       application_received_date: null,
       final_inspection_date: null,
       contractor_type: null,
@@ -798,6 +789,7 @@ function writePropertyImprovements($, parcelId) {
       improvement_action: null,
       improvement_status: "Completed",
       permit_number: subArea.type || null,
+      permit_required: subArea.type ? true : false,
       application_received_date: null,
       final_inspection_date: null,
       contractor_type: null,
@@ -1038,82 +1030,18 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   const full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
   if (!full) return;
-  let city = null;
-  let zip = null;
-  const fullAddressParts = (full || "").split(",");
-  if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
-    state_and_pin = fullAddressParts[2].split(/\s+/);
-    if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
-      zip = state_and_pin[state_and_pin.length - 1].trim();
-      city = fullAddressParts[1].trim();
-    }
-  }
-  const parts = (fullAddressParts[0] || "").split(/\s+/);
-  let street_number = null;
-  if (parts && parts.length > 1) {
-    street_number_candidate = parts[0];
-    if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
-      street_number = parts.shift() || null;
-    }
-  }
-  let suffix = null;
-  if (parts && parts.length > 1) {
-    suffix_candidate = parts[parts.length - 1];
-    if (normalizeSuffix(suffix_candidate)) {
-      suffix = parts.pop() || null;
-    }
-  }
-  let street_name = parts.join(" ") || null;
-  if (street_name) {
-    street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
-  }
-  // const m = full.match(
-  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
-  // );
-  // if (!m) return;
-  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
-
-  // let street_name = streetRest.trim();
-  // let route_number = null;
-  // let street_suffix_type = null;
-  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
-  // if (m2) {
-  //   street_name = m2[1].toUpperCase();
-  //   route_number = m2[2];
-  //   if (street_name === "HWY" || street_name === "HIGHWAY")
-  //     street_suffix_type = "Hwy";
-  // }
-  const city_name = city ? city.toUpperCase() : null;
-  // const state_code = state.toUpperCase();
-  const postal_code = zip;
-  // const plus_four_postal_code = plus4 || null;
 
   // Per evaluator expectation, set county_name from input jurisdiction
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   const county_name = inputCounty || null;
 
   const address = {
-    city_name,
+    unnormalized_address: full,
     country_code: "US",
     county_name,
-    latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-    longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
-    plus_four_postal_code: null,
-    postal_code,
-    state_code: "FL",
-    street_name: street_name,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_number: street_number,
-    street_suffix_type: normalizeSuffix(suffix),
-    unit_identifier: null,
-    route_number: null,
     township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
     range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
     section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
-    block: null,
-    lot: null,
-    municipality_name: null,
   };
   writeJSON(path.join("data", "address.json"), address);
 }
