@@ -43058,6 +43058,168 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
   );
 }
 
+function enforceRawAddressFallbackSurface(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  if (hasNormalizedCountyCoverage({ ...normalizedSurface })) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    extraRawCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const rawCandidates = [];
+  const enqueueRawCandidate = (candidate) => {
+    if (candidate === undefined || candidate === null) {
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(enqueueRawCandidate);
+      return;
+    }
+    const value = typeof candidate === "string" ? candidate : String(candidate);
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidates.push(trimmed);
+    }
+  };
+
+  enqueueRawCandidate(payload.unnormalized_address);
+  enqueueRawCandidate(payload.full_address);
+  enqueueRawCandidate(extraRawCandidates);
+
+  let fallbackRawData = null;
+  if (typeof unnormalizedPath === "string" && unnormalizedPath.length) {
+    const fallback = readJSONIfExists(unnormalizedPath);
+    if (fallback && typeof fallback === "object") {
+      fallbackRawData = fallback;
+      enqueueRawCandidate(fallback.unnormalized_address);
+      enqueueRawCandidate(fallback.full_address);
+      if (Array.isArray(fallback.lines)) {
+        enqueueRawCandidate(fallback.lines.join(", "));
+      }
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    enqueueRawCandidate(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates);
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    return;
+  }
+
+  const requestIdQueue = [];
+  const enqueueRequestIdentifier = (candidate) => {
+    if (candidate === undefined || candidate === null) {
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(enqueueRequestIdentifier);
+      return;
+    }
+    requestIdQueue.push(candidate);
+  };
+
+  enqueueRequestIdentifier(payload.request_identifier);
+  enqueueRequestIdentifier(requestIdentifierCandidates);
+  if (fallbackRawData && typeof fallbackRawData === "object") {
+    enqueueRequestIdentifier(fallbackRawData.request_identifier);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+  ) {
+    enqueueRequestIdentifier(
+      ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates,
+    );
+  }
+
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    ...requestIdQueue,
+  );
+
+  const sourceCandidates = [];
+  const enqueueSourceCandidate = (candidate) => {
+    if (!candidate) {
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(enqueueSourceCandidate);
+      return;
+    }
+    if (candidate && typeof candidate === "object") {
+      sourceCandidates.push(candidate);
+    }
+  };
+
+  enqueueSourceCandidate(payload.source_http_request);
+  enqueueSourceCandidate(sourceHttpRequestCandidates);
+  if (fallbackRawData && typeof fallbackRawData === "object") {
+    enqueueSourceCandidate(fallbackRawData.source_http_request);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+  ) {
+    enqueueSourceCandidate(
+      ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates,
+    );
+  }
+
+  const resolvedSource =
+    resolveSourceHttpRequestCandidate(...sourceCandidates) || null;
+
+  const rawPayload =
+    buildRawAddressOneOfPayload(
+      resolvedRaw,
+      resolvedRequestIdentifier,
+      resolvedSource,
+      normalizedSurface,
+    ) ||
+    buildRawVariantOneOfPayload({
+      ...normalizedSurface,
+      unnormalized_address: resolvedRaw,
+    }) ||
+    ensureRawAddressSchemaDefaults({
+      ...normalizedSurface,
+      unnormalized_address: resolvedRaw,
+    });
+
+  if (!rawPayload || typeof rawPayload !== "object") {
+    return;
+  }
+
+  if ((rawPayload.latitude == null) !== (rawPayload.longitude == null)) {
+    rawPayload.latitude = null;
+    rawPayload.longitude = null;
+  }
+
+  if (!rawPayload.postal_code) {
+    rawPayload.plus_four_postal_code = null;
+  }
+
+  writeJSON(addressPath, rawPayload);
+}
+
 function enforceFinalCountyAddressVariantChoice(addressPath, options = {}) {
   const {
     unnormalizedPath = "unnormalized_address.json",
@@ -47084,6 +47246,37 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to emit schema-compliant county address:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const fallbackRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    const fallbackRequestIds =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : [];
+    const fallbackSourceRequests =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+        : [];
+    enforceRawAddressFallbackSurface(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      extraRawCandidates: fallbackRawCandidates,
+      requestIdentifierCandidates: fallbackRequestIds,
+      sourceHttpRequestCandidates: fallbackSourceRequests,
+    });
+  } catch (error) {
+    console.error("Failed to enforce raw fallback address surface:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
