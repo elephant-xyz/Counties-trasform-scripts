@@ -351,6 +351,74 @@ function stripAddressRequestMetadata(address) {
   return sanitized;
 }
 
+function projectRawVariantFieldSurface(address) {
+  if (!address || typeof address !== "object") {
+    return null;
+  }
+
+  const trimmedUnnormalized =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedUnnormalized.length) {
+    return null;
+  }
+
+  const projected = {
+    unnormalized_address: trimmedUnnormalized,
+  };
+
+  for (const field of RAW_VARIANT_FIELD_WHITELIST) {
+    if (field === "unnormalized_address") continue;
+    if (!RAW_VARIANT_FIELD_WHITELIST_SET.has(field)) continue;
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    projected[field] = address[field];
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier") &&
+    address.request_identifier != null
+  ) {
+    const trimmed = safeNullIfEmpty(address.request_identifier);
+    if (trimmed) {
+      projected.request_identifier = trimmed;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      projected.source_http_request = deepClone(prepared);
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(projected, "latitude") ||
+    Object.prototype.hasOwnProperty.call(projected, "longitude")
+  ) {
+    const latitude = parseCoordinate(projected.latitude);
+    const longitude = parseCoordinate(projected.longitude);
+    const hasLat = Number.isFinite(latitude);
+    const hasLng = Number.isFinite(longitude);
+    if (hasLat && hasLng) {
+      projected.latitude = latitude;
+      projected.longitude = longitude;
+    } else {
+      projected.latitude = null;
+      projected.longitude = null;
+    }
+  }
+
+  for (const field of RAW_VARIANT_FIELD_WHITELIST) {
+    if (field === "unnormalized_address") continue;
+    if (!Object.prototype.hasOwnProperty.call(projected, field)) {
+      projected[field] = null;
+    }
+  }
+
+  return projected;
+}
+
 function buildRawVariantSubmissionPayload(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -358,6 +426,10 @@ function buildRawVariantSubmissionPayload(address) {
 
   const minimalRaw = buildRawAddressSubmissionPayload(address);
   if (minimalRaw) {
+    const projected = projectRawVariantFieldSurface(minimalRaw);
+    if (projected) {
+      return projected;
+    }
     return minimalRaw;
   }
 
@@ -3964,6 +4036,28 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
     return acc;
   }, {}),
 );
+
+const RAW_VARIANT_FIELD_WHITELIST = [
+  "unnormalized_address",
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
+  "latitude",
+  "longitude",
+  "unit_identifier",
+  "route_number",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+];
+const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
+const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
 
 const RAW_ADDRESS_SURFACE_FIELDS = [
   "unnormalized_address",
