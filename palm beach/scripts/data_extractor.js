@@ -854,7 +854,40 @@ function pruneRawAddressFieldsForOutput(address) {
     rawOutput.source_http_request = null;
   }
 
-  return rawOutput;
+  const projectedRaw = projectRawVariantFieldSurface(rawOutput);
+  if (projectedRaw) {
+    return projectedRaw;
+  }
+
+  const fallbackRaw = { ...rawOutput };
+  for (const key of Object.keys(fallbackRaw)) {
+    if (
+      key === "unnormalized_address" ||
+      RAW_VARIANT_FIELD_WHITELIST_SET.has(key) ||
+      RAW_VARIANT_METADATA_FIELD_SET.has(key)
+    ) {
+      continue;
+    }
+    delete fallbackRaw[key];
+  }
+
+  for (const field of RAW_VARIANT_FIELD_WHITELIST) {
+    if (!Object.prototype.hasOwnProperty.call(fallbackRaw, field)) {
+      fallbackRaw[field] = null;
+    }
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(fallbackRaw, "request_identifier")) {
+    fallbackRaw.request_identifier = null;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(fallbackRaw, "source_http_request")
+  ) {
+    fallbackRaw.source_http_request = null;
+  }
+
+  return fallbackRaw;
 }
 
 function writeJSON(p, obj) {
@@ -2285,7 +2318,7 @@ async function finalizeAddressVariantOutput(addressFilePath, options = {}) {
     ) {
       delete sanitizedRaw.__force_raw_variant;
     }
-    originalWriteFileSync(
+    fs.writeFileSync(
       addressFilePath,
       JSON.stringify(sanitizedRaw, null, 2),
     );
@@ -2339,7 +2372,7 @@ async function finalizeAddressVariantOutput(addressFilePath, options = {}) {
   const sanitizedNormalized =
     stripAddressRequestMetadata({ ...surfacedNormalized }) ||
     { ...surfacedNormalized };
-  originalWriteFileSync(
+  fs.writeFileSync(
     addressFilePath,
     JSON.stringify(sanitizedNormalized, null, 2),
   );
@@ -2455,7 +2488,7 @@ function enforceAddressVariantOrRawFallback(addressPath, options = {}) {
       }
       const serialized = JSON.stringify(sanitized, null, 2);
       ensureDir(path.dirname(addressPath));
-      originalWriteFileSync.call(fs, addressPath, serialized);
+      fs.writeFileSync(addressPath, serialized);
       return;
     }
   }
@@ -2672,7 +2705,7 @@ function enforceAddressVariantOrRawFallback(addressPath, options = {}) {
   }
   const serialized = JSON.stringify(sanitizedRaw, null, 2);
   ensureDir(path.dirname(addressPath));
-  originalWriteFileSync.call(fs, addressPath, serialized);
+  fs.writeFileSync(addressPath, serialized);
 }
 
 function getGeocodeUserAgent() {
@@ -4099,6 +4132,7 @@ const RAW_VARIANT_FIELD_WHITELIST = [
 ];
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
 const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
+const RAW_VARIANT_METADATA_FIELD_SET = new Set(RAW_VARIANT_METADATA_FIELDS);
 
 const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
   "county_name",
@@ -12094,8 +12128,7 @@ function forceMinimalRawAddressOutput(addressPath, options = {}) {
       ensureAddressOutputFieldPresence(rawPayload) || rawPayload,
     ) || rawPayload;
 
-  originalWriteFileSync.call(
-    fs,
+  fs.writeFileSync(
     addressPath,
     JSON.stringify(finalizedPayload, null, 2),
   );
@@ -12158,8 +12191,7 @@ function coerceAddressToSingleVariant(addressPath) {
       normalizedOutput.source_http_request = deepClone(normalizedSource);
     }
 
-    originalWriteFileSync.call(
-      fs,
+    fs.writeFileSync(
       addressPath,
       JSON.stringify(normalizedOutput, null, 2),
     );
@@ -12220,8 +12252,7 @@ function coerceAddressToSingleVariant(addressPath) {
     rawOutput.source_http_request = deepClone(rawSource);
   }
 
-  originalWriteFileSync.call(
-    fs,
+  fs.writeFileSync(
     addressPath,
     JSON.stringify(rawOutput, null, 2),
   );
