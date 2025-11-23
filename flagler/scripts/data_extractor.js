@@ -576,7 +576,7 @@ function extractHistoricalAssessment($) {
   return historicalData;
 }
 
-function writeProperty($, parcelId) {
+function writeProperty($, parcelId, propertySeed) {
   const legal = extractLegalDescription($);
   const useCode = extractUseCode($);
   const propertyAttributes = mapPropertyAttributesFromUseCode(useCode);
@@ -591,9 +591,12 @@ function writeProperty($, parcelId) {
   const totalArea = extractAreas($);
 
   const property = {
+    source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+    request_identifier: parcelId || "",
     parcel_identifier: parcelId || "",
     property_legal_description_text: legal || null,
     property_structure_built_year: years.actual || null,
+    property_effective_built_year: years.effective || null,
     property_type: propertyAttributes.property_type,
     property_usage_type: propertyAttributes.property_usage_type,
     ownership_estate_type: propertyAttributes.ownership_estate_type,
@@ -611,7 +614,7 @@ function writeProperty($, parcelId) {
   writeJSON(path.join("data", "property.json"), property);
 }
 
-function writeSalesDeedsFilesAndRelationships($, parcelId) {
+function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
   const sales = extractSales($);
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
@@ -628,13 +631,24 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
 
     // Populate sales_history with ownership_transfer_date and purchase_price_amount
     const saleHistory = {
+      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+      request_identifier: parcelId || "",
       ownership_transfer_date: parseDateToISO(s.saleDate),
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
+      sale_type: null,
     };
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleHistory);
 
     // Populate deed with book, page, deed_type, and instrument_number
-    const deed = {};
+    const deed = {
+      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+      request_identifier: parcelId || "",
+      book: null,
+      page: null,
+      volume: null,
+      instrument_number: null,
+      deed_type: null,
+    };
 
     // Use book and page directly from extraction
     if (s.book && s.book.trim()) {
@@ -658,9 +672,15 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     // Always write deed (relationships require it)
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
-    // Only create file if there's a link - with only ipfs_url
+    // Only create file if there's a link
     if (s.link) {
       const file = {
+        source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+        request_identifier: parcelId || "",
+        document_type: null,
+        file_format: null,
+        name: null,
+        original_url: null,
         ipfs_url: null,
       };
       writeJSON(path.join("data", `file_${idx}.json`), file);
@@ -717,7 +737,7 @@ function titleCaseName(s) {
     .join(" ");
 }
 
-function writePersonCompaniesSalesRelationships(parcelId, sales) {
+function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
@@ -744,6 +764,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     });
   });
   people = Array.from(personMap.values()).map((p) => ({
+    source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+    request_identifier: parcelId || "",
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
     last_name: p.last_name ? titleCaseName(p.last_name) : null,
@@ -764,6 +786,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     });
   });
   companies = Array.from(companyNames).map((n) => ({
+    source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+    request_identifier: parcelId || "",
     name: n,
   }));
   companies.forEach((c, idx) => {
@@ -814,7 +838,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 }
 
-function writeTaxes($) {
+function writeTaxes($, propertySeed, parcelId) {
   const vals = extractValuation($);
   const historical = extractHistoricalAssessment($);
   const summaryDetails = extractPropertySummaryDetails($);
@@ -830,6 +854,8 @@ function writeTaxes($) {
   // Add historical data first
   historical.forEach((h) => {
     allYears.set(h.year, {
+      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+      request_identifier: parcelId || "",
       tax_year: h.year,
       property_building_amount: parseCurrencyToNumber(h.building),
       property_land_amount: parseCurrencyToNumber(h.land),
@@ -838,10 +864,13 @@ function writeTaxes($) {
       property_assessed_value_amount: parseCurrencyToNumber(h.assessed),
       property_exemption_amount: parseCurrencyToNumber(h.exempt),
       property_taxable_value_amount: parseCurrencyToNumber(h.taxable),
-      millage_rate: millageRate, // Add millage rate to all tax years
+      millage_rate: millageRate,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
+      yearly_tax_amount: null,
+      first_year_building_on_tax_roll: null,
+      first_year_on_tax_roll: null,
     });
   });
 
@@ -861,6 +890,8 @@ function writeTaxes($) {
     } else {
       // Add new entry
       allYears.set(v.year, {
+        source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+        request_identifier: parcelId || "",
         tax_year: v.year || null,
         property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
         property_market_value_amount: parseCurrencyToNumber(v.market),
@@ -869,10 +900,13 @@ function writeTaxes($) {
         property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
         agricultural_valuation_amount: parseCurrencyToNumber(v.landAgricultural),
         property_exemption_amount: parseCurrencyToNumber(v.exempt),
-        millage_rate: millageRate, // Add millage rate to all tax years
+        millage_rate: millageRate,
         monthly_tax_amount: null,
         period_end_date: null,
         period_start_date: null,
+        yearly_tax_amount: null,
+        first_year_building_on_tax_roll: null,
+        first_year_on_tax_roll: null,
       });
       // Note: extraFeatures, agriculturalMarket, and protected values are extracted but not mapped to schema
       // Note: homestead, taxDistrict, and gisSqft are extracted but not in tax schema
@@ -885,7 +919,7 @@ function writeTaxes($) {
   });
 }
 
-function writePropertyImprovements($, parcelId) {
+function writePropertyImprovements($, parcelId, propertySeed) {
   const extraFeatures = extractExtraFeatures($);
   const subAreas = extractSubAreas($);
 
@@ -894,9 +928,10 @@ function writePropertyImprovements($, parcelId) {
   // Write extra features as property improvements
   extraFeatures.forEach((feature) => {
     const improv = {
+      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+      request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_type: mapImprovementType(feature.description),
       completion_date: feature.year ? `${feature.year}-01-01` : null,
-      request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_action: null,
       improvement_status: "Completed",
       permit_number: feature.code || null,
@@ -918,9 +953,10 @@ function writePropertyImprovements($, parcelId) {
   // Write sub-areas as property improvements
   subAreas.forEach((subArea) => {
     const improv = {
+      source_http_request: propertySeed && propertySeed.source_http_request ? propertySeed.source_http_request : null,
+      request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_type: mapImprovementType(subArea.description),
       completion_date: subArea.actYear ? `${subArea.actYear}-01-01` : null,
-      request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_action: null,
       improvement_status: "Completed",
       permit_number: subArea.type || null,
@@ -1243,6 +1279,8 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   const county_name = inputCounty || null;
 
   const address = {
+    source_http_request: unnorm && unnorm.source_http_request ? unnorm.source_http_request : null,
+    request_identifier: unnorm && unnorm.request_identifier ? unnorm.request_identifier : null,
     unnormalized_address: full,
     country_code: "US",
     county_name,
@@ -1276,6 +1314,25 @@ function extractSocialMediaLinks($) {
   };
 }
 
+function writeMailingAddress(parcelId, unnormalized) {
+  // Read owner data to get mailing address
+  const ownerData = readJSON(path.join("owners", "owner_data.json"));
+  if (!ownerData) return;
+
+  const key = `property_${parcelId}`;
+  const record = ownerData[key];
+  if (!record || !record.mailing_address) return;
+
+  const mailingAddress = {
+    source_http_request: unnormalized && unnormalized.source_http_request ? unnormalized.source_http_request : null,
+    request_identifier: parcelId || null,
+    unnormalized_address: record.mailing_address,
+    latitude: null,
+    longitude: null,
+  };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+}
+
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -1292,25 +1349,26 @@ function main() {
   const footerCredits = extractFooterCredits($);
   const socialLinks = extractSocialMediaLinks($);
 
-  if (parcelId) writeProperty($, parcelId);
+  if (parcelId) writeProperty($, parcelId, propertySeed);
 
   const sales = extractSales($);
-  writeSalesDeedsFilesAndRelationships($, parcelId);
+  writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed);
 
-  writeTaxes($);
+  writeTaxes($, propertySeed, parcelId);
 
   // Write property improvements for extra features and sub-areas
   if (parcelId) {
-    writePropertyImprovements($, parcelId);
+    writePropertyImprovements($, parcelId, propertySeed);
   }
 
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales);
+    writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed);
     // writeOwnersCurrentAndRelationships(parcelId);
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     writeUtility(parcelId);
     writeLayout(parcelId);
     writeStructure(parcelId);
+    writeMailingAddress(parcelId, unnormalized);
   }
 
   // Address last

@@ -196,14 +196,18 @@ function extractCurrentOwners($) {
     owners.push(owner_text);
   }
 
-  // Owner mailing address is extracted but not mapped to person/company objects
-  // per Elephant schema - person and company objects do not contain address fields.
-  // The property's physical address is handled separately in the address.json file.
-  const ownerAddress = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed").text().trim();
-  // ownerAddress is intentionally not used in output as it's the owner's mailing address,
-  // not a property attribute in the Elephant schema
-
   return owners;
+}
+
+function extractOwnerMailingAddress($) {
+  // Extract owner mailing address - will be written to mailing_address.json
+  const ownerAddress = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed").text().trim();
+  if (ownerAddress) {
+    // Clean up the address by replacing <br> tags with commas
+    const cleanAddress = ownerAddress.replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
+    return cleanAddress;
+  }
+  return null;
 }
 
 function extractSalesOwnersByDate($) {
@@ -260,6 +264,7 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
 
 const parcelId = getParcelId($);
 const currentOwnerRaw = extractCurrentOwners($);
+const ownerMailingAddress = extractOwnerMailingAddress($);
 const { map: salesMap, priorOwners } = extractSalesOwnersByDate($);
 
 const invalid_owners = [];
@@ -365,6 +370,11 @@ function dedupeInvalidOwners(list) {
 }
 
 output.invalid_owners = dedupeInvalidOwners(invalid_owners);
+
+// Store mailing address for data_extractor to use
+if (ownerMailingAddress) {
+  output[propKey].mailing_address = ownerMailingAddress;
+}
 
 const outDir = path.join(process.cwd(), "owners");
 fs.mkdirSync(outDir, { recursive: true });
