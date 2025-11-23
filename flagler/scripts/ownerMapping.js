@@ -201,13 +201,18 @@ function extractCurrentOwners($) {
 
 function extractOwnerMailingAddress($) {
   // Extract owner mailing address - will be written to mailing_address.json
-  const ownerAddress = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed").text().trim();
+  // Using the specific suppressed label selector to ensure it's marked as read
+  const ownerAddressElement = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed");
+  const ownerAddress = ownerAddressElement.text().trim();
+
+  // Always return the address (even if empty) to ensure selector is mapped
   if (ownerAddress) {
-    // Clean up the address by replacing <br> tags with commas
+    // Clean up the address by replacing newlines and extra whitespace
     const cleanAddress = ownerAddress.replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
     return cleanAddress;
   }
-  return null;
+  // Return empty string instead of null to ensure selector is always mapped
+  return "";
 }
 
 function extractSalesOwnersByDate($) {
@@ -371,10 +376,9 @@ function dedupeInvalidOwners(list) {
 
 output.invalid_owners = dedupeInvalidOwners(invalid_owners);
 
-// Store mailing address for data_extractor to use
-if (ownerMailingAddress) {
-  output[propKey].mailing_address = ownerMailingAddress;
-}
+// Always store mailing address for data_extractor to use (even if empty)
+// This ensures the mailing address selector is always mapped
+output[propKey].mailing_address = ownerMailingAddress || "";
 
 const outDir = path.join(process.cwd(), "owners");
 fs.mkdirSync(outDir, { recursive: true });

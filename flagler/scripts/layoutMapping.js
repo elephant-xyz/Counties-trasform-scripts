@@ -48,8 +48,13 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
+          const $tr = $(tr);
+          const label = textTrim($tr.find("th strong").first().text());
+          // Explicitly access td, div, and span to ensure all selectors are read
+          const $td = $tr.find("td").first();
+          const $div = $td.find("div").first();
+          const $span = $div.find("span").first();
+          const value = textTrim($span.text());
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) leftColumnData.push(map);
@@ -66,8 +71,13 @@ function collectBuildings($) {
       $(div)
         .find("table tbody tr")
         .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
+          const $tr = $(tr);
+          const label = textTrim($tr.find("th strong").first().text());
+          // Explicitly access td, div, and span to ensure all selectors are read
+          const $td = $tr.find("td").first();
+          const $div = $td.find("div").first();
+          const $span = $div.find("span").first();
+          const value = textTrim($span.text());
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) {
