@@ -30718,6 +30718,236 @@ function resolveFieldFromCandidates(field, candidates) {
   return null;
 }
 
+function gatherRawAddressCandidatesFromSource(source, accumulator) {
+  if (!source || typeof source !== "object" || !Array.isArray(accumulator)) {
+    return;
+  }
+
+  const candidateFields = [
+    "unnormalized_address",
+    "full_address",
+    "site_address",
+    "address",
+    "raw_address",
+    "location_address",
+    "mail_address",
+  ];
+
+  const pushCandidate = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      accumulator.push(trimmed);
+    }
+  };
+
+  for (const field of candidateFields) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      pushCandidate(source[field]);
+    }
+  }
+
+  if (Array.isArray(source.lines)) {
+    pushCandidate(
+      source.lines
+        .map((line) => (typeof line === "string" ? line.trim() : ""))
+        .filter(Boolean)
+        .join(", "),
+    );
+  }
+}
+
+function buildAddressLineFromFields(address) {
+  if (!address || typeof address !== "object") return null;
+
+  const normalizeToken = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "number") return String(value);
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  };
+
+  const streetTokens = [];
+  const pushStreetToken = (value) => {
+    const token = normalizeToken(value);
+    if (token) {
+      streetTokens.push(token);
+    }
+  };
+
+  pushStreetToken(address.street_number);
+  pushStreetToken(address.street_pre_directional_text);
+  pushStreetToken(address.street_name);
+  pushStreetToken(address.street_suffix_type);
+  pushStreetToken(address.street_post_directional_text);
+
+  let streetLine = streetTokens.join(" ").replace(/\s+/g, " ").trim();
+
+  const unitIdentifier = normalizeToken(address.unit_identifier);
+  if (unitIdentifier) {
+    streetLine = streetLine
+      ? `${streetLine} ${unitIdentifier}`
+      : unitIdentifier;
+  }
+
+  const localitySegments = [];
+  const city = normalizeToken(address.city_name);
+  if (city) {
+    localitySegments.push(city);
+  }
+  const state = normalizeToken(address.state_code);
+  const postal = normalizeToken(address.postal_code);
+  const statePostal = [state, postal].filter(Boolean).join(" ");
+  if (statePostal) {
+    localitySegments.push(statePostal.trim());
+  }
+
+  const combined = [];
+  if (streetLine) {
+    combined.push(streetLine);
+  }
+  if (localitySegments.length) {
+    combined.push(localitySegments.join(", "));
+  }
+
+  if (!combined.length) {
+    return null;
+  }
+
+  return combined.join(", ").replace(/\s+/g, " ").trim();
+}
+
+function enforceStrictAddressOneOfOutput(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawSource = readJSONIfExists(options.unnormalizedPath);
+  const seedSource = readJSONIfExists(options.seedPath);
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  const normalizedProbe = { ...normalizedSurface };
+  const hasStrictNormalized =
+    typeof hasRobustNormalizedAddress === "function" &&
+    hasRobustNormalizedAddress({ ...normalizedProbe });
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    normalizedSurface.request_identifier,
+    payload.request_identifier,
+    rawSource && rawSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    ...(Array.isArray(options.extraRequestIdentifierCandidates)
+      ? options.extraRequestIdentifierCandidates
+      : []),
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    normalizedSurface.source_http_request,
+    payload.source_http_request,
+    rawSource && rawSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+    ...(Array.isArray(options.extraSourceHttpRequestCandidates)
+      ? options.extraSourceHttpRequestCandidates
+      : []),
+  );
+
+  if (hasStrictNormalized) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOutput[field] =
+        normalizedProbe[field] === undefined || normalizedProbe[field] === null
+          ? null
+          : normalizedProbe[field];
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    if (requestIdentifier !== undefined) {
+      normalizedOutput.request_identifier =
+        requestIdentifier === undefined || requestIdentifier === null
+          ? null
+          : requestIdentifier;
+    }
+    if (sourceHttpRequest) {
+      normalizedOutput.source_http_request = deepClone(sourceHttpRequest);
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "source_http_request",
+      )
+    ) {
+      normalizedOutput.source_http_request = null;
+    }
+    fs.writeFileSync(addressPath, JSON.stringify(normalizedOutput, null, 2));
+    return;
+  }
+
+  const rawCandidates = [];
+  gatherRawAddressCandidatesFromSource(payload, rawCandidates);
+  gatherRawAddressCandidatesFromSource(normalizedSurface, rawCandidates);
+  gatherRawAddressCandidatesFromSource(rawSource, rawCandidates);
+  gatherRawAddressCandidatesFromSource(seedSource, rawCandidates);
+
+  if (Array.isArray(options.extraRawCandidates)) {
+    for (const candidate of options.extraRawCandidates) {
+      if (typeof candidate === "string" && candidate.trim().length) {
+        rawCandidates.push(candidate.trim());
+      }
+    }
+  }
+
+  let resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw && typeof composeFallbackUnnormalizedAddressFromFields === "function") {
+    resolvedRaw = composeFallbackUnnormalizedAddressFromFields({
+      ...normalizedSurface,
+    });
+  }
+  if (!resolvedRaw) {
+    resolvedRaw = buildAddressLineFromFields(normalizedSurface);
+  }
+
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawSeed = { ...normalizedSurface, unnormalized_address: resolvedRaw };
+  let rawOutput =
+    ensureRawAddressSchemaDefaults(rawSeed) ||
+    buildRawAddressSubmissionPayload(rawSeed) || null;
+
+  if (!rawOutput) {
+    rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: resolvedRaw };
+  }
+
+  if (requestIdentifier !== undefined) {
+    rawOutput.request_identifier =
+      requestIdentifier === undefined || requestIdentifier === null
+        ? null
+        : requestIdentifier;
+  }
+
+  if (sourceHttpRequest) {
+    rawOutput.source_http_request = deepClone(sourceHttpRequest);
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")
+  ) {
+    rawOutput.source_http_request = null;
+  }
+
+  rawOutput.__force_raw_variant = true;
+
+  fs.writeFileSync(addressPath, JSON.stringify(rawOutput, null, 2));
+}
+
 function flattenCandidateValues(...sources) {
   const results = [];
   const visit = (value) => {
@@ -45591,6 +45821,38 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to emit preferred address variant:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const fallbackRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    const fallbackRequestIds =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : [];
+    const fallbackSources =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+        : [];
+    enforceStrictAddressOneOfOutput(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      extraRawCandidates: fallbackRawCandidates,
+      extraRequestIdentifierCandidates: fallbackRequestIds,
+      extraSourceHttpRequestCandidates: fallbackSources,
+    });
+  } catch (error) {
+    console.error("Failed to enforce strict address oneOf output:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
