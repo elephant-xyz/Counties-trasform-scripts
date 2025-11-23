@@ -917,64 +917,110 @@ function writeTaxes($, propertySeed, parcelId) {
 
   // Add historical data first
   historical.forEach((h) => {
-    allYears.set(h.year, {
+    const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
-      property_building_amount: parseCurrencyToNumber(h.building),
-      property_land_amount: parseCurrencyToNumber(h.land),
-      agricultural_valuation_amount: parseCurrencyToNumber(h.agricultural),
-      property_market_value_amount: parseCurrencyToNumber(h.market),
-      property_assessed_value_amount: parseCurrencyToNumber(h.assessed),
-      property_exemption_amount: parseCurrencyToNumber(h.exempt),
-      property_taxable_value_amount: parseCurrencyToNumber(h.taxable),
-      millage_rate: millageRate,
-      monthly_tax_amount: null,
-      period_end_date: null,
-      period_start_date: null,
-      yearly_tax_amount: null,
-      first_year_building_on_tax_roll: null,
-      first_year_on_tax_roll: null,
-    });
-    // NOTE: building_depreciated_value_amount, building_replacement_cost_amount, and homestead_cap_loss_amount
-    // are NOT included because they're not available in source data. Schema requires these to be numbers if present,
-    // so we omit them entirely rather than setting to null.
+    };
+
+    // Only add fields with valid values
+    const building = parseCurrencyToNumber(h.building);
+    if (building !== null) taxEntry.property_building_amount = building;
+
+    const land = parseCurrencyToNumber(h.land);
+    if (land !== null) taxEntry.property_land_amount = land;
+
+    const agricultural = parseCurrencyToNumber(h.agricultural);
+    if (agricultural !== null) taxEntry.agricultural_valuation_amount = agricultural;
+
+    const market = parseCurrencyToNumber(h.market);
+    if (market !== null) taxEntry.property_market_value_amount = market;
+
+    const assessed = parseCurrencyToNumber(h.assessed);
+    if (assessed !== null) taxEntry.property_assessed_value_amount = assessed;
+
+    const exempt = parseCurrencyToNumber(h.exempt);
+    if (exempt !== null) taxEntry.property_exemption_amount = exempt;
+
+    const taxable = parseCurrencyToNumber(h.taxable);
+    if (taxable !== null) taxEntry.property_taxable_value_amount = taxable;
+
+    if (millageRate !== null) taxEntry.millage_rate = millageRate;
+
+    // NOTE: The following fields are NOT included because they're not available in source data:
+    // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
+    // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
+    // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
+    // - monthly_tax_amount, yearly_tax_amount, period_end_date, period_start_date
+    // - first_year_building_on_tax_roll, first_year_on_tax_roll
+
+    allYears.set(h.year, taxEntry);
   });
 
   // Override with certified values if available
   vals.forEach((v) => {
     if (allYears.has(v.year)) {
-      // Update existing entry
+      // Update existing entry with non-null values
       const existing = allYears.get(v.year);
-      existing.property_building_amount = parseCurrencyToNumber(v.building) || existing.property_building_amount;
-      existing.property_land_amount = parseCurrencyToNumber(v.land) || existing.property_land_amount;
-      existing.agricultural_valuation_amount = parseCurrencyToNumber(v.landAgricultural) || existing.agricultural_valuation_amount;
-      existing.property_market_value_amount = parseCurrencyToNumber(v.market) || existing.property_market_value_amount;
-      existing.property_assessed_value_amount = parseCurrencyToNumber(v.assessed) || existing.property_assessed_value_amount;
-      existing.property_exemption_amount = parseCurrencyToNumber(v.exempt) || existing.property_exemption_amount;
-      existing.property_taxable_value_amount = parseCurrencyToNumber(v.taxable) || existing.property_taxable_value_amount;
+
+      const building = parseCurrencyToNumber(v.building);
+      if (building !== null) existing.property_building_amount = building;
+
+      const land = parseCurrencyToNumber(v.land);
+      if (land !== null) existing.property_land_amount = land;
+
+      const agricultural = parseCurrencyToNumber(v.landAgricultural);
+      if (agricultural !== null) existing.agricultural_valuation_amount = agricultural;
+
+      const market = parseCurrencyToNumber(v.market);
+      if (market !== null) existing.property_market_value_amount = market;
+
+      const assessed = parseCurrencyToNumber(v.assessed);
+      if (assessed !== null) existing.property_assessed_value_amount = assessed;
+
+      const exempt = parseCurrencyToNumber(v.exempt);
+      if (exempt !== null) existing.property_exemption_amount = exempt;
+
+      const taxable = parseCurrencyToNumber(v.taxable);
+      if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
       // Add new entry
-      allYears.set(v.year, {
+      const taxEntry = {
         request_identifier: parcelId || "",
-        tax_year: v.year || null,
-        property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
-        property_market_value_amount: parseCurrencyToNumber(v.market),
-        property_building_amount: parseCurrencyToNumber(v.building),
-        property_land_amount: parseCurrencyToNumber(v.land),
-        property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
-        agricultural_valuation_amount: parseCurrencyToNumber(v.landAgricultural),
-        property_exemption_amount: parseCurrencyToNumber(v.exempt),
-        millage_rate: millageRate,
-        monthly_tax_amount: null,
-        period_end_date: null,
-        period_start_date: null,
-        yearly_tax_amount: null,
-        first_year_building_on_tax_roll: null,
-        first_year_on_tax_roll: null,
-      });
-      // NOTE: building_depreciated_value_amount, building_replacement_cost_amount, and homestead_cap_loss_amount
-      // are NOT included because they're not available in source data. Schema requires these to be numbers if present,
-      // so we omit them entirely rather than setting to null.
+        tax_year: v.year,
+      };
+
+      // Only add fields with valid values
+      const assessed = parseCurrencyToNumber(v.assessed);
+      if (assessed !== null) taxEntry.property_assessed_value_amount = assessed;
+
+      const market = parseCurrencyToNumber(v.market);
+      if (market !== null) taxEntry.property_market_value_amount = market;
+
+      const building = parseCurrencyToNumber(v.building);
+      if (building !== null) taxEntry.property_building_amount = building;
+
+      const land = parseCurrencyToNumber(v.land);
+      if (land !== null) taxEntry.property_land_amount = land;
+
+      const taxable = parseCurrencyToNumber(v.taxable);
+      if (taxable !== null) taxEntry.property_taxable_value_amount = taxable;
+
+      const agricultural = parseCurrencyToNumber(v.landAgricultural);
+      if (agricultural !== null) taxEntry.agricultural_valuation_amount = agricultural;
+
+      const exempt = parseCurrencyToNumber(v.exempt);
+      if (exempt !== null) taxEntry.property_exemption_amount = exempt;
+
+      if (millageRate !== null) taxEntry.millage_rate = millageRate;
+
+      // NOTE: The following fields are NOT included because they're not available in source data:
+      // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
+      // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
+      // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
+      // - monthly_tax_amount, yearly_tax_amount, period_end_date, period_start_date
+      // - first_year_building_on_tax_roll, first_year_on_tax_roll
+
+      allYears.set(v.year, taxEntry);
     }
   });
 
@@ -995,23 +1041,25 @@ function writePropertyImprovements($, parcelId, propertySeed) {
     const improv = {
       request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_type: mapImprovementType(feature.description),
-      completion_date: feature.year ? `${feature.year}-01-01` : null,
       improvement_action: null,
       improvement_status: "Completed",
-      permit_number: feature.code || null,
       permit_required: feature.code ? true : false,
-      application_received_date: null,
-      final_inspection_date: null,
-      contractor_type: null,
-      is_disaster_recovery: null,
-      is_owner_builder: null,
-      permit_close_date: null,
-      permit_issue_date: null,
-      private_provider_inspections: null,
-      private_provider_plan_review: null,
     };
-    // NOTE: fee field is NOT included here because it's not available in source data
-    // Schema requires fee to be a number if present, so we omit it entirely rather than setting to null
+
+    // Only add optional fields if they have non-null values
+    if (feature.year) {
+      improv.completion_date = `${feature.year}-01-01`;
+    }
+    if (feature.code) {
+      improv.permit_number = feature.code;
+    }
+
+    // NOTE: The following fields are NOT included because they're not available in source data:
+    // - fee (type: number) - must be omitted entirely when not available
+    // - application_received_date, final_inspection_date, contractor_type, is_disaster_recovery
+    // - is_owner_builder, permit_close_date, permit_issue_date, private_provider_inspections
+    // - private_provider_plan_review
+
     writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
     counter++;
   });
@@ -1021,23 +1069,25 @@ function writePropertyImprovements($, parcelId, propertySeed) {
     const improv = {
       request_identifier: parcelId ? `${parcelId}_improvement_${counter}` : `improvement_${counter}`,
       improvement_type: mapImprovementType(subArea.description),
-      completion_date: subArea.actYear ? `${subArea.actYear}-01-01` : null,
       improvement_action: null,
       improvement_status: "Completed",
-      permit_number: subArea.type || null,
       permit_required: subArea.type ? true : false,
-      application_received_date: null,
-      final_inspection_date: null,
-      contractor_type: null,
-      is_disaster_recovery: null,
-      is_owner_builder: null,
-      permit_close_date: null,
-      permit_issue_date: null,
-      private_provider_inspections: null,
-      private_provider_plan_review: null,
     };
-    // NOTE: fee field is NOT included here because it's not available in source data
-    // Schema requires fee to be a number if present, so we omit it entirely rather than setting to null
+
+    // Only add optional fields if they have non-null values
+    if (subArea.actYear) {
+      improv.completion_date = `${subArea.actYear}-01-01`;
+    }
+    if (subArea.type) {
+      improv.permit_number = subArea.type;
+    }
+
+    // NOTE: The following fields are NOT included because they're not available in source data:
+    // - fee (type: number) - must be omitted entirely when not available
+    // - application_received_date, final_inspection_date, contractor_type, is_disaster_recovery
+    // - is_owner_builder, permit_close_date, permit_issue_date, private_provider_inspections
+    // - private_provider_plan_review
+
     writeJSON(path.join("data", `property_improvement_${counter}.json`), improv);
     counter++;
   });
