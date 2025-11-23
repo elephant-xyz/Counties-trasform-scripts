@@ -36,26 +36,11 @@ function textTrim(s) {
 
 function writeJSON(p, obj) {
   ensureDir(path.dirname(p));
-  // Remove any null or undefined values to ensure clean output
-  const cleaned = removeNullFields(obj);
-  fs.writeFileSync(p, JSON.stringify(cleaned, null, 2), "utf8");
+  // Write object as-is, keeping null values for required schema properties
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
 }
 
-function removeNullFields(obj) {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(removeNullFields);
-
-  const result = {};
-  for (const key in obj) {
-    if (obj[key] !== null && obj[key] !== undefined) {
-      result[key] = typeof obj[key] === 'object' && !Array.isArray(obj[key])
-        ? removeNullFields(obj[key])
-        : obj[key];
-    }
-  }
-  return result;
-}
+// Removed removeNullFields function - required schema properties must be present even if null
 
 function parseCurrencyToNumber(txt) {
   if (txt == null) return null;
