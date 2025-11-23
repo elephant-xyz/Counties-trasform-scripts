@@ -369,15 +369,26 @@ function projectRawVariantFieldSurface(address) {
   }
 
   const projected = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
   for (const field of RAW_VARIANT_PRESERVED_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    const rawValue = address[field];
-    if (!hasMeaningfulAddressValue(rawValue)) continue;
-    projected[field] =
-      typeof rawValue === "string" ? rawValue.trim() : rawValue;
+    const rawValue =
+      typeof sanitizeAddressFieldValue === "function"
+        ? sanitizeAddressFieldValue(field, address[field])
+        : address[field];
+    if (rawValue === undefined || rawValue === null) {
+      projected[field] = null;
+      continue;
+    }
+    if (typeof rawValue === "string") {
+      const trimmed = rawValue.trim();
+      projected[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+    projected[field] = rawValue;
   }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
@@ -4107,7 +4118,7 @@ const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
 ]);
 const RAW_VARIANT_MINIMAL_FIELD_SET = new Set(RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST);
 const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
-  ...RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST,
+  ...RAW_ADDRESS_OUTPUT_FIELDS,
 ]);
 const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
@@ -12155,6 +12166,7 @@ function coerceAddressToSingleVariant(addressPath) {
   }
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
   };
 
@@ -12164,9 +12176,16 @@ function coerceAddressToSingleVariant(addressPath) {
       typeof sanitizeAddressFieldValue === "function"
         ? sanitizeAddressFieldValue(field, payload[field])
         : payload[field];
-    if (hasMeaningfulAddressValue(normalizedValue)) {
-      rawOutput[field] = normalizedValue;
+    if (normalizedValue === undefined || normalizedValue === null) {
+      rawOutput[field] = null;
+      continue;
     }
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      rawOutput[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+    rawOutput[field] = normalizedValue;
   }
 
   const latitude = parseCoordinate(payload.latitude);
