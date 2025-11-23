@@ -7875,26 +7875,15 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
 }
 
 const COUNTY_ADDRESS_ENSURE_FIELDS = [
-  "latitude",
-  "longitude",
-  "postal_code",
-  "plus_four_postal_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
   "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
+  "street_name",
   "city_name",
   "state_code",
+  "postal_code",
   "country_code",
+  "county_name",
+  "latitude",
+  "longitude",
 ];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
