@@ -403,25 +403,44 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     };
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
+    // Populate deed with deed_type, book, and page
     const deed = {
+      deed_type: mapInstrumentToDeedType(s.instrument),
       request_identifier: deedRequestId,
     };
+    // Extract book and page from bookPage (format: "book/page")
+    if (s.bookPage) {
+      const parts = s.bookPage.split("/");
+      if (parts.length === 2) {
+        if (parts[0]) deed.book = parts[0];
+        if (parts[1]) deed.page = parts[1];
+      }
+    }
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
-    const file = {
-      request_identifier: fileRequestId,
-    };
-    writeJSON(path.join("data", `file_${idx}.json`), file);
+    // Only create file if there's a link
+    if (s.link) {
+      const file = {
+        file_format: "pdf",
+        name: `Deed Document ${idx}`,
+        original_url: s.link,
+        document_type: "Deed",
+        request_identifier: fileRequestId,
+      };
+      writeJSON(path.join("data", `file_${idx}.json`), file);
 
-    const relDeedFile = {
-      from: { "/": `./file_${idx}.json` },
-      to: { "/": `./deed_${idx}.json` },
-    };
-    writeJSON(
-      path.join("data", `relationship_deed_file_${idx}.json`),
-      relDeedFile,
-    );
+      // Create deed_has_file relationship (from: deed, to: file)
+      const relDeedFile = {
+        from: { "/": `./deed_${idx}.json` },
+        to: { "/": `./file_${idx}.json` },
+      };
+      writeJSON(
+        path.join("data", `relationship_deed_file_${idx}.json`),
+        relDeedFile,
+      );
+    }
 
+    // Create sales_history_has_deed relationship (from: sales_history, to: deed)
     const relSalesHistoryDeed = {
       from: { "/": `./sales_history_${idx}.json` },
       to: { "/": `./deed_${idx}.json` },

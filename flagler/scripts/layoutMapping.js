@@ -88,11 +88,11 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx) {
+function defaultLayout(space_type, space_index, space_type_index) {
   return {
     space_type,
-    space_index: idx,
-    space_type_index: `${idx}`,
+    space_index,
+    space_type_index,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -144,12 +144,28 @@ function buildLayoutsFromBuildings(buildings) {
   });
 
   const layouts = [];
-  let idx = 1;
+  let spaceIndex = 1;
+  const perTypeCounters = new Map();
+
+  // Helper function to get next type counter
+  const getNextTypeCounter = (spaceType) => {
+    const current = perTypeCounters.get(spaceType) || 0;
+    const next = current + 1;
+    perTypeCounters.set(spaceType, next);
+    return next;
+  };
+
   for (let i = 0; i < totalBeds; i++) {
-    layouts.push(defaultLayout("Bedroom", idx++));
+    const typeCounter = getNextTypeCounter("Bedroom");
+    const space_type_index = `${spaceIndex}.${typeCounter}`;
+    layouts.push(defaultLayout("Bedroom", spaceIndex, space_type_index));
+    spaceIndex++;
   }
   for (let i = 0; i < totalBaths; i++) {
-    layouts.push(defaultLayout("Full Bathroom", idx++));
+    const typeCounter = getNextTypeCounter("Full Bathroom");
+    const space_type_index = `${spaceIndex}.${typeCounter}`;
+    layouts.push(defaultLayout("Full Bathroom", spaceIndex, space_type_index));
+    spaceIndex++;
   }
   return layouts;
 }
