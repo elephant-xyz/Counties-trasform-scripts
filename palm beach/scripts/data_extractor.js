@@ -4118,7 +4118,18 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 
 const RAW_VARIANT_FIELD_WHITELIST = [
   "unnormalized_address",
-  ...RAW_ADDRESS_OUTPUT_FIELDS,
+  "latitude",
+  "longitude",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+  "county_name",
+  "country_code",
+  "municipality_name",
+  "request_identifier",
+  "source_http_request",
 ];
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
 const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
@@ -4127,8 +4138,7 @@ const RAW_VARIANT_METADATA_FIELD_SET = new Set(RAW_VARIANT_METADATA_FIELDS);
 const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
   "county_name",
   "country_code",
-  "unit_identifier",
-  "route_number",
+  "municipality_name",
   "township",
   "range",
   "section",
@@ -4137,20 +4147,7 @@ const RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST = Object.freeze([
 ]);
 const RAW_VARIANT_MINIMAL_FIELD_SET = new Set(RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST);
 const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...RAW_VARIANT_MINIMAL_FIELD_ALLOWLIST,
 ]);
 const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
@@ -4228,7 +4225,7 @@ function hasStructuredAddressCoverage(address) {
 // validators can inspect every key even when the address is only available as
 // a single string. Keep the entire normalized surface (with nulls) alongside
 // the unnormalized value.
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(RAW_ADDRESS_ALLOWED_FIELDS);
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(RAW_VARIANT_FIELD_WHITELIST);
 
 // Raw variant should only expose the subset of normalized fields that the
 // schema allows alongside an unnormalized string.
