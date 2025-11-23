@@ -15007,8 +15007,6 @@ function forceRawVariantWhenUnnormalized(addressFilePath) {
       : "";
 
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-  let hasNormalizedStrings = true;
-
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const rawValue = Object.prototype.hasOwnProperty.call(payload, field)
       ? payload[field]
@@ -15018,27 +15016,19 @@ function forceRawVariantWhenUnnormalized(addressFilePath) {
       normalizedValue === undefined || normalizedValue === null
         ? null
         : normalizedValue;
-
-    if (
-      hasNormalizedStrings &&
-      NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.includes(field)
-    ) {
-      const candidate = normalizedCandidate[field];
-      if (typeof candidate !== "string" || !candidate.trim().length) {
-        hasNormalizedStrings = false;
-      }
-    }
   }
+  const normalizedProbe = { ...normalizedCandidate };
+  const canEmitNormalized = hasNormalizedCountyCoverage(normalizedProbe);
 
   const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
   const preparedSource = prepareSourceHttpRequest(
     payload.source_http_request,
   );
 
-  if (hasNormalizedStrings) {
+  if (canEmitNormalized) {
     const normalizedOutput =
-      ensureAddressOutputFieldPresence({ ...normalizedCandidate }) ||
-      { ...normalizedCandidate };
+      ensureAddressOutputFieldPresence({ ...normalizedProbe }) ||
+      { ...normalizedProbe };
 
     if (!normalizedOutput.postal_code) {
       normalizedOutput.plus_four_postal_code = null;
@@ -15128,8 +15118,6 @@ function removeUnnormalizedWhenNormalized(addressFilePath) {
   }
 
   const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-  let hasNormalizedStrings = true;
-
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     const rawValue = Object.prototype.hasOwnProperty.call(payload, field)
       ? payload[field]
@@ -15139,19 +15127,12 @@ function removeUnnormalizedWhenNormalized(addressFilePath) {
       normalizedValue === undefined || normalizedValue === null
         ? null
         : normalizedValue;
-
-    if (
-      hasNormalizedStrings &&
-      NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.includes(field)
-    ) {
-      const candidate = normalizedCandidate[field];
-      if (typeof candidate !== "string" || !candidate.trim().length) {
-        hasNormalizedStrings = false;
-      }
-    }
   }
 
-  if (!hasNormalizedStrings) {
+  const normalizedProbe = { ...normalizedCandidate };
+  const canEmitNormalized = hasNormalizedCountyCoverage(normalizedProbe);
+
+  if (!canEmitNormalized) {
     return;
   }
 
@@ -15161,8 +15142,8 @@ function removeUnnormalizedWhenNormalized(addressFilePath) {
   );
 
   const normalizedOutput =
-    ensureAddressOutputFieldPresence({ ...normalizedCandidate }) ||
-    { ...normalizedCandidate };
+    ensureAddressOutputFieldPresence({ ...normalizedProbe }) ||
+    { ...normalizedProbe };
 
   if (!normalizedOutput.postal_code) {
     normalizedOutput.plus_four_postal_code = null;
