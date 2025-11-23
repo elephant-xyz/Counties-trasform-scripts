@@ -411,8 +411,8 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
     const relDeedFile = {
-      from: { "/": `./deed_${idx}.json` },
-      to: { "/": `./file_${idx}.json` },
+      from: { "/": `./file_${idx}.json` },
+      to: { "/": `./deed_${idx}.json` },
     };
     writeJSON(
       path.join("data", `relationship_deed_file_${idx}.json`),
@@ -420,8 +420,8 @@ function writeSalesDeedsFilesAndRelationships($) {
     );
 
     const relSalesDeed = {
-      from: { "/": `./sales_${idx}.json` },
-      to: { "/": `./deed_${idx}.json` },
+      from: { "/": `./deed_${idx}.json` },
+      to: { "/": `./sales_${idx}.json` },
     };
     writeJSON(
       path.join("data", `relationship_sales_deed_${idx}.json`),
@@ -494,7 +494,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     suffix_name: null,
     us_citizenship_status: null,
     veteran_status: null,
-    request_identifier: parcelId,
   }));
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
@@ -508,7 +507,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
   companies = Array.from(companyNames).map((n) => ({
     name: n,
-    request_identifier: parcelId,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
@@ -643,7 +641,7 @@ function writeLayout(parcelId) {
     const out = {
       space_type: l.space_type ?? null,
       space_index: l.space_index ?? null,
-      space_type_index: l.space_type_index ?? `${idx + 1}`,
+      space_type_index: l.space_type_index || `${idx + 1}`,
       flooring_material_type: l.flooring_material_type ?? null,
       size_square_feet: l.size_square_feet ?? null,
       floor_level: l.floor_level ?? null,
@@ -674,7 +672,6 @@ function writeLayout(parcelId) {
       pool_condition: l.pool_condition ?? null,
       pool_surface_type: l.pool_surface_type ?? null,
       pool_water_quality: l.pool_water_quality ?? null,
-      request_identifier: parcelId,
     };
     writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
   });
