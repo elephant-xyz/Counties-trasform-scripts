@@ -371,118 +371,11 @@ function stripAddressRequestMetadata(address) {
 }
 
 function buildRawVariantOneOfPayload(address) {
-  if (!address || typeof address !== "object") {
-    return null;
-  }
-
-  const trimmedUnnormalized =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!trimmedUnnormalized.length) {
-    return null;
-  }
-
-  const rawSurface = {
-    unnormalized_address: trimmedUnnormalized,
-  };
-
-  for (const field of RAW_ADDRESS_SUBMISSION_FIELDS) {
-    const hasField = Object.prototype.hasOwnProperty.call(address, field);
-    const rawValue = hasField ? address[field] : null;
-    const normalized =
-      typeof normalizeAddressFieldForSchema === "function"
-        ? normalizeAddressFieldForSchema(field, rawValue)
-        : rawValue;
-    if (normalized === undefined || normalized === null) {
-      rawSurface[field] = null;
-      continue;
-    }
-    if (typeof normalized === "string") {
-      const trimmed = normalized.trim();
-      rawSurface[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-    rawSurface[field] = normalized;
-  }
-
-  if (!rawSurface.postal_code) {
-    rawSurface.plus_four_postal_code = null;
-  }
-
-  if (rawSurface.state_code && !rawSurface.country_code) {
-    rawSurface.country_code = "US";
-  }
-
-  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-  rawSurface.request_identifier =
-    requestIdentifier === undefined || requestIdentifier === null
-      ? null
-      : requestIdentifier;
-
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    const preparedSource = prepareSourceHttpRequest(
-      address.source_http_request,
-    );
-    rawSurface.source_http_request = preparedSource
-      ? deepClone(preparedSource)
-      : null;
-  } else {
-    rawSurface.source_http_request = null;
-  }
-
-  return rawSurface;
+  return buildMinimalRawAddressVariant(address);
 }
 
 function projectRawVariantFieldSurface(address) {
-  if (!address || typeof address !== "object") {
-    return null;
-  }
-
-  const trimmedUnnormalized =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!trimmedUnnormalized.length) {
-    return null;
-  }
-
-  const projected = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    unnormalized_address: trimmedUnnormalized,
-  };
-
-  for (const field of RAW_VARIANT_PRESERVED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-    const rawValue =
-      typeof sanitizeAddressFieldValue === "function"
-        ? sanitizeAddressFieldValue(field, address[field])
-        : address[field];
-    if (rawValue === undefined || rawValue === null) {
-      projected[field] = null;
-      continue;
-    }
-    if (typeof rawValue === "string") {
-      const trimmed = rawValue.trim();
-      projected[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-    projected[field] = rawValue;
-  }
-
-  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-  if (requestIdentifier) {
-    projected.request_identifier = requestIdentifier;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(address.source_http_request);
-    if (prepared) {
-      projected.source_http_request = deepClone(prepared);
-    }
-  }
-
-  return buildRawVariantOneOfPayload(projected);
+  return buildMinimalRawAddressVariant(address);
 }
 
 function buildRawVariantSubmissionPayload(address) {
@@ -500,6 +393,63 @@ function buildRawVariantSubmissionPayload(address) {
   }
 
   return null;
+}
+
+function buildMinimalRawAddressVariant(address) {
+  if (!address || typeof address !== "object") {
+    return null;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return null;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  const assignIfMeaningful = (field, value) => {
+    if (value === undefined || value === null) return;
+    const sanitized =
+      typeof sanitizeAddressFieldValue === "function"
+        ? sanitizeAddressFieldValue(field, value)
+        : value;
+    if (!hasMeaningfulAddressValue(sanitized)) {
+      return;
+    }
+    minimal[field] =
+      typeof sanitized === "string" ? sanitized.trim() : sanitized;
+  };
+
+  for (const field of RAW_VARIANT_MINIMAL_SURFACE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
+    assignIfMeaningful(field, address[field]);
+  }
+
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    minimal.latitude = latitude;
+    minimal.longitude = longitude;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
+  if (requestIdentifier) {
+    minimal.request_identifier = requestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    address.source_http_request,
+  );
+  if (preparedSource) {
+    minimal.source_http_request = deepClone(preparedSource);
+  }
+
+  return minimal;
 }
 
 function gatherRequestIdentifierCandidates(...candidates) {
@@ -4200,6 +4150,19 @@ const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
 ]);
 const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
+const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
+  "city_name",
+  "county_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "municipality_name",
+]);
+const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
+  RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
+);
+
 const RAW_ADDRESS_SURFACE_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_OUTPUT_FIELDS,
@@ -4218,18 +4181,6 @@ const RAW_ADDRESS_FINAL_ALLOWED_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
-// Keep the raw variant surface aligned with the normalized schema plus the
-// unnormalized string so every property defined in the lexicon is emitted.
-// Validators expect these keys to be present (even when null) in order for the
-// address object to satisfy the oneOf clause, so we reuse the allowed-field
-// list instead of cherry-picking a reduced subset.
-const RAW_ADDRESS_SUBMISSION_FIELDS = Object.freeze([
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
-]);
-const RAW_ADDRESS_SUBMISSION_FIELD_SET = new Set(
-  RAW_ADDRESS_SUBMISSION_FIELDS,
-);
-
 function hasStructuredAddressCoverage(address) {
   if (!address || typeof address !== "object") {
     return false;
