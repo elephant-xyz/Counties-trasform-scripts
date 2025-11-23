@@ -44516,6 +44516,193 @@ function buildFinalCountyAddressPayload(options = {}) {
   );
 }
 
+function finalizeCountyAddressSchemaVariant(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    payload.request_identifier,
+    ...(ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+      : []),
+  );
+  const normalizedRequestIdentifier =
+    typeof requestIdentifier === "string" && requestIdentifier.trim().length
+      ? requestIdentifier.trim()
+      : null;
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    payload.source_http_request,
+    ...(ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+      : []),
+  );
+  const preparedSourceRequest = sourceHttpRequest
+    ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
+    : null;
+
+  const normalizedProbe = { ...normalizedSurface };
+  let finalPayload = null;
+
+  if (hasNormalizedCountyCoverage({ ...normalizedProbe })) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...normalizedProbe }) || null;
+    if (normalizedOutput) {
+      if (normalizedRequestIdentifier) {
+        normalizedOutput.request_identifier = normalizedRequestIdentifier;
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "request_identifier",
+        )
+      ) {
+        delete normalizedOutput.request_identifier;
+      }
+
+      if (preparedSourceRequest) {
+        normalizedOutput.source_http_request = preparedSourceRequest;
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "source_http_request",
+        )
+      ) {
+        delete normalizedOutput.source_http_request;
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+      if (!normalizedOutput.postal_code) {
+        normalizedOutput.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOutput.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOutput.country_code)
+      ) {
+        normalizedOutput.country_code = "US";
+      }
+
+      finalPayload = normalizedOutput;
+    }
+  }
+
+  if (!finalPayload) {
+    const rawCandidates = [];
+    const pushCandidate = (value) => {
+      if (typeof value !== "string") return;
+      const trimmed = value.trim();
+      if (trimmed.length) {
+        rawCandidates.push(trimmed);
+      }
+    };
+
+    pushCandidate(normalizedSurface.unnormalized_address);
+    pushCandidate(payload.full_address);
+    if (
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+    ) {
+      ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates.forEach(pushCandidate);
+    }
+
+    const rawValue = resolveFirstNonEmptyString(rawCandidates);
+    const trimmedRaw =
+      typeof rawValue === "string" && rawValue.trim().length
+        ? rawValue.trim()
+        : "";
+
+    if (!trimmedRaw.length) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    const rawSeed = {
+      ...normalizedSurface,
+      unnormalized_address: trimmedRaw,
+    };
+
+    if (normalizedRequestIdentifier) {
+      rawSeed.request_identifier = normalizedRequestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(rawSeed, "request_identifier")
+    ) {
+      delete rawSeed.request_identifier;
+    }
+
+    if (preparedSourceRequest) {
+      rawSeed.source_http_request = preparedSourceRequest;
+    } else if (
+      Object.prototype.hasOwnProperty.call(rawSeed, "source_http_request")
+    ) {
+      delete rawSeed.source_http_request;
+    }
+
+    let rawOutput =
+      ensureRawAddressSchemaDefaults(rawSeed) ||
+      buildRawAddressOneOfPayload(
+        trimmedRaw,
+        normalizedRequestIdentifier,
+        preparedSourceRequest,
+        normalizedSurface,
+      ) ||
+      composeMinimalRawAddress(rawSeed) ||
+      rawSeed;
+
+    if (!rawOutput || typeof rawOutput !== "object") {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    rawOutput =
+      ensureAddressOutputFieldPresence({ ...rawOutput }) || { ...rawOutput };
+    rawOutput.unnormalized_address = trimmedRaw;
+
+    const latitude = parseCoordinate(rawOutput.latitude);
+    const longitude = parseCoordinate(rawOutput.longitude);
+    const hasLatLng = Number.isFinite(latitude) && Number.isFinite(longitude);
+    rawOutput.latitude = hasLatLng ? latitude : null;
+    rawOutput.longitude = hasLatLng ? longitude : null;
+
+    if (!rawOutput.postal_code) {
+      rawOutput.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOutput.state_code) &&
+      !hasMeaningfulAddressValue(rawOutput.country_code)
+    ) {
+      rawOutput.country_code = "US";
+    }
+
+    finalPayload = rawOutput;
+  }
+
+  if (!finalPayload) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const surfaced = stripAddressRequestMetadata(finalPayload) || finalPayload;
+  fs.writeFileSync(addressPath, JSON.stringify(surfaced, null, 2));
+}
+
 
 async function run() {
   await main();
@@ -45160,6 +45347,16 @@ async function run() {
     }
   }
 
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    finalizeCountyAddressSchemaVariant(addressPath);
+  } catch (error) {
+    console.error("Failed to write final county address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
 }
 
 run().catch((error) => {
