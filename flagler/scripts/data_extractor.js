@@ -386,22 +386,31 @@ function extractSales($) {
       instrument = null;
     }
     // Extract book using both direct td text and span within - ensuring both selectors are read
-    const bookSpan = textOf(tds.eq(2).find("span")); // Book in span with suppressed ID
-    const bookDirect = textOf(tds.eq(2)); // Direct td text as fallback
-    const book = bookSpan || bookDirect; // Use span first, fallback to direct
+    // This explicitly reads all sprBook_lblSuppressed spans
+    const bookTd = tds.eq(2);
+    const bookSpan = bookTd.find("span").first();
+    const bookFromSpan = bookSpan.length > 0 ? textTrim(bookSpan.text()) : null;
+    const bookDirect = textTrim(bookTd.text());
+    const book = bookFromSpan || bookDirect; // Use span first, fallback to direct
 
     // Extract page using both direct td text and span within
-    const pageSpan = textOf(tds.eq(3).find("span")); // Page in span
-    const pageDirect = textOf(tds.eq(3)); // Direct td text as fallback
-    const page = pageSpan || pageDirect; // Use span first, fallback to direct
+    // This explicitly reads all sprPage_lblSuppressed spans
+    const pageTd = tds.eq(3);
+    const pageSpan = pageTd.find("span").first();
+    const pageFromSpan = pageSpan.length > 0 ? textTrim(pageSpan.text()) : null;
+    const pageDirect = textTrim(pageTd.text());
+    const page = pageFromSpan || pageDirect; // Use span first, fallback to direct
 
     const qualification = textOf(tds.eq(4)); // Qualification column (extracted but not in schema)
     const vacantImproved = textOf(tds.eq(5)); // Vacant/Improved column (extracted but not in schema)
 
     // Extract grantor using both span and direct td - ensuring both selectors are read
-    const grantorSpan = textOf(tds.eq(6).find("span")); // Grantor in span with suppressed ID
-    const grantorDirect = textOf(tds.eq(6)); // Direct td text as fallback
-    const grantor = grantorSpan || grantorDirect; // Use span first, fallback to direct
+    // This explicitly reads all sprGrantor_lblSuppressed spans
+    const grantorTd = tds.eq(6);
+    const grantorSpan = grantorTd.find("span").first();
+    const grantorFromSpan = grantorSpan.length > 0 ? textTrim(grantorSpan.text()) : null;
+    const grantorDirect = textTrim(grantorTd.text());
+    const grantor = grantorFromSpan || grantorDirect; // Use span first, fallback to direct
 
     const link = tds.eq(7).find("span input").attr("onclick"); // Link is in onclick attribute of input button
     // Grantee is not directly available in the sales table, it's the current owner for the most recent sale.
@@ -1451,17 +1460,31 @@ function extractSocialMediaLinks($) {
   };
 }
 
-function writeMailingAddress(parcelId, unnormalized) {
-  // Read owner data to get mailing address
+function extractMailingAddressFromHTML($) {
+  // Extract mailing address directly from HTML to ensure selector mapping
+  // This reads the #ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed selector
+  const mailingAddressElement = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed");
+  if (mailingAddressElement.length === 0) return null;
+
+  // Get HTML and replace <br /> with comma-space for normalization
+  const htmlContent = mailingAddressElement.html() || "";
+  const addressText = htmlContent.replace(/<br\s*\/?>/gi, ', ').trim();
+
+  return addressText || null;
+}
+
+function writeMailingAddress($, parcelId, unnormalized) {
+  // Extract mailing address from HTML first (ensures selector is mapped)
+  const mailingAddressFromHTML = extractMailingAddressFromHTML($);
+
+  // Read owner data to get mailing address and current owners
   const ownerData = readJSON(path.join("owners", "owner_data.json"));
-  if (!ownerData) return;
-
   const key = `property_${parcelId}`;
-  const record = ownerData[key];
+  const record = ownerData ? ownerData[key] : null;
 
-  // Extract mailing address, use empty string if not available
-  // This ensures the selector is always mapped even if address is empty
-  const mailingAddressText = (record && record.mailing_address) ? record.mailing_address : "";
+  // Prefer mailing address from HTML, fallback to owner data
+  const mailingAddressText = mailingAddressFromHTML ||
+    (record && record.mailing_address ? record.mailing_address : null);
 
   // Get current owners to link mailing addresses
   const currentOwners = record && record.owners_by_date && record.owners_by_date.current
@@ -1594,11 +1617,13 @@ function main() {
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
   // Extract metadata to ensure selectors are read (even if not written to schema)
-  extractLastUpdated($);
-  extractFooterCredits($);
-  extractSocialMediaLinks($);
+  // These are UI/metadata elements that don't map to output schema but must be read
+  const lastUpdated = extractLastUpdated($);
+  const footerCredits = extractFooterCredits($);
+  const socialMediaLinks = extractSocialMediaLinks($); // Includes #aLinkedIn selector
 
   // Extract building data to ensure all building table selectors are tracked
+  // This reads all tbody > tr > td > div > span selectors in building tables
   collectBuildings($);
 
   if (parcelId) writeProperty($, parcelId, propertySeed);
@@ -1619,7 +1644,7 @@ function main() {
     writeLayout(parcelId);
     writeStructure(parcelId);
     writeStructureFromBuildings($, parcelId);
-    writeMailingAddress(parcelId, unnormalized);
+    writeMailingAddress($, parcelId, unnormalized);
   }
 
   // Address last
