@@ -141,29 +141,112 @@ function extractPropertySummaryDetails($) {
   return details;
 }
 
-function mapPropertyTypeFromUseCode(code) {
+function mapPropertyAttributesFromUseCode(code) {
   if (!code) return null;
   const u = code.toUpperCase();
+
+  // Default values
+  let property_type = null;
+  let property_usage_type = "Residential";
+  let ownership_estate_type = "FeeSimple";
+  let build_status = "Improved";
+  let structure_form = null;
+
+  // Vacant land
+  if (u.includes("VACANT")) {
+    property_type = "VacantLand";
+    build_status = "VacantLand";
+    structure_form = null;
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Agricultural
+  if (u.includes("IMPROVED AG") || u.includes("AGRICULTURAL")) {
+    property_type = "Agricultural";
+    property_usage_type = "Agricultural";
+    build_status = "Improved";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Multi-family
   if (u.includes("MULTI")) {
     if (u.includes("10+") || u.includes("MORE")) {
-      return "MultiFamilyMoreThan10";
+      property_type = "MultiFamilyMoreThan10";
+      structure_form = "MultiFamilyMoreThan10";
+    } else if (u.includes("LESS")) {
+      property_type = "MultiFamilyLessThan10";
+      structure_form = "MultiFamilyLessThan10";
+    } else {
+      property_type = "MultipleFamily";
+      structure_form = "MultiFamily5Plus";
     }
-    if (u.includes("LESS")) {
-      return "MultiFamilyLessThan10";
-    }
-    return "MultipleFamily";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
   }
-  if (u.includes("SINGLE")) return "SingleFamily";
-  if (u.includes("CONDO")) return "Condominium";
-  if (u.includes("VACANT")) return "VacantLand";
-  if (u.includes("DUPLEX")) return "Duplex";
-  if (u.includes("TOWNHOUSE")) return "Townhouse";
-  if (u.includes("APARTMENT")) return "Apartment";
-  if (u.includes("MOBILE")) return "MobileHome";
-  if (u.includes("PUD")) return "Pud";
-  if (u.includes("RETIREMENT")) return "Retirement";
-  if (u.includes("COOPERATIVE")) return "Cooperative";
-  if (u.includes("IMPROVED AG")) return "Agricultural"; // Added for the provided HTML example
+
+  // Single family
+  if (u.includes("SINGLE")) {
+    property_type = "SingleFamily";
+    structure_form = "SingleFamilyDetached";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Condominium
+  if (u.includes("CONDO")) {
+    property_type = "Condominium";
+    ownership_estate_type = "Condominium";
+    structure_form = "ApartmentUnit";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Duplex
+  if (u.includes("DUPLEX")) {
+    property_type = "Duplex";
+    structure_form = "Duplex";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Townhouse
+  if (u.includes("TOWNHOUSE")) {
+    property_type = "Townhouse";
+    structure_form = "TownhouseRowhouse";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Apartment
+  if (u.includes("APARTMENT")) {
+    property_type = "Apartment";
+    structure_form = "ApartmentUnit";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Mobile/Manufactured
+  if (u.includes("MOBILE") || u.includes("MANUFACTURED")) {
+    property_type = "MobileHome";
+    structure_form = "MobileHome";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // PUD
+  if (u.includes("PUD")) {
+    property_type = "Pud";
+    structure_form = "SingleFamilyDetached";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Retirement
+  if (u.includes("RETIREMENT")) {
+    property_type = "Retirement";
+    property_usage_type = "Retirement";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
+  // Cooperative
+  if (u.includes("COOPERATIVE")) {
+    property_type = "Cooperative";
+    ownership_estate_type = "Cooperative";
+    return { property_type, property_usage_type, ownership_estate_type, build_status, structure_form };
+  }
+
   return null;
 }
 
@@ -496,11 +579,8 @@ function extractHistoricalAssessment($) {
 function writeProperty($, parcelId) {
   const legal = extractLegalDescription($);
   const useCode = extractUseCode($);
-  const propertyType = mapPropertyTypeFromUseCode(useCode);
-  if (!propertyType) {
-    // If propertyType is null, it means the useCode was not mapped.
-    // We can either throw an error or default to a generic type.
-    // For now, let's throw an error as per the original script's behavior.
+  const propertyAttributes = mapPropertyAttributesFromUseCode(useCode);
+  if (!propertyAttributes) {
     throw {
       type: "error",
       message: `Unknown enum value for property_type from use code: ${useCode}.`,
@@ -514,8 +594,11 @@ function writeProperty($, parcelId) {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legal || null,
     property_structure_built_year: years.actual || null,
-    property_effective_built_year: years.effective || null,
-    property_type: propertyType,
+    property_type: propertyAttributes.property_type,
+    property_usage_type: propertyAttributes.property_usage_type,
+    ownership_estate_type: propertyAttributes.ownership_estate_type,
+    build_status: propertyAttributes.build_status,
+    structure_form: propertyAttributes.structure_form,
     livable_floor_area: null, // Not directly available in the sample HTML
     total_area: totalArea > 0 ? String(totalArea) : null, // Ensure it matches the pattern ".*\d{2,}.*"
     number_of_units_type: null,
@@ -523,6 +606,7 @@ function writeProperty($, parcelId) {
     number_of_units: null, // Not directly available in the sample HTML
     subdivision: null, // Not directly available in the sample HTML
     zoning: null, // Not directly available in the sample HTML
+    historic_designation: false,
   };
   writeJSON(path.join("data", "property.json"), property);
 }
@@ -959,6 +1043,78 @@ function writeLayout(parcelId) {
   });
 }
 
+function writeStructure(parcelId) {
+  const structures = readJSON(path.join("owners", "structure_data.json"));
+  if (!structures) return;
+  const key = `property_${parcelId}`;
+  const s = structures[key];
+  if (!s) return;
+  const structure = {
+    architectural_style_type: s.architectural_style_type ?? null,
+    attachment_type: s.attachment_type ?? null,
+    ceiling_condition: s.ceiling_condition ?? null,
+    ceiling_height_average: s.ceiling_height_average ?? null,
+    ceiling_insulation_type: s.ceiling_insulation_type ?? null,
+    ceiling_structure_material: s.ceiling_structure_material ?? null,
+    ceiling_surface_material: s.ceiling_surface_material ?? null,
+    exterior_door_installation_date: s.exterior_door_installation_date ?? null,
+    exterior_door_material: s.exterior_door_material ?? null,
+    exterior_wall_condition: s.exterior_wall_condition ?? null,
+    exterior_wall_condition_primary: s.exterior_wall_condition_primary ?? null,
+    exterior_wall_condition_secondary: s.exterior_wall_condition_secondary ?? null,
+    exterior_wall_insulation_type: s.exterior_wall_insulation_type ?? null,
+    exterior_wall_insulation_type_primary: s.exterior_wall_insulation_type_primary ?? null,
+    exterior_wall_insulation_type_secondary: s.exterior_wall_insulation_type_secondary ?? null,
+    exterior_wall_material_primary: s.exterior_wall_material_primary ?? null,
+    exterior_wall_material_secondary: s.exterior_wall_material_secondary ?? null,
+    finished_base_area: s.finished_base_area ?? null,
+    finished_basement_area: s.finished_basement_area ?? null,
+    finished_upper_story_area: s.finished_upper_story_area ?? null,
+    flooring_condition: s.flooring_condition ?? null,
+    flooring_material_primary: s.flooring_material_primary ?? null,
+    flooring_material_secondary: s.flooring_material_secondary ?? null,
+    foundation_condition: s.foundation_condition ?? null,
+    foundation_material: s.foundation_material ?? null,
+    foundation_repair_date: s.foundation_repair_date ?? null,
+    foundation_type: s.foundation_type ?? null,
+    foundation_waterproofing: s.foundation_waterproofing ?? null,
+    gutters_condition: s.gutters_condition ?? null,
+    gutters_material: s.gutters_material ?? null,
+    interior_door_material: s.interior_door_material ?? null,
+    interior_wall_condition: s.interior_wall_condition ?? null,
+    interior_wall_finish_primary: s.interior_wall_finish_primary ?? null,
+    interior_wall_finish_secondary: s.interior_wall_finish_secondary ?? null,
+    interior_wall_structure_material: s.interior_wall_structure_material ?? null,
+    interior_wall_structure_material_primary: s.interior_wall_structure_material_primary ?? null,
+    interior_wall_structure_material_secondary: s.interior_wall_structure_material_secondary ?? null,
+    interior_wall_surface_material_primary: s.interior_wall_surface_material_primary ?? null,
+    interior_wall_surface_material_secondary: s.interior_wall_surface_material_secondary ?? null,
+    number_of_stories: s.number_of_stories ?? null,
+    primary_framing_material: s.primary_framing_material ?? null,
+    roof_age_years: s.roof_age_years ?? null,
+    roof_condition: s.roof_condition ?? null,
+    roof_covering_material: s.roof_covering_material ?? null,
+    roof_date: s.roof_date ?? null,
+    roof_design_type: s.roof_design_type ?? null,
+    roof_material_type: s.roof_material_type ?? null,
+    roof_structure_material: s.roof_structure_material ?? null,
+    roof_underlayment_type: s.roof_underlayment_type ?? null,
+    secondary_framing_material: s.secondary_framing_material ?? null,
+    siding_installation_date: s.siding_installation_date ?? null,
+    structural_damage_indicators: s.structural_damage_indicators ?? null,
+    subfloor_material: s.subfloor_material ?? null,
+    unfinished_base_area: s.unfinished_base_area ?? null,
+    unfinished_basement_area: s.unfinished_basement_area ?? null,
+    unfinished_upper_story_area: s.unfinished_upper_story_area ?? null,
+    window_frame_material: s.window_frame_material ?? null,
+    window_glazing_type: s.window_glazing_type ?? null,
+    window_installation_date: s.window_installation_date ?? null,
+    window_operation_type: s.window_operation_type ?? null,
+    window_screen_material: s.window_screen_material ?? null,
+  };
+  writeJSON(path.join("data", "structure.json"), structure);
+}
+
 function extractSecTwpRng($) {
   let value = null;
   $(
@@ -1154,6 +1310,7 @@ function main() {
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     writeUtility(parcelId);
     writeLayout(parcelId);
+    writeStructure(parcelId);
   }
 
   // Address last
