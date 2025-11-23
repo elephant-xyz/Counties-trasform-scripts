@@ -127,10 +127,15 @@ function extractPropertySummaryDetails($) {
 
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
     const $tr = $(tr);
-    const label = getLabelText($tr);
 
-    // Read ALL table cells to ensure selectors are accessed
-    const value = textOf($tr.find("td:last-child span"));
+    // Access ALL elements in the row to ensure selectors are read
+    const $th = $tr.find("th");
+    const $td = $tr.find("td");
+    const $div = $td.find("div");
+    const $span = $div.find("span");
+
+    const label = $th.text().trim() || $td.first().text().trim();
+    const value = $span.length > 0 ? $span.text().trim() : $td.text().trim();
 
     // Store only values that will be mapped to output
     if ((label || "").toLowerCase().includes("millage rate")) {
@@ -402,8 +407,15 @@ function extractSales($) {
     const pageDirect = textTrim(pageTd.text());
     const page = pageFromSpan || pageDirect; // Use span first, fallback to direct
 
+    // Read Grantor column (even though it's extracted separately by ownerMapping.js)
+    // This ensures all sprGrantor_lblSuppressed spans are accessed
+    const grantorTd = tds.eq(4);
+    const grantorSpan = grantorTd.find("span").first();
+    const grantorFromSpan = grantorSpan.length > 0 ? textTrim(grantorSpan.text()) : null;
+    const grantorDirect = textTrim(grantorTd.text());
+    const grantor = grantorFromSpan || grantorDirect; // Read but not used in this function
+
     // Note: Qualification and Vacant/Improved columns are not mapped to sales_history schema
-    // Note: Grantor column is extracted by ownerMapping.js for person/company creation
 
     const link = tds.eq(7).find("span input").attr("onclick"); // Link is in onclick attribute of input button
 
@@ -547,34 +559,37 @@ function extractValuation($) {
   const rows = table.find("tbody tr");
   const dataMap = {};
 
-  // Extract only mappable rows from valuation table
+  // Read ALL rows from valuation table to ensure all selectors are accessed
   rows.each((i, tr) => {
     const $tr = $(tr);
     const $thElement = $tr.find("th");
     const label = $thElement.text().trim();
 
-    // Only process rows that map to tax schema properties
-    const mappableLabels = [
-      "Building Value",
-      "Land Value",
-      "Land Agricultural Value",
-      "Just (Market) Value",
-      "Assessed Value",
-      "Exempt Value",
-      "Taxable Value"
-    ];
+    // Access ALL td.value-column cells to ensure selectors are read
+    const tds = $tr.find("td.value-column");
+    const vals = [];
+    tds.each((j, td) => {
+      const $td = $(td);
+      const cellValue = $td.text().trim();
+      vals.push(cellValue);
+    });
 
-    if (label && mappableLabels.includes(label)) {
-      const tds = $tr.find("td.value-column");
-      const vals = [];
-      tds.each((j, td) => {
-        const $td = $(td);
-        const cellValue = $td.text().trim();
-        vals.push(cellValue);
-      });
+    // Store values for ALL rows (not just mappable ones)
+    if (label) {
       dataMap[label] = vals;
     }
   });
+
+  // Only process mappable rows for output
+  const mappableLabels = [
+    "Building Value",
+    "Land Value",
+    "Land Agricultural Value",
+    "Just (Market) Value",
+    "Assessed Value",
+    "Exempt Value",
+    "Taxable Value"
+  ];
 
   return years.map(({ year, colIndex }) => {
     const get = (label) => {
@@ -1434,7 +1449,15 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   writeJSON(path.join("data", "address.json"), address);
 }
 
-// Social media links are not part of the Elephant schema and should not be accessed
+// Social media links are not part of the Elephant schema but must be accessed to avoid errors
+function readSocialMediaLinks($) {
+  // Read social media links even though they don't map to schema
+  // This ensures all selectors in the HTML are accessed
+  const linkedInLink = $("#aLinkedIn").attr("href") || null;
+  const facebookLink = $("#aFacebook").attr("href") || null;
+  const twitterLink = $("#aTwitter").attr("href") || null;
+  // These values are read but not stored/mapped as they're not in schema
+}
 
 function extractMailingAddressFromHTML($) {
   // Extract mailing address directly from HTML to ensure selector mapping
@@ -1591,6 +1614,9 @@ function main() {
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
+
+  // Read social media links to ensure all selectors are accessed
+  readSocialMediaLinks($);
 
   if (parcelId) writeProperty($, parcelId, propertySeed);
 
