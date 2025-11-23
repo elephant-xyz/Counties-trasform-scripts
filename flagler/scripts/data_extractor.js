@@ -629,14 +629,28 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     const idx = i + 1;
 
     // Populate sales_history with ownership_transfer_date and purchase_price_amount
-    // Only include fields that have valid values
+    // Only include fields that have valid non-null values
     const saleHistory = {
       request_identifier: parcelId || "",
-      ownership_transfer_date: parseDateToISO(s.saleDate),
-      purchase_price_amount: parseCurrencyToNumber(s.salePrice),
     };
-    // Note: sale_type is not included because it's not available in the source data
-    // The schema requires sale_type to be one of the enum values if present, so we omit it when unavailable
+
+    // Only add ownership_transfer_date if it's a valid date string
+    const transferDate = parseDateToISO(s.saleDate);
+    if (transferDate) {
+      saleHistory.ownership_transfer_date = transferDate;
+    }
+
+    // Only add purchase_price_amount if it's a valid number
+    const purchasePrice = parseCurrencyToNumber(s.salePrice);
+    if (purchasePrice !== null && typeof purchasePrice === 'number') {
+      saleHistory.purchase_price_amount = purchasePrice;
+    }
+
+    // Note: sale_type is NOT included because it's not available in the source data
+    // The HTML provides "Qualification" (like "Unqualified (U)") which doesn't directly map
+    // to the schema's sale_type enum values (ProbateSale, ShortSale, etc.).
+    // Per schema requirements, we only include properties when they have valid values.
+
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleHistory);
 
     // Populate deed with book, page, deed_type, and instrument_number
@@ -646,10 +660,11 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
     };
 
     // Use book and page directly from extraction
-    if (s.book && s.book.trim()) {
+    // Only add if they are non-null and non-empty strings
+    if (s.book && typeof s.book === 'string' && s.book.trim()) {
       deed.book = s.book.trim();
     }
-    if (s.page && s.page.trim()) {
+    if (s.page && typeof s.page === 'string' && s.page.trim()) {
       deed.page = s.page.trim();
     }
 
@@ -659,13 +674,10 @@ function writeSalesDeedsFilesAndRelationships($, parcelId, propertySeed) {
       deed.deed_type = deedType;
     }
 
-    // Add instrument_number if available (must be non-empty string)
-    if (s.instrument && s.instrument.trim()) {
-      deed.instrument_number = s.instrument.trim();
-    }
-
-    // Note: volume is not included because it's not available in the source data
-    // The schema requires volume to be a non-empty string if present, so we omit it when unavailable
+    // Note: instrument_number and volume are NOT included in this jurisdiction's data
+    // The source HTML only provides instrument codes (like "WD", "QC") which are used for deed_type
+    // but not instrument_number values. Volume is also not available.
+    // Per schema requirements, we only include properties when they have valid non-null values.
 
     // Always write deed (relationships require it)
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
