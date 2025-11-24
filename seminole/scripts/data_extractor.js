@@ -753,7 +753,7 @@ function normalizeAddressString(raw) {
 }
 
 const USPS_SUFFIX_MAP = {
-  ALLEY: "Aly", ALY: "Aly", ANEX: "Anx", ANNEX: "Anx", ANX: "Anx", ARCADE: "Arc", ARC: "Arc", AVENUE: "Ave", AV: "Ave", AVE: "Ave", BAYOU: "Byu", BYU: "Byu", BEACH: "Bch", BCH: "Bch", BEND: "Bnd", BND: "Bnd", BLUFF: "Blf", BLF: "Blf", BLUFFS: "Blfs", BLFS: "Blfs", BOTTOM: "Btm", BTM: "Btm", BOULEVARD: "Blvd", BLVD: "Blvd", BRANCH: "Br", BR: "Br", BRIDGE: "Brg", BRG: "Brg", BROOK: "Brk", BRK: "Brk", BROOKS: "Brks", BRKS: "Brks", BURG: "Bg", BG: "Bg", BYPASS: "Byp", BYP: "Byp", CAMP: "Cp", CP: "Cp", CANYON: "Cyn", CYN: "Cyn", CAPE: "Cpe", CPE: "Cpe", CAUSEWAY: "Cswy", CSWY: "Cswy", CENTER: "Ctr", CTR: "Ctr", CENTERS: "Ctrs", CTRS: "Ctrs", CIRCLE: "Cir", CIR: "Cir", CIRCLES: "Cirs", CIRS: "Cirs", CLIFF: "Clf", CLF: "Clf", CLIFFS: "Clfs", CLFS: "Clfs", CLUB: "Clb", CLB: "Clb", COMMON: "Cmn", CMN: "Cmn", COMMONS: "Cmns", CMNS: "Cmns", CORNER: "Cor", COR: "Cor", CORNERS: "Cors", CORS: "Cors", COURSE: "Crse", CRSE: "Crse", COURT: "Ct", CT: "Ct", COURTS: "Cts", CTS: "Cts", COVE: "Cv", CV: "Cv", COVES: "Cvs", CVS: "Cvs", CREEK: "Crk", CRK: "Crk", CRESCENT: "Cres", CRES: "Cres", CREST: "Crst", CRST: "Crst", CROSSING: "Xing", XING: "Xing", CROSSROAD: "Xrd", XRD: "Xrd", CROSSROADS: "Xrds", XRDS: "Xrds", CURVE: "Curv", CURV: "Curv", DALE: "Dl", DL: "Dl", DAM: "Dm", DM: "Dm", DIVIDE: "Dv", DV: "Dv", DRIVE: "Dr", DR: "Dr", DRIVES: "Drs", DRS: "Drs", ESTATE: "Est", EST: "Est", ESTATES: "Ests", ESTS: "Ests", EXPRESSWAY: "Expy", EXPY: "Expy", EXTENSION: "Ext", EXT: "Ext", EXTENSIONS: "Exts", EXTS: "Exts", FALL: "Fall", FALL: "Fall", FALLS: "Fls", FLS: "Fls", FERRY: "Fry", FRY: "Fry", FIELD: "Fld", FLD: "Fld", FIELDS: "Flds", FLDS: "Flds", FLAT: "Flt", FLT: "Flt", FLATS: "Flts", FLTS: "Flts", FORD: "Frd", FRD: "Frd", FORDS: "Frds", FRDS: "Frds", FOREST: "Frst", FRST: "Frst", FORGE: "Frg", FRG: "Frg", FORGES: "Frgs", FRGS: "Frgs", FORK: "Frk", FRK: "Frk", FORKS: "Frks", FRKS: "Frks", FORT: "Ft", FT: "Ft", FREEWAY: "Fwy", FWY: "Fwy", GARDEN: "Gdn", GDN: "Gdn", GARDENS: "Gdns", GDNS: "Gdns", GATEWAY: "Gtwy", GTWY: "Gtwy", GLEN: "Gln", GLN: "Gln", GLENS: "Glns", GLNS: "Glns", GREEN: "Grn", GRN: "Grn", GREENS: "Grns", GRNS: "Grns", GROVE: "Grv", GRV: "Grv", GROVES: "Grvs", GRVS: "Grvs", HARBOR: "Hbr", HBR: "Hbr", HARBORS: "Hbrs", HBRS: "Hbrs", HAVEN: "Hvn", HVN: "Hvn", HEIGHTS: "Hts", HTS: "Hts", HIGHWAY: "Hwy", HWY: "Hwy", HILL: "Hl", HL: "Hl", HILLS: "Hls", HLS: "Hls", HOLLOW: "Holw", HOLW: "Holw", INLET: "Inlt", INLT: "Inlt", ISLAND: "Is", IS: "Is", ISLANDS: "Iss", ISS: "Iss", ISLE: "Isle", ISLE: "Isle", JUNCTION: "Jct", JCT: "Jct", JUNCTIONS: "Jcts", JCTS: "Jcts", KEY: "Ky", KY: "Ky", KEYS: "Kys", KYS: "Kys", KNOLL: "Knl", KNL: "Knl", KNOLLS: "Knls", KNLS: "Knls", LAKE: "Lk", LK: "Lk", LAKES: "Lks", LKS: "Lks", LAND: "Land", LAND: "Land", LANDING: "Lndg", LNDG: "Lndg", LANE: "Ln", LN: "Ln", LIGHT: "Lgt", LGT: "Lgt", LIGHTS: "Lgts", LGTS: "Lgts", LOCK: "Lck", LCK: "Lck", LOCKS: "Lcks", LCKS: "Lcks", LODGE: "Ldg", LDG: "Ldg", LOOP: "Loop", LOOP: "Loop", MALL: "Mall", MALL: "Mall", MANOR: "Mnr", MNR: "Mnr", MANORS: "Mnrs", MNRS: "Mnrs", MEADOW: "Mdw", MDW: "Mdw", MEADOWS: "Mdws", MDWS: "Mdws", MEWS: "Mews", MEWS: "Mews", MILL: "Ml", ML: "Ml", MILLS: "Mls", MLS: "Mls", MISSION: "Msn", MSN: "Msn", MOTORWAY: "Mtwy", MTWY: "Mtwy", MOUNT: "Mt", MT: "Mt", MOUNTAIN: "Mtn", MTN: "Mtn", MOUNTAINS: "Mtns", MTNS: "Mtns", NECK: "Nck", NCK: "Nck", ORCHARD: "Orch", ORCH: "Orch", OVAL: "Oval", OVAL: "Oval", OVERPASS: "Opas", OPAS: "Opas", PARK: "Park", PARK: "Park", PARKS: "Prk", PRK: "Prk", PARKWAY: "Pkwy", PKWY: "Pkwy", PASS: "Pass", PASS: "Pass", PASSAGE: "Psge", PSGE: "Psge", PATH: "Path", PATH: "Path", PIKE: "Pike", PIKE: "Pike", PINE: "Pne", PNE: "Pne", PINES: "Pnes", PNES: "Pnes", PLACE: "Pl", PL: "Pl", PLAIN: "Pln", PLN: "Pln", PLAINS: "Plns", PLNS: "Plns", PLAZA: "Plz", PLZ: "Plz", POINT: "Pt", PT: "Pt", POINTS: "Pts", PTS: "Pts", PORT: "Prt", PRT: "Prt", PORTS: "Prts", PRTS: "Prts", PRAIRIE: "Pr", PR: "Pr", RADIAL: "Radl", RADL: "Radl", RAMP: "Ramp", RAMP: "Ramp", RANCH: "Rnch", RNCH: "Rnch", RAPID: "Rpd", RPD: "Rpd", RAPIDS: "Rpds", RPDS: "Rpds", REST: "Rst", RST: "Rst", RIDGE: "Rdg", RDG: "Rdg", RIDGES: "Rdgs", RDGS: "Rdgs", RIVER: "Riv", RIV: "Riv", ROAD: "Rd", RD: "Rd", ROADS: "Rds", RDS: "Rds", ROUTE: "Rte", RTE: "Rte", ROW: "Row", ROW: "Row", RUE: "Rue", RUE: "Rue", RUN: "Run", RUN: "Run", SHOAL: "Shl", SHL: "Shl", SHOALS: "Shls", SHLS: "Shls", SHORE: "Shr", SHR: "Shr", SHORES: "Shrs", SHRS: "Shrs", SKYWAY: "Skwy", SKWY: "Skwy", SPRING: "Spg", SPG: "Spg", SPRINGS: "Spgs", SPGS: "Spgs", SPUR: "Spur", SPUR: "Spur", SQUARE: "Sq", SQ: "Sq", SQUARES: "Sqs", SQS: "Sqs", STATION: "Sta", STA: "Sta", STRAVENUE: "Stra", STRA: "Stra", STREAM: "Strm", STRM: "Strm", STREET: "St", ST: "St", STREETS: "Sts", STS: "Sts", SUMMIT: "Smt", SMT: "Smt", TERRACE: "Ter", TER: "Ter", THROUGHWAY: "Trwy", TRWY: "Trwy", TRACE: "Trce", TRCE: "Trce", TRACK: "Trak", TRAK: "Trak", TRAFFICWAY: "Trfy", TRFY: "Trfy", TRAIL: "Trl", TRL: "Trl", TRAILER: "Trlr", TRLR: "Trlr", TUNNEL: "Tunl", TUNL: "Tunl", TURNPIKE: "Tpke", TPKE: "Tpke", UNDERPASS: "Upas", UPAS: "Upas", UNION: "Un", UN: "Un", UNIONS: "Uns", UNS: "Uns", VALLEY: "Vly", VLY: "Vly", VALLEYS: "Vlys", VLYS: "VLYS", VIADUCT: "Via", VIA: "Via", VIEW: "Vw", VW: "Vw", VIEWS: "Vws", VWS: "Vws", VILLAGE: "Vlg", VLG: "Vlg", VILLAGES: "Vlgs", VLGS: "Vlgs", VILLE: "Vl", VL: "Vl", VISTA: "Vis", VIS: "Vis", WALK: "Walk", WALK: "Walk", WALL: "Wall", WALL: "Wall", WAY: "Way", WAY: "Way", WAYS: "Ways", WAYS: "Ways", WELL: "Wl", WL: "Wl", WELLS: "Wls", WLS: "Wls",
+  ALLEY: "Aly", ALY: "Aly", ANEX: "Anx", ANNEX: "Anx", ANX: "Anx", ARCADE: "Arc", ARC: "Arc", AVENUE: "Ave", AV: "Ave", AVE: "Ave", BAYOU: "Byu", BYU: "Byu", BEACH: "Bch", BCH: "Bch", BEND: "Bnd", BND: "Bnd", BLUFF: "Blf", BLF: "Blf", BLUFFS: "Blfs", BLFS: "Blfs", BOTTOM: "Btm", BTM: "Btm", BOULEVARD: "Blvd", BLVD: "Blvd", BRANCH: "Br", BR: "Br", BRIDGE: "Brg", BRG: "Brg", BROOK: "Brk", BRK: "Brk", BROOKS: "Brks", BRKS: "Brks", BURG: "Bg", BG: "Bg", BYPASS: "Byp", BYP: "Byp", CAMP: "Cp", CP: "Cp", CANYON: "Cyn", CYN: "Cyn", CAPE: "Cpe", CPE: "Cpe", CAUSEWAY: "Cswy", CSWY: "Cswy", CENTER: "Ctr", CTR: "Ctr", CENTERS: "Ctrs", CTRS: "Ctrs", CIRCLE: "Cir", CIR: "Cir", CIRCLES: "Cirs", CIRS: "Cirs", CLIFF: "Clf", CLF: "Clf", CLIFFS: "Clfs", CLFS: "Clfs", CLUB: "Clb", CLB: "Clb", COMMON: "Cmn", CMN: "Cmn", COMMONS: "Cmns", CMNS: "Cmns", CORNER: "Cor", COR: "Cor", CORNERS: "Cors", CORS: "Cors", COURSE: "Crse", CRSE: "Crse", COURT: "Ct", CT: "Ct", COURTS: "Cts", CTS: "Cts", COVE: "Cv", CV: "Cv", COVES: "Cvs", CVS: "Cvs", CREEK: "Crk", CRK: "Crk", CRESCENT: "Cres", CRES: "Cres", CREST: "Crst", CRST: "Crst", CROSSING: "Xing", XING: "Xing", CROSSROAD: "Xrd", XRD: "Xrd", CROSSROADS: "Xrds", XRDS: "Xrds", CURVE: "Curv", CURV: "Curv", DALE: "Dl", DL: "Dl", DAM: "Dm", DM: "Dm", DIVIDE: "Dv", DV: "Dv", DRIVE: "Dr", DR: "Dr", DRIVES: "Drs", DRS: "Drs", ESTATE: "Est", EST: "Est", ESTATES: "Ests", ESTS: "Ests", EXPRESSWAY: "Expy", EXPY: "Expy", EXTENSION: "Ext", EXT: "Ext", EXTENSIONS: "Exts", EXTS: "Exts", FALL: "Fall", FALL: "Fall", FALLS: "Fls", FLS: "Fls", FERRY: "Fry", FRY: "Fry", FIELD: "Fld", FLD: "Fld", FIELDS: "Flds", FLDS: "Flds", FLAT: "Flt", FLT: "Flt", FLATS: "Flts", FLTS: "Flts", FORD: "Frd", FRD: "Frd", FORDS: "Frds", FRDS: "Frds", FOREST: "Frst", FRST: "Frst", FORGE: "Frg", FRG: "Frg", FORGES: "Frgs", FRGS: "Frgs", FORK: "Frk", FRK: "Frk", FORKS: "Frks", FRKS: "Frks", FORT: "Ft", FT: "Ft", FREEWAY: "Fwy", FWY: "Fwy", GARDEN: "Gdn", GDN: "Gdn", GARDENS: "Gdns", GDNS: "Gdns", GATEWAY: "Gtwy", GTWY: "Gtwy", GLEN: "Gln", GLN: "Gln", GLENS: "Glns", GLNS: "Glns", GREEN: "Grn", GRN: "Grn", GREENS: "Grns", GRNS: "Grns", GROVE: "Grv", GRV: "Grv", GROVES: "Grvs", GRVS: "Grvs", HARBOR: "Hbr", HBR: "Hbr", HARBORS: "Hbrs", HBRS: "Hbrs", HAVEN: "Hvn", HVN: "Hvn", HEIGHTS: "Hts", HTS: "Hts", HIGHWAY: "Hwy", HWY: "Hwy", HILL: "Hl", HL: "Hl", HILLS: "Hls", HLS: "Hls", HOLLOW: "Holw", HOLW: "Holw", INLET: "Inlt", INLT: "Inlt", ISLAND: "Is", IS: "Is", ISLANDS: "Iss", ISS: "Iss", ISLE: "Isle", ISLE: "Isle", JUNCTION: "Jct", JCT: "Jct", JUNCTIONS: "Jcts", JCTS: "Jcts", KEY: "Ky", KY: "Ky", KEYS: "Kys", KYS: "Kys", KNOLL: "Knl", KNL: "Knl", KNOLLS: "Knls", KNLS: "Knls", LAKE: "Lk", LK: "Lk", LAKES: "Lks", LKS: "Lks", LAND: "Land", LAND: "Land", LANDING: "Lndg", LNDG: "Lndg", LANE: "Ln", LN: "Ln", LIGHT: "Lgt", LGT: "Lgt", LIGHTS: "Lgts", LGTS: "Lgts", LOCK: "Lck", LCK: "Lck", LOCKS: "Lcks", LCKS: "Lcks", LODGE: "Ldg", LDG: "Ldg", LOOP: "Loop", LOOP: "Loop", MALL: "Mall", MALL: "Mall", MANOR: "Mnr", MNR: "Mnr", MANORS: "Mnrs", MNRS: "Mnrs", MEADOW: "Mdw", MDW: "Mdw", MEADOWS: "Mdws", MDWS: "Mdws", MEWS: "Mews", MEWS: "Mews", MILL: "Ml", ML: "Ml", MILLS: "Mls", MLS: "Mls", MISSION: "Msn", MSN: "Msn", MOTORWAY: "Mtwy", MTWY: "Mtwy", MOUNT: "Mt", MT: "Mt", MOUNTAIN: "Mtn", MTN: "Mtn", MOUNTAINS: "Mtns", MTNS: "Mtns", NECK: "Nck", NCK: "Nck", ORCHARD: "Orch", ORCH: "Orch", OVAL: "Oval", OVAL: "Oval", OVERPASS: "Opas", OPAS: "Opas", PARK: "Park", PARK: "Park", PARKS: "Prk", PRK: "Prk", PARKWAY: "Pkwy", PKWY: "Pkwy", PASS: "Pass", PASS: "Pass", PASSAGE: "Psge", PSGE: "Psge", PATH: "Path", PATH: "Path", PIKE: "Pike", PIKE: "Pike", PINE: "Pne", PNE: "Pne", PINES: "Pnes", PNES: "Pnes", PLACE: "Pl", PL: "Pl", PLAIN: "Pln", PLN: "Pln", PLAINS: "Plns", PLNS: "Plns", PLAZA: "Plz", PLZ: "Plz", POINT: "Pt", PT: "Pt", POINTS: "Pts", PTS: "Pts", PORT: "Prt", PRT: "Prt", PORTS: "Prts", PRTS: "Prts", PRAIRIE: "Pr", PR: "Pr", RADIAL: "Radl", RADL: "Radl", RAMP: "Ramp", RAMP: "Ramp", RANCH: "Rnch", RNCH: "Rnch", RAPID: "Rpd", RPD: "Rpd", RAPIDS: "Rpds", RPDS: "Rpds", REST: "Rst", RST: "Rst", RIDGE: "Rdg", RDG: "Rdg", RIDGES: "Rdgs", RDGS: "Rdgs", RIVER: "Riv", RIV: "Riv", ROAD: "Rd", RD: "Rd", ROADS: "Rds", RDS: "Rds", ROUTE: "Rte", RTE: "Rte", ROW: "Row", ROW: "Row", RUE: "Rue", RUE: "Rue", RUN: "Run", RUN: "Run", SHOAL: "Shl", SHL: "Shl", SHOALS: "Shls", SHLS: "Shrs", SHORE: "Shr", SHR: "Shr", SHORES: "Shrs", SHRS: "Shrs", SKYWAY: "Skwy", SKWY: "Skwy", SPRING: "Spg", SPG: "Spg", SPRINGS: "Spgs", SPGS: "Spgs", SPUR: "Spur", SPUR: "Spur", SQUARE: "Sq", SQ: "Sq", SQUARES: "Sqs", SQS: "Sqs", STATION: "Sta", STA: "Sta", STRAVENUE: "Stra", STRA: "Stra", STREAM: "Strm", STRM: "Strm", STREET: "St", ST: "St", STREETS: "Sts", STS: "Sts", SUMMIT: "Smt", SMT: "Smt", TERRACE: "Ter", TER: "Ter", THROUGHWAY: "Trwy", TRWY: "Trwy", TRACE: "Trce", TRCE: "Trce", TRACK: "Trak", TRAK: "Trak", TRAFFICWAY: "Trfy", TRFY: "Trfy", TRAIL: "Trl", TRL: "Trl", TRAILER: "Trlr", TRLR: "Trlr", TUNNEL: "Tunl", TUNL: "Tunl", TURNPIKE: "Tpke", TPKE: "Tpke", UNDERPASS: "Upas", UPAS: "Upas", UNION: "Un", UN: "Un", UNIONS: "Uns", UNS: "Uns", VALLEY: "Vly", VLY: "Vly", VALLEYS: "Vlys", VLYS: "VLYS", VIADUCT: "Via", VIA: "Via", VIEW: "Vw", VW: "Vw", VIEWS: "Vws", VWS: "Vws", VILLAGE: "Vlg", VLG: "Vlg", VILLAGES: "Vlgs", VLGS: "Vlgs", VILLE: "Vl", VL: "Vl", VISTA: "Vis", VIS: "Vis", WALK: "Walk", WALK: "Walk", WALL: "Wall", WALL: "Wall", WAY: "Way", WAY: "Way", WAYS: "Ways", WAYS: "Ways", WELL: "Wl", WL: "Wl", WELLS: "Wls", WLS: "Wls",
 };
 
 function parseAddressComponents(fullAddr, plus4Source) {
@@ -787,7 +787,7 @@ function parseAddressComponents(fullAddr, plus4Source) {
     }
 
     const addressRegex =
-      /^((\d+)\s+)?((N|S|E|W|NE|NW|SE|SW)\s+)?(.+?)\s+(ALLEY|ALY|ANEX|ANNEX|ANX|ARCADE|ARC|AVENUE|AV|AVE|BAYOU|BYU|BEACH|BCH|BEND|BND|BLUFF|BLF|BLUFFS|BLFS|BOTTOM|BTM|BOULEVARD|BLVD|BRANCH|BR|BRIDGE|BRG|BROOK|BRK|BROOKS|BRKS|BURG|BG|BYPASS|BYP|CAMP|CP|CANYON|CYN|CAPE|CPE|CAUSEWAY|CSWY|CENTER|CTR|CENTERS|CTRS|CIRCLE|CIR|CIRCLES|CIRS|CLIFF|CLF|CLIFFS|CLFS|CLUB|CLB|COMMON|CMN|COMMONS|CMNS|CORNER|COR|CORNERS|CORS|COURSE|CRSE|COURT|Ct|COURTS|CTS|COVE|Cv|COVES|CVS|CREEK|Crk|CRESCENT|Cres|CREST|Crst|CROSSING|Xing|CROSSROAD|Xrd|CROSSROADS|Xrds|CURVE|Curv|DALE|Dl|DAM|Dm|DIVIDE|Dv|DRIVE|Dr|DRIVES|Drs|ESTATE|Est|ESTATES|Ests|EXPRESSWAY|Expy|EXTENSION|Ext|EXTENSIONS|Exts|FALL|Fall|FALLS|Fls|FERRY|Fry|FIELD|Fld|FIELDS|Flds|FLAT|Flt|FLATS|Flts|FORD|Frd|FORDS|Frds|FOREST|Frst|FORGE|Frg|FORGES|Frgs|FORK|Frk|FORKS|Frks|FORT|Ft|FREEWAY|Fwy|GARDEN|Gdn|GARDENS|Gdns|GATEWAY|Gtwy|GLEN|Gln|GLENS|Glns|GREEN|Grn|GREENS|Grns|GROVE|Grv|GROVES|Grvs|HARBOR|Hbr|HARBORS|Hbrs|HAVEN|Hvn|HEIGHTS|Hts|HIGHWAY|Hwy|HILL|Hl|HILLS|Hls|HOLLOW|Holw|INLET|Inlt|ISLAND|Is|ISLANDS|Iss|ISLE|Junction|Jct|JUNCTIONS|Jcts|KEY|Ky|KEYS|Kys|KNOLL|Knl|KNOLLS|Knls|LAKE|Lk|LAKES|Lks|LAND|LANDING|Lndg|LANE|Ln|LIGHT|Lgt|LIGHTS|Lgts|LOCK|Lck|LOCKS|Lcks|LODGE|Ldg|LOOP|MALL|MANOR|Mnr|MANORS|Mnrs|MEADOW|Mdw|MEADOWS|Mdws|MEWS|MILL|Ml|MILLS|Mls|MISSION|Msn|MOTORWAY|Mtwy|MOUNT|Mt|MOUNTAIN|Mtn|MOUNTAINS|Mtns|NECK|Nck|ORCHARD|Orch|OVAL|OVERPASS|Opas|PARK|PARKS|Prk|PARKWAY|Pkwy|PASS|PASSAGE|Psge|PATH|PIKE|PINE|Pne|PINES|Pnes|PLACE|Pl|PLAIN|Pln|PLAINS|Plns|PLAZA|Plz|POINT|Pt|POINTS|Pts|PORT|Prt|PORTS|Prts|PRAIRIE|Pr|RADIAL|Radl|RAMP|Ranch|Rnch|RAPID|Rpd|RAPIDS|Rpds|REST|Rst|RIDGE|Rdg|RIDGES|Rdgs|RIVER|Riv|ROAD|Rd|ROADS|Rds|ROUTE|Rte|ROW|RUE|RUN|SHOAL|Shl|SHOALS|Shls|SHORE|Shr|SHORES|Shrs|SKYWAY|Skwy|SPRING|Spg|SPRINGS|Spgs|SPUR|SQUARE|Sq|SQUARES|Sqs|STATION|Sta|STRAVENUE|Stra|STREAM|Strm|STREET|St|STREETS|Sts|SUMMIT|Smt|TERRACE|Ter|THROUGHWAY|Trwy|TRACE|Trce|TRACK|Trak|TRAFFICWAY|Trfy|TRAIL|Trl|TRAILER|Trlr|TUNNEL|Tunl|TURNPIKE|Tpke|UNDERPASS|Upas|UNION|Un|UNIONS|Uns|VALLEY|Vly|VALLEYS|Vlys|VIADUCT|Via|VIEW|Vw|VIEWS|Vws|VILLAGE|Vlg|VILLAGES|Vlgs|VILLE|Vl|VISTA|Vis|WALK|WALL|WAY|WAYS|WELL|Wl|WELLS|Wls)\s*((N|S|E|W|NE|NW|SE|SW)\s*)?$/i;
+      /^((\d+)\s+)?((N|S|E|W|NE|NW|SE|SW)\s+)?(.+?)\s+(ALLEY|ALY|ANEX|ANNEX|ANX|ARCADE|ARC|AVENUE|AV|AVE|BAYOU|BYU|BEACH|BCH|BEND|BND|BLUFF|BLF|BLUFFS|BLFS|BOTTOM|BTM|BOULEVARD|BLVD|BRANCH|BR|BRIDGE|BRG|BROOK|BRK|BROOKS|BRKS|BURG|BG|BYPASS|BYP|CAMP|CP|CANYON|CYN|CAPE|CPE|CAUSEWAY|CSWY|CENTER|CTR|CENTERS|CTRS|CIRCLE|CIR|CIRCLES|CIRS|CLIFF|CLF|CLIFFS|CLFS|CLUB|CLB|COMMON|CMN|COMMONS|CMNS|CORNER|COR|CORNERS|CORS|COURSE|CRSE|COURT|Ct|COURTS|CTS|COVE|Cv|COVES|CVS|CREEK|Crk|CRESCENT|Cres|CREST|Crst|CROSSING|Xing|CROSSROAD|Xrd|CROSSROADS|Xrds|CURVE|Curv|DALE|Dl|DAM|Dm|DIVIDE|Dv|DRIVE|Dr|DRIVES|Drs|ESTATE|Est|ESTATES|Ests|EXPRESSWAY|Expy|EXTENSION|Ext|EXTENSIONS|Exts|FALL|Fall|FALLS|Fls|FERRY|Fry|FIELD|Fld|FIELDS|Flds|FLAT|Flt|FLATS|Flts|FORD|Frd|FORDS|Frds|FOREST|Frst|FORGE|Frg|FORGES|Frgs|FORK|Frk|FORKS|Frks|FORT|Ft|FREEWAY|Fwy|GARDEN|Gdn|GARDENS|Gdns|GATEWAY|Gtwy|GLEN|Gln|GLENS|Glns|GREEN|Grn|GREENS|Grns|GROVE|Grv|GROVES|Grvs|HARBOR|Hbr|HARBORS|Hbrs|HAVEN|Hvn|HEIGHTS|Hts|HIGHWAY|Hwy|HILL|Hl|HILLS|Hls|HOLLOW|Holw|INLET|Inlt|ISLAND|Is|ISLANDS|Iss|ISLE|Junction|Jct|JUNCTIONS|Jcts|KEY|Ky|KEYS|Kys|KNOLL|Knl|KNOLLS|Knls|LAKE|Lk|LAKES|Lks|LAND|LANDING|Lndg|LANE|Ln|LIGHT|Lgt|LIGHTS|Lgts|LOCK|Lck|LOCKS|Lcks|LODGE|Ldg|LOOP|MALL|MANOR|Mnr|MANORS|Mnrs|MEADOW|Mdw|MEADOWS|Mdws|MEWS|MILL|Ml|MILLS|Mls|MISSION|Msn|MOTORWAY|Mtwy|MOUNT|Mt|MOUNTAIN|Mtn|MOUNTAINS|Mtns|NECK|Nck|ORCHARD|Orch|OVAL|OVERPASS|Opas|PARK|PARKS|Prk|PARKWAY|Pkwy|PASS|PASSAGE|Psge|PATH|PIKE|PINE|Pne|PINES|Pnes|PLACE|Pl|PLAIN|Pln|PLAINS|Plns|PLAZA|Plz|POINT|Pt|POINTS|Pts|PORT|Prt|PORTS|Prts|PRAIRIE|Pr|RADIAL|Radl|RAMP|Ranch|Rnch|RAPID|Rpd|RAPIDS|Rpds|REST|Rst|RIDGE|Rdg|RIDGES|Rdgs|RIVER|Riv|ROAD|Rd|ROADS|Rds|ROUTE|Rte|ROW|RUE|RUN|SHOAL|Shl|SHOALS|Shls|SHORE|Shr|SHORES|Shrs|SKYWAY|Skwy|SPRING|Spg|SPRINGS|Spgs|SPUR|SQUARE|Sq|SQUARES|Sqs|STATION|Sta|STRAVENUE|Stra|STREAM|Strm|STREET|St|STREETS|Sts|SUMMIT|Smt|TERRACE|Ter|THROUGHWAY|Trwy|TRACE|Trce|TRACK|Trak|TRAFFICWAY|Trfy|TRAIL|Trl|TRAILER|Trlr|TUNNEL|Tunl|TURNPIKE|Tpke|UNDERPASS|Upas|UNION|Un|UNIONS|Uns|VALLEY|Vly|VALLEYS|Vlys|VIADUCT|Via|VIEW|Vw|VIEWS|Vws|VILLAGE|Vlg|VILLAGES|Vlgs|VLGS: "Vlgs", VILLE: "Vl", VL: "Vl", VISTA: "Vis", VIS: "Vis", WALK: "Walk", WALK: "Walk", WALL: "Wall", WALL: "Wall", WAY: "Way", WAY: "Way", WAYS: "Ways", WAYS: "Ways", WELL: "Wl", WL: "Wl", WELLS: "Wls", WLS: "Wls)\s*((N|S|E|W|NE|NW|SE|SW)\s*)?$/i;
 
     const match = line1.match(addressRegex);
 
@@ -896,7 +896,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Residential",
+    "property_usage_type": "Residential", // Mapped from generic Residential vacant land
     "property_type": "LandParcel"
   },
   {
@@ -904,14 +904,14 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "ResidentialWaterfront",
+    "property_usage_type": "Residential", // Mapped from ResidentialWaterfront to Residential
     "property_type": "LandParcel"
   },
   {
     "dor_code": "0003", // New
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
-    "structure_form": "TownhouseRowhouse", // Assuming vacant townhome implies future townhouse
+    "structure_form": "TownhouseRowhouse",
     "property_usage_type": "Residential",
     "property_type": "LandParcel"
   },
@@ -919,32 +919,32 @@ const propertyMapping = [
     "dor_code": "0004", // New
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
-    "structure_form": "ApartmentUnit", // Assuming vacant condominium implies future unit
+    "structure_form": "ApartmentUnit",
     "property_usage_type": "Residential",
     "property_type": "LandParcel"
   },
   {
     "dor_code": "0005", // New
     "ownership_estate_type": "FeeSimple",
-    "build_status": "VacantLand", // PUD under development is still vacant land until built
+    "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "PlannedUnitDevelopment",
+    "property_usage_type": "Residential", // Mapped from PlannedUnitDevelopment to Residential
     "property_type": "LandParcel"
   },
   {
     "dor_code": "0011", // New
     "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved", // Sign site/Cell Tower implies improvement
+    "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Residential", // Context implies it's on residential land
-    "property_type": "Other" // Or "Structure" if that's an option
+    "property_usage_type": "Residential", // Mapped from Residential to Residential
+    "property_type": "Other"
   },
   {
     "dor_code": "0040", // New
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Residential",
+    "property_usage_type": "Residential", // Mapped from Residential to Residential
     "property_type": "LandParcel"
   },
   {
@@ -1000,7 +1000,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "ResidentialWaterfront",
+    "property_usage_type": "Residential", // Mapped from ResidentialWaterfront to Residential
     "property_type": "Building"
   },
   {
@@ -1008,7 +1008,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "ResidentialWaterfront", // Assuming waterview is a type of waterfront
+    "property_usage_type": "Residential", // Mapped from ResidentialWaterfront to Residential
     "property_type": "Building"
   },
   {
@@ -1024,7 +1024,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "AgriculturalResidential",
+    "property_usage_type": "Agricultural", // Mapped from AgriculturalResidential to Agricultural
     "property_type": "Building"
   },
   {
@@ -1032,7 +1032,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "ResidentialGolfCourse",
+    "property_usage_type": "Recreational", // Mapped from ResidentialGolfCourse to Recreational
     "property_type": "Building"
   },
   {
@@ -1040,7 +1040,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "ResidentialGolfCourse",
+    "property_usage_type": "Recreational", // Mapped from ResidentialGolfCourse to Recreational
     "property_type": "Building"
   },
   {
@@ -1056,7 +1056,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "ManufacturedHomeOnLand",
-    "property_usage_type": "ResidentialWaterfront",
+    "property_usage_type": "Residential", // Mapped from ResidentialWaterfront to Residential
     "property_type": "ManufacturedHome"
   },
   {
@@ -1064,23 +1064,23 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "ManufacturedHomeOnLand",
-    "property_usage_type": "AgriculturalResidential",
+    "property_usage_type": "Agricultural", // Mapped from AgriculturalResidential to Agricultural
     "property_type": "ManufacturedHome"
   },
   {
     "dor_code": "03",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
-    "structure_form": "MultiFamilyMoreThan10", // "10 or more" implies 10+
-    "property_usage_type": "Residential",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential", // Mapped from Residential to Residential
     "property_type": "Building"
   },
   {
     "dor_code": "0304", // New
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
-    "structure_form": "MultiFamilyMoreThan10", // Apartment Condo Conversion
-    "property_usage_type": "Residential",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential", // Mapped from Residential to Residential
     "property_type": "Building"
   },
   {
@@ -1111,7 +1111,7 @@ const propertyMapping = [
     "dor_code": "06",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
-    "structure_form": null, // Could be various forms
+    "structure_form": null,
     "property_usage_type": "Retirement",
     "property_type": "Building"
   },
@@ -1119,16 +1119,16 @@ const propertyMapping = [
     "dor_code": "07",
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
-    "structure_form": null, // "Miscellaneous Residential (Typically used for barns)"
-    "property_usage_type": "Residential", // Or "Agricultural" if barn is primary
-    "property_type": "Building" // Or "OtherStructure"
+    "structure_form": null,
+    "property_usage_type": "Residential", // Mapped from Residential to Residential (Misc. Residential)
+    "property_type": "Building"
   },
   {
     "dor_code": "0730", // New
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ResidentialWaterfront",
+    "property_usage_type": "Residential", // Mapped from ResidentialWaterfront to Residential
     "property_type": "Building"
   },
   {
@@ -1136,7 +1136,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Residential",
+    "property_usage_type": "Residential", // Mapped from Residential to Residential
     "property_type": "Building"
   },
   {
@@ -1206,10 +1206,10 @@ const propertyMapping = [
   {
     "dor_code": "09",
     "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved", // Common elements can be improved (e.g., clubhouses, pools)
+    "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ResidentialCommonElementsAreas",
-    "property_type": "LandParcel" // Or "Building" if it's a clubhouse
+    "property_usage_type": "Residential", // Mapped from ResidentialCommonElementsAreas to Residential
+    "property_type": "LandParcel"
   },
 
   // COMMERCIAL
@@ -1226,7 +1226,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Office",
+    "property_usage_type": "Commercial", // Mapped from Office to Commercial
     "property_type": "LandParcel"
   },
   {
@@ -1250,7 +1250,7 @@ const propertyMapping = [
     "ownership_estate_type": "Condominium",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Office",
+    "property_usage_type": "Commercial", // Mapped from Office to Commercial
     "property_type": "LandParcel"
   },
   {
@@ -1266,7 +1266,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "MultiFamily",
+    "property_usage_type": "Commercial", // Mapped from MultiFamily to Commercial (as it's on commercial land)
     "property_type": "LandParcel"
   },
   {
@@ -1288,7 +1288,7 @@ const propertyMapping = [
   {
     "dor_code": "1013", // New
     "ownership_estate_type": "FeeSimple",
-    "build_status": "VacantLand", // "with site improvements" still vacant land for building
+    "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "Commercial",
     "property_type": "LandParcel"
@@ -1298,7 +1298,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "PlannedUnitDevelopment",
+    "property_usage_type": "Commercial", // Mapped from PlannedUnitDevelopment to Commercial
     "property_type": "LandParcel"
   },
   {
@@ -1346,7 +1346,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ConvenienceStore",
+    "property_usage_type": "RetailStore", // Mapped from ConvenienceStore to RetailStore
     "property_type": "Building"
   },
   {
@@ -1354,7 +1354,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ConvenienceStoreWithGas",
+    "property_usage_type": "ServiceStation", // Mapped from ConvenienceStoreWithGas to ServiceStation
     "property_type": "Building"
   },
   {
@@ -1362,7 +1362,7 @@ const propertyMapping = [
     "ownership_estate_type": "Condominium",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "RetailStore",
+    "property_usage_type": "RetailStore", // Mapped from Office to RetailStore (assuming commercial condo unit)
     "property_type": "Unit"
   },
   {
@@ -1370,7 +1370,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Commercial", // "Residential Structure on Comm Land"
+    "property_usage_type": "Commercial", // Mapped from Commercial to Commercial ("Residential Structure on Comm Land")
     "property_type": "Building"
   },
   {
@@ -1394,7 +1394,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "DiscountStore",
+    "property_usage_type": "RetailStore", // Mapped from DiscountStore to RetailStore
     "property_type": "Building"
   },
   {
@@ -1426,7 +1426,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ShoppingCenterCommunity", // Anchored
+    "property_usage_type": "ShoppingCenterCommunity",
     "property_type": "Building"
   },
   {
@@ -1434,7 +1434,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ShoppingCenterCommunity", // Unanchored
+    "property_usage_type": "ShoppingCenterCommunity",
     "property_type": "Building"
   },
   {
@@ -1442,7 +1442,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ShoppingCenterPower",
+    "property_usage_type": "ShoppingCenterRegional", // Mapped from ShoppingCenterPower to Regional
     "property_type": "Building"
   },
   {
@@ -1450,7 +1450,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ShoppingCenterTown",
+    "property_usage_type": "ShoppingCenterCommunity", // Mapped from ShoppingCenterTown to Community
     "property_type": "Building"
   },
   {
@@ -1458,7 +1458,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "MixedUse",
+    "property_usage_type": "Commercial", // Mapped from MixedUse to Commercial
     "property_type": "Building"
   },
   {
@@ -1482,7 +1482,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "FlexSpace",
+    "property_usage_type": "OfficeBuilding", // Mapped from FlexSpace to OfficeBuilding
     "property_type": "Building"
   },
   {
@@ -1546,7 +1546,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "MedicalOffice", // "Professional services building"
+    "property_usage_type": "MedicalOffice",
     "property_type": "Building"
   },
   {
@@ -1570,7 +1570,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "VeterinaryClinic",
+    "property_usage_type": "MedicalOffice", // Mapped from VeterinaryClinic to MedicalOffice
     "property_type": "Building"
   },
   {
@@ -1578,7 +1578,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "CommunicationFacility",
+    "property_usage_type": "TelecommunicationsFacility", // Mapped from CommunicationFacility to TelecommunicationsFacility
     "property_type": "Building"
   },
   {
@@ -1586,7 +1586,7 @@ const propertyMapping = [
     "ownership_estate_type": "Condominium",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Office",
+    "property_usage_type": "OfficeBuilding", // Mapped from Office to OfficeBuilding
     "property_type": "Unit"
   },
   {
@@ -1594,7 +1594,7 @@ const propertyMapping = [
     "ownership_estate_type": "Condominium",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Office",
+    "property_usage_type": "OfficeBuilding", // Mapped from Office to OfficeBuilding
     "property_type": "Unit"
   },
   {
@@ -1626,7 +1626,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "FastFoodRestaurant",
+    "property_usage_type": "Restaurant", // Mapped from FastFoodRestaurant to Restaurant
     "property_type": "Building"
   },
   {
@@ -1658,7 +1658,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "RepairServiceShop",
+    "property_usage_type": "Commercial", // Mapped from RepairServiceShop to Commercial
     "property_type": "Building"
   },
   {
@@ -1666,7 +1666,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "DryCleanerLaundromat",
+    "property_usage_type": "Commercial", // Mapped from DryCleanerLaundromat to Commercial
     "property_type": "Building"
   },
   {
@@ -1682,7 +1682,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ConvenienceStoreWithGas",
+    "property_usage_type": "ServiceStation", // Mapped from ConvenienceStoreWithGas to ServiceStation
     "property_type": "Building"
   },
   {
@@ -1690,7 +1690,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "AutoService",
+    "property_usage_type": "AutoSalesRepair", // Mapped from AutoService to AutoSalesRepair
     "property_type": "Building"
   },
   {
@@ -1698,7 +1698,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "CarWash",
+    "property_usage_type": "Commercial", // Mapped from CarWash to Commercial
     "property_type": "Building"
   },
   {
@@ -1706,7 +1706,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "CarWash",
+    "property_usage_type": "Commercial", // Mapped from CarWash to Commercial
     "property_type": "Building"
   },
   {
@@ -1730,7 +1730,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "AutoDealership",
+    "property_usage_type": "AutoSalesRepair", // Mapped from AutoDealership to AutoSalesRepair
     "property_type": "Building"
   },
   {
@@ -1738,7 +1738,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "MarineSalesRepair",
+    "property_usage_type": "AutoSalesRepair", // Mapped from MarineSalesRepair to AutoSalesRepair
     "property_type": "Building"
   },
   {
@@ -1746,7 +1746,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "VehicleSales",
+    "property_usage_type": "AutoSalesRepair", // Mapped from VehicleSales to AutoSalesRepair
     "property_type": "Building"
   },
   {
@@ -1754,13 +1754,13 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "VehicleRental",
+    "property_usage_type": "AutoSalesRepair", // Mapped from VehicleRental to AutoSalesRepair
     "property_type": "Building"
   },
   {
     "dor_code": "28",
     "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved", // Mobile home parks are improved land
+    "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "MobileHomePark",
     "property_type": "LandParcel"
@@ -1770,7 +1770,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ParkingLot",
+    "property_usage_type": "Commercial", // Mapped from ParkingLot to Commercial
     "property_type": "LandParcel"
   },
   {
@@ -1802,7 +1802,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Theater", // Drive-in
+    "property_usage_type": "Theater",
     "property_type": "Building"
   },
   {
@@ -1810,7 +1810,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Theater", // Enclosed
+    "property_usage_type": "Theater",
     "property_type": "Building"
   },
   {
@@ -1818,7 +1818,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "NightclubBar",
+    "property_usage_type": "Entertainment", // Mapped from NightclubBar to Entertainment
     "property_type": "Building"
   },
   {
@@ -1826,7 +1826,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "NightclubBar",
+    "property_usage_type": "Entertainment", // Mapped from NightclubBar to Entertainment
     "property_type": "Building"
   },
   {
@@ -1834,7 +1834,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "RecreationalFacility",
+    "property_usage_type": "Recreational", // Mapped from RecreationalFacility to Recreational
     "property_type": "Building"
   },
   {
@@ -1842,7 +1842,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "HealthFitnessClub",
+    "property_usage_type": "Recreational", // Mapped from HealthFitnessClub to Recreational
     "property_type": "Building"
   },
   {
@@ -1858,7 +1858,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Camp",
+    "property_usage_type": "Recreational", // Mapped from Camp to Recreational
     "property_type": "Building"
   },
   {
@@ -1890,7 +1890,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Hotel", // General
+    "property_usage_type": "Hotel",
     "property_type": "Building"
   },
   {
@@ -1898,7 +1898,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Motel",
+    "property_usage_type": "Hotel", // Mapped from Motel to Hotel
     "property_type": "Building"
   },
   {
@@ -1914,7 +1914,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "LuxuryHotel",
+    "property_usage_type": "Hotel", // Mapped from LuxuryHotel to Hotel
     "property_type": "Building"
   },
   {
@@ -1922,7 +1922,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ExtendedStayHotel",
+    "property_usage_type": "Hotel", // Mapped from ExtendedStayHotel to Hotel
     "property_type": "Building"
   },
   {
@@ -1930,7 +1930,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "BedAndBreakfast",
+    "property_usage_type": "Hotel", // Mapped from BedAndBreakfast to Hotel
     "property_type": "Building"
   },
 
@@ -2028,7 +2028,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "LumberYard",
+    "property_usage_type": "Industrial", // Mapped from LumberYard to Industrial
     "property_type": "Building"
   },
   {
@@ -2036,7 +2036,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "PackingPlant",
+    "property_usage_type": "Industrial", // Mapped from PackingPlant to Industrial
     "property_type": "Building"
   },
   {
@@ -2044,7 +2044,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Cannery",
+    "property_usage_type": "Industrial", // Mapped from Cannery to Industrial
     "property_type": "Building"
   },
   {
@@ -2052,7 +2052,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "FoodProcessing",
+    "property_usage_type": "Industrial", // Mapped from FoodProcessing to Industrial
     "property_type": "Building"
   },
   {
@@ -2076,7 +2076,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "MiniWarehouse",
+    "property_usage_type": "Warehouse", // Mapped from MiniWarehouse to Warehouse
     "property_type": "Building"
   },
   {
@@ -2090,7 +2090,7 @@ const propertyMapping = [
   {
     "dor_code": "49",
     "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved", // Open storage implies some improvement (fencing, paving)
+    "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "OpenStorage",
     "property_type": "LandParcel"
@@ -2103,7 +2103,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Agricultural",
-    "property_type": "LandParcel" // Or "Building" if it's a farm building
+    "property_type": "LandParcel"
   },
   {
     "dor_code": "5001", // New
@@ -2276,9 +2276,9 @@ const propertyMapping = [
   {
     "dor_code": "6010", // New
     "ownership_estate_type": "FeeSimple",
-    "build_status": "Improved", // Horse breeding/boarding implies improvements
+    "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "HorseFarm",
+    "property_usage_type": "Agricultural", // Mapped from HorseFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2286,7 +2286,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "HorseFarm",
+    "property_usage_type": "Agricultural", // Mapped from HorseFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2294,7 +2294,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "HorseFarm",
+    "property_usage_type": "Agricultural", // Mapped from HorseFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2302,7 +2302,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "HorseFarm",
+    "property_usage_type": "Agricultural", // Mapped from HorseFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2310,7 +2310,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "HorseFarm",
+    "property_usage_type": "Agricultural", // Mapped from HorseFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2318,7 +2318,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "HorseFarm",
+    "property_usage_type": "Agricultural", // Mapped from HorseFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2422,7 +2422,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Poultry", // Misc. Ag - poultry, bees, fish, rabbits
+    "property_usage_type": "Agricultural", // Mapped from Poultry to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2430,7 +2430,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Poultry",
+    "property_usage_type": "Agricultural", // Mapped from Poultry to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2438,7 +2438,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "DairyFarm", // Dairies, feed lots
+    "property_usage_type": "Agricultural", // Mapped from DairyFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2446,7 +2446,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "DairyFarm",
+    "property_usage_type": "Agricultural", // Mapped from DairyFarm to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2454,7 +2454,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Ornamentals",
+    "property_usage_type": "Agricultural", // Mapped from Ornamentals to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2462,7 +2462,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Ornamentals",
+    "property_usage_type": "Agricultural", // Mapped from Ornamentals to Agricultural
     "property_type": "LandParcel"
   },
   {
@@ -2504,7 +2504,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "DaycarePreschool",
+    "property_usage_type": "PrivateSchool", // Mapped from DaycarePreschool to PrivateSchool
     "property_type": "Building"
   },
   {
@@ -2528,7 +2528,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": "SingleFamilyDetached",
-    "property_usage_type": "GroupHome",
+    "property_usage_type": "Residential", // Mapped from GroupHome to Residential
     "property_type": "Building"
   },
   {
@@ -2552,7 +2552,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "RehabilitationFacility",
+    "property_usage_type": "Institutional", // Mapped from RehabilitationFacility to Institutional
     "property_type": "Building"
   },
   {
@@ -2568,7 +2568,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Cemetery",
+    "property_usage_type": "MortuaryCemetery", // Mapped from Cemetery to MortuaryCemetery
     "property_type": "LandParcel"
   },
   {
@@ -2576,7 +2576,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "ClubLodge",
+    "property_usage_type": "ClubsLodges", // Mapped from ClubLodge to ClubsLodges (exact match)
     "property_type": "Building"
   },
   {
@@ -2584,7 +2584,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "VolunteerFireDepartment",
+    "property_usage_type": "Institutional", // Mapped from VolunteerFireDepartment to Institutional
     "property_type": "Building"
   },
   {
@@ -2658,7 +2658,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "PublicCollege",
+    "property_usage_type": "Institutional", // Mapped from PublicCollege to Institutional
     "property_type": "Building"
   },
   {
@@ -2674,7 +2674,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "GovernmentProperty", // Counties
+    "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
   },
   {
@@ -2690,7 +2690,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "GovernmentProperty", // State
+    "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
   },
   {
@@ -2706,7 +2706,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "GovernmentProperty", // Federal
+    "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
   },
   {
@@ -2722,7 +2722,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "GovernmentProperty", // Municipal
+    "property_usage_type": "GovernmentProperty",
     "property_type": "Building"
   },
   {
@@ -2730,7 +2730,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "Airport",
+    "property_usage_type": "TransportationTerminal", // Mapped from Airport to TransportationTerminal
     "property_type": "Building"
   },
   {
@@ -2744,9 +2744,9 @@ const propertyMapping = [
   {
     "dor_code": "90",
     "ownership_estate_type": "Leasehold",
-    "build_status": null, // Can be vacant or improved
+    "build_status": null,
     "structure_form": null,
-    "property_usage_type": "GovernmentProperty", // Government/Leasehold interest
+    "property_usage_type": "GovernmentProperty",
     "property_type": "LandParcel"
   },
   {
@@ -2755,7 +2755,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Utility",
-    "property_type": "LandParcel" // Or "Building" if it's a utility building
+    "property_type": "LandParcel"
   },
   {
     "dor_code": "9105", // New
@@ -2770,15 +2770,15 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "Improved",
     "structure_form": null,
-    "property_usage_type": "MineralProcessing", // Mining lands, petroleum lands, or gas lands
-    "property_type": "LandParcel" // Or "Building" if there are structures
+    "property_usage_type": "MineralProcessing",
+    "property_type": "LandParcel"
   },
   {
     "dor_code": "93",
     "ownership_estate_type": "SubsurfaceRights",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Unknown", // Subsurface rights don't imply a surface usage
+    "property_usage_type": "Unknown",
     "property_type": "LandParcel"
   },
   {
@@ -2786,13 +2786,13 @@ const propertyMapping = [
     "ownership_estate_type": "RightOfWay",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "TransportationTerminal", // Right of way for streets, roads, etc.
+    "property_usage_type": "TransportationTerminal", // Mapped from TransportationTerminal to TransportationTerminal
     "property_type": "LandParcel"
   },
   {
     "dor_code": "95",
     "ownership_estate_type": "FeeSimple",
-    "build_status": "VacantLand", // Submerged lands are typically vacant
+    "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "RiversLakes",
     "property_type": "LandParcel"
@@ -2800,15 +2800,15 @@ const propertyMapping = [
   {
     "dor_code": "96",
     "ownership_estate_type": "FeeSimple",
-    "build_status": "VacantLand", // Sewage disposal, solid waste, etc. are often land parcels
+    "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "WasteManagement", // More specific than "TransitionalProperty"
+    "property_usage_type": "SewageDisposal", // Mapped from WasteManagement to SewageDisposal
     "property_type": "LandParcel"
   },
   {
     "dor_code": "97",
     "ownership_estate_type": "FeeSimple",
-    "build_status": "VacantLand", // Parks/Classified Use Assessment
+    "build_status": "VacantLand",
     "structure_form": null,
     "property_usage_type": "ForestParkRecreation",
     "property_type": "LandParcel"
@@ -2817,11 +2817,11 @@ const propertyMapping = [
   // CENTRALLY ASSESSED
   {
     "dor_code": "98",
-    "ownership_estate_type": "FeeSimple", // Assuming FeeSimple for centrally assessed unless specified
-    "build_status": null, // Can be vacant or improved
+    "ownership_estate_type": "FeeSimple",
+    "build_status": null,
     "structure_form": null,
-    "property_usage_type": "CentrallyAssessed",
-    "property_type": "Other" // Or "LandParcel", "Building" depending on context
+    "property_usage_type": "Unknown", // Mapped from CentrallyAssessed to Unknown
+    "property_type": "Other"
   },
 
   // NON-AGRICULTURAL ACREAGE
@@ -2830,7 +2830,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "Unknown", // "Acreage not agricultural" is broad
+    "property_usage_type": "Unknown",
     "property_type": "LandParcel"
   },
   {
@@ -2846,7 +2846,7 @@ const propertyMapping = [
     "ownership_estate_type": "FeeSimple",
     "build_status": "VacantLand",
     "structure_form": null,
-    "property_usage_type": "PlannedUnitDevelopment",
+    "property_usage_type": "Residential", // Mapped from PlannedUnitDevelopment to Residential
     "property_type": "LandParcel"
   },
   {
@@ -2972,7 +2972,7 @@ function main() {
     structure_form: mappedProperty ? mappedProperty.structure_form : null,
     property_usage_type: mappedProperty
       ? mappedProperty.property_usage_type
-      : null,
+      : "Unknown", // Default to "Unknown" if no mapping found
     zoning: input.zoning || null,
     subdivision: input.subName || input.platName || null,
     number_of_units: 1,
