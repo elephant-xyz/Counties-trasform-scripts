@@ -210,6 +210,7 @@ function buildStructureRecord($, buildings) {
     interior_wall_structure_material_secondary: null,
     interior_wall_surface_material_primary: null,
     interior_wall_surface_material_secondary: null,
+    number_of_buildings: buildings.length > 0 ? buildings.length : null,
     number_of_stories: null,
     primary_framing_material: null,
     roof_age_years: null,
