@@ -441,9 +441,41 @@ function stripAddressRequestMetadata(address) {
     surfacedRaw.source_http_request = null;
   }
 
-  return surfacedRaw;
+  return stripStructuredFieldsFromRawAddress(surfacedRaw);
 }
 
+function stripStructuredFieldsFromRawAddress(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  const trimmedRaw =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    return address;
+  }
+
+  const normalizedSurface = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...address })
+    : { ...address };
+  const canEmitNormalized =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...normalizedSurface });
+  if (canEmitNormalized) {
+    return address;
+  }
+
+  const pruned = { ...address, unnormalized_address: trimmedRaw };
+  for (const field of RAW_VARIANT_STRUCTURED_FIELD_SET) {
+    if (Object.prototype.hasOwnProperty.call(pruned, field)) {
+      delete pruned[field];
+    }
+  }
+
+  return pruned;
+}
 function buildRawVariantOneOfPayload(address) {
   return projectRawVariantFieldSurface(address);
 }
@@ -4583,6 +4615,24 @@ const STRUCTURED_ADDRESS_STRICT_FIELDS = [
   "latitude",
   "longitude",
 ];
+
+const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+]);
+const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
+  RAW_VARIANT_STRUCTURED_FIELDS,
+);
 
 // Raw variant only requires the persisted unnormalized string. Downstream
 // validators will populate normalized fields when available, but their absence
