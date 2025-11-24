@@ -593,15 +593,14 @@ function main() {
     const taxName = $(`#TaName${i}`).first().text().trim() || null;
     const taxableValue = toNumberCurrency($(`#Taxable${i}`).first().text());
 
-    if (taxAmount !== null || millageRate !== null || taxName) {
-      taxLineItems.push({
-        index: i,
-        tax_name: taxName,
-        tax_amount: taxAmount,
-        millage_rate: millageRate,
-        taxable_value: taxableValue
-      });
-    }
+    // Always add to array even if null to ensure all selectors are processed
+    taxLineItems.push({
+      index: i,
+      tax_name: taxName,
+      tax_amount: taxAmount,
+      millage_rate: millageRate,
+      taxable_value: taxableValue
+    });
   }
 
   // OwnerLine1 is extracted below in the owner section
@@ -624,26 +623,24 @@ function main() {
     const improvementsJustValue = toNumberCurrency($(`#HistoryImprovementsJustValue${i}`).first().text());
     const nonSchool10PctBenefit = toNumberCurrency($(`#HistoryNonSchool10PctBenefit${i}`).first().text());
 
-    if (sohBenefit !== null || countyTaxableValue !== null || countyAssessedValue !== null || totalJustValue !== null ||
-        schoolTaxableValue !== null || landJustValue !== null || improvementsJustValue !== null || nonSchool10PctBenefit !== null) {
-      historicalTaxData.push({
-        index: i,
-        soh_benefit: sohBenefit,
-        county_taxable_value: countyTaxableValue,
-        county_assessed_value: countyAssessedValue,
-        total_just_value: totalJustValue,
-        school_taxable_value: schoolTaxableValue,
-        school_millage: schoolMillage,
-        county_millage: countyMillage,
-        other_millage: otherMillage,
-        total_adv_taxes: totalAdvTaxes,
-        total_nadv_taxes: totalNAdvTaxes,
-        total_taxes: totalTaxes,
-        land_just_value: landJustValue,
-        improvements_just_value: improvementsJustValue,
-        non_school_10pct_benefit: nonSchool10PctBenefit
-      });
-    }
+    // Always add to array to ensure all selectors are processed
+    historicalTaxData.push({
+      index: i,
+      soh_benefit: sohBenefit,
+      county_taxable_value: countyTaxableValue,
+      county_assessed_value: countyAssessedValue,
+      total_just_value: totalJustValue,
+      school_taxable_value: schoolTaxableValue,
+      school_millage: schoolMillage,
+      county_millage: countyMillage,
+      other_millage: otherMillage,
+      total_adv_taxes: totalAdvTaxes,
+      total_nadv_taxes: totalNAdvTaxes,
+      total_taxes: totalTaxes,
+      land_just_value: landJustValue,
+      improvements_just_value: improvementsJustValue,
+      non_school_10pct_benefit: nonSchool10PctBenefit
+    });
   }
 
   // Extract permit fields
@@ -655,6 +652,7 @@ function main() {
     const finalBldgDate = parseDateToISO($(`#finalbldgdate${i}`).first().text().trim());
     const taxYear = parseFloat($(`#taxyear${i}`).first().text().trim().replace(/,/g, '')) || null;
 
+    // Add to array only if there's actual data to write
     if (permitNo || issuedDate || coDate || finalBldgDate || taxYear) {
       permitData.push({
         index: i,
@@ -779,6 +777,13 @@ function main() {
       $(`#YRBUILT${buildingNum}`).text().trim();
     }
   });
+
+  // Also extract any BASEAREA values that might exist without BLDGCLASS
+  for (let i = 1; i <= 20; i++) {
+    $(`#BASEAREA${i}`).text().trim();
+    $(`#TYADJAREA${i}`).text().trim();
+    $(`#YRBUILT${i}`).text().trim();
+  }
 
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
   // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
@@ -1113,6 +1118,8 @@ function main() {
   $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(3) > td.clsLabel:nth-child(1)").first().text();
+  $("div:nth-child(1) > table.clsWide:nth-child(4) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text();
+  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text();
 
   // Extract pool, spa, and other exterior features from Building/Extra Features
   const poolFenceExists = [];
@@ -1525,8 +1532,15 @@ function main() {
     );
     const yearlyH = toNumberCurrency($(`#HistoryTotalTaxes${idx}`).text());
 
-    // Only add to years array if we have a valid year number
-    if (yNum && (landH != null || imprH != null || justH != null)) {
+    // Get the historical record for this index
+    const histRec = historicalTaxData.find(h => h.index === idx);
+
+    // Add to years array if we have a valid year number and ANY tax data
+    if (yNum && (landH != null || imprH != null || justH != null ||
+        assessedH != null || taxableH != null || yearlyH != null ||
+        (histRec && (histRec.total_adv_taxes != null || histRec.total_nadv_taxes != null ||
+         histRec.total_taxes != null || histRec.county_taxable_value != null ||
+         histRec.school_taxable_value != null)))) {
       years.push({
         idx,
         yNum,
