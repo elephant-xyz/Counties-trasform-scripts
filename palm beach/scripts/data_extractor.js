@@ -5856,6 +5856,13 @@ function buildNormalizedAddressOutputForSchema(source) {
     return null;
   }
 
+  const hasExtendedCountyCoverage = COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(normalized[field]),
+  );
+  if (!hasExtendedCountyCoverage) {
+    return null;
+  }
+
   return normalized;
 }
 
