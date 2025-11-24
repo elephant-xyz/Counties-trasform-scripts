@@ -134,7 +134,10 @@ function finalizeAddressWritePayload(rawPayload) {
 
   const preparedOutput =
     pruneRawAddressFieldsForOutput(minimalRaw) || minimalRaw;
-  return stripAddressRequestMetadata(preparedOutput);
+  const strippedOutput = stripAddressRequestMetadata(preparedOutput);
+  const surfacedOutput =
+    ensureRawVariantFieldSurface(strippedOutput) || strippedOutput;
+  return surfacedOutput;
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -417,20 +420,45 @@ function stripAddressRequestMetadata(address) {
     return working;
   }
 
-  const minimalRaw = {
+  const rawSurface = {
+    ...working,
     unnormalized_address: rawValue,
   };
 
   if (hasRequestIdentifier) {
-    minimalRaw.request_identifier =
+    rawSurface.request_identifier =
       requestIdentifier === undefined ? null : requestIdentifier;
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawSurface, "request_identifier")
+  ) {
+    delete rawSurface.request_identifier;
   }
 
   if (hasSourceRequest) {
-    minimalRaw.source_http_request = preparedSource || null;
+    rawSurface.source_http_request = preparedSource || null;
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawSurface, "source_http_request")
+  ) {
+    delete rawSurface.source_http_request;
   }
 
-  return minimalRaw;
+  const projectedRaw = buildRawVariantOneOfPayload(rawSurface);
+  if (projectedRaw) {
+    return projectedRaw;
+  }
+
+  return {
+    unnormalized_address: rawValue,
+    ...(hasRequestIdentifier
+      ? {
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+        }
+      : {}),
+    ...(hasSourceRequest
+      ? { source_http_request: preparedSource || null }
+      : {}),
+  };
 }
 function buildRawVariantOneOfPayload(address) {
   return projectRawVariantFieldSurface(address);
@@ -4679,6 +4707,40 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
     return acc;
   }, {}),
 );
+
+function ensureRawVariantFieldSurface(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  const hasRawValue =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim().length > 0;
+  if (!hasRawValue) {
+    return address;
+  }
+
+  const surfaced = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: address.unnormalized_address.trim(),
+  };
+
+  for (const [key, value] of Object.entries(address)) {
+    if (key === "unnormalized_address") {
+      continue;
+    }
+    surfaced[key] = value;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(surfaced, "request_identifier")) {
+    surfaced.request_identifier = null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(surfaced, "source_http_request")) {
+    surfaced.source_http_request = null;
+  }
+
+  return surfaced;
+}
 
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
