@@ -1497,11 +1497,15 @@ function extractValuation($) {
     return {
       year,
       building: get("Building Value"),
+      extraFeatures: get("Extra Features Value"),
       land: get("Land Value"),
+      landAgricultural: get("Land Agricultural Value"),
+      agriculturalMarket: get("Agricultural (Market) Value"),
       market: get("Just (Market) Value"),
       assessed: get("Assessed Value"),
       taxable: get("Taxable Value"),
       exemption: get("Exempt Value"),
+      saveOurHomes: get("Maximum Save Our Homes Portability"),
     };
   });
 }
@@ -1831,30 +1835,14 @@ function writeTaxes($) {
       property_land_amount: parseCurrencyToNumber(v.land),
       property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
       property_exemption_amount: parseCurrencyToNumber(v.exemption),
+      agricultural_valuation_amount: parseCurrencyToNumber(v.agriculturalMarket) || parseCurrencyToNumber(v.landAgricultural),
+      homestead_cap_loss_amount: parseCurrencyToNumber(v.saveOurHomes),
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
     };
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
   });
-  // if (HISTORICAL_VALUATION_TABLE_SELECTOR) {
-  //   const historicalVals = extractHistoricalValuation($);
-  //   historicalVals.forEach((v) => {
-  //   const taxObj = {
-  //       tax_year: v.year || null,
-  //       property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
-  //       property_market_value_amount: parseCurrencyToNumber(v.market),
-  //       property_building_amount: parseCurrencyToNumber(v.building),
-  //       property_land_amount: parseCurrencyToNumber(v.land),
-  //       property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
-  //       property_exemption_amount: parseCurrencyToNumber(v.exemption),
-  //       monthly_tax_amount: null,
-  //       period_end_date: null,
-  //       period_start_date: null,
-  //     };
-  //     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
-  //   });
-  // }
 }
 
 function extractSecTwpRng($) {
@@ -2227,6 +2215,190 @@ function createGeometryClass(geometryInstances) {
   }
 }
 
+function extractPermits($) {
+  const permits = [];
+  const section = $("section").filter((_, s) => {
+    const title = $(s).find(".module-header .title").first().text().trim();
+    return title === "Permits";
+  }).first();
+
+  if (!section.length) return permits;
+
+  const table = $(section).find("table.tabular-data");
+  if (!table.length) return permits;
+
+  table.find("tbody tr").each((_, row) => {
+    const cells = $(row).find("td");
+    if (cells.length >= 5) {
+      const permitNumber = $(cells[0]).text().trim();
+      const type = $(cells[1]).text().trim();
+      const description = $(cells[2]).text().trim();
+      const issued = $(cells[3]).text().trim();
+      const amount = $(cells[4]).text().trim();
+
+      // Skip rows without permit numbers or with "No PDFs" text
+      if (permitNumber && permitNumber !== "" && !permitNumber.includes("No PDFs")) {
+        permits.push({
+          permit_number: permitNumber || null,
+          improvement_type: type || null,
+          improvement_action: description || null,
+          permit_issue_date: parseDateToISO(issued),
+          fee: parseCurrencyToNumber(amount),
+        });
+      }
+    }
+  });
+
+  return permits;
+}
+
+function extractExtraFeatures($) {
+  const features = [];
+  const section = $("section").filter((_, s) => {
+    const title = $(s).find(".module-header .title").first().text().trim();
+    return title === "Extra Features";
+  }).first();
+
+  if (!section.length) return features;
+
+  const table = $(section).find("table.tabular-data");
+  if (!table.length) return features;
+
+  table.find("tbody tr").each((_, row) => {
+    const cells = $(row).find("td");
+    if (cells.length >= 6) {
+      const description = $(cells[0]).text().trim();
+      const numItems = $(cells[1]).text().trim();
+      const dimensions = $(cells[2]).text().trim();
+      const units = $(cells[3]).text().trim();
+      const unitType = $(cells[4]).text().trim();
+      const yearBuilt = $(cells[5]).text().trim();
+
+      // Only include if description exists
+      if (description) {
+        features.push({
+          improvement_action: description || null,
+          improvement_type: unitType || "Extra Feature",
+          completion_date: yearBuilt ? `${yearBuilt}-01-01` : null,
+          fee: null,
+        });
+      }
+    }
+  });
+
+  return features;
+}
+
+function extractBuildingAreaTypes($) {
+  const areas = [];
+  const section = $("section").filter((_, s) => {
+    const title = $(s).find(".module-header .title").first().text().trim();
+    return title === "Building Area Types";
+  }).first();
+
+  if (!section.length) return areas;
+
+  const table = $(section).find("table.tabular-data");
+  if (!table.length) return areas;
+
+  table.find("tbody tr").each((_, row) => {
+    const cells = $(row).find("td");
+    if (cells.length >= 4) {
+      const type = $(cells[0]).text().trim();
+      const description = $(cells[1]).text().trim();
+      const sqFootage = $(cells[2]).text().trim();
+      const year = $(cells[3]).text().trim();
+
+      if (type || description) {
+        areas.push({
+          improvement_type: type || description || null,
+          improvement_action: description || type || null,
+          completion_date: year ? `${year}-01-01` : null,
+          fee: null,
+        });
+      }
+    }
+  });
+
+  return areas;
+}
+
+function extractSketches($) {
+  const sketches = [];
+  const section = $("section").filter((_, s) => {
+    const title = $(s).find(".module-header .title").first().text().trim();
+    return title.includes("Sketch");
+  }).first();
+
+  if (!section.length) return sketches;
+
+  $(section).find(".sketch-thumbnail").each((idx, thumb) => {
+    const caption = $(thumb).find(".sketch-thumbnail-caption").text().trim();
+    const link = $(thumb).find("a").attr("href");
+
+    sketches.push({
+      name: caption || `Sketch ${idx + 1}`,
+      document_type: "Sketch",
+      file_format: "image/jpeg",
+      original_url: link || null,
+      ipfs_url: null,
+    });
+  });
+
+  return sketches;
+}
+
+function extractLastUpdated($) {
+  const lastUpdated = $("#hlkLastUpdated").text().trim();
+  if (lastUpdated) {
+    const match = lastUpdated.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+    if (match) {
+      return parseDateToISO(match[1]);
+    }
+  }
+  return null;
+}
+
+function writePermitsAndImprovements($) {
+  const permits = extractPermits($);
+  const extraFeatures = extractExtraFeatures($);
+  const buildingAreas = extractBuildingAreaTypes($);
+
+  const allImprovements = [...permits, ...extraFeatures, ...buildingAreas];
+
+  allImprovements.forEach((improvement, idx) => {
+    const improvementObj = {
+      permit_number: improvement.permit_number || null,
+      improvement_type: improvement.improvement_type || null,
+      improvement_action: improvement.improvement_action || null,
+      permit_issue_date: improvement.permit_issue_date || null,
+      completion_date: improvement.completion_date || null,
+      fee: improvement.fee || null,
+      improvement_status: null,
+      permit_close_date: null,
+      final_inspection_date: null,
+      application_received_date: null,
+      contractor_type: null,
+      is_disaster_recovery: null,
+      is_owner_builder: null,
+      permit_required: null,
+      private_provider_inspections: null,
+      private_provider_plan_review: null,
+    };
+    writeJSON(path.join("data", `property_improvement_${idx + 1}.json`), improvementObj);
+  });
+}
+
+function writeSketchFiles($) {
+  const sketches = extractSketches($);
+
+  sketches.forEach((sketch, idx) => {
+    // Start numbering after deed files (assuming at most 100 deed files)
+    const fileIdx = 1000 + idx + 1;
+    writeJSON(path.join("data", `file_${fileIdx}.json`), sketch);
+  });
+}
+
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -2260,6 +2432,9 @@ function main() {
   writeSalesDeedsFilesAndRelationships($);
 
   writeTaxes($);
+
+  writePermitsAndImprovements($);
+  writeSketchFiles($);
 
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
