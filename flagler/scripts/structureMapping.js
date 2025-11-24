@@ -172,7 +172,6 @@ function buildStructureRecord($, buildings) {
     interior_wall_surface_material_primary: null,
     interior_wall_surface_material_secondary: null,
     number_of_stories: null,
-    number_of_buildings: null,
     primary_framing_material: null,
     roof_age_years: null,
     roof_condition: null,
@@ -204,24 +203,8 @@ function buildStructureRecord($, buildings) {
   const roofStructureTokens = [];
   const frameTypeTokens = []; // Added for Frame Type
   const stories = []; // Will likely remain empty based on sample HTML
-  let totalHeatedArea = 0;
-
-  // Set number of buildings
-  if (buildings.length > 0) {
-    rec.number_of_buildings = buildings.length;
-  }
 
   buildings.forEach((b) => {
-    // Extract and sum heated area
-    if (b["Heated Area"]) {
-      const heatedArea = parseNumber(b["Heated Area"]);
-      if (heatedArea) totalHeatedArea += heatedArea;
-    }
-
-    // Extract building number and type (to ensure they're accessed/mapped)
-    const buildingNum = b["Building"] || null; // Accessed but not stored - just to map the selector
-    const buildingType = b["Type"] || null; // Accessed but not stored - just to map the selector
-
     if (b["Exterior Walls"])
       extTokens.push(...b["Exterior Walls"].split(";").map((s) => s.trim()));
     if (b["Interior Walls"]) // Now present in HTML
@@ -239,11 +222,6 @@ function buildStructureRecord($, buildings) {
     // but not directly available in the main building summary.
     // For now, leaving stories as null as there's no direct "Stories" field.
   });
-
-  // Map heated area to finished base area (heated area typically means the primary living space)
-  if (totalHeatedArea > 0) {
-    rec.finished_base_area = totalHeatedArea;
-  }
 
   // Exterior materials
   const ext = mapExteriorMaterials(extTokens);
