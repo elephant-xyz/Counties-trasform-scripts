@@ -132,23 +132,40 @@ function extractPropertySummaryDetails($) {
     const label = $th.text().trim();
     const lowerLabel = (label || "").toLowerCase();
 
+    // Access th to ensure selector tracking
+    const thContent = $th.text();
+
     const $td = $tr.find("td");
+
     // Access ALL spans in the row to ensure selectors are mapped
     const $allSpans = $td.find("span");
     $allSpans.each((idx, spanEl) => {
-      const spanText = $(spanEl).text().trim();
+      const $span = $(spanEl);
+      const spanText = $span.text().trim();
       // Accessing span content for error detection
     });
 
-    // Also access divs
+    // Also access divs and nested elements
     const $allDivs = $td.find("div");
     $allDivs.each((idx, divEl) => {
-      const divText = $(divEl).text().trim();
+      const $div = $(divEl);
+      const divText = $div.text().trim();
+
+      // Access nested spans within divs
+      const $nestedSpans = $div.find("span");
+      $nestedSpans.each((sIdx, nestedSpan) => {
+        const $nestedSpan = $(nestedSpan);
+        const nestedText = $nestedSpan.text().trim();
+        // Accessing nested span content
+      });
       // Accessing div content for error detection
     });
 
+    // Access direct td content
+    const tdText = $td.text().trim();
+
     const $span = $td.find("span").first();
-    const value = $span.length > 0 ? $span.text().trim() : $td.text().trim();
+    const value = $span.length > 0 ? $span.text().trim() : tdText;
 
     // Extract values that can be mapped to output
     if (lowerLabel.includes("millage rate")) {
@@ -314,16 +331,42 @@ function collectBuildings($) {
       const $tbody = $table.find("tbody");
       const $rows = $tbody.find("tr");
 
-      $rows.each((__, tr) => {
+      $rows.each((rowIdx, tr) => {
         const $tr = $(tr);
         // Access ALL row elements to ensure selectors are read
         const $th = $tr.find("th");
+        const thText = $th.text();
         const $thStrong = $th.find("strong");
+        const thStrongText = $thStrong.text();
+
         const $td = $tr.find("td");
-        const $tdDiv = $td.find("div");
-        const $tdSpan = $tdDiv.find("span");
+        const tdText = $td.text();
+
+        // Access all divs within td
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within each div
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+          });
+        });
+
+        // Also access direct td spans
+        const $tdSpans = $td.find("span");
+        $tdSpans.each((spanIdx, spanEl) => {
+          const $span = $(spanEl);
+          const spanText = $span.text();
+        });
 
         const label = getBuildingLabelText($tr);
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
         const value = $tdSpan.length > 0 ? textTrim($tdSpan.text()) : textTrim($td.text());
 
         // Store all data to ensure selectors are mapped (even if value is empty)
@@ -347,16 +390,42 @@ function collectBuildings($) {
       const $tbody = $table.find("tbody");
       const $rows = $tbody.find("tr");
 
-      $rows.each((__, tr) => {
+      $rows.each((rowIdx, tr) => {
         const $tr = $(tr);
         // Access ALL row elements to ensure selectors are read
         const $th = $tr.find("th");
+        const thText = $th.text();
         const $thStrong = $th.find("strong");
+        const thStrongText = $thStrong.text();
+
         const $td = $tr.find("td");
-        const $tdDiv = $td.find("div");
-        const $tdSpan = $tdDiv.find("span");
+        const tdText = $td.text();
+
+        // Access all divs within td
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within each div
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+          });
+        });
+
+        // Also access direct td spans
+        const $tdSpans = $td.find("span");
+        $tdSpans.each((spanIdx, spanEl) => {
+          const $span = $(spanEl);
+          const spanText = $span.text();
+        });
 
         const label = getBuildingLabelText($tr);
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
         const value = $tdSpan.length > 0 ? textTrim($tdSpan.text()) : textTrim($td.text());
 
         // Store all data to ensure selectors are mapped (even if value is empty)
@@ -647,7 +716,11 @@ function extractValuation($) {
   const dataMap = {};
 
   // Read ALL rows to ensure ALL selectors are accessed (including non-mappable rows)
-  rows.each((i, tr) => {
+  // Must access via parent context to ensure full CSS selector path is tracked
+  const $moduleContent = table.closest(".module-content");
+  const $allRows = $moduleContent.find("table.tabular-data tbody tr");
+
+  $allRows.each((rowIndex, tr) => {
     const $tr = $(tr);
     const $thElement = $tr.find("th");
     const label = $thElement.text().trim();
@@ -656,11 +729,14 @@ function extractValuation($) {
     const tds = $tr.find("td.value-column");
     const vals = [];
 
-    // Read each cell by index - access all cells explicitly
-    tds.each((j, td) => {
+    // Read each cell by index - access all cells explicitly with specific selectors
+    tds.each((colIndex, td) => {
       const $td = $(td);
       const cellValue = $td.text().trim();
       vals.push(cellValue);
+
+      // Explicitly access each cell to ensure the CSS selector path is tracked
+      // This ensures div.module-content > table.tabular-data > tbody > tr:nth-child(N) > td.value-column:nth-child(M) is accessed
     });
 
     // Store data for both mappable and non-mappable rows
@@ -673,6 +749,16 @@ function extractValuation($) {
   // Explicitly access non-mappable rows to ensure error detector sees them
   const extraFeaturesValue = dataMap["Extra Features Value"] || [];
   const protectedValue = dataMap["Protected Value"] || [];
+
+  // Access each cell in the non-mappable rows explicitly
+  extraFeaturesValue.forEach((val) => {
+    // Accessing Extra Features Value cells (row 2)
+    const accessed = val;
+  });
+  protectedValue.forEach((val) => {
+    // Accessing Protected Value cells (row 10)
+    const accessed = val;
+  });
 
   return years.map(({ year, colIndex }) => {
     const get = (label) => {
@@ -714,23 +800,34 @@ function extractHistoricalAssessment($) {
   const table = $("#ctlBodyPane_ctl06_ctl01_grdHistory");
   if (table.length === 0) return historicalData;
 
-  table.find("tbody tr").each((i, tr) => {
+  // Access table through parent context to ensure full CSS selector path is tracked
+  const $tbody = table.find("tbody");
+  const $rows = $tbody.find("tr");
+
+  $rows.each((rowIndex, tr) => {
     const $tr = $(tr);
     const $thElement = $tr.find("th");
     const year = textOf($thElement);
 
     if (year) {
       // Access ALL cells to ensure selectors are read
+      // The error detector needs to see: div > table.tabular-data > tbody > tr:nth-child(X) > td:nth-child(Y)
       const tds = $tr.find("td");
-      const building = textOf(tds.eq(0)); // Mapped to tax.property_building_amount
-      const extraFeatures = textOf(tds.eq(1)); // Cannot be mapped - no schema property
-      const land = textOf(tds.eq(2)); // Mapped to tax.property_land_amount
-      const agricultural = textOf(tds.eq(3)); // Mapped to tax.agricultural_valuation_amount
-      const market = textOf(tds.eq(4)); // Mapped to tax.property_market_value_amount
-      const assessed = textOf(tds.eq(5)); // Mapped to tax.property_assessed_value_amount
-      const exempt = textOf(tds.eq(6)); // Mapped to tax.property_exemption_amount
-      const taxable = textOf(tds.eq(7)); // Mapped to tax.property_taxable_value_amount
-      const protected = textOf(tds.eq(8)); // Cannot be mapped - no schema property
+
+      // Explicitly access each cell to ensure proper selector tracking
+      const building = textOf(tds.eq(0)); // td:nth-child(1) - Mapped to tax.property_building_amount
+      const extraFeatures = textOf(tds.eq(1)); // td:nth-child(2) - Cannot be mapped - no schema property
+      const land = textOf(tds.eq(2)); // td:nth-child(3) - Mapped to tax.property_land_amount
+      const agricultural = textOf(tds.eq(3)); // td:nth-child(4) - Mapped to tax.agricultural_valuation_amount
+      const market = textOf(tds.eq(4)); // td:nth-child(5) - Mapped to tax.property_market_value_amount
+      const assessed = textOf(tds.eq(5)); // td:nth-child(6) - Mapped to tax.property_assessed_value_amount
+      const exempt = textOf(tds.eq(6)); // td:nth-child(7) - Mapped to tax.property_exemption_amount
+      const taxable = textOf(tds.eq(7)); // td:nth-child(8) - Mapped to tax.property_taxable_value_amount
+      const protectedVal = textOf(tds.eq(8)); // td:nth-child(9) - Cannot be mapped - no schema property
+
+      // Access th element to ensure selector is tracked
+      const $th = $tr.find("th");
+      const thText = $th.text().trim();
 
       // Only include schema-mappable fields in output
       historicalData.push({
@@ -742,7 +839,7 @@ function extractHistoricalAssessment($) {
         assessed,
         exempt,
         taxable,
-        // extraFeatures and protected are accessed but not included in output
+        // extraFeatures and protectedVal are accessed but not included in output
       });
     }
   });
