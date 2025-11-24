@@ -43746,15 +43746,22 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
   }
 
   const rawOutput = { unnormalized_address: resolvedRaw };
+  const normalizedLatitude = parseCoordinate(normalizedProbe.latitude);
+  const normalizedLongitude = parseCoordinate(normalizedProbe.longitude);
+  const hasCoordinatePair =
+    Number.isFinite(normalizedLatitude) && Number.isFinite(normalizedLongitude);
   const copyRawField = (field) => {
     if (!RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET.has(field)) {
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       return;
     }
     if (!Object.prototype.hasOwnProperty.call(normalizedProbe, field)) {
       return;
     }
     const value = normalizedProbe[field];
-    if (value === undefined) {
+    if (!hasMeaningfulAddressValue(value)) {
       return;
     }
     rawOutput[field] = value;
@@ -43762,6 +43769,13 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
 
   for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
     copyRawField(field);
+  }
+  if (hasCoordinatePair) {
+    rawOutput.latitude = normalizedLatitude;
+    rawOutput.longitude = normalizedLongitude;
+  } else {
+    delete rawOutput.latitude;
+    delete rawOutput.longitude;
   }
 
   const resolvedCounty = pickFirstMeaningfulString([
@@ -43790,15 +43804,12 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
   }
 
   if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
-    rawOutput.plus_four_postal_code = null;
-  }
-
-  if (
-    (rawOutput.latitude == null && rawOutput.longitude !== null) ||
-    (rawOutput.latitude !== null && rawOutput.longitude == null)
+    delete rawOutput.plus_four_postal_code;
+  } else if (
+    Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code") &&
+    !hasMeaningfulAddressValue(rawOutput.plus_four_postal_code)
   ) {
-    rawOutput.latitude = null;
-    rawOutput.longitude = null;
+    delete rawOutput.plus_four_postal_code;
   }
 
   if (requestIdentifier !== null && requestIdentifier !== undefined) {
