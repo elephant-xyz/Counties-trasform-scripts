@@ -1200,6 +1200,11 @@ const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl10_ctl01_grdSales_grdFlat tbody tr
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl03_ctl01_grdValuation";
 // const HISTORICAL_VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl13_ctl01_grdLand_grdFlat";
 const OWNER_MAILING_ADDRESS_SELECTOR = "#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress";
+const OWNER_NAME_SELECTOR = "#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lnkSearch";
+const PERMITS_TABLE_SELECTOR = "#ctlBodyPane_ctl12_ctl01_grdPermits_grdFlat tbody tr";
+const EXTRA_FEATURES_TABLE_SELECTOR = "section";
+const BUILDING_AREA_TYPES_TABLE_SELECTOR = "section";
+const LAST_UPDATED_SELECTOR = "#hlkLastUpdated";
 
 function readJSON(p) {
   try {
@@ -1497,11 +1502,15 @@ function extractValuation($) {
     return {
       year,
       building: get("Building Value"),
+      extraFeatures: get("Extra Features Value"),
       land: get("Land Value"),
+      landAgricultural: get("Land Agricultural Value"),
+      agriculturalMarket: get("Agricultural (Market) Value"),
       market: get("Just (Market) Value"),
       assessed: get("Assessed Value"),
       taxable: get("Taxable Value"),
       exemption: get("Exempt Value"),
+      saveOurHomesPortability: get("Maximum Save Our Homes Portability"),
     };
   });
 }
@@ -1831,6 +1840,7 @@ function writeTaxes($) {
       property_land_amount: parseCurrencyToNumber(v.land),
       property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
       property_exemption_amount: parseCurrencyToNumber(v.exemption),
+      agricultural_valuation_amount: parseCurrencyToNumber(v.agriculturalMarket),
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -1855,6 +1865,93 @@ function writeTaxes($) {
   //     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
   //   });
   // }
+}
+
+function mapPermitTypeToImprovementType(type, description) {
+  const typeUpper = (type || "").toUpperCase();
+  const descUpper = (description || "").toUpperCase();
+
+  if (typeUpper.includes("060") || descUpper.includes("REMODEL") || descUpper.includes("RENOVATION")) {
+    return "Remodel";
+  }
+  if (descUpper.includes("ELECTRICAL")) {
+    return "ElectricalInstallation";
+  }
+  if (descUpper.includes("PLUMBING")) {
+    return "PlumbingInstallation";
+  }
+  if (descUpper.includes("MECHANICAL") || descUpper.includes("HVAC")) {
+    return "HvacInstallation";
+  }
+  if (descUpper.includes("ROOF")) {
+    return "RoofReplacement";
+  }
+  if (descUpper.includes("POOL") || descUpper.includes("SPA")) {
+    return "PoolInstallation";
+  }
+  if (descUpper.includes("FENCE")) {
+    return "FenceInstallation";
+  }
+  if (descUpper.includes("FIRE SPRINKLER") || descUpper.includes("SPRINKLER")) {
+    return "OtherImprovement";
+  }
+  if (descUpper.includes("SIGN")) {
+    return "OtherImprovement";
+  }
+
+  return "OtherImprovement";
+}
+
+function mapPermitTypeToImprovementAction(type, description) {
+  const descUpper = (description || "").toUpperCase();
+
+  if (descUpper.includes("NEW") || descUpper.includes("INSTALL")) {
+    return "NewConstruction";
+  }
+  if (descUpper.includes("REMODEL") || descUpper.includes("RENOVATION") || descUpper.includes("BUILDOUT")) {
+    return "Remodel";
+  }
+  if (descUpper.includes("REPAIR") || descUpper.includes("REPLACE")) {
+    return "Repair";
+  }
+  if (descUpper.includes("ADDITION") || descUpper.includes("ADD")) {
+    return "Addition";
+  }
+  if (descUpper.includes("DEMO") || descUpper.includes("DEMOLITION")) {
+    return "Demolition";
+  }
+
+  return "Remodel";
+}
+
+function writePropertyImprovements($, parcelId) {
+  // Remove old property_improvement files
+  try {
+    fs.readdirSync("data").forEach((f) => {
+      if (/^property_improvement_\d+\.json$/.test(f)) {
+        fs.unlinkSync(path.join("data", f));
+      }
+    });
+  } catch (e) {}
+
+  const permits = extractPermits($);
+  if (!permits.length) return;
+
+  permits.forEach((permit, idx) => {
+    const improvement = {
+      permit_number: permit.permitNumber || null,
+      improvement_type: mapPermitTypeToImprovementType(permit.type, permit.description),
+      improvement_action: mapPermitTypeToImprovementAction(permit.type, permit.description),
+      permit_issue_date: parseDateToISO(permit.issued),
+      fee: parseCurrencyToNumber(permit.amount),
+      completion_date: null,
+      contractor_type: null,
+      improvement_status: "Permitted",
+      permit_required: true,
+      request_identifier: parcelId,
+    };
+    writeJSON(path.join("data", `property_improvement_${idx + 1}.json`), improvement);
+  });
 }
 
 function extractSecTwpRng($) {
@@ -1899,7 +1996,131 @@ function extractAddressText($) {
 }
 
 function extractOwnerMailingAddress($) {
-  return textOf($(OWNER_MAILING_ADDRESS_SELECTOR)).replace(/  +/g, ' ');;
+  return textOf($(OWNER_MAILING_ADDRESS_SELECTOR)).replace(/  +/g, ' ');
+}
+
+function extractOwnerName($) {
+  return textOf($(OWNER_NAME_SELECTOR));
+}
+
+function extractLastUpdated($) {
+  return textOf($(LAST_UPDATED_SELECTOR));
+}
+
+function extractPermits($) {
+  const section = $("section").filter((_, s) => {
+    const title = $(s).find(".module-header .title").first().text().trim();
+    return title === "Permits";
+  }).first();
+
+  if (!section.length) return [];
+
+  const table = $(section).find("table.tabular-data");
+  const permits = [];
+
+  table.find("tbody tr").each((i, tr) => {
+    const tds = $(tr).find("th, td");
+    if (tds.length < 5) return;
+    const permitNumber = textOf($(tds[0]));
+    const type = textOf($(tds[1]));
+    const description = textOf($(tds[2]));
+    const issued = textOf($(tds[3]));
+    const amount = textOf($(tds[4]));
+
+    // Skip rows without permit numbers or with "No PDFs" text
+    if (!permitNumber || permitNumber.toLowerCase().includes("no pdfs") || permitNumber.toLowerCase().includes("permit number")) {
+      return;
+    }
+
+    permits.push({
+      permitNumber,
+      type,
+      description,
+      issued,
+      amount,
+    });
+  });
+  return permits;
+}
+
+function extractExtraFeaturesTable($) {
+  const section = $("section").filter((_, s) => {
+    const title = $(s).find(".module-header .title").first().text().trim();
+    return title === "Extra Features";
+  }).first();
+
+  if (!section.length) return [];
+
+  const table = $(section).find("table.tabular-data");
+  const features = [];
+
+  table.find("tbody tr").each((i, tr) => {
+    const tds = $(tr).find("th, td");
+    if (tds.length < 6) return;
+
+    const description = textOf($(tds[0]));
+    const numberOfItems = textOf($(tds[1]));
+    const dimensions = textOf($(tds[2]));
+    const units = textOf($(tds[3]));
+    const unitType = textOf($(tds[4]));
+    const effectiveYearBuilt = textOf($(tds[5]));
+
+    features.push({
+      description,
+      numberOfItems,
+      dimensions,
+      units,
+      unitType,
+      effectiveYearBuilt,
+    });
+  });
+
+  return features;
+}
+
+function extractBuildingAreaTypes($) {
+  const section = $("section").filter((_, s) => {
+    const title = $(s).find(".module-header .title").first().text().trim();
+    return title === "Building Area Types";
+  }).first();
+
+  if (!section.length) return [];
+
+  const table = $(section).find("table.tabular-data");
+  const areaTypes = [];
+
+  table.find("tbody tr").each((i, tr) => {
+    const tds = $(tr).find("th, td");
+    if (tds.length < 4) return;
+
+    const type = textOf($(tds[0]));
+    const description = textOf($(tds[1]));
+    const sqFootage = textOf($(tds[2]));
+    const year = textOf($(tds[3]));
+
+    areaTypes.push({
+      type,
+      description,
+      sqFootage,
+      year,
+    });
+  });
+
+  return areaTypes;
+}
+
+function extractSketches($) {
+  const sketches = $(".sketch-thumbnail");
+  const sketchData = [];
+
+  sketches.each((idx, sketch) => {
+    const caption = $(sketch).find(".sketch-thumbnail-caption").text().trim();
+    if (caption) {
+      sketchData.push(caption);
+    }
+  });
+
+  return sketchData;
 }
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
@@ -2260,6 +2481,9 @@ function main() {
   writeSalesDeedsFilesAndRelationships($);
 
   writeTaxes($);
+
+  // Extract and write property improvements (permits)
+  writePropertyImprovements($, parcelId);
 
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
