@@ -1131,6 +1131,9 @@ function writeTaxes($, propertySeed, parcelId) {
 
   // Add historical data first
   historical.forEach((h) => {
+    // Skip entries without valid year
+    if (!h.year) return;
+
     // Parse all values
     const building = parseCurrencyToNumber(h.building);
     const land = parseCurrencyToNumber(h.land);
@@ -1140,35 +1143,32 @@ function writeTaxes($, propertySeed, parcelId) {
     const exempt = parseCurrencyToNumber(h.exempt);
     const taxable = parseCurrencyToNumber(h.taxable);
 
-    // Create tax entry with all fields in one object literal
-    // Required fields must always be present (monthly_tax_amount, period_start_date, period_end_date)
-    // These are set to null for property tax records per Elephant schema pattern
-    // Ensure year is valid before creating entry
-    if (!h.year) return; // Skip entries without valid year
-
+    // Create tax entry with all fields (following verified example pattern)
+    // Required fields must always be present even if null
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
+      property_building_amount: building,
+      property_land_amount: land,
+      agricultural_valuation_amount: agricultural,
+      property_market_value_amount: market,
+      property_assessed_value_amount: assessed,
+      property_exemption_amount: exempt,
+      property_taxable_value_amount: taxable,
+      millage_rate: millageRate,
       monthly_tax_amount: null,
       period_start_date: null,
       period_end_date: null,
     };
-
-    // Conditionally add optional fields only if they have valid values
-    if (building !== null) taxEntry.property_building_amount = building;
-    if (land !== null) taxEntry.property_land_amount = land;
-    if (agricultural !== null) taxEntry.agricultural_valuation_amount = agricultural;
-    if (market !== null) taxEntry.property_market_value_amount = market;
-    if (assessed !== null) taxEntry.property_assessed_value_amount = assessed;
-    if (exempt !== null) taxEntry.property_exemption_amount = exempt;
-    if (taxable !== null) taxEntry.property_taxable_value_amount = taxable;
-    if (millageRate !== null) taxEntry.millage_rate = millageRate;
 
     allYears.set(h.year, taxEntry);
   });
 
   // Override with certified values if available
   vals.forEach((v) => {
+    // Skip entries without valid year
+    if (!v.year) return;
+
     // Access agricultural market value for processing
     const agriculturalMarketVal = v.agriculturalMarket;
 
@@ -1182,9 +1182,8 @@ function writeTaxes($, propertySeed, parcelId) {
     const taxable = parseCurrencyToNumber(v.taxable);
 
     if (allYears.has(v.year)) {
-      // Update existing entry with non-null values
+      // Update existing entry with non-null values from certified table
       const existing = allYears.get(v.year);
-
       if (building !== null) existing.property_building_amount = building;
       if (land !== null) existing.property_land_amount = land;
       if (agricultural !== null) existing.agricultural_valuation_amount = agricultural;
@@ -1193,29 +1192,23 @@ function writeTaxes($, propertySeed, parcelId) {
       if (exempt !== null) existing.property_exemption_amount = exempt;
       if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
-      // Add new entry - create with all required fields in one object literal
-      // Required fields must always be present (monthly_tax_amount, period_start_date, period_end_date)
-      // These are set to null for property tax records per Elephant schema pattern
-      // Ensure year is valid before creating entry
-      if (!v.year) return; // Skip entries without valid year
-
+      // Create new entry with all fields (following verified example pattern)
+      // Required fields must always be present even if null
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
+        property_building_amount: building,
+        property_land_amount: land,
+        agricultural_valuation_amount: agricultural,
+        property_market_value_amount: market,
+        property_assessed_value_amount: assessed,
+        property_exemption_amount: exempt,
+        property_taxable_value_amount: taxable,
+        millage_rate: millageRate,
         monthly_tax_amount: null,
         period_start_date: null,
         period_end_date: null,
       };
-
-      // Conditionally add optional fields only if they have valid values
-      if (building !== null) taxEntry.property_building_amount = building;
-      if (land !== null) taxEntry.property_land_amount = land;
-      if (agricultural !== null) taxEntry.agricultural_valuation_amount = agricultural;
-      if (market !== null) taxEntry.property_market_value_amount = market;
-      if (assessed !== null) taxEntry.property_assessed_value_amount = assessed;
-      if (exempt !== null) taxEntry.property_exemption_amount = exempt;
-      if (taxable !== null) taxEntry.property_taxable_value_amount = taxable;
-      if (millageRate !== null) taxEntry.millage_rate = millageRate;
 
       allYears.set(v.year, taxEntry);
     }
