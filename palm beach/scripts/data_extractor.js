@@ -6265,6 +6265,155 @@ function buildCountyRawAddressPayload(base, unnormalizedValue) {
   return payload;
 }
 
+function resolveRawAddressCandidateFromFiles(filePaths = []) {
+  if (!Array.isArray(filePaths)) {
+    return null;
+  }
+  const candidateFields = [
+    "unnormalized_address",
+    "full_address",
+    "site_address",
+    "address",
+    "raw_address",
+    "location_address",
+    "mail_address",
+  ];
+  for (const filePath of filePaths) {
+    if (!filePath) continue;
+    const record = readJSONIfExists(filePath);
+    if (!record || typeof record !== "object") continue;
+    for (const field of candidateFields) {
+      const candidate = safeNullIfEmpty(record[field]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    if (Array.isArray(record.lines)) {
+      const joined = record.lines
+        .map((line) => (typeof line === "string" ? line.trim() : ""))
+        .filter((line) => line && line.length)
+        .join(", ");
+      if (joined.length) {
+        return joined;
+      }
+    }
+  }
+  return null;
+}
+
+function enforceAddressSchemaVariantOutput(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  const surface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  if (!hasMeaningfulAddressValue(surface.county_name) && options.defaultCountyName) {
+    surface.county_name = options.defaultCountyName;
+  }
+  if (
+    !hasMeaningfulAddressValue(surface.country_code) &&
+    hasMeaningfulAddressValue(surface.state_code)
+  ) {
+    surface.country_code = options.defaultCountryCode || "US";
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+
+  const writeFinalPayload = (output) => {
+    if (!output || typeof output !== "object") {
+      removeFileIfExists(addressFilePath);
+      return;
+    }
+    const sanitized =
+      stripAddressRequestMetadata(output) || output;
+    try {
+      originalWriteFileSync(
+        addressFilePath,
+        JSON.stringify(sanitized, null, 2),
+      );
+    } catch {
+      removeFileIfExists(addressFilePath);
+    }
+  };
+
+  const normalizedCandidate =
+    buildNormalizedAddressOutputForSchema({
+      ...surface,
+    }) || null;
+
+  if (normalizedCandidate) {
+    if (requestIdentifier !== undefined) {
+      normalizedCandidate.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+    if (preparedSource) {
+      normalizedCandidate.source_http_request = deepClone(preparedSource);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    writeFinalPayload(normalizedCandidate);
+    return;
+  }
+
+  const explicitRaw =
+    typeof surface.unnormalized_address === "string" &&
+    surface.unnormalized_address.trim().length
+      ? surface.unnormalized_address.trim()
+      : null;
+  const fallbackRaw =
+    resolveRawAddressCandidateFromFiles(options.rawFallbackPaths || []) || null;
+  const rawValue = explicitRaw || fallbackRaw;
+
+  if (!rawValue) {
+    removeFileIfExists(addressFilePath);
+    return;
+  }
+
+  let rawOutput =
+    buildRawAddressOutputForSchema(rawValue, surface) || null;
+
+  if (!rawOutput) {
+    rawOutput = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: rawValue,
+    };
+  }
+
+  rawOutput.__force_raw_variant = true;
+
+  if (requestIdentifier !== undefined) {
+    rawOutput.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  }
+
+  writeFinalPayload(rawOutput);
+}
+
 function pruneRawAddressPayloadForOutput(payload, options = {}) {
   if (!payload || typeof payload !== "object") return null;
 
@@ -48057,6 +48206,21 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to emit minimal raw address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceAddressSchemaVariantOutput(addressPath, {
+      rawFallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error("Failed to enforce final address schema variant:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
