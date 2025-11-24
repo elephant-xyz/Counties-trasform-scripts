@@ -300,6 +300,25 @@ function mapInstrumentToDeedType(instr) {
   // };
 }
 
+function extractMillageRate($) {
+  let millageRate = null;
+  $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
+    const $tr = $(tr);
+    const label = getLabelText($tr);
+    if ((label || "").toLowerCase().includes("millage rate")) {
+      const rateText = textOf($tr.find("td:last-child span"));
+      if (rateText) {
+        const rate = parseFloat(rateText.replace(/[^0-9.]/g, ""));
+        if (!isNaN(rate)) {
+          millageRate = rate;
+        }
+      }
+      return false;
+    }
+  });
+  return millageRate;
+}
+
 function extractValuation($) {
   const table = $(VALUATION_TABLE_SELECTOR);
   if (table.length === 0) return [];
@@ -559,17 +578,35 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
 function writeTaxes($) {
   const vals = extractValuation($);
+  const millageRate = extractMillageRate($);
+
   vals.forEach((v) => {
+    // Calculate monthly tax amount from taxable value and millage rate
+    let monthlyTaxAmount = 0;
+    const taxableValue = parseCurrencyToNumber(v.taxable);
+
+    if (taxableValue && millageRate) {
+      // Formula: yearly_tax = (taxable_value / 1000) * millage_rate
+      // monthly_tax = yearly_tax / 12
+      const yearlyTax = (taxableValue / 1000) * millageRate;
+      monthlyTaxAmount = Math.round((yearlyTax / 12) * 100) / 100;
+    }
+
+    // Set period dates for the tax year
+    const year = v.year || new Date().getFullYear();
+    const periodStartDate = `${year}-01-01`;
+    const periodEndDate = `${year}-12-31`;
+
     const taxObj = {
-      tax_year: v.year || null,
+      tax_year: year,
       property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
       property_market_value_amount: parseCurrencyToNumber(v.market),
       property_building_amount: parseCurrencyToNumber(v.building),
       property_land_amount: parseCurrencyToNumber(v.land),
-      property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
-      monthly_tax_amount: null,
-      period_end_date: null,
-      period_start_date: null,
+      property_taxable_value_amount: taxableValue,
+      monthly_tax_amount: monthlyTaxAmount,
+      period_end_date: periodEndDate,
+      period_start_date: periodStartDate,
     };
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
   });
