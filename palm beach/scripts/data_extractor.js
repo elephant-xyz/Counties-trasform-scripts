@@ -410,10 +410,6 @@ function stripAddressRequestMetadata(address) {
       normalizedSurface.source_http_request = null;
     }
 
-    if (forceRawVariant) {
-      normalizedSurface.__force_raw_variant = true;
-    }
-
     return normalizedSurface;
   }
 
@@ -445,10 +441,6 @@ function stripAddressRequestMetadata(address) {
     surfacedRaw.source_http_request = null;
   }
 
-  if (forceRawVariant) {
-    surfacedRaw.__force_raw_variant = true;
-  }
-
   return surfacedRaw;
 }
 
@@ -470,28 +462,45 @@ function projectRawVariantFieldSurface(address) {
     unnormalized_address: minimal.unnormalized_address.trim(),
   };
 
+  const coordinateBuffer = {
+    latitude: null,
+    longitude: null,
+  };
+
   for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
-    const candidate = Object.prototype.hasOwnProperty.call(minimal, field)
-      ? minimal[field]
-      : null;
+    if (!Object.prototype.hasOwnProperty.call(minimal, field)) {
+      continue;
+    }
+    let candidate = minimal[field];
     if (candidate === undefined || candidate === null) {
-      projected[field] = null;
       continue;
     }
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(candidate);
-      projected[field] = Number.isFinite(numeric) ? numeric : null;
+      if (Number.isFinite(numeric)) {
+        coordinateBuffer[field] = numeric;
+      }
       continue;
     }
 
     if (typeof candidate === "string") {
       const trimmed = candidate.trim();
-      projected[field] = trimmed.length ? trimmed : null;
-      continue;
+      if (!trimmed.length) {
+        continue;
+      }
+      candidate = trimmed;
     }
 
     projected[field] = candidate;
+  }
+
+  if (
+    Number.isFinite(coordinateBuffer.latitude) &&
+    Number.isFinite(coordinateBuffer.longitude)
+  ) {
+    projected.latitude = coordinateBuffer.latitude;
+    projected.longitude = coordinateBuffer.longitude;
   }
 
   if (!projected.country_code) {
