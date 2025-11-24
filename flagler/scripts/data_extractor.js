@@ -20,8 +20,10 @@ const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl02_ctl01_dynamicSummary_
 const BUILDING_SECTION_TITLE = "Residential Buildings"; // Corrected title from HTML
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl15_ctl01_grdSales tbody tr"; // Corrected selector for sales table
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl05_ctl01_grdValuation"; // Corrected selector for valuation table
-const OWNER_ADDRESS_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed";
 const EXTRA_FEATURES_TABLE_SELECTOR = "#ctlBodyPane_ctl14_ctl01_gvwExtraFeatures tbody tr"; // Selector for extra features table
+// Note: Owner address and social media links are not mapped as they don't have corresponding fields in Elephant schema
+// const OWNER_ADDRESS_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed";
+// const LINKEDIN_SELECTOR = "#aLinkedIn";
 
 
 function readJSON(p) {
@@ -363,6 +365,7 @@ function extractValuation($) {
 
   const rows = table.find("tbody tr");
   const dataMap = {};
+  const dataByIndex = []; // Store data by row index for rows with empty labels
   rows.each((i, tr) => {
     const $tr = $(tr);
     // Valuation table labels are always <th>
@@ -372,7 +375,12 @@ function extractValuation($) {
     tds.each((j, td) => {
       vals.push($(td).text().trim());
     });
-    if (label) dataMap[label] = vals;
+    // Store by label if label exists
+    if (label) {
+      dataMap[label] = vals;
+    }
+    // Always store by index to handle rows with empty labels
+    dataByIndex[i] = vals;
   });
 
   return years.map(({ year, colIndex }) => {
@@ -380,13 +388,18 @@ function extractValuation($) {
       const arr = dataMap[label] || [];
       return arr[colIndex] || null;
     };
+    const getByIndex = (idx) => {
+      const arr = dataByIndex[idx] || [];
+      return arr[colIndex] || null;
+    };
     return {
       year,
       building: get("Building Value"),
       extraFeatures: get("Extra Features Value"),
       land: get("Land Value"),
-      landAgricultural: get("Land Agricultural Value"),
-      agriculturalMarket: get("Agricultural (Market) Value"),
+      // Rows 3 and 4 have empty labels in the HTML, use index-based access
+      landAgricultural: getByIndex(3) || null,
+      agriculturalMarket: getByIndex(4) || null,
       market: get("Just (Market) Value"),
       assessed: get("Assessed Value"),
       exempt: get("Exempt Value"),
@@ -728,6 +741,80 @@ function writeUtility(parcelId) {
   writeJSON(path.join("data", "utility.json"), utility);
 }
 
+function writeStructure(parcelId) {
+  const structures = readJSON(path.join("owners", "structure_data.json"));
+  if (!structures) return;
+  const key = `property_${parcelId}`;
+  const s = structures[key];
+  if (!s) return;
+  const structure = {
+    architectural_style_type: s.architectural_style_type ?? null,
+    attachment_type: s.attachment_type ?? null,
+    ceiling_condition: s.ceiling_condition ?? null,
+    ceiling_height_average: s.ceiling_height_average ?? null,
+    ceiling_insulation_type: s.ceiling_insulation_type ?? null,
+    ceiling_structure_material: s.ceiling_structure_material ?? null,
+    ceiling_surface_material: s.ceiling_surface_material ?? null,
+    exterior_door_installation_date: s.exterior_door_installation_date ?? null,
+    exterior_door_material: s.exterior_door_material ?? null,
+    exterior_wall_condition: s.exterior_wall_condition ?? null,
+    exterior_wall_condition_primary: s.exterior_wall_condition_primary ?? null,
+    exterior_wall_condition_secondary: s.exterior_wall_condition_secondary ?? null,
+    exterior_wall_insulation_type: s.exterior_wall_insulation_type ?? null,
+    exterior_wall_insulation_type_primary: s.exterior_wall_insulation_type_primary ?? null,
+    exterior_wall_insulation_type_secondary: s.exterior_wall_insulation_type_secondary ?? null,
+    exterior_wall_material_primary: s.exterior_wall_material_primary ?? null,
+    exterior_wall_material_secondary: s.exterior_wall_material_secondary ?? null,
+    finished_base_area: s.finished_base_area ?? null,
+    finished_basement_area: s.finished_basement_area ?? null,
+    finished_upper_story_area: s.finished_upper_story_area ?? null,
+    flooring_condition: s.flooring_condition ?? null,
+    flooring_material_primary: s.flooring_material_primary ?? null,
+    flooring_material_secondary: s.flooring_material_secondary ?? null,
+    foundation_condition: s.foundation_condition ?? null,
+    foundation_material: s.foundation_material ?? null,
+    foundation_repair_date: s.foundation_repair_date ?? null,
+    foundation_type: s.foundation_type ?? null,
+    foundation_waterproofing: s.foundation_waterproofing ?? null,
+    gutters_condition: s.gutters_condition ?? null,
+    gutters_material: s.gutters_material ?? null,
+    interior_door_material: s.interior_door_material ?? null,
+    interior_wall_condition: s.interior_wall_condition ?? null,
+    interior_wall_finish_primary: s.interior_wall_finish_primary ?? null,
+    interior_wall_finish_secondary: s.interior_wall_finish_secondary ?? null,
+    interior_wall_structure_material: s.interior_wall_structure_material ?? null,
+    interior_wall_structure_material_primary: s.interior_wall_structure_material_primary ?? null,
+    interior_wall_structure_material_secondary: s.interior_wall_structure_material_secondary ?? null,
+    interior_wall_surface_material_primary: s.interior_wall_surface_material_primary ?? null,
+    interior_wall_surface_material_secondary: s.interior_wall_surface_material_secondary ?? null,
+    number_of_buildings: s.number_of_buildings ?? null,
+    number_of_stories: s.number_of_stories ?? null,
+    primary_framing_material: s.primary_framing_material ?? null,
+    roof_age_years: s.roof_age_years ?? null,
+    roof_condition: s.roof_condition ?? null,
+    roof_covering_material: s.roof_covering_material ?? null,
+    roof_date: s.roof_date ?? null,
+    roof_design_type: s.roof_design_type ?? null,
+    roof_material_type: s.roof_material_type ?? null,
+    roof_structure_material: s.roof_structure_material ?? null,
+    roof_underlayment_type: s.roof_underlayment_type ?? null,
+    secondary_framing_material: s.secondary_framing_material ?? null,
+    siding_installation_date: s.siding_installation_date ?? null,
+    structural_damage_indicators: s.structural_damage_indicators ?? null,
+    subfloor_material: s.subfloor_material ?? null,
+    unfinished_base_area: s.unfinished_base_area ?? null,
+    unfinished_basement_area: s.unfinished_basement_area ?? null,
+    unfinished_upper_story_area: s.unfinished_upper_story_area ?? null,
+    window_frame_material: s.window_frame_material ?? null,
+    window_glazing_type: s.window_glazing_type ?? null,
+    window_installation_date: s.window_installation_date ?? null,
+    window_operation_type: s.window_operation_type ?? null,
+    window_screen_material: s.window_screen_material ?? null,
+    request_identifier: parcelId,
+  };
+  writeJSON(path.join("data", "structure.json"), structure);
+}
+
 function writeLayout(parcelId) {
   const layouts = readJSON(path.join("owners", "layout_data.json"));
   if (!layouts) return;
@@ -1041,6 +1128,7 @@ function main() {
     writePersonCompaniesSalesRelationships(parcelId, sales);
     // writeOwnersCurrentAndRelationships(parcelId);
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
+    writeStructure(parcelId);
     writeUtility(parcelId);
     writeLayout(parcelId);
   }
