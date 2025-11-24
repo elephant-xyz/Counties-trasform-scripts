@@ -106,14 +106,6 @@ const companyKeywords = [
   "GROUP",
   "ENTERPRISES",
   "HOLDING",
-  "CHURCH",
-  "MINISTRIES",
-  "TEMPLE",
-  "PARISH",
-  "DIOCESE",
-  "MISSION",
-  "SOCIETY",
-  "FELLOWSHIP",
 ];
 
 function looksLikeCompany(name) {
@@ -135,29 +127,48 @@ function looksLikeCompany(name) {
 
 // Known suffix values
 const knownSuffixes = new Set([
-  "JR", "JR.", "JUNIOR",
-  "SR", "SR.", "SENIOR",
-  "II", "III", "IV", "V",
-  "ESQ", "ESQ.",
-  "CFA", "CPA", "DDS", "DVM", "MBA", "MD", "PE", "PHD", "PMP", "RN", "LLM",
+  "JR",
+  "JR.",
+  "JUNIOR",
+  "SR",
+  "SR.",
+  "SENIOR",
+  "II",
+  "III",
+  "IV",
+  "V",
+  "ESQ",
+  "ESQ.",
+  "CFA",
+  "CPA",
+  "DDS",
+  "DVM",
+  "MBA",
+  "MD",
+  "PE",
+  "PHD",
+  "PMP",
+  "RN",
+  "LLM",
   "EMERITUS",
-  "RET", "RET.",
+  "RET",
+  "RET.",
 ]);
 
 // Normalize suffix to standard format
 function normalizeSuffix(suffix) {
   const upper = suffix.toUpperCase().replace(/\./g, "");
   const map = {
-    "JR": "Jr.",
-    "JUNIOR": "Jr.",
-    "SR": "Sr.",
-    "SENIOR": "Sr.",
-    "II": "II",
-    "III": "III",
-    "IV": "IV",
-    "V": "V",
-    "ESQ": "Esq.",
-    "RET": "Ret.",
+    JR: "Jr.",
+    JUNIOR: "Jr.",
+    SR: "Sr.",
+    SENIOR: "Sr.",
+    II: "II",
+    III: "III",
+    IV: "IV",
+    V: "V",
+    ESQ: "Esq.",
+    RET: "Ret.",
   };
   return map[upper] || suffix;
 }
@@ -174,7 +185,11 @@ function classifyOwner(raw) {
   text = text.replace(/\s*&\s*$/, "").trim();
 
   // Remove tokens containing "/" (like C/O, H/W, etc.)
-  text = text.split(/\s+/).filter(token => !token.includes("/")).join(" ").trim();
+  text = text
+    .split(/\s+/)
+    .filter((token) => !token.includes("/"))
+    .join(" ")
+    .trim();
 
   if (!text) return { valid: false, reason: "empty" };
 
@@ -202,9 +217,13 @@ function classifyOwner(raw) {
 
   if (text.includes(",")) {
     // Format: "LAST SUFFIX, FIRST MIDDLE" or "LAST, FIRST=& FIRST2" (multiple people with same last name)
-    const parts = text.split(",").map(s => s.trim());
+    const parts = text.split(",").map((s) => s.trim());
     if (parts.length < 2) {
-      return { valid: false, reason: "comma_but_insufficient_parts", raw: text };
+      return {
+        valid: false,
+        reason: "comma_but_insufficient_parts",
+        raw: text,
+      };
     }
 
     // Parse left side (last name + optional suffix)
@@ -217,7 +236,12 @@ function classifyOwner(raw) {
     let suffixName = null;
 
     // Check if last token is a suffix
-    if (leftTokens.length > 1 && knownSuffixes.has(leftTokens[leftTokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+    if (
+      leftTokens.length > 1 &&
+      knownSuffixes.has(
+        leftTokens[leftTokens.length - 1].toUpperCase().replace(/\./g, ""),
+      )
+    ) {
       suffixName = normalizeSuffix(leftTokens.pop());
     }
 
@@ -228,7 +252,10 @@ function classifyOwner(raw) {
 
     // Check if there's "=&" separator indicating multiple people with same last name
     if (firstMiddle.includes("=&")) {
-      const names = firstMiddle.split("=&").map(s => s.trim()).filter(Boolean);
+      const names = firstMiddle
+        .split("=&")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const persons = [];
 
       for (const name of names) {
@@ -236,9 +263,8 @@ function classifyOwner(raw) {
         if (tokens.length === 0) continue;
 
         const firstName = titleCase(tokens[0]);
-        const middleName = tokens.length > 1
-          ? tokens.slice(1).map(titleCase).join(" ")
-          : null;
+        const middleName =
+          tokens.length > 1 ? tokens.slice(1).map(titleCase).join(" ") : null;
 
         persons.push({
           type: "person",
@@ -260,9 +286,10 @@ function classifyOwner(raw) {
     }
 
     const firstName = titleCase(firstMiddleTokens[0]);
-    const middleName = firstMiddleTokens.length > 1
-      ? firstMiddleTokens.slice(1).map(titleCase).join(" ")
-      : null;
+    const middleName =
+      firstMiddleTokens.length > 1
+        ? firstMiddleTokens.slice(1).map(titleCase).join(" ")
+        : null;
 
     const person = {
       type: "person",
@@ -283,7 +310,7 @@ function classifyOwner(raw) {
 
     // Check if any token contains "=&" indicating multiple people with same last name
     // e.g., "STEVEN=& MARILYN KINNIRY"
-    const equalsAmpIndex = tokens.findIndex(t => t.includes("=&"));
+    const equalsAmpIndex = tokens.findIndex((t) => t.includes("=&"));
     if (equalsAmpIndex >= 0) {
       // Split the token containing "=&" to get the first person's first name
       const parts = tokens[equalsAmpIndex].split("=&");
@@ -301,12 +328,20 @@ function classifyOwner(raw) {
       // Now for "STEVEN=& MARILYN KINNIRY", tokens = ["STEVEN", "MARILYN", "KINNIRY"]
 
       if (tokens.length < 2) {
-        return { valid: false, reason: "insufficient_name_parts_after_equals_amp", raw: text };
+        return {
+          valid: false,
+          reason: "insufficient_name_parts_after_equals_amp",
+          raw: text,
+        };
       }
 
       // Last token (after potentially removing suffix) is the shared last name
       let suffixName = null;
-      if (knownSuffixes.has(tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+      if (
+        knownSuffixes.has(
+          tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""),
+        )
+      ) {
         suffixName = normalizeSuffix(tokens.pop());
       }
 
@@ -336,11 +371,15 @@ function classifyOwner(raw) {
 
     // Check if contains "&" indicating multiple people with same last name
     // e.g., "JOHN R & MARIE V GLOWACKI"
-    const ampersandIndex = tokens.findIndex(t => t === "&");
+    const ampersandIndex = tokens.findIndex((t) => t === "&");
     if (ampersandIndex > 0) {
       // Last token (after potentially removing suffix) is the shared last name
       let suffixName = null;
-      if (knownSuffixes.has(tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+      if (
+        knownSuffixes.has(
+          tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""),
+        )
+      ) {
         suffixName = normalizeSuffix(tokens.pop());
       }
 
@@ -356,9 +395,10 @@ function classifyOwner(raw) {
       // Parse first person (before &)
       if (beforeAmp.length > 0) {
         const firstName1 = titleCase(beforeAmp[0]);
-        const middleName1 = beforeAmp.length > 1
-          ? beforeAmp.slice(1).map(titleCase).join(" ")
-          : null;
+        const middleName1 =
+          beforeAmp.length > 1
+            ? beforeAmp.slice(1).map(titleCase).join(" ")
+            : null;
         persons.push({
           type: "person",
           first_name: firstName1,
@@ -371,9 +411,10 @@ function classifyOwner(raw) {
       // Parse second person (after &)
       if (afterAmp.length > 0) {
         const firstName2 = titleCase(afterAmp[0]);
-        const middleName2 = afterAmp.length > 1
-          ? afterAmp.slice(1).map(titleCase).join(" ")
-          : null;
+        const middleName2 =
+          afterAmp.length > 1
+            ? afterAmp.slice(1).map(titleCase).join(" ")
+            : null;
         persons.push({
           type: "person",
           first_name: firstName2,
@@ -389,7 +430,12 @@ function classifyOwner(raw) {
     // No "&", single person
     // Check if last token is a suffix (e.g., Jr., III, etc.)
     let suffixName = null;
-    if (tokens.length > 2 && knownSuffixes.has(tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""))) {
+    if (
+      tokens.length > 2 &&
+      knownSuffixes.has(
+        tokens[tokens.length - 1].toUpperCase().replace(/\./g, ""),
+      )
+    ) {
       suffixName = normalizeSuffix(tokens.pop());
     }
 
@@ -400,9 +446,8 @@ function classifyOwner(raw) {
     const lastName = titleCase(tokens[tokens.length - 1]);
 
     // Everything in between is middle name
-    const middleName = tokens.length > 2
-      ? tokens.slice(1, -1).map(titleCase).join(" ")
-      : null;
+    const middleName =
+      tokens.length > 2 ? tokens.slice(1, -1).map(titleCase).join(" ") : null;
 
     const person = {
       type: "person",
@@ -472,7 +517,7 @@ function extractOwnerNameStrings($) {
   }
 
   // Filter out any remaining address-like entries
-  return ownerLines.filter(line => !isLikelyAddress(line));
+  return ownerLines.filter((line) => !isLikelyAddress(line));
 }
 
 // Deduplicate owners by normalized key
@@ -499,68 +544,6 @@ function buildOwnersByDate(validOwners) {
   return map;
 }
 
-function buildMailingAddress($) {
-  const rawLines = [];
-  for (let i = 1; i <= 10; i++) {
-    const text = norm($(`#OwnerLine${i}`).text());
-    if (text) rawLines.push(text);
-  }
-
-  const city = norm($("#OwnerCity").text());
-  const state = norm($("#OwnerState").text());
-  const postal = norm($("#OwnerZip").text());
-
-  const addressParts = [];
-  const addressKeywords = [
-    "PO BOX",
-    "P.O. BOX",
-    "UNIT",
-    "STE",
-    "SUITE",
-    "APT",
-    "STREET",
-    "ROAD",
-    "AVENUE",
-    "DR",
-    "DRIVE",
-    "COURT",
-    "LANE",
-    "BOULEVARD",
-    "PKWY",
-    "PARKWAY",
-    "HIGHWAY",
-  ];
-  let started = false;
-  rawLines.forEach((line) => {
-    const upper = line.toUpperCase();
-    const containsKeyword = addressKeywords.some((kw) => {
-      if (kw.includes(" ")) {
-        return upper.includes(kw);
-      }
-      const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-      const regex = new RegExp(`\\b${escaped}\\b`);
-      return regex.test(upper);
-    });
-    if (
-      started ||
-      /\d/.test(upper) ||
-      containsKeyword
-    ) {
-      addressParts.push(line);
-      started = true;
-    }
-  });
-
-  const cityStateZip = [city, state, postal].filter(Boolean).join(" ");
-  if (cityStateZip) {
-    addressParts.push(cityStateZip);
-  }
-
-  const unnormalized = addressParts.filter(Boolean).join(", ");
-  if (!unnormalized) return null;
-  return { unnormalized_address: unnormalized };
-}
-
 // Main processing
 (function main() {
   const propertyId = extractPropertyId($);
@@ -575,7 +558,7 @@ function buildMailingAddress($) {
     if (res.valid) {
       // Handle case where classifyOwner returns multiple owners (e.g., "LAST, FIRST=& FIRST2")
       if (res.owners && Array.isArray(res.owners)) {
-        res.owners.forEach(owner => validOwners.push(owner));
+        res.owners.forEach((owner) => validOwners.push(owner));
       } else if (res.owner) {
         validOwners.push(res.owner);
       }
@@ -597,15 +580,12 @@ function buildMailingAddress($) {
 
   const ownersByDate = buildOwnersByDate(deduped);
 
-  const mailingAddress = buildMailingAddress($);
-
   // Build final object
   const result = {};
   const propertyKey = `property_${propertyId || "unknown_id"}`;
   result[propertyKey] = {
     owners_by_date: ownersByDate,
     invalid_owners: invalidOwners,
-    mailing_address: mailingAddress,
   };
 
   // Persist file and print JSON
@@ -615,3 +595,4 @@ function buildMailingAddress($) {
   fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf8");
   console.log(JSON.stringify(result));
 })();
+
