@@ -157,6 +157,16 @@ function readJSON(p) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
+function readJSONIfExists(p) {
+  if (!p) return null;
+  try {
+    if (!fs.existsSync(p)) return null;
+    return readJSON(p);
+  } catch {
+    return null;
+  }
+}
+
 function readText(p) {
   return fs.readFileSync(p, "utf8");
 }
@@ -796,6 +806,159 @@ function flattenCandidateValues(...sources) {
   }
   return results;
 }
+
+
+function forceRawAddressPayloadFromSource(addressPath, options = {}) {
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    extraRawCandidates = [],
+  } = options || {};
+
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const rawCandidateQueue = flattenCandidateValues(
+    payload.unnormalized_address,
+    payload.full_address,
+    unnormalizedSource && unnormalizedSource.unnormalized_address,
+    unnormalizedSource && unnormalizedSource.full_address,
+    unnormalizedSource && unnormalizedSource.site_address,
+    unnormalizedSource && unnormalizedSource.address,
+    Array.isArray(unnormalizedSource && unnormalizedSource.lines)
+      ? (unnormalizedSource.lines || []).join(", ")
+      : null,
+    seedSource && seedSource.unnormalized_address,
+    seedSource && seedSource.full_address,
+    extraRawCandidates,
+  );
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidateQueue);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const collectString = (...values) =>
+    safeNullIfEmpty(
+      resolveFirstNonEmptyString(flattenCandidateValues(...values)),
+    );
+
+  const collectCoordinate = (field) => {
+    const queue = [
+      payload && payload[field],
+      unnormalizedSource && unnormalizedSource[field],
+      seedSource && seedSource[field],
+    ];
+    for (const candidate of queue) {
+      const numeric = parseCoordinate(candidate);
+      if (Number.isFinite(numeric)) {
+        return numeric;
+      }
+    }
+    return null;
+  };
+
+  const latitude = collectCoordinate("latitude");
+  const longitude = collectCoordinate("longitude");
+
+  const resolvedCounty = collectString(
+    payload && payload.county_name,
+    unnormalizedSource && unnormalizedSource.county_name,
+    unnormalizedSource && unnormalizedSource.county_jurisdiction,
+    seedSource && seedSource.county_name,
+    defaultCountyName,
+  );
+  const resolvedState = collectString(
+    payload && payload.state_code,
+    unnormalizedSource && unnormalizedSource.state_code,
+    seedSource && seedSource.state_code,
+    defaultStateCode,
+  );
+  const resolvedCity = collectString(
+    payload && payload.city_name,
+    unnormalizedSource && unnormalizedSource.city_name,
+    unnormalizedSource && unnormalizedSource.municipality_name,
+  );
+  const resolvedMunicipality = collectString(
+    payload && payload.municipality_name,
+    unnormalizedSource && unnormalizedSource.municipality_name,
+  );
+  const resolvedPostal = collectString(
+    payload && payload.postal_code,
+    unnormalizedSource && unnormalizedSource.postal_code,
+    seedSource && seedSource.postal_code,
+  );
+  const resolvedPlusFour = collectString(
+    payload && payload.plus_four_postal_code,
+    unnormalizedSource && unnormalizedSource.plus_four_postal_code,
+    seedSource && seedSource.plus_four_postal_code,
+  );
+  const resolvedRequestIdentifier = collectString(
+    payload && payload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+  );
+
+  const preparedSource = resolveSourceHttpRequest(
+    payload && payload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const rawPayload = {
+    unnormalized_address: resolvedRaw,
+    __force_raw_variant: true,
+    county_name: resolvedCounty ? titleCaseCounty(resolvedCounty) : null,
+    city_name: resolvedCity ? sanitizeCityName(resolvedCity) : null,
+    municipality_name: resolvedMunicipality
+      ? toTitleCase(resolvedMunicipality)
+      : null,
+    state_code: resolvedState
+      ? String(resolvedState).trim().toUpperCase()
+      : null,
+    country_code: defaultCountryCode || "US",
+    postal_code: resolvedPostal
+      ? sanitizePostalCode(resolvedPostal)
+      : null,
+    plus_four_postal_code: resolvedPlusFour
+      ? sanitizePlus4(resolvedPlusFour)
+      : null,
+    request_identifier:
+      resolvedRequestIdentifier === undefined
+        ? null
+        : resolvedRequestIdentifier,
+    source_http_request: preparedSource || null,
+  };
+
+  if (!rawPayload.postal_code) {
+    rawPayload.plus_four_postal_code = null;
+  }
+
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    rawPayload.latitude = latitude;
+    rawPayload.longitude = longitude;
+  }
+
+  if (
+    (rawPayload.latitude == null && rawPayload.longitude != null) ||
+    (rawPayload.latitude != null && rawPayload.longitude == null)
+  ) {
+    rawPayload.latitude = null;
+    rawPayload.longitude = null;
+  }
+
+  writeJSON(addressPath, rawPayload);
+}
+
 
 function writeRelationshipFile(filePath, fromRelative, toRelative) {
   const baseName = path.basename(filePath, ".json");
@@ -9893,6 +10056,31 @@ async function main() {
 
   console.log("Running utility mapping...");
   require("./utilityMapping.js");
+
+  try {
+    const extraRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    forceRawAddressPayloadFromSource(addressOutputPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates,
+    });
+    ensureNullRelationshipPlaceholders(
+      dataDir,
+      Array.from(RELATIONSHIP_AUTOGENERATED_BASENAMES),
+    );
+  } catch (error) {
+    console.error("Failed to enforce final raw address output:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
 
   console.log("All mapping scripts completed successfully");
 }
