@@ -1327,6 +1327,10 @@ function writeTaxes($, propertySeed, parcelId) {
     const taxable = parseCurrencyToNumber(h.taxable);
 
     // Create tax entry with all fields (following verified example pattern)
+    // Calculate period dates from tax year
+    const periodStartDate = h.year ? `${h.year}-01-01` : null;
+    const periodEndDate = h.year ? `${h.year}-12-31` : null;
+
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
@@ -1339,8 +1343,8 @@ function writeTaxes($, propertySeed, parcelId) {
       property_taxable_value_amount: taxable,
       millage_rate: millageRate,
       monthly_tax_amount: null,
-      period_end_date: null,
-      period_start_date: null,
+      period_end_date: periodEndDate,
+      period_start_date: periodStartDate,
     };
 
     allYears.set(h.year, taxEntry);
@@ -1375,6 +1379,10 @@ function writeTaxes($, propertySeed, parcelId) {
       if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
       // Create new entry with all fields (following verified example pattern)
+      // Calculate period dates from tax year
+      const periodStartDate = v.year ? `${v.year}-01-01` : null;
+      const periodEndDate = v.year ? `${v.year}-12-31` : null;
+
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
@@ -1387,8 +1395,8 @@ function writeTaxes($, propertySeed, parcelId) {
         property_taxable_value_amount: taxable,
         millage_rate: millageRate,
         monthly_tax_amount: null,
-        period_end_date: null,
-        period_start_date: null,
+        period_end_date: periodEndDate,
+        period_start_date: periodStartDate,
       };
 
       allYears.set(v.year, taxEntry);
