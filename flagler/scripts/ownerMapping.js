@@ -234,10 +234,10 @@ function extractSalesOwnersByDate($) {
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
 
-    // Grantor is the 8th column (index 7) - using td.eq(6) because th is separate
+    // Grantor is the 7th column (index 6)
     // Column structure: th(date), td0(price), td1(instrument), td2(book), td3(page), td4(qual), td5(vacant), td6(grantor), td7(link)
     // Access the grantor td element first to ensure the selector is read
-    const grantorTd = tds.eq(7);
+    const grantorTd = tds.eq(6);
     // Then access the span within it (sprGrantor_lblSuppressed)
     const grantorSpan = grantorTd.find("span");
     // Get text from span first, fallback to td text
