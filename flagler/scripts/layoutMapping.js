@@ -91,7 +91,7 @@ function toInt(val) {
 function defaultLayout(space_type, idx) {
   return {
     space_type,
-    space_index: idx,
+    space_type_index: String(idx),
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
