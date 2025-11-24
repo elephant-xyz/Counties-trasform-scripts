@@ -45399,6 +45399,124 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
   writeJSON(addressPath, rawPayload);
 }
 
+function enforceFinalRawAddressSchemaVariant(addressPath, options = {}) {
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    extraRawCandidates = [],
+    extraRequestIdentifierCandidates = [],
+    extraSourceHttpRequestCandidates = [],
+  } = options || {};
+
+  if (!addressPath) return;
+
+  const existingPayload = readJSONIfExists(addressPath);
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+
+  const normalizedProbe =
+    existingPayload && typeof existingPayload === "object"
+      ? ensureNormalizedAddressSchemaSurface
+        ? ensureNormalizedAddressSchemaSurface({ ...existingPayload })
+        : { ...existingPayload }
+      : null;
+
+  if (
+    normalizedProbe &&
+    hasStrictNormalizedAddressCoverage({ ...normalizedProbe })
+  ) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...normalizedProbe }) || null;
+    if (normalizedOutput) {
+      writeJSON(addressPath, normalizedOutput);
+      return;
+    }
+  }
+
+  const rawCandidates = [];
+  const enqueueRaw = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidates.push(trimmed);
+    }
+  };
+
+  const harvestRawFromSource = (source) => {
+    if (!source || typeof source !== "object") return;
+    const candidateFields = [
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+      "raw_address",
+      "location_address",
+      "mail_address",
+    ];
+    for (const field of candidateFields) {
+      enqueueRaw(source[field]);
+    }
+    if (Array.isArray(source.lines)) {
+      const joined = source.lines
+        .map((line) => (typeof line === "string" ? line.trim() : ""))
+        .filter((line) => line.length)
+        .join(", ");
+      enqueueRaw(joined);
+    }
+  };
+
+  harvestRawFromSource(existingPayload);
+  harvestRawFromSource(unnormalizedSource);
+  harvestRawFromSource(seedSource);
+
+  if (Array.isArray(extraRawCandidates)) {
+    for (const candidate of extraRawCandidates) {
+      enqueueRaw(candidate);
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    for (const candidate of ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) {
+      enqueueRaw(candidate);
+    }
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    extraRequestIdentifierCandidates,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+    extraSourceHttpRequestCandidates,
+  );
+
+  const rawPayload = {
+    unnormalized_address: resolvedRaw,
+    request_identifier:
+      requestIdentifier === undefined ? null : requestIdentifier,
+  };
+
+  if (sourceHttpRequest) {
+    rawPayload.source_http_request = deepClone(sourceHttpRequest);
+  }
+
+  writeJSON(addressPath, rawPayload);
+}
+
 function finalizeAddressFromSourceData(addressPath, options = {}) {
   const {
     unnormalizedPath = "unnormalized_address.json",
@@ -50575,6 +50693,38 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to prune normalized-only address fields:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const fallbackRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    const fallbackRequestIds =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : [];
+    const fallbackSourceRequests =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+        : [];
+    enforceFinalRawAddressSchemaVariant(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      extraRawCandidates: fallbackRawCandidates,
+      extraRequestIdentifierCandidates: fallbackRequestIds,
+      extraSourceHttpRequestCandidates: fallbackSourceRequests,
+    });
+  } catch (error) {
+    console.error("Failed to enforce terminal raw address schema variant:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
