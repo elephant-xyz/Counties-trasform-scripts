@@ -1111,12 +1111,13 @@ function writeTaxes($, propertySeed, parcelId) {
 
     // Create tax entry with all fields in one object literal
     // Required fields must always be present (even if null)
+    // For tax year periods, use January 1 to December 31 of the tax year
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
       monthly_tax_amount: null,
-      period_start_date: null,
-      period_end_date: null,
+      period_start_date: h.year ? `${h.year}-01-01` : null,
+      period_end_date: h.year ? `${h.year}-12-31` : null,
     };
 
     // Conditionally add optional fields only if they have valid values
@@ -1159,12 +1160,13 @@ function writeTaxes($, propertySeed, parcelId) {
       if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
       // Add new entry - create with all required fields in one object literal
+      // For tax year periods, use January 1 to December 31 of the tax year
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
         monthly_tax_amount: null,
-        period_start_date: null,
-        period_end_date: null,
+        period_start_date: v.year ? `${v.year}-01-01` : null,
+        period_end_date: v.year ? `${v.year}-12-31` : null,
       };
 
       // Conditionally add optional fields only if they have valid values
