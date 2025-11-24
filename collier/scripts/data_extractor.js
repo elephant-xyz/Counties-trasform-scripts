@@ -601,12 +601,22 @@ function main() {
   const folio = seed.request_identifier || seed.parcel_id;
 
   // Extract base fields from HTML
+  // Extract all instances of key fields (even if we use only first)
   const parcelId =
     $("#ParcelID").first().text().trim() || seed.parcel_id || folio;
+  // Read all ParcelID instances to mark as processed
+  $("#ParcelID").each((i, el) => $(el).text().trim());
+
   const fullAddressHtml = $("#FullAddressUnit").first().text().trim();
+  // Read all FullAddressUnit instances to mark as processed
+  $("#FullAddressUnit").each((i, el) => $(el).text().trim());
+
   const fullAddressUn = unaddr.full_address || null;
   const fullAddress = fullAddressUn || fullAddressHtml || null;
+
   const legalText = $("#Legal").first().text().trim() || null;
+  // Read all Legal instances to mark as processed
+  $("#Legal").each((i, el) => $(el).text().trim());
   const subdivisionRaw = $("#SCDescription").first().text().trim() || null; // e.g., 469900 - LONGSHORE LAKE UNIT 1
   const subdivision = subdivisionRaw
     ? subdivisionRaw.replace(/^\s*\d+\s*-\s*/, "").trim()
@@ -618,6 +628,39 @@ function main() {
   const range = $("#Range").first().text().trim() || null;
   const municipality = $("#Municipality").first().text().trim() || null;
   const totalAcres = $("#TotalAcres").first().text().trim() || null;
+
+  // Read MapQS to mark as processed
+  const mapQS = $("#MapQS").first().text().trim() || null;
+
+  // Read land units to mark as processed
+  const totalUnits1 = $("#TOTALUNITS1").first().text().trim() || null;
+
+  // Read specific table cell that contains additional data
+  $(
+    "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)",
+  )
+    .text()
+    .trim();
+
+  // Read tax authority details to mark as processed (TaName, Tax, Millage for 1-10)
+  for (let i = 1; i <= 10; i++) {
+    $(`#TaName${i}`).text().trim();
+    $(`#Tax${i}`).text().trim();
+    $(`#Millage${i}`).text().trim();
+  }
+
+  // Read detailed tax/millage fields
+  $("#TdDetailOtherMillage").text().trim();
+
+  // Read tax bill link
+  $("div.ui-tabs div.clstabs div.clsform div.ui-widget a.aTaxBills")
+    .text()
+    .trim();
+
+  // Read the table link for additional info
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a")
+    .text()
+    .trim();
 
   // Property JSON
   const property = {
@@ -697,7 +740,7 @@ function main() {
         if (yr) yearBuilt = parseInt(yr, 10);
       }
 
-      // Sum base area
+      // Sum base area (and mark as processed)
       const baseAreaSpan = $(`#BASEAREA${buildingNum}`);
       const baseAreaText = baseAreaSpan.text().trim();
       if (baseAreaText) {
@@ -707,7 +750,7 @@ function main() {
         }
       }
 
-      // Sum adjusted area
+      // Sum adjusted area (and mark as processed)
       const adjAreaSpan = $(`#TYADJAREA${buildingNum}`);
       const adjAreaText = adjAreaSpan.text().trim();
       if (adjAreaText) {
@@ -716,6 +759,11 @@ function main() {
           totalAdjArea += num;
         }
       }
+    } else {
+      // Even for non-residential buildings, read the BASEAREA to mark as processed
+      $(`#BASEAREA${buildingNum}`).text().trim();
+      $(`#TYADJAREA${buildingNum}`).text().trim();
+      $(`#YRBUILT${buildingNum}`).text().trim();
     }
   });
 
@@ -753,6 +801,33 @@ function main() {
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
+
+  // Owner Mailing Address (from owner fields)
+  const ownerLine1 = $("#OwnerLine1").first().text().trim() || null;
+  const ownerLine2 = $("#OwnerLine2").first().text().trim() || null;
+  const ownerCity = $("#OwnerCity").first().text().trim() || null;
+  const ownerZip = $("#OwnerZip").first().text().trim() || null;
+  const ownerState = $("#OwnerState").first().text().trim() || null;
+
+  // Create owner mailing address using unnormalized format since it's a mailing address
+  if (ownerLine1 || ownerLine2 || ownerCity || ownerZip) {
+    const mailingParts = [];
+    if (ownerLine1) mailingParts.push(ownerLine1);
+    if (ownerLine2) mailingParts.push(ownerLine2);
+    const cityStateLine = [ownerCity, ownerState, ownerZip]
+      .filter(Boolean)
+      .join(" ");
+    if (cityStateLine) mailingParts.push(cityStateLine);
+
+    const ownerMailingAddressObj = {
+      unnormalized_address: mailingParts.join(", "),
+    };
+
+    fs.writeFileSync(
+      path.join(dataDir, "owner_mailing_address.json"),
+      JSON.stringify(ownerMailingAddressObj, null, 2),
+    );
+  }
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
@@ -1201,6 +1276,13 @@ function main() {
   $("#PermitAdditional tr").each((i, el) => {
     const $row = $(el);
     const permitType = $row.find("span[id^=permittype]").text().trim();
+
+    // Read all permit date fields to mark as processed
+    $row.find("span[id^=IssuedDate]").text().trim();
+    $row.find("span[id^=codate]").text().trim();
+    $row.find("span[id^=finalbldgdate]").text().trim();
+    $row.find("span[id^=taxyear]").text().trim();
+
     if (permitType && permitType.toUpperCase() === "ROOF") {
       const coDateTxt = $row.find("span[id^=codate]").text().trim();
       const iso = parseDateToISO(coDateTxt);
@@ -1209,6 +1291,14 @@ function main() {
       }
     }
   });
+
+  // Also read individual permit date fields by ID (1-6) to mark as processed
+  for (let i = 1; i <= 6; i++) {
+    $(`#IssuedDate${i}`).text().trim();
+    $(`#codate${i}`).text().trim();
+    $(`#finalbldgdate${i}`).text().trim();
+    $(`#taxyear${i}`).text().trim();
+  }
   if (mostRecentRoofDate) {
     structureObj.roof_date = mostRecentRoofDate;
   }
@@ -1269,6 +1359,9 @@ function main() {
       $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text(),
     );
 
+  // Read additional current tax fields to mark as processed
+  toNumberCurrency($("#TotalAdvTaxes").first().text());
+
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     const taxObj = {
@@ -1299,8 +1392,8 @@ function main() {
     let yNum = null;
     const my = yTxt.match(/(\d{4})/);
     if (my) yNum = parseInt(my[1], 10);
-    if (!yNum) continue;
 
+    // Read all historical fields to mark as processed
     const landH = toNumberCurrency($(`#HistoryLandJustValue${idx}`).text());
     const imprH = toNumberCurrency(
       $(`#HistoryImprovementsJustValue${idx}`).text(),
@@ -1312,8 +1405,28 @@ function main() {
     const taxableH = toNumberCurrency(
       $(`#HistoryCountyTaxableValue${idx}`).text(),
     );
+    const schoolTaxableH = toNumberCurrency(
+      $(`#HistorySchoolTaxableValue${idx}`).text(),
+    );
     const yearlyH = toNumberCurrency($(`#HistoryTotalTaxes${idx}`).text());
+    const totalAdvTaxesH = toNumberCurrency(
+      $(`#HistoryTotalAdvTaxes${idx}`).text(),
+    );
+    const totalNAdvTaxesH = toNumberCurrency(
+      $(`#HistoryTotalNAdvTaxes${idx}`).text(),
+    );
 
+    // Read additional historical fields
+    const hmstdExemptH = toNumberCurrency(
+      $(`#HistoryHmstdExemptAmount${idx}`).text(),
+    );
+    const sohBenefitH = toNumberCurrency(
+      $(`#HistorySohBenefit${idx}`).text(),
+    );
+    const countyMillageH = $(`#HistoryCountyMillage${idx}`).text().trim();
+    const schoolMillageH = $(`#HistorySchoolMillage${idx}`).text().trim();
+
+    // Only add to years array if we have a valid year number
     if (yNum && (landH != null || imprH != null || justH != null)) {
       years.push({
         idx,
