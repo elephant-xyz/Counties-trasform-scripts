@@ -1200,6 +1200,8 @@ const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl10_ctl01_grdSales_grdFlat tbody tr
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl03_ctl01_grdValuation";
 // const HISTORICAL_VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl13_ctl01_grdLand_grdFlat";
 const OWNER_MAILING_ADDRESS_SELECTOR = "#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress";
+const PERMITS_TABLE_SELECTOR = "#ctlBodyPane_ctl12_ctl01_grdPermits tbody tr";
+const SKETCH_THUMBNAILS_SELECTOR = ".sketch-thumbnail";
 
 function readJSON(p) {
   try {
@@ -1441,6 +1443,84 @@ function extractSales($) {
     });
   });
   return out;
+}
+
+function extractPermits($) {
+  const rows = $(PERMITS_TABLE_SELECTOR);
+  const permits = [];
+  rows.each((i, tr) => {
+    const tds = $(tr).find("th, td");
+    if (tds.length >= 5) {
+      const permitNumber = textOf($(tds[0]));
+      const type = textOf($(tds[1]));
+      const description = textOf($(tds[2]));
+      const issued = textOf($(tds[3]));
+      const amount = textOf($(tds[4]));
+
+      // Skip rows that are just error messages
+      if (permitNumber && !permitNumber.includes("No PDFs")) {
+        permits.push({
+          permitNumber,
+          type,
+          description,
+          issued,
+          amount
+        });
+      }
+    }
+  });
+  return permits;
+}
+
+function mapPermitTypeToImprovementType(typeCode) {
+  const typeCodeStr = (typeCode || "").trim();
+  // Map common permit type codes to improvement_type enum values
+  const mapping = {
+    "010": "GeneralBuilding",
+    "020": "ResidentialConstruction",
+    "030": "CommercialConstruction",
+    "040": "BuildingAddition",
+    "050": "StructureMove",
+    "060": "CommercialConstruction",  // REMODEL-COMMERCIAL maps to CommercialConstruction
+    "070": "Demolition",
+    "080": "PoolSpaInstallation",
+    "090": "Electrical",
+    "100": "MechanicalHVAC",
+    "110": "GasInstallation",
+    "120": "Roofing",
+    "130": "CommercialConstruction",  // REMODEL maps to CommercialConstruction
+    "140": "Fencing",
+    "150": "DockAndShore",
+    "160": "FireProtectionSystem",
+    "170": "Plumbing",
+    "180": "GeneralBuilding",  // SIGN maps to GeneralBuilding
+    "190": "GeneralBuilding",  // SIGN maps to GeneralBuilding
+    "200": "ExteriorOpeningsAndFinishes"
+  };
+  return mapping[typeCodeStr] || "GeneralBuilding";
+}
+
+function mapPermitDescriptionToImprovementAction(description) {
+  const desc = (description || "").trim().toUpperCase();
+  if (desc.includes("NEW") || desc.includes("INSTALL")) return "New";
+  if (desc.includes("REPLACE")) return "Replacement";
+  if (desc.includes("REPAIR")) return "Repair";
+  if (desc.includes("ALTER") || desc.includes("REMODEL")) return "Alteration";
+  if (desc.includes("ADDITION") || desc.includes("ADD")) return "Addition";
+  if (desc.includes("REMOVE") || desc.includes("DEMO")) return "Remove";
+  return "Other";
+}
+
+function extractSketches($) {
+  const sketches = [];
+  $(SKETCH_THUMBNAILS_SELECTOR).each((i, elem) => {
+    const caption = $(elem).find(".sketch-thumbnail-caption").text().trim();
+    sketches.push({
+      name: caption || `Building ${i + 1}`,
+      caption: caption
+    });
+  });
+  return sketches;
 }
 
 function mapInstrumentToDeedType(instr) {
@@ -2227,6 +2307,57 @@ function createGeometryClass(geometryInstances) {
   }
 }
 
+function writePermitsAndImprovements($) {
+  const permits = extractPermits($);
+  permits.forEach((permit, i) => {
+    const idx = i + 1;
+    const feeAmount = parseCurrencyToNumber(permit.amount);
+    const permitIssueDate = parseDateToISO(permit.issued);
+
+    const propertyImprovement = {
+      permit_number: permit.permitNumber || null,
+      improvement_type: mapPermitTypeToImprovementType(permit.type),
+      improvement_action: mapPermitDescriptionToImprovementAction(permit.description),
+      permit_issue_date: permitIssueDate,
+      completion_date: null,
+      fee: (typeof feeAmount === "number" && Number.isFinite(feeAmount)) ? feeAmount : null,
+      improvement_status: null,
+      permit_close_date: null,
+      final_inspection_date: null,
+      application_received_date: null,
+      contractor_type: null,
+      is_disaster_recovery: null,
+      is_owner_builder: null,
+      permit_required: true,  // Since we extracted it from permits table, permit was required
+      private_provider_inspections: null,
+      private_provider_plan_review: null
+    };
+
+    // Only include fee if it's a valid number
+    if (typeof feeAmount !== "number" || !Number.isFinite(feeAmount)) {
+      delete propertyImprovement.fee;
+    }
+
+    writeJSON(path.join("data", `property_improvement_${idx}.json`), propertyImprovement);
+  });
+}
+
+function writeSketchesAndFiles($) {
+  const sketches = extractSketches($);
+  sketches.forEach((sketch, i) => {
+    // Start numbering from 1001 to avoid conflicts with deed files
+    const idx = 1000 + i + 1;
+    const file = {
+      name: sketch.name || `Building ${i + 1}`,
+      document_type: "PropertyImage",
+      file_format: "jpeg",
+      original_url: null,
+      ipfs_url: null
+    };
+    writeJSON(path.join("data", `file_${idx}.json`), file);
+  });
+}
+
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -2260,6 +2391,8 @@ function main() {
   writeSalesDeedsFilesAndRelationships($);
 
   writeTaxes($);
+  writePermitsAndImprovements($);
+  writeSketchesAndFiles($);
 
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
