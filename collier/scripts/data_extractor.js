@@ -565,44 +565,9 @@ function main() {
   // Read land units to mark as processed
   const totalUnits1 = $("#TOTALUNITS1").first().text().trim() || null;
 
-  // Read specific table cells that contain additional data
-  $(
-    "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)",
-  )
-    .text()
-    .trim();
-  $(
-    "div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(4) > td.clsField:nth-child(1)",
-  )
-    .text()
-    .trim();
-  $(
-    "div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)",
-  )
-    .text()
-    .trim();
+  // Removed unnecessary selector reads that were not being mapped to output
 
-  // Read tax authority details to mark as processed (TaName, Tax, Millage for 1-10)
-  for (let i = 1; i <= 10; i++) {
-    $(`#TaName${i}`).text().trim();
-    $(`#Tax${i}`).text().trim();
-    $(`#Millage${i}`).text().trim();
-  }
-
-  // Read detailed tax/millage fields
-  $("#TdDetailSchoolMillage").text().trim();
-  $("#TdDetailCountyMillage").text().trim();
-  $("#TdDetailOtherMillage").text().trim();
-
-  // Read tax bill link
-  $("div.ui-tabs div.clstabs div.clsform div.ui-widget a.aTaxBills")
-    .text()
-    .trim();
-
-  // Read the table link for additional info
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a")
-    .text()
-    .trim();
+  // Removed unnecessary table link read
 
   // Property JSON
   const property = {
@@ -1219,12 +1184,6 @@ function main() {
     const $row = $(el);
     const permitType = $row.find("span[id^=permittype]").text().trim();
 
-    // Read all permit date fields to mark as processed
-    $row.find("span[id^=IssuedDate]").text().trim();
-    $row.find("span[id^=codate]").text().trim();
-    $row.find("span[id^=finalbldgdate]").text().trim();
-    $row.find("span[id^=taxyear]").text().trim();
-
     if (permitType && permitType.toUpperCase() === "ROOF") {
       const coDateTxt = $row.find("span[id^=codate]").text().trim();
       const iso = parseDateToISO(coDateTxt);
@@ -1233,14 +1192,6 @@ function main() {
       }
     }
   });
-
-  // Also read individual permit date fields by ID (1-6) to mark as processed
-  for (let i = 1; i <= 6; i++) {
-    $(`#IssuedDate${i}`).text().trim();
-    $(`#codate${i}`).text().trim();
-    $(`#finalbldgdate${i}`).text().trim();
-    $(`#taxyear${i}`).text().trim();
-  }
   if (mostRecentRoofDate) {
     structureObj.roof_date = mostRecentRoofDate;
   }
@@ -1301,9 +1252,6 @@ function main() {
       $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text(),
     );
 
-  // Read additional current tax fields to mark as processed
-  toNumberCurrency($("#TotalAdvTaxes").first().text());
-
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     const taxableValue = taxable != null ? taxable : assessed != null ? assessed : null;
@@ -1341,7 +1289,7 @@ function main() {
     const my = yTxt.match(/(\d{4})/);
     if (my) yNum = parseInt(my[1], 10);
 
-    // Read all historical fields to mark as processed
+    // Read historical fields that are actually used in output
     const landH = toNumberCurrency($(`#HistoryLandJustValue${idx}`).text());
     const imprH = toNumberCurrency(
       $(`#HistoryImprovementsJustValue${idx}`).text(),
@@ -1353,26 +1301,7 @@ function main() {
     const taxableH = toNumberCurrency(
       $(`#HistoryCountyTaxableValue${idx}`).text(),
     );
-    const schoolTaxableH = toNumberCurrency(
-      $(`#HistorySchoolTaxableValue${idx}`).text(),
-    );
     const yearlyH = toNumberCurrency($(`#HistoryTotalTaxes${idx}`).text());
-    const totalAdvTaxesH = toNumberCurrency(
-      $(`#HistoryTotalAdvTaxes${idx}`).text(),
-    );
-    const totalNAdvTaxesH = toNumberCurrency(
-      $(`#HistoryTotalNAdvTaxes${idx}`).text(),
-    );
-
-    // Read additional historical fields
-    const hmstdExemptH = toNumberCurrency(
-      $(`#HistoryHmstdExemptAmount${idx}`).text(),
-    );
-    const sohBenefitH = toNumberCurrency(
-      $(`#HistorySohBenefit${idx}`).text(),
-    );
-    const countyMillageH = $(`#HistoryCountyMillage${idx}`).text().trim();
-    const schoolMillageH = $(`#HistorySchoolMillage${idx}`).text().trim();
 
     // Only add to years array if we have a valid year number
     if (yNum && (landH != null || imprH != null || justH != null)) {
