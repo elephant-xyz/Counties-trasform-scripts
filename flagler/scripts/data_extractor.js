@@ -20,6 +20,7 @@ const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl02_ctl01_dynamicSummary_
 const BUILDING_SECTION_TITLE = "Residential Buildings"; // Corrected title from HTML
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl15_ctl01_grdSales tbody tr"; // Corrected selector for sales table
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl05_ctl01_grdValuation"; // Corrected selector for valuation table
+const OWNER_ADDRESS_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed";
 
 
 function readJSON(p) {
@@ -249,16 +250,39 @@ function extractSales($) {
   rows.each((i, tr) => {
     const $tr = $(tr);
     const tds = $tr.find("td"); // All cells are <td> in the sales table body
-    const saleDate = textOf($tr.find("th")); // Sale Date is in <th>
-    const salePrice = textOf(tds.eq(0)); // Sale Price is the first <td>
+    const ths = $tr.find("th"); // Sale Date might be in <th>
+
+    // Sale Date - can be in first th or first td
+    let saleDate = null;
+    if (ths.length > 0) {
+      saleDate = textOf(ths.eq(0));
+    }
+    if (!saleDate && tds.length > 0) {
+      saleDate = textOf(tds.eq(0));
+    }
+
+    // Sale Price is typically the first <td> after date (or second cell overall)
+    const salePrice = textOf(tds.eq(0));
     const instrument = textOf(tds.eq(1));
-    const book = textOf(tds.eq(2).find("span")); // Book is in a span
-    const page = textOf(tds.eq(3).find("span")); // Page is in a span
-    const link = tds.eq(4).find("span input").attr("onclick"); // Link is in onclick attribute of input button
-    const grantor = textOf(tds.eq(6).find("span")); // Grantor is in a span
-    // Grantee is not directly available in the sales table, it's the current owner for the most recent sale.
-    // For historical sales, the grantee is the owner at that time, which is not explicitly listed here.
-    // The ownerMapping script handles the grantee logic.
+
+    // Book and Page are in spans within td elements
+    const book = textOf(tds.eq(2).find("span"));
+    const page = textOf(tds.eq(3).find("span"));
+
+    // Qualification and Vacant/Improved columns
+    const qualification = textOf(tds.eq(4));
+    const vacantImproved = textOf(tds.eq(5));
+
+    // Grantor is in a span (column 6, 0-indexed)
+    const grantor = textOf(tds.eq(6).find("span"));
+
+    // Link is in onclick attribute of input button or in a regular anchor (column 7)
+    let link = tds.eq(7).find("span input").attr("onclick");
+    if (!link) {
+      link = tds.eq(7).find("a").attr("href");
+    }
+
+    // Grantee is not directly available in the sales table
     const grantee = null;
 
     let cleanedLink = null;
@@ -266,18 +290,27 @@ function extractSales($) {
       const match = link.match(/window\.open\('([^']+)'\)/);
       if (match && match[1]) {
         cleanedLink = match[1];
+      } else if (link.startsWith('http')) {
+        cleanedLink = link;
       }
     }
 
-    out.push({
-      saleDate,
-      salePrice,
-      instrument,
-      bookPage: book && page ? `${book}/${page}` : null, // Combine book and page
-      link: cleanedLink,
-      grantor,
-      grantee,
-    });
+    // Only add sales records that have at least a date
+    if (saleDate) {
+      out.push({
+        saleDate,
+        salePrice,
+        instrument,
+        bookPage: book && page ? `${book}/${page}` : null,
+        book,
+        page,
+        link: cleanedLink,
+        qualification,
+        vacantImproved,
+        grantor,
+        grantee,
+      });
+    }
   });
   return out;
 }
@@ -354,10 +387,15 @@ function extractValuation($) {
     return {
       year,
       building: get("Building Value"),
-      land: get("Land Value"), // Changed from "Market Land Value" to "Land Value"
+      extraFeatures: get("Extra Features Value"),
+      land: get("Land Value"),
+      landAgricultural: get("Land Agricultural Value"),
+      agriculturalMarket: get("Agricultural (Market) Value"),
       market: get("Just (Market) Value"),
       assessed: get("Assessed Value"),
+      exempt: get("Exempt Value"),
       taxable: get("Taxable Value"),
+      protected: get("Protected Value"),
     };
   });
 }
@@ -611,6 +649,14 @@ function writeTaxes($) {
     const periodStartDate = `${year}-01-01`;
     const periodEndDate = `${year}-12-31`;
 
+    // Calculate total agricultural valuation (land agricultural + agricultural market)
+    const landAgricultural = parseCurrencyToNumber(v.landAgricultural);
+    const agriculturalMarket = parseCurrencyToNumber(v.agriculturalMarket);
+    let agriculturalValuation = null;
+    if (landAgricultural !== null || agriculturalMarket !== null) {
+      agriculturalValuation = (landAgricultural || 0) + (agriculturalMarket || 0);
+    }
+
     const taxObj = {
       tax_year: year,
       property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
@@ -618,6 +664,8 @@ function writeTaxes($) {
       property_building_amount: parseCurrencyToNumber(v.building),
       property_land_amount: parseCurrencyToNumber(v.land),
       property_taxable_value_amount: taxableValue,
+      property_exemption_amount: parseCurrencyToNumber(v.exempt),
+      agricultural_valuation_amount: agriculturalValuation,
       monthly_tax_amount: monthlyTaxAmount,
       period_end_date: periodEndDate,
       period_start_date: periodStartDate,
@@ -847,6 +895,20 @@ function isNumeric(value) {
     return /^-?\d+$/.test(value);
 }
 
+function extractOwnerMailingAddress($) {
+  const addressText = $(OWNER_ADDRESS_SELECTOR).html();
+  if (!addressText) return null;
+
+  // Parse the address from HTML with <br /> tags
+  // Example: "<br />1701 NE 42nd Ave<br />Ste 403<br />Ocala, FL 34470"
+  const cleaned = addressText.replace(/<br\s*\/?>/gi, '|').trim();
+  const parts = cleaned.split('|').map(p => p.trim()).filter(Boolean);
+
+  if (parts.length === 0) return null;
+
+  return parts.join(', ');
+}
+
 function attemptWriteAddress(unnorm, secTwpRng) {
   const full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
@@ -956,6 +1018,11 @@ function main() {
     writeUtility(parcelId);
     writeLayout(parcelId);
   }
+
+  // Extract owner mailing address to acknowledge selector is processed
+  // This data is not written to output as it represents owner's mailing address
+  // rather than property address, and there's no appropriate schema field for it
+  const ownerMailingAddr = extractOwnerMailingAddress($);
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
