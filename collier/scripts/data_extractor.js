@@ -572,9 +572,10 @@ function main() {
   const hmstdExemptAmount = toNumberCurrency($("#HmstdExemptAmount").first().text());
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").first().text());
 
-  // Extract millage fields
-  const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim() || null;
+  // Extract millage detail fields (from detailed tax breakdown)
+  const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim() || null;
   const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim() || null;
+  const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim() || null;
 
   // Extract school taxable value
   const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").first().text());
@@ -601,16 +602,9 @@ function main() {
     }
   }
 
-  // Extract OwnerLine1
-  const ownerLine1Full = $("#OwnerLine1").first().text().trim() || null;
+  // OwnerLine1 is extracted below in the owner section
 
-  // Extract tax bills link text
-  const taxBillsLinkText = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim() || null;
-
-  // Extract specific table cell value
-  const landTableCellValue = $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text().trim() || null;
-
-  // Extract historical tax fields
+  // Extract historical tax fields (comprehensive extraction for all History* selectors)
   const historicalTaxData = [];
   for (let i = 1; i <= 5; i++) {
     const sohBenefit = toNumberCurrency($(`#HistorySohBenefit${i}`).first().text());
@@ -618,11 +612,16 @@ function main() {
     const totalJustValue = toNumberCurrency($(`#HistoryTotalJustValue${i}`).first().text());
     const schoolTaxableValue = toNumberCurrency($(`#HistorySchoolTaxableValue${i}`).first().text());
     const schoolMillage = parseFloat($(`#HistorySchoolMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
+    const countyMillage = parseFloat($(`#HistoryCountyMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
+    const otherMillage = parseFloat($(`#HistoryOtherMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
     const totalAdvTaxes = toNumberCurrency($(`#HistoryTotalAdvTaxes${i}`).first().text());
     const totalNAdvTaxes = toNumberCurrency($(`#HistoryTotalNAdvTaxes${i}`).first().text());
     const totalTaxes = toNumberCurrency($(`#HistoryTotalTaxes${i}`).first().text());
+    const landJustValue = toNumberCurrency($(`#HistoryLandJustValue${i}`).first().text());
+    const improvementsJustValue = toNumberCurrency($(`#HistoryImprovementsJustValue${i}`).first().text());
 
-    if (sohBenefit !== null || countyTaxableValue !== null || totalJustValue !== null || schoolTaxableValue !== null) {
+    if (sohBenefit !== null || countyTaxableValue !== null || totalJustValue !== null ||
+        schoolTaxableValue !== null || landJustValue !== null || improvementsJustValue !== null) {
       historicalTaxData.push({
         index: i,
         soh_benefit: sohBenefit,
@@ -630,9 +629,13 @@ function main() {
         total_just_value: totalJustValue,
         school_taxable_value: schoolTaxableValue,
         school_millage: schoolMillage,
+        county_millage: countyMillage,
+        other_millage: otherMillage,
         total_adv_taxes: totalAdvTaxes,
         total_nadv_taxes: totalNAdvTaxes,
-        total_taxes: totalTaxes
+        total_taxes: totalTaxes,
+        land_just_value: landJustValue,
+        improvements_just_value: improvementsJustValue
       });
     }
   }
@@ -658,14 +661,13 @@ function main() {
     }
   }
 
-  // Extract SaleAmount3 (additional sale record)
+  // Extract additional SaleAmount fields (SaleAmount2, SaleAmount3, etc.)
+  const saleAmount2 = toNumberCurrency($("#SaleAmount2").first().text());
   const saleAmount3 = toNumberCurrency($("#SaleAmount3").first().text());
+  const saleDate2 = parseDateToISO($("#SaleDate2").first().text().trim());
+  const saleDate3 = parseDateToISO($("#SaleDate3").first().text().trim());
 
-  // Extract BASEAREA1 (already extracted in building loop, but mark as read)
-  const baseArea1 = $("#BASEAREA1").first().text().trim() || null;
-
-  // Extract land table cell value
-  const landTableCell = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim() || null;
+  // BASEAREA is already extracted in the building loop above
 
   // Property JSON
   const property = {
@@ -788,6 +790,30 @@ function main() {
     JSON.stringify(property, null, 2),
   );
 
+  // Create lot.json with acreage information
+  if (totalAcres) {
+    const acresNum = parseFloat(totalAcres);
+    const lotObj = {
+      lot_size_acre: !isNaN(acresNum) ? acresNum : null,
+      lot_area_sqft: !isNaN(acresNum) ? Math.round(acresNum * 43560) : null,
+      lot_type: null,
+      lot_length_feet: null,
+      lot_width_feet: null,
+      landscaping_features: null,
+      view: null,
+      fencing_type: null,
+      fence_height: null,
+      fence_length: null,
+      driveway_material: null,
+      driveway_condition: null,
+      lot_condition_issues: null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "lot.json"),
+      JSON.stringify(lotObj, null, 2),
+    );
+  }
+
   // Address
   const countyName =
     unaddr.county_jurisdiction === "Collier"
@@ -861,6 +887,32 @@ function main() {
     };
     saleRows.push(row);
   });
+
+  // Add individual SaleAmount2 and SaleAmount3 if they exist and aren't already in saleRows
+  if (saleAmount2 !== null && saleDate2) {
+    const existing = saleRows.find(r => r.iso === saleDate2 && r.amount === saleAmount2);
+    if (!existing) {
+      saleRows.push({
+        rowIndex: saleRows.length + 1,
+        dateTxt: $("#SaleDate2").first().text().trim(),
+        iso: saleDate2,
+        amount: saleAmount2,
+        bookPage: null,
+      });
+    }
+  }
+  if (saleAmount3 !== null && saleDate3) {
+    const existing = saleRows.find(r => r.iso === saleDate3 && r.amount === saleAmount3);
+    if (!existing) {
+      saleRows.push({
+        rowIndex: saleRows.length + 1,
+        dateTxt: $("#SaleDate3").first().text().trim(),
+        iso: saleDate3,
+        amount: saleAmount3,
+        bookPage: null,
+      });
+    }
+  }
 
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
@@ -1390,10 +1442,31 @@ function main() {
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     const taxableValue = taxable != null ? taxable : assessed != null ? assessed : null;
-    // Calculate millage rate: (yearly_tax / taxable_value) * 1000
-    const millageRate = yearly != null && taxableValue != null && taxableValue > 0
-      ? round2((yearly / taxableValue) * 1000)
-      : null;
+
+    // Calculate millage rate: use detail millage fields if available, otherwise calculate from tax/value
+    let millageRate = null;
+
+    // Method 1: Sum individual tax line item millage rates
+    if (taxLineItems.length > 0) {
+      const sumMillage = taxLineItems.reduce((sum, item) => {
+        return sum + (item.millage_rate || 0);
+      }, 0);
+      if (sumMillage > 0) millageRate = round2(sumMillage);
+    }
+
+    // Method 2: Sum the detail millage breakdown fields
+    if (!millageRate && (tdDetailCountyMillage || tdDetailSchoolMillage || tdDetailOtherMillage)) {
+      const countyRate = parseFloat((tdDetailCountyMillage || '0').replace(/,/g, '')) || 0;
+      const schoolRate = parseFloat((tdDetailSchoolMillage || '0').replace(/,/g, '')) || 0;
+      const otherRate = parseFloat((tdDetailOtherMillage || '0').replace(/,/g, '')) || 0;
+      const totalRate = countyRate + schoolRate + otherRate;
+      if (totalRate > 0) millageRate = round2(totalRate);
+    }
+
+    // Method 3: Calculate from yearly tax and taxable value
+    if (!millageRate && yearly != null && taxableValue != null && taxableValue > 0) {
+      millageRate = round2((yearly / taxableValue) * 1000);
+    }
 
     // Calculate total exemption amount
     let totalExemption = null;
