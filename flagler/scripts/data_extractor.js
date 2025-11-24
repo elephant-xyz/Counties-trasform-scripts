@@ -274,17 +274,14 @@ function extractSales($) {
     const qualification = textOf(tds.eq(4));
     const vacantImproved = textOf(tds.eq(5));
 
-    // Grantor is in a span (column 6, 0-indexed)
-    const grantor = textOf(tds.eq(6).find("span"));
+    // Note: Grantor/Grantee data is extracted by ownerMapping.js and processed
+    // by writePersonCompaniesSalesRelationships, so we don't extract it here
 
     // Link is in onclick attribute of input button or in a regular anchor (column 7)
     let link = tds.eq(7).find("span input").attr("onclick");
     if (!link) {
       link = tds.eq(7).find("a").attr("href");
     }
-
-    // Grantee is not directly available in the sales table
-    const grantee = null;
 
     let cleanedLink = null;
     if (link) {
@@ -308,8 +305,6 @@ function extractSales($) {
         link: cleanedLink,
         qualification,
         vacantImproved,
-        grantor,
-        grantee,
       });
     }
   });
@@ -896,19 +891,9 @@ function isNumeric(value) {
     return /^-?\d+$/.test(value);
 }
 
-function extractOwnerMailingAddress($) {
-  const addressText = $(OWNER_ADDRESS_SELECTOR).html();
-  if (!addressText) return null;
-
-  // Parse the address from HTML with <br /> tags
-  // Example: "<br />1701 NE 42nd Ave<br />Ste 403<br />Ocala, FL 34470"
-  const cleaned = addressText.replace(/<br\s*\/?>/gi, '|').trim();
-  const parts = cleaned.split('|').map(p => p.trim()).filter(Boolean);
-
-  if (parts.length === 0) return null;
-
-  return parts.join(', ');
-}
+// Note: Owner mailing address is not extracted as there is no corresponding
+// field in the Elephant schema. The property address is stored in address.json,
+// and owner information (names) is handled by ownerMapping.js
 
 function extractExtraFeatures($) {
   const features = [];
@@ -1003,82 +988,21 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   const full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
   if (!full) return;
-  let city = null;
-  let zip = null;
-  const fullAddressParts = (full || "").split(",");
-  if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
-    state_and_pin = fullAddressParts[2].split(/\s+/);
-    if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
-      zip = state_and_pin[state_and_pin.length - 1].trim();
-      city = fullAddressParts[1].trim();
-    }
-  }
-  const parts = (fullAddressParts[0] || "").split(/\s+/);
-  let street_number = null;
-  if (parts && parts.length > 1) {
-    street_number_candidate = parts[0];
-    if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
-      street_number = parts.shift() || null;
-    }
-  }
-  let suffix = null;
-  if (parts && parts.length > 1) {
-    suffix_candidate = parts[parts.length - 1];
-    if (normalizeSuffix(suffix_candidate)) {
-      suffix = parts.pop() || null;
-    }
-  }
-  let street_name = parts.join(" ") || null;
-  if (street_name) {
-    street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
-  }
-  // const m = full.match(
-  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
-  // );
-  // if (!m) return;
-  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
-
-  // let street_name = streetRest.trim();
-  // let route_number = null;
-  // let street_suffix_type = null;
-  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
-  // if (m2) {
-  //   street_name = m2[1].toUpperCase();
-  //   route_number = m2[2];
-  //   if (street_name === "HWY" || street_name === "HIGHWAY")
-  //     street_suffix_type = "Hwy";
-  // }
-  const city_name = city ? city.toUpperCase() : null;
-  // const state_code = state.toUpperCase();
-  const postal_code = zip;
-  // const plus_four_postal_code = plus4 || null;
 
   // Per evaluator expectation, set county_name from input jurisdiction
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   const county_name = inputCounty || null;
 
+  // Use unnormalized_address as instructed when source provides it in that format
   const address = {
-    city_name,
+    unnormalized_address: full,
     country_code: "US",
     county_name,
     latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
     longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
-    plus_four_postal_code: null,
-    postal_code,
-    state_code: "FL",
-    street_name: street_name,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_number: street_number,
-    street_suffix_type: normalizeSuffix(suffix),
-    unit_identifier: null,
-    route_number: null,
     township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
     range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
     section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
-    block: null,
-    lot: null,
-    municipality_name: null,
   };
   writeJSON(path.join("data", "address.json"), address);
 }
@@ -1108,11 +1032,6 @@ function main() {
     writeUtility(parcelId);
     writeLayout(parcelId);
   }
-
-  // Extract owner mailing address to acknowledge selector is processed
-  // This data is not written to output as it represents owner's mailing address
-  // rather than property address, and there's no appropriate schema field for it
-  const ownerMailingAddr = extractOwnerMailingAddress($);
 
   // Extract and write property improvements (extra features)
   if (parcelId) {
