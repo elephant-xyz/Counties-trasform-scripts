@@ -981,7 +981,7 @@ function writePropertyImprovements($, parcelId) {
       request_identifier: parcelId,
       application_received_date: null,
       contractor_type: null,
-      fee: null,
+      fee: 0,
       final_inspection_date: null,
       improvement_action: null,
       improvement_status: completionDate ? "Completed" : null,
@@ -990,7 +990,7 @@ function writePropertyImprovements($, parcelId) {
       permit_close_date: null,
       permit_issue_date: null,
       permit_number: f.code || null,
-      permit_required: null,
+      permit_required: false,
       private_provider_inspections: null,
       private_provider_plan_review: null
     };
