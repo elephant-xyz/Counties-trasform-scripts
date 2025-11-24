@@ -30,6 +30,12 @@ function finalizeAddressWritePayload(rawPayload) {
     delete completed.__force_raw_variant;
   }
 
+  const rawValue =
+    typeof completed.unnormalized_address === "string"
+      ? completed.unnormalized_address.trim()
+      : "";
+  const hasRawCandidate = rawValue.length > 0;
+
   const normalizedProbe = deepClone(completed) || { ...completed };
   const normalizedCoverage = hasNormalizedCountyCoverage(normalizedProbe);
   // County schema's normalized branch demands a usable lat/lng pair, so skip
@@ -39,6 +45,7 @@ function finalizeAddressWritePayload(rawPayload) {
     Number.isFinite(parseCoordinate(normalizedProbe.longitude));
   const shouldAttemptNormalized =
     !forceRawVariant &&
+    !hasRawCandidate &&
     normalizedCoverage &&
     hasCoordinatePair;
 
@@ -76,11 +83,6 @@ function finalizeAddressWritePayload(rawPayload) {
       pruneRawAddressFieldsForOutput(normalizedOutput) || normalizedOutput;
     return stripAddressRequestMetadata(preparedOutput);
   }
-
-  const rawValue =
-    typeof completed.unnormalized_address === "string"
-      ? completed.unnormalized_address.trim()
-      : "";
 
   if (!rawValue.length) {
     return null;
@@ -1276,6 +1278,7 @@ function pruneRawAddressFieldsForOutput(address) {
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
       : "";
+  const hasRawCandidate = trimmedUnnormalized.length > 0;
 
   const normalizedSurface =
     ensureAddressOutputFieldPresence({ ...address }) || { ...address };
@@ -1286,7 +1289,11 @@ function pruneRawAddressFieldsForOutput(address) {
     delete normalizedSurface.__force_raw_variant;
   }
 
-  if (!forceRawVariant && hasNormalizedCountyCoverage({ ...normalizedSurface })) {
+  if (
+    !forceRawVariant &&
+    !hasRawCandidate &&
+    hasNormalizedCountyCoverage({ ...normalizedSurface })
+  ) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       const value = normalizedSurface[field];
