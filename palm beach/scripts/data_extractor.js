@@ -44670,6 +44670,7 @@ function buildMinimalRawAddressForSchema(
   }
 
   const finalRaw = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
@@ -44677,38 +44678,46 @@ function buildMinimalRawAddressForSchema(
     if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
       return;
     }
-    const value = rawOutput[field];
-    if (
-      value === undefined ||
-      value === null ||
-      (typeof value === "string" && !value.trim().length)
-    ) {
+    let value = rawOutput[field];
+    if (value === undefined || value === null) {
+      finalRaw[field] = null;
       return;
     }
-    finalRaw[field] = typeof value === "string" ? value.trim() : value;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      finalRaw[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      finalRaw[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    finalRaw[field] = value;
   };
 
-  [
-    "latitude",
-    "longitude",
-    "city_name",
-    "municipality_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "county_name",
-    "country_code",
-  ].forEach(assignFieldIfPresent);
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach(assignFieldIfPresent);
+
+  if (!finalRaw.postal_code) {
+    finalRaw.plus_four_postal_code = null;
+  }
+  if (finalRaw.state_code && !finalRaw.country_code) {
+    finalRaw.country_code = (defaultCountryCode || "US").toUpperCase();
+  }
 
   if (Object.prototype.hasOwnProperty.call(rawOutput, "request_identifier")) {
     finalRaw.request_identifier =
       rawOutput.request_identifier === undefined
         ? null
         : rawOutput.request_identifier;
+  } else if (!Object.prototype.hasOwnProperty.call(finalRaw, "request_identifier")) {
+    finalRaw.request_identifier = null;
   }
 
   if (Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")) {
     finalRaw.source_http_request = rawOutput.source_http_request;
+  } else if (!Object.prototype.hasOwnProperty.call(finalRaw, "source_http_request")) {
+    finalRaw.source_http_request = null;
   }
 
   return finalRaw;
