@@ -483,65 +483,7 @@ function parseAddress(
   countyNameFromSeed,
   municipality,
 ) {
-  // Example fullAddress: 280 S COLLIER BLVD # 2306, MARCO ISLAND 34145
-  let streetNumber = null,
-    streetName = null,
-    postDir = null,
-    preDir = null,
-    suffixType = null,
-    city = null,
-    state = null,
-    zip = null,
-    unitId = null;
-
-  if (fullAddress) {
-    const addr = fullAddress.replace(/\s+,/g, ",").trim();
-
-    // First, extract unit identifier if present (# 2306, APT 2306, UNIT 2306, etc.)
-    let streetPartRaw = addr;
-    const unitMatch = addr.match(/(#|APT|UNIT|STE|SUITE)\s*([A-Z0-9-]+)/i);
-    if (unitMatch) {
-      unitId = unitMatch[2];
-      // Remove unit from address for further parsing
-      streetPartRaw = addr
-        .replace(/(#|APT|UNIT|STE|SUITE)\s*[A-Z0-9-]+/i, "")
-        .trim();
-    }
-
-    // Prefer pattern: <num> <street words> [<postDir>], <CITY>, <STATE> <ZIP>
-    let m = streetPartRaw.match(
-      /^(\d+)\s+([^,]+),\s*([A-Z\s]+),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/,
-    );
-    if (m) {
-      streetNumber = m[1];
-      const streetPart = m[2].trim();
-      city = m[3].trim().toUpperCase();
-      state = m[4];
-      zip = m[5];
-      const parsed = splitStreet(streetPart);
-      streetName = parsed.streetName;
-      preDir = parsed.preDir;
-      postDir = parsed.postDir;
-      suffixType = parsed.suffix;
-    } else {
-      // Fallback pattern without explicit state: <num> <street words> [<postDir>], <CITY> <ZIP>
-      m = streetPartRaw.match(
-        /^(\d+)\s+([^,]+),\s*([A-Z\s]+)\s*(\d{5})(?:-\d{4})?$/,
-      );
-      if (m) {
-        streetNumber = m[1];
-        const streetPart = m[2].trim();
-        city = m[3].trim().toUpperCase();
-        zip = m[4];
-        const parsed = splitStreet(streetPart);
-        streetName = parsed.streetName;
-        preDir = parsed.preDir;
-        postDir = parsed.postDir;
-        suffixType = parsed.suffix;
-      }
-    }
-  }
-
+  // Use unnormalized_address since source provides complete address string
   // From legal, get block and lot
   let block = null,
     lot = null;
@@ -554,27 +496,15 @@ function parseAddress(
 
   return {
     block: block || null,
-    city_name: city || null,
-    country_code: null, // do not fabricate
     county_name: countyNameFromSeed || null,
     latitude: null,
     longitude: null,
     lot: lot || null,
     municipality_name: municipality || null,
-    plus_four_postal_code: null,
-    postal_code: zip || null,
     range: range || null,
-    route_number: null,
     section: section || null,
-    state_code: state || "FL",
-    street_name: streetName || null,
-    street_number: streetNumber || null,
-    street_post_directional_text: postDir || null,
-    street_pre_directional_text: preDir || null,
-    street_suffix_type: suffixType || null,
     township: township || null,
-    unit_identifier: unitId || null,
-    // unnormalized_address: fullAddress || null,
+    unnormalized_address: fullAddress || null,
   };
 }
 
@@ -635,9 +565,19 @@ function main() {
   // Read land units to mark as processed
   const totalUnits1 = $("#TOTALUNITS1").first().text().trim() || null;
 
-  // Read specific table cell that contains additional data
+  // Read specific table cells that contain additional data
   $(
     "td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)",
+  )
+    .text()
+    .trim();
+  $(
+    "div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(4) > td.clsField:nth-child(1)",
+  )
+    .text()
+    .trim();
+  $(
+    "div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(6) > td.clsField:nth-child(1)",
   )
     .text()
     .trim();
@@ -650,6 +590,8 @@ function main() {
   }
 
   // Read detailed tax/millage fields
+  $("#TdDetailSchoolMillage").text().trim();
+  $("#TdDetailCountyMillage").text().trim();
   $("#TdDetailOtherMillage").text().trim();
 
   // Read tax bill link
@@ -1364,6 +1306,12 @@ function main() {
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
+    const taxableValue = taxable != null ? taxable : assessed != null ? assessed : null;
+    // Calculate millage rate: (yearly_tax / taxable_value) * 1000
+    const millageRate = yearly != null && taxableValue != null && taxableValue > 0
+      ? round2((yearly / taxableValue) * 1000)
+      : null;
+
     const taxObj = {
       tax_year: ty,
       property_assessed_value_amount:
@@ -1372,8 +1320,8 @@ function main() {
         just != null ? just : assessed != null ? assessed : null,
       property_building_amount: impr != null ? impr : null,
       property_land_amount: land != null ? land : null,
-      property_taxable_value_amount:
-        taxable != null ? taxable : assessed != null ? assessed : null,
+      property_taxable_value_amount: taxableValue,
+      millage_rate: millageRate,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
       period_start_date: ty ? `${ty}-01-01` : null,
@@ -1442,6 +1390,16 @@ function main() {
   }
   years.forEach((rec) => {
     const monthly = rec.yearlyH != null ? round2(rec.yearlyH / 12) : null;
+    const taxableValue = rec.taxableH != null
+      ? rec.taxableH
+      : rec.assessedH != null
+        ? rec.assessedH
+        : null;
+    // Calculate millage rate: (yearly_tax / taxable_value) * 1000
+    const millageRate = rec.yearlyH != null && taxableValue != null && taxableValue > 0
+      ? round2((rec.yearlyH / taxableValue) * 1000)
+      : null;
+
     const taxObj = {
       tax_year: rec.yNum,
       property_assessed_value_amount:
@@ -1458,12 +1416,8 @@ function main() {
             : null,
       property_building_amount: rec.imprH != null ? rec.imprH : null,
       property_land_amount: rec.landH != null ? rec.landH : null,
-      property_taxable_value_amount:
-        rec.taxableH != null
-          ? rec.taxableH
-          : rec.assessedH != null
-            ? rec.assessedH
-            : null,
+      property_taxable_value_amount: taxableValue,
+      millage_rate: millageRate,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
