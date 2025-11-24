@@ -573,6 +573,80 @@ function buildRawVariantSubmissionPayload(address) {
   return null;
 }
 
+function buildLeanRawAddressOutput(rawOutput) {
+  if (!rawOutput || typeof rawOutput !== "object") {
+    return null;
+  }
+
+  const leanOutput = {};
+
+  for (const field of RAW_VARIANT_ALLOWED_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
+      continue;
+    }
+
+    let value = rawOutput[field];
+
+    if (field === "unnormalized_address") {
+      if (typeof value !== "string") {
+        continue;
+      }
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        continue;
+      }
+      leanOutput.unnormalized_address = trimmed;
+      continue;
+    }
+
+    if (field === "request_identifier") {
+      if (value === undefined) {
+        continue;
+      }
+      leanOutput.request_identifier =
+        value === null || value === "" ? null : value;
+      continue;
+    }
+
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(value);
+      if (prepared) {
+        leanOutput.source_http_request = deepClone(prepared);
+      }
+      continue;
+    }
+
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      if (!Number.isFinite(numeric)) {
+        continue;
+      }
+      leanOutput[field] = numeric;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        continue;
+      }
+      value = trimmed;
+    }
+
+    leanOutput[field] = value;
+  }
+
+  if (!leanOutput.unnormalized_address) {
+    return null;
+  }
+
+  return leanOutput;
+}
+
 function buildMinimalRawAddressForSchema(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -586,7 +660,7 @@ function buildMinimalRawAddressForSchema(address) {
     return null;
   }
 
-  const minimal = {
+const minimal = {
     ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
@@ -627,7 +701,29 @@ function buildMinimalRawAddressForSchema(address) {
     minimal.country_code = "US";
   }
 
-  return minimal;
+  const pruned = {};
+  for (const [key, value] of Object.entries(minimal)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        continue;
+      }
+      pruned[key] = trimmed;
+      continue;
+    }
+
+    pruned[key] = value;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(pruned, "unnormalized_address")) {
+    pruned.unnormalized_address = rawValue;
+  }
+
+  return pruned;
 }
 
 function buildMinimalRawAddressVariant(address) {
@@ -1138,7 +1234,7 @@ function pruneRawAddressFieldsForOutput(address) {
 
   const projectedRaw = projectRawVariantFieldSurface(rawOutput);
   if (projectedRaw) {
-    return projectedRaw;
+    return buildLeanRawAddressOutput(projectedRaw) || projectedRaw;
   }
 
   const fallbackRaw = { ...rawOutput };
@@ -1173,7 +1269,7 @@ function pruneRawAddressFieldsForOutput(address) {
     fallbackRaw.__force_raw_variant = true;
   }
 
-  return fallbackRaw;
+  return buildLeanRawAddressOutput(fallbackRaw) || fallbackRaw;
 }
 
 function writeJSON(p, obj) {
@@ -4721,12 +4817,14 @@ function ensureRawVariantFieldSurface(address) {
   }
 
   const surfaced = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: address.unnormalized_address.trim(),
   };
 
   for (const [key, value] of Object.entries(address)) {
     if (key === "unnormalized_address") {
+      continue;
+    }
+    if (!RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET.has(key)) {
       continue;
     }
     surfaced[key] = value;
@@ -48729,7 +48827,10 @@ function forceRawAddressPayloadFromSource(addressPath, options = {}) {
     rawPayload.longitude = null;
   }
 
-  writeJSON(addressPath, rawPayload);
+  const leanRawPayload =
+    buildLeanRawAddressOutput(rawPayload) || rawPayload;
+
+  writeJSON(addressPath, leanRawPayload);
 }
 
 async function run() {
