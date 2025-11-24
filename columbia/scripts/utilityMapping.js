@@ -5,6 +5,8 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+
 function readInputHtml() {
   const inputPath = path.resolve("input.html");
   try {
@@ -75,18 +77,197 @@ function buildUtilityObject() {
   };
 }
 
+function parseCurrency(text) {
+  if (!text) return null;
+  const cleaned = String(text).replace(/[$,]/g, "").trim();
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function parseUnits(text) {
+  if (!text) return null;
+  const cleaned = String(text).replace(/[^\d.]/g, "").trim();
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function parseDimensions(text) {
+  if (!text) {
+    return { text: null, width: null, length: null, area: null };
+  }
+  const cleaned = norm(String(text).replace(/\u00a0/g, " "));
+  const match = cleaned.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
+  if (!match) {
+    return { text: cleaned || null, width: null, length: null, area: null };
+  }
+  const width = Number(match[1]);
+  const length = Number(match[2]);
+  const area =
+    Number.isFinite(width) && Number.isFinite(length) && width > 0 && length > 0
+      ? width * length
+      : null;
+  return {
+    text: cleaned || null,
+    width: Number.isFinite(width) ? width : null,
+    length: Number.isFinite(length) ? length : null,
+    area,
+  };
+}
+
+const FEATURE_PATTERNS = {
+  utility: [
+    /UTILITY/i,
+    /WELL/i,
+    /SEPTIC/i,
+    /IRRIGATION/i,
+    /SPRINK/i,
+    /PUMP/i,
+    /POWER/i,
+    /ELECTRIC/i,
+    /TRANSFORMER/i,
+    /GENERATOR/i,
+    /WATER/i,
+    /GAS/i,
+  ],
+  layout: [
+    /PAV(E)?MENT/i,
+    /PAVERS?/i,
+    /PATIO/i,
+    /DRIVE/i,
+    /DRIVEWAY/i,
+    /SIDEWALK/i,
+    /SIDE WALK/i,
+    /SLAB/i,
+    /COURT/i,
+    /TRACK/i,
+    /CONCRETE/i,
+    /ASPHALT/i,
+    /PARKING/i,
+    /APR(o)?N/i,
+  ],
+  structure: [
+    /BUILDING/i,
+    /BARN/i,
+    /GARAGE/i,
+    /CARPORT/i,
+    /CANOPY/i,
+    /SHED/i,
+    /STORAGE/i,
+    /PAVILION/i,
+    /CABIN/i,
+    /GREENHOUSE/i,
+    /DOCK/i,
+    /POOL/i,
+    /FENCE/i,
+    /HOUSE/i,
+  ],
+};
+
+function classifyFeature(description) {
+  const desc = description || "";
+  if (!desc) return "structure";
+  const isMatch = (patterns) => patterns.some((re) => re.test(desc));
+  if (isMatch(FEATURE_PATTERNS.utility)) return "utility";
+  if (isMatch(FEATURE_PATTERNS.layout)) return "layout";
+  if (isMatch(FEATURE_PATTERNS.structure)) return "structure";
+  return "structure";
+}
+
+function extractExtraFeatures($) {
+  const features = [];
+  const table = $("#parcelDetails_XFOBTable table.parcelDetails_insideTable").first();
+  if (!table.length) return features;
+
+  table.find("tr").each((idx, row) => {
+    const tds = $(row).find("td");
+    if (tds.length < 6) return;
+    const codeCell = norm($(tds[0]).text());
+    if (/^code$/i.test(codeCell)) return;
+
+    const description = norm($(tds[1]).text());
+    const yearBuiltRaw = norm($(tds[2]).text()).replace(/\D+/g, "");
+    const value = parseCurrency($(tds[3]).text());
+    const units = parseUnits($(tds[4]).text());
+    const dims = parseDimensions($(tds[5]).text());
+
+    if (!description) return;
+
+    features.push({
+      code: codeCell || null,
+      description,
+      year_built: yearBuiltRaw ? Number(yearBuiltRaw) : null,
+      value_dollars: value,
+      units: units,
+      dimensions: dims.text,
+      dimension_width: dims.width,
+      dimension_length: dims.length,
+      area_square_feet: dims.area,
+      category: classifyFeature(description),
+    });
+  });
+
+  return features;
+}
+
+function buildUtilityFromFeature(feature) {
+  const description = feature.description || "";
+  const util = {
+    feature_code: feature.code,
+    feature_description: description,
+    feature_year_built: feature.year_built,
+    feature_units: feature.units,
+    feature_dimensions: feature.dimensions,
+    feature_value_dollars: feature.value_dollars,
+    feature_area_square_feet: feature.area_square_feet ?? null,
+    public_utility_type_other_description: description || null,
+  };
+
+  if (/SEPTIC/i.test(description)) {
+    util.sewer_type = "Septic";
+  }
+  if (/WELL/i.test(description)) {
+    util.water_source_type = "Well";
+  }
+  if (/IRRIGATION|SPRINK/i.test(description)) {
+    util.public_utility_type = "Irrigation";
+  } else if (/ELECTRIC|POWER|TRANSFORMER|GENERATOR/i.test(description)) {
+    util.public_utility_type = "Electric";
+  } else if (/GAS/i.test(description)) {
+    util.public_utility_type = "Gas";
+  } else if (/WATER/i.test(description)) {
+    util.public_utility_type = util.public_utility_type || "Water";
+  }
+  if (/PUMP/i.test(description)) {
+    util.utility_component = "Pump";
+  }
+
+  return util;
+}
+
 function main() {
   const html = readInputHtml();
   if (!html) return;
   const $ = cheerio.load(html);
   const parcelId = extractParcelId($);
   const util = buildUtilityObject();
+  const extraFeatures = extractExtraFeatures($).filter(
+    (feature) => feature.category === "utility",
+  );
+
+  const extraUtilities = extraFeatures.map((feature) =>
+    Object.assign({}, buildUtilityObject(), buildUtilityFromFeature(feature)),
+  );
 
   const outputDir = path.resolve("owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
   const outPath = path.join(outputDir, "utilities_data.json");
   const out = {};
-  out[`property_${parcelId}`] = util;
+  out[`property_${parcelId}`] = {
+    utilities: [util],
+    extra_utilities: extraUtilities,
+  };
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
   console.log("Wrote", outPath);
 }
