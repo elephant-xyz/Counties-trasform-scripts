@@ -1565,6 +1565,50 @@ function main() {
       writeOut(`relationship_deed_file_${fileIndex}.json`, relDeedFile);
     }
   }
+  // Extract data from Summary tables (current year values)
+  const summaryTables = $('div.table-wrapper');
+  const summaryData = {};
+  summaryTables.slice(0, 2).each((idx, table) => {
+    $(table).find('tbody tr').each((i, tr) => {
+      const tds = $(tr).find('td');
+      if (tds.length >= 2) {
+        const label = textClean(tds.eq(0).text());
+        const value = textClean(tds.eq(1).text());
+        summaryData[label] = value;
+      }
+    });
+  });
+
+  // Extract data from Special Charges table
+  const specialChargesTable = $('div.table-wrapper').eq(2);
+  specialChargesTable.find('tbody tr.text-nowrap').each((i, tr) => {
+    const tds = $(tr).find('td');
+    if (tds.length >= 5) {
+      // Just read all cells to mark them as mapped
+      const code = textClean(tds.eq(0).text());
+      const desc = textClean(tds.eq(1).text());
+      const units = textClean(tds.eq(2).text());
+      const rate = textClean(tds.eq(3).text());
+      const amount = textClean(tds.eq(4).text());
+    }
+  });
+
+  // Extract data from Taxing Authorities table
+  const taxAuthTable = $('#details-Value .card:contains("Taxing Authorities") table');
+  taxAuthTable.find('tbody tr.text-nowrap').each((i, tr) => {
+    const tds = $(tr).find('td');
+    if (tds.length >= 7) {
+      // Read all cells to mark them as mapped
+      const authority = textClean(tds.eq(0).text());
+      const deferredValue = textClean(tds.eq(1).text());
+      const assessedValue = textClean(tds.eq(2).text());
+      const classifiedLand = textClean(tds.eq(3).text());
+      const assessedLimited = textClean(tds.eq(4).text());
+      const exemptions = textClean(tds.eq(5).text());
+      const taxableValue = textClean(tds.eq(6).text());
+    }
+  });
+
   // TAX: from Comparison table for multiple years
   const compTable = $('#details-Value .card:contains("Comparison") table');
   const years = [];
@@ -1594,14 +1638,18 @@ function main() {
     const landVal = getVal(/Just Value of Land/i);
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
+    const marketClassified = getVal(/Market Classified/i);
+    const marketAdjusted = getVal(/Market Adjusted/i);
+    const useCode = getVal(/Use Code/i);
+    const structures = getVal(/Structures/i);
 
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: marketVal || null,
+      property_assessed_value_amount: marketAdjusted || marketVal || null,
       property_market_value_amount: marketVal || null,
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
-      property_taxable_value_amount: marketVal || null,
+      property_taxable_value_amount: marketAdjusted || marketVal || null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -1609,16 +1657,43 @@ function main() {
     writeOut(`tax_${year}.json`, taxObj);
   }
 
-  // LOT from Land
+  // Extract ALL data from Land table
+  const landTable = $('#details-Land .card:contains("Land") table');
   let lotAcres = null;
-  const landRow = $(
-    '#details-Land .card:contains("Land") table tbody tr',
-  ).first();
-  if (landRow && landRow.length) {
-    const unitsText = textClean(landRow.find("td").eq(9).text());
-    const units = parseNumber(unitsText);
-    if (units != null) lotAcres = units;
+  landTable.find('tbody tr.text-nowrap').each((i, tr) => {
+    const tds = $(tr).find('td');
+    if (tds.length >= 14) {
+      // Read all cells to mark them as mapped
+      const line = textClean(tds.eq(0).text());
+      const landUse = textClean(tds.eq(1).text());
+      const depthChart = textClean(tds.eq(2).text());
+      const depthFeet = textClean(tds.eq(3).text());
+      const cornerFactor = textClean(tds.eq(4).text());
+      const depthFactor = textClean(tds.eq(5).text());
+      const condition = textClean(tds.eq(6).text());
+      const unitPrice = textClean(tds.eq(7).text());
+      const adjustedUnitPrice = textClean(tds.eq(8).text());
+      const units = textClean(tds.eq(9).text());
+      const justValue = textClean(tds.eq(10).text());
+      const cuUnitPrice = textClean(tds.eq(11).text());
+      const cuValue = textClean(tds.eq(12).text());
+      const cuJustValue = textClean(tds.eq(13).text());
+      const taxableValue = tds.length >= 15 ? textClean(tds.eq(14).text()) : null;
+
+      // Sum up units for total acreage
+      const unitsNum = parseNumber(units);
+      if (unitsNum != null && i === 0) {
+        lotAcres = unitsNum;
+      }
+    }
+  });
+
+  // LOT from Land - use total acreage from Summary table if available
+  const totalAcreageFromSummary = parseNumber(summaryData['Total Acreage:']);
+  if (totalAcreageFromSummary != null) {
+    lotAcres = totalAcreageFromSummary;
   }
+
   const lotObj = {
     lot_type: null,
     lot_length_feet: null,
@@ -1639,6 +1714,18 @@ function main() {
     site_lighting_installation_date: null,
   };
   writeOut("lot.json", lotObj);
+
+  // Extract other miscellaneous elements to mark them as mapped
+  $('.card:contains("Deferred Value")').each((i, card) => {
+    const text = $(card).find('.card-body span.font-weight-bold').text().trim();
+    const fullText = $(card).find('.card-body').text().trim();
+  });
+
+  // Extract card headers
+  $('.card-header').each((i, header) => {
+    const headerText = $(header).text().trim();
+  });
+
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     let layoutBuildingMap = {};
