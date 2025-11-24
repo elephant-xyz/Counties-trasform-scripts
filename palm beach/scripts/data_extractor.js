@@ -43561,78 +43561,78 @@ function emitMinimalRawAddressPayload(addressPath, options = {}) {
     defaultCountryCode = "US",
   } = options || {};
 
-  const minimal = {
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+
+  const rawSurface = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
-  const copyField = (field, fallbackValue = null) => {
-    const sourceValue = hasMeaningfulAddressValue(payload[field])
-      ? payload[field]
-      : fallbackValue;
-    if (sourceValue === undefined || sourceValue === null) {
-      return;
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
     }
-    if (typeof sourceValue === "string") {
-      const trimmed = sourceValue.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      minimal[field] = trimmed;
-      return;
+    if (!Object.prototype.hasOwnProperty.call(normalizedSurface, field)) {
+      continue;
     }
-    if (typeof sourceValue === "number") {
-      minimal[field] = sourceValue;
-      return;
+    const normalizedValue = normalizeAddressFieldForSchema(
+      field,
+      normalizedSurface[field],
+    );
+    if (normalizedValue === undefined || normalizedValue === null) {
+      rawSurface[field] = null;
+      continue;
     }
-    minimal[field] = sourceValue;
-  };
-
-  const latitude = parseCoordinate(payload.latitude);
-  const longitude = parseCoordinate(payload.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    minimal.latitude = latitude;
-    minimal.longitude = longitude;
+    if (typeof normalizedValue === "string") {
+      const trimmed = normalizedValue.trim();
+      rawSurface[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+    rawSurface[field] = normalizedValue;
   }
 
-  copyField("city_name");
-  copyField("municipality_name");
-  copyField("state_code", defaultStateCode);
-  copyField("postal_code");
-  copyField("plus_four_postal_code");
-  copyField("county_name", defaultCountyName);
-  copyField("country_code", defaultCountryCode);
-  copyField("township");
-  copyField("range");
-  copyField("section");
-  copyField("block");
-  copyField("lot");
+  const latitude = parseCoordinate(normalizedSurface.latitude);
+  const longitude = parseCoordinate(normalizedSurface.longitude);
+  const hasCoordinatePair =
+    Number.isFinite(latitude) && Number.isFinite(longitude);
+  rawSurface.latitude = hasCoordinatePair ? latitude : null;
+  rawSurface.longitude = hasCoordinatePair ? longitude : null;
 
-  if (!minimal.postal_code && Object.prototype.hasOwnProperty.call(minimal, "plus_four_postal_code")) {
-    delete minimal.plus_four_postal_code;
+  if (!hasMeaningfulAddressValue(rawSurface.county_name) && defaultCountyName) {
+    rawSurface.county_name = defaultCountyName;
   }
-
+  if (!hasMeaningfulAddressValue(rawSurface.state_code) && defaultStateCode) {
+    rawSurface.state_code = defaultStateCode;
+  }
   if (
-    (minimal.latitude === undefined || minimal.latitude === null) ||
-    (minimal.longitude === undefined || minimal.longitude === null)
+    hasMeaningfulAddressValue(rawSurface.state_code) &&
+    !hasMeaningfulAddressValue(rawSurface.country_code)
   ) {
-    delete minimal.latitude;
-    delete minimal.longitude;
+    rawSurface.country_code = (defaultCountryCode || "US").toUpperCase();
+  }
+  if (!rawSurface.postal_code) {
+    rawSurface.plus_four_postal_code = null;
   }
 
-  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
-  if (requestIdentifier !== undefined) {
-    minimal.request_identifier =
-      requestIdentifier === null ? null : requestIdentifier;
+  const requestIdWasPresent = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  );
+  if (requestIdWasPresent) {
+    rawSurface.request_identifier = safeNullIfEmpty(
+      payload.request_identifier,
+    );
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
     const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
-    minimal.source_http_request = preparedSource
+    rawSurface.source_http_request = preparedSource
       ? deepClone(preparedSource)
       : null;
   }
 
-  originalWriteFileSync(addressPath, JSON.stringify(minimal, null, 2));
+  writeJSON(addressPath, rawSurface);
 }
 
 function enforceRawAddressFallbackSurface(addressPath, options = {}) {
