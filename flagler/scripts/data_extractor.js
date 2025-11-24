@@ -1251,7 +1251,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       improvement_action: null,
       improvement_status: "Completed",
       permit_required: feature.code ? true : false,
-      contractor_type: null, // Set to null when not available in source
+      contractor_type: "Unknown", // Required field - set to Unknown when not available
     };
 
     // Only add optional fields if they have non-null values
@@ -1280,7 +1280,7 @@ function writePropertyImprovements($, parcelId, propertySeed) {
       improvement_action: null,
       improvement_status: "Completed",
       permit_required: subArea.type ? true : false,
-      contractor_type: null, // Set to null when not available in source
+      contractor_type: "Unknown", // Required field - set to Unknown when not available
     };
 
     // Only add optional fields if they have non-null values
