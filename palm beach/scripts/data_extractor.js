@@ -38,6 +38,7 @@ function finalizeAddressWritePayload(rawPayload) {
     Number.isFinite(parseCoordinate(normalizedProbe.latitude)) &&
     Number.isFinite(parseCoordinate(normalizedProbe.longitude));
   const shouldAttemptNormalized =
+    !forceRawVariant &&
     normalizedCoverage &&
     hasCoordinatePair;
 
@@ -127,6 +128,10 @@ function finalizeAddressWritePayload(rawPayload) {
     }
   }
 
+  if (forceRawVariant) {
+    minimalRaw.__force_raw_variant = true;
+  }
+
   const preparedOutput =
     pruneRawAddressFieldsForOutput(minimalRaw) || minimalRaw;
   return stripAddressRequestMetadata(preparedOutput);
@@ -158,6 +163,9 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
 
       const finalizedPayload = finalizeAddressWritePayload(preparedPayload);
       if (finalizedPayload) {
+        if (finalizedPayload && typeof finalizedPayload === "object") {
+          delete finalizedPayload.__force_raw_variant;
+        }
         const serialized = JSON.stringify(finalizedPayload, null, 2);
         return originalWriteFileSync.call(fs, targetPath, serialized, ...args);
       }
@@ -330,6 +338,12 @@ function stripAddressRequestMetadata(address) {
   }
 
   const working = { ...address };
+  const forceRawVariant =
+    Object.prototype.hasOwnProperty.call(working, "__force_raw_variant") &&
+    working.__force_raw_variant === true;
+  if (forceRawVariant) {
+    delete working.__force_raw_variant;
+  }
   const rawValue =
     typeof working.unnormalized_address === "string"
       ? working.unnormalized_address.trim()
@@ -365,6 +379,7 @@ function stripAddressRequestMetadata(address) {
   }
 
   const canUseNormalized =
+    !forceRawVariant &&
     typeof hasNormalizedCountyCoverage === "function" &&
     hasNormalizedCountyCoverage({ ...working });
 
@@ -393,6 +408,10 @@ function stripAddressRequestMetadata(address) {
       normalizedSurface.source_http_request === undefined
     ) {
       normalizedSurface.source_http_request = null;
+    }
+
+    if (forceRawVariant) {
+      normalizedSurface.__force_raw_variant = true;
     }
 
     return normalizedSurface;
@@ -424,6 +443,10 @@ function stripAddressRequestMetadata(address) {
     surfacedRaw.source_http_request === undefined
   ) {
     surfacedRaw.source_http_request = null;
+  }
+
+  if (forceRawVariant) {
+    surfacedRaw.__force_raw_variant = true;
   }
 
   return surfacedRaw;
@@ -958,6 +981,10 @@ function pruneRawAddressFieldsForOutput(address) {
     return address;
   }
 
+  const forceRawVariant =
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true;
+
   const trimmedUnnormalized =
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
@@ -968,7 +995,11 @@ function pruneRawAddressFieldsForOutput(address) {
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
   const preparedSource = prepareSourceHttpRequest(address.source_http_request);
 
-  if (hasNormalizedCountyCoverage({ ...normalizedSurface })) {
+  if (forceRawVariant) {
+    delete normalizedSurface.__force_raw_variant;
+  }
+
+  if (!forceRawVariant && hasNormalizedCountyCoverage({ ...normalizedSurface })) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       const value = normalizedSurface[field];
@@ -1018,6 +1049,9 @@ function pruneRawAddressFieldsForOutput(address) {
   ) {
     rawOutput.source_http_request = null;
   }
+  if (forceRawVariant) {
+    rawOutput.__force_raw_variant = true;
+  }
 
   const projectedRaw = projectRawVariantFieldSurface(rawOutput);
   if (projectedRaw) {
@@ -1050,6 +1084,10 @@ function pruneRawAddressFieldsForOutput(address) {
     !Object.prototype.hasOwnProperty.call(fallbackRaw, "source_http_request")
   ) {
     fallbackRaw.source_http_request = null;
+  }
+
+  if (forceRawVariant) {
+    fallbackRaw.__force_raw_variant = true;
   }
 
   return fallbackRaw;
@@ -8564,6 +8602,13 @@ const RAW_ADDRESS_REQUIRED_STRING_FIELDS = RAW_SCHEMA_REQUIRED_FIELDS.filter(
 
 function hasNormalizedCountyCoverage(address) {
   if (!address || typeof address !== "object") return false;
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true
+  ) {
+    return false;
+  }
 
   const normalizedProbe = { ...address };
   if (!hasRobustNormalizedAddress(normalizedProbe)) {
