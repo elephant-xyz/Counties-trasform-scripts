@@ -763,7 +763,20 @@ function pruneNormalizedFieldsFromRawAddressPayload(addressPath, options = {}) {
     lean.source_http_request = null;
   }
 
-  const serialized = JSON.stringify(lean, null, 2);
+  const paddedOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...lean,
+  };
+  paddedOutput.unnormalized_address = trimmedRaw;
+
+  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "request_identifier")) {
+    paddedOutput.request_identifier = null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "source_http_request")) {
+    paddedOutput.source_http_request = null;
+  }
+
+  const serialized = JSON.stringify(paddedOutput, null, 2);
   originalWriteFileSync.call(fs, addressPath, serialized);
 }
 
@@ -5026,10 +5039,12 @@ const RAW_ADDRESS_TERMINAL_FIELD_SET = new Set(
   RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
 );
 
-// Raw variants must only emit the unnormalized string (plus metadata written
-// elsewhere) so the payload satisfies the schema's oneOf raw branch. Allowlist
-// is intentionally empty to force every normalized field to be stripped.
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set();
+// Raw variants still need to expose the normalized field surface (even when null)
+// so downstream oneOf validators see every required key.
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
+  ...RAW_VARIANT_OUTPUT_ALLOWLIST,
+  ...RAW_VARIANT_METADATA_FIELDS,
+]);
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
   "city_name",
