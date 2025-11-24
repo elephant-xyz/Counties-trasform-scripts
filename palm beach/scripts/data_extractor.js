@@ -451,88 +451,9 @@ function stripAddressRequestMetadata(address) {
     }
   }
 
-  const structuredRaw = stripStructuredFieldsFromRawAddress(surfacedRaw);
-  return collapseRawAddressPayload(structuredRaw);
-}
-
-function stripStructuredFieldsFromRawAddress(address) {
-  if (!address || typeof address !== "object") {
-    return address;
-  }
-
-  const trimmedRaw =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!trimmedRaw.length) {
-    return address;
-  }
-
-  const normalizedSurface = ensureNormalizedAddressSchemaSurface
-    ? ensureNormalizedAddressSchemaSurface({ ...address })
-    : { ...address };
-  const canEmitNormalized =
-    typeof hasNormalizedCountyCoverage === "function" &&
-    hasNormalizedCountyCoverage({ ...normalizedSurface });
-  if (canEmitNormalized) {
-    return address;
-  }
-
-  const pruned = { ...address, unnormalized_address: trimmedRaw };
-  for (const field of RAW_VARIANT_STRUCTURED_FIELD_SET) {
-    if (!Object.prototype.hasOwnProperty.call(pruned, field)) {
-      continue;
-    }
-    if (!hasMeaningfulAddressValue(pruned[field])) {
-      delete pruned[field];
-    }
-  }
-
-  return pruned;
-}
-
-function collapseRawAddressPayload(address) {
-  if (!address || typeof address !== "object") {
-    return address;
-  }
-
-  const trimmedRaw =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!trimmedRaw.length) {
-    return address;
-  }
-
-  const normalizedCoverage =
-    typeof hasNormalizedCountyCoverage === "function" &&
-    hasNormalizedCountyCoverage({ ...address });
-  if (normalizedCoverage) {
-    return address;
-  }
-
-  const collapsed = {
-    unnormalized_address: trimmedRaw,
-  };
-
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-    collapsed.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    collapsed.source_http_request = address.source_http_request || null;
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
-    address.__force_raw_variant === true
-  ) {
-    collapsed.__force_raw_variant = true;
-  }
-
-  return collapsed;
+  const completedRaw =
+    ensureRawAddressSchemaDefaults(surfacedRaw) || surfacedRaw;
+  return completedRaw;
 }
 function buildRawVariantOneOfPayload(address) {
   return projectRawVariantFieldSurface(address);
