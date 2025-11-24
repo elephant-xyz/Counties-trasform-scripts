@@ -670,6 +670,101 @@ function buildLeanRawAddressOutput(rawOutput) {
   return paddedOutput;
 }
 
+function pruneNormalizedFieldsFromRawAddressPayload(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    return;
+  }
+
+  const normalizedProbe =
+    ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
+  const hasStrictNormalized =
+    typeof hasRobustNormalizedAddress === "function" &&
+    hasRobustNormalizedAddress({ ...normalizedProbe });
+  if (hasStrictNormalized) {
+    return;
+  }
+
+  const trimmedRaw = rawValue.trim();
+  if (!trimmedRaw.length) {
+    return;
+  }
+
+  const lean = {};
+  for (const field of RAW_ADDRESS_TERMINAL_FIELD_WHITELIST) {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      continue;
+    }
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(payload[field]);
+      lean.source_http_request = prepared ? deepClone(prepared) : null;
+      continue;
+    }
+    if (field === "request_identifier") {
+      const identifier = safeNullIfEmpty(payload[field]);
+      lean.request_identifier =
+        identifier === undefined ? null : identifier;
+      continue;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(payload[field]);
+      lean[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    const value = payload[field];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      lean[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+    lean[field] = value;
+  }
+
+  lean.unnormalized_address = trimmedRaw;
+
+  if (
+    (lean.latitude == null && lean.longitude != null) ||
+    (lean.latitude != null && lean.longitude == null)
+  ) {
+    lean.latitude = null;
+    lean.longitude = null;
+  }
+
+  if (!lean.postal_code) {
+    lean.plus_four_postal_code = null;
+  }
+
+  if (lean.state_code && !lean.country_code) {
+    lean.country_code = options.defaultCountryCode || "US";
+  } else if (!lean.country_code && options.defaultCountryCode) {
+    lean.country_code = options.defaultCountryCode;
+  } else if (
+    !lean.country_code &&
+    hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    lean.country_code = payload.country_code;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(lean, "request_identifier")) {
+    lean.request_identifier = null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(lean, "source_http_request")) {
+    lean.source_http_request = null;
+  }
+
+  const serialized = JSON.stringify(lean, null, 2);
+  originalWriteFileSync.call(fs, addressPath, serialized);
+}
+
 function buildMinimalRawAddressForSchema(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -4893,6 +4988,30 @@ const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
 ]);
 const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
+
+const RAW_ADDRESS_TERMINAL_FIELD_WHITELIST = Object.freeze([
+  "unnormalized_address",
+  "latitude",
+  "longitude",
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
+  "township",
+  "range",
+  "section",
+  "lot",
+  "block",
+  "route_number",
+  "request_identifier",
+  "source_http_request",
+]);
+const RAW_ADDRESS_TERMINAL_FIELD_SET = new Set(
+  RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
+);
 
 // Raw variants must only emit the unnormalized string (plus metadata written
 // elsewhere) so the payload satisfies the schema's oneOf raw branch. Allowlist
@@ -49996,6 +50115,19 @@ async function run() {
     );
   } catch (error) {
     console.error("Failed to enforce final raw address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    pruneNormalizedFieldsFromRawAddressPayload(addressPath, {
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error("Failed to prune normalized-only address fields:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
