@@ -5007,6 +5007,12 @@ const RAW_ADDRESS_TERMINAL_FIELD_WHITELIST = Object.freeze([
   "plus_four_postal_code",
   "county_name",
   "country_code",
+  "street_number",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
   "township",
   "range",
   "section",
@@ -26676,6 +26682,60 @@ function deriveNormalizedAddressFieldsFromRaw(raw) {
   return result;
 }
 
+function enforceStreetComponentsFromRaw(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    return;
+  }
+
+  const derived = deriveNormalizedAddressFieldsFromRaw(rawValue);
+  if (!derived || typeof derived !== "object") {
+    return;
+  }
+
+  try {
+    fs.writeFileSync(
+      "/tmp/enforce_street_debug.json",
+      JSON.stringify({ rawValue, derived }, null, 2),
+    );
+  } catch {
+    // ignore debug write failures
+  }
+
+  let updated = false;
+  const adoptField = (field) => {
+    if (hasMeaningfulAddressValue(payload[field])) return;
+    if (!hasMeaningfulAddressValue(derived[field])) return;
+    const normalized = normalizeAddressFieldForSchema(field, derived[field]);
+    if (normalized === undefined || normalized === null) return;
+    payload[field] = normalized;
+    updated = true;
+  };
+
+  [
+    "street_number",
+    "street_name",
+    "street_pre_directional_text",
+    "street_post_directional_text",
+    "street_suffix_type",
+    "unit_identifier",
+    "route_number",
+  ].forEach(adoptField);
+
+  if (updated) {
+    writeJSON(addressPath, payload);
+  }
+}
+
 function applyCityStatePostalFromRaw(address, raw) {
   if (!address || typeof address !== "object") return;
   if (typeof raw !== "string" || !raw.trim().length) return;
@@ -44439,6 +44499,7 @@ function emitMinimalRawAddress(addressPath, options = {}) {
     unnormalizedPath = "unnormalized_address.json",
     seedPath = "property_seed.json",
     defaultCountyName = null,
+    defaultStateCode = null,
     defaultCountryCode = "US",
     extraRawCandidates = [],
   } = options || {};
@@ -44504,7 +44565,205 @@ function emitMinimalRawAddress(addressPath, options = {}) {
     return;
   }
 
+  const aggregated =
+    existingPayload && typeof existingPayload === "object"
+      ? { ...existingPayload }
+      : {};
+  aggregated.unnormalized_address = resolvedRaw;
+
+  const mergeAddressSource = (source) => {
+    if (!source || typeof source !== "object") return;
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (hasMeaningfulAddressValue(aggregated[field])) continue;
+      let candidate = source[field];
+      if (
+        field === "county_name" &&
+        !hasMeaningfulAddressValue(candidate) &&
+        hasMeaningfulAddressValue(source.county_jurisdiction)
+      ) {
+        candidate = source.county_jurisdiction;
+      }
+      if (!hasMeaningfulAddressValue(candidate)) continue;
+      aggregated[field] = candidate;
+    }
+  };
+
+  mergeAddressSource(existingPayload);
+  mergeAddressSource(unnormalizedSource);
+  mergeAddressSource(seedSource);
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.fieldSources.forEach(mergeAddressSource);
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    ADDRESS_FALLBACK_CONTEXT.fieldFallbacks &&
+    typeof ADDRESS_FALLBACK_CONTEXT.fieldFallbacks === "object"
+  ) {
+    for (const [field, values] of Object.entries(
+      ADDRESS_FALLBACK_CONTEXT.fieldFallbacks,
+    )) {
+      if (hasMeaningfulAddressValue(aggregated[field])) continue;
+      const candidate = Array.isArray(values)
+        ? resolveFirstNonEmptyString(values)
+        : safeNullIfEmpty(values);
+      if (hasMeaningfulAddressValue(candidate)) {
+        aggregated[field] = candidate;
+      }
+    }
+  }
+
+  let derivedRawFields = null;
+  if (resolvedRaw) {
+    const derived = deriveNormalizedAddressFieldsFromRaw(resolvedRaw);
+    if (derived && typeof derived === "object") {
+      derivedRawFields = derived;
+      const adoptField = (field) => {
+        if (hasMeaningfulAddressValue(aggregated[field])) return;
+        if (!hasMeaningfulAddressValue(derived[field])) return;
+        const normalized = normalizeAddressFieldForSchema(field, derived[field]);
+        if (normalized === undefined || normalized === null) return;
+        aggregated[field] = normalized;
+      };
+      [
+        "street_number",
+        "street_name",
+        "street_pre_directional_text",
+        "street_post_directional_text",
+        "street_suffix_type",
+        "unit_identifier",
+        "route_number",
+      ].forEach(adoptField);
+    }
+  }
+
+  const latitudeCandidates = [];
+  const longitudeCandidates = [];
+  const enqueueCoordinateSource = (source) => {
+    if (!source || typeof source !== "object") return;
+    if (source.latitude !== undefined) {
+      latitudeCandidates.push(source.latitude);
+    }
+    if (source.longitude !== undefined) {
+      longitudeCandidates.push(source.longitude);
+    }
+  };
+  enqueueCoordinateSource(existingPayload);
+  enqueueCoordinateSource(unnormalizedSource);
+  enqueueCoordinateSource(seedSource);
+  enqueueCoordinateSource(aggregated);
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.coordinateCandidates.forEach((candidate) => {
+      if (!candidate || typeof candidate !== "object") return;
+      enqueueCoordinateSource(candidate);
+    });
+  }
+
+  const resolvedLatitude = Number.isFinite(parseCoordinate(aggregated.latitude))
+    ? parseCoordinate(aggregated.latitude)
+    : resolveFirstCoordinate(latitudeCandidates);
+  const resolvedLongitude = Number.isFinite(
+    parseCoordinate(aggregated.longitude),
+  )
+    ? parseCoordinate(aggregated.longitude)
+    : resolveFirstCoordinate(longitudeCandidates);
+  if (Number.isFinite(resolvedLatitude) && Number.isFinite(resolvedLongitude)) {
+    aggregated.latitude = resolvedLatitude;
+    aggregated.longitude = resolvedLongitude;
+  } else {
+    aggregated.latitude = null;
+    aggregated.longitude = null;
+  }
+
+  const countyCandidates = [];
+  const enqueueCounty = (value) => {
+    const trimmed = safeNullIfEmpty(value);
+    if (trimmed) {
+      countyCandidates.push(trimmed);
+    }
+  };
+  enqueueCounty(aggregated.county_name);
+  enqueueCounty(existingPayload && existingPayload.county_name);
+  enqueueCounty(existingPayload && existingPayload.county_jurisdiction);
+  enqueueCounty(
+    unnormalizedSource &&
+      (unnormalizedSource.county_name || unnormalizedSource.county_jurisdiction),
+  );
+  enqueueCounty(seedSource && seedSource.county_name);
+  enqueueCounty(defaultCountyName);
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.fieldSources.forEach((source) => {
+      if (!source || typeof source !== "object") return;
+      enqueueCounty(source.county_name);
+      enqueueCounty(source.county_jurisdiction);
+    });
+  }
+  if (!hasMeaningfulAddressValue(aggregated.county_name)) {
+    const resolvedCounty = resolveFirstNonEmptyString(countyCandidates);
+    if (resolvedCounty) {
+      aggregated.county_name = titleCaseCounty(resolvedCounty);
+    }
+  } else {
+    aggregated.county_name = titleCaseCounty(aggregated.county_name);
+  }
+
+  if (
+    !hasMeaningfulAddressValue(aggregated.state_code) &&
+    defaultStateCode
+  ) {
+    aggregated.state_code = defaultStateCode;
+  }
+  if (
+    hasMeaningfulAddressValue(aggregated.state_code) &&
+    !hasMeaningfulAddressValue(aggregated.country_code)
+  ) {
+    aggregated.country_code = (defaultCountryCode || "US").toUpperCase();
+  }
+
+  const parcelCandidates = [];
+  const enqueueParcelCandidate = (value) => {
+    if (value === undefined || value === null) return;
+    const normalized = normalizeWhitespace(String(value));
+    if (normalized) {
+      parcelCandidates.push(normalized);
+    }
+  };
+  enqueueParcelCandidate(aggregated.parcel_identifier);
+  enqueueParcelCandidate(aggregated.parcel_id);
+  enqueueParcelCandidate(existingPayload && existingPayload.parcel_identifier);
+  enqueueParcelCandidate(existingPayload && existingPayload.parcel_id);
+  enqueueParcelCandidate(seedSource && seedSource.parcel_id);
+  enqueueParcelCandidate(unnormalizedSource && unnormalizedSource.parcel_id);
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates.forEach(
+      enqueueParcelCandidate,
+    );
+  }
+  const gridParts = parcelCandidates
+    .map((candidate) => deriveGridPartsFromPcn(candidate))
+    .find((parts) => parts && Object.keys(parts).length);
+  if (gridParts) {
+    ["township", "range", "section", "block", "lot"].forEach((field) => {
+      if (hasMeaningfulAddressValue(aggregated[field])) return;
+      if (hasMeaningfulAddressValue(gridParts[field])) {
+        aggregated[field] = gridParts[field];
+      }
+    });
+  }
+
   const requestIdentifier = resolveRequestIdentifierCandidate(
+    aggregated.request_identifier,
     existingPayload && existingPayload.request_identifier,
     unnormalizedSource && unnormalizedSource.request_identifier,
     seedSource && seedSource.request_identifier,
@@ -44514,7 +44773,8 @@ function emitMinimalRawAddress(addressPath, options = {}) {
       : []),
   );
 
-  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+  const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+    aggregated.source_http_request,
     existingPayload && existingPayload.source_http_request,
     unnormalizedSource && unnormalizedSource.source_http_request,
     seedSource && seedSource.source_http_request,
@@ -44524,88 +44784,78 @@ function emitMinimalRawAddress(addressPath, options = {}) {
       : []),
   );
 
-  const countyCandidates = [];
-  const enqueueCounty = (value) => {
-    if (typeof value !== "string") return;
-    const trimmed = value.trim();
-    if (trimmed.length) {
-      countyCandidates.push(trimmed);
-    }
-  };
+  const minimalPayload =
+    composeMinimalRawAddress({
+      ...aggregated,
+      request_identifier: requestIdentifier,
+      source_http_request: resolvedSourceRequest,
+    }) ||
+    buildMinimalRawAddressForSchema(
+      {
+        ...aggregated,
+        request_identifier: requestIdentifier,
+        source_http_request: resolvedSourceRequest,
+      },
+      [existingPayload, unnormalizedSource, seedSource].filter(Boolean),
+      {
+        defaultCountyName,
+        defaultStateCode,
+        defaultCountryCode,
+        requestIdentifier,
+        sourceHttpRequest: resolvedSourceRequest,
+      },
+    ) ||
+    ensureRawAddressSchemaDefaults({
+      ...aggregated,
+      request_identifier: requestIdentifier,
+      source_http_request: resolvedSourceRequest,
+    });
 
-  enqueueCounty(existingPayload && existingPayload.county_name);
-  enqueueCounty(
-    unnormalizedSource &&
-      (unnormalizedSource.county_name || unnormalizedSource.county_jurisdiction),
-  );
-  enqueueCounty(seedSource && seedSource.county_name);
-  enqueueCounty(defaultCountyName);
-
-  if (
-    ADDRESS_FALLBACK_CONTEXT &&
-    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
-  ) {
-    for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
-      if (!source || typeof source !== "object") continue;
-      enqueueCounty(source.county_name);
-      enqueueCounty(source.county_jurisdiction);
-    }
+  if (!minimalPayload) {
+    return;
   }
 
-  const resolvedCounty = resolveFirstNonEmptyString(countyCandidates);
-  const normalizedCounty = resolvedCounty
-    ? titleCaseCounty(resolvedCounty)
-    : null;
-
-  const minimalPayload = {
-    unnormalized_address: resolvedRaw,
-    county_name: normalizedCounty || null,
-    country_code: defaultCountryCode || "US",
-    request_identifier:
-      requestIdentifier === undefined ? null : requestIdentifier,
-    source_http_request: sourceHttpRequest
-      ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
-      : null,
-  };
-
-  const supplementalFields = ["section", "township", "range", "lot", "block"];
-  const resolveSupplementalValue = (field) => {
-    const candidates = [];
-    const appendCandidate = (value) => {
-      if (value === undefined || value === null) return;
-      candidates.push(value);
+  if (derivedRawFields && typeof derivedRawFields === "object") {
+    const overlayField = (field) => {
+      if (!hasMeaningfulAddressValue(derivedRawFields[field])) return;
+      const normalized = normalizeAddressFieldForSchema(
+        field,
+        derivedRawFields[field],
+      );
+      if (normalized === undefined || normalized === null) return;
+      minimalPayload[field] = normalized;
     };
-    appendCandidate(existingPayload && existingPayload[field]);
-    appendCandidate(unnormalizedSource && unnormalizedSource[field]);
-    appendCandidate(seedSource && seedSource[field]);
-    if (
-      ADDRESS_FALLBACK_CONTEXT &&
-      Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
-    ) {
-      for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
-        if (!source || typeof source !== "object") continue;
-        appendCandidate(source[field]);
-      }
-    }
-    for (const candidate of candidates) {
-      if (candidate === undefined || candidate === null) continue;
-      if (typeof candidate === "string") {
-        const trimmed = candidate.trim();
-        if (trimmed.length) {
-          return trimmed;
-        }
-        continue;
-      }
-      return candidate;
-    }
-    return null;
-  };
+    [
+      "street_number",
+      "street_name",
+      "street_pre_directional_text",
+      "street_post_directional_text",
+      "street_suffix_type",
+      "unit_identifier",
+      "route_number",
+    ].forEach(overlayField);
+  }
 
-  for (const field of supplementalFields) {
-    const value = resolveSupplementalValue(field);
-    if (value !== null && value !== undefined) {
-      minimalPayload[field] = value;
-    }
+  if (!Object.prototype.hasOwnProperty.call(minimalPayload, "request_identifier")) {
+    minimalPayload.request_identifier = requestIdentifier;
+  } else {
+    minimalPayload.request_identifier =
+      requestIdentifier != null
+        ? requestIdentifier
+        : safeNullIfEmpty(minimalPayload.request_identifier);
+  }
+
+  if (resolvedSourceRequest) {
+    minimalPayload.source_http_request = deepClone(
+      prepareSourceHttpRequest(resolvedSourceRequest),
+    );
+  } else if (
+    !Object.prototype.hasOwnProperty.call(
+      minimalPayload,
+      "source_http_request",
+    )
+  ) {
+    minimalPayload.source_http_request = null;
   }
 
   writeJSON(addressPath, minimalPayload);
@@ -49572,6 +49822,7 @@ async function run() {
       unnormalizedPath: "unnormalized_address.json",
       seedPath: "property_seed.json",
       defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
       defaultCountryCode: "US",
       extraRawCandidates,
     });
@@ -50135,6 +50386,20 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to prune normalized-only address fields:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceStreetComponentsFromRaw(addressPath);
+  } catch (error) {
+    console.error(
+      "Failed to enforce street components from raw address payload:",
+      error,
+    );
     if (!process.exitCode) {
       process.exitCode = 1;
     }
