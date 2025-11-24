@@ -84,17 +84,20 @@ function ensureDir(filePath) {
   const livableAreaSqFt = hasAnyBuildings && totalLivableArea >= 10 ? totalLivableArea : null;
   const areaUnderAirSqFt = hasAnyBuildings && totalUnderAir >= 10 ? totalUnderAir : null;
 
-  // Create layouts array with Living Area
+  // Create layouts array with Building space
   const layouts = [];
 
-  // ALWAYS add Living Area layout with square footage data
+  // ALWAYS add Building layout with square footage data
   layouts.push({
-    space_type: "Living Area",
+    space_type: "Building",
+    space_index: 1,
     space_type_index: "1",
     livable_area_sq_ft: livableAreaSqFt,
     area_under_air_sq_ft: areaUnderAirSqFt,
+    total_area_sq_ft: livableAreaSqFt,
     flooring_material_type: null,
     size_square_feet: null,
+    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -111,6 +114,7 @@ function ensureDir(filePath) {
     design_style: null,
     natural_light_quality: null,
     decor_elements: null,
+    built_year: null,
     pool_type: null,
     pool_equipment: null,
     spa_type: null,
@@ -122,6 +126,7 @@ function ensureDir(filePath) {
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
+    request_identifier: null,
   });
 
   const output = {};
@@ -130,5 +135,7 @@ function ensureDir(filePath) {
   const outPath = path.join("owners", "layout_data.json");
   ensureDir(outPath);
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
-  console.log(`Wrote layout data with Living Area (${livableAreaSqFt} sq ft) for property_${parcelId} to ${outPath}`);
+  console.log(
+    `Wrote layout data with Building layout (${livableAreaSqFt} sq ft) for property_${parcelId} to ${outPath}`,
+  );
 })();
