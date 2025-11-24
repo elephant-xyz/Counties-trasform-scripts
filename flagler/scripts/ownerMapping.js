@@ -204,8 +204,8 @@ function extractSalesOwnersByDate($) {
   const rows = $(SALES_TABLE_SELECTOR);
   rows.each((i, tr) => {
     const $tr = $(tr);
-    // Sale Date is in <th>, other data is in <td>
-    const saleDateRaw = txt($tr.find("th").first().text());
+    const tds = $tr.find("td, th"); // Include th for Sale Date
+    const saleDateRaw = txt(tds.eq(0).text()); // Sale Date is the first td/th
     if (!saleDateRaw) return;
     const dm = saleDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (!dm) return;
@@ -213,11 +213,9 @@ function extractSalesOwnersByDate($) {
     const dd = dm[2].padStart(2, "0");
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
-
-    // Grantor is in the 7th <td> column (0-indexed: td 6)
-    const tds = $tr.find("td");
-    const grantorSpan = tds.eq(6).find("span");
-    const grantor = txt(grantorSpan.text());
+    
+    // Grantor is the 8th column (index 7)
+    const grantor = txt(tds.eq(7).text());
     if (grantor) priorOwners.push(grantor);
 
     // Grantee is not directly available in the sales table, so we'll use the current owner as the "grantee" for the most recent sale.
