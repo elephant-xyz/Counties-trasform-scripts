@@ -181,3 +181,4 @@ function diffYearsFrom(dateISO) {
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
   console.log(`Wrote structure data for property_${parcelId} to ${outPath}`);
 })();
+
