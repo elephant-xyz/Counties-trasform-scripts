@@ -970,6 +970,11 @@ function writePropertyImprovements($, parcelId) {
     // Since this is tax assessor extra features data, we don't have contractor info
     improvement.contractor_type = null;
 
+    // permit_required is REQUIRED (must always be present)
+    // Since this is tax assessor extra features data (not actual permit records),
+    // we set this to false to indicate we don't have permit information
+    improvement.permit_required = false;
+
     // Add optional fields
     if (completionDate !== null) {
       improvement.completion_date = completionDate;
