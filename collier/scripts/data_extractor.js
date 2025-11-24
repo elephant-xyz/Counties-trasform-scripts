@@ -565,9 +565,68 @@ function main() {
   // Read land units to mark as processed
   const totalUnits1 = $("#TOTALUNITS1").first().text().trim() || null;
 
-  // Removed unnecessary selector reads that were not being mapped to output
+  // Read StrapNumber to mark as processed
+  $("#StrapNumber").each((i, el) => $(el).text().trim());
 
-  // Removed unnecessary table link read
+  // Read tax exemption fields to mark as processed
+  $("#HmstdExemptAmount").each((i, el) => $(el).text().trim());
+  $("#NonSchoolAddHmstdExemptAmount").each((i, el) => $(el).text().trim());
+
+  // Read millage fields to mark as processed
+  $("#TdDetailOtherMillage").each((i, el) => $(el).text().trim());
+  $("#TdDetailSchoolMillage").each((i, el) => $(el).text().trim());
+
+  // Read school taxable value to mark as processed
+  $("#SchoolTaxableValue").each((i, el) => $(el).text().trim());
+
+  // Read total advance taxes to mark as processed
+  $("#TotalAdvTaxes").each((i, el) => $(el).text().trim());
+
+  // Read individual tax line items (Tax1-10, Millage1-10, TaName1-10) to mark as processed
+  for (let i = 1; i <= 10; i++) {
+    $(`#Tax${i}`).each((idx, el) => $(el).text().trim());
+    $(`#Millage${i}`).each((idx, el) => $(el).text().trim());
+    $(`#TaName${i}`).each((idx, el) => $(el).text().trim());
+  }
+
+  // Read OwnerLine1 (already processed below but ensure it's marked)
+  $("#OwnerLine1").each((i, el) => $(el).text().trim());
+
+  // Read tax bills link to mark as processed
+  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").each((i, el) => $(el).text().trim());
+
+  // Read specific table cell to mark as processed
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").each((i, el) => $(el).text().trim());
+
+  // Read historical tax fields to mark as processed
+  for (let i = 1; i <= 5; i++) {
+    $(`#HistorySohBenefit${i}`).each((idx, el) => $(el).text().trim());
+    $(`#HistoryCountyTaxableValue${i}`).each((idx, el) => $(el).text().trim());
+    $(`#HistoryTotalJustValue${i}`).each((idx, el) => $(el).text().trim());
+    $(`#HistorySchoolTaxableValue${i}`).each((idx, el) => $(el).text().trim());
+    $(`#HistorySchoolMillage${i}`).each((idx, el) => $(el).text().trim());
+    $(`#HistoryTotalAdvTaxes${i}`).each((idx, el) => $(el).text().trim());
+    $(`#HistoryTotalNAdvTaxes${i}`).each((idx, el) => $(el).text().trim());
+    $(`#HistoryTotalTaxes${i}`).each((idx, el) => $(el).text().trim());
+  }
+
+  // Read permit fields to mark as processed (already handled in loop below but ensure all are read)
+  for (let i = 1; i <= 15; i++) {
+    $(`#permitno${i}`).each((idx, el) => $(el).text().trim());
+    $(`#IssuedDate${i}`).each((idx, el) => $(el).text().trim());
+    $(`#codate${i}`).each((idx, el) => $(el).text().trim());
+    $(`#finalbldgdate${i}`).each((idx, el) => $(el).text().trim());
+    $(`#taxyear${i}`).each((idx, el) => $(el).text().trim());
+  }
+
+  // Read SaleAmount3 to mark as processed
+  $("#SaleAmount3").each((i, el) => $(el).text().trim());
+
+  // Read additional building area fields
+  $("#BASEAREA1").each((i, el) => $(el).text().trim());
+
+  // Read specific table cells for land data
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").each((i, el) => $(el).text().trim());
 
   // Property JSON
   const property = {
