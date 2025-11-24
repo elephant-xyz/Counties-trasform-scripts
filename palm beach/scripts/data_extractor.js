@@ -417,43 +417,20 @@ function stripAddressRequestMetadata(address) {
     return working;
   }
 
-  const rawPayload =
-    buildRawVariantOneOfPayload({
-      ...working,
-      unnormalized_address: rawValue,
-    }) || null;
-
-  const surfacedRaw = rawPayload || {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+  const minimalRaw = {
     unnormalized_address: rawValue,
   };
 
-  if (requestIdentifier !== undefined) {
-    surfacedRaw.request_identifier = requestIdentifier;
+  if (hasRequestIdentifier) {
+    minimalRaw.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
   }
 
   if (hasSourceRequest) {
-    surfacedRaw.source_http_request = preparedSource || null;
-  } else if (
-    Object.prototype.hasOwnProperty.call(surfacedRaw, "source_http_request") &&
-    surfacedRaw.source_http_request === undefined
-  ) {
-    surfacedRaw.source_http_request = null;
+    minimalRaw.source_http_request = preparedSource || null;
   }
 
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(surfacedRaw, field)) {
-      surfacedRaw[field] = null;
-      continue;
-    }
-    if (surfacedRaw[field] === undefined) {
-      surfacedRaw[field] = null;
-    }
-  }
-
-  const completedRaw =
-    ensureRawAddressSchemaDefaults(surfacedRaw) || surfacedRaw;
-  return completedRaw;
+  return minimalRaw;
 }
 function buildRawVariantOneOfPayload(address) {
   return projectRawVariantFieldSurface(address);
@@ -4744,12 +4721,10 @@ const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
 ]);
 const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
-// Raw variants should only keep the subset of normalized fields that the schema
-// permits next to an unnormalized string. Everything else must be dropped so
-// the payload cleanly matches the raw oneOf branch.
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
-  ...RAW_VARIANT_OUTPUT_ALLOWLIST,
-]);
+// Raw variants must only emit the unnormalized string (plus metadata written
+// elsewhere) so the payload satisfies the schema's oneOf raw branch. Allowlist
+// is intentionally empty to force every normalized field to be stripped.
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set();
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
   "city_name",
@@ -8860,6 +8835,21 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "postal_code",
   "country_code",
   "county_name",
+];
+
+const NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS = [
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
 ];
 
 const COUNTY_NORMALIZED_CORE_FIELDS = [
@@ -36577,12 +36567,19 @@ async function main() {
       normalizedPayload.country_code = "US";
     }
 
-    const hasNormalizedCoverage =
+    const normalizedStringCoverage =
       NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) => {
         const value = normalizedPayload[field];
-        if (typeof value !== "string") return false;
-        return value.trim().length > 0;
-      }) && hasNormalizedCountyCoverage(normalizedPayload);
+        return typeof value === "string" && value.trim().length > 0;
+      });
+    const normalizedStrictCoverage =
+      NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS.every((field) =>
+        hasMeaningfulAddressValue(normalizedPayload[field]),
+      );
+    const hasNormalizedCoverage =
+      normalizedStringCoverage &&
+      normalizedStrictCoverage &&
+      hasNormalizedCountyCoverage(normalizedPayload);
 
     const trimmedRequestIdentifier =
       typeof requestIdentifierCandidate === "string" &&
