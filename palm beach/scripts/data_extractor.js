@@ -6564,10 +6564,12 @@ function enforceAddressSchemaVariantOutput(addressFilePath, options = {}) {
     }
   };
 
+  const normalizedProbe =
+    ensureAddressOutputFieldPresence({ ...surface }) || { ...surface };
   const normalizedCandidate =
-    buildNormalizedAddressOutputForSchema({
-      ...surface,
-    }) || null;
+    hasNormalizedCountyCoverage({ ...normalizedProbe })
+      ? buildNormalizedAddressOutputForSchema(normalizedProbe)
+      : null;
 
   if (normalizedCandidate) {
     if (requestIdentifier !== undefined) {
