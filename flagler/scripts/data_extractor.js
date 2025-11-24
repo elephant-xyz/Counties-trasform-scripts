@@ -1233,45 +1233,34 @@ function writeTaxes($, propertySeed, parcelId) {
 
   // Add historical data first
   historical.forEach((h) => {
+    // Parse all values
+    const building = parseCurrencyToNumber(h.building);
+    const land = parseCurrencyToNumber(h.land);
+    const agricultural = parseCurrencyToNumber(h.agricultural);
+    const market = parseCurrencyToNumber(h.market);
+    const assessed = parseCurrencyToNumber(h.assessed);
+    const exempt = parseCurrencyToNumber(h.exempt);
+    const taxable = parseCurrencyToNumber(h.taxable);
+
+    // Create tax entry with all fields in one object literal
+    // Required fields must always be present (even if null)
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
-      // These three fields are REQUIRED and must always be present
-      // Set to null when not available in source data
+      monthly_tax_amount: null,
       period_start_date: null,
       period_end_date: null,
-      monthly_tax_amount: null,
     };
 
-    // Only add fields with valid values
-    const building = parseCurrencyToNumber(h.building);
+    // Conditionally add optional fields only if they have valid values
     if (building !== null) taxEntry.property_building_amount = building;
-
-    const land = parseCurrencyToNumber(h.land);
     if (land !== null) taxEntry.property_land_amount = land;
-
-    const agricultural = parseCurrencyToNumber(h.agricultural);
     if (agricultural !== null) taxEntry.agricultural_valuation_amount = agricultural;
-
-    const market = parseCurrencyToNumber(h.market);
     if (market !== null) taxEntry.property_market_value_amount = market;
-
-    const assessed = parseCurrencyToNumber(h.assessed);
     if (assessed !== null) taxEntry.property_assessed_value_amount = assessed;
-
-    const exempt = parseCurrencyToNumber(h.exempt);
     if (exempt !== null) taxEntry.property_exemption_amount = exempt;
-
-    const taxable = parseCurrencyToNumber(h.taxable);
     if (taxable !== null) taxEntry.property_taxable_value_amount = taxable;
-
     if (millageRate !== null) taxEntry.millage_rate = millageRate;
-
-    // NOTE: The following fields are NOT included because they're not available in source data:
-    // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
-    // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
-    // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
-    // - yearly_tax_amount, first_year_building_on_tax_roll, first_year_on_tax_roll
 
     allYears.set(h.year, taxEntry);
   });
@@ -1281,71 +1270,45 @@ function writeTaxes($, propertySeed, parcelId) {
     // Access agricultural market value for processing
     const agriculturalMarketVal = v.agriculturalMarket;
 
+    // Parse all values
+    const building = parseCurrencyToNumber(v.building);
+    const land = parseCurrencyToNumber(v.land);
+    const agricultural = parseCurrencyToNumber(v.landAgricultural);
+    const market = parseCurrencyToNumber(v.market);
+    const assessed = parseCurrencyToNumber(v.assessed);
+    const exempt = parseCurrencyToNumber(v.exempt);
+    const taxable = parseCurrencyToNumber(v.taxable);
+
     if (allYears.has(v.year)) {
       // Update existing entry with non-null values
       const existing = allYears.get(v.year);
 
-      const building = parseCurrencyToNumber(v.building);
       if (building !== null) existing.property_building_amount = building;
-
-      const land = parseCurrencyToNumber(v.land);
       if (land !== null) existing.property_land_amount = land;
-
-      const agricultural = parseCurrencyToNumber(v.landAgricultural);
       if (agricultural !== null) existing.agricultural_valuation_amount = agricultural;
-
-      const market = parseCurrencyToNumber(v.market);
       if (market !== null) existing.property_market_value_amount = market;
-
-      const assessed = parseCurrencyToNumber(v.assessed);
       if (assessed !== null) existing.property_assessed_value_amount = assessed;
-
-      const exempt = parseCurrencyToNumber(v.exempt);
       if (exempt !== null) existing.property_exemption_amount = exempt;
-
-      const taxable = parseCurrencyToNumber(v.taxable);
       if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
-      // Add new entry
+      // Add new entry - create with all required fields in one object literal
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
-        // These three fields are REQUIRED and must always be present
-        // Set to null when not available in source data
+        monthly_tax_amount: null,
         period_start_date: null,
         period_end_date: null,
-        monthly_tax_amount: null,
       };
 
-      // Only add fields with valid values
-      const assessed = parseCurrencyToNumber(v.assessed);
-      if (assessed !== null) taxEntry.property_assessed_value_amount = assessed;
-
-      const market = parseCurrencyToNumber(v.market);
-      if (market !== null) taxEntry.property_market_value_amount = market;
-
-      const building = parseCurrencyToNumber(v.building);
+      // Conditionally add optional fields only if they have valid values
       if (building !== null) taxEntry.property_building_amount = building;
-
-      const land = parseCurrencyToNumber(v.land);
       if (land !== null) taxEntry.property_land_amount = land;
-
-      const taxable = parseCurrencyToNumber(v.taxable);
-      if (taxable !== null) taxEntry.property_taxable_value_amount = taxable;
-
-      const agricultural = parseCurrencyToNumber(v.landAgricultural);
       if (agricultural !== null) taxEntry.agricultural_valuation_amount = agricultural;
-
-      const exempt = parseCurrencyToNumber(v.exempt);
+      if (market !== null) taxEntry.property_market_value_amount = market;
+      if (assessed !== null) taxEntry.property_assessed_value_amount = assessed;
       if (exempt !== null) taxEntry.property_exemption_amount = exempt;
-
+      if (taxable !== null) taxEntry.property_taxable_value_amount = taxable;
       if (millageRate !== null) taxEntry.millage_rate = millageRate;
-
-      // NOTE: The following fields are NOT included because they're not available in source data:
-      // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
-      // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
-      // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
-      // - yearly_tax_amount, first_year_building_on_tax_roll, first_year_on_tax_roll
 
       allYears.set(v.year, taxEntry);
     }
