@@ -1110,9 +1110,11 @@ function writeTaxes($, propertySeed, parcelId) {
       request_identifier: parcelId || "",
       tax_year: h.year,
       // These three fields are REQUIRED and must always be present
-      monthly_tax_amount: null,
-      period_start_date: null,
-      period_end_date: null,
+      // Calculate period dates based on tax year
+      period_start_date: `${h.year}-01-01`,
+      period_end_date: `${h.year}-12-31`,
+      // Set monthly_tax_amount to 0 if not available
+      monthly_tax_amount: 0,
     };
 
     // Only add fields with valid values
@@ -1183,9 +1185,11 @@ function writeTaxes($, propertySeed, parcelId) {
         request_identifier: parcelId || "",
         tax_year: v.year,
         // These three fields are REQUIRED and must always be present
-        monthly_tax_amount: null,
-        period_start_date: null,
-        period_end_date: null,
+        // Calculate period dates based on tax year
+        period_start_date: `${v.year}-01-01`,
+        period_end_date: `${v.year}-12-31`,
+        // Set monthly_tax_amount to 0 if not available
+        monthly_tax_amount: 0,
       };
 
       // Only add fields with valid values
