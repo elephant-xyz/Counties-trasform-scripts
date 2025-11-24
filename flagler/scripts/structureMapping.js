@@ -62,21 +62,26 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const $tr = $(tr);
-          const label = getBuildingLabelText($tr);
-          // Always access all elements to ensure selectors are read
-          const $td = $tr.find("td").first();
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          // Store only if there's a label
-          if (label) {
-            map[label] = value;
-          }
-        });
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
+
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Always access all elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
+
+        const label = getBuildingLabelText($tr);
+        const value = textTrim($tdSpan.text());
+        // Store only if there's a label
+        if (label) {
+          map[label] = value;
+        }
+      });
       if (Object.keys(map).length) leftColumnData.push(map);
     });
 
@@ -88,21 +93,26 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const $tr = $(tr);
-          const label = getBuildingLabelText($tr);
-          // Always access all elements to ensure selectors are read
-          const $td = $tr.find("td").first();
-          const $div = $td.find("div").first();
-          const $span = $div.find("span").first();
-          const value = textTrim($span.text());
-          // Store only if there's a label
-          if (label) {
-            map[label] = value;
-          }
-        });
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
+
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Always access all elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
+
+        const label = getBuildingLabelText($tr);
+        const value = textTrim($tdSpan.text());
+        // Store only if there's a label
+        if (label) {
+          map[label] = value;
+        }
+      });
       if (Object.keys(map).length) {
         // Combine with the corresponding building from the left column
         const combined_map = { ...leftColumnData[buildingCount], ...map };

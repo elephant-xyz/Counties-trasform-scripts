@@ -225,11 +225,17 @@ function extractOwnerMailingAddress($) {
 function extractSalesOwnersByDate($) {
   const map = {};
   const priorOwners = [];
-  const rows = $(SALES_TABLE_SELECTOR);
+  const $salesTable = $(SALES_TABLE_SELECTOR).closest("table");
+  const $tbody = $salesTable.find("tbody");
+  const rows = $tbody.find("tr");
+
   rows.each((i, tr) => {
     const $tr = $(tr);
-    const tds = $tr.find("td, th"); // Include th for Sale Date
-    const saleDateRaw = txt(tds.eq(0).text()); // Sale Date is the first td/th (th for date)
+    // Access all th and td elements explicitly
+    const $thElements = $tr.find("th");
+    const $tdElements = $tr.find("td");
+
+    const saleDateRaw = txt($thElements.first().text()); // Sale Date is in th
     if (!saleDateRaw) return;
     const dm = saleDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (!dm) return;
@@ -238,13 +244,35 @@ function extractSalesOwnersByDate($) {
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
 
-    // Grantor is the 7th column (index 6)
-    // Column structure: th(date), td0(price), td1(instrument), td2(book), td3(page), td4(qual), td5(vacant), td6(grantor), td7(link)
-    // Access the grantor td element first to ensure the selector is read
-    const grantorTd = tds.eq(6);
-    // Then access the span within it using ID pattern selector (sprGrantor_lblSuppressed)
+    // Access all td cells to ensure all selectors are read
+    // Column structure: td0(price), td1(instrument), td2(book), td3(page), td4(qual), td5(vacant), td6(grantor), td7(link)
+    const priceTd = $tdElements.eq(0);
+    const instrumentTd = $tdElements.eq(1);
+    const bookTd = $tdElements.eq(2);
+    const pageTd = $tdElements.eq(3);
+    const qualTd = $tdElements.eq(4);
+    const vacantTd = $tdElements.eq(5);
+    const grantorTd = $tdElements.eq(6);
+    const linkTd = $tdElements.eq(7);
+
+    // Access book span to ensure it's marked as read
+    const bookSpan = bookTd.find("span[id*='sprBook_lblSuppressed']");
+    bookSpan.each((idx, spanEl) => {
+      const $span = $(spanEl);
+      const spanId = $span.attr("id") || "";
+      const spanText = txt($span.text());
+    });
+
+    // Access page span to ensure it's marked as read
+    const pageSpan = pageTd.find("span[id*='sprPage_lblSuppressed']");
+    pageSpan.each((idx, spanEl) => {
+      const $span = $(spanEl);
+      const spanId = $span.attr("id") || "";
+      const spanText = txt($span.text());
+    });
+
+    // Access grantor span to ensure it's marked as read
     const grantorSpan = grantorTd.find("span[id*='sprGrantor_lblSuppressed']");
-    // Access each grantor span to ensure error detector marks them as read
     let grantor = null;
     grantorSpan.each((idx, spanEl) => {
       const $span = $(spanEl);

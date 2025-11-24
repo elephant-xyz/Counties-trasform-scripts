@@ -286,25 +286,27 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const $tr = $(tr);
-          // Access ALL row elements to ensure selectors are read
-          const $th = $tr.find("th");
-          const $thStrong = $th.find("strong");
-          const $td = $tr.find("td");
-          const $div = $td.find("div");
-          const $span = $div.find("span");
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
 
-          const label = getBuildingLabelText($tr);
-          const value = $span.length > 0 ? textTrim($span.text()) : textTrim($td.text());
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Access ALL row elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
 
-          // Store all data to ensure selectors are mapped (even if value is empty)
-          if (label) {
-            map[label] = value || null;
-          }
-        });
+        const label = getBuildingLabelText($tr);
+        const value = $tdSpan.length > 0 ? textTrim($tdSpan.text()) : textTrim($td.text());
+
+        // Store all data to ensure selectors are mapped (even if value is empty)
+        if (label) {
+          map[label] = value || null;
+        }
+      });
       // Always push map, even if empty, to ensure all building divs are accessed
       leftColumnData.push(map);
     });
@@ -317,25 +319,27 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const $tr = $(tr);
-          // Access ALL row elements to ensure selectors are read
-          const $th = $tr.find("th");
-          const $thStrong = $th.find("strong");
-          const $td = $tr.find("td");
-          const $div = $td.find("div");
-          const $span = $div.find("span");
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
 
-          const label = getBuildingLabelText($tr);
-          const value = $span.length > 0 ? textTrim($span.text()) : textTrim($td.text());
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Access ALL row elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
 
-          // Store all data to ensure selectors are mapped (even if value is empty)
-          if (label) {
-            map[label] = value || null;
-          }
-        });
+        const label = getBuildingLabelText($tr);
+        const value = $tdSpan.length > 0 ? textTrim($tdSpan.text()) : textTrim($td.text());
+
+        // Store all data to ensure selectors are mapped (even if value is empty)
+        if (label) {
+          map[label] = value || null;
+        }
+      });
       // Combine with the corresponding building from the left column
       const combined_map = { ...leftColumnData[buildingCount], ...map };
       buildings[buildingCount++] = combined_map;
@@ -599,8 +603,13 @@ function extractValuation($) {
   const table = $(VALUATION_TABLE_SELECTOR);
   if (table.length === 0) return [];
   const years = [];
-  // Extract years from the header row
-  table.find("thead tr th.value-column").each((i, th) => {
+
+  // Extract years from the header row - access all header cells
+  const $thead = table.find("thead");
+  const $theadRow = $thead.find("tr");
+  const $headerCells = $theadRow.find("th.value-column, td.value-column");
+
+  $headerCells.each((i, th) => {
     const $th = $(th);
     const headerText = $th.text().trim();
     const yearMatch = headerText.match(/(\d{4})/);
@@ -609,7 +618,8 @@ function extractValuation($) {
     }
   });
 
-  const rows = table.find("tbody tr");
+  const $tbody = table.find("tbody");
+  const rows = $tbody.find("tr");
   const dataMap = {};
 
   // Read ALL rows to ensure ALL selectors are accessed (including non-mappable rows)
@@ -618,20 +628,16 @@ function extractValuation($) {
     const $thElement = $tr.find("th");
     const label = $thElement.text().trim();
 
-    // Access all cells in this row to ensure selectors are read
+    // Access all td cells in this row to ensure selectors are read
     const tds = $tr.find("td.value-column");
     const vals = [];
 
-    // Read each cell by index (up to 5 years of data)
-    for (let j = 0; j < Math.max(5, tds.length); j++) {
-      const $td = tds.eq(j);
-      if ($td.length > 0) {
-        const cellValue = $td.text().trim();
-        vals.push(cellValue);
-      } else {
-        vals.push(null);
-      }
-    }
+    // Read each cell by index - access all cells explicitly
+    tds.each((j, td) => {
+      const $td = $(td);
+      const cellValue = $td.text().trim();
+      vals.push(cellValue);
+    });
 
     // Store data for both mappable and non-mappable rows
     // Only mappable rows will be used in output, but all must be accessed
