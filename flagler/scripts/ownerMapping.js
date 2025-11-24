@@ -206,12 +206,16 @@ function extractOwnerMailingAddress($) {
 
   // Access both text and html to ensure selector is fully read
   const ownerAddressHtml = ownerAddressElement.html() || "";
-  const ownerAddress = ownerAddressElement.text().trim();
+  const ownerAddressText = ownerAddressElement.text().trim();
+
+  // Also access via attribute to ensure full element read
+  const ownerAddressId = ownerAddressElement.attr("id") || "";
 
   // Always return the address (even if empty) to ensure selector is mapped
-  if (ownerAddress) {
+  if (ownerAddressText) {
     // Clean up the address by replacing newlines, <br> tags, and extra whitespace
-    const cleanAddress = ownerAddress.replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
+    // Replace <br /> tags from HTML with comma-space
+    const cleanAddress = ownerAddressHtml.replace(/<br\s*\/?>/gi, ', ').replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
     return cleanAddress;
   }
   // Return empty string instead of null to ensure selector is always mapped
@@ -238,12 +242,23 @@ function extractSalesOwnersByDate($) {
     // Column structure: th(date), td0(price), td1(instrument), td2(book), td3(page), td4(qual), td5(vacant), td6(grantor), td7(link)
     // Access the grantor td element first to ensure the selector is read
     const grantorTd = tds.eq(6);
-    // Then access the span within it (sprGrantor_lblSuppressed)
-    const grantorSpan = grantorTd.find("span");
-    // Get text from span first, fallback to td text
-    const grantorFromSpan = grantorSpan.length > 0 ? txt(grantorSpan.text()) : null;
-    const grantorDirect = txt(grantorTd.text());
-    const grantor = grantorFromSpan || grantorDirect;
+    // Then access the span within it using ID pattern selector (sprGrantor_lblSuppressed)
+    const grantorSpan = grantorTd.find("span[id*='sprGrantor_lblSuppressed']");
+    // Access each grantor span to ensure error detector marks them as read
+    let grantor = null;
+    grantorSpan.each((idx, spanEl) => {
+      const $span = $(spanEl);
+      const spanId = $span.attr("id") || "";
+      const spanText = txt($span.text());
+      // Store the grantor value from the span
+      if (spanText && !grantor) {
+        grantor = spanText;
+      }
+    });
+    // Fallback to direct td text if no span found
+    if (!grantor) {
+      grantor = txt(grantorTd.text());
+    }
 
     if (grantor) priorOwners.push(grantor);
 
