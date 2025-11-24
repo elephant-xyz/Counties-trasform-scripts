@@ -415,10 +415,11 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     const purchasePriceAmount = parseCurrencyToNumber(s.salePrice);
 
     const saleObj = {
-      ownership_transfer_date: ownershipTransferDate,
-      purchase_price_amount: purchasePriceAmount,
       request_identifier: requestIdentifier,
+      source_http_request: null,
     };
+    if (ownershipTransferDate) saleObj.ownership_transfer_date = ownershipTransferDate;
+    if (purchasePriceAmount !== null) saleObj.purchase_price_amount = purchasePriceAmount;
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     // Parse book and page from bookPage string (format: "book/page")
@@ -433,12 +434,13 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     }
 
     const deed = {
-      ownership_transfer_date: ownershipTransferDate,
-      book: book,
-      page: page,
-      deed_type: mapInstrumentToDeedType(s.instrument),
       request_identifier: requestIdentifier,
+      source_http_request: null,
     };
+    if (book) deed.book = book;
+    if (page) deed.page = page;
+    const deedType = mapInstrumentToDeedType(s.instrument);
+    if (deedType) deed.deed_type = deedType;
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     // File objects are not generated - they will be populated by the process
