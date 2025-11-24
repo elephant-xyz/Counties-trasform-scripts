@@ -2,6 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+let INPUT_JSON = null;
+
 // --- Start of original owner_data.js content ---
 
 function normSpace(s) {
@@ -9,43 +11,72 @@ function normSpace(s) {
 }
 
 function extractPropertyId($) {
-  // Prefer explicit table row label "Parcel ID:"
   let id = null;
-  $("tr").each((_, tr) => {
-    if (id) return;
-    const tds = $(tr).find("td");
-    if (tds.length >= 2) {
-      const label = normSpace($(tds[0]).text());
-      if (/^parcel\s*id\s*:$/i.test(label) || /^parcel\s*id\b/i.test(label)) {
-        const candidate = normSpace($(tds[1]).text());
-        if (candidate) id = candidate;
+
+  if (INPUT_JSON) {
+    const candidates = [];
+    const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+    const quickSummary = Array.isArray(INPUT_JSON.parcelQuickSearchSummary)
+      ? INPUT_JSON.parcelQuickSearchSummary
+      : [];
+
+    if (generalProfile.parcelId) {
+      candidates.push(String(generalProfile.parcelId));
+    }
+    if (generalProfile.altKey) {
+      candidates.push(String(generalProfile.altKey));
+    }
+    quickSummary.forEach((entry) => {
+      if (entry && entry.parcelId) {
+        candidates.push(String(entry.parcelId));
+      }
+    });
+
+    for (const candidate of candidates) {
+      const trimmed = normSpace(candidate);
+      if (trimmed) {
+        id = trimmed;
+        break;
       }
     }
-  });
-  // Fallbacks if not found exactly
-  if (!id) {
+  }
+
+  if (!id && $) {
+    $("tr").each((_, tr) => {
+      if (id) return;
+      const tds = $(tr).find("td");
+      if (tds.length >= 2) {
+        const label = normSpace($(tds[0]).text());
+        if (/^parcel\s*id\s*:$/i.test(label) || /^parcel\s*id\b/i.test(label)) {
+          const candidate = normSpace($(tds[1]).text());
+          if (candidate) id = candidate;
+        }
+      }
+    });
+  }
+
+  if (!id && $) {
     const el = $('*:contains("Parcel ID")')
       .filter((_, e) => /parcel\s*id/i.test($(e).text()))
       .first();
     if (el && el.length) {
-      // Try next sibling text
       const sib = el.next();
       const candidate = normSpace(sib.text());
       if (candidate) id = candidate;
     }
   }
-  // --- NEW: Specific extraction for Parcel Number from your HTML ---
-  if (!id) {
-    const parcelNumberCell = $('td.property_field:contains("Parcel Number:")').next('td.property_item');
+
+  if (!id && $) {
+    const parcelNumberCell = $(
+      'td.property_field:contains("Parcel Number:")',
+    ).next("td.property_item");
     if (parcelNumberCell.length) {
       id = normSpace(parcelNumberCell.text());
     }
   }
-  // --- END NEW ---
 
   if (!id) return "unknown_id";
-  // Clean ID
-  id = id.replace(/[^A-Za-z0-9_-]+/g, "");
+  id = String(id).replace(/[^A-Za-z0-9_-]+/g, "");
   return id || "unknown_id";
 }
 
@@ -488,7 +519,8 @@ const suffixLookup = new Map(
 
 function toIsoDate(s) {
   if (!s) return null;
-  const str = s.trim();
+  const strRaw = s.trim();
+  const str = strRaw.includes("T") ? strRaw.split("T")[0] : strRaw;
   let m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -682,81 +714,122 @@ function ownerNormKey(owner) {
 
 function extractOwnerGroups($) {
   const groups = [];
-  // Updated labelRx to include "Name:" which is used for the owner in your HTML
-  const labelRx =
-    /^(owner\(s\)|owners?|owner\s*name\s*\d*|co-?owner|primary\s*owner|name)\s*:*/i;
+  const seen = new Set();
 
-  // Existing logic for table rows
-  $("tr").each((_, tr) => {
-    const tds = $(tr).find("td,th");
-    if (tds.length < 2) return;
-    const label = normSpace($(tds[0]).text());
-    if (!labelRx.test(label)) return;
-
-    const htmlValue = $(tds[1]).html() || "";
-    const rawValue = htmlValue
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\u00A0/g, " ");
-    const valueText = rawValue.replace(/\s*\n+\s*/g, "\n").trim();
+  const pushGroup = (context, valueText, date = null, isCurrent = false) => {
     if (!valueText) return;
+    const normalizedValue = valueText
+      .split("\n")
+      .map((line) => normSpace(line))
+      .filter(Boolean)
+      .join("\n");
+    if (!normalizedValue) return;
+    const key = `${context || ""}::${normalizedValue}::${date || ""}::${isCurrent}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    groups.push({
+      context: context || "Owner",
+      valueText: normalizedValue,
+      date,
+      isCurrent,
+    });
+  };
 
-    // Find a date near this row (same or next row)
-    let dateCandidate = null;
-    const dateRx =
-      /\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}\/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s*\d{4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b/i;
-    const rowText = normSpace($(tr).text());
-    let m = rowText.match(dateRx);
-    if (m) dateCandidate = toIsoDate(m[1]);
-    if (!dateCandidate) {
-      const nextRow = $(tr).next("tr");
-      if (nextRow && nextRow.length) {
-        const rowText2 = normSpace(nextRow.text());
-        const m2 = rowText2.match(dateRx);
-        if (m2) dateCandidate = toIsoDate(m2[1]);
+  if (INPUT_JSON) {
+    const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+    const quickSummary = Array.isArray(INPUT_JSON.parcelQuickSearchSummary)
+      ? INPUT_JSON.parcelQuickSearchSummary
+      : [];
+    const ownerStrings = new Set();
+
+    if (generalProfile.ownerName) {
+      ownerStrings.add(normSpace(generalProfile.ownerName));
+    }
+    if (generalProfile.ownerName2) {
+      ownerStrings.add(normSpace(generalProfile.ownerName2));
+    }
+    quickSummary.forEach((entry) => {
+      if (entry && entry.ownerName) {
+        ownerStrings.add(normSpace(entry.ownerName));
       }
+    });
+
+    if (ownerStrings.size > 0) {
+      pushGroup(
+        "Current Owner",
+        Array.from(ownerStrings).filter(Boolean).join("\n"),
+        null,
+        true,
+      );
     }
 
-    groups.push({
-      context: label,
-      valueText,
-      date: dateCandidate,
-      isCurrent: true,
-    }); // assume this is the current owner block
-  });
-
-  // If no direct owner label rows found, try generic spans/divs where the preceding sibling label contains Owners
-  if (groups.length === 0) {
-    $('td:contains("Owners")').each((_, el) => {
-      const $el = $(el);
-      const label = normSpace($el.text());
-      if (!/owners?/i.test(label)) return;
-      const tr = $el.closest("tr");
-      if (!tr.length) return;
-      const tds = tr.find("td");
-      if (tds.length >= 2) {
-        const valueText = normSpace($(tds[1]).text());
-        if (valueText)
-          groups.push({
-            context: "Owners",
-            valueText,
-            date: null,
-            isCurrent: true,
-          });
-      }
+    const salesHistory = Array.isArray(INPUT_JSON.parcelSalesHistory)
+      ? INPUT_JSON.parcelSalesHistory
+      : [];
+    salesHistory.forEach((sale, index) => {
+      const buyer = sale && sale.buyer ? normSpace(sale.buyer) : "";
+      if (!buyer) return;
+      const contextParts = ["Buyer"];
+      if (sale.deedDesc) contextParts.push(normSpace(sale.deedDesc));
+      const context = contextParts.join(" - ");
+      const saleDate = sale && sale.saleDate ? toIsoDate(sale.saleDate) : null;
+      pushGroup(context, buyer, saleDate, index === 0 && !ownerStrings.size);
     });
   }
 
-  // Deduplicate by valueText
-  const out = [];
-  const seen = new Set();
-  groups.forEach((g) => {
-    const key = `${g.context}::${g.valueText}`.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(g);
-  });
-  return out;
+  if ($) {
+    const labelRx =
+      /^(owner\(s\)|owners?|owner\s*name\s*\d*|co-?owner|primary\s*owner|name)\s*:*/i;
+
+    $("tr").each((_, tr) => {
+      const tds = $(tr).find("td,th");
+      if (tds.length < 2) return;
+      const label = normSpace($(tds[0]).text());
+      if (!labelRx.test(label)) return;
+
+      const htmlValue = $(tds[1]).html() || "";
+      const rawValue = htmlValue
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\u00A0/g, " ");
+      const valueText = rawValue.replace(/\s*\n+\s*/g, "\n").trim();
+      if (!valueText) return;
+
+      let dateCandidate = null;
+      const dateRx =
+        /\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}\/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s*\d{4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b/i;
+      const rowText = normSpace($(tr).text());
+      let m = rowText.match(dateRx);
+      if (m) dateCandidate = toIsoDate(m[1]);
+      if (!dateCandidate) {
+        const nextRow = $(tr).next("tr");
+        if (nextRow && nextRow.length) {
+          const rowText2 = normSpace(nextRow.text());
+          const m2 = rowText2.match(dateRx);
+          if (m2) dateCandidate = toIsoDate(m2[1]);
+        }
+      }
+
+      pushGroup(label, valueText, dateCandidate, true);
+    });
+
+    if (groups.length === 0) {
+      $('td:contains("Owners")').each((_, el) => {
+        const $el = $(el);
+        const label = normSpace($el.text());
+        if (!/owners?/i.test(label)) return;
+        const tr = $el.closest("tr");
+        if (!tr.length) return;
+        const tds = tr.find("td");
+        if (tds.length >= 2) {
+          const valueText = normSpace($(tds[1]).text());
+          if (valueText) pushGroup("Owners", valueText, null, true);
+        }
+      });
+    }
+  }
+
+  return groups;
 }
 
 function parseOwnersFromGroup(valueText, contextHint) {
@@ -2559,6 +2632,30 @@ function mapMiscImprovementType(code, description) {
     case "TVT":
       push("Tower");
       break;
+    case "CPT":
+    case "CPT2":
+      push("Carport");
+      break;
+    case "FPL":
+    case "FPL2":
+    case "FPL3":
+      push("Fireplace");
+      break;
+    case "PT":
+    case "PT1":
+    case "PT2":
+      push("Patio");
+      break;
+    case "PL":
+    case "PL2":
+      push("Pool");
+      break;
+    case "WLDC":
+      push("Deck");
+      break;
+    case "GRNH":
+      push("Greenhouse");
+      break;
     default:
       break;
   }
@@ -2601,6 +2698,47 @@ function mapMiscImprovementType(code, description) {
   }
 
   return null;
+}
+
+function interpretExteriorMaterials(rawText) {
+  if (!rawText) {
+    return { primary: null, secondary: null, framing: null };
+  }
+  const text = normSpace(String(rawText)).toUpperCase();
+  const has = (kw) => text.indexOf(kw) !== -1;
+  let primary = null;
+  let secondary = null;
+  let framing = null;
+
+  if (has("CBS") || has("CONCRETE") || has("C.B.") || has("BLOCK") || has("CONC")) {
+    framing = "Concrete Block";
+  }
+
+  if (has("STUCCO")) primary = "Stucco";
+  if (!primary && has("VINYL") && has("SIDING")) primary = "Vinyl Siding";
+  if (!primary && has("WOOD") && has("SIDING")) primary = "Wood Siding";
+  if (!primary && has("FIBER") && has("CEMENT")) primary = "Fiber Cement Siding";
+  if (!primary && has("BRICK")) primary = "Brick";
+  if (!primary && (has("BLOCK") || has("CONCRETE") || has("CBS")))
+    primary = "Concrete Block";
+
+  if (has("BRICK") && primary !== "Brick") secondary = "Brick Accent";
+  if (
+    !secondary &&
+    (has("BLOCK") || has("CONCRETE") || has("CBS")) &&
+    primary !== "Concrete Block"
+  ) {
+    secondary = "Decorative Block";
+  }
+  if (!secondary && has("STUCCO") && primary !== "Stucco") {
+    secondary = "Stucco Accent";
+  }
+
+  return {
+    primary,
+    secondary: secondary || null,
+    framing: framing || null,
+  };
 }
 
 function getUnitsType(units) {
@@ -2669,27 +2807,39 @@ function main() {
   // Inputs
   let inputHtml = "";
   const htmlPath = "input.html";
-  let inputJson = null; // Variable to store parsed JSON input
-  if (fs.existsSync(htmlPath)) {
-    inputHtml = readText(htmlPath);
-    console.log(inputHtml);
+  const jsonPath = "input.json";
 
-  } else if (fs.existsSync("input.json")) {
+  if (fs.existsSync(jsonPath)) {
     try {
-      inputJson = readJSON("input.json"); // Store the parsed JSON
-      const htmlFromJson = extractHtmlString(inputJson);
+      const parsed = readJSON(jsonPath);
+      INPUT_JSON = parsed;
+      const htmlFromJson = extractHtmlString(parsed);
       if (typeof htmlFromJson === "string" && htmlFromJson.trim()) {
         inputHtml = htmlFromJson;
-        console.log(inputHtml);
       }
     } catch (err) {
-      console.warn("Unable to derive HTML from input.json:", err.message || err);
+      console.warn(
+        "Unable to parse input.json, proceeding without JSON:",
+        err.message || err,
+      );
+      INPUT_JSON = null;
     }
   }
+
+  if (!inputHtml && fs.existsSync(htmlPath)) {
+    inputHtml = readText(htmlPath);
+  }
+
   if (!inputHtml || typeof inputHtml !== "string") {
-    console.warn("No input.html found; proceeding with empty HTML stub.");
     inputHtml = "<html></html>";
   }
+
+  if (!INPUT_JSON) {
+    console.warn(
+      "No input.json found or unreadable; falling back to HTML parsing only.",
+    );
+  }
+
   const addrSeed = readJSON("unnormalized_address.json");
   const propSeed = readJSON("property_seed.json");
 
@@ -2774,134 +2924,243 @@ function main() {
 
   // Helper: find cell by label in General Information table
   function extractGeneral() {
-    if (!$) return {};
     const result = {};
-    // Parcel Number
-    const rows = $("table.property_head").first().find("tr");
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 4) {
-        const label = $(tds[2]).text().trim();
-        const val = $(tds[3]).text().trim();
-        if (/Parcel Number/i.test(label)) result.parcelNumber = val || null;
-      }
-    });
 
-    // Mailing Address block
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 2) {
-        const label = $(tds[0]).text().trim();
-        if (/Mailing Address:?/i.test(label)) {
-          const cellHtml = $(tds[1]).html() || "";
-          const cleanedHtml = cellHtml.replace(
-            /<span[^>]*>[\s\S]*?<\/span>/gi,
-            "",
-          );
-          const lines = cleanedHtml
-            .split(/<br\s*\/?>/i)
-            .map((line) =>
-              line
-                .replace(/<[^>]+>/g, "")
-                .replace(/\s+/g, " ")
-                .trim(),
-            )
-            .filter(
-              (line) =>
-                line &&
-                !/update mailing address/i.test(line) &&
-                line !== "/>",
+    if (INPUT_JSON) {
+      const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+      if (generalProfile.parcelId) {
+        result.parcelNumber = String(generalProfile.parcelId).trim();
+      }
+      const streetNumber =
+        generalProfile.streetNumber &&
+        Number(generalProfile.streetNumber) !== 0
+          ? String(generalProfile.streetNumber).trim()
+          : "";
+      const propertyAddress = normSpace(
+        generalProfile.propertyAddress || generalProfile.streetName || "",
+      );
+      let locationLine = propertyAddress;
+      if (streetNumber) {
+        locationLine = `${streetNumber} ${propertyAddress}`.trim();
+      }
+      if (!locationLine && generalProfile.streetName) {
+        locationLine = normSpace(generalProfile.streetName);
+      }
+      const city = normSpace(generalProfile.propertyCity || "");
+      const state = normSpace(generalProfile.propertyState || "");
+      const zip = normSpace(generalProfile.propertyZip || "");
+      const locationParts = [];
+      if (locationLine) locationParts.push(locationLine);
+      const cityState = [city, state].filter(Boolean).join(", ");
+      if (cityState) locationParts.push(cityState);
+      if (zip) locationParts.push(zip);
+      if (locationParts.length) {
+        result.propertyLocationRaw = locationParts.join(", ");
+      }
+
+      // const mailingLines = [];
+      // const mailingLine1 = normSpace(generalProfile.mailAddress || "");
+      // const mailingCity = normSpace(generalProfile.mailCity || "");
+      // const mailingState = normSpace(generalProfile.mailState || "");
+      // const mailingZip = normSpace(generalProfile.mailZip || "");
+      // if (mailingLine1) mailingLines.push(mailingLine1);
+      // const mailingLine2Parts = [];
+      // if (mailingCity) mailingLine2Parts.push(mailingCity);
+      // if (mailingState) mailingLine2Parts.push(mailingState);
+      // let mailingLine2 = mailingLine2Parts.join(", ");
+      // if (mailingZip) {
+      //   mailingLine2 = mailingLine2
+      //     ? `${mailingLine2} ${mailingZip}`
+      //     : mailingZip;
+      // }
+      // if (mailingLine2) mailingLines.push(mailingLine2);
+      // if (mailingLines.length) {
+      //   result.mailingAddressLines = mailingLines;
+      // }
+
+      if (
+        INPUT_JSON.parcelLegalDescription &&
+        INPUT_JSON.parcelLegalDescription.propertyDescription
+      ) {
+        result.legalDescription = normSpace(
+          INPUT_JSON.parcelLegalDescription.propertyDescription,
+        );
+      } else if (generalProfile.propertyDescription) {
+        result.legalDescription = normSpace(generalProfile.propertyDescription);
+      }
+    }
+
+    if ($ && (!result.parcelNumber || !result.propertyLocationRaw)) {
+      const rows = $("table.property_head").first().find("tr");
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 4) {
+          const label = $(tds[2]).text().trim();
+          const val = $(tds[3]).text().trim();
+          if (!result.parcelNumber && /Parcel Number/i.test(label)) {
+            result.parcelNumber = val || result.parcelNumber || null;
+          }
+        }
+      });
+
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 2) {
+          const label = $(tds[0]).text().trim();
+          if (!result.mailingAddressLines && /Mailing Address:?/i.test(label)) {
+            const cellHtml = $(tds[1]).html() || "";
+            const cleanedHtml = cellHtml.replace(
+              /<span[^>]*>[\s\S]*?<\/span>/gi,
+              "",
             );
-          if (lines.length) result.mailingAddressLines = lines;
+            const lines = cleanedHtml
+              .split(/<br\s*\/?>/i)
+              .map((line) =>
+                line
+                  .replace(/<[^>]+>/g, "")
+                  .replace(/\s+/g, " ")
+                  .trim(),
+              )
+              .filter(
+                (line) =>
+                  line &&
+                  !/update mailing address/i.test(line) &&
+                  line !== "/>",
+              );
+            if (lines.length) result.mailingAddressLines = lines;
+          }
         }
-      }
-    });
+      });
 
-    // Property Location block
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 4) {
-        const label = $(tds[0]).text().trim();
-        if (/Property Location:/i.test(label)) {
-          const addrHtml = $(tds[1]).html() || "";
-          const addrText = addrHtml
-            .replace(/<br\s*\/?>(?=\s*|$)/gi, "\n")
-            .replace(/<[^>]+>/g, "")
-            .trim();
-          result.propertyLocationRaw = addrText; // e.g., "31729 PARKDALE DR\nLEESBURG FL, 34748"
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 4 && !result.propertyLocationRaw) {
+          const label = $(tds[0]).text().trim();
+          if (/Property Location:/i.test(label)) {
+            const addrHtml = $(tds[1]).html() || "";
+            const addrText = addrHtml
+              .replace(/<br\s*\/?>(?=\s*|$)/gi, "\n")
+              .replace(/<[^>]+>/g, "")
+              .trim();
+            if (addrText) result.propertyLocationRaw = addrText;
+          }
         }
-      }
-    });
+      });
 
-    // Property Description
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 2) {
-        const label = $(tds[0]).text().trim();
-        if (/Property Description:/i.test(label)) {
-          result.legalDescription = $(tds[1]).text().trim() || null;
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 2 && !result.legalDescription) {
+          const label = $(tds[0]).text().trim();
+          if (/Property Description:/i.test(label)) {
+            result.legalDescription = $(tds[1]).text().trim() || null;
+          }
         }
-      }
-    });
+      });
+    }
 
     return result;
   }
 
   function extractPropertyTypeFromLandData() {
-    if (!$)
-      return {
-        propertyType: null,
-        units: null,
-        landUseCodes: [],
-      };
-
     let landUseDescription = null;
     let units = null;
-    const landUseCodes = [];
+    const landUseCodes = new Set();
 
-    // Extract from Land Data table
-    $("#cphMain_gvLandData tr.property_row").each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 2) {
-        const landUseText = $(tds[1]).text().trim();
-        if (landUseText) {
-          landUseDescription = landUseText.toUpperCase();
-          const codeMatch = landUseText.match(/\((\d{2,6})\)/);
-          if (codeMatch) {
-            const code = codeMatch[1];
-            if (!landUseCodes.includes(code)) landUseCodes.push(code);
+    if (INPUT_JSON) {
+      const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+      if (generalProfile.dorCode) {
+        landUseCodes.add(String(generalProfile.dorCode));
+      }
+      if (generalProfile.dorDescription) {
+        landUseDescription = normSpace(generalProfile.dorDescription);
+      }
+
+      const landFeatures = Array.isArray(INPUT_JSON.parcelLandFeatures)
+        ? INPUT_JSON.parcelLandFeatures
+        : [];
+      landFeatures.forEach((feature) => {
+        if (!feature) return;
+        if (feature.landDorCode) {
+          landUseCodes.add(String(feature.landDorCode));
+        }
+        if (!landUseDescription && feature.descShort) {
+          landUseDescription = normSpace(feature.descShort);
+        }
+        if (
+          units == null &&
+          feature.landQtyCode &&
+          /unit/i.test(String(feature.landQtyCode))
+        ) {
+          const parsedUnits = parseFloat(String(feature.landQty).replace(/,/g, ""));
+          if (!Number.isNaN(parsedUnits)) {
+            units = parsedUnits % 1 === 0 ? parsedUnits : null;
           }
         }
-      }
-      if (tds.length >= 7 && units == null) {
-        const typeText = $(tds[6]).text().trim().toUpperCase();
-        if (!/UNIT/.test(typeText)) return;
-        const unitText = $(tds[5]).text().trim();
-        const parsedUnits = parseFloat(unitText.replace(/,/g, ""));
-        if (!Number.isNaN(parsedUnits)) {
-          units = parsedUnits % 1 === 0 ? parsedUnits : null;
-        }
-      }
-    });
+      });
 
-    // Also check for units in building summary if available
-    $("table.property_building_summary td").each((i, td) => {
-      if (units != null) return;
-      const text = $(td).text().trim();
-      const unitMatch = text.match(/Units:\s*(\d+)/i);
-      if (unitMatch) {
-        units = parseInt(unitMatch[1], 10);
-      }
-    });
+      const buildingFeatures = Array.isArray(INPUT_JSON.parcelBuildingFeatures)
+        ? INPUT_JSON.parcelBuildingFeatures
+        : [];
+      buildingFeatures.forEach((feature) => {
+        if (feature && feature.bldgDorCode) {
+          landUseCodes.add(String(feature.bldgDorCode));
+        }
+        if (feature && feature.units && units == null) {
+          const parsedUnits = parseFloat(String(feature.units).replace(/,/g, ""));
+          if (!Number.isNaN(parsedUnits)) {
+            units = parsedUnits % 1 === 0 ? parsedUnits : null;
+          }
+        }
+      });
+    }
+
+    if ($) {
+      $("#cphMain_gvLandData tr.property_row").each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 2) {
+          const landUseText = $(tds[1]).text().trim();
+          if (landUseText) {
+            landUseDescription = landUseDescription || landUseText.toUpperCase();
+            const codeMatch = landUseText.match(/\((\d{2,6})\)/);
+            if (codeMatch) {
+              const code = codeMatch[1];
+              if (code) landUseCodes.add(code);
+            }
+          }
+        }
+        if (tds.length >= 7 && units == null) {
+          const typeText = $(tds[6]).text().trim().toUpperCase();
+          if (!/UNIT/.test(typeText)) return;
+          const unitText = $(tds[5]).text().trim();
+          const parsedUnits = parseFloat(unitText.replace(/,/g, ""));
+          if (!Number.isNaN(parsedUnits)) {
+            units = parsedUnits % 1 === 0 ? parsedUnits : null;
+          }
+        }
+      });
+
+      $("table.property_building_summary td").each((i, td) => {
+        if (units != null) return;
+        const text = $(td).text().trim();
+        const unitMatch = text.match(/Units:\s*(\d+)/i);
+        if (unitMatch) {
+          units = parseInt(unitMatch[1], 10);
+        }
+      });
+    }
 
     const propertyType = mapLandUseToPropertyType(landUseDescription);
 
-    return { propertyType, units, landUseCodes, landUseDescription };
+    return {
+      propertyType,
+      units,
+      landUseCodes: Array.from(landUseCodes),
+      landUseDescription,
+    };
   }
 
   // Extract Living Area, Year Built, Building/Land Values, Sales, and derive structure hints
   function extractBuildingAndValues() {
-    if (!$) return {};
     const out = {
       yearBuilt: null,
       livingArea: null,
@@ -2920,14 +3179,148 @@ function main() {
       },
     };
 
+    if (INPUT_JSON) {
+      const buildingFeatures = Array.isArray(INPUT_JSON.parcelBuildingFeatures)
+        ? INPUT_JSON.parcelBuildingFeatures
+        : [];
+      const primaryBuilding = buildingFeatures.find(Boolean) || null;
+      if (primaryBuilding) {
+        if (primaryBuilding.dateBuilt) {
+          const rawBuilt = String(primaryBuilding.dateBuilt);
+          const builtDate = rawBuilt.includes("T")
+            ? rawBuilt.split("T")[0]
+            : rawBuilt;
+          const normalizedBuilt = toIsoDate(builtDate);
+          if (normalizedBuilt) {
+            const year = parseInt(normalizedBuilt.slice(0, 4), 10);
+            if (Number.isFinite(year)) out.yearBuilt = year;
+          }
+        }
+        const livingAreaNum = parseFloat(primaryBuilding.livingArea);
+        if (Number.isFinite(livingAreaNum) && livingAreaNum > 0) {
+          out.livingArea = livingAreaNum;
+        }
+        if (
+          primaryBuilding.bldgValue != null &&
+          Number(primaryBuilding.bldgValue) >= 0
+        ) {
+          out.buildingValue = parseCurrency(primaryBuilding.bldgValue);
+        }
+        if (primaryBuilding.floors != null) {
+          const floors = parseFloat(primaryBuilding.floors);
+          if (Number.isFinite(floors)) {
+            out.structure.number_of_stories = Math.round(floors);
+          }
+        }
+        if (primaryBuilding.extWall) {
+          const inferred = interpretExteriorMaterials(primaryBuilding.extWall);
+          if (inferred) {
+            if (
+              inferred.primary &&
+              !out.structure.exterior_wall_material_primary
+            ) {
+              out.structure.exterior_wall_material_primary = inferred.primary;
+            }
+            if (
+              inferred.secondary &&
+              !out.structure.exterior_wall_material_secondary
+            ) {
+              out.structure.exterior_wall_material_secondary =
+                inferred.secondary;
+            }
+            if (
+              inferred.framing &&
+              !out.structure.primary_framing_material
+            ) {
+              out.structure.primary_framing_material = inferred.framing;
+            }
+          }
+        }
+      }
+
+      const valuationRows = Array.isArray(INPUT_JSON.parcelPropertyValuesByYear)
+        ? INPUT_JSON.parcelPropertyValuesByYear.filter(Boolean)
+        : [];
+      valuationRows.sort((a, b) => {
+        const ta = a && a.taxYear ? Number(a.taxYear) : 0;
+        const tb = b && b.taxYear ? Number(b.taxYear) : 0;
+        return tb - ta;
+      });
+      const currentValuation =
+        valuationRows.find((row) => row && row.showFlag === 1) ||
+        valuationRows.find((row) => row && row.isCertified) ||
+        valuationRows[0] ||
+        null;
+      if (currentValuation) {
+        if (currentValuation.taxYear && !out.taxYear) {
+          const taxYear = Number(currentValuation.taxYear);
+          if (Number.isFinite(taxYear)) out.taxYear = taxYear;
+        }
+        if (currentValuation.marketValue != null && out.marketValue == null) {
+          out.marketValue = parseCurrency(currentValuation.marketValue);
+        }
+        if (currentValuation.assessedValue != null && out.assessedValue == null) {
+          out.assessedValue = parseCurrency(currentValuation.assessedValue);
+        }
+        if (currentValuation.landValue != null && out.landValue == null) {
+          out.landValue = parseCurrency(currentValuation.landValue);
+        }
+        if (
+          currentValuation.buildingValue != null &&
+          out.buildingValue == null
+        ) {
+          const bVal = parseCurrency(currentValuation.buildingValue);
+          if (bVal != null) out.buildingValue = bVal;
+        }
+        if (currentValuation.taxValue != null && out.taxableValue == null) {
+          out.taxableValue = parseCurrency(currentValuation.taxValue);
+        } else if (
+          out.taxableValue == null &&
+          currentValuation.assessedValue != null
+        ) {
+          out.taxableValue = parseCurrency(currentValuation.assessedValue);
+        }
+      }
+
+      const valuationStats = INPUT_JSON.parcelValuationStats || {};
+      if (valuationStats.taxYear && !out.taxYear) {
+        const taxYear = Number(valuationStats.taxYear);
+        if (Number.isFinite(taxYear)) out.taxYear = taxYear;
+      }
+      if (valuationStats.assessedValue != null && out.assessedValue == null) {
+        out.assessedValue = parseCurrency(valuationStats.assessedValue);
+        if (out.taxableValue == null) {
+          out.taxableValue = parseCurrency(valuationStats.assessedValue);
+        }
+      }
+      if (valuationStats.marketValue != null && out.marketValue == null) {
+        out.marketValue = parseCurrency(valuationStats.marketValue);
+      }
+
+      const totalTaxes = Array.isArray(INPUT_JSON.parcelTotalTaxesSummary)
+        ? INPUT_JSON.parcelTotalTaxesSummary
+        : [];
+      if (!out.taxYear && totalTaxes.length) {
+        const taxYear = totalTaxes[0] && totalTaxes[0].taxYear;
+        if (taxYear) {
+          const yr = Number(taxYear);
+          if (Number.isFinite(yr)) out.taxYear = yr;
+        }
+      }
+    }
+
     // Summary table with Year Built and Total Living Area
     $("table.property_building_summary td").each((i, td) => {
       const t = $(td).text().replace(/\s+/g, " ").trim();
       let m;
-      m = t.match(/Year Built:\s*(\d{4})/i);
-      if (m) out.yearBuilt = parseInt(m[1], 10);
-      m = t.match(/Total Living Area:\s*([0-9,\.]+)/i);
-      if (m) out.livingArea = m[1].replace(/[,]/g, "").trim();
+      if (out.yearBuilt == null) {
+        m = t.match(/Year Built:\s*(\d{4})/i);
+        if (m) out.yearBuilt = parseInt(m[1], 10);
+      }
+      if (out.livingArea == null) {
+        m = t.match(/Total Living Area:\s*([0-9,\.]+)/i);
+        if (m) out.livingArea = parseFloat(m[1].replace(/[,]/g, "").trim());
+      }
     });
 
     // Building Value
@@ -2937,15 +3330,16 @@ function main() {
       .first()
       .find("td")
       .each((i, td) => {
+        if (out.buildingValue != null) return;
         const text = $(td).text();
         const m = text.match(/Building Value:\s*\$([0-9,\.]+)/i);
-        if (m) out.buildingValue = parseCurrency(m[0].split(":")[1]);
+        if (m) out.buildingValue = parseCurrency(m[1]);
       });
 
     // Land Value (from Land Data table)
     $("#cphMain_gvLandData tr.property_row").each((i, tr) => {
       const tds = $(tr).find("td");
-      if (tds.length >= 9) {
+      if (tds.length >= 9 && out.landValue == null) {
         const lv = $(tds[8]).text();
         const parsed = parseCurrency(lv);
         if (parsed != null) out.landValue = parsed;
@@ -2958,36 +3352,47 @@ function main() {
       // First data row after header
       const tds = $(estRows[1]).find("td");
       if (tds.length >= 6) {
-        const market = $(tds[1]).text();
-        const assessed = $(tds[2]).text();
-        const taxable = $(tds[3]).text();
-        out.marketValue = parseCurrency(market);
-        out.assessedValue = parseCurrency(assessed);
-        out.taxableValue = parseCurrency(taxable);
+        if (out.marketValue == null) {
+          const market = $(tds[1]).text();
+          out.marketValue = parseCurrency(market);
+        }
+        if (out.assessedValue == null) {
+          const assessed = $(tds[2]).text();
+          out.assessedValue = parseCurrency(assessed);
+        }
+        if (out.taxableValue == null) {
+          const taxable = $(tds[3]).text();
+          out.taxableValue = parseCurrency(taxable);
+        }
       }
     }
 
     // Tax year from the red note text or globally from HTML
-    let noteText = "";
-    $("div.red").each((i, el) => {
-      noteText += $(el).text() + " ";
-    });
-    let mYear = noteText.match(
-      /Values shown below are\s+(\d{4})\s+CERTIFIED VALUES/i,
-    );
-    if (!mYear)
-      mYear = inputHtml.match(
+    if (!out.taxYear) {
+      let noteText = "";
+      $("div.red").each((i, el) => {
+        noteText += $(el).text() + " ";
+      });
+      let mYear = noteText.match(
         /Values shown below are\s+(\d{4})\s+CERTIFIED VALUES/i,
       );
-    if (mYear) out.taxYear = parseInt(mYear[1], 10);
+      if (!mYear)
+        mYear = inputHtml.match(
+          /Values shown below are\s+(\d{4})\s+CERTIFIED VALUES/i,
+        );
+      if (mYear) out.taxYear = parseInt(mYear[1], 10);
+    }
 
     // Enhanced Sales History: capture book/page, instrument, qualification, and pricing
-    // Prioritize sales data from inputJson if available
-    if (inputJson && inputJson.parcelSalesHistory && Array.isArray(inputJson.parcelSalesHistory)) {
-      inputJson.parcelSalesHistory.forEach((sale) => {
-        const saleDateISO = toISODate(sale.saleDate);
-        console.log("Script is running!");
-        console.log(sale.saleDate);
+    // Prioritize sales data from INPUT_JSON if available
+    if (
+      INPUT_JSON &&
+      Array.isArray(INPUT_JSON.parcelSalesHistory) &&
+      INPUT_JSON.parcelSalesHistory.length
+    ) {
+      INPUT_JSON.parcelSalesHistory.forEach((sale) => {
+        if (!sale) return;
+        const saleDateISO = toIsoDate(String(sale.saleDate || ""));
         const saleRecord = {
           sale_date: saleDateISO,
           ownership_transfer_date: saleDateISO,
@@ -3001,8 +3406,8 @@ function main() {
           instrument_number: sale.instrNum || null,
           document_url: null, // Not directly available in this JSON structure
           document_name: null, // Can be constructed if needed
-          buyer: sale.buyer || null, // Add buyer information
-          seller: sale.seller || null, // Add seller information for future use
+          buyer: sale.buyer ? normSpace(sale.buyer) : null, // Add buyer information
+          seller: sale.seller ? normSpace(sale.seller) : null, // Add seller information for future use
         };
         const hasMeaningfulData =
           saleRecord.sale_date ||
@@ -3083,7 +3488,7 @@ function main() {
           "instrument",
           "document",
         ]);
-        const idxSaleDate = headerIndex(["saleDate"]);
+        const idxSaleDate = headerIndex(["sale date"]);
         const idxInstrument = headerIndex(["instrument", "deed"]);
         const idxQualified = headerIndex(["qualified"]);
         const idxVacantImproved = headerIndex(["improved", "vacant"]);
@@ -3218,37 +3623,26 @@ function main() {
           if (!isNaN(sNum)) out.structure.number_of_stories = Math.round(sNum);
         }
         if (extText) {
-          const U = extText.toUpperCase();
-          let primary = null;
-          let secondary = null;
-          let framing = null;
-
-          const has = (kw) => U.indexOf(kw) !== -1;
-          if (has("BLOCK") || has("CONCRETE BLOCK")) framing = "Concrete Block";
-
-          if (has("STUCCO")) primary = "Stucco";
-          if (!primary && has("VINYL") && has("SIDING"))
-            primary = "Vinyl Siding";
-          if (!primary && has("WOOD") && has("SIDING")) primary = "Wood Siding";
-          if (!primary && has("FIBER") && has("CEMENT"))
-            primary = "Fiber Cement Siding";
-          if (!primary && has("BRICK")) primary = "Brick";
-          if (!primary && (has("BLOCK") || has("CONCRETE BLOCK")))
-            primary = "Concrete Block";
-
-          if (has("BRICK") && primary !== "Brick") secondary = "Brick Accent";
+          const inferred = interpretExteriorMaterials(extText);
           if (
-            !secondary &&
-            (has("BLOCK") || has("CONCRETE BLOCK")) &&
-            primary !== "Concrete Block"
-          )
-            secondary = "Decorative Block";
-          if (!secondary && has("STUCCO") && primary !== "Stucco")
-            secondary = "Stucco Accent";
-
-          out.structure.exterior_wall_material_primary = primary;
-          out.structure.exterior_wall_material_secondary = secondary || null;
-          out.structure.primary_framing_material = framing || null;
+            inferred.primary &&
+            !out.structure.exterior_wall_material_primary
+          ) {
+            out.structure.exterior_wall_material_primary = inferred.primary;
+          }
+          if (
+            inferred.secondary &&
+            !out.structure.exterior_wall_material_secondary
+          ) {
+            out.structure.exterior_wall_material_secondary =
+              inferred.secondary;
+          }
+          if (
+            inferred.framing &&
+            !out.structure.primary_framing_material
+          ) {
+            out.structure.primary_framing_material = inferred.framing;
+          }
         }
       }
     }
@@ -4042,41 +4436,21 @@ function buildPropertyJson() {
       .trim();
     mailingAddress.unnormalized_address = rawMailing || null;
     // Extract latitude and longitude from addrSeed for mailing address if available
-    mailingAddress.latitude = addrSeed.latitude || null;
-    mailingAddress.longitude = addrSeed.longitude || null;
+    mailingAddress.latitude =  null;
+    mailingAddress.longitude =  null;
 
     const mailingAddressKeys = new Set([
       "unnormalized_address",
-      "street_number",
-      "street_pre_directional_text",
-      "street_name",
-      "street_suffix_type",
-      "street_post_directional_text",
-      "unit_identifier",
-      "city_name",
-      "municipality_name",
-      "state_code",
-      "postal_code",
-      "plus_four_postal_code",
-      "country_code",
-      "county_name",
       "latitude",
       "longitude",
       "request_identifier",
       "source_http_request",
-      "route_number",
-      "township",
-      "range",
-      "section",
-      "block",
-      "lot",
     ]);
-    Object.keys(mailingAddress).forEach((key) => {
-      if (!mailingAddressKeys.has(key)) {
-        mailingAddress[key] = null;
-      }
-    });
-    mailingAddress.country_code = rawMailing ? "US" : mailingAddress.country_code || "US";
+    // Object.keys(mailingAddress).forEach((key) => {
+    //   if (!mailingAddressKeys.has(key)) {
+    //     mailingAddress[key] = null;
+    //   }
+    // });
     mailingAddress.request_identifier = propSeed.request_identifier || null;
     mailingAddress.source_http_request = propSeed.source_http_request || null;
   }
@@ -5139,7 +5513,7 @@ delete layoutContent.space_type_indexer;
   (bx.sales || []).forEach((sale, index) => {
     const saleFileName = `sales_history_${index + 1}.json`;
     const ownershipTransferDate =
-      sale.ownership_transfer_date || sale.saleDate || null;
+      sale.ownership_transfer_date || sale.sale_date || null;
     const saleObj = {
       ownership_transfer_date: ownershipTransferDate,
     };
@@ -5341,14 +5715,44 @@ delete layoutContent.space_type_indexer;
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
-  const improvementSelectors = [
-    "#cphMain_gvImprovements",
-    "#cphMain_gvPermits",
-    "#cphMain_gvPermit",
-    "#cphMain_gvBuildingPermits",
-  ];
-  const improvementRows = [];
-  const seenImprovementRows = new Set();
+  let improvementsFromJson = false;
+  if (
+    INPUT_JSON &&
+    Array.isArray(INPUT_JSON.parcelExtraFeatures) &&
+    INPUT_JSON.parcelExtraFeatures.length
+  ) {
+    let improvementIndex = 1;
+    INPUT_JSON.parcelExtraFeatures.forEach((feature) => {
+      if (!feature) return;
+      const improvementType = mapMiscImprovementType(
+        feature.xfobCode || null,
+        feature.descShort || "",
+      );
+      if (!improvementType) return;
+      const improvement = {
+        improvement_type: improvementType,
+        improvement_status: null,
+        completion_date: null,
+        contractor_type: null,
+        permit_required: false,
+      };
+      const fileName = `property_improvement_${improvementIndex}.json`;
+      writeJSON(path.join(dataDir, fileName), improvement);
+      propertyImprovementFiles.push(fileName);
+      improvementIndex += 1;
+    });
+    if (propertyImprovementFiles.length) improvementsFromJson = true;
+  }
+
+  if (!improvementsFromJson) {
+    const improvementSelectors = [
+      "#cphMain_gvImprovements",
+      "#cphMain_gvPermits",
+      "#cphMain_gvPermit",
+      "#cphMain_gvBuildingPermits",
+    ];
+    const improvementRows = [];
+    const seenImprovementRows = new Set();
 
   const buildPermitHeaderMap = ($headerCells) => {
     const map = {
@@ -5444,127 +5848,128 @@ delete layoutContent.space_type_indexer;
     return added;
   };
 
-  improvementSelectors.forEach((selector) => {
-    const table = $(selector);
-    if (!table || table.length === 0) return;
-    collectImprovementRows(table);
-  });
-
-  if (improvementRows.length === 0) {
-    $("table").each((_, tbl) => {
-      const $tbl = $(tbl);
-      const headerText = textNormalize($tbl.find("th").first().text() || "");
-      if (!/permit/i.test(headerText)) return;
-      collectImprovementRows($tbl);
+    improvementSelectors.forEach((selector) => {
+      const table = $(selector);
+      if (!table || table.length === 0) return;
+      collectImprovementRows(table);
     });
-  }
 
-  const normalizePermitDate = (value) => {
-    if (!value) return null;
-    const text = String(value).trim();
-    if (!text || text === "--") return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-    const match = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
-    if (!match) return null;
-    let candidate = match[1];
-    const twoDigit = candidate.match(/(\d{1,2}\/\d{1,2})\/(\d{2})$/);
-    if (twoDigit) {
-      const yearNum = parseInt(twoDigit[2], 10);
-      const fullYear = yearNum >= 70 ? `19${twoDigit[2]}` : `20${twoDigit[2]}`;
-      candidate = `${twoDigit[1]}/${fullYear}`;
-    }
-    return toISODate(candidate);
-  };
-
-  if (improvementRows.length > 0) {
-    let improvementIndex = 1;
-    improvementRows.forEach((rowInfo) => {
-      const header = rowInfo.headerMap || {};
-      const cells = rowInfo.cells || [];
-      if (!cells.length) return;
-
-      const getCell = (idx) =>
-        idx != null && idx >= 0 && idx < cells.length ? cells[idx] : null;
-
-      let permitNumber = getCell(header.permitNumber);
-      if (!permitNumber && cells.length > 0) {
-        permitNumber = cells[0];
-      }
-      if (permitNumber) {
-        permitNumber = permitNumber.replace(/^#/, "").trim();
-        if (!permitNumber) permitNumber = null;
-      }
-
-      const typeText =
-        getCell(header.type) ||
-        getCell(header.description) ||
-        getCell(header.action) ||
-        (cells.length > 1 ? cells[1] : cells[0] || "");
-      const actionText =
-        getCell(header.action) ||
-        getCell(header.description) ||
-        (typeText || "");
-
-      const statusText = getCell(header.status);
-      const issueDateRaw = getCell(header.issueDate);
-      const finalDateRaw = getCell(header.finalDate);
-      const closeDateRaw = getCell(header.closeDate);
-      const applicationDateRaw = getCell(header.applicationDate);
-
-      const typeTextClean = typeText || "";
-      const codeMatch = typeTextClean.match(/\(([^)]+)\)/);
-      const rawCode = codeMatch ? codeMatch[1].trim().toUpperCase() : null;
-      const baseCode = rawCode ? rawCode.replace(/[^A-Z]/g, "") : null;
-      const description = typeTextClean.replace(/\([^)]*\)/g, "").trim();
-      const improvementType = mapMiscImprovementType(
-        baseCode,
-        description || actionText || typeTextClean,
-      );
-      if (!improvementType) return;
-
-      const permitIssueDate = normalizePermitDate(issueDateRaw);
-      const completionDate =
-        normalizePermitDate(finalDateRaw) || normalizePermitDate(closeDateRaw);
-      const permitCloseDate = normalizePermitDate(closeDateRaw);
-      const applicationDate = normalizePermitDate(applicationDateRaw);
-
-      let improvementStatus = coerceImprovementStatus(statusText);
-      if (!improvementStatus) {
-        if (completionDate) improvementStatus = "Completed";
-        else if (permitIssueDate) improvementStatus = "Permitted";
-      }
-
-      const improvementAction = description || actionText || null;
-
-      const improvement = {
-        improvement_type: improvementType,
-        improvement_status: improvementStatus,
-        improvement_action: improvementAction || null,
-        permit_number: permitNumber || null,
-        permit_issue_date: permitIssueDate || null,
-        completion_date: completionDate || null,
-        permit_close_date: permitCloseDate || null,
-        application_received_date: applicationDate || null,
-      };
-      if (permitNumber) {
-        improvement.permit_required = true;
-      }
-
-      Object.keys(improvement).forEach((key) => {
-        const value = improvement[key];
-        if (value === undefined) {
-          delete improvement[key];
-        } else if (typeof value === "string") {
-          const trimmed = value.trim();
-          improvement[key] = trimmed ? trimmed : null;
-        }
+    if (improvementRows.length === 0) {
+      $("table").each((_, tbl) => {
+        const $tbl = $(tbl);
+        const headerText = textNormalize($tbl.find("th").first().text() || "");
+        if (!/permit/i.test(headerText)) return;
+        collectImprovementRows($tbl);
       });
+    }
 
-      const fileName = `property_improvement_${improvementIndex}.json`;
-      writeJSON(path.join(dataDir, fileName), improvement);
-      propertyImprovementFiles.push(fileName);
-      improvementIndex += 1;
-    });
+    const normalizePermitDate = (value) => {
+      if (!value) return null;
+      const text = String(value).trim();
+      if (!text || text === "--") return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+      const match = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+      if (!match) return null;
+      let candidate = match[1];
+      const twoDigit = candidate.match(/(\d{1,2}\/\d{1,2})\/(\d{2})$/);
+      if (twoDigit) {
+        const yearNum = parseInt(twoDigit[2], 10);
+        const fullYear = yearNum >= 70 ? `19${twoDigit[2]}` : `20${twoDigit[2]}`;
+        candidate = `${twoDigit[1]}/${fullYear}`;
+      }
+      return toISODate(candidate);
+    };
+
+    if (improvementRows.length > 0) {
+      let improvementIndex = 1;
+      improvementRows.forEach((rowInfo) => {
+        const header = rowInfo.headerMap || {};
+        const cells = rowInfo.cells || [];
+        if (!cells.length) return;
+
+        const getCell = (idx) =>
+          idx != null && idx >= 0 && idx < cells.length ? cells[idx] : null;
+
+        let permitNumber = getCell(header.permitNumber);
+        if (!permitNumber && cells.length > 0) {
+          permitNumber = cells[0];
+        }
+        if (permitNumber) {
+          permitNumber = permitNumber.replace(/^#/, "").trim();
+          if (!permitNumber) permitNumber = null;
+        }
+
+        const typeText =
+          getCell(header.type) ||
+          getCell(header.description) ||
+          getCell(header.action) ||
+          (cells.length > 1 ? cells[1] : cells[0] || "");
+        const actionText =
+          getCell(header.action) ||
+          getCell(header.description) ||
+          (typeText || "");
+
+        const statusText = getCell(header.status);
+        const issueDateRaw = getCell(header.issueDate);
+        const finalDateRaw = getCell(header.finalDate);
+        const closeDateRaw = getCell(header.closeDate);
+        const applicationDateRaw = getCell(header.applicationDate);
+
+        const typeTextClean = typeText || "";
+        const codeMatch = typeTextClean.match(/\(([^)]+)\)/);
+        const rawCode = codeMatch ? codeMatch[1].trim().toUpperCase() : null;
+        const baseCode = rawCode ? rawCode.replace(/[^A-Z]/g, "") : null;
+        const description = typeTextClean.replace(/\([^)]*\)/g, "").trim();
+        const improvementType = mapMiscImprovementType(
+          baseCode,
+          description || actionText || typeTextClean,
+        );
+        if (!improvementType) return;
+
+        const permitIssueDate = normalizePermitDate(issueDateRaw);
+        const completionDate =
+          normalizePermitDate(finalDateRaw) || normalizePermitDate(closeDateRaw);
+        const permitCloseDate = normalizePermitDate(closeDateRaw);
+        const applicationDate = normalizePermitDate(applicationDateRaw);
+
+        let improvementStatus = coerceImprovementStatus(statusText);
+        if (!improvementStatus) {
+          if (completionDate) improvementStatus = "Completed";
+          else if (permitIssueDate) improvementStatus = "Permitted";
+        }
+
+        const improvementAction = description || actionText || null;
+
+        const improvement = {
+          improvement_type: improvementType,
+          improvement_status: improvementStatus,
+          improvement_action: improvementAction || null,
+          permit_number: permitNumber || null,
+          permit_issue_date: permitIssueDate || null,
+          completion_date: completionDate || null,
+          permit_close_date: permitCloseDate || null,
+          application_received_date: applicationDate || null,
+        };
+        if (permitNumber) {
+          improvement.permit_required = true;
+        }
+
+        Object.keys(improvement).forEach((key) => {
+          const value = improvement[key];
+          if (value === undefined) {
+            delete improvement[key];
+          } else if (typeof value === "string") {
+            const trimmed = value.trim();
+            improvement[key] = trimmed ? trimmed : null;
+          }
+        });
+
+        const fileName = `property_improvement_${improvementIndex}.json`;
+        writeJSON(path.join(dataDir, fileName), improvement);
+        propertyImprovementFiles.push(fileName);
+        improvementIndex += 1;
+      });
+    }
   }
 
   propertyImprovementFiles.forEach((fileName) => {
