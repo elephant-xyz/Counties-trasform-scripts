@@ -125,58 +125,22 @@ function extractUseCode($) {
 function extractPropertySummaryDetails($) {
   const details = {};
 
-  // Iterate through ALL rows to ensure all selectors are accessed
-  // Even if we don't use all the data, we need to READ it to mark selectors as accessed
+  // Iterate through rows to extract millage rate (which is mapped to tax.millage_rate)
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
     const $tr = $(tr);
     const $th = $tr.find("th");
     const label = $th.text().trim();
     const lowerLabel = (label || "").toLowerCase();
 
-    // ACCESS all rows - read the td, div, and span elements
     const $td = $tr.find("td");
-
-    // Access all divs within the td (some rows have multiple divs)
-    const $divs = $td.find("div");
-    $divs.each((divIdx, divEl) => {
-      const $div = $(divEl);
-      const $span = $div.find("span");
-      // Read span content or div content
-      const divContent = $span.length > 0 ? $span.text().trim() : $div.text().trim();
-    });
-
-    // Also access direct span in td if any
-    const $directSpan = $td.find("> span");
-    if ($directSpan.length > 0) {
-      const directSpanValue = $directSpan.text().trim();
-    }
-
     const $span = $td.find("span").first();
     const value = $span.length > 0 ? $span.text().trim() : $td.text().trim();
 
-    // Only STORE the millage rate (others are extracted by dedicated functions or not needed)
+    // Only extract and store the millage rate (mapped to tax.millage_rate)
     if (lowerLabel.includes("millage rate")) {
-      details.millageRate = value; // Mapped to tax.millage_rate
+      details.millageRate = value;
     }
-    // Other rows like Prop ID, Homestead, GIS sqft are accessed but not stored
   });
-
-  // Explicitly access error-tracked selectors using multiple approaches
-  // Access by generic tbody path (matches error format exactly)
-  const summaryTableBody = $("tbody");
-  summaryTableBody.each((idx, tbody) => {
-    // Access row 4 (Property Use Code) - tbody > tr:nth-child(4) > td > div:nth-child(1) > span
-    $(tbody).find("tr:nth-child(4) > td > div:nth-child(1) > span").text();
-    // Access row 9 (GIS sqft) - tbody > tr:nth-child(9) > td > div > span
-    $(tbody).find("tr:nth-child(9) > td > div > span").text();
-  });
-
-  // Also try via div.module-content table selector
-  const summaryTable = $("div.module-content table.tabular-data-two-column tbody");
-  if (summaryTable.length > 0) {
-    summaryTable.find("tr:nth-child(4) td div:nth-child(1) span").text();
-    summaryTable.find("tr:nth-child(9) td div span").text();
-  }
 
   return details;
 }
@@ -587,15 +551,10 @@ function extractExtraFeatures($) {
     const code = textOf($th);
     const tds = $tr.find("td");
 
-    // Explicitly access each cell by index
+    // Extract cells that will be mapped to property_improvement
     const description = textOf(tds.eq(0));
     const area = textOf(tds.eq(1));
     const year = textOf(tds.eq(2));
-
-    // Access any additional cells that might exist
-    for (let j = 3; j < tds.length; j++) {
-      const additionalCell = textOf(tds.eq(j));
-    }
 
     if (code && description) {
       features.push({
@@ -620,15 +579,10 @@ function extractSubAreas($) {
     const type = textOf($th);
     const tds = $tr.find("td");
 
-    // Explicitly access each cell by index
+    // Extract cells that will be mapped to property_improvement
     const description = textOf(tds.eq(0));
     const sqFootage = textOf(tds.eq(1));
     const actYear = textOf(tds.eq(2));
-
-    // Access any additional cells that might exist
-    for (let j = 3; j < tds.length; j++) {
-      const additionalCell = textOf(tds.eq(j));
-    }
 
     if (type && description) {
       subAreas.push({
@@ -676,59 +630,25 @@ function extractValuation($) {
     const $thElement = $tr.find("th");
     const label = $thElement.text().trim();
 
-    // ACCESS all rows (including Extra Features Value, Protected Value, etc.) to ensure selectors are read
-    // Explicitly access each td.value-column by index to ensure error detector marks them as read
-    const tds = $tr.find("td.value-column");
-    const vals = [];
-
-    // Explicitly read each cell by index (up to 5 years of data)
-    for (let j = 0; j < Math.max(5, tds.length); j++) {
-      const $td = tds.eq(j);
-      if ($td.length > 0) {
-        const cellValue = $td.text().trim();
-        vals.push(cellValue);
-      } else {
-        vals.push(null);
-      }
-    }
-
-    // Only STORE rows that can be mapped to schema
+    // Only read rows that can be mapped to schema
     if (label && allowedLabels.includes(label)) {
+      const tds = $tr.find("td.value-column");
+      const vals = [];
+
+      // Read each cell by index (up to 5 years of data)
+      for (let j = 0; j < Math.max(5, tds.length); j++) {
+        const $td = tds.eq(j);
+        if ($td.length > 0) {
+          const cellValue = $td.text().trim();
+          vals.push(cellValue);
+        } else {
+          vals.push(null);
+        }
+      }
+
       dataMap[label] = vals;
     }
-    // Other rows are accessed but not stored (Extra Features Value, Protected Value, etc.)
   });
-
-  // Explicitly access error-tracked selectors using multiple selector approaches
-  // Access by direct table ID and row/column paths
-  const valuationTable = $("#ctlBodyPane_ctl05_ctl01_grdValuation");
-  if (valuationTable.length > 0) {
-    // Row 2 (Extra Features Value) - columns 1, 2, and 5
-    valuationTable.find("tbody > tr:nth-child(2) > td.value-column:nth-child(1)").text();
-    valuationTable.find("tbody > tr:nth-child(2) > td.value-column:nth-child(2)").text();
-    valuationTable.find("tbody > tr:nth-child(2) > td.value-column:nth-child(5)").text();
-
-    // Row 3 (Land Value) - column 4
-    valuationTable.find("tbody > tr:nth-child(3) > td.value-column:nth-child(4)").text();
-
-    // Row 6 (Just Market Value) - column 1
-    valuationTable.find("tbody > tr:nth-child(6) > td.value-column:nth-child(1)").text();
-
-    // Row 10 (Protected Value) - columns 1, 2, and 3
-    valuationTable.find("tbody > tr:nth-child(10) > td.value-column:nth-child(1)").text();
-    valuationTable.find("tbody > tr:nth-child(10) > td.value-column:nth-child(2)").text();
-    valuationTable.find("tbody > tr:nth-child(10) > td.value-column:nth-child(3)").text();
-  }
-
-  // Also access via generic div.module-content path to match error selector format
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(2) > td.value-column:nth-child(1)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(2) > td.value-column:nth-child(2)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(2) > td.value-column:nth-child(5)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(3) > td.value-column:nth-child(4)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(6) > td.value-column:nth-child(1)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(10) > td.value-column:nth-child(1)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(10) > td.value-column:nth-child(2)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(10) > td.value-column:nth-child(3)").text();
 
   return years.map(({ year, colIndex }) => {
     const get = (label) => {
@@ -772,23 +692,15 @@ function extractHistoricalAssessment($) {
     const year = textOf($thElement);
 
     if (year) {
-      // ACCESS ALL td elements to ensure selectors are read, even if not all are mapped
-      // Explicitly access each td by index
+      // Extract only the data that can be mapped to schema
       const tds = $tr.find("td");
       const building = textOf(tds.eq(0)); // Mapped to tax.property_building_amount
-      const extraFeatures = textOf(tds.eq(1)); // ACCESS but don't map (not in schema)
       const land = textOf(tds.eq(2)); // Mapped to tax.property_land_amount
       const agricultural = textOf(tds.eq(3)); // Mapped to tax.agricultural_valuation_amount
       const market = textOf(tds.eq(4)); // Mapped to tax.property_market_value_amount
       const assessed = textOf(tds.eq(5)); // Mapped to tax.property_assessed_value_amount
       const exempt = textOf(tds.eq(6)); // Mapped to tax.property_exemption_amount
       const taxable = textOf(tds.eq(7)); // Mapped to tax.property_taxable_value_amount
-      const protectedValue = textOf(tds.eq(8)); // ACCESS but don't map (not in schema)
-
-      // Also access any additional cells that might exist
-      for (let j = 9; j < tds.length; j++) {
-        const additionalCell = textOf(tds.eq(j));
-      }
 
       // Only include schema-mappable fields in output
       historicalData.push({
@@ -803,51 +715,6 @@ function extractHistoricalAssessment($) {
       });
     }
   });
-
-  // Explicitly access error-tracked selectors using multiple approaches
-  // Access by direct table ID
-  const histTable = $("#ctlBodyPane_ctl06_ctl01_grdHistory");
-  if (histTable.length > 0) {
-    // Row 1 (header year)
-    histTable.find("tbody > tr:nth-child(1) > th").text();
-    // Row 3
-    histTable.find("tbody > tr:nth-child(3) > td:nth-child(2)").text();
-    // Row 6
-    histTable.find("tbody > tr:nth-child(6) > th").text();
-    histTable.find("tbody > tr:nth-child(6) > td:nth-child(2)").text();
-    // Row 8
-    histTable.find("tbody > tr:nth-child(8) > td:nth-child(2)").text();
-    // Row 9
-    histTable.find("tbody > tr:nth-child(9) > th").text();
-    histTable.find("tbody > tr:nth-child(9) > td:nth-child(2)").text();
-    histTable.find("tbody > tr:nth-child(9) > td:nth-child(9)").text();
-    // Row 11
-    histTable.find("tbody > tr:nth-child(11) > td:nth-child(2)").text();
-    histTable.find("tbody > tr:nth-child(11) > td:nth-child(9)").text();
-    // Row 12
-    histTable.find("tbody > tr:nth-child(12) > td:nth-child(2)").text();
-    // Row 13
-    histTable.find("tbody > tr:nth-child(13) > td:nth-child(2)").text();
-    // Row 14
-    histTable.find("tbody > tr:nth-child(14) > td:nth-child(2)").text();
-    // Row 15
-    histTable.find("tbody > tr:nth-child(15) > td:nth-child(2)").text();
-  }
-
-  // Also access via generic div > table.tabular-data path to match error selector format
-  $("div > table.tabular-data > tbody > tr:nth-child(1) > th").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(3) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(6) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(8) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(9) > th").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(9) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(9) > td:nth-child(9)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(11) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(11) > td:nth-child(9)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(12) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(13) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(14) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(15) > td:nth-child(2)").text();
 
   return historicalData;
 }
@@ -1714,25 +1581,7 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   writeJSON(path.join("data", "address.json"), address);
 }
 
-function accessSocialMediaLinks($) {
-  // Social media sharing links (like LinkedIn, Facebook, Twitter) cannot be mapped to any Elephant schema
-  // However, they need to be accessed to mark them as "read" in the error detector
-  // This function reads these selectors but does NOT map them to output as they have no corresponding schema
-
-  // LinkedIn share link - explicitly access using the exact selector from errors
-  const linkedInLink = $("#aLinkedIn");
-  if (linkedInLink.length > 0) {
-    // Access all attributes and text to ensure full read
-    const linkedInHref = linkedInLink.attr("href") || "";
-    const linkedInText = linkedInLink.text().trim();
-    const linkedInTitle = linkedInLink.attr("title") || "";
-    const linkedInTarget = linkedInLink.attr("target") || "";
-    // Note: This data is NOT mapped to output as social media links have no place in the Elephant schema
-    // But we must read it to satisfy the error detector
-  }
-
-  // Note: Other social media links (Facebook, Twitter, etc.) may also be present but not in error list
-}
+// Social media links cannot be mapped to the Elephant schema, so we don't access them
 
 function extractMailingAddressFromHTML($) {
   // Extract mailing address directly from HTML to ensure selector mapping
@@ -1892,9 +1741,6 @@ function main() {
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
-
-  // Access social media links (these cannot be mapped to schema but need to be read)
-  accessSocialMediaLinks($);
 
   if (parcelId) writeProperty($, parcelId, propertySeed);
 
