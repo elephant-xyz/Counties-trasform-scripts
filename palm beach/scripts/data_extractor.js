@@ -612,6 +612,8 @@ function buildLeanRawAddressOutput(rawOutput) {
       const prepared = prepareSourceHttpRequest(value);
       if (prepared) {
         leanOutput.source_http_request = deepClone(prepared);
+      } else {
+        leanOutput.source_http_request = null;
       }
       continue;
     }
@@ -644,7 +646,28 @@ function buildLeanRawAddressOutput(rawOutput) {
     return null;
   }
 
-  return leanOutput;
+  const paddedOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...leanOutput,
+  };
+
+  paddedOutput.unnormalized_address = leanOutput.unnormalized_address;
+
+  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "request_identifier")) {
+    paddedOutput.request_identifier =
+      Object.prototype.hasOwnProperty.call(leanOutput, "request_identifier")
+        ? leanOutput.request_identifier
+        : null;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "source_http_request")) {
+    paddedOutput.source_http_request =
+      Object.prototype.hasOwnProperty.call(leanOutput, "source_http_request")
+        ? leanOutput.source_http_request
+        : null;
+  }
+
+  return paddedOutput;
 }
 
 function buildMinimalRawAddressForSchema(address) {
@@ -701,29 +724,19 @@ const minimal = {
     minimal.country_code = "US";
   }
 
-  const pruned = {};
-  for (const [key, value] of Object.entries(minimal)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      pruned[key] = trimmed;
-      continue;
-    }
-
-    pruned[key] = value;
+  if (!Object.prototype.hasOwnProperty.call(minimal, "request_identifier")) {
+    minimal.request_identifier = null;
   }
 
-  if (!Object.prototype.hasOwnProperty.call(pruned, "unnormalized_address")) {
-    pruned.unnormalized_address = rawValue;
+  if (!Object.prototype.hasOwnProperty.call(minimal, "source_http_request")) {
+    minimal.source_http_request = null;
   }
 
-  return pruned;
+  if (!Object.prototype.hasOwnProperty.call(minimal, "unnormalized_address")) {
+    minimal.unnormalized_address = rawValue;
+  }
+
+  return minimal;
 }
 
 function buildMinimalRawAddressVariant(address) {
