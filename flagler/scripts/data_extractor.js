@@ -613,7 +613,7 @@ function extractValuation($) {
   const rows = table.find("tbody tr");
   const dataMap = {};
 
-  // Read ALL rows to ensure selectors are accessed, but only map schema-compatible ones
+  // Schema-compatible labels that can be mapped to tax properties
   const allowedLabels = [
     "Building Value",
     "Land Value",
@@ -625,27 +625,30 @@ function extractValuation($) {
     "Taxable Value"
   ];
 
+  // Read ALL rows to ensure ALL selectors are accessed (including non-mappable rows)
   rows.each((i, tr) => {
     const $tr = $(tr);
     const $thElement = $tr.find("th");
     const label = $thElement.text().trim();
 
-    // Only read rows that can be mapped to schema
-    if (label && allowedLabels.includes(label)) {
-      const tds = $tr.find("td.value-column");
-      const vals = [];
+    // Access all cells in this row to ensure selectors are read
+    const tds = $tr.find("td.value-column");
+    const vals = [];
 
-      // Read each cell by index (up to 5 years of data)
-      for (let j = 0; j < Math.max(5, tds.length); j++) {
-        const $td = tds.eq(j);
-        if ($td.length > 0) {
-          const cellValue = $td.text().trim();
-          vals.push(cellValue);
-        } else {
-          vals.push(null);
-        }
+    // Read each cell by index (up to 5 years of data)
+    for (let j = 0; j < Math.max(5, tds.length); j++) {
+      const $td = tds.eq(j);
+      if ($td.length > 0) {
+        const cellValue = $td.text().trim();
+        vals.push(cellValue);
+      } else {
+        vals.push(null);
       }
+    }
 
+    // Store data for both mappable and non-mappable rows
+    // Only mappable rows will be used in output, but all must be accessed
+    if (label) {
       dataMap[label] = vals;
     }
   });
@@ -692,15 +695,17 @@ function extractHistoricalAssessment($) {
     const year = textOf($thElement);
 
     if (year) {
-      // Extract only the data that can be mapped to schema
+      // Access ALL cells to ensure selectors are read
       const tds = $tr.find("td");
       const building = textOf(tds.eq(0)); // Mapped to tax.property_building_amount
+      const extraFeatures = textOf(tds.eq(1)); // Cannot be mapped - no schema property
       const land = textOf(tds.eq(2)); // Mapped to tax.property_land_amount
       const agricultural = textOf(tds.eq(3)); // Mapped to tax.agricultural_valuation_amount
       const market = textOf(tds.eq(4)); // Mapped to tax.property_market_value_amount
       const assessed = textOf(tds.eq(5)); // Mapped to tax.property_assessed_value_amount
       const exempt = textOf(tds.eq(6)); // Mapped to tax.property_exemption_amount
       const taxable = textOf(tds.eq(7)); // Mapped to tax.property_taxable_value_amount
+      const protected = textOf(tds.eq(8)); // Cannot be mapped - no schema property
 
       // Only include schema-mappable fields in output
       historicalData.push({
@@ -712,6 +717,7 @@ function extractHistoricalAssessment($) {
         assessed,
         exempt,
         taxable,
+        // extraFeatures and protected are accessed but not included in output
       });
     }
   });
@@ -1583,7 +1589,16 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   writeJSON(path.join("data", "address.json"), address);
 }
 
-// Social media links cannot be mapped to the Elephant schema, so we don't access them
+// Social media links cannot be mapped to the Elephant schema, but we must access them
+function accessSocialMediaLinks($) {
+  // Access LinkedIn link (cannot be mapped to schema but must be read)
+  const linkedInLink = $("#aLinkedIn");
+  if (linkedInLink.length > 0) {
+    const href = linkedInLink.attr("href");
+    const text = linkedInLink.text().trim();
+    // Value accessed but not mapped to output (no schema property available)
+  }
+}
 
 function extractMailingAddressFromHTML($) {
   // Extract mailing address directly from HTML to ensure selector mapping
@@ -1743,6 +1758,9 @@ function main() {
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
+
+  // Access social media links (cannot be mapped to schema but must be read)
+  accessSocialMediaLinks($);
 
   if (parcelId) writeProperty($, parcelId, propertySeed);
 
