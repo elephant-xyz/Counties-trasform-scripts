@@ -441,6 +441,16 @@ function stripAddressRequestMetadata(address) {
     surfacedRaw.source_http_request = null;
   }
 
+  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(surfacedRaw, field)) {
+      surfacedRaw[field] = null;
+      continue;
+    }
+    if (surfacedRaw[field] === undefined) {
+      surfacedRaw[field] = null;
+    }
+  }
+
   return stripStructuredFieldsFromRawAddress(surfacedRaw);
 }
 
@@ -607,6 +617,7 @@ function buildMinimalRawAddressForSchema(address) {
   }
 
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
@@ -4653,19 +4664,7 @@ const RAW_ADDRESS_REQUIRED_FIELDS = [
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [
   "unnormalized_address",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-  "unit_identifier",
-  "route_number",
+  ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
   "source_http_request",
 ];
