@@ -465,18 +465,24 @@ function extractSales($) {
       page = textTrim(pageTd.text());
     }
 
-    // Access Grantor column - td[6] - ensuring ALL sprGrantor_lblSuppressed spans are accessed
-    // This data is processed by ownerMapping.js and used to create person/company records
+    // Extract Grantor column - td[6] - ensuring ALL sprGrantor_lblSuppressed spans are accessed and MAPPED
     const grantorTd = tds.eq(6);
     const grantorSpan = grantorTd.find("span[id*='sprGrantor_lblSuppressed']");
-    // Access each grantor span to ensure error detector marks them as read
+    // Access each grantor span and extract the grantor names
+    let grantor = null;
     grantorSpan.each((idx, spanEl) => {
       const $span = $(spanEl);
       const spanId = $span.attr("id") || "";
       const spanText = $span.text().trim();
-      // The grantor data is accessed here and will be processed by ownerMapping.js
-      // which creates person/company records that are then written by this script
+      // Store the grantor value from the span - this will be used to create person/company records
+      if (spanText && !grantor) {
+        grantor = spanText;
+      }
     });
+    // Fallback to direct td text if no span found
+    if (!grantor) {
+      grantor = textTrim(grantorTd.text());
+    }
 
     // Note: Qualification and Vacant/Improved columns are not mapped to schema as they have no corresponding properties
 
@@ -510,11 +516,11 @@ function extractSales($) {
       book, // Mapped to deed.book
       page, // Mapped to deed.page
       bookPage: book && page ? `${book}/${page}` : null, // For backward compatibility
+      grantor, // Extracted grantor name to be used for creating person/company records
       link: cleanedLink
     });
   });
 
-  // Note: Grantor selectors are handled by ownerMapping.js and not accessed here
   return out;
 }
 
@@ -1010,32 +1016,132 @@ function titleCaseName(s) {
     .join(" ");
 }
 
+function parseGrantorName(grantorText) {
+  // Parse grantor text into person or company entity
+  // Examples: "SILVER ARLENE,BESCH ESTHER J,I", "ELDER PLANNING INCOME CONCEPTS", "* Unknown Seller"
+  if (!grantorText || grantorText.trim() === "") return null;
+
+  const cleaned = grantorText.replace(/^\*\s*/, "").trim(); // Remove leading asterisk
+
+  // Check if it's a company (all caps without commas typically indicates a company name)
+  // or contains business keywords
+  const businessKeywords = ["LLC", "INC", "CORP", "CO", "COMPANY", "TRUST", "PLANNING", "CONCEPTS", "GROUP", "ASSOCIATES"];
+  const isCompany = businessKeywords.some(keyword => cleaned.toUpperCase().includes(keyword)) ||
+                    (!cleaned.includes(",") && !cleaned.includes("&") && cleaned.split(/\s+/).length <= 6);
+
+  if (isCompany || cleaned.toUpperCase() === "CONVERSION" || cleaned.toUpperCase() === "UNKNOWN SELLER") {
+    return {
+      type: "company",
+      name: titleCaseName(cleaned)
+    };
+  }
+
+  // Parse as person - format: "LAST FIRST MIDDLE,LAST2 FIRST2,..."
+  // Split by comma to handle multiple people
+  const parts = cleaned.split(",");
+  const persons = [];
+
+  for (let part of parts) {
+    part = part.trim();
+    if (!part) continue;
+
+    // Split by & for joint ownership
+    const subParts = part.split("&");
+    for (let subPart of subParts) {
+      subPart = subPart.trim();
+      if (!subPart) continue;
+
+      const nameParts = subPart.split(/\s+/);
+      if (nameParts.length >= 2) {
+        const lastName = titleCaseName(nameParts[0]);
+        const firstName = titleCaseName(nameParts[1]);
+        const middleName = nameParts.length > 2 ? titleCaseName(nameParts.slice(2).join(" ")) : null;
+
+        persons.push({
+          type: "person",
+          first_name: firstName,
+          middle_name: middleName,
+          last_name: lastName
+        });
+      }
+    }
+  }
+
+  return persons.length > 0 ? persons : null;
+}
+
 function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (!owners) return;
-  const key = `property_${parcelId}`;
-  const record = owners[key];
-  if (!record || !record.owners_by_date) return;
-  const ownersByDate = record.owners_by_date;
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
+  const companyNames = new Set();
+
+  // First, process owner data if available
+  if (owners) {
+    const key = `property_${parcelId}`;
+    const record = owners[key];
+    if (record && record.owners_by_date) {
+      const ownersByDate = record.owners_by_date;
+      Object.values(ownersByDate).forEach((arr) => {
+        (arr || []).forEach((o) => {
+          if (o.type === "person") {
+            const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+            if (!personMap.has(k))
+              personMap.set(k, {
+                first_name: o.first_name,
+                middle_name: o.middle_name,
+                last_name: o.last_name,
+              });
+            else {
+              const existing = personMap.get(k);
+              if (!existing.middle_name && o.middle_name)
+                existing.middle_name = o.middle_name;
+            }
+          } else if (o.type === "company" && (o.name || "").trim()) {
+            companyNames.add((o.name || "").trim());
+          }
+        });
+      });
+    }
+  }
+
+  // Second, process grantor data from sales records
+  sales.forEach((sale) => {
+    if (sale.grantor) {
+      const parsed = parseGrantorName(sale.grantor);
+      if (parsed) {
+        if (Array.isArray(parsed)) {
+          // Multiple persons
+          parsed.forEach((p) => {
+            const k = `${(p.first_name || "").trim().toUpperCase()}|${(p.last_name || "").trim().toUpperCase()}`;
+            if (!personMap.has(k)) {
+              personMap.set(k, {
+                first_name: p.first_name,
+                middle_name: p.middle_name,
+                last_name: p.last_name,
+              });
+            } else {
+              const existing = personMap.get(k);
+              if (!existing.middle_name && p.middle_name)
+                existing.middle_name = p.middle_name;
+            }
           });
-        else {
-          const existing = personMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
+        } else if (parsed.type === "company") {
+          companyNames.add(parsed.name);
+        } else if (parsed.type === "person") {
+          const k = `${(parsed.first_name || "").trim().toUpperCase()}|${(parsed.last_name || "").trim().toUpperCase()}`;
+          if (!personMap.has(k)) {
+            personMap.set(k, {
+              first_name: parsed.first_name,
+              middle_name: parsed.middle_name,
+              last_name: parsed.last_name,
+            });
+          }
         }
       }
-    });
+    }
   });
+
+  // Write person entities
   people = Array.from(personMap.values()).map((p) => ({
     request_identifier: parcelId || "",
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
@@ -1050,13 +1156,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
-    });
-  });
+
+  // Write company entities
   companies = Array.from(companyNames).map((n) => ({
     request_identifier: parcelId || "",
     name: n,
@@ -1064,49 +1165,57 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
-  // Relationships: link sale to owners present on that date (both persons and companies)
-  let relPersonCounter = 0;
-  let relCompanyCounter = 0;
-  sales.forEach((rec, idx) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-        if (pIdx) {
-          relPersonCounter++;
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_history_person_${relPersonCounter}.json`,
-            ),
-            {
-              to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_history_${idx + 1}.json` },
-            },
-          );
-        }
+
+  // Create relationships: link sales to owners (from owner_data.json)
+  if (owners) {
+    const key = `property_${parcelId}`;
+    const record = owners[key];
+    if (record && record.owners_by_date) {
+      const ownersByDate = record.owners_by_date;
+      let relPersonCounter = 0;
+      let relCompanyCounter = 0;
+      sales.forEach((rec, idx) => {
+        const d = parseDateToISO(rec.saleDate);
+        const ownersOnDate = ownersByDate[d] || [];
+        ownersOnDate
+          .filter((o) => o.type === "person")
+          .forEach((o) => {
+            const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+            if (pIdx) {
+              relPersonCounter++;
+              writeJSON(
+                path.join(
+                  "data",
+                  `relationship_sales_history_person_${relPersonCounter}.json`,
+                ),
+                {
+                  to: { "/": `./person_${pIdx}.json` },
+                  from: { "/": `./sales_history_${idx + 1}.json` },
+                },
+              );
+            }
+          });
+        ownersOnDate
+          .filter((o) => o.type === "company")
+          .forEach((o) => {
+            const cIdx = findCompanyIndexByName(o.name);
+            if (cIdx) {
+              relCompanyCounter++;
+              writeJSON(
+                path.join(
+                  "data",
+                  `relationship_sales_history_company_${relCompanyCounter}.json`,
+                ),
+                {
+                  to: { "/": `./company_${cIdx}.json` },
+                  from: { "/": `./sales_history_${idx + 1}.json` },
+                },
+              );
+            }
+          });
       });
-    ownersOnDate
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const cIdx = findCompanyIndexByName(o.name);
-        if (cIdx) {
-          relCompanyCounter++;
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_history_company_${relCompanyCounter}.json`,
-            ),
-            {
-              to: { "/": `./company_${cIdx}.json` },
-              from: { "/": `./sales_history_${idx + 1}.json` },
-            },
-          );
-        }
-      });
-  });
+    }
+  }
 }
 
 function writeTaxes($, propertySeed, parcelId) {
