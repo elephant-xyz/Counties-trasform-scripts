@@ -43636,6 +43636,8 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
   const {
     rawFallbackPath = null,
     extraRawCandidates = [],
+    defaultCountyName = null,
+    defaultCountryCode = "US",
   } = options || {};
 
   const normalizedProbe =
@@ -43690,9 +43692,67 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
   }
 
   const rawOutput = { unnormalized_address: resolvedRaw };
+  const copyRawField = (field) => {
+    if (!RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET.has(field)) {
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(normalizedProbe, field)) {
+      return;
+    }
+    const value = normalizedProbe[field];
+    if (value === undefined) {
+      return;
+    }
+    rawOutput[field] = value;
+  };
+
+  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
+    copyRawField(field);
+  }
+
+  const resolvedCounty = pickFirstMeaningfulString([
+    rawOutput.county_name,
+    payload.county_name,
+    payload.county_jurisdiction,
+    defaultCountyName,
+  ]);
+  if (resolvedCounty) {
+    rawOutput.county_name = titleCaseCounty(resolvedCounty);
+  } else if (hasMeaningfulAddressValue(rawOutput.county_name)) {
+    rawOutput.county_name = titleCaseCounty(rawOutput.county_name);
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOutput.state_code) &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = (defaultCountryCode || "US").toUpperCase();
+  } else if (hasMeaningfulAddressValue(rawOutput.country_code)) {
+    rawOutput.country_code = String(rawOutput.country_code)
+      .trim()
+      .toUpperCase();
+  } else if (defaultCountryCode) {
+    rawOutput.country_code = defaultCountryCode.toUpperCase();
+  }
+
+  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
+    rawOutput.plus_four_postal_code = null;
+  }
+
+  if (
+    (rawOutput.latitude == null && rawOutput.longitude !== null) ||
+    (rawOutput.latitude !== null && rawOutput.longitude == null)
+  ) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
   if (requestIdentifier !== null && requestIdentifier !== undefined) {
     rawOutput.request_identifier = requestIdentifier;
+  } else if (requestIdentifierWasPresent) {
+    rawOutput.request_identifier = null;
   }
+
   if (sourceHttp) {
     rawOutput.source_http_request = deepClone(sourceHttp);
   } else if (sourceHttpWasPresent) {
@@ -49219,6 +49279,8 @@ async function run() {
     enforceAddressFinalOneOfPayload(addressPath, {
       rawFallbackPath: "unnormalized_address.json",
       extraRawCandidates,
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultCountryCode: "US",
     });
   } catch (error) {
     console.error("Failed to emit terminal address oneOf payload:", error);
