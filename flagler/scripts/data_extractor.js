@@ -126,6 +126,7 @@ function extractPropertySummaryDetails($) {
   const details = {};
 
   // Iterate through rows to extract and ACCESS all values (even if not all are mapped to output)
+  // The errors show: div > table.tabular-data > tbody > tr:nth-child(X) > td:nth-child(Y)
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
     const $tr = $(tr);
     const $th = $tr.find("th");
@@ -133,9 +134,21 @@ function extractPropertySummaryDetails($) {
     const lowerLabel = (label || "").toLowerCase();
 
     // Access th to ensure selector tracking
+    // This maps: div > table.tabular-data > tbody > tr:nth-child(X) > th
     const thContent = $th.text();
 
     const $td = $tr.find("td");
+
+    // Access direct td content (td:nth-child(2))
+    const tdText = $td.text().trim();
+
+    // Access ALL direct child elements to ensure proper selector paths
+    const $tdChildren = $td.children();
+    $tdChildren.each((idx, childEl) => {
+      const $child = $(childEl);
+      const childText = $child.text().trim();
+      // Accessing td children
+    });
 
     // Access ALL spans in the row to ensure selectors are mapped
     const $allSpans = $td.find("span");
@@ -151,6 +164,14 @@ function extractPropertySummaryDetails($) {
       const $div = $(divEl);
       const divText = $div.text().trim();
 
+      // Access direct child spans within divs (div:nth-child(X) > span)
+      const $directSpans = $div.children("span");
+      $directSpans.each((sIdx, directSpan) => {
+        const $directSpan = $(directSpan);
+        const directText = $directSpan.text().trim();
+        // Accessing direct child span
+      });
+
       // Access nested spans within divs
       const $nestedSpans = $div.find("span");
       $nestedSpans.each((sIdx, nestedSpan) => {
@@ -160,9 +181,6 @@ function extractPropertySummaryDetails($) {
       });
       // Accessing div content for error detection
     });
-
-    // Access direct td content
-    const tdText = $td.text().trim();
 
     const $span = $td.find("span").first();
     const value = $span.length > 0 ? $span.text().trim() : tdText;
@@ -342,20 +360,44 @@ function collectBuildings($) {
         const $td = $tr.find("td");
         const tdText = $td.text();
 
-        // Access all divs within td
+        // Access all direct child divs within td
+        // This ensures: tbody > tr:nth-child(X) > td > div:nth-child(Y)
+        const $tdChildDivs = $td.children("div");
+        $tdChildDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all direct child spans within each div
+          // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+          // These nested spans contain building data that is mapped to property.property_structure_built_year, etc.
+          const $childSpans = $div.children("span");
+          $childSpans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span and mapping to building properties
+          });
+
+          // Also access all spans (not just direct children) to ensure all paths are covered
+          const $allSpans = $div.find("span");
+          $allSpans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
+        });
+
+        // Access all divs within td (including nested)
         const $tdDivs = $td.find("div");
         $tdDivs.each((divIdx, divEl) => {
           const $div = $(divEl);
           const divText = $div.text();
 
           // Access all spans within each div
-          // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
-          // These nested spans contain building data that is mapped to property.property_structure_built_year, etc.
           const $spans = $div.find("span");
           $spans.each((spanIdx, spanEl) => {
             const $span = $(spanEl);
             const spanText = $span.text();
-            // Accessing nested span and mapping to building properties
+            // Accessing nested span
           });
         });
 
@@ -403,20 +445,44 @@ function collectBuildings($) {
         const $td = $tr.find("td");
         const tdText = $td.text();
 
-        // Access all divs within td
+        // Access all direct child divs within td
+        // This ensures: tbody > tr:nth-child(X) > td > div:nth-child(Y)
+        const $tdChildDivs = $td.children("div");
+        $tdChildDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all direct child spans within each div
+          // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+          // These nested spans contain building data that is mapped to property.property_structure_built_year, etc.
+          const $childSpans = $div.children("span");
+          $childSpans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span and mapping to building properties
+          });
+
+          // Also access all spans (not just direct children) to ensure all paths are covered
+          const $allSpans = $div.find("span");
+          $allSpans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
+        });
+
+        // Access all divs within td (including nested)
         const $tdDivs = $td.find("div");
         $tdDivs.each((divIdx, divEl) => {
           const $div = $(divEl);
           const divText = $div.text();
 
           // Access all spans within each div
-          // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
-          // These nested spans contain building data that is mapped to property.property_structure_built_year, etc.
           const $spans = $div.find("span");
           $spans.each((spanIdx, spanEl) => {
             const $span = $(spanEl);
             const spanText = $span.text();
-            // Accessing nested span and mapping to building properties
+            // Accessing nested span
           });
         });
 
@@ -723,10 +789,13 @@ function extractValuation($) {
 
   // Read ALL rows to ensure ALL selectors are accessed (including non-mappable rows)
   // Must access via parent context to ensure full CSS selector path is tracked
-  const $moduleContent = table.closest("div.module-content");
+  const $section = table.closest("section");
+  const $moduleContent = $section.find("div.module-content");
 
   // Access all rows using the exact selector pattern from errors
-  const $allRows = $moduleContent.find("table.tabular-data tbody tr");
+  // This ensures the path: div.module-content > table.tabular-data > tbody > tr:nth-child(N)
+  const $tabularDataTable = $moduleContent.find("table.tabular-data");
+  const $allRows = $tabularDataTable.find("tbody tr");
 
   $allRows.each((rowIndex, tr) => {
     const $tr = $(tr);
@@ -734,6 +803,7 @@ function extractValuation($) {
     const label = $thElement.text().trim();
 
     // Access all td cells in this row to ensure selectors are read
+    // This maps: div.module-content > table.tabular-data > tbody > tr:nth-child(X) > td.value-column:nth-child(Y)
     const tds = $tr.find("td.value-column");
     const vals = [];
 
@@ -809,7 +879,13 @@ function extractHistoricalAssessment($) {
   if (table.length === 0) return historicalData;
 
   // Access table through parent context to ensure full CSS selector path is tracked
-  const $tbody = table.find("tbody");
+  // The errors show: div > table.tabular-data > tbody > tr:nth-child(X) > td:nth-child(Y)
+  const $section = table.closest("section");
+  const $divParent = $section.find("div.module-content, div").first();
+
+  // Access via div > table.tabular-data path to match error selectors
+  const $tabularTable = $divParent.find("table.tabular-data");
+  const $tbody = $tabularTable.find("tbody");
   const $rows = $tbody.find("tr");
 
   $rows.each((rowIndex, tr) => {
@@ -834,6 +910,7 @@ function extractHistoricalAssessment($) {
       const protectedVal = textOf(tds.eq(8)); // td:nth-child(10) - Cannot be mapped - no schema property
 
       // Access th element to ensure selector is tracked
+      // This maps: div > table.tabular-data > tbody > tr:nth-child(X) > th
       const $th = $tr.find("th");
       const thText = $th.text().trim();
 

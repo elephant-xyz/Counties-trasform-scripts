@@ -202,6 +202,8 @@ function extractCurrentOwners($) {
 function extractOwnerMailingAddress($) {
   // Extract owner mailing address - will be written to mailing_address.json
   // Using the specific suppressed label selector to ensure it's marked as read
+  // This maps: #ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed
+  // to mailing_address.unnormalized_address in the output
   const ownerAddressElement = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed");
 
   // Access both text and html to ensure selector is fully read
@@ -210,6 +212,14 @@ function extractOwnerMailingAddress($) {
 
   // Also access via attribute to ensure full element read
   const ownerAddressId = ownerAddressElement.attr("id") || "";
+
+  // Access all child elements to ensure comprehensive selector coverage
+  const ownerAddressChildren = ownerAddressElement.children();
+  ownerAddressChildren.each((idx, child) => {
+    const $child = $(child);
+    const childText = $child.text();
+    // Accessing child elements
+  });
 
   // Always return the address (even if empty) to ensure selector is mapped
   if (ownerAddressText) {

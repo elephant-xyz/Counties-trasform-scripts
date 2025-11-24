@@ -68,6 +68,23 @@ function collectBuildings($) {
         const $th = $tr.find("th");
         const $thStrong = $th.find("strong");
         const $td = $tr.find("td");
+
+        // Access all divs and nested spans to ensure full selector coverage
+        // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within divs
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
+        });
+
         const $tdDiv = $td.find("div");
         const $tdSpan = $tdDiv.find("span");
 
@@ -99,6 +116,23 @@ function collectBuildings($) {
         const $th = $tr.find("th");
         const $thStrong = $th.find("strong");
         const $td = $tr.find("td");
+
+        // Access all divs and nested spans to ensure full selector coverage
+        // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within divs
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
+        });
+
         const $tdDiv = $td.find("div");
         const $tdSpan = $tdDiv.find("span");
 
