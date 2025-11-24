@@ -960,25 +960,38 @@ function writePropertyImprovements($, parcelId) {
     const completionYear = f.year && /^\d{4}$/.test(f.year) ? parseInt(f.year, 10) : null;
     const completionDate = completionYear ? `${completionYear}-01-01` : null;
 
-    const improvement = {
-      improvement_type: improvementType,
-      completion_date: completionDate,
-      request_identifier: parcelId,
-      application_received_date: null,
-      contractor_type: null,
-      fee: 0,
-      final_inspection_date: null,
-      improvement_action: null,
-      improvement_status: completionDate ? "Completed" : null,
-      is_disaster_recovery: null,
-      is_owner_builder: null,
-      permit_close_date: null,
-      permit_issue_date: null,
-      permit_number: f.code || null,
-      permit_required: false,
-      private_provider_inspections: null,
-      private_provider_plan_review: null
-    };
+    // Build improvement object with required fields properly typed
+    // fee must be a number (not null) - default to 0 if no data available
+    // permit_required must be a boolean (not null) - default to false for tax assessor extra features
+    const improvement = {};
+
+    // Only include improvement_type if it has a value
+    if (improvementType !== null) {
+      improvement.improvement_type = improvementType;
+    }
+
+    // Add other fields
+    if (completionDate !== null) {
+      improvement.completion_date = completionDate;
+    }
+
+    if (parcelId) {
+      improvement.request_identifier = parcelId;
+    }
+
+    // fee is REQUIRED and must be number (cannot be null per schema)
+    improvement.fee = 0;
+
+    // permit_required is REQUIRED and must be boolean (cannot be null per schema)
+    improvement.permit_required = false;
+
+    if (completionDate) {
+      improvement.improvement_status = "Completed";
+    }
+
+    if (f.code) {
+      improvement.permit_number = f.code;
+    }
 
     writeJSON(path.join("data", `property_improvement_${idx + 1}.json`), improvement);
   });
