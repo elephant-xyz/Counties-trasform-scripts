@@ -400,10 +400,10 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
   const sales = extractSales($);
   const requestIdentifier = parcelId || null;
 
-  // Remove old deed/file and sales_deed relationships if present to avoid duplicates
+  // Remove old sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_history_deed)(?:_\d+)?\.json$/.test(f)) {
+      if (/^relationship_sales_history_deed(?:_\d+)?\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -411,33 +411,37 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
 
   sales.forEach((s, i) => {
     const idx = i + 1;
+    const ownershipTransferDate = parseDateToISO(s.saleDate);
+    const purchasePriceAmount = parseCurrencyToNumber(s.salePrice);
+
     const saleObj = {
+      ownership_transfer_date: ownershipTransferDate,
+      purchase_price_amount: purchasePriceAmount,
       request_identifier: requestIdentifier,
     };
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
+    // Parse book and page from bookPage string (format: "book/page")
+    let book = null;
+    let page = null;
+    if (s.bookPage) {
+      const parts = s.bookPage.split('/');
+      if (parts.length === 2) {
+        book = parts[0].trim();
+        page = parts[1].trim();
+      }
+    }
+
     const deed = {
+      ownership_transfer_date: ownershipTransferDate,
+      book: book,
+      page: page,
+      deed_type: mapInstrumentToDeedType(s.instrument),
       request_identifier: requestIdentifier,
     };
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
-    const file = {
-      document_type: "Title",
-      file_format: null,
-      ipfs_url: null,
-      name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
-      original_url: s.link || null,
-    };
-    writeJSON(path.join("data", `file_${idx}.json`), file);
-
-    const relDeedFile = {
-      to: { "/": `./deed_${idx}.json` },
-      from: { "/": `./file_${idx}.json` },
-    };
-    writeJSON(
-      path.join("data", `relationship_deed_file_${idx}.json`),
-      relDeedFile,
-    );
+    // File objects are not generated - they will be populated by the process
 
     const relSalesDeed = {
       to: { "/": `./sales_history_${idx}.json` },
