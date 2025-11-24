@@ -21,6 +21,7 @@ const BUILDING_SECTION_TITLE = "Residential Buildings"; // Corrected title from 
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl15_ctl01_grdSales tbody tr"; // Corrected selector for sales table
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl05_ctl01_grdValuation"; // Corrected selector for valuation table
 const OWNER_ADDRESS_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed";
+const EXTRA_FEATURES_TABLE_SELECTOR = "#ctlBodyPane_ctl14_ctl01_gvwExtraFeatures tbody tr"; // Selector for extra features table
 
 
 function readJSON(p) {
@@ -909,6 +910,95 @@ function extractOwnerMailingAddress($) {
   return parts.join(', ');
 }
 
+function extractExtraFeatures($) {
+  const features = [];
+  const rows = $(EXTRA_FEATURES_TABLE_SELECTOR);
+  rows.each((i, tr) => {
+    const $tr = $(tr);
+    const th = $tr.find("th");
+    const tds = $tr.find("td");
+
+    if (th.length === 0 || tds.length < 2) return;
+
+    // Extract code from th (after the toggle link)
+    const codeText = textTrim(th.text());
+
+    // Extract description from first td
+    const description = textTrim(tds.eq(0).text());
+
+    // Extract area from second td
+    const areaText = textTrim(tds.eq(1).text());
+
+    // Extract year from third td
+    const yearText = textTrim(tds.eq(2).text());
+
+    if (description) {
+      features.push({
+        code: codeText || null,
+        description: description,
+        area: areaText || null,
+        year: yearText || null
+      });
+    }
+  });
+  return features;
+}
+
+function mapFeatureTypeToImprovementType(description) {
+  if (!description) return null;
+  const d = description.toUpperCase();
+
+  // Map common feature descriptions to improvement types based on Elephant schema enums
+  if (d.includes("DRWAY") || d.includes("DRIVEWAY")) return "DrivewayPermit";
+  if (d.includes("POOL") || d.includes("SPA")) return "PoolSpaInstallation";
+  if (d.includes("FENCE")) return "Fencing";
+  if (d.includes("ROOF")) return "Roofing";
+  if (d.includes("SOLAR")) return "Solar";
+  if (d.includes("ELECTRIC")) return "Electrical";
+  if (d.includes("PLUMB")) return "Plumbing";
+  if (d.includes("HVAC") || d.includes("AC ") || d.includes("AIR COND")) return "MechanicalHVAC";
+  if (d.includes("GAS")) return "GasInstallation";
+  if (d.includes("SCREEN") || d.includes("ENCL")) return "ScreenEnclosure";
+  if (d.includes("SHUTTER") || d.includes("AWNING")) return "ShutterAwning";
+  if (d.includes("DOCK") || d.includes("SHORE")) return "DockAndShore";
+
+  // For features that don't have a direct enum match (like fireplace, walkway, deck)
+  // we'll return null and rely on the permit_number to identify them
+  return null;
+}
+
+function writePropertyImprovements($, parcelId) {
+  const features = extractExtraFeatures($);
+
+  features.forEach((f, idx) => {
+    const improvementType = mapFeatureTypeToImprovementType(f.description);
+    const completionYear = f.year && /^\d{4}$/.test(f.year) ? parseInt(f.year, 10) : null;
+    const completionDate = completionYear ? `${completionYear}-01-01` : null;
+
+    const improvement = {
+      improvement_type: improvementType,
+      completion_date: completionDate,
+      request_identifier: parcelId,
+      application_received_date: null,
+      contractor_type: null,
+      fee: null,
+      final_inspection_date: null,
+      improvement_action: null,
+      improvement_status: completionDate ? "Completed" : null,
+      is_disaster_recovery: null,
+      is_owner_builder: null,
+      permit_close_date: null,
+      permit_issue_date: null,
+      permit_number: f.code || null,
+      permit_required: null,
+      private_provider_inspections: null,
+      private_provider_plan_review: null
+    };
+
+    writeJSON(path.join("data", `property_improvement_${idx + 1}.json`), improvement);
+  });
+}
+
 function attemptWriteAddress(unnorm, secTwpRng) {
   const full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
@@ -1023,6 +1113,11 @@ function main() {
   // This data is not written to output as it represents owner's mailing address
   // rather than property address, and there's no appropriate schema field for it
   const ownerMailingAddr = extractOwnerMailingAddress($);
+
+  // Extract and write property improvements (extra features)
+  if (parcelId) {
+    writePropertyImprovements($, parcelId);
+  }
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
