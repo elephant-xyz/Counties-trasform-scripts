@@ -401,7 +401,7 @@ function writeSalesDeedsFilesAndRelationships($) {
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_deed)(?:_\d+)?\.json$/.test(f)) {
+      if (/^relationship_(deed_file|sales_history_deed)(?:_\d+)?\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -409,20 +409,21 @@ function writeSalesDeedsFilesAndRelationships($) {
 
   sales.forEach((s, i) => {
     const idx = i + 1;
+    const ownershipDate = parseDateToISO(s.saleDate);
     const saleObj = {
-      ownership_transfer_date: parseDateToISO(s.saleDate),
+      ownership_transfer_date: ownershipDate,
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
     };
-    writeJSON(path.join("data", `sales_${idx}.json`), saleObj);
+    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     const deedType = mapInstrumentToDeedType(s.instrument);
-    const deed = { deed_type: deedType };
+    const deed = {
+      ownership_transfer_date: ownershipDate,
+      deed_type: deedType
+    };
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
-      document_type: null,
-      file_format: null,
-      ipfs_url: null,
       name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
       original_url: s.link || null,
     };
@@ -438,11 +439,11 @@ function writeSalesDeedsFilesAndRelationships($) {
     );
 
     const relSalesDeed = {
-      to: { "/": `./sales_${idx}.json` },
+      to: { "/": `./sales_history_${idx}.json` },
       from: { "/": `./deed_${idx}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_deed_${idx}.json`),
+      path.join("data", `relationship_sales_history_deed_${idx}.json`),
       relSalesDeed,
     );
   });
@@ -546,11 +547,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_person_${relPersonCounter}.json`,
+              `relationship_sales_history_person_${relPersonCounter}.json`,
             ),
             {
               to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
+              from: { "/": `./sales_history_${idx + 1}.json` },
             },
           );
         }
@@ -564,11 +565,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_company_${relCompanyCounter}.json`,
+              `relationship_sales_history_company_${relCompanyCounter}.json`,
             ),
             {
               to: { "/": `./company_${cIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
+              from: { "/": `./sales_history_${idx + 1}.json` },
             },
           );
         }
@@ -678,7 +679,7 @@ function writeLayout(parcelId) {
   record.forEach((l, idx) => {
     const out = {
       space_type: l.space_type ?? null,
-      space_index: l.space_index ?? null,
+      space_type_index: l.space_type_index ?? String(idx + 1),
       flooring_material_type: l.flooring_material_type ?? null,
       size_square_feet: l.size_square_feet ?? null,
       floor_level: l.floor_level ?? null,
