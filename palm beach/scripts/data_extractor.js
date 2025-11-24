@@ -5051,8 +5051,8 @@ const RAW_ADDRESS_REQUIRED_FIELDS = [
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [
   "unnormalized_address",
-  ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
+  "source_http_request",
 ];
 const RAW_MINIMAL_ADDRESS_FIELD_SET = new Set(RAW_MINIMAL_ADDRESS_FIELDS);
 
