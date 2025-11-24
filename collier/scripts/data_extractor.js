@@ -568,10 +568,11 @@ function main() {
   // Extract StrapNumber for parcel
   const strapNumber = $("#StrapNumber").first().text().trim() || null;
 
-  // Extract tax exemption fields
+  // Extract tax exemption and benefit fields for current year
   const hmstdExemptAmount = toNumberCurrency($("#HmstdExemptAmount").first().text());
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").first().text());
   const nonSchool10PctBenefit = toNumberCurrency($("#NonSchool10PctBenefit").first().text());
+  const sohBenefit = toNumberCurrency($("#SohBenefit").first().text());
 
   // Extract millage detail fields (from detailed tax breakdown)
   const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim() || null;
@@ -584,6 +585,9 @@ function main() {
 
   // Extract total advance taxes
   const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").first().text());
+
+  // Extract total millage for main tax record
+  const tdDetailTotalMillage = $("#TdDetailTotalMillage").first().text().trim() || null;
 
   // Extract individual tax line items (Tax1-10, Millage1-10, TaName1-10)
   const taxLineItems = [];
@@ -1113,12 +1117,15 @@ function main() {
   }
 
   // Read complex selectors that don't have IDs (to mark as processed)
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a").first().text();
   $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text();
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").first().text();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(38) > td.clsFields:nth-child(2)").first().text();
   $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(3) > td.clsLabel:nth-child(1)").first().text();
   $("div:nth-child(1) > table.clsWide:nth-child(4) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text();
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text();
   $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text();
 
   // Extract pool, spa, and other exterior features from Building/Extra Features
@@ -1459,15 +1466,23 @@ function main() {
     // Calculate millage rate: use detail millage fields if available, otherwise calculate from tax/value
     let millageRate = null;
 
-    // Method 1: Sum individual tax line item millage rates
-    if (taxLineItems.length > 0) {
+    // Method 1: Use TdDetailTotalMillage if available
+    if (tdDetailTotalMillage) {
+      const totalMillageParsed = parseFloat(tdDetailTotalMillage.replace(/,/g, '')) || null;
+      if (totalMillageParsed && totalMillageParsed > 0) {
+        millageRate = round2(totalMillageParsed);
+      }
+    }
+
+    // Method 2: Sum individual tax line item millage rates
+    if (!millageRate && taxLineItems.length > 0) {
       const sumMillage = taxLineItems.reduce((sum, item) => {
         return sum + (item.millage_rate || 0);
       }, 0);
       if (sumMillage > 0) millageRate = round2(sumMillage);
     }
 
-    // Method 2: Sum the detail millage breakdown fields
+    // Method 3: Sum the detail millage breakdown fields
     if (!millageRate && (tdDetailCountyMillage || tdDetailSchoolMillage || tdDetailMunicipalMillage || tdDetailOtherMillage)) {
       const countyRate = parseFloat((tdDetailCountyMillage || '0').replace(/,/g, '')) || 0;
       const schoolRate = parseFloat((tdDetailSchoolMillage || '0').replace(/,/g, '')) || 0;
@@ -1477,7 +1492,7 @@ function main() {
       if (totalRate > 0) millageRate = round2(totalRate);
     }
 
-    // Method 3: Calculate from yearly tax and taxable value
+    // Method 4: Calculate from yearly tax and taxable value
     if (!millageRate && yearly != null && taxableValue != null && taxableValue > 0) {
       millageRate = round2((yearly / taxableValue) * 1000);
     }
@@ -1498,6 +1513,7 @@ function main() {
       property_land_amount: land != null ? land : null,
       property_taxable_value_amount: taxableValue,
       property_exemption_amount: totalExemption !== null && totalExemption > 0 ? totalExemption : null,
+      homestead_cap_loss_amount: sohBenefit != null ? sohBenefit : null,
       millage_rate: millageRate,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
@@ -1617,6 +1633,7 @@ function main() {
       property_land_amount: rec.landH != null ? rec.landH : null,
       property_taxable_value_amount: taxableValue,
       property_exemption_amount: totalExemptionH !== null && totalExemptionH > 0 ? totalExemptionH : null,
+      homestead_cap_loss_amount: histRec && histRec.soh_benefit != null ? histRec.soh_benefit : null,
       millage_rate: millageRate,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
