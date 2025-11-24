@@ -1460,7 +1460,8 @@ function main() {
   const propertyOut = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDescription || null,
-    property_structure_built_year: yearBuilt || yearEffective || null,
+    property_structure_built_year: yearBuilt || null,
+    property_effective_built_year: yearEffective || null,
     zoning: zoning || null,
   };
   const landuse = $(
@@ -1506,13 +1507,11 @@ function main() {
     const page = textClean(link.attr("data-page")) || null;
     const instrument = textClean($(tds[1]).text());
     const saleDate = textClean($(tds[2]).text());
-    const qscd = textClean($(tds[3]).text()); // Extract QSCD code
     const priceText = textClean($(tds[4]).text());
     const price = parseNumber(priceText);
 
     saleIndex += 1;
     const saleObj = { ownership_transfer_date: saleDate || null };
-    if (qscd) saleObj.sale_type = qscd; // Add QSCD code as sale_type
     if (!latestSaleIndex) {
       latestSaleIndex = saleIndex;
       latestSaleDate = saleDate;
@@ -1595,45 +1594,19 @@ function main() {
     const landVal = getVal(/Just Value of Land/i);
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
-    const marketClassified = getVal(/Market Classified/i);
-    const marketAdjusted = getVal(/Market Adjusted/i);
 
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: marketAdjusted || marketClassified || marketVal || null,
+      property_assessed_value_amount: marketVal || null,
       property_market_value_amount: marketVal || null,
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
-      property_taxable_value_amount: marketAdjusted || marketClassified || marketVal || null,
-      property_exemption_amount: null,
+      property_taxable_value_amount: marketVal || null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
     };
     writeOut(`tax_${year}.json`, taxObj);
-  }
-
-  // Extract exemption amounts from Taxing Authorities table
-  const taxAuthTable = $('#details-Value .card:contains("Taxing Authorities") table');
-  if (taxAuthTable.length > 0 && years.length > 0) {
-    const latestYear = Math.max(...years);
-    let totalExemption = 0;
-    taxAuthTable.find("tbody tr").each((_, tr) => {
-      const exemptionText = textClean($(tr).find("td").eq(5).text());
-      const exemptionVal = parseNumber(exemptionText);
-      if (exemptionVal && exemptionVal > 0) {
-        totalExemption = exemptionVal; // Use the largest exemption found
-      }
-    });
-    // Update the latest year tax record with exemption
-    if (totalExemption > 0) {
-      const latestTaxPath = path.join("data", `tax_${latestYear}.json`);
-      if (fs.existsSync(latestTaxPath)) {
-        const taxData = JSON.parse(fs.readFileSync(latestTaxPath, "utf8"));
-        taxData.property_exemption_amount = totalExemption;
-        fs.writeFileSync(latestTaxPath, JSON.stringify(taxData, null, 2), "utf8");
-      }
-    }
   }
 
   // LOT from Land
@@ -1666,121 +1639,6 @@ function main() {
     site_lighting_installation_date: null,
   };
   writeOut("lot.json", lotObj);
-
-  // OUTBUILDINGS AND EXTRA FEATURES - property_improvement
-  const outbuildTable = $('#details-Buildings .card:contains("Outbuildings") table, #details-Buildings .card:contains("Extra Features") table');
-  let improvementIndex = 1;
-  outbuildTable.find("tbody tr").each((_, tr) => {
-    const code = textClean($(tr).find("td").eq(0).text());
-    const description = textClean($(tr).find("td").eq(1).text());
-    const units = parseNumber(textClean($(tr).find("td").eq(2).text()));
-    const length = parseNumber(textClean($(tr).find("td").eq(3).text()));
-    const width = parseNumber(textClean($(tr).find("td").eq(4).text()));
-    const sqft = parseNumber(textClean($(tr).find("td").eq(5).text()));
-    const rate = parseNumber(textClean($(tr).find("td").eq(6).text()));
-    const amount = parseNumber(textClean($(tr).find("td").eq(7).text()));
-
-    if (code || description) {
-      const improvementObj = {
-        permit_number: code || null,
-        improvement_type: description || null,
-        improvement_status: null,
-        improvement_action: null,
-        permit_issue_date: null,
-        completion_date: null,
-        final_inspection_date: null,
-        permit_close_date: null,
-        fee: amount || null,
-        application_received_date: null,
-        contractor_type: null,
-        is_owner_builder: null,
-        permit_required: null,
-        is_disaster_recovery: null,
-        private_provider_plan_review: null,
-        private_provider_inspections: null,
-      };
-      writeOut(`property_improvement_${improvementIndex}.json`, improvementObj);
-      improvementIndex++;
-    }
-  });
-
-  // NON-AD VALOREM ASSESSMENTS - extract and read all values
-  const nonAdTable = $('#details-Value .card:contains("Non-Ad Valorem") table');
-  nonAdTable.find("tbody tr").each((_, tr) => {
-    const code = textClean($(tr).find("td").eq(0).text());
-    const desc = textClean($(tr).find("td").eq(1).text());
-    const units = textClean($(tr).find("td").eq(2).text());
-    const rate = textClean($(tr).find("td").eq(3).text());
-    const amount = textClean($(tr).find("td").eq(4).text());
-    // These values are read but not currently mapped to Elephant schema
-    // They are extracted here to satisfy the validation that checks if selectors are mapped
-  });
-
-  // LAND TABLE - extract all land details
-  const landTable = $('#details-Land .card:contains("Land") table').first();
-  landTable.find("tbody tr").each((_, tr) => {
-    const line = textClean($(tr).find("td").eq(0).text());
-    const landUse = textClean($(tr).find("td").eq(1).text());
-    const depthChart = textClean($(tr).find("td").eq(2).text());
-    const depthFeet = textClean($(tr).find("td").eq(3).text());
-    const cornerFactor = textClean($(tr).find("td").eq(4).text());
-    const depthFactor = textClean($(tr).find("td").eq(5).text());
-    const condition = textClean($(tr).find("td").eq(6).text());
-    const unitPrice = textClean($(tr).find("td").eq(7).text());
-    const adjUnitPrice = textClean($(tr).find("td").eq(8).text());
-    const units = textClean($(tr).find("td").eq(9).text());
-    const justValue = textClean($(tr).find("td").eq(10).text());
-    const cuUnitPrice = textClean($(tr).find("td").eq(11).text());
-    const cuValue = textClean($(tr).find("td").eq(12).text());
-    const cuJustValue = textClean($(tr).find("td").eq(13).text());
-    const taxableValue = textClean($(tr).find("td").eq(14).text());
-    // These values are read but aggregated into lot object
-    // They are extracted here to satisfy the validation that checks if selectors are mapped
-  });
-
-  // SUMMARY TABLE - extract OBXF and Classified values
-  const summaryTable = $('#details-Value .card:contains("Summary") table').first();
-  summaryTable.find("tbody tr").each((_, tr) => {
-    const label = textClean($(tr).find("td").eq(0).text());
-    const value = textClean($(tr).find("td").eq(1).text());
-    // Values like OBXF Value, Market Classified, Classified are read here
-    // They contribute to tax calculations and are extracted to satisfy validation
-  });
-
-  // TAXING AUTHORITIES - extract all authority data
-  taxAuthTable.find("tbody tr").each((_, tr) => {
-    const authority = textClean($(tr).find("td").eq(0).text());
-    const deferredVal = textClean($(tr).find("td").eq(1).text());
-    const assessedVal = textClean($(tr).find("td").eq(2).text());
-    const classifiedLand = textClean($(tr).find("td").eq(3).text());
-    const assessedLimited = textClean($(tr).find("td").eq(4).text());
-    const exemptions = textClean($(tr).find("td").eq(5).text());
-    const taxableVal = textClean($(tr).find("td").eq(6).text());
-    // These values are read and contribute to overall tax data
-    // They are extracted here to satisfy the validation that checks if selectors are mapped
-  });
-
-  // DEFERRED VALUE / SAVE OUR HOMES - extract exemption type
-  const deferredCards = $('#details-Value .card:contains("Deferred")');
-  deferredCards.each((_, card) => {
-    const exemptionType = textClean($(card).find(".card-body .font-weight-bold").text());
-    const deferredAmount = textClean($(card).find(".card-body").text());
-    // Extract "Save Our Homes" and other exemption types
-    // These contribute to understanding the property's tax exemption status
-  });
-
-  // CARD HEADERS - extract all card header information
-  $('.card .card-header').each((_, header) => {
-    const headerText = textClean($(header).text());
-    // Card headers provide section context and are read for validation purposes
-  });
-
-  // RESULT CARDS - extract result card header information
-  $('.result-cards .card-header').each((_, header) => {
-    const headerText = textClean($(header).text());
-    // Result card headers are read for validation purposes
-  });
-
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     let layoutBuildingMap = {};
