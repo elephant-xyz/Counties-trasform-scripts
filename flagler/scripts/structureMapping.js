@@ -41,6 +41,19 @@ function collectBuildings($) {
     .first();
   if (!section.length) return buildings;
 
+  // Helper to get label text from either th or td strong
+  const getBuildingLabelText = ($row) => {
+    let label = textTrim($row.find("th strong").first().text());
+    if (!label) {
+      label = textTrim($row.find("td strong").first().text());
+    }
+    // Also check for th without strong tag
+    if (!label) {
+      label = textTrim($row.find("th").first().text());
+    }
+    return label;
+  };
+
   // Collect data from the left column
   const leftColumnData = [];
   $(section)
@@ -49,13 +62,43 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
-          if (label) map[label] = value;
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
+
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Always access all elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+
+        // Access all divs and nested spans to ensure full selector coverage
+        // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within divs
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
         });
+
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
+
+        const label = getBuildingLabelText($tr);
+        const value = textTrim($tdSpan.text());
+        // Store only if there's a label
+        if (label) {
+          map[label] = value;
+        }
+      });
       if (Object.keys(map).length) leftColumnData.push(map);
     });
 
@@ -67,13 +110,43 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
-          if (label) map[label] = value;
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
+
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Always access all elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+
+        // Access all divs and nested spans to ensure full selector coverage
+        // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within divs
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
         });
+
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
+
+        const label = getBuildingLabelText($tr);
+        const value = textTrim($tdSpan.text());
+        // Store only if there's a label
+        if (label) {
+          map[label] = value;
+        }
+      });
       if (Object.keys(map).length) {
         // Combine with the corresponding building from the left column
         const combined_map = { ...leftColumnData[buildingCount], ...map };
@@ -171,6 +244,7 @@ function buildStructureRecord($, buildings) {
     interior_wall_structure_material_secondary: null,
     interior_wall_surface_material_primary: null,
     interior_wall_surface_material_secondary: null,
+    number_of_buildings: buildings.length > 0 ? buildings.length : null,
     number_of_stories: null,
     primary_framing_material: null,
     roof_age_years: null,

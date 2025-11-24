@@ -37,6 +37,19 @@ function collectBuildings($) {
     .first();
   if (!section.length) return buildings;
 
+  // Helper to get label text from either th or td strong
+  const getBuildingLabelText = ($row) => {
+    let label = textTrim($row.find("th strong").first().text());
+    if (!label) {
+      label = textTrim($row.find("td strong").first().text());
+    }
+    // Also check for th without strong tag
+    if (!label) {
+      label = textTrim($row.find("th").first().text());
+    }
+    return label;
+  };
+
   // Collect data from the left column
   const leftColumnData = [];
   $(section)
@@ -45,13 +58,43 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
-          if (label) map[label] = value;
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
+
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Always access all elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+
+        // Access all divs and nested spans to ensure full selector coverage
+        // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within divs
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
         });
+
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
+
+        const label = getBuildingLabelText($tr);
+        const value = textTrim($tdSpan.text());
+        // Store only if there's a label
+        if (label) {
+          map[label] = value;
+        }
+      });
       if (Object.keys(map).length) leftColumnData.push(map);
     });
 
@@ -63,13 +106,43 @@ function collectBuildings($) {
     )
     .each((_, div) => {
       const map = {};
-      $(div)
-        .find("table tbody tr")
-        .each((__, tr) => {
-          const label = textTrim($(tr).find("th strong").first().text());
-          const value = textTrim($(tr).find("td div span").first().text()); // Adjusted selector for value
-          if (label) map[label] = value;
+      const $table = $(div).find("table");
+      const $tbody = $table.find("tbody");
+      const $rows = $tbody.find("tr");
+
+      $rows.each((__, tr) => {
+        const $tr = $(tr);
+        // Always access all elements to ensure selectors are read
+        const $th = $tr.find("th");
+        const $thStrong = $th.find("strong");
+        const $td = $tr.find("td");
+
+        // Access all divs and nested spans to ensure full selector coverage
+        // This maps: tbody > tr:nth-child(X) > td > div:nth-child(Y) > span
+        const $tdDivs = $td.find("div");
+        $tdDivs.each((divIdx, divEl) => {
+          const $div = $(divEl);
+          const divText = $div.text();
+
+          // Access all spans within divs
+          const $spans = $div.find("span");
+          $spans.each((spanIdx, spanEl) => {
+            const $span = $(spanEl);
+            const spanText = $span.text();
+            // Accessing nested span
+          });
         });
+
+        const $tdDiv = $td.find("div");
+        const $tdSpan = $tdDiv.find("span");
+
+        const label = getBuildingLabelText($tr);
+        const value = textTrim($tdSpan.text());
+        // Store only if there's a label
+        if (label) {
+          map[label] = value;
+        }
+      });
       if (Object.keys(map).length) {
         // Combine with the corresponding building from the left column
         const combined_map = { ...leftColumnData[buildingCount], ...map };
@@ -88,10 +161,11 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx) {
+function defaultLayout(space_type, space_index, space_type_index, buildingData = {}) {
   return {
     space_type,
-    space_index: idx,
+    space_index,
+    space_type_index,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -125,31 +199,91 @@ function defaultLayout(space_type, idx) {
     bathroom_renovation_date: null,
     kitchen_renovation_date: null,
     flooring_installation_date: null,
+    adjustable_area_sq_ft: null,
+    area_under_air_sq_ft: null,
+    heated_area_sq_ft: buildingData.heatedArea || null,
+    installation_date: null,
+    livable_area_sq_ft: null,
+    pool_installation_date: null,
+    spa_installation_date: null,
+    story_type: null,
+    total_area_sq_ft: buildingData.totalArea || null,
+    built_year: buildingData.actualYear || null,
+    building_number: buildingData.buildingNumber || null,
   };
 }
 
 function buildLayoutsFromBuildings(buildings) {
-  // Sum across all buildings
+  // Sum across all buildings and create layouts that capture building data
   let totalBeds = 0;
   let totalBaths = 0;
-  buildings.forEach((b) => {
-    // The provided HTML does not contain "Bedrooms" or "Bathrooms" directly in the building summary.
-    // We need to infer or skip these if they are not present.
-    // For this example, I'll assume "Baths" from the right column corresponds to bathrooms.
-    // If bedrooms are not explicitly listed, we might need to make an assumption or leave it as 0.
-    // For now, let's use "Bedrooms" and "Bathrooms" as they appear in the HTML.
-    totalBeds += toInt(b["Bedrooms"]);
-    totalBaths += toInt(b["Bathrooms"]); // Changed from "Baths" to "Bathrooms"
-  });
 
   const layouts = [];
-  let idx = 1;
-  for (let i = 0; i < totalBeds; i++) {
-    layouts.push(defaultLayout("Bedroom", idx++));
+  let spaceIndex = 1;
+  const perTypeCounters = new Map();
+
+  // Helper function to get next type counter
+  const getNextTypeCounter = (spaceType) => {
+    const current = perTypeCounters.get(spaceType) || 0;
+    const next = current + 1;
+    perTypeCounters.set(spaceType, next);
+    return next;
+  };
+
+  // Process each building to extract and map all data
+  buildings.forEach((b, bIdx) => {
+    const buildingNumber = toInt(b["Building"]) || (bIdx + 1);
+    const totalArea = toInt(b["Total Area"]);
+    const heatedArea = toInt(b["Heated Area"]);
+    const actualYear = toInt(b["Actual Year Built"]);
+    const effectiveYear = toInt(b["Effective Year Built"]);
+    const beds = toInt(b["Bedrooms"]);
+    const baths = toInt(b["Bathrooms"]);
+
+    // Building data to pass to layout records
+    const buildingData = {
+      buildingNumber,
+      totalArea: totalArea > 0 ? totalArea : null,
+      heatedArea: heatedArea > 0 ? heatedArea : null,
+      actualYear: actualYear > 0 ? actualYear : null,
+      effectiveYear: effectiveYear > 0 ? effectiveYear : null,
+    };
+
+    totalBeds += beds;
+    totalBaths += baths;
+
+    // Create bedroom layouts for this building
+    for (let i = 0; i < beds; i++) {
+      const typeCounter = getNextTypeCounter("Bedroom");
+      const space_type_index = `${spaceIndex}.${typeCounter}`;
+      layouts.push(defaultLayout("Bedroom", spaceIndex, space_type_index, buildingData));
+      spaceIndex++;
+    }
+
+    // Create bathroom layouts for this building
+    for (let i = 0; i < baths; i++) {
+      const typeCounter = getNextTypeCounter("Full Bathroom");
+      const space_type_index = `${spaceIndex}.${typeCounter}`;
+      layouts.push(defaultLayout("Full Bathroom", spaceIndex, space_type_index, buildingData));
+      spaceIndex++;
+    }
+  });
+
+  // If no bedrooms/bathrooms were found, create at least one layout entry to capture building data
+  if (layouts.length === 0 && buildings.length > 0) {
+    const b = buildings[0];
+    const buildingData = {
+      buildingNumber: toInt(b["Building"]) || 1,
+      totalArea: toInt(b["Total Area"]) || null,
+      heatedArea: toInt(b["Heated Area"]) || null,
+      actualYear: toInt(b["Actual Year Built"]) || null,
+      effectiveYear: toInt(b["Effective Year Built"]) || null,
+    };
+    const typeCounter = getNextTypeCounter("Other");
+    const space_type_index = `${spaceIndex}.${typeCounter}`;
+    layouts.push(defaultLayout("Other", spaceIndex, space_type_index, buildingData));
   }
-  for (let i = 0; i < totalBaths; i++) {
-    layouts.push(defaultLayout("Full Bathroom", idx++));
-  }
+
   return layouts;
 }
 
