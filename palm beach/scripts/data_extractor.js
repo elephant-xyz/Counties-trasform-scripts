@@ -32998,6 +32998,109 @@ function gatherRawAddressCandidatesFromSource(source, accumulator) {
   }
 }
 
+function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    extraRawCandidates = [],
+    requestIdentifierCandidates = [],
+  } = options || {};
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+
+  const normalizedSurface =
+    ensureAddressOutputFieldPresence &&
+    typeof ensureAddressOutputFieldPresence === "function"
+      ? ensureAddressOutputFieldPresence({ ...payload })
+      : { ...payload };
+
+  if (hasNormalizedCountyCoverage({ ...normalizedSurface })) {
+    const normalizedOutput =
+      typeof buildNormalizedAddressOutputForSchema === "function"
+        ? buildNormalizedAddressOutputForSchema({ ...normalizedSurface })
+        : { ...normalizedSurface };
+
+    if (normalizedOutput && typeof normalizedOutput === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+
+      const normalizedRequestIdentifier = resolveRequestIdentifierCandidate(
+        payload.request_identifier,
+        normalizedOutput.request_identifier,
+        unnormalizedSource && unnormalizedSource.request_identifier,
+        seedSource && seedSource.request_identifier,
+        ...(Array.isArray(requestIdentifierCandidates)
+          ? requestIdentifierCandidates
+          : []),
+      );
+
+      normalizedOutput.request_identifier =
+        normalizedRequestIdentifier === undefined
+          ? null
+          : normalizedRequestIdentifier;
+
+      writeJSON(addressPath, normalizedOutput);
+      return;
+    }
+  }
+
+  const rawCandidates = [];
+  gatherRawAddressCandidatesFromSource(payload, rawCandidates);
+  gatherRawAddressCandidatesFromSource(unnormalizedSource, rawCandidates);
+  gatherRawAddressCandidatesFromSource(seedSource, rawCandidates);
+  if (Array.isArray(extraRawCandidates)) {
+    for (const candidate of extraRawCandidates) {
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        if (trimmed.length) {
+          rawCandidates.push(trimmed);
+        }
+      }
+    }
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    return;
+  }
+
+  const rawRequestIdentifier = resolveRequestIdentifierCandidate(
+    payload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    ...(Array.isArray(requestIdentifierCandidates)
+      ? requestIdentifierCandidates
+      : []),
+  );
+
+  const rawOutput = {
+    unnormalized_address: resolvedRaw,
+    __force_raw_variant: true,
+  };
+
+  rawOutput.request_identifier =
+    rawRequestIdentifier === undefined ? null : rawRequestIdentifier;
+
+  writeJSON(addressPath, rawOutput);
+}
+
 function buildAddressLineFromFields(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -51073,6 +51176,32 @@ async function run() {
     );
   } catch (error) {
     console.error("Failed to coerce final raw submission payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const extraRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    const extraRequestIds =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : [];
+    enforceRawOrNormalizedAddressOutput(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      extraRawCandidates,
+      requestIdentifierCandidates: extraRequestIds,
+    });
+  } catch (error) {
+    console.error("Failed to enforce final address branch fallback:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
