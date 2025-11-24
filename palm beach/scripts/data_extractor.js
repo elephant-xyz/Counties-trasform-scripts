@@ -459,6 +459,7 @@ function projectRawVariantFieldSurface(address) {
   }
 
   const projected = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: minimal.unnormalized_address.trim(),
   };
 
