@@ -889,8 +889,7 @@ function sanitizeAddressPayloadForWrite(payload) {
     hasNormalizedCountyCoverage(normalizedProbe);
 
   const shouldPreferRaw =
-    forceRawVariant ||
-    (trimmedUnnormalized.length > 0 && !hasStrongNormalizedCoverage);
+    forceRawVariant || trimmedUnnormalized.length > 0;
 
   if (hasStrongNormalizedCoverage && !shouldPreferRaw) {
     const surfaced =
@@ -43391,6 +43390,37 @@ function finalizeAddressFromSourceData(addressPath, options = {}) {
     sources.map((source) => source.source_http_request),
   );
 
+  const rawCandidates = [];
+  const enqueueRawCandidate = (value) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach(enqueueRawCandidate);
+      return;
+    }
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidates.push(trimmed);
+    }
+  };
+
+  const harvestRawCandidates = (source) => {
+    if (!source || typeof source !== "object") return;
+    enqueueRawCandidate(source.unnormalized_address);
+    enqueueRawCandidate(source.full_address);
+    enqueueRawCandidate(source.raw_address);
+    enqueueRawCandidate(source.site_address);
+    enqueueRawCandidate(source.address);
+    if (Array.isArray(source.lines)) {
+      enqueueRawCandidate(source.lines.join(", "));
+      source.lines.forEach(enqueueRawCandidate);
+    }
+  };
+
+  sources.forEach(harvestRawCandidates);
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+
   const normalizedSurface = {};
   const hydrateNormalizedField = (source) => {
     if (!source || typeof source !== "object") return;
@@ -43440,7 +43470,14 @@ function finalizeAddressFromSourceData(addressPath, options = {}) {
     ensureAddressOutputFieldPresence({ ...normalizedSurface }) ||
     { ...normalizedSurface };
 
-  if (hasStrictNormalizedAddressCoverage({ ...normalizedProbe })) {
+  const hasStrictNormalizedCoverage = hasStrictNormalizedAddressCoverage({
+    ...normalizedProbe,
+  });
+
+  const shouldEmitNormalized =
+    hasStrictNormalizedCoverage && !hasMeaningfulAddressValue(resolvedRaw);
+
+  if (shouldEmitNormalized) {
     const normalizedOutput =
       buildNormalizedAddressOutputForSchema({ ...normalizedProbe }) || null;
     if (normalizedOutput) {
@@ -43471,41 +43508,6 @@ function finalizeAddressFromSourceData(addressPath, options = {}) {
     }
   }
 
-  const rawCandidates = [];
-  const enqueueRawCandidate = (value) => {
-    if (value === undefined || value === null) return;
-    if (Array.isArray(value)) {
-      value.forEach(enqueueRawCandidate);
-      return;
-    }
-    if (typeof value !== "string") return;
-    const trimmed = value.trim();
-    if (trimmed.length) {
-      rawCandidates.push(trimmed);
-    }
-  };
-
-  const harvestRawCandidates = (source) => {
-    if (!source || typeof source !== "object") return;
-    enqueueRawCandidate(source.unnormalized_address);
-    enqueueRawCandidate(source.full_address);
-    enqueueRawCandidate(source.raw_address);
-    enqueueRawCandidate(source.site_address);
-    enqueueRawCandidate(source.address);
-    if (Array.isArray(source.lines)) {
-      enqueueRawCandidate(source.lines.join(", "));
-      source.lines.forEach(enqueueRawCandidate);
-    }
-  };
-
-  sources.forEach(harvestRawCandidates);
-
-  if (!rawCandidates.length) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
   if (!resolvedRaw) {
     removeFileIfExists(addressPath);
     return;
@@ -43533,6 +43535,104 @@ function finalizeAddressFromSourceData(addressPath, options = {}) {
   } else {
     removeFileIfExists(addressPath);
   }
+}
+
+function emitMinimalRawAddressPayload(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return;
+  }
+
+  const {
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  const copyField = (field, fallbackValue = null) => {
+    const sourceValue = hasMeaningfulAddressValue(payload[field])
+      ? payload[field]
+      : fallbackValue;
+    if (sourceValue === undefined || sourceValue === null) {
+      return;
+    }
+    if (typeof sourceValue === "string") {
+      const trimmed = sourceValue.trim();
+      if (!trimmed.length) {
+        return;
+      }
+      minimal[field] = trimmed;
+      return;
+    }
+    if (typeof sourceValue === "number") {
+      minimal[field] = sourceValue;
+      return;
+    }
+    minimal[field] = sourceValue;
+  };
+
+  const latitude = parseCoordinate(payload.latitude);
+  const longitude = parseCoordinate(payload.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    minimal.latitude = latitude;
+    minimal.longitude = longitude;
+  }
+
+  copyField("city_name");
+  copyField("municipality_name");
+  copyField("state_code", defaultStateCode);
+  copyField("postal_code");
+  copyField("plus_four_postal_code");
+  copyField("county_name", defaultCountyName);
+  copyField("country_code", defaultCountryCode);
+  copyField("township");
+  copyField("range");
+  copyField("section");
+  copyField("block");
+  copyField("lot");
+
+  if (!minimal.postal_code && Object.prototype.hasOwnProperty.call(minimal, "plus_four_postal_code")) {
+    delete minimal.plus_four_postal_code;
+  }
+
+  if (
+    (minimal.latitude === undefined || minimal.latitude === null) ||
+    (minimal.longitude === undefined || minimal.longitude === null)
+  ) {
+    delete minimal.latitude;
+    delete minimal.longitude;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (requestIdentifier !== undefined) {
+    minimal.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+    minimal.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
+  }
+
+  originalWriteFileSync(addressPath, JSON.stringify(minimal, null, 2));
 }
 
 function enforceRawAddressFallbackSurface(addressPath, options = {}) {
@@ -47801,6 +47901,21 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to finalize address payload from source data:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    emitMinimalRawAddressPayload(addressPath, {
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error("Failed to emit minimal raw address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
