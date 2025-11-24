@@ -444,27 +444,31 @@ function projectRawVariantFieldSurface(address) {
   }
 
   const projected = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: minimal.unnormalized_address.trim(),
   };
 
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(minimal, field)) {
-      const value = minimal[field];
-      if (value === undefined) {
-        projected[field] = RAW_ADDRESS_SCHEMA_TEMPLATE[field] ?? null;
-        continue;
-      }
-      if (typeof value === "string") {
-        projected[field] = value.trim();
-        continue;
-      }
-      projected[field] = value;
+  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
+    const candidate = Object.prototype.hasOwnProperty.call(minimal, field)
+      ? minimal[field]
+      : null;
+    if (candidate === undefined || candidate === null) {
+      projected[field] = null;
       continue;
     }
-    if (!Object.prototype.hasOwnProperty.call(projected, field)) {
-      projected[field] = RAW_ADDRESS_SCHEMA_TEMPLATE[field] ?? null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      projected[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
     }
+
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      projected[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    projected[field] = candidate;
   }
 
   if (!projected.country_code) {
@@ -4523,18 +4527,47 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 );
 
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
-const RAW_VARIANT_FIELD_WHITELIST = [
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
+  "latitude",
+  "longitude",
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "lot",
+  "block",
+]);
+const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
+  ...RAW_VARIANT_OUTPUT_ALLOWLIST,
   ...RAW_VARIANT_METADATA_FIELDS,
 ];
+const RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET = new Set(
+  RAW_VARIANT_ALLOWED_OUTPUT_FIELDS,
+);
+const RAW_VARIANT_FIELD_WHITELIST = [...RAW_VARIANT_ALLOWED_OUTPUT_FIELDS];
 const RAW_VARIANT_FIELD_WHITELIST_SET = new Set(RAW_VARIANT_FIELD_WHITELIST);
 const RAW_VARIANT_METADATA_FIELD_SET = new Set(RAW_VARIANT_METADATA_FIELDS);
 
 const RAW_VARIANT_PRESERVED_FIELDS = Object.freeze([
-  ...RAW_ADDRESS_OUTPUT_FIELDS,
+  ...RAW_VARIANT_OUTPUT_ALLOWLIST,
 ]);
 const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
+
+// Raw variants should only keep the subset of normalized fields that the schema
+// permits next to an unnormalized string. Everything else must be dropped so
+// the payload cleanly matches the raw oneOf branch.
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
+  ...RAW_VARIANT_OUTPUT_ALLOWLIST,
+]);
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
   "city_name",
@@ -4557,7 +4590,7 @@ const RAW_ADDRESS_SURFACE_FIELDS = [
 ];
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const RAW_ADDRESS_OUTPUT_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
-const RAW_VARIANT_ALLOWED_FIELD_SET = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
+const RAW_VARIANT_ALLOWED_FIELD_SET = new Set(RAW_VARIANT_OUTPUT_ALLOWLIST);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set([
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
@@ -4598,12 +4631,6 @@ function hasStructuredAddressCoverage(address) {
   Object.assign(address, working);
   return true;
 }
-
-// County schema expects raw variants to retain the normalized field surface so
-// validators can inspect every key even when the address is only available as
-// a single string. Keep the entire normalized surface (with nulls) alongside
-// the unnormalized value.
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(RAW_VARIANT_FIELD_WHITELIST);
 
 // Raw variant should only expose the subset of normalized fields that the
 // schema allows alongside an unnormalized string.
@@ -4667,27 +4694,6 @@ const RAW_SCHEMA_VARIANT_ALLOWED_FIELDS = [
   "block",
   "lot",
 ];
-
-const RAW_VARIANT_OUTPUT_ALLOWLIST = [
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "county_name",
-  "country_code",
-  "township",
-  "range",
-  "section",
-  "lot",
-  "block",
-];
-
-const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
-  ...RAW_VARIANT_FIELD_WHITELIST,
-];
-const RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET = new Set(
-  RAW_VARIANT_ALLOWED_OUTPUT_FIELDS,
-);
 
 function applyAddressSchemaDefaultsForVariant(address, variantHint) {
   if (!address || typeof address !== "object") return null;
