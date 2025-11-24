@@ -1144,7 +1144,8 @@ function writeTaxes($, propertySeed, parcelId) {
     const taxable = parseCurrencyToNumber(h.taxable);
 
     // Create tax entry with all fields (following verified example pattern)
-    // Required fields must always be present even if null
+    // Due to oneOf schema constraint, only include monthly/period fields if they have values
+    // Otherwise omit them entirely for yearly tax data
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
@@ -1156,10 +1157,11 @@ function writeTaxes($, propertySeed, parcelId) {
       property_exemption_amount: exempt,
       property_taxable_value_amount: taxable,
       millage_rate: millageRate,
-      monthly_tax_amount: null,
-      period_start_date: null,
-      period_end_date: null,
     };
+
+    // Note: monthly_tax_amount, period_start_date, period_end_date are NOT included
+    // because this jurisdiction provides yearly tax data, not monthly.
+    // The oneOf schema requires these fields to either all be present or all be omitted.
 
     allYears.set(h.year, taxEntry);
   });
@@ -1193,7 +1195,8 @@ function writeTaxes($, propertySeed, parcelId) {
       if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
       // Create new entry with all fields (following verified example pattern)
-      // Required fields must always be present even if null
+      // Due to oneOf schema constraint, only include monthly/period fields if they have values
+      // Otherwise omit them entirely for yearly tax data
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
@@ -1205,10 +1208,11 @@ function writeTaxes($, propertySeed, parcelId) {
         property_exemption_amount: exempt,
         property_taxable_value_amount: taxable,
         millage_rate: millageRate,
-        monthly_tax_amount: null,
-        period_start_date: null,
-        period_end_date: null,
       };
+
+      // Note: monthly_tax_amount, period_start_date, period_end_date are NOT included
+      // because this jurisdiction provides yearly tax data, not monthly.
+      // The oneOf schema requires these fields to either all be present or all be omitted.
 
       allYears.set(v.year, taxEntry);
     }
