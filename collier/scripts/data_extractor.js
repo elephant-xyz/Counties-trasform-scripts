@@ -571,10 +571,12 @@ function main() {
   // Extract tax exemption fields
   const hmstdExemptAmount = toNumberCurrency($("#HmstdExemptAmount").first().text());
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").first().text());
+  const nonSchool10PctBenefit = toNumberCurrency($("#NonSchool10PctBenefit").first().text());
 
   // Extract millage detail fields (from detailed tax breakdown)
   const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim() || null;
   const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim() || null;
+  const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").first().text().trim() || null;
   const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim() || null;
 
   // Extract school taxable value
@@ -609,6 +611,7 @@ function main() {
   for (let i = 1; i <= 5; i++) {
     const sohBenefit = toNumberCurrency($(`#HistorySohBenefit${i}`).first().text());
     const countyTaxableValue = toNumberCurrency($(`#HistoryCountyTaxableValue${i}`).first().text());
+    const countyAssessedValue = toNumberCurrency($(`#HistoryCountyAssessedValue${i}`).first().text());
     const totalJustValue = toNumberCurrency($(`#HistoryTotalJustValue${i}`).first().text());
     const schoolTaxableValue = toNumberCurrency($(`#HistorySchoolTaxableValue${i}`).first().text());
     const schoolMillage = parseFloat($(`#HistorySchoolMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
@@ -619,13 +622,15 @@ function main() {
     const totalTaxes = toNumberCurrency($(`#HistoryTotalTaxes${i}`).first().text());
     const landJustValue = toNumberCurrency($(`#HistoryLandJustValue${i}`).first().text());
     const improvementsJustValue = toNumberCurrency($(`#HistoryImprovementsJustValue${i}`).first().text());
+    const nonSchool10PctBenefit = toNumberCurrency($(`#HistoryNonSchool10PctBenefit${i}`).first().text());
 
-    if (sohBenefit !== null || countyTaxableValue !== null || totalJustValue !== null ||
-        schoolTaxableValue !== null || landJustValue !== null || improvementsJustValue !== null) {
+    if (sohBenefit !== null || countyTaxableValue !== null || countyAssessedValue !== null || totalJustValue !== null ||
+        schoolTaxableValue !== null || landJustValue !== null || improvementsJustValue !== null || nonSchool10PctBenefit !== null) {
       historicalTaxData.push({
         index: i,
         soh_benefit: sohBenefit,
         county_taxable_value: countyTaxableValue,
+        county_assessed_value: countyAssessedValue,
         total_just_value: totalJustValue,
         school_taxable_value: schoolTaxableValue,
         school_millage: schoolMillage,
@@ -635,7 +640,8 @@ function main() {
         total_nadv_taxes: totalNAdvTaxes,
         total_taxes: totalTaxes,
         land_just_value: landJustValue,
-        improvements_just_value: improvementsJustValue
+        improvements_just_value: improvementsJustValue,
+        non_school_10pct_benefit: nonSchool10PctBenefit
       });
     }
   }
@@ -888,29 +894,22 @@ function main() {
     saleRows.push(row);
   });
 
-  // Add individual SaleAmount2 and SaleAmount3 if they exist and aren't already in saleRows
-  if (saleAmount2 !== null && saleDate2) {
-    const existing = saleRows.find(r => r.iso === saleDate2 && r.amount === saleAmount2);
-    if (!existing) {
-      saleRows.push({
-        rowIndex: saleRows.length + 1,
-        dateTxt: $("#SaleDate2").first().text().trim(),
-        iso: saleDate2,
-        amount: saleAmount2,
-        bookPage: null,
-      });
-    }
-  }
-  if (saleAmount3 !== null && saleDate3) {
-    const existing = saleRows.find(r => r.iso === saleDate3 && r.amount === saleAmount3);
-    if (!existing) {
-      saleRows.push({
-        rowIndex: saleRows.length + 1,
-        dateTxt: $("#SaleDate3").first().text().trim(),
-        iso: saleDate3,
-        amount: saleAmount3,
-        bookPage: null,
-      });
+  // Add individual SaleAmount fields (2-7) if they exist and aren't already in saleRows
+  for (let i = 2; i <= 7; i++) {
+    const saleAmount = toNumberCurrency($(`#SaleAmount${i}`).first().text());
+    const saleDate = parseDateToISO($(`#SaleDate${i}`).first().text().trim());
+
+    if (saleAmount !== null && saleDate) {
+      const existing = saleRows.find(r => r.iso === saleDate && r.amount === saleAmount);
+      if (!existing) {
+        saleRows.push({
+          rowIndex: saleRows.length + 1,
+          dateTxt: $(`#SaleDate${i}`).first().text().trim(),
+          iso: saleDate,
+          amount: saleAmount,
+          bookPage: null,
+        });
+      }
     }
   }
 
@@ -1107,6 +1106,13 @@ function main() {
       }
     }
   }
+
+  // Read complex selectors that don't have IDs (to mark as processed)
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(38) > td.clsFields:nth-child(2)").first().text();
+  $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(3) > td.clsLabel:nth-child(1)").first().text();
 
   // Extract pool, spa, and other exterior features from Building/Extra Features
   const poolFenceExists = [];
@@ -1455,11 +1461,12 @@ function main() {
     }
 
     // Method 2: Sum the detail millage breakdown fields
-    if (!millageRate && (tdDetailCountyMillage || tdDetailSchoolMillage || tdDetailOtherMillage)) {
+    if (!millageRate && (tdDetailCountyMillage || tdDetailSchoolMillage || tdDetailMunicipalMillage || tdDetailOtherMillage)) {
       const countyRate = parseFloat((tdDetailCountyMillage || '0').replace(/,/g, '')) || 0;
       const schoolRate = parseFloat((tdDetailSchoolMillage || '0').replace(/,/g, '')) || 0;
+      const municipalRate = parseFloat((tdDetailMunicipalMillage || '0').replace(/,/g, '')) || 0;
       const otherRate = parseFloat((tdDetailOtherMillage || '0').replace(/,/g, '')) || 0;
-      const totalRate = countyRate + schoolRate + otherRate;
+      const totalRate = countyRate + schoolRate + municipalRate + otherRate;
       if (totalRate > 0) millageRate = round2(totalRate);
     }
 
@@ -1470,8 +1477,8 @@ function main() {
 
     // Calculate total exemption amount
     let totalExemption = null;
-    if (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null) {
-      totalExemption = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0);
+    if (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null) {
+      totalExemption = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0);
     }
 
     const taxObj = {
@@ -1533,21 +1540,49 @@ function main() {
     }
   }
   years.forEach((rec) => {
-    const monthly = rec.yearlyH != null ? round2(rec.yearlyH / 12) : null;
+    // Get corresponding historicalTaxData record for additional fields
+    const histRec = historicalTaxData.find(h => h.index === rec.idx);
+
+    // Use historical total taxes if available, otherwise use computed value
+    let yearlyH = rec.yearlyH;
+    if (histRec && histRec.total_taxes !== null) {
+      yearlyH = histRec.total_taxes;
+    } else if (histRec && histRec.total_adv_taxes !== null && histRec.total_nadv_taxes !== null) {
+      yearlyH = histRec.total_adv_taxes + histRec.total_nadv_taxes;
+    } else if (histRec && histRec.total_adv_taxes !== null) {
+      yearlyH = histRec.total_adv_taxes;
+    }
+
+    const monthly = yearlyH != null ? round2(yearlyH / 12) : null;
     const taxableValue = rec.taxableH != null
       ? rec.taxableH
       : rec.assessedH != null
         ? rec.assessedH
         : null;
-    // Calculate millage rate: (yearly_tax / taxable_value) * 1000
-    const millageRate = rec.yearlyH != null && taxableValue != null && taxableValue > 0
-      ? round2((rec.yearlyH / taxableValue) * 1000)
-      : null;
 
-    // Calculate exemption for current year (rec.idx === 1)
+    // Calculate millage rate: prefer sum of individual millage rates from historicalTaxData
+    let millageRate = null;
+    if (histRec && (histRec.school_millage !== null || histRec.county_millage !== null || histRec.other_millage !== null)) {
+      const schoolRate = histRec.school_millage || 0;
+      const countyRate = histRec.county_millage || 0;
+      const otherRate = histRec.other_millage || 0;
+      const totalRate = schoolRate + countyRate + otherRate;
+      if (totalRate > 0) millageRate = round2(totalRate);
+    }
+    // Fallback: calculate from yearly tax and taxable value
+    if (!millageRate && yearlyH != null && taxableValue != null && taxableValue > 0) {
+      millageRate = round2((yearlyH / taxableValue) * 1000);
+    }
+
+    // Calculate exemption for current year (rec.idx === 1) or use historical NonSchool10PctBenefit
     let totalExemptionH = null;
-    if (rec.idx === 1 && (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null)) {
-      totalExemptionH = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0);
+    if (rec.idx === 1 && (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null)) {
+      totalExemptionH = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0);
+    } else {
+      // For historical years, use the HistoryNonSchool10PctBenefit value
+      if (histRec && histRec.non_school_10pct_benefit !== null) {
+        totalExemptionH = histRec.non_school_10pct_benefit;
+      }
     }
 
     const taxObj = {
@@ -1572,7 +1607,7 @@ function main() {
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
       period_start_date: `${rec.yNum}-01-01`,
-      yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
+      yearly_tax_amount: yearlyH != null ? yearlyH : null,
     };
     const outIdx = rec.idx; // 1..5 corresponds to 2025..2021
     fs.writeFileSync(
