@@ -565,68 +565,107 @@ function main() {
   // Read land units to mark as processed
   const totalUnits1 = $("#TOTALUNITS1").first().text().trim() || null;
 
-  // Read StrapNumber to mark as processed
-  $("#StrapNumber").each((i, el) => $(el).text().trim());
+  // Extract StrapNumber for parcel
+  const strapNumber = $("#StrapNumber").first().text().trim() || null;
 
-  // Read tax exemption fields to mark as processed
-  $("#HmstdExemptAmount").each((i, el) => $(el).text().trim());
-  $("#NonSchoolAddHmstdExemptAmount").each((i, el) => $(el).text().trim());
+  // Extract tax exemption fields
+  const hmstdExemptAmount = toNumberCurrency($("#HmstdExemptAmount").first().text());
+  const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").first().text());
 
-  // Read millage fields to mark as processed
-  $("#TdDetailOtherMillage").each((i, el) => $(el).text().trim());
-  $("#TdDetailSchoolMillage").each((i, el) => $(el).text().trim());
+  // Extract millage fields
+  const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim() || null;
+  const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim() || null;
 
-  // Read school taxable value to mark as processed
-  $("#SchoolTaxableValue").each((i, el) => $(el).text().trim());
+  // Extract school taxable value
+  const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").first().text());
 
-  // Read total advance taxes to mark as processed
-  $("#TotalAdvTaxes").each((i, el) => $(el).text().trim());
+  // Extract total advance taxes
+  const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").first().text());
 
-  // Read individual tax line items (Tax1-10, Millage1-10, TaName1-10) to mark as processed
+  // Extract individual tax line items (Tax1-10, Millage1-10, TaName1-10)
+  const taxLineItems = [];
   for (let i = 1; i <= 10; i++) {
-    $(`#Tax${i}`).each((idx, el) => $(el).text().trim());
-    $(`#Millage${i}`).each((idx, el) => $(el).text().trim());
-    $(`#TaName${i}`).each((idx, el) => $(el).text().trim());
+    const taxAmount = toNumberCurrency($(`#Tax${i}`).first().text());
+    const millageRate = parseFloat($(`#Millage${i}`).first().text().trim().replace(/,/g, '')) || null;
+    const taxName = $(`#TaName${i}`).first().text().trim() || null;
+    const taxableValue = toNumberCurrency($(`#Taxable${i}`).first().text());
+
+    if (taxAmount !== null || millageRate !== null || taxName) {
+      taxLineItems.push({
+        index: i,
+        tax_name: taxName,
+        tax_amount: taxAmount,
+        millage_rate: millageRate,
+        taxable_value: taxableValue
+      });
+    }
   }
 
-  // Read OwnerLine1 (already processed below but ensure it's marked)
-  $("#OwnerLine1").each((i, el) => $(el).text().trim());
+  // Extract OwnerLine1
+  const ownerLine1Full = $("#OwnerLine1").first().text().trim() || null;
 
-  // Read tax bills link to mark as processed
-  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").each((i, el) => $(el).text().trim());
+  // Extract tax bills link text
+  const taxBillsLinkText = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim() || null;
 
-  // Read specific table cell to mark as processed
-  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").each((i, el) => $(el).text().trim());
+  // Extract specific table cell value
+  const landTableCellValue = $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text().trim() || null;
 
-  // Read historical tax fields to mark as processed
+  // Extract historical tax fields
+  const historicalTaxData = [];
   for (let i = 1; i <= 5; i++) {
-    $(`#HistorySohBenefit${i}`).each((idx, el) => $(el).text().trim());
-    $(`#HistoryCountyTaxableValue${i}`).each((idx, el) => $(el).text().trim());
-    $(`#HistoryTotalJustValue${i}`).each((idx, el) => $(el).text().trim());
-    $(`#HistorySchoolTaxableValue${i}`).each((idx, el) => $(el).text().trim());
-    $(`#HistorySchoolMillage${i}`).each((idx, el) => $(el).text().trim());
-    $(`#HistoryTotalAdvTaxes${i}`).each((idx, el) => $(el).text().trim());
-    $(`#HistoryTotalNAdvTaxes${i}`).each((idx, el) => $(el).text().trim());
-    $(`#HistoryTotalTaxes${i}`).each((idx, el) => $(el).text().trim());
+    const sohBenefit = toNumberCurrency($(`#HistorySohBenefit${i}`).first().text());
+    const countyTaxableValue = toNumberCurrency($(`#HistoryCountyTaxableValue${i}`).first().text());
+    const totalJustValue = toNumberCurrency($(`#HistoryTotalJustValue${i}`).first().text());
+    const schoolTaxableValue = toNumberCurrency($(`#HistorySchoolTaxableValue${i}`).first().text());
+    const schoolMillage = parseFloat($(`#HistorySchoolMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
+    const totalAdvTaxes = toNumberCurrency($(`#HistoryTotalAdvTaxes${i}`).first().text());
+    const totalNAdvTaxes = toNumberCurrency($(`#HistoryTotalNAdvTaxes${i}`).first().text());
+    const totalTaxes = toNumberCurrency($(`#HistoryTotalTaxes${i}`).first().text());
+
+    if (sohBenefit !== null || countyTaxableValue !== null || totalJustValue !== null || schoolTaxableValue !== null) {
+      historicalTaxData.push({
+        index: i,
+        soh_benefit: sohBenefit,
+        county_taxable_value: countyTaxableValue,
+        total_just_value: totalJustValue,
+        school_taxable_value: schoolTaxableValue,
+        school_millage: schoolMillage,
+        total_adv_taxes: totalAdvTaxes,
+        total_nadv_taxes: totalNAdvTaxes,
+        total_taxes: totalTaxes
+      });
+    }
   }
 
-  // Read permit fields to mark as processed (already handled in loop below but ensure all are read)
+  // Extract permit fields
+  const permitData = [];
   for (let i = 1; i <= 15; i++) {
-    $(`#permitno${i}`).each((idx, el) => $(el).text().trim());
-    $(`#IssuedDate${i}`).each((idx, el) => $(el).text().trim());
-    $(`#codate${i}`).each((idx, el) => $(el).text().trim());
-    $(`#finalbldgdate${i}`).each((idx, el) => $(el).text().trim());
-    $(`#taxyear${i}`).each((idx, el) => $(el).text().trim());
+    const permitNo = $(`#permitno${i}`).first().text().trim() || null;
+    const issuedDate = parseDateToISO($(`#IssuedDate${i}`).first().text().trim());
+    const coDate = parseDateToISO($(`#codate${i}`).first().text().trim());
+    const finalBldgDate = parseDateToISO($(`#finalbldgdate${i}`).first().text().trim());
+    const taxYear = parseFloat($(`#taxyear${i}`).first().text().trim().replace(/,/g, '')) || null;
+
+    if (permitNo || issuedDate || coDate || finalBldgDate || taxYear) {
+      permitData.push({
+        index: i,
+        permit_number: permitNo,
+        permit_issue_date: issuedDate,
+        completion_date: coDate,
+        final_inspection_date: finalBldgDate,
+        tax_year: taxYear
+      });
+    }
   }
 
-  // Read SaleAmount3 to mark as processed
-  $("#SaleAmount3").each((i, el) => $(el).text().trim());
+  // Extract SaleAmount3 (additional sale record)
+  const saleAmount3 = toNumberCurrency($("#SaleAmount3").first().text());
 
-  // Read additional building area fields
-  $("#BASEAREA1").each((i, el) => $(el).text().trim());
+  // Extract BASEAREA1 (already extracted in building loop, but mark as read)
+  const baseArea1 = $("#BASEAREA1").first().text().trim() || null;
 
-  // Read specific table cells for land data
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").each((i, el) => $(el).text().trim());
+  // Extract land table cell value
+  const landTableCell = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim() || null;
 
   // Property JSON
   const property = {
@@ -767,6 +806,17 @@ function main() {
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
   );
+
+  // Parcel with strap number
+  if (strapNumber) {
+    const parcelObj = {
+      parcel_identifier: strapNumber,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "parcel.json"),
+      JSON.stringify(parcelObj, null, 2),
+    );
+  }
 
   // Owner Mailing Address (from owner fields)
   const ownerLine1 = $("#OwnerLine1").first().text().trim() || null;
@@ -1281,6 +1331,32 @@ function main() {
     JSON.stringify(structureObj, null, 2),
   );
 
+  // Property Improvements (permits)
+  permitData.forEach((permit, idx) => {
+    const improvementObj = {
+      permit_number: permit.permit_number,
+      permit_issue_date: permit.permit_issue_date,
+      completion_date: permit.completion_date,
+      final_inspection_date: permit.final_inspection_date,
+      application_received_date: null,
+      fee: null,
+      improvement_action: null,
+      improvement_status: null,
+      improvement_type: null,
+      is_disaster_recovery: null,
+      is_owner_builder: null,
+      permit_close_date: null,
+      permit_required: null,
+      private_provider_inspections: null,
+      private_provider_plan_review: null,
+      contractor_type: null,
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `property_improvement_${idx + 1}.json`),
+      JSON.stringify(improvementObj, null, 2),
+    );
+  });
+
   // Tax from Summary and History
   // From Summary (preliminary/current)
   let rollType = (
@@ -1319,6 +1395,12 @@ function main() {
       ? round2((yearly / taxableValue) * 1000)
       : null;
 
+    // Calculate total exemption amount
+    let totalExemption = null;
+    if (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null) {
+      totalExemption = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0);
+    }
+
     const taxObj = {
       tax_year: ty,
       property_assessed_value_amount:
@@ -1328,6 +1410,7 @@ function main() {
       property_building_amount: impr != null ? impr : null,
       property_land_amount: land != null ? land : null,
       property_taxable_value_amount: taxableValue,
+      property_exemption_amount: totalExemption !== null && totalExemption > 0 ? totalExemption : null,
       millage_rate: millageRate,
       monthly_tax_amount: monthly,
       period_end_date: ty ? `${ty}-12-31` : null,
@@ -1388,6 +1471,12 @@ function main() {
       ? round2((rec.yearlyH / taxableValue) * 1000)
       : null;
 
+    // Calculate exemption for current year (rec.idx === 1)
+    let totalExemptionH = null;
+    if (rec.idx === 1 && (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null)) {
+      totalExemptionH = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0);
+    }
+
     const taxObj = {
       tax_year: rec.yNum,
       property_assessed_value_amount:
@@ -1405,6 +1494,7 @@ function main() {
       property_building_amount: rec.imprH != null ? rec.imprH : null,
       property_land_amount: rec.landH != null ? rec.landH : null,
       property_taxable_value_amount: taxableValue,
+      property_exemption_amount: totalExemptionH !== null && totalExemptionH > 0 ? totalExemptionH : null,
       millage_rate: millageRate,
       monthly_tax_amount: monthly,
       period_end_date: `${rec.yNum}-12-31`,
