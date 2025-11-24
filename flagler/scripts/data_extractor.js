@@ -21,6 +21,7 @@ const BUILDING_SECTION_TITLE = "Residential Buildings"; // Corrected title from 
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl15_ctl01_grdSales tbody tr"; // Corrected selector for sales table
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl05_ctl01_grdValuation"; // Corrected selector for valuation table
 const EXTRA_FEATURES_TABLE_SELECTOR = "#ctlBodyPane_ctl14_ctl01_gvwExtraFeatures tbody tr"; // Selector for extra features table
+const SUB_AREA_TABLE_SELECTOR = "#ctlBodyPane_ctl13_ctl01_lstSubAreaSqFt_ctl00_gvwSubAreaSqFtDetail tbody tr"; // Selector for sub area square footage table
 // Note: Owner address and social media links are not mapped as they don't have corresponding fields in Elephant schema
 // const OWNER_ADDRESS_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed";
 // const LINKEDIN_SELECTOR = "#aLinkedIn";
@@ -123,30 +124,76 @@ function extractUseCode($) {
   return code || null;
 }
 
-function mapPropertyTypeFromUseCode(code) {
+function mapPropertyAttributesFromUseCode(code) {
   if (!code) return null;
   const u = code.toUpperCase();
-  if (u.includes("MULTI")) {
+
+  // Default values
+  let property_type = null;
+  let property_usage_type = "Residential";
+  let ownership_estate_type = "FeeSimple";
+  let build_status = "Improved";
+  let structure_form = null;
+
+  // Map property types and attributes
+  if (u.includes("VACANT")) {
+    property_type = "VacantLand";
+    build_status = "VacantLand";
+    structure_form = null;
+  } else if (u.includes("SINGLE")) {
+    property_type = "SingleFamily";
+    structure_form = "SingleFamilyDetached";
+  } else if (u.includes("MULTI")) {
     if (u.includes("10+") || u.includes("MORE")) {
-      return "MultiFamilyMoreThan10";
+      property_type = "MultiFamilyMoreThan10";
+      structure_form = "MultiFamilyMoreThan10";
+    } else if (u.includes("LESS")) {
+      property_type = "MultiFamilyLessThan10";
+      structure_form = "MultiFamilyLessThan10";
+    } else {
+      property_type = "MultipleFamily";
+      structure_form = "MultiFamily5Plus";
     }
-    if (u.includes("LESS")) {
-      return "MultiFamilyLessThan10";
-    }
-    return "MultipleFamily";
+  } else if (u.includes("CONDO")) {
+    property_type = "Condominium";
+    ownership_estate_type = "Condominium";
+    structure_form = "ApartmentUnit";
+  } else if (u.includes("DUPLEX")) {
+    property_type = "Duplex";
+    structure_form = "Duplex";
+  } else if (u.includes("TOWNHOUSE")) {
+    property_type = "Townhouse";
+    structure_form = "TownhouseRowhouse";
+  } else if (u.includes("APARTMENT")) {
+    property_type = "Apartment";
+    structure_form = "ApartmentUnit";
+  } else if (u.includes("MOBILE")) {
+    property_type = "MobileHome";
+    structure_form = "MobileHome";
+  } else if (u.includes("PUD")) {
+    property_type = "Pud";
+    structure_form = "SingleFamilyDetached"; // PUD can be various forms, defaulting to detached
+  } else if (u.includes("RETIREMENT")) {
+    property_type = "Retirement";
+    property_usage_type = "Retirement";
+  } else if (u.includes("COOPERATIVE")) {
+    property_type = "Cooperative";
+    ownership_estate_type = "Cooperative";
+  } else if (u.includes("IMPROVED AG")) {
+    property_type = "Agricultural";
+    property_usage_type = "Agricultural";
+    structure_form = null; // Agricultural may have various structures
   }
-  if (u.includes("SINGLE")) return "SingleFamily";
-  if (u.includes("CONDO")) return "Condominium";
-  if (u.includes("VACANT")) return "VacantLand";
-  if (u.includes("DUPLEX")) return "Duplex";
-  if (u.includes("TOWNHOUSE")) return "Townhouse";
-  if (u.includes("APARTMENT")) return "Apartment";
-  if (u.includes("MOBILE")) return "MobileHome";
-  if (u.includes("PUD")) return "Pud";
-  if (u.includes("RETIREMENT")) return "Retirement";
-  if (u.includes("COOPERATIVE")) return "Cooperative";
-  if (u.includes("IMPROVED AG")) return "Agricultural"; // Added for the provided HTML example
-  return null;
+
+  if (!property_type) return null;
+
+  return {
+    property_type,
+    property_usage_type,
+    ownership_estate_type,
+    build_status,
+    structure_form
+  };
 }
 
 function collectBuildings($) {
@@ -412,11 +459,9 @@ function extractValuation($) {
 function writeProperty($, parcelId) {
   const legal = extractLegalDescription($);
   const useCode = extractUseCode($);
-  const propertyType = mapPropertyTypeFromUseCode(useCode);
-  if (!propertyType) {
-    // If propertyType is null, it means the useCode was not mapped.
-    // We can either throw an error or default to a generic type.
-    // For now, let's throw an error as per the original script's behavior.
+  const propertyAttributes = mapPropertyAttributesFromUseCode(useCode);
+  if (!propertyAttributes) {
+    // If propertyAttributes is null, it means the useCode was not mapped.
     throw {
       type: "error",
       message: `Unknown enum value for property_type from use code: ${useCode}.`,
@@ -431,7 +476,12 @@ function writeProperty($, parcelId) {
     property_legal_description_text: legal || null,
     property_structure_built_year: years.actual || null,
     property_effective_built_year: years.effective || null,
-    property_type: propertyType,
+    property_type: propertyAttributes.property_type,
+    property_usage_type: propertyAttributes.property_usage_type,
+    ownership_estate_type: propertyAttributes.ownership_estate_type,
+    build_status: propertyAttributes.build_status,
+    structure_form: propertyAttributes.structure_form,
+    historic_designation: false,
     livable_floor_area: null, // Not directly available in the sample HTML
     total_area: totalArea > 0 ? String(totalArea) : null, // Ensure it matches the pattern ".*\d{2,}.*"
     number_of_units_type: null,
@@ -439,6 +489,7 @@ function writeProperty($, parcelId) {
     number_of_units: null, // Not directly available in the sample HTML
     subdivision: null, // Not directly available in the sample HTML
     zoning: null, // Not directly available in the sample HTML
+    request_identifier: parcelId,
   };
   writeJSON(path.join("data", "property.json"), property);
 }
@@ -637,20 +688,21 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 }
 
-function writeTaxes($) {
+function writeTaxes($, parcelId) {
   const vals = extractValuation($);
   const millageRate = extractMillageRate($);
 
   vals.forEach((v) => {
     // Calculate monthly tax amount from taxable value and millage rate
-    let monthlyTaxAmount = 0;
+    let monthlyTaxAmount = null;
+    let yearlyTaxAmount = null;
     const taxableValue = parseCurrencyToNumber(v.taxable);
 
     if (taxableValue && millageRate) {
       // Formula: yearly_tax = (taxable_value / 1000) * millage_rate
       // monthly_tax = yearly_tax / 12
-      const yearlyTax = (taxableValue / 1000) * millageRate;
-      monthlyTaxAmount = Math.round((yearlyTax / 12) * 100) / 100;
+      yearlyTaxAmount = Math.round(((taxableValue / 1000) * millageRate) * 100) / 100;
+      monthlyTaxAmount = Math.round((yearlyTaxAmount / 12) * 100) / 100;
     }
 
     // Set period dates for the tax year
@@ -666,18 +718,33 @@ function writeTaxes($) {
       agriculturalValuation = (landAgricultural || 0) + (agriculturalMarket || 0);
     }
 
+    // Calculate total building amount including extra features
+    const buildingValue = parseCurrencyToNumber(v.building);
+    const extraFeaturesValue = parseCurrencyToNumber(v.extraFeatures);
+    let totalBuildingAmount = buildingValue;
+    if (extraFeaturesValue !== null && extraFeaturesValue > 0) {
+      totalBuildingAmount = (buildingValue || 0) + extraFeaturesValue;
+    }
+
+    // Map protected value to homestead cap loss (Save Our Homes protection)
+    const protectedValue = parseCurrencyToNumber(v.protected);
+
     const taxObj = {
       tax_year: year,
       property_assessed_value_amount: parseCurrencyToNumber(v.assessed),
       property_market_value_amount: parseCurrencyToNumber(v.market),
-      property_building_amount: parseCurrencyToNumber(v.building),
+      property_building_amount: totalBuildingAmount,
       property_land_amount: parseCurrencyToNumber(v.land),
       property_taxable_value_amount: taxableValue,
       property_exemption_amount: parseCurrencyToNumber(v.exempt),
       agricultural_valuation_amount: agriculturalValuation,
+      homestead_cap_loss_amount: protectedValue,
+      millage_rate: millageRate,
       monthly_tax_amount: monthlyTaxAmount,
+      yearly_tax_amount: yearlyTaxAmount,
       period_end_date: periodEndDate,
       period_start_date: periodStartDate,
+      request_identifier: parcelId,
     };
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
   });
@@ -813,6 +880,46 @@ function writeStructure(parcelId) {
     request_identifier: parcelId,
   };
   writeJSON(path.join("data", "structure.json"), structure);
+}
+
+function mapSubAreaToSpaceType(description) {
+  if (!description) return null;
+  const d = description.toUpperCase();
+
+  // Map sub area types to Elephant schema space types
+  if (d.includes("DECK")) return "Deck";
+  if (d.includes("PORCH")) return "Porch";
+  if (d.includes("PATIO")) return "Patio";
+  if (d.includes("GARAGE") || d.includes("F GARAGE")) return "Garage";
+  if (d.includes("CARPORT")) return "Carport";
+  if (d.includes("BASE AREA")) return null; // Base area is already captured in structure
+  if (d.includes("FINISHED UPPER")) return null; // Already captured in structure
+
+  // For other types, return null - they may not map directly to layout spaces
+  return null;
+}
+
+function writeSubAreaLayouts($, parcelId) {
+  const subAreas = extractSubAreaData($);
+  let subAreaLayoutIndex = 10000; // Start at high index to avoid collision with bedroom/bathroom layouts
+
+  subAreas.forEach((sa) => {
+    const spaceType = mapSubAreaToSpaceType(sa.description);
+
+    // Only create layout for spaces that map to valid space types
+    if (spaceType) {
+      const sqFt = sa.sqFt ? sa.sqFt.replace(/,/g, '') : null;
+      const layout = {
+        space_type: spaceType,
+        space_type_index: String(subAreaLayoutIndex++),
+        size_square_feet: sqFt,
+        is_exterior: true, // Most sub area spaces are exterior
+        is_finished: spaceType === "Garage" ? null : false, // Garages may be finished, decks are not
+        request_identifier: parcelId,
+      };
+      writeJSON(path.join("data", `layout_${layout.space_type_index}.json`), layout);
+    }
+  });
 }
 
 function writeLayout(parcelId) {
@@ -982,6 +1089,40 @@ function isNumeric(value) {
 // field in the Elephant schema. The property address is stored in address.json,
 // and owner information (names) is handled by ownerMapping.js
 
+function extractSubAreaData($) {
+  const subAreas = [];
+  const rows = $(SUB_AREA_TABLE_SELECTOR);
+  rows.each((i, tr) => {
+    const $tr = $(tr);
+    const th = $tr.find("th");
+    const tds = $tr.find("td");
+
+    if (th.length === 0 || tds.length < 2) return;
+
+    // Extract type code from th
+    const typeCode = textTrim(th.text());
+
+    // Extract description from first td
+    const description = textTrim(tds.eq(0).text());
+
+    // Extract square footage from second td
+    const sqFt = textTrim(tds.eq(1).text());
+
+    // Extract year from third td (if present)
+    const yearText = textTrim(tds.eq(2).text());
+
+    if (description) {
+      subAreas.push({
+        typeCode: typeCode || null,
+        description: description,
+        sqFt: sqFt || null,
+        year: yearText || null
+      });
+    }
+  });
+  return subAreas;
+}
+
 function extractExtraFeatures($) {
   const features = [];
   const rows = $(EXTRA_FEATURES_TABLE_SELECTOR);
@@ -1083,7 +1224,7 @@ function writePropertyImprovements($, parcelId) {
   });
 }
 
-function attemptWriteAddress(unnorm, secTwpRng) {
+function attemptWriteAddress(unnorm, secTwpRng, parcelId) {
   const full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
   if (!full) return;
@@ -1097,11 +1238,10 @@ function attemptWriteAddress(unnorm, secTwpRng) {
     unnormalized_address: full,
     country_code: "US",
     county_name,
-    latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-    longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
     township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
     range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
     section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
+    request_identifier: parcelId,
   };
   writeJSON(path.join("data", "address.json"), address);
 }
@@ -1122,7 +1262,7 @@ function main() {
   const sales = extractSales($);
   writeSalesDeedsFilesAndRelationships($, parcelId);
 
-  writeTaxes($);
+  writeTaxes($, parcelId);
 
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales);
@@ -1131,6 +1271,7 @@ function main() {
     writeStructure(parcelId);
     writeUtility(parcelId);
     writeLayout(parcelId);
+    writeSubAreaLayouts($, parcelId); // Write sub area data as additional layouts
   }
 
   // Extract and write property improvements (extra features)
@@ -1140,7 +1281,7 @@ function main() {
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
-  attemptWriteAddress(unnormalized, secTwpRng);
+  attemptWriteAddress(unnormalized, secTwpRng, parcelId);
 }
 
 if (require.main === module) {
