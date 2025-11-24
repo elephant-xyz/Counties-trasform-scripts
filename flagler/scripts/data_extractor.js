@@ -452,23 +452,8 @@ function extractSales($) {
     const pageDirect = textTrim(pageTd.text());
     const page = pageFromSpan || pageDirect; // Use span first, fallback to direct
 
-    // Qualification column (td[4]) - read to mark selector as accessed, but not mapped
-    const qualificationTd = tds.eq(4);
-    const qualification = qualificationTd.length > 0 ? textTrim(qualificationTd.text()) : null;
-
-    // Vacant/Improved column (td[5]) - read to mark selector as accessed, but not mapped
-    const vacantImprovedTd = tds.eq(5);
-    const vacantImproved = vacantImprovedTd.length > 0 ? textTrim(vacantImprovedTd.text()) : null;
-
-    // Grantor column (td[6]) - read ALL sprGrantor_lblSuppressed spans to mark as accessed
-    const grantorTd = tds.eq(6);
-    const grantorSpan = grantorTd.find("span");
-    // Access all grantor spans specifically
-    grantorSpan.each((idx, spanEl) => {
-      const spanId = $(spanEl).attr("id");
-      const spanText = $(spanEl).text().trim();
-    });
-    const grantor = grantorSpan.length > 0 ? textTrim(grantorSpan.text()) : textTrim(grantorTd.text());
+    // Note: Qualification, Vacant/Improved, and Grantor columns are not mapped to schema
+    // These are handled by ownerMapping.js and are not accessed here to avoid unmapped selector errors
 
     // Link column - td[7] - ensuring ALL sprRecordLink_lblSuppressed spans are accessed
     const linkTd = tds.eq(7);
@@ -496,18 +481,11 @@ function extractSales($) {
       book, // Mapped to deed.book
       page, // Mapped to deed.page
       bookPage: book && page ? `${book}/${page}` : null, // For backward compatibility
-      link: cleanedLink,
-      grantor, // Store grantor for reference (accessed but not directly mapped to schema)
+      link: cleanedLink
     });
   });
 
-  // Explicitly access error-tracked specific sales row IDs and any other sales-related selectors
-  // The error detector tracks specific span IDs in individual sales rows
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl07_sprGrantor_lblSuppressed").text();
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl28_sprGrantor_lblSuppressed").text();
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl34_sprGrantor_lblSuppressed").text();
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl36_sprBook_lblSuppressed").text();
-
+  // Note: Grantor selectors are handled by ownerMapping.js and not accessed here
   return out;
 }
 
@@ -1633,62 +1611,11 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   writeJSON(path.join("data", "address.json"), address);
 }
 
-function readSocialMediaLinksForSelectorMapping($) {
-  // Access social media links to ensure selectors are marked as read
-  // These links are not mapped to Elephant schema but must be accessed to avoid unmapped selector errors
-  const linkedInLink = $("#aLinkedIn").attr("href");
-  const linkedInText = $("#aLinkedIn").text();
-  // LinkedIn link is accessed but not used in output
-}
+// Removed readSocialMediaLinksForSelectorMapping - social media links cannot be mapped to schema
+// and should not be accessed
 
-function ensureAllErrorSelectorsAreAccessed($) {
-  // This function explicitly accesses every selector mentioned in errors.csv
-  // to ensure the error detector marks them as read
-
-  // Primary owner address (mailing address)
-  $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed").text();
-
-  // Sales table - specific book span
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl36_sprBook_lblSuppressed").text();
-
-  // Valuation table - specific cells
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(6) > td.value-column:nth-child(1)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(2) > td.value-column:nth-child(1)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(2) > td.value-column:nth-child(2)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(2) > td.value-column:nth-child(5)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(3) > td.value-column:nth-child(4)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(10) > td.value-column:nth-child(1)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(10) > td.value-column:nth-child(2)").text();
-  $("div.module-content > table.tabular-data > tbody > tr:nth-child(10) > td.value-column:nth-child(3)").text();
-
-  // Historical assessment table - specific cells
-  $("div > table.tabular-data > tbody > tr:nth-child(6) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(8) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(9) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(9) > td:nth-child(9)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(11) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(11) > td:nth-child(9)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(12) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(13) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(14) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(15) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(3) > td:nth-child(2)").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(1) > th").text();
-  $("div > table.tabular-data > tbody > tr:nth-child(9) > th").text();
-
-  // LinkedIn social media link
-  $("#aLinkedIn").text();
-  $("#aLinkedIn").attr("href");
-
-  // Sales table - grantor spans
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl07_sprGrantor_lblSuppressed").text();
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl28_sprGrantor_lblSuppressed").text();
-  $("#ctlBodyPane_ctl15_ctl01_grdSales_ctl34_sprGrantor_lblSuppressed").text();
-
-  // Property summary table - specific cells
-  $("tbody > tr:nth-child(4) > td > div:nth-child(1) > span").text();
-  $("tbody > tr:nth-child(9) > td > div > span").text();
-}
+// Removed ensureAllErrorSelectorsAreAccessed - selectors should only be accessed when their data
+// is being extracted and mapped to output, not just for marking as "read"
 
 function extractMailingAddressFromHTML($) {
   // Extract mailing address directly from HTML to ensure selector mapping
@@ -1846,11 +1773,8 @@ function main() {
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
-  // IMPORTANT: Call this FIRST to ensure all error selectors are accessed
-  ensureAllErrorSelectorsAreAccessed($);
-
-  // Read social media links to ensure selectors are marked as accessed
-  readSocialMediaLinksForSelectorMapping($);
+  // Note: Removed ensureAllErrorSelectorsAreAccessed and readSocialMediaLinksForSelectorMapping
+  // Selectors are accessed only when their data is extracted and mapped to output
 
   if (parcelId) writeProperty($, parcelId, propertySeed);
 
