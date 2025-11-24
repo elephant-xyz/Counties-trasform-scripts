@@ -1457,25 +1457,12 @@ function main() {
     if (code || desc) zoning = [code, desc].filter(Boolean).join(" ");
   }
 
-  // Extract FLUM (Future Land Use Map) data
-  let subdivision = null;
-  const flumRow = $(
-    '#details-Land .card:contains("Future Land Use") table tbody tr',
-  ).first();
-  if (flumRow && flumRow.length) {
-    const flumCode = textClean(flumRow.find("td").eq(1).text());
-    const flumDesc = textClean(flumRow.find("td").eq(2).text());
-    if (flumCode || flumDesc) {
-      subdivision = [flumCode, flumDesc].filter(Boolean).join(" - ");
-    }
-  }
-
   const propertyOut = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDescription || null,
     property_structure_built_year: yearBuilt || null,
+    property_effective_built_year: yearEffective || null,
     zoning: zoning || null,
-    subdivision: subdivision || null,
   };
   const landuse = $(
     '.details-card:contains("Summary") table tbody tr',
@@ -1615,90 +1602,11 @@ function main() {
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
       property_taxable_value_amount: marketVal || null,
-      property_exemption_amount: null,
-      homestead_cap_loss_amount: null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
     };
     writeOut(`tax_${year}.json`, taxObj);
-  }
-
-  // Extract exemption data and tax cap data for the most recent year
-  if (years.length > 0) {
-    const mostRecentYear = Math.max(...years);
-    const taxFilePath = `tax_${mostRecentYear}.json`;
-
-    // Extract total exemption amount from Exemptions table
-    // The table has two row types: authority rows (7 cells) and exemption detail rows (6 cells)
-    // We want the exemption detail rows which have description in cell 0 and amount in cell 2
-    let totalExemptionAmount = null;
-    const exemptionsTable = $('#details-Value .card:contains("Exemptions") table');
-    if (exemptionsTable.length > 0) {
-      exemptionsTable.find('tbody tr').each((i, tr) => {
-        const cells = $(tr).find('td');
-        // Exemption detail rows have 6 cells
-        if (cells.length === 6) {
-          const description = textClean($(cells[0]).text());
-          if (description && /homestead|exemption/i.test(description)) {
-            const amountText = textClean($(cells[2]).text());
-            const amount = parseNumber(amountText);
-            if (amount != null && amount > 0) {
-              totalExemptionAmount = (totalExemptionAmount || 0) + amount;
-            }
-          }
-        }
-      });
-    }
-
-    // Extract homestead cap loss from Tax Cap section
-    // Use the first "Prior Available Cap Value" found
-    let homesteadCapLoss = null;
-    const homesteadTable = $('#details-TaxCap .card:contains("Homestead") table');
-    if (homesteadTable.length > 0) {
-      const rows = homesteadTable.find('tbody tr');
-      for (let i = 0; i < rows.length; i++) {
-        const tr = rows[i];
-        const cells = $(tr).find('td');
-        if (cells.length >= 2) {
-          const label = textClean($(cells[0]).text());
-          if (/Prior Available Cap Value/i.test(label)) {
-            const valueText = textClean($(cells[1]).text());
-            homesteadCapLoss = parseNumber(valueText);
-            break; // Use the first occurrence only
-          }
-        }
-      }
-    }
-
-    // Extract taxable value from Taxing Authorities table (use County row)
-    let taxableValue = null;
-    const taxAuthTable = $('#details-Value .card:contains("Taxing Authorities") table');
-    if (taxAuthTable.length > 0) {
-      const countyRow = taxAuthTable.find('tbody tr').first();
-      if (countyRow.length > 0) {
-        const cells = countyRow.find('td');
-        if (cells.length >= 7) {
-          const taxableText = textClean($(cells[6]).text());
-          taxableValue = parseNumber(taxableText);
-        }
-      }
-    }
-
-    // Update the most recent year's tax file with additional data
-    const existingTaxData = readJson(path.join("data", taxFilePath));
-    if (existingTaxData) {
-      if (totalExemptionAmount != null) {
-        existingTaxData.property_exemption_amount = totalExemptionAmount;
-      }
-      if (homesteadCapLoss != null) {
-        existingTaxData.homestead_cap_loss_amount = homesteadCapLoss;
-      }
-      if (taxableValue != null) {
-        existingTaxData.property_taxable_value_amount = taxableValue;
-      }
-      writeOut(taxFilePath, existingTaxData);
-    }
   }
 
   // LOT from Land
