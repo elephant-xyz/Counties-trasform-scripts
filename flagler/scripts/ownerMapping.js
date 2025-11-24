@@ -195,57 +195,17 @@ function extractCurrentOwners($) {
   if (owner_text) {
     owners.push(owner_text);
   }
-
   return owners;
-}
-
-function extractOwnerMailingAddress($) {
-  // Extract owner mailing address - will be written to mailing_address.json
-  // Using the specific suppressed label selector to ensure it's marked as read
-  // This maps: #ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed
-  // to mailing_address.unnormalized_address in the output
-  const ownerAddressElement = $("#ctlBodyPane_ctl00_ctl01_lstPrimaryOwner_ctl00_sprPrimaryOwnerAddress_lblSuppressed");
-
-  // Access both text and html to ensure selector is fully read
-  const ownerAddressHtml = ownerAddressElement.html() || "";
-  const ownerAddressText = ownerAddressElement.text().trim();
-
-  // Also access via attribute to ensure full element read
-  const ownerAddressId = ownerAddressElement.attr("id") || "";
-
-  // Access all child elements to ensure comprehensive selector coverage
-  const ownerAddressChildren = ownerAddressElement.children();
-  ownerAddressChildren.each((idx, child) => {
-    const $child = $(child);
-    const childText = $child.text();
-    // Accessing child elements
-  });
-
-  // Always return the address (even if empty) to ensure selector is mapped
-  if (ownerAddressText) {
-    // Clean up the address by replacing newlines, <br> tags, and extra whitespace
-    // Replace <br /> tags from HTML with comma-space
-    const cleanAddress = ownerAddressHtml.replace(/<br\s*\/?>/gi, ', ').replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ').trim();
-    return cleanAddress;
-  }
-  // Return empty string instead of null to ensure selector is always mapped
-  return "";
 }
 
 function extractSalesOwnersByDate($) {
   const map = {};
   const priorOwners = [];
-  const $salesTable = $(SALES_TABLE_SELECTOR).closest("table");
-  const $tbody = $salesTable.find("tbody");
-  const rows = $tbody.find("tr");
-
+  const rows = $(SALES_TABLE_SELECTOR);
   rows.each((i, tr) => {
     const $tr = $(tr);
-    // Access all th and td elements explicitly
-    const $thElements = $tr.find("th");
-    const $tdElements = $tr.find("td");
-
-    const saleDateRaw = txt($thElements.first().text()); // Sale Date is in th
+    const tds = $tr.find("td, th"); // Include th for Sale Date
+    const saleDateRaw = txt(tds.eq(0).text()); // Sale Date is the first td/th
     if (!saleDateRaw) return;
     const dm = saleDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (!dm) return;
@@ -253,51 +213,9 @@ function extractSalesOwnersByDate($) {
     const dd = dm[2].padStart(2, "0");
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
-
-    // Access all td cells to ensure all selectors are read
-    // Column structure: td0(price), td1(instrument), td2(book), td3(page), td4(qual), td5(vacant), td6(grantor), td7(link)
-    const priceTd = $tdElements.eq(0);
-    const instrumentTd = $tdElements.eq(1);
-    const bookTd = $tdElements.eq(2);
-    const pageTd = $tdElements.eq(3);
-    const qualTd = $tdElements.eq(4);
-    const vacantTd = $tdElements.eq(5);
-    const grantorTd = $tdElements.eq(6);
-    const linkTd = $tdElements.eq(7);
-
-    // Access book span to ensure it's marked as read
-    const bookSpan = bookTd.find("span[id*='sprBook_lblSuppressed']");
-    bookSpan.each((idx, spanEl) => {
-      const $span = $(spanEl);
-      const spanId = $span.attr("id") || "";
-      const spanText = txt($span.text());
-    });
-
-    // Access page span to ensure it's marked as read
-    const pageSpan = pageTd.find("span[id*='sprPage_lblSuppressed']");
-    pageSpan.each((idx, spanEl) => {
-      const $span = $(spanEl);
-      const spanId = $span.attr("id") || "";
-      const spanText = txt($span.text());
-    });
-
-    // Access grantor span to ensure it's marked as read
-    const grantorSpan = grantorTd.find("span[id*='sprGrantor_lblSuppressed']");
-    let grantor = null;
-    grantorSpan.each((idx, spanEl) => {
-      const $span = $(spanEl);
-      const spanId = $span.attr("id") || "";
-      const spanText = txt($span.text());
-      // Store the grantor value from the span
-      if (spanText && !grantor) {
-        grantor = spanText;
-      }
-    });
-    // Fallback to direct td text if no span found
-    if (!grantor) {
-      grantor = txt(grantorTd.text());
-    }
-
+    
+    // Grantor is the 8th column (index 7)
+    const grantor = txt(tds.eq(7).text());
     if (grantor) priorOwners.push(grantor);
 
     // Grantee is not directly available in the sales table, so we'll use the current owner as the "grantee" for the most recent sale.
@@ -333,7 +251,6 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
 
 const parcelId = getParcelId($);
 const currentOwnerRaw = extractCurrentOwners($);
-const ownerMailingAddress = extractOwnerMailingAddress($);
 const { map: salesMap, priorOwners } = extractSalesOwnersByDate($);
 
 const invalid_owners = [];
@@ -439,10 +356,6 @@ function dedupeInvalidOwners(list) {
 }
 
 output.invalid_owners = dedupeInvalidOwners(invalid_owners);
-
-// Always store mailing address for data_extractor to use (even if empty)
-// This ensures the mailing address selector is always mapped
-output[propKey].mailing_address = ownerMailingAddress || "";
 
 const outDir = path.join(process.cwd(), "owners");
 fs.mkdirSync(outDir, { recursive: true });
