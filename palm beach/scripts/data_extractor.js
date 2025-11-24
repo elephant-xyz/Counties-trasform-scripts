@@ -2251,10 +2251,7 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
     normalizedOutput.source_http_request = resolvedSourceHttpRequest
       ? deepClone(resolvedSourceHttpRequest)
       : null;
-    originalWriteFileSync(
-      addressPath,
-      JSON.stringify(normalizedOutput, null, 2),
-    );
+    writeJSON(addressPath, normalizedOutput);
     return;
   }
 
@@ -2275,7 +2272,7 @@ function emitSchemaCompliantCountyAddress(addressPath, options = {}) {
     return;
   }
 
-  originalWriteFileSync(addressPath, JSON.stringify(rawPayload, null, 2));
+  writeJSON(addressPath, rawPayload);
 }
 
 function toISODate(mdy) {
@@ -6442,10 +6439,7 @@ function enforceAddressSchemaVariantOutput(addressFilePath, options = {}) {
     const sanitized =
       stripAddressRequestMetadata(output) || output;
     try {
-      originalWriteFileSync(
-        addressFilePath,
-        JSON.stringify(sanitized, null, 2),
-      );
+      writeJSON(addressFilePath, sanitized);
     } catch {
       removeFileIfExists(addressFilePath);
     }
@@ -25083,10 +25077,7 @@ function enforceCountyAddressBranchSelection(addressFilePath, options = {}) {
     }
   }
 
-  originalWriteFileSync(
-    addressFilePath,
-    JSON.stringify(rawWorking, null, 2),
-  );
+  writeJSON(addressFilePath, rawWorking);
 }
 
 function finalizeAddressAsRawFallback(addressFilePath, options = {}) {
@@ -25207,10 +25198,7 @@ function finalizeAddressAsRawFallback(addressFilePath, options = {}) {
     working.lot = padGridValue(parsedGrid.lot, 4) || working.lot;
   }
 
-  originalWriteFileSync(
-    addressFilePath,
-    JSON.stringify(working, null, 2),
-  );
+  writeJSON(addressFilePath, working);
 }
 
 function materializeAddressVariantForOutput(address, options = {}) {
@@ -43722,10 +43710,7 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
     } else if (sourceHttpWasPresent) {
       normalizedOutput.source_http_request = null;
     }
-    originalWriteFileSync(
-      addressPath,
-      `${JSON.stringify(normalizedOutput, null, 2)}\n`,
-    );
+    writeJSON(addressPath, normalizedOutput);
     return;
   }
 
@@ -43824,7 +43809,7 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
     rawOutput.source_http_request = null;
   }
 
-  originalWriteFileSync(addressPath, `${JSON.stringify(rawOutput, null, 2)}\n`);
+  writeJSON(addressPath, rawOutput);
 }
 
 function enforceRawAddressPreference(addressPath, options = {}) {
@@ -44564,10 +44549,7 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
       payload.source_http_request,
     );
     normalizedOutput.source_http_request = normalizedSource || null;
-    originalWriteFileSync(
-      addressPath,
-      JSON.stringify(normalizedOutput, null, 2),
-    );
+    writeJSON(addressPath, normalizedOutput);
     return;
   }
 
@@ -44644,7 +44626,7 @@ function forceRawOnlyAddressSurface(addressPath, options = {}) {
     return;
   }
 
-  originalWriteFileSync(addressPath, JSON.stringify(rawPayload, null, 2));
+  writeJSON(addressPath, rawPayload);
 }
 
 function finalizeAddressFromSourceData(addressPath, options = {}) {
