@@ -33025,11 +33025,37 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
       ? ensureAddressOutputFieldPresence({ ...payload })
       : { ...payload };
 
-  if (hasNormalizedCountyCoverage({ ...normalizedSurface })) {
+  const normalizedRequiredFields = Array.from(
+    new Set([
+      ...COUNTY_ADDRESS_ENSURE_FIELDS,
+      ...COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS,
+    ]),
+  );
+  const normalizedProbe = { ...normalizedSurface };
+  let normalizedCandidate = null;
+  if (hasNormalizedCountyCoverage(normalizedProbe)) {
+    const hasAllStrictFields = normalizedRequiredFields.every((field) => {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(normalizedProbe[field]);
+        if (!Number.isFinite(numeric)) {
+          return false;
+        }
+        normalizedProbe[field] = numeric;
+        return true;
+      }
+      return hasMeaningfulAddressValue(normalizedProbe[field]);
+    });
+
+    if (hasAllStrictFields) {
+      normalizedCandidate = normalizedProbe;
+    }
+  }
+
+  if (normalizedCandidate) {
     const normalizedOutput =
       typeof buildNormalizedAddressOutputForSchema === "function"
-        ? buildNormalizedAddressOutputForSchema({ ...normalizedSurface })
-        : { ...normalizedSurface };
+        ? buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })
+        : { ...normalizedCandidate };
 
     if (normalizedOutput && typeof normalizedOutput === "object") {
       if (
