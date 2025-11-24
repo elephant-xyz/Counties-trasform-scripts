@@ -4527,11 +4527,21 @@ const RAW_ADDRESS_REQUIRED_FIELDS = [
 const STRUCTURED_ADDRESS_STRICT_FIELDS = [
   "street_number",
   "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "city_name",
   "state_code",
   "postal_code",
+  "plus_four_postal_code",
   "country_code",
   "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
   "latitude",
   "longitude",
 ];
@@ -4648,30 +4658,53 @@ function hasStructuredAddressCoverage(address) {
     return false;
   }
 
-  const working =
+  const surfaced =
     ensureAddressOutputFieldPresence &&
     typeof ensureAddressOutputFieldPresence === "function"
       ? ensureAddressOutputFieldPresence({ ...address })
       : { ...address };
 
-  for (const field of STRUCTURED_ADDRESS_STRICT_FIELDS) {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(working[field]);
-      if (!Number.isFinite(numeric)) {
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...surfaced })
+      : { ...surfaced };
+
+  let hasStrictCoverage = false;
+  if (typeof hasRobustNormalizedAddress === "function") {
+    hasStrictCoverage = hasRobustNormalizedAddress({ ...normalizedSurface });
+  } else {
+    hasStrictCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every((field) => {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(normalizedSurface[field]);
+        if (!Number.isFinite(numeric)) {
+          return false;
+        }
+        normalizedSurface[field] = numeric;
+        return true;
+      }
+
+      const sanitized = sanitizeAddressFieldValue(
+        field,
+        normalizedSurface[field],
+      );
+      if (!hasMeaningfulAddressValue(sanitized)) {
         return false;
       }
-      working[field] = numeric;
-      continue;
-    }
-
-    const sanitized = sanitizeAddressFieldValue(field, working[field]);
-    if (!hasMeaningfulAddressValue(sanitized)) {
-      return false;
-    }
-    working[field] = sanitized;
+      normalizedSurface[field] = sanitized;
+      return true;
+    });
   }
 
-  Object.assign(address, working);
+  if (!hasStrictCoverage) {
+    return false;
+  }
+
+  for (const field of ADDRESS_COORDINATE_FIELDS) {
+    const numeric = parseCoordinate(normalizedSurface[field]);
+    normalizedSurface[field] = Number.isFinite(numeric) ? numeric : null;
+  }
+
+  Object.assign(address, normalizedSurface);
   return true;
 }
 
@@ -10201,15 +10234,37 @@ function enforceAddressSchemaSurfaceCompliance(addressFilePath, options = {}) {
     normalizedSurface.longitude = null;
   }
 
-  const hasStructuredCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every((field) =>
-    hasMeaningfulAddressValue(normalizedSurface[field]),
-  );
+  const structuredProbe = { ...normalizedSurface };
+  let hasStructuredCoverage = false;
+  if (typeof hasRobustNormalizedAddress === "function") {
+    hasStructuredCoverage = hasRobustNormalizedAddress(structuredProbe);
+  } else {
+    hasStructuredCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every((field) => {
+      const value = structuredProbe[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        if (!Number.isFinite(numeric)) {
+          return false;
+        }
+        structuredProbe[field] = numeric;
+        return true;
+      }
+      const sanitized = sanitizeAddressFieldValue(field, value);
+      if (!hasMeaningfulAddressValue(sanitized)) {
+        return false;
+      }
+      structuredProbe[field] = sanitized;
+      return true;
+    });
+  }
 
   if (hasStructuredCoverage) {
-    if (Object.prototype.hasOwnProperty.call(normalizedSurface, "unnormalized_address")) {
-      delete normalizedSurface.unnormalized_address;
+    if (
+      Object.prototype.hasOwnProperty.call(structuredProbe, "unnormalized_address")
+    ) {
+      delete structuredProbe.unnormalized_address;
     }
-    fs.writeFileSync(addressFilePath, JSON.stringify(normalizedSurface, null, 2));
+    fs.writeFileSync(addressFilePath, JSON.stringify(structuredProbe, null, 2));
     return;
   }
 
@@ -46690,9 +46745,19 @@ function emitPreferredAddressVariant(addressPath, options = {}) {
     }
   }
   if (!hasStructuredCoverage) {
-    hasStructuredCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every((field) =>
-      hasMeaningfulAddressValue(normalizedSurface[field]),
-    );
+    if (typeof hasRobustNormalizedAddress === "function") {
+      const strictProbe =
+        ensureAddressOutputFieldPresence({ ...normalizedSurface }) ||
+        { ...normalizedSurface };
+      hasStructuredCoverage = hasRobustNormalizedAddress(strictProbe);
+      if (hasStructuredCoverage) {
+        Object.assign(normalizedSurface, strictProbe);
+      }
+    } else {
+      hasStructuredCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every((field) =>
+        hasMeaningfulAddressValue(normalizedSurface[field]),
+      );
+    }
   }
 
   let hasCoordinatePair = true;
