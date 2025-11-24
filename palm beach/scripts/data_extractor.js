@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const cheerio = require("cheerio");
 const { fetch } = require("undici");
 
 const originalWriteFileSync = fs.writeFileSync;
@@ -633,6 +634,288 @@ function buildLeanRawAddressOutput(rawOutput) {
   }
 
   return paddedOutput;
+}
+
+function normalizeFullAddressString(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s+/g, ", ")
+    .trim();
+  return normalized.length ? normalized : null;
+}
+
+function formatPostalSegment(postal, plus4) {
+  const base = safeNullIfEmpty(postal);
+  if (!base) {
+    return null;
+  }
+  const suffix = safeNullIfEmpty(plus4);
+  return suffix ? `${base}-${suffix}` : base;
+}
+
+function parseCityStateZip(line) {
+  const normalized = normalizeFullAddressString(line);
+  if (!normalized) {
+    return { city: null, state: null, postal: null, plus4: null };
+  }
+  let match = normalized.match(
+    /^(.*?),\s*([A-Z]{2})\s+(\d{5})(?:[-\s]*(\d{4}))?$/i,
+  );
+  if (!match) {
+    match = normalized.match(
+      /^(.*)\s+([A-Z]{2})\s+(\d{5})(?:[-\s]*(\d{4}))?$/i,
+    );
+  }
+  if (!match) {
+    return { city: null, state: null, postal: null, plus4: null };
+  }
+  const city = match[1] ? match[1].replace(/,$/, "").trim() : null;
+  return {
+    city: city
+      ? sanitizeCityName
+        ? sanitizeCityName(city)
+        : city
+      : null,
+    state: match[2] ? match[2].toUpperCase() : null,
+    postal: match[3] || null,
+    plus4: match[4] || null,
+  };
+}
+
+function composeAddressFromParts(parts = {}) {
+  if (!parts || typeof parts !== "object") {
+    return null;
+  }
+
+  const line1 =
+    normalizeFullAddressString(
+      safeNullIfEmpty(
+        parts.AddressLine1 ||
+          parts.address_line_1 ||
+          parts.line1 ||
+          parts.Location ||
+          parts.location,
+      ),
+    ) || null;
+  const line2 =
+    normalizeFullAddressString(
+      safeNullIfEmpty(parts.AddressLine2 || parts.address_line_2),
+    ) || null;
+  const street =
+    normalizeFullAddressString(
+      [line1, line2].filter(Boolean).join(" ").trim(),
+    ) || line1 || line2 || null;
+
+  const line3Parts = parseCityStateZip(
+    parts.AddressLine3 || parts.address_line_3 || parts.line3,
+  );
+
+  const cityCandidate =
+    safeNullIfEmpty(parts.city_name || parts.city) || line3Parts.city;
+  const city = cityCandidate
+    ? sanitizeCityName
+      ? sanitizeCityName(cityCandidate)
+      : cityCandidate
+    : null;
+
+  const state =
+    safeNullIfEmpty(parts.state_code || parts.state) || line3Parts.state;
+  const postal =
+    safeNullIfEmpty(parts.postal_code || parts.zip) || line3Parts.postal;
+  const plus4 =
+    safeNullIfEmpty(parts.plus_four_postal_code || parts.zip4) ||
+    line3Parts.plus4;
+
+  const localityParts = [];
+  if (city) {
+    localityParts.push(city);
+  }
+  const statePostal = [state ? state.toUpperCase() : null, formatPostalSegment(postal, plus4)]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (statePostal) {
+    localityParts.push(statePostal);
+  }
+
+  const locality = localityParts.filter(Boolean).join(", ");
+  const segments = [street, locality].filter(Boolean);
+  return segments.length ? normalizeFullAddressString(segments.join(", ")) : null;
+}
+
+function parseModelFromHtml(html) {
+  if (typeof html !== "string") {
+    return null;
+  }
+  const match = html.match(/var\s+model\s*=\s*(\{[\s\S]*?\});/);
+  if (!match) {
+    return null;
+  }
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function extractAddressCandidatesFromHtml(html) {
+  const candidates = [];
+  if (typeof html !== "string" || !html.length) {
+    return candidates;
+  }
+
+  const pushCandidate = (value) => {
+    const normalized = normalizeFullAddressString(value);
+    if (normalized) {
+      candidates.push(normalized);
+    }
+  };
+
+  const sessionMatch = html.match(
+    /sessionStorageData\.address\s*=\s*"([^"]+)"/i,
+  );
+  if (sessionMatch) {
+    pushCandidate(sessionMatch[1]);
+  }
+
+  const titleMatch = html.match(/<title>[^<]*-\s*([^<]+)<\/title>/i);
+  if (titleMatch) {
+    pushCandidate(titleMatch[1]);
+  }
+
+  try {
+    const $ = cheerio.load(html);
+    const location = $("#MainContent_lblLocation").text().trim();
+    const muni = $("#MainContent_lblMunicipality").text().trim();
+    if (location && muni) {
+      pushCandidate(`${location}, ${muni} FL`);
+    } else if (location) {
+      pushCandidate(location);
+    }
+  } catch {
+    // Ignore DOM parsing issues
+  }
+
+  const model = parseModelFromHtml(html);
+  if (model && model.propertyDetail) {
+    const detail = model.propertyDetail;
+    pushCandidate(
+      composeAddressFromParts({
+        AddressLine1: detail.AddressLine1 || detail.Location,
+        AddressLine2: detail.AddressLine2,
+        AddressLine3: detail.AddressLine3,
+        city_name: detail.City || detail.Municipality,
+        state_code: detail.State || "FL",
+      }),
+    );
+  }
+
+  return candidates.filter(Boolean);
+}
+
+function gatherRawAddressCandidates({
+  existingPayload,
+  unnormalizedSource,
+  seedSource,
+  htmlText,
+}) {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    const normalized = normalizeFullAddressString(value);
+    if (normalized) {
+      candidates.push(normalized);
+    }
+  };
+
+  pushCandidate(existingPayload && existingPayload.unnormalized_address);
+  pushCandidate(unnormalizedSource && unnormalizedSource.full_address);
+  pushCandidate(unnormalizedSource && unnormalizedSource.unnormalized_address);
+  pushCandidate(
+    composeAddressFromParts({
+      AddressLine1: unnormalizedSource && unnormalizedSource.address_line_1,
+      AddressLine2: unnormalizedSource && unnormalizedSource.address_line_2,
+      city_name: unnormalizedSource && unnormalizedSource.city_name,
+      state_code: unnormalizedSource && unnormalizedSource.state_code,
+      postal_code: unnormalizedSource && unnormalizedSource.postal_code,
+      plus_four_postal_code:
+        unnormalizedSource && unnormalizedSource.plus_four_postal_code,
+    }),
+  );
+  pushCandidate(seedSource && seedSource.full_address);
+
+  if (htmlText) {
+    const htmlCandidates = extractAddressCandidatesFromHtml(htmlText);
+    for (const candidate of htmlCandidates) {
+      pushCandidate(candidate);
+    }
+  }
+
+  return candidates;
+}
+
+function enforceRawAddressPayloadFromSources(addressPath, options = {}) {
+  if (!addressPath) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    inputHtmlPath = "input.html",
+  } = options;
+
+  const existingPayload = readJSONIfExists(addressPath);
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+  const htmlText = readTextIfExists(inputHtmlPath);
+
+  const candidates = gatherRawAddressCandidates({
+    existingPayload,
+    unnormalizedSource,
+    seedSource,
+    htmlText,
+  });
+
+  const resolvedAddress = resolveFirstNonEmptyString(candidates);
+  if (!resolvedAddress) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingPayload && existingPayload.request_identifier,
+      unnormalizedSource && unnormalizedSource.request_identifier,
+      seedSource && seedSource.request_identifier,
+    ]),
+  );
+
+  const preparedSourceRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const payload = {
+    unnormalized_address: resolvedAddress,
+    __force_raw_variant: true,
+  };
+
+  if (requestIdentifier !== null && requestIdentifier !== undefined) {
+    payload.request_identifier = requestIdentifier;
+  }
+
+  if (preparedSourceRequest) {
+    payload.source_http_request = deepClone(
+      prepareSourceHttpRequest(preparedSourceRequest),
+    );
+  }
+
+  writeJSON(addressPath, payload);
 }
 
 function pruneNormalizedFieldsFromRawAddressPayload(addressPath, options = {}) {
@@ -50250,6 +50533,21 @@ async function run() {
     );
   } catch (error) {
     console.error("Failed to enforce final raw address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceRawAddressPayloadFromSources(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      inputHtmlPath: "input.html",
+    });
+  } catch (error) {
+    console.error("Failed to rebuild raw address payload from sources:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
