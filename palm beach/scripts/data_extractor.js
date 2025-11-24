@@ -43138,14 +43138,12 @@ function buildMinimalRawAddressForSchema(
   }
 
   if (rawOutput.postal_code == null) {
-    delete rawOutput.plus_four_postal_code;
+    rawOutput.plus_four_postal_code = null;
   }
 
-  if (
-    (rawOutput.latitude == null) !== (rawOutput.longitude == null)
-  ) {
-    delete rawOutput.latitude;
-    delete rawOutput.longitude;
+  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
   }
 
   if (requestIdentifier !== undefined) {
@@ -43173,7 +43171,36 @@ function buildMinimalRawAddressForSchema(
     rawOutput.source_http_request = null;
   }
 
-  return rawOutput;
+  const surfacedRaw = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...rawOutput,
+  };
+  surfacedRaw.unnormalized_address = trimmedUnnormalized;
+
+  if (
+    !Object.prototype.hasOwnProperty.call(surfacedRaw, "plus_four_postal_code")
+  ) {
+    surfacedRaw.plus_four_postal_code = null;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(surfacedRaw, "request_identifier")) {
+    surfacedRaw.request_identifier = null;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(surfacedRaw, "source_http_request")
+  ) {
+    surfacedRaw.source_http_request = null;
+  } else if (
+    surfacedRaw.source_http_request &&
+    typeof surfacedRaw.source_http_request === "object"
+  ) {
+    surfacedRaw.source_http_request = prepareSourceHttpRequest(
+      surfacedRaw.source_http_request,
+    ) || null;
+  }
+
+  return surfacedRaw;
 }
 
 function forceRawOnlyAddressSurface(addressPath, options = {}) {
