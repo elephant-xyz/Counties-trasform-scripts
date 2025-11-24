@@ -372,15 +372,8 @@ function stripAddressRequestMetadata(address) {
       requestIdentifier === undefined ? null : requestIdentifier;
   }
 
-  const hasSourceRequest = Object.prototype.hasOwnProperty.call(
-    working,
-    "source_http_request",
-  );
-  const preparedSource = hasSourceRequest
-    ? prepareSourceHttpRequest(working.source_http_request)
-    : null;
-  if (hasSourceRequest) {
-    working.source_http_request = preparedSource || null;
+  if (Object.prototype.hasOwnProperty.call(working, "source_http_request")) {
+    delete working.source_http_request;
   }
 
   const canUseNormalized =
@@ -406,15 +399,6 @@ function stripAddressRequestMetadata(address) {
       normalizedSurface.request_identifier = null;
     }
 
-    if (hasSourceRequest) {
-      normalizedSurface.source_http_request = preparedSource || null;
-    } else if (
-      Object.prototype.hasOwnProperty.call(normalizedSurface, "source_http_request") &&
-      normalizedSurface.source_http_request === undefined
-    ) {
-      normalizedSurface.source_http_request = null;
-    }
-
     return normalizedSurface;
   }
 
@@ -436,14 +420,6 @@ function stripAddressRequestMetadata(address) {
     delete rawSurface.request_identifier;
   }
 
-  if (hasSourceRequest) {
-    rawSurface.source_http_request = preparedSource || null;
-  } else if (
-    Object.prototype.hasOwnProperty.call(rawSurface, "source_http_request")
-  ) {
-    delete rawSurface.source_http_request;
-  }
-
   const projectedRaw = buildRawVariantOneOfPayload(rawSurface);
   if (projectedRaw) {
     return projectedRaw;
@@ -456,9 +432,6 @@ function stripAddressRequestMetadata(address) {
           request_identifier:
             requestIdentifier === undefined ? null : requestIdentifier,
         }
-      : {}),
-    ...(hasSourceRequest
-      ? { source_http_request: preparedSource || null }
       : {}),
   };
 }
@@ -610,16 +583,6 @@ function buildLeanRawAddressOutput(rawOutput) {
       continue;
     }
 
-    if (field === "source_http_request") {
-      const prepared = prepareSourceHttpRequest(value);
-      if (prepared) {
-        leanOutput.source_http_request = deepClone(prepared);
-      } else {
-        leanOutput.source_http_request = null;
-      }
-      continue;
-    }
-
     if (value === undefined || value === null) {
       continue;
     }
@@ -706,11 +669,6 @@ function pruneNormalizedFieldsFromRawAddressPayload(addressPath, options = {}) {
     if (!Object.prototype.hasOwnProperty.call(payload, field)) {
       continue;
     }
-    if (field === "source_http_request") {
-      const prepared = prepareSourceHttpRequest(payload[field]);
-      lean.source_http_request = prepared ? deepClone(prepared) : null;
-      continue;
-    }
     if (field === "request_identifier") {
       const identifier = safeNullIfEmpty(payload[field]);
       lean.request_identifier =
@@ -733,34 +691,8 @@ function pruneNormalizedFieldsFromRawAddressPayload(addressPath, options = {}) {
 
   lean.unnormalized_address = trimmedRaw;
 
-  if (
-    (lean.latitude == null && lean.longitude != null) ||
-    (lean.latitude != null && lean.longitude == null)
-  ) {
-    lean.latitude = null;
-    lean.longitude = null;
-  }
-
-  if (!lean.postal_code) {
-    lean.plus_four_postal_code = null;
-  }
-
-  if (lean.state_code && !lean.country_code) {
-    lean.country_code = options.defaultCountryCode || "US";
-  } else if (!lean.country_code && options.defaultCountryCode) {
-    lean.country_code = options.defaultCountryCode;
-  } else if (
-    !lean.country_code &&
-    hasMeaningfulAddressValue(payload.country_code)
-  ) {
-    lean.country_code = payload.country_code;
-  }
-
   if (!Object.prototype.hasOwnProperty.call(lean, "request_identifier")) {
     lean.request_identifier = null;
-  }
-  if (!Object.prototype.hasOwnProperty.call(lean, "source_http_request")) {
-    lean.source_http_request = null;
   }
 
   const paddedOutput = {
@@ -771,9 +703,6 @@ function pruneNormalizedFieldsFromRawAddressPayload(addressPath, options = {}) {
 
   if (!Object.prototype.hasOwnProperty.call(paddedOutput, "request_identifier")) {
     paddedOutput.request_identifier = null;
-  }
-  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "source_http_request")) {
-    paddedOutput.source_http_request = null;
   }
 
   const serialized = JSON.stringify(paddedOutput, null, 2);
@@ -1296,7 +1225,6 @@ function pruneRawAddressFieldsForOutput(address) {
   const normalizedSurface =
     ensureAddressOutputFieldPresence({ ...address }) || { ...address };
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
 
   if (forceRawVariant) {
     delete normalizedSurface.__force_raw_variant;
@@ -1318,9 +1246,6 @@ function pruneRawAddressFieldsForOutput(address) {
     }
     if (requestIdentifier) {
       normalizedOutput.request_identifier = requestIdentifier;
-    }
-    if (preparedSource) {
-      normalizedOutput.source_http_request = deepClone(preparedSource);
     }
     return normalizedOutput;
   }
@@ -1349,13 +1274,6 @@ function pruneRawAddressFieldsForOutput(address) {
     rawOutput.request_identifier = null;
   }
 
-  if (preparedSource) {
-    rawOutput.source_http_request = deepClone(preparedSource);
-  } else if (
-    Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")
-  ) {
-    rawOutput.source_http_request = null;
-  }
   if (forceRawVariant) {
     rawOutput.__force_raw_variant = true;
   }
@@ -1385,12 +1303,6 @@ function pruneRawAddressFieldsForOutput(address) {
 
   if (!Object.prototype.hasOwnProperty.call(fallbackRaw, "request_identifier")) {
     fallbackRaw.request_identifier = null;
-  }
-
-  if (
-    !Object.prototype.hasOwnProperty.call(fallbackRaw, "source_http_request")
-  ) {
-    fallbackRaw.source_http_request = null;
   }
 
   if (forceRawVariant) {
@@ -4838,11 +4750,9 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-// County schema expects the raw/unnormalized branch to keep the full normalized
-// field surface (with nulls allowed) so downstream validators can enforce the
-// oneOf properly. Since Palm Beach inputs rarely contain the structured pieces,
-// keep the exclusion list empty so the serializer always emits every field.
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
+// Keep the raw variant limited to the true unnormalized payload so it satisfies
+// the schema's raw branch instead of partially matching the normalized one.
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set(NORMALIZED_ADDRESS_FIELDS);
 
 const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
   (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
@@ -4860,7 +4770,6 @@ const RAW_MINIMAL_ADDRESS_FIELDS = [
   "unnormalized_address",
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
-  "source_http_request",
 ];
 const RAW_MINIMAL_ADDRESS_FIELD_SET = new Set(RAW_MINIMAL_ADDRESS_FIELDS);
 
@@ -4961,37 +4870,12 @@ function ensureRawVariantFieldSurface(address) {
   if (!Object.prototype.hasOwnProperty.call(surfaced, "request_identifier")) {
     surfaced.request_identifier = null;
   }
-  if (!Object.prototype.hasOwnProperty.call(surfaced, "source_http_request")) {
-    surfaced.source_http_request = null;
-  }
 
   return surfaced;
 }
 
-const RAW_VARIANT_METADATA_FIELDS = ["request_identifier", "source_http_request"];
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-  "street_number",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "lot",
-  "block",
-]);
+const RAW_VARIANT_METADATA_FIELDS = ["request_identifier"];
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
@@ -5011,29 +4895,7 @@ const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
 const RAW_ADDRESS_TERMINAL_FIELD_WHITELIST = Object.freeze([
   "unnormalized_address",
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-  "street_number",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "township",
-  "range",
-  "section",
-  "lot",
-  "block",
-  "route_number",
   "request_identifier",
-  "source_http_request",
 ]);
 const RAW_ADDRESS_TERMINAL_FIELD_SET = new Set(
   RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
@@ -50396,11 +50258,12 @@ async function run() {
   try {
     const dataDir = path.join("data");
     const addressPath = path.join(dataDir, "address.json");
-    pruneNormalizedFieldsFromRawAddressPayload(addressPath, {
-      defaultCountryCode: "US",
-    });
+    enforceStreetComponentsFromRaw(addressPath);
   } catch (error) {
-    console.error("Failed to prune normalized-only address fields:", error);
+    console.error(
+      "Failed to enforce street components from raw address payload:",
+      error,
+    );
     if (!process.exitCode) {
       process.exitCode = 1;
     }
@@ -50409,12 +50272,11 @@ async function run() {
   try {
     const dataDir = path.join("data");
     const addressPath = path.join(dataDir, "address.json");
-    enforceStreetComponentsFromRaw(addressPath);
+    pruneNormalizedFieldsFromRawAddressPayload(addressPath, {
+      defaultCountryCode: "US",
+    });
   } catch (error) {
-    console.error(
-      "Failed to enforce street components from raw address payload:",
-      error,
-    );
+    console.error("Failed to prune normalized-only address fields:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
