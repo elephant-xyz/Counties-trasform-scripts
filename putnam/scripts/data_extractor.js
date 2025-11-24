@@ -1582,44 +1582,6 @@ function main() {
     rows[label] = tr;
   });
 
-  // Extract exemptions
-  let totalExemptionAmount = null;
-  let earliestExemptionYear = null;
-  const exemptionsCard = $('#details-Value .card').filter((i, card) => {
-    return /exemptions/i.test($(card).find('.card-header').text());
-  });
-  if (exemptionsCard.length > 0) {
-    const exemptTable = exemptionsCard.find('.table-wrapper table');
-    let exemptionSum = 0;
-    exemptTable.find('tbody tr').each((i, tr) => {
-      const cells = $(tr).find('td');
-      const description = textClean(cells.eq(0).text());
-      // Look for exemption rows (not taxing authority rows)
-      if (description && (
-        /homestead/i.test(description) ||
-        /exemption/i.test(description) ||
-        /widow/i.test(description) ||
-        /disability/i.test(description) ||
-        /veteran/i.test(description) ||
-        /senior/i.test(description)
-      )) {
-        const grantedYear = parseNumber(textClean(cells.eq(1).text()));
-        const amount = parseNumber(textClean(cells.eq(2).text()));
-        if (amount != null) {
-          exemptionSum += amount;
-        }
-        if (grantedYear != null) {
-          if (earliestExemptionYear == null || grantedYear < earliestExemptionYear) {
-            earliestExemptionYear = grantedYear;
-          }
-        }
-      }
-    });
-    if (exemptionSum > 0) {
-      totalExemptionAmount = exemptionSum;
-    }
-  }
-
   for (const year of years) {
     const col = colIndexByYear[year];
     function getVal(labelRegex) {
@@ -1644,10 +1606,6 @@ function main() {
       period_end_date: null,
       period_start_date: null,
     };
-    // Add exemption if applicable for this year
-    if (totalExemptionAmount != null && earliestExemptionYear != null && year >= earliestExemptionYear) {
-      taxObj.property_exemption_amount = totalExemptionAmount;
-    }
     writeOut(`tax_${year}.json`, taxObj);
   }
 
