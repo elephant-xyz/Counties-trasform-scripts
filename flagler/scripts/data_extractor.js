@@ -411,19 +411,14 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
 
   sales.forEach((s, i) => {
     const idx = i + 1;
-    const ownershipDate = parseDateToISO(s.saleDate);
     const saleObj = {
-      ownership_transfer_date: ownershipDate,
-      purchase_price_amount: parseCurrencyToNumber(s.salePrice),
       request_identifier: requestIdentifier,
     };
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
-    const deedType = mapInstrumentToDeedType(s.instrument);
     const deed = {
       request_identifier: requestIdentifier,
     };
-    if (deedType) deed.deed_type = deedType;
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
@@ -432,7 +427,6 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
       ipfs_url: null,
       name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
       original_url: s.link || null,
-      request_identifier: requestIdentifier,
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
