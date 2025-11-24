@@ -1609,26 +1609,16 @@ function main() {
     writeOut(`tax_${year}.json`, taxObj);
   }
 
-  // LOT from Land - Read ALL rows to ensure selectors are mapped
+  // LOT from Land
   let lotAcres = null;
-  const landTable = $('#details-Land .card').filter((i, card) => {
-    return $(card).find('.card-header').text().trim() === 'Land';
-  }).find('table').first();
-
-  const landRows = landTable.find('tbody tr');
-  landRows.each((rowIndex, tr) => {
-    const cells = $(tr).find('td');
-    // Read all cells to map selectors (validation requires this)
-    cells.each((cellIndex, td) => {
-      const cellValue = textClean($(td).text());
-      // Process units column (col 9) for lot size
-      if (cellIndex === 9 && !lotAcres) {
-        const units = parseNumber(cellValue);
-        if (units != null && units > 0) lotAcres = units;
-      }
-    });
-  });
-
+  const landRow = $(
+    '#details-Land .card:contains("Land") table tbody tr',
+  ).first();
+  if (landRow && landRow.length) {
+    const unitsText = textClean(landRow.find("td").eq(9).text());
+    const units = parseNumber(unitsText);
+    if (units != null) lotAcres = units;
+  }
   const lotObj = {
     lot_type: null,
     lot_length_feet: null,
@@ -1649,86 +1639,6 @@ function main() {
     site_lighting_installation_date: null,
   };
   writeOut("lot.json", lotObj);
-
-  // Extract Non-Ad Valorem Assessments table
-  const nonAdTable = $('#details-Main .card').filter((i, card) => {
-    return $(card).find('.card-header').text().includes('Non-Ad Valorem');
-  }).find('table').first();
-  nonAdTable.find('tbody tr').each((i, tr) => {
-    $(tr).find('td').each((j, td) => {
-      // Read all cells to map selectors
-      textClean($(td).text());
-    });
-  });
-
-  // Extract Taxing Authorities table
-  const taxAuthTable = $('#details-Value .card').filter((i, card) => {
-    return $(card).find('.card-header').text().includes('Taxing Authorities');
-  }).find('table').first();
-  taxAuthTable.find('tbody tr').each((i, tr) => {
-    $(tr).find('td').each((j, td) => {
-      // Read all cells to map selectors
-      textClean($(td).text());
-    });
-  });
-
-  // Extract Outbuildings/Extra Features table
-  const featuresTable = $('#details-Features table').first();
-  featuresTable.find('tbody tr').each((i, tr) => {
-    $(tr).find('td').each((j, td) => {
-      // Read all cells to map selectors
-      textClean($(td).text());
-    });
-  });
-
-  // Extract Summary tables - read all cells
-  const summaryTables = $('#details-Main .card').filter((i, card) => {
-    return $(card).find('.card-header').text().trim() === 'Summary';
-  }).find('table');
-  summaryTables.each((tableIdx, table) => {
-    $(table).find('tbody tr').each((rowIdx, tr) => {
-      $(tr).find('td').each((cellIdx, td) => {
-        // Read all cells to map selectors
-        textClean($(td).text());
-      });
-    });
-  });
-
-  // Read UI elements (search forms, modals) to satisfy validation
-  // Note: These are page UI elements, not property-specific data
-  // They're read here only to mark selectors as "mapped" for validation
-
-  // Read all select options (subdivisions, cities, zip codes, etc.)
-  $('select option').each((i, opt) => {
-    const value = $(opt).attr('value');
-    const text = $(opt).text().trim();
-    const tokens = $(opt).attr('data-tokens');
-    // Just reading to map the selector, not saving
-  });
-
-  // Read all form select elements
-  $('div.form-row select.custom-select option').each((i, opt) => {
-    $(opt).text().trim();
-  });
-
-  // Read modal content
-  $('div.modal div.modal-body p').each((i, p) => {
-    $(p).text().trim();
-  });
-
-  // Read card headers and result cards
-  $('div.card div.card-header').each((i, header) => {
-    $(header).text().trim();
-  });
-  $('div.card div.card-body div.row div.col-12 span').each((i, span) => {
-    $(span).text().trim();
-  });
-
-  // Read all table headers (including those with special structure)
-  $('table thead tr th').each((i, th) => {
-    $(th).text().trim();
-  });
-
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     let layoutBuildingMap = {};
