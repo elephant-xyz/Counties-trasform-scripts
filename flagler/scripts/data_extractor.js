@@ -1117,8 +1117,8 @@ function writeTaxes($, propertySeed, parcelId) {
     const taxable = parseCurrencyToNumber(h.taxable);
 
     // Create tax entry with all fields in one object literal
-    // Required fields must always be present
-    // For tax year periods, use January 1 to December 31 of the tax year
+    // Required fields must always be present (monthly_tax_amount, period_start_date, period_end_date)
+    // These are set to null for property tax records per Elephant schema pattern
     // Ensure year is valid before creating entry
     if (!h.year) return; // Skip entries without valid year
 
@@ -1126,8 +1126,8 @@ function writeTaxes($, propertySeed, parcelId) {
       request_identifier: parcelId || "",
       tax_year: h.year,
       monthly_tax_amount: null,
-      period_start_date: `${h.year}-01-01`,
-      period_end_date: `${h.year}-12-31`,
+      period_start_date: null,
+      period_end_date: null,
     };
 
     // Conditionally add optional fields only if they have valid values
@@ -1170,7 +1170,8 @@ function writeTaxes($, propertySeed, parcelId) {
       if (taxable !== null) existing.property_taxable_value_amount = taxable;
     } else {
       // Add new entry - create with all required fields in one object literal
-      // For tax year periods, use January 1 to December 31 of the tax year
+      // Required fields must always be present (monthly_tax_amount, period_start_date, period_end_date)
+      // These are set to null for property tax records per Elephant schema pattern
       // Ensure year is valid before creating entry
       if (!v.year) return; // Skip entries without valid year
 
@@ -1178,8 +1179,8 @@ function writeTaxes($, propertySeed, parcelId) {
         request_identifier: parcelId || "",
         tax_year: v.year,
         monthly_tax_amount: null,
-        period_start_date: `${v.year}-01-01`,
-        period_end_date: `${v.year}-12-31`,
+        period_start_date: null,
+        period_end_date: null,
       };
 
       // Conditionally add optional fields only if they have valid values
