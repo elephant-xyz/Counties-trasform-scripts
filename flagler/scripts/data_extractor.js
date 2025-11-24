@@ -396,8 +396,10 @@ function writeProperty($, parcelId) {
   writeJSON(path.join("data", "property.json"), property);
 }
 
-function writeSalesDeedsFilesAndRelationships($) {
+function writeSalesDeedsFilesAndRelationships($, parcelId) {
   const sales = extractSales($);
+  const requestIdentifier = parcelId || null;
+
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
@@ -413,19 +415,24 @@ function writeSalesDeedsFilesAndRelationships($) {
     const saleObj = {
       ownership_transfer_date: ownershipDate,
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
+      request_identifier: requestIdentifier,
     };
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     const deedType = mapInstrumentToDeedType(s.instrument);
     const deed = {
-      ownership_transfer_date: ownershipDate,
-      deed_type: deedType
+      request_identifier: requestIdentifier,
     };
+    if (deedType) deed.deed_type = deedType;
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
+      document_type: "Title",
+      file_format: null,
+      ipfs_url: null,
       name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
       original_url: s.link || null,
+      request_identifier: requestIdentifier,
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
@@ -932,7 +939,7 @@ function main() {
   if (parcelId) writeProperty($, parcelId);
 
   const sales = extractSales($);
-  writeSalesDeedsFilesAndRelationships($);
+  writeSalesDeedsFilesAndRelationships($, parcelId);
 
   writeTaxes($);
 
