@@ -1120,6 +1120,10 @@ function writeTaxes($, propertySeed, parcelId) {
     const taxEntry = {
       request_identifier: parcelId || "",
       tax_year: h.year,
+      // These three fields are REQUIRED and must always be present
+      monthly_tax_amount: null,
+      period_start_date: null,
+      period_end_date: null,
     };
 
     // Only add fields with valid values
@@ -1147,7 +1151,6 @@ function writeTaxes($, propertySeed, parcelId) {
     if (millageRate !== null) taxEntry.millage_rate = millageRate;
 
     // NOTE: The following fields are NOT included because they're not available in source data:
-    // - monthly_tax_amount, period_start_date, period_end_date - oneOf requires all three with non-null values or none at all
     // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
     // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
     // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
@@ -1190,6 +1193,10 @@ function writeTaxes($, propertySeed, parcelId) {
       const taxEntry = {
         request_identifier: parcelId || "",
         tax_year: v.year,
+        // These three fields are REQUIRED and must always be present
+        monthly_tax_amount: null,
+        period_start_date: null,
+        period_end_date: null,
       };
 
       // Only add fields with valid values
@@ -1217,7 +1224,6 @@ function writeTaxes($, propertySeed, parcelId) {
       if (millageRate !== null) taxEntry.millage_rate = millageRate;
 
       // NOTE: The following fields are NOT included because they're not available in source data:
-      // - monthly_tax_amount, period_start_date, period_end_date - oneOf requires all three with non-null values or none at all
       // - building_depreciated_value_amount (type: number) - must be omitted entirely when not available
       // - building_replacement_cost_amount (type: number) - must be omitted entirely when not available
       // - homestead_cap_loss_amount (type: number) - must be omitted entirely when not available
