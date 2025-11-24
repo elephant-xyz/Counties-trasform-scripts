@@ -414,12 +414,17 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
     const ownershipTransferDate = parseDateToISO(s.saleDate);
     const purchasePriceAmount = parseCurrencyToNumber(s.salePrice);
 
-    const saleObj = {
-      request_identifier: requestIdentifier,
-      source_http_request: null,
-    };
-    if (ownershipTransferDate) saleObj.ownership_transfer_date = ownershipTransferDate;
-    if (purchasePriceAmount !== null) saleObj.purchase_price_amount = purchasePriceAmount;
+    // Sales history object - ownership_transfer_date is required
+    const saleObj = {};
+    if (ownershipTransferDate) {
+      saleObj.ownership_transfer_date = ownershipTransferDate;
+    }
+    if (purchasePriceAmount !== null) {
+      saleObj.purchase_price_amount = purchasePriceAmount;
+    }
+    if (requestIdentifier) {
+      saleObj.request_identifier = requestIdentifier;
+    }
     writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     // Parse book and page from bookPage string (format: "book/page")
@@ -433,21 +438,22 @@ function writeSalesDeedsFilesAndRelationships($, parcelId) {
       }
     }
 
-    const deed = {
-      request_identifier: requestIdentifier,
-      source_http_request: null,
-    };
+    // Deed object - only include valid deed properties
+    const deed = {};
     if (book) deed.book = book;
     if (page) deed.page = page;
     const deedType = mapInstrumentToDeedType(s.instrument);
     if (deedType) deed.deed_type = deedType;
+    if (requestIdentifier) {
+      deed.request_identifier = requestIdentifier;
+    }
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     // File objects are not generated - they will be populated by the process
 
     const relSalesDeed = {
-      to: { "/": `./sales_history_${idx}.json` },
-      from: { "/": `./deed_${idx}.json` },
+      to: { "/": `./deed_${idx}.json` },
+      from: { "/": `./sales_history_${idx}.json` },
     };
     writeJSON(
       path.join("data", `relationship_sales_history_deed_${idx}.json`),
