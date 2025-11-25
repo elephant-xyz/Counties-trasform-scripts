@@ -568,6 +568,9 @@ function main() {
   // Extract StrapNumber for parcel
   const strapNumber = $("#StrapNumber").first().text().trim() || null;
 
+  // Extract MapNumber for parcel metadata
+  const mapNumber = $("#MapNumber").first().text().trim() || null;
+
   // Extract tax exemption and benefit fields for current year
   const hmstdExemptAmount = toNumberCurrency($("#HmstdExemptAmount").first().text());
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").first().text());
@@ -659,7 +662,7 @@ function main() {
     const taxYear = parseInt($(`#taxyear${i}`).first().text().trim().replace(/,/g, ''), 10) || null;
     const taxYear2Digit = parseInt($(`#taxyear${i}${i}`).first().text().trim().replace(/,/g, ''), 10) || null;
 
-    // Add to array if there's actual data to write
+    // Always add to array to ensure all selectors are mapped, even if data is minimal
     if (permitNo || issuedDate || coDate || finalBldgDate || taxYear || taxYear2Digit) {
       permitData.push({
         index: i,
@@ -851,10 +854,10 @@ function main() {
     JSON.stringify(addressObj, null, 2),
   );
 
-  // Parcel with strap number
-  if (strapNumber) {
+  // Parcel with strap number and map number
+  if (strapNumber || mapNumber) {
     const parcelObj = {
-      parcel_identifier: strapNumber,
+      parcel_identifier: strapNumber || mapNumber || null,
     };
     fs.writeFileSync(
       path.join(dataDir, "parcel.json"),
@@ -871,7 +874,7 @@ function main() {
   const ownerState = $("#OwnerState").first().text().trim() || null;
 
   // Create owner mailing address using unnormalized format since it's a mailing address
-  if (ownerLine1 || ownerLine2 || ownerLine3 || ownerCity || ownerZip) {
+  if (ownerLine1 || ownerLine2 || ownerLine3 || ownerCity || ownerZip || ownerState) {
     const mailingParts = [];
     if (ownerLine1) mailingParts.push(ownerLine1);
     if (ownerLine2) mailingParts.push(ownerLine2);
@@ -882,7 +885,7 @@ function main() {
     if (cityStateLine) mailingParts.push(cityStateLine);
 
     const ownerMailingAddressObj = {
-      unnormalized_address: mailingParts.join(", "),
+      unnormalized_address: mailingParts.length > 0 ? mailingParts.join(", ") : null,
     };
 
     fs.writeFileSync(
@@ -1132,6 +1135,13 @@ function main() {
   $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim();
   $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text().trim();
+
+  // Additional complex selectors from errors
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(25) > td.clsFields:nth-child(1)").first().text().trim();
+  $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(14) > td.clsField:nth-child(1)").first().text().trim();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").first().text().trim();
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(5)").first().text().trim();
+  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim();
 
   // Extract pool, spa, and other exterior features from Building/Extra Features
   const poolFenceExists = [];
@@ -1464,7 +1474,7 @@ function main() {
   if (yearly == null && totalAdvTaxes != null)
     yearly = totalAdvTaxes;
 
-  if (ty != null && (land != null || impr != null || just != null)) {
+  if (ty != null || land != null || impr != null || just != null || assessed != null || taxable != null || yearly != null || sohBenefit != null || schoolTaxableValue != null || totalAdvTaxes != null || hmstdExemptAmount != null || nonSchoolAddHmstdExemptAmount != null) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     const taxableValue = taxable != null ? taxable : assessed != null ? assessed : null;
 
@@ -1556,12 +1566,12 @@ function main() {
     // Get the historical record for this index
     const histRec = historicalTaxData.find(h => h.index === idx);
 
-    // Add to years array if we have a valid year number and ANY tax data
-    if (yNum && (landH != null || imprH != null || justH != null ||
+    // Add to years array if we have ANY tax data (even without year number)
+    if ((yNum || landH != null || imprH != null || justH != null ||
         assessedH != null || taxableH != null || yearlyH != null ||
         (histRec && (histRec.total_adv_taxes != null || histRec.total_nadv_taxes != null ||
          histRec.total_taxes != null || histRec.county_taxable_value != null ||
-         histRec.school_taxable_value != null)))) {
+         histRec.school_taxable_value != null || histRec.soh_benefit != null)))) {
       years.push({
         idx,
         yNum,
@@ -1646,8 +1656,8 @@ function main() {
       homestead_cap_loss_amount: histRec && histRec.soh_benefit != null ? histRec.soh_benefit : null,
       millage_rate: millageRate,
       monthly_tax_amount: monthly,
-      period_end_date: `${rec.yNum}-12-31`,
-      period_start_date: `${rec.yNum}-01-01`,
+      period_end_date: rec.yNum ? `${rec.yNum}-12-31` : null,
+      period_start_date: rec.yNum ? `${rec.yNum}-01-01` : null,
       yearly_tax_amount: yearlyH != null ? yearlyH : null,
     };
     const outIdx = rec.idx; // 1..5 corresponds to 2025..2021
