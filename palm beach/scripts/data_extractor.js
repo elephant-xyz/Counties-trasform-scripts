@@ -52274,20 +52274,39 @@ function enforceMinimalRawAddressFile(addressPath) {
     return;
   }
 
-  const minimal = {
-    unnormalized_address: rawValue,
-  };
+  const enforcedSurface = ensureRawAddressFieldCoverage(payload);
+  if (!enforcedSurface) {
+    return;
+  }
 
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    const identifier = safeNullIfEmpty(payload.request_identifier);
-    minimal.request_identifier =
-      identifier === undefined ? null : identifier;
+  const preparedRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  )
+    ? safeNullIfEmpty(payload.request_identifier)
+    : undefined;
+
+  enforcedSurface.unnormalized_address = rawValue;
+  enforcedSurface.request_identifier =
+    preparedRequestIdentifier === undefined
+      ? enforcedSurface.request_identifier ?? null
+      : preparedRequestIdentifier === null
+        ? null
+        : preparedRequestIdentifier;
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const preparedSource = prepareSourceHttpRequest(
+      payload.source_http_request,
+    );
+    enforcedSurface.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
   }
 
   originalWriteFileSync.call(
     fs,
     addressPath,
-    JSON.stringify(minimal, null, 2),
+    JSON.stringify(enforcedSurface, null, 2),
   );
 }
 
