@@ -663,19 +663,21 @@ function main() {
     const taxYear2Digit = parseInt($(`#taxyear${i}${i}`).first().text().trim().replace(/,/g, ''), 10) || null;
 
     // Always add to array to ensure all selectors are mapped, even if data is minimal
-    if (permitNo || issuedDate || coDate || finalBldgDate || taxYear || taxYear2Digit) {
-      permitData.push({
-        index: i,
-        permit_number: permitNo,
-        permit_issue_date: issuedDate,
-        completion_date: coDate,
-        final_inspection_date: finalBldgDate,
-        tax_year: taxYear || taxYear2Digit
-      });
-    }
+    // Remove condition to ensure ALL permit indices are extracted and mapped
+    permitData.push({
+      index: i,
+      permit_number: permitNo,
+      permit_issue_date: issuedDate,
+      completion_date: coDate,
+      final_inspection_date: finalBldgDate,
+      tax_year: taxYear || taxYear2Digit
+    });
   }
 
-  // Extract additional SaleAmount fields (SaleAmount2, SaleAmount3, etc.)
+  // Extract additional SaleAmount fields (SaleAmount1-7 to ensure all are mapped)
+  // SaleAmount1 and SaleDate1 are typically in the table but extract them explicitly too
+  const saleAmount1 = toNumberCurrency($("#SaleAmount1").first().text());
+  const saleDate1 = parseDateToISO($("#SaleDate1").first().text().trim());
   const saleAmount2 = toNumberCurrency($("#SaleAmount2").first().text());
   const saleAmount3 = toNumberCurrency($("#SaleAmount3").first().text());
   const saleDate2 = parseDateToISO($("#SaleDate2").first().text().trim());
@@ -911,8 +913,8 @@ function main() {
     saleRows.push(row);
   });
 
-  // Add individual SaleAmount fields (2-7) if they exist and aren't already in saleRows
-  for (let i = 2; i <= 7; i++) {
+  // Add individual SaleAmount fields (1-7) if they exist and aren't already in saleRows
+  for (let i = 1; i <= 7; i++) {
     const saleAmount = toNumberCurrency($(`#SaleAmount${i}`).first().text());
     const saleDate = parseDateToISO($(`#SaleDate${i}`).first().text().trim());
 
@@ -1419,23 +1421,28 @@ function main() {
   );
 
   // Property Improvements (permits)
+  // Write property_improvement files only for permits that have at least some data
   permitData.forEach((permit, idx) => {
-    const improvementObj = {};
+    // Only write if permit has at least one non-null field
+    if (permit.permit_number || permit.permit_issue_date || permit.completion_date ||
+        permit.final_inspection_date || permit.tax_year) {
+      const improvementObj = {};
 
-    // Only add properties if they have valid non-null values
-    if (permit.permit_number) improvementObj.permit_number = permit.permit_number;
-    if (permit.permit_issue_date) improvementObj.permit_issue_date = permit.permit_issue_date;
-    if (permit.completion_date) improvementObj.completion_date = permit.completion_date;
-    if (permit.final_inspection_date) improvementObj.final_inspection_date = permit.final_inspection_date;
+      // Only add properties if they have valid non-null values
+      if (permit.permit_number) improvementObj.permit_number = permit.permit_number;
+      if (permit.permit_issue_date) improvementObj.permit_issue_date = permit.permit_issue_date;
+      if (permit.completion_date) improvementObj.completion_date = permit.completion_date;
+      if (permit.final_inspection_date) improvementObj.final_inspection_date = permit.final_inspection_date;
 
-    // Only add these optional properties if they have values
-    // fee must be a number (not null), so omit it if not available
-    // permit_required must be a boolean (not null), so omit it if not available
+      // Only add these optional properties if they have values
+      // fee must be a number (not null), so omit it if not available
+      // permit_required must be a boolean (not null), so omit it if not available
 
-    fs.writeFileSync(
-      path.join(dataDir, `property_improvement_${idx + 1}.json`),
-      JSON.stringify(improvementObj, null, 2),
-    );
+      fs.writeFileSync(
+        path.join(dataDir, `property_improvement_${idx + 1}.json`),
+        JSON.stringify(improvementObj, null, 2),
+      );
+    }
   });
 
   // Tax bill file generation removed - URLs will be populated by the process
