@@ -1238,16 +1238,23 @@ function extractOwners(ownerData, outDir, parcelId, salesCount, hasOwnerMailingA
       writeJSON(path.join(outDir, fname), { name: o.name || null });
       fileMap.set(`C|${(o.name || "").trim()}`, fname);
     } else {
+      // Validate that first_name and last_name are non-empty after cleaning
+      const cleanedFirstName = o.first_name
+        ? (o.first_name.charAt(0).toUpperCase() + o.first_name.slice(1).toLowerCase()).trim()
+        : "";
+      const cleanedLastName = o.last_name
+        ? (o.last_name.charAt(0).toUpperCase() + o.last_name.slice(1).toLowerCase()).trim()
+        : "";
+
+      // Skip creating person if first_name or last_name is empty (required fields with minLength: 1)
+      if (!cleanedFirstName || !cleanedLastName) {
+        return;
+      }
+
       const obj = {
         birth_date: null,
-        first_name: o.first_name
-          ? o.first_name.charAt(0).toUpperCase() +
-            o.first_name.slice(1).toLowerCase()
-          : "",
-        last_name: o.last_name
-          ? o.last_name.charAt(0).toUpperCase() +
-            o.last_name.slice(1).toLowerCase()
-          : "",
+        first_name: cleanedFirstName,
+        last_name: cleanedLastName,
         middle_name: o.middle_name ? o.middle_name.toUpperCase() : null,
         prefix_name: null,
         suffix_name: null,

@@ -180,10 +180,17 @@ function parsePersonName(raw) {
 
   if (!first || !last) return null;
 
+  // Clean the names and validate they're not empty after cleaning
+  const cleanedFirstName = cleanInvalidCharsFromName(first);
+  const cleanedLastName = cleanInvalidCharsFromName(last);
+
+  // If first_name or last_name is empty after cleaning, return null (required fields)
+  if (!cleanedFirstName || !cleanedLastName) return null;
+
   return {
     type: "person",
-    first_name: cleanInvalidCharsFromName(first),
-    last_name: cleanInvalidCharsFromName(last),
+    first_name: cleanedFirstName,
+    last_name: cleanedLastName,
     middle_name: cleanInvalidCharsFromName(middle) || null,
   };
 }
