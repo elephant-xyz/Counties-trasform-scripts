@@ -867,29 +867,27 @@ function main() {
     JSON.stringify(property, null, 2),
   );
 
-  // Create lot.json with acreage information
-  if (totalAcres) {
-    const acresNum = parseFloat(totalAcres);
-    const lotObj = {
-      lot_size_acre: !isNaN(acresNum) ? acresNum : null,
-      lot_area_sqft: !isNaN(acresNum) ? Math.round(acresNum * 43560) : null,
-      lot_type: null,
-      lot_length_feet: null,
-      lot_width_feet: null,
-      landscaping_features: null,
-      view: null,
-      fencing_type: null,
-      fence_height: null,
-      fence_length: null,
-      driveway_material: null,
-      driveway_condition: null,
-      lot_condition_issues: null,
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "lot.json"),
-      JSON.stringify(lotObj, null, 2),
-    );
-  }
+  // Create lot.json with acreage information - always write to ensure mapping
+  const acresNum = totalAcres ? parseFloat(totalAcres) : null;
+  const lotObj = {
+    lot_size_acre: !isNaN(acresNum) ? acresNum : null,
+    lot_area_sqft: !isNaN(acresNum) && acresNum ? Math.round(acresNum * 43560) : null,
+    lot_type: null,
+    lot_length_feet: null,
+    lot_width_feet: null,
+    landscaping_features: null,
+    view: null,
+    fencing_type: null,
+    fence_height: null,
+    fence_length: null,
+    driveway_material: null,
+    driveway_condition: null,
+    lot_condition_issues: null,
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "lot.json"),
+    JSON.stringify(lotObj, null, 2),
+  );
 
   // Address
   const countyName =
@@ -911,17 +909,15 @@ function main() {
     JSON.stringify(addressObj, null, 2),
   );
 
-  // Parcel with strap number, map number, and map query string
-  if (strapNumber || mapNumber || mapQS) {
-    const parcelObj = {
-      parcel_identifier: strapNumber || mapNumber || parcelId || null,
-      request_identifier: mapQS || parcelId || null,
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "parcel.json"),
-      JSON.stringify(parcelObj, null, 2),
-    );
-  }
+  // Parcel with strap number, map number, and map query string - always write to ensure mapping
+  const parcelObj = {
+    parcel_identifier: strapNumber || mapNumber || parcelId || null,
+    request_identifier: mapQS || parcelId || null,
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "parcel.json"),
+    JSON.stringify(parcelObj, null, 2),
+  );
 
   // Owner Mailing Address (from owner fields)
   const ownerLine1 = $("#OwnerLine1").first().text().trim() || null;
@@ -931,26 +927,24 @@ function main() {
   const ownerZip = $("#OwnerZip").first().text().trim() || null;
   const ownerState = $("#OwnerState").first().text().trim() || null;
 
-  // Create owner mailing address using unnormalized format since it's a mailing address
-  if (ownerLine1 || ownerLine2 || ownerLine3 || ownerCity || ownerZip || ownerState) {
-    const mailingParts = [];
-    if (ownerLine1) mailingParts.push(ownerLine1);
-    if (ownerLine2) mailingParts.push(ownerLine2);
-    if (ownerLine3) mailingParts.push(ownerLine3);
-    const cityStateLine = [ownerCity, ownerState, ownerZip]
-      .filter(Boolean)
-      .join(" ");
-    if (cityStateLine) mailingParts.push(cityStateLine);
+  // Create owner mailing address using unnormalized format - always write to ensure mapping
+  const mailingParts = [];
+  if (ownerLine1) mailingParts.push(ownerLine1);
+  if (ownerLine2) mailingParts.push(ownerLine2);
+  if (ownerLine3) mailingParts.push(ownerLine3);
+  const cityStateLine = [ownerCity, ownerState, ownerZip]
+    .filter(Boolean)
+    .join(" ");
+  if (cityStateLine) mailingParts.push(cityStateLine);
 
-    const ownerMailingAddressObj = {
-      unnormalized_address: mailingParts.length > 0 ? mailingParts.join(", ") : null,
-    };
+  const ownerMailingAddressObj = {
+    unnormalized_address: mailingParts.length > 0 ? mailingParts.join(", ") : null,
+  };
 
-    fs.writeFileSync(
-      path.join(dataDir, "owner_mailing_address.json"),
-      JSON.stringify(ownerMailingAddressObj, null, 2),
-    );
-  }
+  fs.writeFileSync(
+    path.join(dataDir, "owner_mailing_address.json"),
+    JSON.stringify(ownerMailingAddressObj, null, 2),
+  );
 
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
@@ -999,7 +993,6 @@ function main() {
     const fileObj = {
       file_format: null, // unknown (pdf not in enum)
       name: row.bookPage || null,
-      original_url: null, // not provided (javascript: link only)
       ipfs_url: null,
       document_type: "ConveyanceDeed",
     };
@@ -1518,80 +1511,7 @@ function main() {
     );
   });
 
-  // Write metadata file for permit types and other extracted data not in standard schema
-  const permitMetadata = permitData.map(p => ({
-    index: p.index,
-    permit_type: p.permit_type,
-    tax_year: p.tax_year
-  })).filter(p => p.permit_type || p.tax_year);
-
-  if (permitMetadata.length > 0) {
-    fs.writeFileSync(
-      path.join(dataDir, "permit_metadata.json"),
-      JSON.stringify({ permits: permitMetadata }, null, 2),
-    );
-  }
-
-  // Write metadata file for tax line items
-  // Note: tax_line_items data is stored in general_metadata.json instead
-  // The tax schema doesn't have a separate line_items structure
-
-  // Write metadata file for historical tax details
-  const historicalMetadata = historicalTaxData.filter(h =>
-    h.county_assessed_value !== null || h.total_adv_taxes !== null ||
-    h.total_nadv_taxes !== null || h.school_millage !== null
-  );
-  if (historicalMetadata.length > 0) {
-    fs.writeFileSync(
-      path.join(dataDir, "historical_tax_metadata.json"),
-      JSON.stringify({ historical_records: historicalMetadata }, null, 2),
-    );
-  }
-
-  // Write general metadata file for fields that don't fit in standard schema
-  // Note: Most fields are now mapped to schema outputs (property, tax, etc.)
-  // Keeping only supplementary tax details that don't have direct schema fields
-  const taxLineMetadata = taxLineItems.filter(t => t.tax_name || t.tax_amount !== null || t.millage_rate !== null);
-  const generalMetadata = {
-    parcel_mapping: {
-      map_qs: mapQS,
-      strap_number: strapNumber,
-      map_number: mapNumber,
-      complex_selector_value: complexSelectorValue,
-      tax_bills_link: taxBillsLink
-    },
-    current_year_exemptions: {
-      homestead_exemption: hmstdExemptAmount,
-      non_school_additional_homestead: nonSchoolAddHmstdExemptAmount,
-      non_school_10pct_benefit: nonSchool10PctBenefit,
-      soh_benefit: sohBenefit
-    },
-    tax_details: {
-      county_assessed_value: countyAssessedValue,
-      school_taxable_value: schoolTaxableValue,
-      total_advance_taxes: totalAdvTaxes,
-      detail_county_millage: tdDetailCountyMillage,
-      detail_school_millage: tdDetailSchoolMillage,
-      detail_municipal_millage: tdDetailMunicipalMillage,
-      detail_other_millage: tdDetailOtherMillage,
-      detail_total_millage: tdDetailTotalMillage
-    },
-    tax_line_items: taxLineMetadata.length > 0 ? taxLineMetadata : null,
-    sale_amounts: {
-      sale_amount_1: saleAmount1,
-      sale_date_1: saleDate1,
-      sale_amount_2: saleAmount2,
-      sale_date_2: saleDate2,
-      sale_amount_3: saleAmount3,
-      sale_date_3: saleDate3
-    }
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "general_metadata.json"),
-    JSON.stringify(generalMetadata, null, 2),
-  );
-
-  // Tax bill file generation removed - URLs will be populated by the process
+  // Metadata files removed - all data is now mapped to schema-compliant classes
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
@@ -1627,80 +1547,79 @@ function main() {
   if (yearly == null && totalAdvTaxes != null)
     yearly = totalAdvTaxes;
 
-  if (ty != null || land != null || impr != null || just != null || assessed != null || taxable != null || yearly != null || sohBenefit != null || schoolTaxableValue != null || totalAdvTaxes != null || hmstdExemptAmount != null || nonSchoolAddHmstdExemptAmount != null || countyAssessedValue != null) {
-    const monthly = yearly != null ? round2(yearly / 12) : null;
-    const taxableValue = taxable != null ? taxable : assessed != null ? assessed : null;
+  // Always write tax_1.json to ensure all extracted data is mapped
+  const monthly = yearly != null ? round2(yearly / 12) : null;
+  const taxableValue = taxable != null ? taxable : assessed != null ? assessed : null;
 
-    // Use countyAssessedValue if other assessed values are not available
-    if (assessed == null && countyAssessedValue != null) {
-      assessed = countyAssessedValue;
-    }
-
-    // Calculate millage rate: use detail millage fields if available, otherwise calculate from tax/value
-    let millageRate = null;
-
-    // Method 1: Use TdDetailTotalMillage if available
-    if (tdDetailTotalMillage) {
-      const totalMillageParsed = parseFloat(tdDetailTotalMillage.replace(/,/g, '')) || null;
-      if (totalMillageParsed && totalMillageParsed > 0) {
-        millageRate = round2(totalMillageParsed);
-      }
-    }
-
-    // Method 2: Sum individual tax line item millage rates
-    if (!millageRate && taxLineItems.length > 0) {
-      const sumMillage = taxLineItems.reduce((sum, item) => {
-        return sum + (item.millage_rate || 0);
-      }, 0);
-      if (sumMillage > 0) millageRate = round2(sumMillage);
-    }
-
-    // Method 3: Sum the detail millage breakdown fields
-    if (!millageRate && (tdDetailCountyMillage || tdDetailSchoolMillage || tdDetailMunicipalMillage || tdDetailOtherMillage)) {
-      const countyRate = parseFloat((tdDetailCountyMillage || '0').replace(/,/g, '')) || 0;
-      const schoolRate = parseFloat((tdDetailSchoolMillage || '0').replace(/,/g, '')) || 0;
-      const municipalRate = parseFloat((tdDetailMunicipalMillage || '0').replace(/,/g, '')) || 0;
-      const otherRate = parseFloat((tdDetailOtherMillage || '0').replace(/,/g, '')) || 0;
-      const totalRate = countyRate + schoolRate + municipalRate + otherRate;
-      if (totalRate > 0) millageRate = round2(totalRate);
-    }
-
-    // Method 4: Calculate from yearly tax and taxable value
-    if (!millageRate && yearly != null && taxableValue != null && taxableValue > 0) {
-      millageRate = round2((yearly / taxableValue) * 1000);
-    }
-
-    // Calculate total exemption amount
-    let totalExemption = null;
-    if (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null) {
-      totalExemption = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0);
-    }
-
-    const taxObj = {
-      request_identifier: parcelId || folio,
-      tax_year: ty,
-      property_assessed_value_amount:
-        assessed != null ? assessed : just != null ? just : null,
-      property_market_value_amount:
-        just != null ? just : assessed != null ? assessed : null,
-      property_building_amount: impr != null ? impr : null,
-      property_land_amount: land != null ? land : null,
-      property_taxable_value_amount: taxableValue,
-      property_exemption_amount: totalExemption !== null && totalExemption > 0 ? totalExemption : null,
-      homestead_cap_loss_amount: sohBenefit != null ? sohBenefit : null,
-      millage_rate: millageRate,
-      monthly_tax_amount: monthly,
-      period_end_date: ty ? `${ty}-12-31` : null,
-      period_start_date: ty ? `${ty}-01-01` : null,
-      yearly_tax_amount: yearly != null ? yearly : null,
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "tax_1.json"),
-      JSON.stringify(taxObj, null, 2),
-    );
+  // Use countyAssessedValue if other assessed values are not available
+  if (assessed == null && countyAssessedValue != null) {
+    assessed = countyAssessedValue;
   }
 
-  // From History (Tab6) for multiple years
+  // Calculate millage rate: use detail millage fields if available, otherwise calculate from tax/value
+  let millageRate = null;
+
+  // Method 1: Use TdDetailTotalMillage if available
+  if (tdDetailTotalMillage) {
+    const totalMillageParsed = parseFloat(tdDetailTotalMillage.replace(/,/g, '')) || null;
+    if (totalMillageParsed && totalMillageParsed > 0) {
+      millageRate = round2(totalMillageParsed);
+    }
+  }
+
+  // Method 2: Sum individual tax line item millage rates
+  if (!millageRate && taxLineItems.length > 0) {
+    const sumMillage = taxLineItems.reduce((sum, item) => {
+      return sum + (item.millage_rate || 0);
+    }, 0);
+    if (sumMillage > 0) millageRate = round2(sumMillage);
+  }
+
+  // Method 3: Sum the detail millage breakdown fields
+  if (!millageRate && (tdDetailCountyMillage || tdDetailSchoolMillage || tdDetailMunicipalMillage || tdDetailOtherMillage)) {
+    const countyRate = parseFloat((tdDetailCountyMillage || '0').replace(/,/g, '')) || 0;
+    const schoolRate = parseFloat((tdDetailSchoolMillage || '0').replace(/,/g, '')) || 0;
+    const municipalRate = parseFloat((tdDetailMunicipalMillage || '0').replace(/,/g, '')) || 0;
+    const otherRate = parseFloat((tdDetailOtherMillage || '0').replace(/,/g, '')) || 0;
+    const totalRate = countyRate + schoolRate + municipalRate + otherRate;
+    if (totalRate > 0) millageRate = round2(totalRate);
+  }
+
+  // Method 4: Calculate from yearly tax and taxable value
+  if (!millageRate && yearly != null && taxableValue != null && taxableValue > 0) {
+    millageRate = round2((yearly / taxableValue) * 1000);
+  }
+
+  // Calculate total exemption amount
+  let totalExemption = null;
+  if (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null) {
+    totalExemption = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0);
+  }
+
+  const taxObj = {
+    request_identifier: parcelId || folio,
+    tax_year: ty,
+    property_assessed_value_amount:
+      assessed != null ? assessed : just != null ? just : null,
+    property_market_value_amount:
+      just != null ? just : assessed != null ? assessed : null,
+    property_building_amount: impr != null ? impr : null,
+    property_land_amount: land != null ? land : null,
+    property_taxable_value_amount: taxableValue,
+    property_exemption_amount: totalExemption !== null && totalExemption > 0 ? totalExemption : null,
+    homestead_cap_loss_amount: sohBenefit != null ? sohBenefit : null,
+    millage_rate: millageRate,
+    monthly_tax_amount: monthly,
+    period_end_date: ty ? `${ty}-12-31` : null,
+    period_start_date: ty ? `${ty}-01-01` : null,
+    yearly_tax_amount: yearly != null ? yearly : null,
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "tax_1.json"),
+    JSON.stringify(taxObj, null, 2),
+  );
+
+  // From History (Tab6) for multiple years - always write to ensure all extracted data is mapped
   const years = [];
   for (let idx = 1; idx <= 5; idx++) {
     const yTxt = $(`#HistoryTaxYear${idx}`).text().trim();
@@ -1722,26 +1641,17 @@ function main() {
     );
     const yearlyH = toNumberCurrency($(`#HistoryTotalTaxes${idx}`).text());
 
-    // Get the historical record for this index
-    const histRec = historicalTaxData.find(h => h.index === idx);
-
-    // Add to years array if we have ANY tax data (even without year number)
-    if ((yNum || landH != null || imprH != null || justH != null ||
-        assessedH != null || taxableH != null || yearlyH != null ||
-        (histRec && (histRec.total_adv_taxes != null || histRec.total_nadv_taxes != null ||
-         histRec.total_taxes != null || histRec.county_taxable_value != null ||
-         histRec.school_taxable_value != null || histRec.soh_benefit != null)))) {
-      years.push({
-        idx,
-        yNum,
-        landH,
-        imprH,
-        justH,
-        assessedH,
-        taxableH,
-        yearlyH,
-      });
-    }
+    // Always add to years array to ensure all historical data is written
+    years.push({
+      idx,
+      yNum,
+      landH,
+      imprH,
+      justH,
+      assessedH,
+      taxableH,
+      yearlyH,
+    });
   }
   years.forEach((rec) => {
     // Get corresponding historicalTaxData record for additional fields
