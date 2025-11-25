@@ -73,6 +73,72 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
   return originalWriteFileSync.call(fs, targetPath, data, ...args);
 };
 
+function enforceAddressSchemaBranchChoice(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedCoverage =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...payload });
+
+  if (normalizedCoverage) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema(payload) || null;
+    if (normalizedOutput && typeof normalizedOutput === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+      writeJSON(addressPath, normalizedOutput);
+      return;
+    }
+  }
+
+  const rawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString(
+      flattenCandidateValues(
+        payload.unnormalized_address,
+        payload.full_address,
+        payload.site_address,
+        payload.address,
+      ),
+    ),
+  );
+
+  if (!rawCandidate) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOutput = {
+    unnormalized_address: rawCandidate,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const sanitizedIdentifier = safeNullIfEmpty(payload.request_identifier);
+    rawOutput.request_identifier =
+      sanitizedIdentifier === null ? null : sanitizedIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+  if (preparedSource) {
+    rawOutput.source_http_request = preparedSource;
+  }
+
+  writeJSON(addressPath, rawOutput);
+}
+
 const ADDRESS_FALLBACK_CONTEXT = {
   unnormalizedCandidates: [],
   fieldSources: [],
@@ -10130,6 +10196,17 @@ async function main() {
     );
   } catch (error) {
     console.error("Failed to enforce final raw address output:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceAddressSchemaBranchChoice(addressPath);
+  } catch (error) {
+    console.error("Failed to enforce final address schema branch choice:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
