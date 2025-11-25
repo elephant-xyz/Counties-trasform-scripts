@@ -1238,16 +1238,19 @@ function extractOwners(ownerData, outDir, parcelId, salesCount, hasOwnerMailingA
       writeJSON(path.join(outDir, fname), { name: o.name || null });
       fileMap.set(`C|${(o.name || "").trim()}`, fname);
     } else {
+      // Validate that first_name and last_name are present and non-empty
+      // The schema requires first_name and last_name to be non-empty strings matching a specific pattern
+      if (!o.first_name || !o.last_name) {
+        // Skip creating person object if required fields are missing
+        return;
+      }
+
       const obj = {
         birth_date: null,
-        first_name: o.first_name
-          ? o.first_name.charAt(0).toUpperCase() +
-            o.first_name.slice(1).toLowerCase()
-          : "",
-        last_name: o.last_name
-          ? o.last_name.charAt(0).toUpperCase() +
-            o.last_name.slice(1).toLowerCase()
-          : "",
+        first_name: o.first_name.charAt(0).toUpperCase() +
+          o.first_name.slice(1).toLowerCase(),
+        last_name: o.last_name.charAt(0).toUpperCase() +
+          o.last_name.slice(1).toLowerCase(),
         middle_name: o.middle_name ? o.middle_name.toUpperCase() : null,
         prefix_name: null,
         suffix_name: null,

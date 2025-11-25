@@ -153,6 +153,19 @@ function cleanInvalidCharsFromName(raw) {
   while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
     parsedName = parsedName.slice(0, parsedName.length - 1);
   }
+
+  // Convert to proper case (Title Case) to match the required pattern
+  // Pattern requires: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (parsedName) {
+    parsedName = parsedName.toLowerCase().split(/(\s+|-|'|,|\.)/).map((part, i, arr) => {
+      // Only capitalize word parts, not separators
+      if (part && /^[a-z]/.test(part)) {
+        return part.charAt(0).toUpperCase() + part.slice(1);
+      }
+      return part;
+    }).join('');
+  }
+
   return parsedName;
 }
 
@@ -167,7 +180,9 @@ function parsePersonName(raw) {
   if (/[0-9]/.test(cleaned)) return null; // unlikely a person
   if (looksLikeCompany(cleaned)) return null;
 
-  const tokens = cleaned.split(/\s+/);
+  // Remove common prefixes like "PLA - ", "EST - ", etc. before parsing
+  const withoutPrefix = cleaned.replace(/^[A-Z]{2,4}\s*-\s*/i, "").trim();
+  const tokens = withoutPrefix.split(/\s+/);
   if (tokens.length < 2) return null;
 
   // If comma present we could be in First Last, but our sample isn't. Remove commas.
@@ -180,11 +195,34 @@ function parsePersonName(raw) {
 
   if (!first || !last) return null;
 
+  // Clean the names and validate they are not empty after cleaning
+  const cleanedFirst = cleanInvalidCharsFromName(first);
+  const cleanedLast = cleanInvalidCharsFromName(last);
+  const cleanedMiddle = middle ? cleanInvalidCharsFromName(middle) : null;
+
+  // Validate that first and last names are not empty and match the required pattern
+  // Pattern requires: starts with uppercase letter, followed by lowercase letters
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+  if (!cleanedFirst || !cleanedLast) return null;
+  if (!namePattern.test(cleanedFirst) || !namePattern.test(cleanedLast)) return null;
+
+  // Validate middle name if present
+  if (cleanedMiddle && !namePattern.test(cleanedMiddle)) {
+    // If middle name doesn't match pattern, set to null instead of rejecting the whole person
+    return {
+      type: "person",
+      first_name: cleanedFirst,
+      last_name: cleanedLast,
+      middle_name: null,
+    };
+  }
+
   return {
     type: "person",
-    first_name: cleanInvalidCharsFromName(first),
-    last_name: cleanInvalidCharsFromName(last),
-    middle_name: cleanInvalidCharsFromName(middle) || null,
+    first_name: cleanedFirst,
+    last_name: cleanedLast,
+    middle_name: cleanedMiddle,
   };
 }
 
