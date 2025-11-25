@@ -1556,8 +1556,8 @@ function createGeometryClass(geometryInstances) {
       geometry.polygon = polygon;
     }
     writeJson(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJson(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
-        from: { "/": `./parcel.json` },
+    writeJson(path.join("data", `relationship_property_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./property.json` },
         to: { "/": `./geometry_${geomIndex}.json` },
     });
     geomIndex++;
@@ -1675,39 +1675,43 @@ function main() {
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_company.json"), {
-          to: { "/": `./${ownerFiles.companyFiles[0]}` },
-          from: { "/": "./sales_1.json" },
+        ownerFiles.companyFiles.forEach((companyFile, idx) => {
+          writeJson(path.join(dataDir, `relationship_sales_company_${idx + 1}.json`), {
+            to: { "/": `./${companyFile}` },
+            from: { "/": "./sales_1.json" },
+          });
+          if (hasOwnerMailingAddress) {
+            writeJson(
+              path.join(
+                "data",
+                `relationship_company_${idx + 1}_has_mailing_address.json`,
+              ),
+              {
+                from: { "/": `./${companyFile}` },
+                to: { "/": `./mailing_address.json` },
+              },
+            );
+          }
         });
-        if (hasOwnerMailingAddress) {
-          writeJson(
-            path.join(
-              "data",
-              `relationship_company_has_mailing_address.json`,
-            ),
-            {
-              from: { "/": `./${ownerFiles.companyFiles[0]}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        }
       } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
-          to: { "/": `./${ownerFiles.personFiles[0]}` },
-          from: { "/": "./sales_1.json" },
+        ownerFiles.personFiles.forEach((personFile, idx) => {
+          writeJson(path.join(dataDir, `relationship_sales_person_${idx + 1}.json`), {
+            to: { "/": `./${personFile}` },
+            from: { "/": "./sales_1.json" },
+          });
+          if (hasOwnerMailingAddress) {
+            writeJson(
+              path.join(
+                "data",
+                `relationship_person_${idx + 1}_has_mailing_address.json`,
+              ),
+              {
+                from: { "/": `./${personFile}` },
+                to: { "/": `./mailing_address.json` },
+              },
+            );
+          }
         });
-        if (hasOwnerMailingAddress) {
-          writeJson(
-            path.join(
-              "data",
-              `relationship_person_has_mailing_address.json`,
-            ),
-            {
-              from: { "/": `./${ownerFiles.personFiles[0]}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        }
       }
     }
 
