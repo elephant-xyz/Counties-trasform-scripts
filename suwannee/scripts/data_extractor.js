@@ -1674,40 +1674,53 @@ function main() {
     );
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
-      if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_company.json"), {
-          to: { "/": `./${ownerFiles.companyFiles[0]}` },
+      // Link ALL companies to sales
+      ownerFiles.companyFiles.forEach((companyFile, idx) => {
+        const relIdx = idx + 1;
+        writeJson(path.join(dataDir, `relationship_sales_company_${relIdx}.json`), {
+          to: { "/": `./${companyFile}` },
           from: { "/": "./sales_1.json" },
         });
-        if (hasOwnerMailingAddress) {
+      });
+
+      // Link ALL persons to sales
+      ownerFiles.personFiles.forEach((personFile, idx) => {
+        const relIdx = idx + 1;
+        writeJson(path.join(dataDir, `relationship_sales_person_${relIdx}.json`), {
+          to: { "/": `./${personFile}` },
+          from: { "/": "./sales_1.json" },
+        });
+      });
+
+      // Mailing address relationships for all owners
+      if (hasOwnerMailingAddress) {
+        ownerFiles.companyFiles.forEach((companyFile, idx) => {
+          const relIdx = idx + 1;
           writeJson(
             path.join(
               "data",
-              `relationship_company_has_mailing_address.json`,
+              `relationship_company_has_mailing_address_${relIdx}.json`,
             ),
             {
-              from: { "/": `./${ownerFiles.companyFiles[0]}` },
+              from: { "/": `./${companyFile}` },
               to: { "/": `./mailing_address.json` },
             },
           );
-        }
-      } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
-          to: { "/": `./${ownerFiles.personFiles[0]}` },
-          from: { "/": "./sales_1.json" },
         });
-        if (hasOwnerMailingAddress) {
+
+        ownerFiles.personFiles.forEach((personFile, idx) => {
+          const relIdx = idx + 1;
           writeJson(
             path.join(
               "data",
-              `relationship_person_has_mailing_address.json`,
+              `relationship_person_has_mailing_address_${relIdx}.json`,
             ),
             {
-              from: { "/": `./${ownerFiles.personFiles[0]}` },
+              from: { "/": `./${personFile}` },
               to: { "/": `./mailing_address.json` },
             },
           );
-        }
+        });
       }
     }
 
