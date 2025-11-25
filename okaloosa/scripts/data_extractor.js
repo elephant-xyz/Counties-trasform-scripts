@@ -2176,6 +2176,18 @@ function createGeometryClass(geometryInstances) {
 
 function main() {
   ensureDir("data");
+
+  // Clean up any orphaned files from previous runs that are not part of the current schema
+  // mailing_address.json is not part of the Seed data group schema
+  const orphanedFiles = ["mailing_address.json"];
+  orphanedFiles.forEach((fileName) => {
+    const filePath = path.join("data", fileName);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`Removed orphaned file: ${fileName}`);
+    }
+  });
+
   const $ = loadHTML();
 
   const propertySeed = readJSON("property_seed.json");
