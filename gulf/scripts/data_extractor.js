@@ -1270,6 +1270,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // Collect all unique persons across all dates
   const personMap = new Map();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
@@ -1289,6 +1291,32 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       }
     });
   });
+
+  // Collect companies that will actually be used (on sale dates or current owners with mailing address)
+  const usedCompanyNames = new Set();
+
+  // Add companies from sales dates
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "company" && (o.name || "").trim())
+      .forEach((o) => {
+        usedCompanyNames.add((o.name || "").trim().toUpperCase());
+      });
+  });
+
+  // Add companies from current owners (if they will have mailing address)
+  if (hasOwnerMailingAddress) {
+    const currentOwner = ownersByDate["current"] || [];
+    currentOwner
+      .filter((o) => o.type === "company" && (o.name || "").trim())
+      .forEach((o) => {
+        usedCompanyNames.add((o.name || "").trim().toUpperCase());
+      });
+  }
+
+  // Create person records
   people = Array.from(personMap.values()).map((p) => ({
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -1303,20 +1331,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim().toUpperCase());
-    });
-  });
-  companies = Array.from(companyNames).map((n) => ({ 
+
+  // Create company records (only for companies that will be used)
+  companies = Array.from(usedCompanyNames).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
+
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
