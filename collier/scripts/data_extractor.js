@@ -559,11 +559,9 @@ function main() {
   const municipality = $("#Municipality").first().text().trim() || null;
   const totalAcres = $("#TotalAcres").first().text().trim() || null;
 
-  // Read MapQS to mark as processed
-  const mapQS = $("#MapQS").first().text().trim() || null;
-
-  // Read land units to mark as processed
+  // Extract number of units for property
   const totalUnits1 = $("#TOTALUNITS1").first().text().trim() || null;
+  const numberOfUnits = totalUnits1 ? parseInt(totalUnits1.replace(/[^0-9]/g, ''), 10) || null : null;
 
   // Extract StrapNumber for parcel
   const strapNumber = $("#StrapNumber").first().text().trim() || null;
@@ -699,8 +697,8 @@ function main() {
     property_type: null,
     property_usage_type: null,
     area_under_air: null,
-    historic_designation: undefined,
-    number_of_units: null,
+    historic_designation: false,
+    number_of_units: numberOfUnits,
     number_of_units_type: null,
     property_effective_built_year: null,
     subdivision: subdivision || null,
@@ -1131,24 +1129,6 @@ function main() {
     }
   }
 
-  // Extract complex selector values (tax bill links and other fields)
-  // These are read to mark selectors as processed, even though values may not be directly written to output
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(4) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(6) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(19) > td.clsFieldR:nth-child(2)").first().text().trim();
-  $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim();
-  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text().trim();
-
-  // Additional complex selectors from errors
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(25) > td.clsFields:nth-child(1)").first().text().trim();
-  $("div:nth-child(1) > table.clsWide:nth-child(1) > tbody > tr:nth-child(14) > td.clsField:nth-child(1)").first().text().trim();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(39) > td.clsFields:nth-child(2)").first().text().trim();
-  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(5)").first().text().trim();
-  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim();
 
   // Extract pool, spa, and other exterior features from Building/Extra Features
   const poolFenceExists = [];
@@ -1219,7 +1199,6 @@ function main() {
         pool_surface_type: null,
         pool_type: null,
         pool_water_quality: null,
-        request_identifier: null,
         safety_features: null,
         size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
         spa_installation_date: null,
@@ -1358,7 +1337,6 @@ function main() {
     number_of_buildings: null,
     number_of_stories: null,
     primary_framing_material: null,
-    request_identifier: null,
     roof_age_years: null,
     roof_condition: null,
     roof_covering_material: null,
@@ -1513,10 +1491,10 @@ function main() {
   }
 
   // Write general metadata file for fields that don't fit in standard schema
+  // Note: Most fields are now mapped to schema outputs (property, tax, etc.)
+  // Keeping only supplementary tax details that don't have direct schema fields
   const taxLineMetadata = taxLineItems.filter(t => t.tax_name || t.tax_amount !== null || t.millage_rate !== null);
   const generalMetadata = {
-    map_query_string: mapQS,
-    total_units: totalUnits1,
     current_year_exemptions: {
       homestead_exemption: hmstdExemptAmount,
       non_school_additional_homestead: nonSchoolAddHmstdExemptAmount,
