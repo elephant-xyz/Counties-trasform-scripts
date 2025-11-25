@@ -1084,8 +1084,9 @@ function buildRawVariantSubmissionPayload(address) {
 
 function buildLeanRawAddressOutput(rawOutput) {
   const minimal = buildMinimalRawAddressForSchema(rawOutput);
-  if (minimal) {
-    return minimal;
+  const strippedMinimal = reduceRawAddressToMinimalSurface(minimal);
+  if (strippedMinimal) {
+    return strippedMinimal;
   }
 
   if (!rawOutput || typeof rawOutput !== "object") {
@@ -1100,78 +1101,31 @@ function buildLeanRawAddressOutput(rawOutput) {
     return null;
   }
 
-  const fallback = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+  const fallbackSeed = {
     unnormalized_address: rawValue,
+    request_identifier: Object.prototype.hasOwnProperty.call(
+      rawOutput,
+      "request_identifier",
+    )
+      ? rawOutput.request_identifier
+      : null,
   };
-
-  if (Object.prototype.hasOwnProperty.call(rawOutput, "request_identifier")) {
-    const normalizedIdentifier = safeNullIfEmpty(
-      rawOutput.request_identifier,
-    );
-    fallback.request_identifier =
-      normalizedIdentifier === undefined ? null : normalizedIdentifier;
-  }
 
   if (
     Object.prototype.hasOwnProperty.call(rawOutput, "__force_raw_variant") &&
     rawOutput.__force_raw_variant === true
   ) {
-    fallback.__force_raw_variant = true;
+    fallbackSeed.__force_raw_variant = true;
   }
 
   if (
     Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request") &&
     rawOutput.source_http_request
   ) {
-    const prepared = prepareSourceHttpRequest(rawOutput.source_http_request);
-    if (prepared) {
-      fallback.source_http_request = deepClone(prepared);
-    }
+    fallbackSeed.source_http_request = rawOutput.source_http_request;
   }
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
-      continue;
-    }
-    const candidate = rawOutput[field];
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(candidate);
-      fallback[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-    const sanitized = sanitizeAddressFieldValue(field, candidate);
-    if (sanitized === undefined || sanitized === null) {
-      continue;
-    }
-    if (typeof sanitized === "string") {
-      const trimmed = sanitized.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      fallback[field] = trimmed;
-      continue;
-    }
-    fallback[field] = sanitized;
-  }
-
-  if (!fallback.postal_code) {
-    fallback.plus_four_postal_code = null;
-  }
-
-  if (fallback.state_code && !fallback.country_code) {
-    fallback.country_code = "US";
-  }
-
-  if (
-    (fallback.latitude == null && fallback.longitude != null) ||
-    (fallback.latitude != null && fallback.longitude == null)
-  ) {
-    fallback.latitude = null;
-    fallback.longitude = null;
-  }
-
-  return fallback;
+  return reduceRawAddressToMinimalSurface(fallbackSeed);
 }
 
 function isMinimalRawAddressPayload(address) {
@@ -1905,7 +1859,7 @@ function buildMinimalRawAddressForSchema(address) {
   return minimal;
 }
 
-function collapseAddressToRawOnlySurface(address) {
+function reduceRawAddressToMinimalSurface(address) {
   if (!address || typeof address !== "object") {
     return null;
   }
@@ -1918,8 +1872,7 @@ function collapseAddressToRawOnlySurface(address) {
     return null;
   }
 
-  const rawOnly = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+  const minimal = {
     unnormalized_address: rawValue,
   };
 
@@ -1927,51 +1880,15 @@ function collapseAddressToRawOnlySurface(address) {
     Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
     address.__force_raw_variant === true
   ) {
-    rawOnly.__force_raw_variant = true;
+    minimal.__force_raw_variant = true;
   }
 
-  let requestIdentifier = null;
+  let normalizedIdentifier;
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const identifier = safeNullIfEmpty(address.request_identifier);
-    if (identifier !== undefined) {
-      requestIdentifier = identifier;
-    }
+    normalizedIdentifier = safeNullIfEmpty(address.request_identifier);
   }
-  rawOnly.request_identifier = requestIdentifier;
-
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
-    }
-    const sanitized = sanitizeAddressFieldValue(field, address[field]);
-    if (sanitized === undefined || sanitized === null) {
-      continue;
-    }
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(sanitized);
-      if (Number.isFinite(numeric)) {
-        rawOnly[field] = numeric;
-      }
-      continue;
-    }
-    if (typeof sanitized === "string") {
-      const trimmed = sanitized.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      rawOnly[field] = trimmed;
-      continue;
-    }
-    rawOnly[field] = sanitized;
-  }
-
-  if (!rawOnly.postal_code) {
-    rawOnly.plus_four_postal_code = null;
-  }
-
-  if (rawOnly.state_code && !rawOnly.country_code) {
-    rawOnly.country_code = "US";
-  }
+  minimal.request_identifier =
+    normalizedIdentifier === undefined ? null : normalizedIdentifier;
 
   if (
     Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
@@ -1979,11 +1896,15 @@ function collapseAddressToRawOnlySurface(address) {
   ) {
     const prepared = prepareSourceHttpRequest(address.source_http_request);
     if (prepared) {
-      rawOnly.source_http_request = deepClone(prepared);
+      minimal.source_http_request = deepClone(prepared);
     }
   }
 
-  return rawOnly;
+  return minimal;
+}
+
+function collapseAddressToRawOnlySurface(address) {
+  return reduceRawAddressToMinimalSurface(address);
 }
 
 function buildMinimalRawAddressVariant(address) {
@@ -6154,8 +6075,6 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-// Persist the normalized field surface on raw variants so oneOf validators still
-// see every required key (even when the source only provided a raw string).
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
@@ -6334,10 +6253,11 @@ function ensureRawVariantFieldSurface(address) {
   return surfaced;
 }
 
-const RAW_VARIANT_METADATA_FIELDS = ["request_identifier"];
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
-  ...NORMALIZED_ADDRESS_FIELDS,
-]);
+const RAW_VARIANT_METADATA_FIELDS = [
+  "request_identifier",
+  "source_http_request",
+];
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
@@ -6358,16 +6278,15 @@ const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 const RAW_ADDRESS_TERMINAL_FIELD_WHITELIST = Object.freeze([
   "unnormalized_address",
   "request_identifier",
+  "source_http_request",
 ]);
 const RAW_ADDRESS_TERMINAL_FIELD_SET = new Set(
   RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
 );
 
-// Raw variants still need to expose the normalized field surface (even when null)
-// so downstream oneOf validators see every required key.
+// Raw variants only retain the minimal schema surface expected by County.
 const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
-  ...RAW_VARIANT_OUTPUT_ALLOWLIST,
-  ...RAW_VARIANT_METADATA_FIELDS,
+  ...RAW_MINIMAL_ADDRESS_FIELDS,
 ]);
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
@@ -53949,6 +53868,26 @@ run()
     } catch (error) {
       console.error(
         "Failed to finalize county address submission variant:",
+        error,
+      );
+      if (!process.exitCode) {
+        process.exitCode = 1;
+      }
+    }
+
+    try {
+      const dataDir = path.join("data");
+      const addressPath = path.join(dataDir, "address.json");
+      const payload = readJSONIfExists(addressPath);
+      if (payload && typeof payload === "object") {
+        const minimalSurface = reduceRawAddressToMinimalSurface(payload);
+        if (minimalSurface) {
+          writeJSON(addressPath, minimalSurface);
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Failed to reduce address payload to the minimal raw surface:",
         error,
       );
       if (!process.exitCode) {
