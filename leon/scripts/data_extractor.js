@@ -1158,7 +1158,8 @@ function extractTax($, outDir) {
   if (!histRows.length) return;
 
   let assessed2025 = null,
-    taxable2025 = null;
+    taxable2025 = null,
+    millage2025 = null;
   const ctv = $('h5:contains("2025 Certified Taxable Values")').closest(
     ".card",
   );
@@ -1166,6 +1167,9 @@ function extractTax($, outDir) {
   if (row && row.length) {
     const tds = row.find("td");
     if (tds.length >= 6) {
+      const millageText = $(tds[1]).text().trim();
+      millage2025 = parseFloat(millageText);
+      if (isNaN(millage2025)) millage2025 = null;
       assessed2025 = parseCurrencyToNumber($(tds[3]).text());
       taxable2025 = parseCurrencyToNumber($(tds[5]).text());
     }
@@ -1175,12 +1179,16 @@ function extractTax($, outDir) {
   let taxIdx = 1;
   histRows.forEach((r) => {
     let assessed = null,
-      taxable = null;
+      taxable = null,
+      millage = null;
     if (r.year === 2025 && assessed2025 != null && taxable2025 != null) {
       assessed = assessed2025;
       taxable = taxable2025;
+      millage = millage2025;
     } else {
-      return; // assessed and taxable are mandatory fields
+      // For years without specific assessed/taxable data, use market value as approximation
+      assessed = r.market;
+      taxable = r.market;
     }
     const tax = {
       tax_year: r.year,
@@ -1189,6 +1197,7 @@ function extractTax($, outDir) {
       property_building_amount: r.building,
       property_land_amount: r.land,
       property_taxable_value_amount: taxable,
+      millage_rate: millage,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
