@@ -1182,16 +1182,18 @@ function extractBuildingYears($) {
 
 
 function extractAreas($) {
-  let total = 0;
-  let grossArea = 0;
-  let finishedArea = 0;
   const buildings = collectBuildings($);
-  buildings.forEach((b) => {
-    grossArea += toInt(b["Total Area"]);
-  });
-  return {
-    total: grossArea
+  const totals = {
+    total: 0,
+    heated: 0,
+    living: 0,
   };
+  buildings.forEach((b) => {
+    totals.total += toInt(b["Total Area"]);
+    totals.heated += toInt(b["Heated Area"]);
+    totals.living += toInt(b["Living Area"] || b["Total Living Area"]);
+  });
+  return totals;
 }
 
 function extractNumberOfUnits($) {
@@ -1342,7 +1344,105 @@ function extractValuation($) {
   });
 }
 
-function writeProperty($, parcelId) {
+function extractLandInfo($) {
+  const rows = $(LAND_INFO_SELECTOR).find("tbody tr");
+  const out = [];
+  rows.each((_, tr) => {
+    const code = textOf($(tr).find("th"));
+    const cells = $(tr).find("td");
+    if (!code || cells.length < 5) return;
+    const landUse = textOf($(cells[0])) || null;
+    const units = textOf($(cells[1])) || null;
+    const unitType = textOf($(cells[2])) || null;
+    const frontage = textOf($(cells[3])) || null;
+    const depth = textOf($(cells[4])) || null;
+    out.push({
+      code,
+      landUse,
+      units,
+      unitType,
+      frontage,
+      depth,
+    });
+  });
+  return out;
+}
+
+function summarizeLandInfo(rows) {
+  if (!rows || !rows.length) return null;
+  const parts = rows.map((row) => {
+    const segments = [];
+    if (row.units && row.unitType) {
+      segments.push(`${row.units} ${row.unitType}`);
+    } else if (row.units) {
+      segments.push(row.units);
+    }
+    if (row.frontage || row.depth) {
+      segments.push(`F:${row.frontage || "0"}/D:${row.depth || "0"}`);
+    }
+    const summary = segments.length ? ` (${segments.join(", ")})` : "";
+    return `${row.code}: ${row.landUse || "N/A"}${summary}`;
+  });
+  return parts.join(" | ");
+}
+
+function extractExtraFeatures($) {
+  const rows = $("#ctlBodyPane_ctl06_ctl01_grdSales_grdFlat").find("tbody tr");
+  const features = [];
+  rows.each((idx, tr) => {
+    const code = textOf($(tr).find("th"));
+    const cells = $(tr).find("td");
+    if (!code || cells.length < 4) return;
+    features.push({
+      code,
+      description: textOf($(cells[0])) || null,
+      dimensions: textOf($(cells[1])) || null,
+      units: textOf($(cells[2])) || null,
+      year: textOf($(cells[3])) || null,
+      rowIndex: idx + 1,
+    });
+  });
+  return features;
+}
+
+function extractLocationAddress($) {
+  let addressLine = null;
+  let cityLine = null;
+  $(OVERALL_DETAILS_TABLE_SELECTOR).each((_, tr) => {
+    const label = textOf($(tr).find("th strong"));
+    const value = textOf($(tr).find("td span"));
+    if (label && label.toLowerCase().includes("location address")) {
+      addressLine = value || null;
+    } else if (!label && !cityLine && value) {
+      cityLine = value;
+    }
+  });
+  if (!addressLine && !cityLine) return null;
+  return {
+    line1: addressLine,
+    cityStateZip: cityLine,
+  };
+}
+
+function extractLastDataUpload($) {
+  const linkText = textOf($("#hlkLastUpdated"));
+  return linkText || null;
+}
+
+function extractFooterContactLabel($) {
+  let contact = null;
+  $(".footer-credits").each((_, el) => {
+    const txt = textTrim($(el).text());
+    if (txt) {
+      contact = txt;
+      return false;
+    }
+    return true;
+  });
+  return contact;
+}
+
+function writeProperty($, parcelId, options = {}) {
   const legal = extractLegalDescription($);
   // console.log(legal);
   const useCode = extractUseCode($);
@@ -1381,10 +1481,11 @@ function writeProperty($, parcelId) {
     structure_form: propertyMapping.structure_form,
     build_status: propertyMapping.build_status
   };
-  
+
 
   const years = extractBuildingYears($);
-  // const areas = extractAreas($);
+  const areas = options.areas || extractAreas($);
+  const landInfoSummary = options.landInfoSummary || null;
   // const acreage = extractAcreage($);
   // const totalAreaSqFt = convertAcresToSqFt(acreage);
   const numberOfUnits = extractNumberOfUnits($);
@@ -1397,12 +1498,15 @@ function writeProperty($, parcelId) {
     property_structure_built_year: years.actual || null,
     subdivision: null,
     number_of_units: numberOfUnits,
-    zoning: null,
+    zoning: landInfoSummary || null,
     property_type: propertyFields.property_type,
     property_usage_type: propertyFields.property_usage_type,
     ownership_estate_type: propertyFields.ownership_estate_type,
     structure_form: propertyFields.structure_form,
     build_status: propertyFields.build_status,
+    total_area: areas.total ? String(areas.total) : null,
+    area_under_air: areas.heated ? String(areas.heated) : null,
+    livable_floor_area: areas.living ? String(areas.living) : null,
   };
   writeJSON(path.join("data", "property.json"), property);
 }
@@ -1450,13 +1554,12 @@ function writeSalesDeedsFilesAndRelationships($) {
     };
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
+    const deedFileName = book && page ? `Deed ${book}/${page}` : "Deed Document";
     const file = {
       ...appendSourceInfo(seed),
       document_type: "Title",
       file_format: null,
-      ipfs_url: null,
-      name: s.deedBook && s.deedPage ? `Deed ${s.deedBook}/${s.deedPage}` : "Deed Document",
-      original_url: s.link || null,
+      name: deedFileName,
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
@@ -1683,8 +1786,13 @@ function writeTaxes($, parcelId) {
       property_assessed_value_amount: parseCurrencyToNumber(v.assessed) ?? 0,
       property_market_value_amount: parseCurrencyToNumber(v.market) ?? 0,
       property_building_amount: parseCurrencyToNumber(v.building) ?? null,
+      building_replacement_cost_amount:
+        parseCurrencyToNumber(v.extraFeatures) ?? null,
       property_land_amount: parseCurrencyToNumber(v.land) ?? null,
+      agricultural_valuation_amount: parseCurrencyToNumber(v.agricultural) ?? null,
       property_taxable_value_amount: parseCurrencyToNumber(v.taxable) ?? 0,
+      property_exemption_amount: parseCurrencyToNumber(v.exempt) ?? null,
+      homestead_cap_loss_amount: parseCurrencyToNumber(v.saveOurHomes) ?? null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -1693,6 +1801,67 @@ function writeTaxes($, parcelId) {
       yearly_tax_amount: null
     };
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
+  });
+}
+
+function removeFilesMatching(regex) {
+  try {
+    fs.readdirSync("data").forEach((file) => {
+      if (regex.test(file)) {
+        fs.unlinkSync(path.join("data", file));
+      }
+    });
+  } catch (err) {}
+}
+
+function removeFileIfExists(filePath) {
+  try {
+    fs.unlinkSync(filePath);
+  } catch (err) {}
+}
+
+function parseFloatValue(value) {
+  if (value == null) return null;
+  const n = Number(String(value).replace(/[,]/g, "").trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function deriveLotType(acres, landUseText) {
+  if (acres && acres > 0.25) return "GreaterThanOneQuarterAcre";
+  if (acres && acres > 0) return "LessThanOrEqualToOneQuarterAcre";
+  const txt = (landUseText || "").toUpperCase();
+  if (txt.includes("ROAD") || txt.includes("PAVED")) return "PavedRoad";
+  return null;
+}
+
+function writeLandInfoLots(rows, parcelId) {
+  removeFilesMatching(/^lot_\d+\.json$/);
+  if (!rows || !rows.length) return;
+  rows.forEach((row, idx) => {
+    const acres =
+      row.unitType && row.unitType.toUpperCase().includes("AC")
+        ? parseFloatValue(row.units)
+        : null;
+    let sqFt = null;
+    if (acres != null) {
+      sqFt = Math.round(acres * 43560);
+    } else if (row.unitType && row.unitType.toUpperCase().includes("SF")) {
+      sqFt = parseFloatValue(row.units);
+    }
+    const frontage = parseFloatValue(row.frontage);
+    const depth = parseFloatValue(row.depth);
+    const lot = {
+      ...appendSourceInfo(seed),
+      request_identifier: parcelId
+        ? `${parcelId}_land_${row.code}`
+        : seed?.request_identifier || null,
+      lot_size_acre: acres,
+      lot_area_sqft: sqFt,
+      lot_width_feet: frontage && frontage > 0 ? Math.round(frontage) : null,
+      lot_length_feet: depth && depth > 0 ? Math.round(depth) : null,
+      lot_type: deriveLotType(acres, row.landUse),
+    };
+    writeJSON(path.join("data", `lot_${idx + 1}.json`), lot);
   });
 }
 
@@ -2027,9 +2196,17 @@ function isNumeric(value) {
     return /^-?\d+$/.test(value);
 }
 
-function attemptWriteAddressandGeometry(unnorm, secTwpRng) {
+function attemptWriteAddressandGeometry(unnorm, secTwpRng, locationAddress) {
+  const locationLine = locationAddress?.line1
+    ? textTrim(locationAddress.line1)
+    : null;
+  const cityLine = locationAddress?.cityStateZip
+    ? textTrim(locationAddress.cityStateZip)
+    : null;
+  const htmlAddress = [locationLine, cityLine].filter(Boolean).join(", ");
   const full =
-    unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
+    htmlAddress ||
+    (unnorm && unnorm.full_address ? unnorm.full_address.trim() : null);
   // if (!full || full.length < 10) return;
   // let city = null;
   // let zip = null;
@@ -2081,8 +2258,10 @@ function attemptWriteAddressandGeometry(unnorm, secTwpRng) {
   // const postal_code = zip;
   // const plus_four_postal_code = plus4 || null;
 
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  const county_name = inputCounty || "Wakulla" || null;
+  const inputCounty = unnorm?.county_jurisdiction
+    ? unnorm.county_jurisdiction.trim()
+    : "";
+  const county_name = inputCounty || "Wakulla";
 
   const address = {
     county_name,
@@ -2096,8 +2275,8 @@ function attemptWriteAddressandGeometry(unnorm, secTwpRng) {
   //Geometry creation
   const geometry = {
     ...appendSourceInfo(seed),
-    latitude: unnorm.latitude || null,
-    longitude: unnorm.longitude || null
+    latitude: unnorm?.latitude ?? null,
+    longitude: unnorm?.longitude ?? null
   };
   writeJSON(path.join("data", "geometry.json"), geometry);
   
@@ -2299,6 +2478,53 @@ function createUtilitiesFiles(seed,parcelIdentifier){
 }
 
 
+function cleanLayoutFilesFrom(startIndex) {
+  if (!startIndex || startIndex < 1) return;
+  const pattern = /^layout_(\d+)\.json$/;
+  try {
+    fs.readdirSync("data").forEach((file) => {
+      const match = file.match(pattern);
+      if (match && parseInt(match[1], 10) >= startIndex) {
+        fs.unlinkSync(path.join("data", file));
+      }
+    });
+  } catch (err) {}
+}
+
+function writeExtraFeatureLayouts(seed, parcelIdentifier, startIndex, features) {
+  const beginIndex = startIndex && startIndex > 0 ? startIndex : 1;
+  cleanLayoutFilesFrom(beginIndex);
+  if (!features || !features.length) return 0;
+  features.forEach((feature, idx) => {
+    const layoutIndex = beginIndex + idx;
+    const sqFt = parseFloatValue(feature.units);
+    const builtYear =
+      feature.year && /^\d{4}$/.test(feature.year.trim())
+        ? feature.year.trim()
+        : null;
+    const descriptorParts = [
+      "Extra Feature",
+      feature.code ? `(${feature.code})` : null,
+      feature.description,
+      feature.dimensions ? `- ${feature.dimensions}` : null,
+    ].filter(Boolean);
+    const layoutOut = {
+      ...appendSourceInfo(seed),
+      space_type: descriptorParts.join(" "),
+      space_type_index: `extra_feature_${layoutIndex}`,
+      built_year: builtYear,
+      total_area_sq_ft: sqFt ? Math.round(sqFt) : null,
+      size_square_feet: sqFt ? Math.round(sqFt) : null,
+      is_exterior: true,
+      request_identifier: parcelIdentifier
+        ? `${parcelIdentifier}_extra_feature_${layoutIndex}`
+        : seed?.request_identifier || null,
+    };
+    writeJSON(path.join("data", `layout_${layoutIndex}.json`), layoutOut);
+  });
+  return features.length;
+}
+
 function createLayoutFiles(seed,parcelIdentifier){
   let layoutsData = null;
   try {
@@ -2355,7 +2581,7 @@ function createLayoutFiles(seed,parcelIdentifier){
       };
       writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
     });
-    
+
     // Create layout relationships
     layouts.forEach((layout, idx) => {
       if (layout.space_type === "Building") {
@@ -2378,9 +2604,41 @@ function createLayoutFiles(seed,parcelIdentifier){
         });
       }
     });
+    return layouts.length;
+  }
+  return 0;
+}
+
+function writeSiteMetadata(lastUpdatedText, contactLabel) {
+  if (lastUpdatedText) {
+    const metadata = {
+      ...appendSourceInfo(seed),
+      document_type: null,
+      file_format: null,
+      name: lastUpdatedText,
+    };
+    writeJSON(
+      path.join("data", "file_site_last_updated.json"),
+      metadata,
+    );
+  } else {
+    removeFileIfExists(path.join("data", "file_site_last_updated.json"));
   }
 
-
+  if (contactLabel) {
+    const contact = {
+      ...appendSourceInfo(seed),
+      document_type: null,
+      file_format: null,
+      name: contactLabel,
+    };
+    writeJSON(
+      path.join("data", "file_site_contact_label.json"),
+      contact,
+    );
+  } else {
+    removeFileIfExists(path.join("data", "file_site_contact_label.json"));
+  }
 }
 
 
@@ -2411,19 +2669,29 @@ function main() {
 
   const propertySeed = readJSON("property_seed.json");
   const unnormalized = readJSON("unnormalized_address.json");
+  const landInfoRows = extractLandInfo($);
+  const landInfoSummary = summarizeLandInfo(landInfoRows);
+  const areas = extractAreas($);
+  const extraFeatures = extractExtraFeatures($);
+  const lastUpdatedText = extractLastDataUpload($);
+  const contactLabel = extractFooterContactLabel($);
 
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
 
-  if (parcelId) writeProperty($, parcelId);
+  if (parcelId) {
+    writeProperty($, parcelId, { landInfoSummary, areas });
+  }
 
   const sales = extractSales($);
   // console.log("Sales:", sales);
   writeSalesDeedsFilesAndRelationships($);
 
   writeTaxes($, parcelId);
+  writeLandInfoLots(landInfoRows, parcelId || (propertySeed && propertySeed.parcel_id) || null);
 
+  let baseLayoutCount = 0;
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales);
     // writeOwnersCurrentAndRelationships(parcelId);
@@ -2439,15 +2707,22 @@ function main() {
     createUtilitiesFiles(seed,parcelId);
 
     // ---------- Layouts (owners/layout_data.json) ----------
-    createLayoutFiles(seed,parcelId);
-
+    baseLayoutCount = createLayoutFiles(seed,parcelId) || 0;
   }
+  writeExtraFeatureLayouts(
+    seed,
+    parcelId || (propertySeed && propertySeed.parcel_id) || null,
+    baseLayoutCount + 1,
+    extraFeatures,
+  );
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
-  attemptWriteAddressandGeometry(unnormalized, secTwpRng);
+  const locationAddress = extractLocationAddress($);
+  attemptWriteAddressandGeometry(unnormalized, secTwpRng, locationAddress);
+  writeSiteMetadata(lastUpdatedText, contactLabel);
 
-  
+
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
   // console.log("---?",mailingAddressRaw);
