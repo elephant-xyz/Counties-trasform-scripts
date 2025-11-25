@@ -1011,10 +1011,6 @@ function createGeometryClass(geometryInstances) {
       geometry.polygon = polygon;
     }
     writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
-        from: { "/": `./parcel.json` },
-        to: { "/": `./geometry_${geomIndex}.json` },
-    });
     geomIndex++;
   }
 }
@@ -1070,8 +1066,8 @@ function main() {
       : null);
   const key_part = requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
   const key = `property_${key_part}`;
-  const util = utilsData[key];
-  const struct = structuresData[key];
+  const util = utilsData ? utilsData[key] : null;
+  const struct = structuresData ? structuresData[key] : null;
   
   try {
     const seedCsvPath = path.join(".", "input.csv");
