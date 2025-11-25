@@ -999,7 +999,20 @@ function createStructureFiles(seed,parcelIdentifier) {
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-  
+
+  // Check if layouts exist - if not, don't create structure files
+  if (!layoutsData || !parcelIdentifier) {
+    return;
+  }
+
+  const layoutKey = `property_${parcelIdentifier}`;
+  const layouts = layoutsData[layoutKey]?.layouts || [];
+
+  if (layouts.length === 0) {
+    // No layouts exist, don't create structure files
+    return;
+  }
+
   if (structuresData && parcelIdentifier) {
     // console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
@@ -1061,11 +1074,11 @@ function createStructureFiles(seed,parcelIdentifier) {
         window_installation_date: struct?.window_installation_date ?? null
       };
       writeJSON(path.join("data", `structure_${struct.structure_index || idx + 1}.json`), structureOut);
-      
+
       // Create relationship between building layout and structure
       const buildingNumber = struct.building_number || idx + 1;
       const structureIndex = struct.structure_index || idx + 1;
-      
+
       // Find the correct building layout file index
       let buildingLayoutIndex = buildingNumber;
       // console.log("BUILDING_NUMBER",buildingNumber)
@@ -1074,7 +1087,7 @@ function createStructureFiles(seed,parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
         // console.log(layouts)
-        const buildingLayout = layouts.find((layout, layoutIdx) => 
+        const buildingLayout = layouts.find((layout, layoutIdx) =>
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         // console.log("BUILDING_LAYOUT", buildingLayout)
@@ -1082,7 +1095,7 @@ function createStructureFiles(seed,parcelIdentifier) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-      
+
       const relationship = {
         from: { "/": `./layout_${buildingLayoutIndex}.json` },
         to: { "/": `./structure_${structureIndex}.json` }
@@ -1106,8 +1119,20 @@ function createUtilitiesFiles(seed,parcelIdentifier){
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-  
-  
+
+  // Check if layouts exist - if not, don't create utility files
+  if (!layoutsData || !parcelIdentifier) {
+    return;
+  }
+
+  const layoutKey = `property_${parcelIdentifier}`;
+  const layouts = layoutsData[layoutKey]?.layouts || [];
+
+  if (layouts.length === 0) {
+    // No layouts exist, don't create utility files
+    return;
+  }
+
   if (utilitiesData && parcelIdentifier) {
     const key = `property_${parcelIdentifier}`;
     const utilities = utilitiesData[key]?.utilities || [];
@@ -1135,24 +1160,24 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         hvac_unit_issues: util?.hvac_unit_issues ?? null
       };
       writeJSON(path.join("data", `utility_${util.utility_index || idx + 1}.json`), utilityOut);
-      
+
       // Create relationship between building layout and utility
       const buildingNumber = util.building_number || idx + 1;
       const utilityIndex = util.utility_index || idx + 1;
-      
+
       // Find the correct building layout file index
       let buildingLayoutIndex = buildingNumber;
       if (layoutsData && parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
-        const buildingLayout = layouts.find((layout, layoutIdx) => 
+        const buildingLayout = layouts.find((layout, layoutIdx) =>
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-      
+
       const relationship = {
         from: { "/": `./layout_${buildingLayoutIndex}.json` },
         to: { "/": `./utility_${utilityIndex}.json` }
