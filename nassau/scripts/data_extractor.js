@@ -1799,27 +1799,9 @@ function extractExtraFeatures($, parcelIdentifier, seed) {
     }
   });
 
-  if (hasStructureData) {
-    writeJSON(path.join("data", "propertyStructure.json"), structureData);
-    writeJSON(
-      path.join("data", "relationship_property_has_structure.json"),
-      {
-        from: { "/": "./property.json" },
-        to: { "/": "./propertyStructure.json" },
-      }
-    );
-  }
-
-  if (hasUtilityData) {
-    writeJSON(path.join("data", "propertyUtility.json"), utilityData);
-    writeJSON(
-      path.join("data", "relationship_property_has_utility.json"),
-      {
-        from: { "/": "./property.json" },
-        to: { "/": "./propertyUtility.json" },
-      }
-    );
-  }
+  // Structure and utility data from extra features are not written as separate files
+  // Instead, they should be merged into the existing structure/utility files created from structure_data.json and utilities_data.json
+  // The structures and utilities are properly linked to layouts (buildings) in the main flow
 }
 
 function main() {
