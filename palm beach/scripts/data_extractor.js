@@ -10163,20 +10163,21 @@ function hasMinimalNormalizedAddressCoverage(address) {
     return false;
   }
 
-  let coordinateCount = 0;
-  NORMALIZED_ADDRESS_COORDINATE_FIELDS.forEach((field) => {
-    const numeric = parseCoordinate(normalizedSurface[field]);
-    if (Number.isFinite(numeric)) {
-      normalizedSurface[field] = numeric;
-      coordinateCount += 1;
-    } else {
-      normalizedSurface[field] = null;
-    }
-  });
-  if (coordinateCount === 1) {
-    for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
-      normalizedSurface[field] = null;
-    }
+  const hasStrictFields = NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS.every(
+    (field) => {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(normalizedSurface[field]);
+        if (!Number.isFinite(numeric)) {
+          return false;
+        }
+        normalizedSurface[field] = numeric;
+        return true;
+      }
+      return hasMeaningfulAddressValue(normalizedSurface[field]);
+    },
+  );
+  if (!hasStrictFields) {
+    return false;
   }
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
