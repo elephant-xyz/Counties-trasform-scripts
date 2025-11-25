@@ -1675,11 +1675,18 @@ function main() {
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_company.json"), {
-          to: { "/": `./${ownerFiles.companyFiles[0]}` },
-          from: { "/": "./sales_1.json" },
+        // Create relationships for ALL companies
+        ownerFiles.companyFiles.forEach((companyFile, idx) => {
+          const relName = idx === 0
+            ? "relationship_sales_company.json"
+            : `relationship_sales_company_${idx + 1}.json`;
+          writeJson(path.join(dataDir, relName), {
+            to: { "/": `./${companyFile}` },
+            from: { "/": "./sales_1.json" },
+          });
         });
-        if (hasOwnerMailingAddress) {
+        // Mailing address for first company only
+        if (hasOwnerMailingAddress && ownerFiles.companyFiles.length > 0) {
           writeJson(
             path.join(
               "data",
@@ -1692,11 +1699,18 @@ function main() {
           );
         }
       } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
-          to: { "/": `./${ownerFiles.personFiles[0]}` },
-          from: { "/": "./sales_1.json" },
+        // Create relationships for ALL persons
+        ownerFiles.personFiles.forEach((personFile, idx) => {
+          const relName = idx === 0
+            ? "relationship_sales_person.json"
+            : `relationship_sales_person_${idx + 1}.json`;
+          writeJson(path.join(dataDir, relName), {
+            to: { "/": `./${personFile}` },
+            from: { "/": "./sales_1.json" },
+          });
         });
-        if (hasOwnerMailingAddress) {
+        // Mailing address for first person only
+        if (hasOwnerMailingAddress && ownerFiles.personFiles.length > 0) {
           writeJson(
             path.join(
               "data",
