@@ -3859,7 +3859,14 @@ function main() {
 
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, mailingAddress);
+
+  // Owners (persons/companies) - extract first to know if we should write mailing address
+  const sales = extractSales($);
+  const pc = buildPersonsAndCompanies(ownerJSON, parcelId, sales);
+
+  // Only write mailing address if there are persons or companies to link it to
+  const hasOwners = (pc.personCurrentOwners.length > 0 || pc.companyCurrentOwners.length > 0);
+  const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, hasOwners ? mailingAddress : null);
 
   // Lot
   const lot = extractLot($);
@@ -3879,8 +3886,7 @@ function main() {
     }
   });
 
-  // Sales
-  const sales = extractSales($);
+  // Sales (already extracted above)
   sales.forEach((s, idx) => {
     const saleOut = {
       ownership_transfer_date: s.ownership_transfer_date || null,
@@ -3924,8 +3930,7 @@ function main() {
     );
   });
 
-  // Owners (persons/companies)
-  const pc = buildPersonsAndCompanies(ownerJSON, parcelId, sales);
+  // Owners (persons/companies) - already extracted above
   pc.persons.forEach((p, i) =>
     writeJSON(path.join("data", `person_${i + 1}.json`), p),
   );
