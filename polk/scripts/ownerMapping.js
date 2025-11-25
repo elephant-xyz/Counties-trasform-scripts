@@ -94,7 +94,7 @@ const propertyId = extractPropertyId($);
 
 // Company detection keywords (case-insensitive)
 const companyKeywords = [
-  "inc", "llc", "ltd", "corp", "co", "lp", "pllc", "plc", "pc", // Common legal entities
+  "inc", "llc", "ltd", "corp", "co", "lp", "lllp", "pllc", "plc", "pc", // Common legal entities
   "foundation", "alliance", "solutions", "services", "trust", "associates",
   "association", "partners", "group", "holdings", "management", "properties",
   "realty", "development", "partnership", "syndicate", "capital", "investments",
@@ -106,8 +106,8 @@ const companyKeywords = [
   "fraternity", "sorority", "union", "guild", "coalition", "consortium",
   "network", "forum", "council", "committee",
   // Specific legal forms, often with periods
-  "inc.", "llc.", "ltd.", "corp.", "co.", "lp.", "pllc.", "plc.", "pc.",
-  "p.a.", "p.c.", "s.c.", "l.l.p.", "l.l.c.", "p.l.l.c.", "p.l.c.", "p.s.",
+  "inc.", "llc.", "ltd.", "corp.", "co.", "lp.", "lllp.", "pllc.", "plc.", "pc.",
+  "p.a.", "p.c.", "s.c.", "l.l.p.", "l.l.c.", "l.l.l.p.", "p.l.l.c.", "p.l.c.", "p.s.",
   // Common trust/estate indicators
   " tr ", "tr.", "trustee", "executor", "administrator", "guardian", "conservator",
   "receiver", "liquidator", "assignee", "successor", "nominee", "agent",
@@ -258,13 +258,6 @@ function parsePersonName(raw) {
     last_name: cleanPersonText(lastName),
     middle_name: cleanPersonText(middleName),
     suffix_name: suffixName,
-    // Required fields from schema, set to null or placeholder if not extracted
-    birth_date: null,
-    prefix_name: null,
-    us_citizenship_status: null,
-    veteran_status: null,
-    source_http_request: { method: "GET", url: "https://example.com/placeholder" }, // Placeholder
-    request_identifier: `person_${propertyId}_${firstName}_${lastName}_${Date.now()}`, // Unique identifier
   };
 }
 
@@ -284,9 +277,6 @@ function classifyOwner(rawName) {
         owners.push({
           type: "company",
           name: n,
-          // Required fields from schema, set to placeholder
-          source_http_request: { method: "GET", url: "https://example.com/placeholder" }, // Placeholder
-          request_identifier: `company_${propertyId}_${n.replace(/\s/g, '_')}_${Date.now()}`, // Unique identifier
         });
       } else invalids.push({ raw: p, reason: "empty after clean" });
     } else {
