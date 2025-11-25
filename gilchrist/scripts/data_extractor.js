@@ -1248,26 +1248,58 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-  const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
+
+  // Collect owners who will have relationships
+  const relevantPersonMap = new Map();
+  const relevantCompanySet = new Set();
+
+  // Add current owners
+  const currentOwners = ownersByDate["current"] || [];
+  currentOwners.forEach((o) => {
+    if (o.type === "person") {
+      const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+      if (!relevantPersonMap.has(k)) {
+        relevantPersonMap.set(k, {
+          first_name: o.first_name,
+          middle_name: o.middle_name,
+          last_name: o.last_name,
+        });
+      } else {
+        const existing = relevantPersonMap.get(k);
+        if (!existing.middle_name && o.middle_name)
+          existing.middle_name = o.middle_name;
+      }
+    } else if (o.type === "company" && (o.name || "").trim()) {
+      relevantCompanySet.add((o.name || "").trim().toUpperCase());
+    }
+  });
+
+  // Add owners from sales dates (grantees/buyers)
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate.forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
+        if (!relevantPersonMap.has(k)) {
+          relevantPersonMap.set(k, {
             first_name: o.first_name,
             middle_name: o.middle_name,
             last_name: o.last_name,
           });
-        else {
-          const existing = personMap.get(k);
+        } else {
+          const existing = relevantPersonMap.get(k);
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
         }
+      } else if (o.type === "company" && (o.name || "").trim()) {
+        relevantCompanySet.add((o.name || "").trim().toUpperCase());
       }
     });
   });
-  people = Array.from(personMap.values()).map((p) => ({
+
+  // Create person and company files only for owners with relationships
+  people = Array.from(relevantPersonMap.values()).map((p) => ({
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
     last_name: p.last_name ? titleCaseName(p.last_name) : null,
@@ -1281,14 +1313,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim().toUpperCase());
-    });
-  });
-  companies = Array.from(companyNames).map((n) => ({ 
+
+  companies = Array.from(relevantCompanySet).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
