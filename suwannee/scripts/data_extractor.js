@@ -1675,10 +1675,14 @@ function main() {
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_company.json"), {
-          to: { "/": `./${ownerFiles.companyFiles[0]}` },
-          from: { "/": "./sales_1.json" },
-        });
+        // Create relationships for all company files
+        for (let i = 0; i < ownerFiles.companyFiles.length; i++) {
+          const suffix = ownerFiles.companyFiles.length > 1 ? `_${i + 1}` : "";
+          writeJson(path.join(dataDir, `relationship_sales_company${suffix}.json`), {
+            to: { "/": `./${ownerFiles.companyFiles[i]}` },
+            from: { "/": "./sales_1.json" },
+          });
+        }
         if (hasOwnerMailingAddress) {
           writeJson(
             path.join(
@@ -1692,10 +1696,14 @@ function main() {
           );
         }
       } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
-          to: { "/": `./${ownerFiles.personFiles[0]}` },
-          from: { "/": "./sales_1.json" },
-        });
+        // Create relationships for all person files
+        for (let i = 0; i < ownerFiles.personFiles.length; i++) {
+          const suffix = ownerFiles.personFiles.length > 1 ? `_${i + 1}` : "";
+          writeJson(path.join(dataDir, `relationship_sales_person${suffix}.json`), {
+            to: { "/": `./${ownerFiles.personFiles[i]}` },
+            from: { "/": "./sales_1.json" },
+          });
+        }
         if (hasOwnerMailingAddress) {
           writeJson(
             path.join(
