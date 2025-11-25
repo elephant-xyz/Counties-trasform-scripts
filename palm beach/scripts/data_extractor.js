@@ -43154,6 +43154,14 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
     NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
       hasMeaningfulAddressValue(normalizedSurface[field]),
     );
+  const evaluateCountyStrictCoverage = () =>
+    COUNTY_STRICT_NORMALIZED_FIELDS.every((field) =>
+      hasMeaningfulAddressValue(normalizedSurface[field]),
+    );
+  const evaluateCountyRequiredCoverage = () =>
+    COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS.every((field) =>
+      hasMeaningfulAddressValue(normalizedSurface[field]),
+    );
 
   const assignNormalizedFieldIfMissing = (field, value) => {
     if (value === undefined || value === null) return;
@@ -43226,6 +43234,8 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
   };
 
   let normalizedCoverage = evaluateNormalizedCoverage();
+  let hasCountyStrictCoverage = evaluateCountyStrictCoverage();
+  let hasCountyRequiredCoverage = evaluateCountyRequiredCoverage();
   let hasCoordinateCoverage =
     Number.isFinite(normalizedSurface.latitude) &&
     Number.isFinite(normalizedSurface.longitude);
@@ -43235,9 +43245,17 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
       hydrateNormalizedSurfaceFromRaw(raw);
     }
     normalizedCoverage = evaluateNormalizedCoverage();
+    hasCountyStrictCoverage = evaluateCountyStrictCoverage();
+    hasCountyRequiredCoverage = evaluateCountyRequiredCoverage();
   }
 
-  if ((!normalizedCoverage || !hasCoordinateCoverage) && rawCandidates.length) {
+  if (
+    (!normalizedCoverage ||
+      !hasCoordinateCoverage ||
+      !hasCountyStrictCoverage ||
+      !hasCountyRequiredCoverage) &&
+    rawCandidates.length
+  ) {
     const primaryQuery = rawCandidates[0];
     if (primaryQuery) {
       const geocodeResult = await geocodeAddressWithFallbacks({
@@ -43263,6 +43281,8 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
         applyGeocodeEnhancements(normalizedSurface, geocodeResult);
       }
       normalizedCoverage = evaluateNormalizedCoverage();
+      hasCountyStrictCoverage = evaluateCountyStrictCoverage();
+      hasCountyRequiredCoverage = evaluateCountyRequiredCoverage();
       hasCoordinateCoverage =
         Number.isFinite(normalizedSurface.latitude) &&
         Number.isFinite(normalizedSurface.longitude);
@@ -43284,7 +43304,12 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
       : []),
   );
 
-  if (normalizedCoverage && hasCoordinateCoverage) {
+  if (
+    normalizedCoverage &&
+    hasCoordinateCoverage &&
+    hasCountyStrictCoverage &&
+    hasCountyRequiredCoverage
+  ) {
     const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       normalizedOutput[field] =
@@ -43321,21 +43346,30 @@ async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}
     resolveFirstNonEmptyString(rawCandidates),
   );
   if (!resolvedRaw) {
-    const fallbackNormalized = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-    for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      fallbackNormalized[field] =
-        normalizedSurface[field] === undefined ||
-        normalizedSurface[field] === null
-          ? null
-          : normalizedSurface[field];
+    if (
+      normalizedCoverage &&
+      hasCoordinateCoverage &&
+      hasCountyStrictCoverage &&
+      hasCountyRequiredCoverage
+    ) {
+      const fallbackNormalized = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      for (const field of NORMALIZED_ADDRESS_FIELDS) {
+        fallbackNormalized[field] =
+          normalizedSurface[field] === undefined ||
+          normalizedSurface[field] === null
+            ? null
+            : normalizedSurface[field];
+      }
+      if (!fallbackNormalized.postal_code) {
+        fallbackNormalized.plus_four_postal_code = null;
+      }
+      if (fallbackNormalized.state_code && !fallbackNormalized.country_code) {
+        fallbackNormalized.country_code = defaultCountryCode || "US";
+      }
+      persistAddressPayload(fallbackNormalized);
+      return;
     }
-    if (!fallbackNormalized.postal_code) {
-      fallbackNormalized.plus_four_postal_code = null;
-    }
-    if (fallbackNormalized.state_code && !fallbackNormalized.country_code) {
-      fallbackNormalized.country_code = defaultCountryCode || "US";
-    }
-    persistAddressPayload(fallbackNormalized);
+    removeFileIfExists(addressFilePath);
     return;
   }
 
