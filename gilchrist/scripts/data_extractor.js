@@ -1253,26 +1253,28 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const relevantPersonMap = new Map();
   const relevantCompanySet = new Set();
 
-  // Add current owners
-  const currentOwners = ownersByDate["current"] || [];
-  currentOwners.forEach((o) => {
-    if (o.type === "person") {
-      const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-      if (!relevantPersonMap.has(k)) {
-        relevantPersonMap.set(k, {
-          first_name: o.first_name,
-          middle_name: o.middle_name,
-          last_name: o.last_name,
-        });
-      } else {
-        const existing = relevantPersonMap.get(k);
-        if (!existing.middle_name && o.middle_name)
-          existing.middle_name = o.middle_name;
+  // Add current owners only if they will have mailing address relationships
+  if (hasOwnerMailingAddress) {
+    const currentOwners = ownersByDate["current"] || [];
+    currentOwners.forEach((o) => {
+      if (o.type === "person") {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!relevantPersonMap.has(k)) {
+          relevantPersonMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+          });
+        } else {
+          const existing = relevantPersonMap.get(k);
+          if (!existing.middle_name && o.middle_name)
+            existing.middle_name = o.middle_name;
+        }
+      } else if (o.type === "company" && (o.name || "").trim()) {
+        relevantCompanySet.add((o.name || "").trim().toUpperCase());
       }
-    } else if (o.type === "company" && (o.name || "").trim()) {
-      relevantCompanySet.add((o.name || "").trim().toUpperCase());
-    }
-  });
+    });
+  }
 
   // Add owners from sales dates (grantees/buyers)
   sales.forEach((rec) => {
