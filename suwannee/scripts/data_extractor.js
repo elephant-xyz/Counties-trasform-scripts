@@ -1609,6 +1609,13 @@ function main() {
     }
     writeJson(path.join(dataDir, "property.json"), property);
 
+    // Parcel
+    const parcel_identifier = extractParcelId($);
+    const parcel = {
+      parcel_identifier: parcel_identifier
+    };
+    writeJson(path.join(dataDir, "parcel.json"), parcel);
+
     // Address
     const secTwpRng = extractSecTwpRng($);
     const addressText = extractAddressText($);
