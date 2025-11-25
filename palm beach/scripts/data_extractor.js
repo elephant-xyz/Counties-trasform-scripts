@@ -5866,6 +5866,45 @@ function ensureRawVariantFieldSurface(address) {
     surfaced.request_identifier = null;
   }
 
+  // County schema's raw branch still expects the normalized field surface to
+  // exist (even when the source could only supply the raw string). Guarantee
+  // every normalized field is present and normalized to either a trimmed value
+  // or null so the oneOf check can succeed.
+  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
+    if (!Object.prototype.hasOwnProperty.call(surfaced, field)) {
+      surfaced[field] = null;
+      continue;
+    }
+
+    let candidate = surfaced[field];
+    if (candidate === undefined) {
+      surfaced[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      surfaced[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      surfaced[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    surfaced[field] = candidate;
+  }
+
+  if (!surfaced.postal_code) {
+    surfaced.plus_four_postal_code = null;
+  }
+
+  if (surfaced.state_code && !surfaced.country_code) {
+    surfaced.country_code = "US";
+  }
+
   return surfaced;
 }
 
@@ -51013,7 +51052,19 @@ function writeAddressJSONDirect(addressPath, payload) {
   }
   const directory = path.dirname(addressPath);
   ensureDir(directory);
-  const serialized = JSON.stringify(payload, null, 2);
+  let preparedPayload = payload;
+  const isAddressFile =
+    typeof addressPath === "string" &&
+    path.basename(addressPath) === "address.json";
+  if (isAddressFile) {
+    const working =
+      payload && typeof payload === "object"
+        ? deepClone(payload)
+        : payload;
+    preparedPayload =
+      finalizeAddressWritePayload(working) || working;
+  }
+  const serialized = JSON.stringify(preparedPayload, null, 2);
   originalWriteFileSync.call(fs, addressPath, serialized);
 }
 
