@@ -1535,10 +1535,23 @@ function formatName(name) {
   // Allow: letters, spaces, hyphens, apostrophes, commas, periods
   cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
 
+  // After cleaning, check if we have a valid name left
+  cleaned = cleaned.trim().replace(/\s+/g, " ");
+  if (!cleaned || cleaned.length === 0) {
+    return null;
+  }
+
   // Normalize spacing
-  const normalizedSpacing = cleaned.trim().toLowerCase().replace(/\s+/g, " ");
+  const normalizedSpacing = cleaned.toLowerCase();
   const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
   const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
+
+  // Final validation: check if the result matches the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!namePattern.test(sanitized)) {
+    return null;
+  }
+
   return sanitized;
 }
 
@@ -1551,6 +1564,15 @@ function validatePrefix(prefix) {
 function validateSuffix(suffix) {
   const validSuffixes = ["Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM", "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."];
   return validSuffixes.find(s => s.toLowerCase() === suffix.toLowerCase()) || null;
+}
+
+function isValidPersonName(name) {
+  if (!name || typeof name !== 'string' || name.trim() === '') {
+    return false;
+  }
+  // Check if name matches the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return namePattern.test(name.trim());
 }
 
 function parsePerson(name) {
@@ -1593,29 +1615,38 @@ function parsePerson(name) {
 
 function extractOwnerInfo(ownershipHtml) {
   if (!ownershipHtml) return [];
-  
+
   // Remove content within <p></p> tags (addresses)
   const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-  
+
   // Split by <br> tags to get individual owner lines
   const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
     .map(line => line.replace(/<[^>]*>/g, '').trim())
     .filter(line => line.length > 0);
-  
+
   const owners = [];
   const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
-  
+
+  // Legal designations that should be filtered out entirely (not treated as person names)
+  const legalDesignationOnly = /^(L\/E|ET\s+AL|ETAL|LIFE\s+ESTATE|TRUSTEE|TTE)$/i;
+
   for (const line of ownerLines) {
     let cleanName = line.trim();
     if (cleanName && cleanName.length > 2) {
       // Decode HTML entities like &amp; to &
       cleanName = cleanName.replace(/&amp;/g, '&');
-      
+
       // Split by & to handle multiple owners on same line
       const namesParts = cleanName.split(/\s*&\s*/);
-      
+
       for (const namePart of namesParts) {
         const trimmedName = namePart.trim();
+
+        // Skip if this is only a legal designation without an actual name
+        if (legalDesignationOnly.test(trimmedName)) {
+          continue;
+        }
+
         if (trimmedName && trimmedName.length > 2) {
           const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
           owners.push({ name: trimmedName, type: ownerType });
@@ -1623,7 +1654,7 @@ function extractOwnerInfo(ownershipHtml) {
       }
     }
   }
-  
+
   return owners;
 }
 
@@ -2273,10 +2304,20 @@ function main() {
         return;
       }
 
+      // Validate that names match the required pattern
+      if (!isValidPersonName(firstNameRaw) || !isValidPersonName(lastNameRaw)) {
+        console.log(`Skipping person with invalid name pattern: ${owner.name} (firstName: ${firstNameRaw}, lastName: ${lastNameRaw})`);
+        return;
+      }
+
       const firstName = validatePersonName(firstNameRaw, 'first_name');
       const lastName = validatePersonName(lastNameRaw, 'last_name');
       if (middleName != null) {
-        middleName = validatePersonName(middleName, 'middle_name');
+        if (isValidPersonName(middleName)) {
+          middleName = validatePersonName(middleName, 'middle_name');
+        } else {
+          middleName = null;
+        }
       }
 
       const person = {
@@ -2593,10 +2634,27 @@ function main() {
         const firstNameRaw = formatName(owner.first_name);
         const lastNameRaw = formatName(owner.last_name);
         let middleName = formatName(owner.middle_name);
+
+        // Skip if names are invalid after formatting
+        if (!firstNameRaw || !lastNameRaw) {
+          console.log(`Skipping invalid person from owner_data: ${owner.first_name} ${owner.last_name}`);
+          return null;
+        }
+
+        // Validate that names match the required pattern
+        if (!isValidPersonName(firstNameRaw) || !isValidPersonName(lastNameRaw)) {
+          console.log(`Skipping person with invalid name pattern from owner_data: ${firstNameRaw} ${lastNameRaw}`);
+          return null;
+        }
+
         const firstName = validatePersonName(firstNameRaw, 'first_name');
         const lastName = validatePersonName(lastNameRaw, 'last_name');
         if (middleName != null) {
-          middleName = validatePersonName(middleName, 'middle_name');
+          if (isValidPersonName(middleName)) {
+            middleName = validatePersonName(middleName, 'middle_name');
+          } else {
+            middleName = null;
+          }
         }
         const personObj = {
           source_http_request: {
@@ -2647,30 +2705,34 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          const rel = {
-            from: { "/": `./${sref.salesFileName}` },
-            to: { "/": `./${personFile}` },
-          };
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
-            ),
-            rel,
-          );
+          if (personFile) {
+            const rel = {
+              from: { "/": `./${sref.salesFileName}` },
+              to: { "/": `./${personFile}` },
+            };
+            writeJSON(
+              path.join(
+                "data",
+                `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
+              ),
+              rel,
+            );
+          }
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
-          const rel = {
-            from: { "/": `./${sref.salesFileName}` },
-            to: { "/": `./${companyFile}` },
-          };
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_history_${sref.index}_has_company_${j + 1}.json`,
-            ),
-            rel,
-          );
+          if (companyFile) {
+            const rel = {
+              from: { "/": `./${sref.salesFileName}` },
+              to: { "/": `./${companyFile}` },
+            };
+            writeJSON(
+              path.join(
+                "data",
+                `relationship_sales_history_${sref.index}_has_company_${j + 1}.json`,
+              ),
+              rel,
+            );
+          }
         }
       });
     });
@@ -2716,24 +2778,28 @@ function main() {
       currentOwners.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          const rel = {
-            from: { "/": `./${personFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
+          if (personFile) {
+            const rel = {
+              from: { "/": `./${personFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
+              rel,
+            );
+          }
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
-          const rel = {
-            from: { "/": `./${companyFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
+          if (companyFile) {
+            const rel = {
+              from: { "/": `./${companyFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
+              rel,
+            );
+          }
         }
       });
     }
