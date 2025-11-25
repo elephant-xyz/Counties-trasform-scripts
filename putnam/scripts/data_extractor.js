@@ -1757,16 +1757,18 @@ function main() {
             }
           });
         });
-        people = Array.from(personMap.values()).map((p) => ({
-          first_name: p.first_name ? titleCaseName(p.first_name) : null,
-          middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-          last_name: p.last_name ? titleCaseName(p.last_name) : null,
-          birth_date: null,
-          prefix_name: null,
-          suffix_name: null,
-          us_citizenship_status: null,
-          veteran_status: null,
-        }));
+        people = Array.from(personMap.values())
+          .map((p) => ({
+            first_name: p.first_name ? titleCaseName(p.first_name) : null,
+            middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+            last_name: p.last_name ? titleCaseName(p.last_name) : null,
+            birth_date: null,
+            prefix_name: null,
+            suffix_name: null,
+            us_citizenship_status: null,
+            veteran_status: null,
+          }))
+          .filter((p) => p.first_name && p.last_name); // Only include people with both names
         let loopIdx = 1;
         for (const p of people) {
           writeOut(`person_${loopIdx}.json`, p);

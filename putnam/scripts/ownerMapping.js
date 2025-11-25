@@ -72,16 +72,31 @@ function cleanInvalidCharsFromName(raw) {
 
 // Split full personal name into parts
 function splitPersonName(name) {
-  const cleaned = normSpace(name.replace(/&/g, " "));
+  const cleaned = normSpace(name.replace(/[&+]/g, " "));
   const parts = cleaned.split(/\s+/).filter(Boolean);
   if (parts.length < 2) return null;
-  const first_name = cleanInvalidCharsFromName(parts[0]);
-  const last_name = cleanInvalidCharsFromName(parts[parts.length - 1]);
-  const middle = cleanInvalidCharsFromName(parts.slice(1, -1).join(" "));
+
+  // Filter out parts that would become empty after cleaning (like "(JTRS)")
+  const validParts = [];
+  for (const part of parts) {
+    const cleaned = cleanInvalidCharsFromName(part);
+    if (cleaned) {
+      validParts.push(cleaned);
+    }
+  }
+
+  if (validParts.length < 2) return null;
+
+  const first_name = validParts[0];
+  const last_name = validParts[validParts.length - 1];
+  const middle = validParts.slice(1, -1).join(" ");
+
+  // Both first_name and last_name are required - return null if either is missing
+  if (!first_name || !last_name) return null;
   return {
     type: "person",
-    first_name: first_name || null,
-    last_name: last_name || null,
+    first_name: first_name,
+    last_name: last_name,
     middle_name: middle ? middle : null,
   };
 }
@@ -99,7 +114,7 @@ function classifyOwner(raw) {
     return { valid: true, owner: { type: "company", name } };
   }
 
-  if (name.includes("&")) {
+  if (name.includes("&") || name.includes("+")) {
     const person = splitPersonName(name);
     if (person) return { valid: true, owner: person };
     return { valid: false, reason: "ampersand_unparsable" };
