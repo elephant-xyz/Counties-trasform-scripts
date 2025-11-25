@@ -34039,13 +34039,7 @@ function gatherRawAddressCandidatesFromSource(source, accumulator) {
 }
 
 function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
-  if (!addressPath || !fs.existsSync(addressPath)) {
-    return;
-  }
-
-  const payload = readJSONIfExists(addressPath);
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    removeFileIfExists(addressPath);
+  if (!addressPath) {
     return;
   }
 
@@ -34054,16 +34048,57 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
     seedPath = "property_seed.json",
     extraRawCandidates = [],
     requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
   } = options || {};
 
-  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
-  const seedSource = readJSONIfExists(seedPath);
+  const payload = readJSONIfExists(addressPath);
+  const workingPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || {};
+  const seedSource = readJSONIfExists(seedPath) || {};
 
-  const normalizedSurface =
+  const normalizedSources = [];
+  if (workingPayload) normalizedSources.push(workingPayload);
+  if (unnormalizedSource && typeof unnormalizedSource === "object") {
+    normalizedSources.push(unnormalizedSource);
+  }
+  if (seedSource && typeof seedSource === "object") {
+    normalizedSources.push(seedSource);
+  }
+
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const source of normalizedSources) {
+    if (!source || typeof source !== "object") continue;
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (hasMeaningfulAddressValue(normalizedSurface[field])) continue;
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      const value = source[field];
+      if (value === undefined || value === null) continue;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        if (Number.isFinite(numeric)) {
+          normalizedSurface[field] = numeric;
+        }
+        continue;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length) {
+          normalizedSurface[field] = trimmed;
+        }
+        continue;
+      }
+      normalizedSurface[field] = value;
+    }
+  }
+
+  const normalizedProbe =
     ensureAddressOutputFieldPresence &&
     typeof ensureAddressOutputFieldPresence === "function"
-      ? ensureAddressOutputFieldPresence({ ...payload })
-      : { ...payload };
+      ? ensureAddressOutputFieldPresence({ ...normalizedSurface })
+      : { ...normalizedSurface };
 
   const normalizedRequiredFields = Array.from(
     new Set([
@@ -34071,17 +34106,13 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
       ...COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS,
     ]),
   );
-  const normalizedProbe = { ...normalizedSurface };
+
   let normalizedCandidate = null;
-  if (hasNormalizedCountyCoverage(normalizedProbe)) {
+  if (hasNormalizedCountyCoverage({ ...normalizedProbe })) {
     const hasAllStrictFields = normalizedRequiredFields.every((field) => {
       if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
         const numeric = parseCoordinate(normalizedProbe[field]);
-        if (!Number.isFinite(numeric)) {
-          return false;
-        }
-        normalizedProbe[field] = numeric;
-        return true;
+        return Number.isFinite(numeric);
       }
       return hasMeaningfulAddressValue(normalizedProbe[field]);
     });
@@ -34108,10 +34139,11 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
       }
 
       const normalizedRequestIdentifier = resolveRequestIdentifierCandidate(
-        payload.request_identifier,
+        workingPayload && workingPayload.request_identifier,
         normalizedOutput.request_identifier,
-        unnormalizedSource && unnormalizedSource.request_identifier,
-        seedSource && seedSource.request_identifier,
+        unnormalizedSource.request_identifier,
+        seedSource.request_identifier,
+        seedSource.parcel_id,
         ...(Array.isArray(requestIdentifierCandidates)
           ? requestIdentifierCandidates
           : []),
@@ -34128,31 +34160,51 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
   }
 
   const rawCandidates = [];
-  gatherRawAddressCandidatesFromSource(payload, rawCandidates);
+  gatherRawAddressCandidatesFromSource(workingPayload, rawCandidates);
   gatherRawAddressCandidatesFromSource(unnormalizedSource, rawCandidates);
   gatherRawAddressCandidatesFromSource(seedSource, rawCandidates);
+  if (
+    workingPayload &&
+    typeof composeFallbackUnnormalizedAddressFromFields === "function"
+  ) {
+    const fallbackRaw =
+      composeFallbackUnnormalizedAddressFromFields(workingPayload);
+    if (typeof fallbackRaw === "string" && fallbackRaw.trim().length) {
+      rawCandidates.push(fallbackRaw.trim());
+    }
+  }
   if (Array.isArray(extraRawCandidates)) {
     for (const candidate of extraRawCandidates) {
-      if (typeof candidate === "string") {
-        const trimmed = candidate.trim();
-        if (trimmed.length) {
-          rawCandidates.push(trimmed);
-        }
+      if (typeof candidate !== "string") continue;
+      const trimmed = candidate.trim();
+      if (trimmed.length) {
+        rawCandidates.push(trimmed);
       }
     }
   }
 
-  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  const resolvedRaw = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
   if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
     return;
   }
 
   const rawRequestIdentifier = resolveRequestIdentifierCandidate(
-    payload.request_identifier,
-    unnormalizedSource && unnormalizedSource.request_identifier,
-    seedSource && seedSource.request_identifier,
+    workingPayload && workingPayload.request_identifier,
+    unnormalizedSource.request_identifier,
+    seedSource.request_identifier,
+    seedSource.parcel_id,
     ...(Array.isArray(requestIdentifierCandidates)
       ? requestIdentifierCandidates
+      : []),
+  );
+
+  const rawSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    workingPayload && workingPayload.source_http_request,
+    unnormalizedSource.source_http_request,
+    seedSource.source_http_request,
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
       : []),
   );
 
@@ -34163,6 +34215,10 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
 
   rawOutput.request_identifier =
     rawRequestIdentifier === undefined ? null : rawRequestIdentifier;
+
+  if (rawSourceHttpRequest) {
+    rawOutput.source_http_request = rawSourceHttpRequest;
+  }
 
   writeJSON(addressPath, rawOutput);
 }
