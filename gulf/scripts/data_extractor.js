@@ -1773,7 +1773,17 @@ function main() {
   const layoutData = readJSON(path.join("owners", "layout_data.json"));
   const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
   const structureData = readJSON(path.join("owners", "structure_data.json"));
-  const key = `property_${parcelId}`;  
+  const key = `property_${parcelId}`;
+
+  // Create parcel.json file
+  if (parcelId) {
+    const parcelObj = {
+      parcel_identifier: parcelId,
+      request_identifier: parcelId,
+    };
+    writeJSON(path.join("data", "parcel.json"), parcelObj);
+  }
+
   try {
     const seedCsvPath = path.join(".", "input.csv");
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
