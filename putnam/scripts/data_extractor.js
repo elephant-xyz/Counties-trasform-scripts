@@ -1597,15 +1597,21 @@ function main() {
 
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: marketVal || null,
-      property_market_value_amount: marketVal || null,
-      property_building_amount: impVal || null,
-      property_land_amount: landVal || null,
-      property_taxable_value_amount: marketVal || null,
-      monthly_tax_amount: null,
-      period_end_date: null,
-      period_start_date: null,
     };
+
+    // Only include numeric fields if they are valid numbers (including 0)
+    if (typeof marketVal === 'number' && Number.isFinite(marketVal)) {
+      taxObj.property_assessed_value_amount = marketVal;
+      taxObj.property_market_value_amount = marketVal;
+      taxObj.property_taxable_value_amount = marketVal;
+    }
+    if (typeof impVal === 'number' && Number.isFinite(impVal)) {
+      taxObj.property_building_amount = impVal;
+    }
+    if (typeof landVal === 'number' && Number.isFinite(landVal)) {
+      taxObj.property_land_amount = landVal;
+    }
+
     writeOut(`tax_${year}.json`, taxObj);
   }
 
