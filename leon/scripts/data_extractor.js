@@ -1611,6 +1611,16 @@ function main() {
   const unAddr = readJSON(unAddrPath);
   const seed = readJSON(seedPath);
   const parcelId = seed.parcel_id || seed.request_identifier;
+
+  // Create parcel.json file
+  const parcelObj = {
+    parcel_identifier: parcelId ? String(parcelId) : null,
+  };
+  if (seed.request_identifier) {
+    parcelObj.request_identifier = String(seed.request_identifier);
+  }
+  writeJSON(path.join(outDir, "parcel.json"), parcelObj);
+
   try {
     const seedCsvPath = path.join(".", "input.csv");
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
