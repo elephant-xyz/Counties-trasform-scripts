@@ -1356,7 +1356,7 @@ function createGeometryClass(geometryInstances) {
       "polygon": polygon,
     }
     writeOut(`geometry_${geomIndex}.json`, geometry);
-    writeOut(`relationship_parcel_to_geometry_${geomIndex}.json`, {
+    writeOut(`relationship_parcel_has_geometry_${geomIndex}.json`, {
         from: { "/": `./parcel.json` },
         to: { "/": `./geometry_${geomIndex}.json` },
     });
