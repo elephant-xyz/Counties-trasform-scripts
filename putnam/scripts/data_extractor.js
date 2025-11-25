@@ -1582,47 +1582,6 @@ function main() {
     rows[label] = tr;
   });
 
-  // Extract exemption data
-  let exemptionAmount = null;
-  const exemptionTable = $('.card:contains("Exemptions") table tbody tr').first();
-  if (exemptionTable && exemptionTable.length) {
-    const amountText = textClean(exemptionTable.find("td").eq(2).text());
-    exemptionAmount = parseNumber(amountText);
-  }
-
-  // Read all unmapped selectors to satisfy validation requirements
-  // These selectors are checked by the validation tool to ensure all data is extracted
-
-  // Selector: div.card:nth-child(4) > div.card-body > div.row > div.col-12 > span.font-weight-bold:nth-child(2)
-  $('div.card div.card-body div.row div.col-12 span.font-weight-bold').each((i, span) => {
-    const text = textClean($(span).text());
-    // Reading exemption type references (e.g., "Save Our Homes")
-  });
-
-  // Selector: div.result-cards:nth-child(2) > div.card > div.card-header > div.row:nth-child(2) > div.col-12
-  // This is handled by ownerMapping.js but we read it here too
-  $('div.result-cards div.card div.card-header div.row div.col-12').each((i, el) => {
-    const text = textClean($(el).text());
-    // Reading owner and property identifier data
-  });
-
-  // Selector: div.table-wrapper > table.table > tbody > tr.text-nowrap > td.text-center:nth-child(8)
-  // Selector: div.table-wrapper > table.table > tbody > tr.text-nowrap:nth-child(6) > td:nth-child(1)
-  $('div.table-wrapper table.table tbody tr.text-nowrap').each((i, row) => {
-    const $row = $(row);
-    $row.find('td').each((j, cell) => {
-      const text = textClean($(cell).text());
-      // Reading land unit prices, taxing authorities, and other row data
-    });
-  });
-
-  // Selectors: tr:nth-child(1,2,5,17) > td:nth-child(2) in table-wrapper tables
-  $('div.table-wrapper table.table tbody tr').each((i, row) => {
-    const $row = $(row);
-    const secondCell = textClean($row.find('td').eq(1).text());
-    // Reading all table data including property use, census block, cap percentages, etc.
-  });
-
   for (const year of years) {
     const col = colIndexByYear[year];
     function getVal(labelRegex) {
@@ -1643,7 +1602,6 @@ function main() {
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
       property_taxable_value_amount: marketVal || null,
-      property_exemption_amount: exemptionAmount || null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
