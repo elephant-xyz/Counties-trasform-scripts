@@ -953,6 +953,24 @@ function buildLeanRawAddressOutput(rawOutput) {
     minimalOutput.request_identifier = null;
   }
 
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(minimalOutput, field)) {
+      continue;
+    }
+    minimalOutput[field] = null;
+  }
+
+  if (!minimalOutput.postal_code) {
+    minimalOutput.plus_four_postal_code = null;
+  }
+
+  if (
+    minimalOutput.state_code &&
+    !minimalOutput.country_code
+  ) {
+    minimalOutput.country_code = "US";
+  }
+
   return minimalOutput;
 }
 
@@ -5853,15 +5871,7 @@ function ensureRawVariantFieldSurface(address) {
 
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier"];
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-  "latitude",
-  "longitude",
+  ...NORMALIZED_ADDRESS_FIELDS,
 ]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
