@@ -1672,47 +1672,43 @@ function main() {
       parcelDashed,
       parcelFlat,
     );
-    // Relationship sales -> owner (company or person) - create relationships for ALL owners
+    // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
-      // Create relationships for all companies
-      ownerFiles.companyFiles.forEach((companyFile, idx) => {
-        writeJson(path.join(dataDir, `relationship_sales_company_${idx + 1}.json`), {
-          to: { "/": `./${companyFile}` },
+      if (ownerFiles.companyFiles.length > 0) {
+        writeJson(path.join(dataDir, "relationship_sales_company.json"), {
+          to: { "/": `./${ownerFiles.companyFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
         if (hasOwnerMailingAddress) {
           writeJson(
             path.join(
               "data",
-              `relationship_company_has_mailing_address_${idx + 1}.json`,
+              `relationship_company_has_mailing_address.json`,
             ),
             {
-              from: { "/": `./${companyFile}` },
+              from: { "/": `./${ownerFiles.companyFiles[0]}` },
               to: { "/": `./mailing_address.json` },
             },
           );
         }
-      });
-
-      // Create relationships for all persons
-      ownerFiles.personFiles.forEach((personFile, idx) => {
-        writeJson(path.join(dataDir, `relationship_sales_person_${idx + 1}.json`), {
-          to: { "/": `./${personFile}` },
+      } else if (ownerFiles.personFiles.length > 0) {
+        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
+          to: { "/": `./${ownerFiles.personFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
         if (hasOwnerMailingAddress) {
           writeJson(
             path.join(
               "data",
-              `relationship_person_has_mailing_address_${idx + 1}.json`,
+              `relationship_person_has_mailing_address.json`,
             ),
             {
-              from: { "/": `./${personFile}` },
+              from: { "/": `./${ownerFiles.personFiles[0]}` },
               to: { "/": `./mailing_address.json` },
             },
           );
         }
-      });
+      }
     }
 
     // Utilities
