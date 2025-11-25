@@ -159,6 +159,15 @@ function collectOwnerCandidates($) {
     }
   });
 
+  // 4) result-cards (alternative structure): second row is owner
+  $(".result-cards .card .card-header").each((i, hdr) => {
+    const rows = $(hdr).find(".row .col-12");
+    if (rows.length >= 2) {
+      const ownerRow = normSpace($(rows.get(1)).text());
+      if (ownerRow) set.add(ownerRow);
+    }
+  });
+
   // Exclude any text coming from search section or error elements
   const arr = Array.from(set)
     .map(cleanCandidate)
