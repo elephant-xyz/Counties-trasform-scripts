@@ -144,7 +144,9 @@ function finalizeAddressWritePayload(rawPayload) {
   const finalRawOutput = rawOnlyOutput || surfacedOutput;
   const minimalRawOutput =
     buildLeanRawAddressOutput(finalRawOutput) || finalRawOutput;
-  return minimalRawOutput;
+  const terminalRawOutput =
+    enforceRawTerminalSurface(minimalRawOutput) || minimalRawOutput;
+  return terminalRawOutput;
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -2026,6 +2028,39 @@ function collapseAddressToRawOnlySurface(address) {
   return reduceRawAddressToMinimalSurface(address);
 }
 
+function enforceRawTerminalSurface(address) {
+  if (!address || typeof address !== "object") {
+    return null;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return null;
+  }
+
+  const terminal = {
+    unnormalized_address: rawValue,
+  };
+
+  for (const key of Object.keys(address)) {
+    if (key === "unnormalized_address") continue;
+    if (!RAW_ADDRESS_TERMINAL_FIELD_SET.has(key)) {
+      continue;
+    }
+    if (key === "source_http_request" && address[key]) {
+      terminal[key] = deepClone(address[key]);
+      continue;
+    }
+    terminal[key] =
+      address[key] === undefined ? null : address[key];
+  }
+
+  return terminal;
+}
+
 function buildMinimalRawAddressVariant(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -2550,15 +2585,14 @@ function pruneRawAddressFieldsForOutput(address) {
   for (const key of Object.keys(fallbackRaw)) {
     if (
       key === "unnormalized_address" ||
-      RAW_VARIANT_FIELD_WHITELIST_SET.has(key) ||
-      RAW_VARIANT_METADATA_FIELD_SET.has(key)
+      RAW_ADDRESS_TERMINAL_FIELD_SET.has(key)
     ) {
       continue;
     }
     delete fallbackRaw[key];
   }
 
-  for (const field of RAW_VARIANT_FIELD_WHITELIST) {
+  for (const field of RAW_ADDRESS_TERMINAL_FIELD_WHITELIST) {
     if (!Object.prototype.hasOwnProperty.call(fallbackRaw, field)) {
       fallbackRaw[field] = null;
     }
@@ -6405,11 +6439,10 @@ const RAW_ADDRESS_TERMINAL_FIELD_SET = new Set(
   RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
 );
 
-// Raw variants only retain the minimal schema surface expected by County.
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
-  ...RAW_MINIMAL_ADDRESS_FIELDS,
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
-]);
+// Raw variants only retain the minimal schema surface we explicitly whitelist.
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(
+  RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
+);
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
   "city_name",
