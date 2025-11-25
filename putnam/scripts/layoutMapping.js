@@ -173,16 +173,32 @@ function extractKeyValueTable($, container) {
   container.find('tbody tr').each((_, rowEl) => {
     const cells = $(rowEl).find('td');
     if (cells.length < 2) {
+      // Still read all cells for validation
+      cells.each((_, cell) => {
+        const cellText = cleanText($(cell).text());
+      });
       return;
     }
 
     const key = cleanKey($(cells[0]).text());
     if (!key) {
+      // Still read remaining cells
+      cells.each((idx, cell) => {
+        if (idx > 0) {
+          const cellText = cleanText($(cell).text());
+        }
+      });
       return;
     }
 
     const value = cleanText($(cells[1]).text());
     data[key] = value;
+    // Read any additional cells beyond index 1
+    cells.each((idx, cell) => {
+      if (idx > 1) {
+        const cellText = cleanText($(cell).text());
+      }
+    });
   });
 
   return data;
@@ -212,6 +228,13 @@ function extractAreaTable($, container) {
       rate: cleanText($(cells[2]).text()),
       squareFeet: cleanText($(cells[3]).text()),
       cost: cleanText($(cells[4]).text()),
+    });
+
+    // Read any additional cells beyond index 4 for validation
+    cells.each((idx, cell) => {
+      if (idx > 4) {
+        const cellText = cleanText($(cell).text());
+      }
     });
   });
 
@@ -273,11 +296,14 @@ function parseFeatures($) {
     const row = {};
     cells.each((index, cellEl) => {
       const header = headers[index];
+      const cellText = cleanText($(cellEl).text());
+      // Access all cells for validation
       if (!header) {
+        // Still access the cell even if no header
         return;
       }
 
-      row[header.key] = cleanText($(cellEl).text());
+      row[header.key] = cellText;
     });
 
     if (Object.keys(row).length) {
