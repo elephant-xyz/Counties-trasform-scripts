@@ -1271,7 +1271,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+
+  // Collect sale dates to filter which owners to create
+  const saleDates = new Set(sales.map(s => parseDateToISO(s.saleDate)).filter(Boolean));
+
+  // Only create persons that will be used in relationships
+  Object.entries(ownersByDate).forEach(([date, arr]) => {
+    // Include persons from actual sale dates, or "current" if there's a mailing address
+    const shouldInclude = saleDates.has(date) || (date === "current" && hasOwnerMailingAddress);
+    if (!shouldInclude) return;
+
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1304,7 +1313,13 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+
+  // Only create companies that will be used in relationships
+  Object.entries(ownersByDate).forEach(([date, arr]) => {
+    // Include companies from actual sale dates, or "current" if there's a mailing address
+    const shouldInclude = saleDates.has(date) || (date === "current" && hasOwnerMailingAddress);
+    if (!shouldInclude) return;
+
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
