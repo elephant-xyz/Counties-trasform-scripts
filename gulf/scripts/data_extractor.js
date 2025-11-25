@@ -1173,19 +1173,6 @@ function writeProperty($, parcelId) {
     zoning: null,
   };
   writeJSON(path.join("data", "property.json"), property);
-
-  // Create parcel.json file
-  const parcel = {
-    parcel_identifier: parcelId || "",
-    request_identifier: parcelId || null,
-  };
-  writeJSON(path.join("data", "parcel.json"), parcel);
-
-  // Create relationship from property to parcel
-  writeJSON(path.join("data", "relationship_property_parcel.json"), {
-    from: { "/": "./property.json" },
-    to: { "/": "./parcel.json" },
-  });
 }
 
 function writeSalesDeedsFilesAndRelationships($) {
