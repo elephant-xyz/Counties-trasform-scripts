@@ -735,6 +735,10 @@ function stripAddressRequestMetadata(address) {
 
   const projectedRaw = buildRawVariantOneOfPayload(rawSurface);
   if (projectedRaw) {
+    const leanProjected = buildLeanRawAddressOutput(projectedRaw);
+    if (leanProjected) {
+      return leanProjected;
+    }
     return projectedRaw;
   }
 
@@ -924,28 +928,32 @@ function buildLeanRawAddressOutput(rawOutput) {
     return null;
   }
 
-  const paddedOutput = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    ...leanOutput,
+  const minimalOutput = {
+    unnormalized_address: leanOutput.unnormalized_address,
   };
 
-  paddedOutput.unnormalized_address = leanOutput.unnormalized_address;
-
-  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "request_identifier")) {
-    paddedOutput.request_identifier =
-      Object.prototype.hasOwnProperty.call(leanOutput, "request_identifier")
-        ? leanOutput.request_identifier
-        : null;
+  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
+    if (!Object.prototype.hasOwnProperty.call(leanOutput, field)) {
+      continue;
+    }
+    minimalOutput[field] = leanOutput[field];
   }
 
-  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "source_http_request")) {
-    paddedOutput.source_http_request =
-      Object.prototype.hasOwnProperty.call(leanOutput, "source_http_request")
-        ? leanOutput.source_http_request
-        : null;
+  if (Object.prototype.hasOwnProperty.call(leanOutput, "request_identifier")) {
+    minimalOutput.request_identifier = leanOutput.request_identifier;
   }
 
-  return paddedOutput;
+  if (Object.prototype.hasOwnProperty.call(leanOutput, "source_http_request")) {
+    minimalOutput.source_http_request = leanOutput.source_http_request;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(minimalOutput, "request_identifier")
+  ) {
+    minimalOutput.request_identifier = null;
+  }
+
+  return minimalOutput;
 }
 
 function normalizeFullAddressString(value) {
@@ -5844,7 +5852,17 @@ function ensureRawVariantFieldSurface(address) {
 }
 
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier"];
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([...NORMALIZED_ADDRESS_FIELDS]);
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
+  "latitude",
+  "longitude",
+]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
