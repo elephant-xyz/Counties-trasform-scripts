@@ -1640,6 +1640,13 @@ function main() {
   }
   writeJSON(path.join(outDir, "property.json"), propertyObj);
 
+  // Parcel
+  const parcelObj = {
+    parcel_identifier: parcelId ? String(parcelId) : null,
+    request_identifier: parcelId ? String(parcelId) : null,
+  };
+  writeJSON(path.join(outDir, "parcel.json"), parcelObj);
+
     // Address
   const addressText = extractAddressText(leonSummary);
   const mailingAddress = extractOwnerMailingAddress(leonSummary);
