@@ -1597,11 +1597,11 @@ function main() {
 
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: marketVal || null,
-      property_market_value_amount: marketVal || null,
-      property_building_amount: impVal || null,
-      property_land_amount: landVal || null,
-      property_taxable_value_amount: marketVal || null,
+      property_assessed_value_amount: marketVal ?? 0,
+      property_market_value_amount: marketVal ?? 0,
+      property_building_amount: impVal ?? null,
+      property_land_amount: landVal ?? null,
+      property_taxable_value_amount: marketVal ?? 0,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
