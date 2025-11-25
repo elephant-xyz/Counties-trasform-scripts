@@ -89,12 +89,7 @@ function toTitleCase(token) {
   if (!trimmed) return null;
   const upper = trimmed.toUpperCase();
   if (/^(II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|JR|SR|ESQ|CPA|MD|DDS|DMD|DO|PHARMD|MBA|PHD|EDD|DVM)$/.test(upper)) {
-    return upper.replace(/JR|SR|ESQ/, (m) => {
-      if (m === "JR") return "Jr.";
-      if (m === "SR") return "Sr.";
-      if (m === "ESQ") return "Esq.";
-      return m;
-    });
+    return upper.replace(/JR|SR/, (m) => (m === "JR" ? "Jr" : "Sr"));
   }
   return trimmed
     .toLowerCase()
@@ -129,8 +124,8 @@ const NAME_PREFIXES = new Map(
 
 const NAME_SUFFIXES = new Map(
   [
-    ["JR", "Jr."],
-    ["SR", "Sr."],
+    ["JR", "Jr"],
+    ["SR", "Sr"],
     ["II", "II"],
     ["III", "III"],
     ["IV", "IV"],
@@ -141,8 +136,8 @@ const NAME_SUFFIXES = new Map(
     ["IX", "IX"],
     ["X", "X"],
     ["CPA", "CPA"],
-    ["ESQ", "Esq."],
-    ["ESQUIRE", "Esq."],
+    ["ESQ", "Esq"],
+    ["ESQUIRE", "Esq"],
     ["MD", "MD"],
     ["DDS", "DDS"],
     ["DMD", "DMD"],
