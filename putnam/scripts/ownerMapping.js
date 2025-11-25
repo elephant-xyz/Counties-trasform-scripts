@@ -78,15 +78,10 @@ function splitPersonName(name) {
   const first_name = cleanInvalidCharsFromName(parts[0]);
   const last_name = cleanInvalidCharsFromName(parts[parts.length - 1]);
   const middle = cleanInvalidCharsFromName(parts.slice(1, -1).join(" "));
-
-  // Validate that both first_name and last_name are valid (non-empty strings)
-  // Person schema requires both first_name and last_name to be non-null strings
-  if (!first_name || !last_name) return null;
-
   return {
     type: "person",
-    first_name: first_name,
-    last_name: last_name,
+    first_name: first_name || null,
+    last_name: last_name || null,
     middle_name: middle ? middle : null,
   };
 }
