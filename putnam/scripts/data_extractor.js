@@ -1457,13 +1457,95 @@ function main() {
     if (code || desc) zoning = [code, desc].filter(Boolean).join(" ");
   }
 
+  // Extract additional data from summary tables
+  let censusBlock = null;
+  let neighborhood = null;
+  let structuresCount = null;
+  $('div.table-wrapper > table.table > tbody > tr').each((i, tr) => {
+    const cells = $(tr).find('td');
+    if (cells.length >= 2) {
+      const label = textClean(cells.eq(0).text());
+      const value = textClean(cells.eq(1).text());
+      if (/Census Block/i.test(label)) censusBlock = value || null;
+      if (/Neighborhood/i.test(label)) neighborhood = value || null;
+      if (/^Structures:/i.test(label)) structuresCount = parseNumber(value);
+    }
+  });
+
+  // Extract summary values from first table
+  let summaryJustValueLand = null;
+  let summaryOBXFValue = null;
+  let summaryMarketClassified = null;
+  let summaryTotalAcreage = null;
+  $('div.table-wrapper > table.table').first().find('tbody > tr').each((i, tr) => {
+    const cells = $(tr).find('td');
+    if (cells.length >= 2) {
+      const label = textClean(cells.eq(0).text());
+      const value = textClean(cells.eq(1).text());
+      if (/Just Value of Land/i.test(label)) summaryJustValueLand = parseNumber(value);
+      if (/OBXF Value/i.test(label)) summaryOBXFValue = parseNumber(value);
+      if (/Market Classified/i.test(label)) summaryMarketClassified = parseNumber(value);
+      if (/Total Acreage/i.test(label)) summaryTotalAcreage = parseNumber(value);
+    }
+  });
+
+  // Extract Save Our Homes and Cap % data
+  let saveOurHomesLabel = null;
+  let capPercentage = null;
+  $('div.card').each((i, card) => {
+    const $card = $(card);
+    const sohSpan = $card.find('div.card-body > div.row > div.col-12 > span.font-weight-bold').eq(1);
+    if (sohSpan.length && /Save Our Homes/i.test(sohSpan.text())) {
+      saveOurHomesLabel = textClean(sohSpan.text());
+    }
+  });
+
+  // Extract Cap % from cap detail tables
+  $('div.table-wrapper > table.table > tbody > tr').each((i, tr) => {
+    const cells = $(tr).find('td');
+    if (cells.length >= 2) {
+      const label = textClean(cells.eq(0).text());
+      const value = textClean(cells.eq(1).text());
+      if (/Cap %/i.test(label)) {
+        const parsed = parseNumber(value);
+        if (parsed !== null) capPercentage = parsed;
+      }
+    }
+  });
+
+  // Extract land table data
+  let landUnitValue = null;
+  $('div.table-wrapper > table.table > tbody > tr.text-nowrap').each((i, tr) => {
+    const cells = $(tr).find('td');
+    if (cells.length >= 8) {
+      const unitValText = textClean(cells.eq(7).text());
+      const unitVal = parseNumber(unitValText);
+      if (unitVal !== null && landUnitValue === null) {
+        landUnitValue = unitVal;
+      }
+    }
+  });
+
+  // Extract tax district names
+  const taxDistricts = [];
+  $('div.table-wrapper > table.table > tbody > tr').each((i, tr) => {
+    const cells = $(tr).find('td');
+    if (cells.length >= 7) {
+      const firstCell = textClean(cells.eq(0).text());
+      // Check if this looks like a tax district row
+      if (firstCell && !(/Just Value|Improvement|Market|Assessed|Use Code|Structures/i.test(firstCell)) && cells.length === 7) {
+        taxDistricts.push(firstCell);
+      }
+    }
+  });
+
   const propertyOut = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDescription || null,
     property_structure_built_year: yearBuilt || null,
-    property_effective_built_year: yearEffective || null,
     zoning: zoning || null,
   };
+  if (neighborhood) propertyOut.subdivision = neighborhood;
   const landuse = $(
     '.details-card:contains("Summary") table tbody tr',
   )
@@ -1618,6 +1700,10 @@ function main() {
     const unitsText = textClean(landRow.find("td").eq(9).text());
     const units = parseNumber(unitsText);
     if (units != null) lotAcres = units;
+  }
+  // Use summaryTotalAcreage as fallback if lotAcres not found
+  if (lotAcres === null && summaryTotalAcreage !== null) {
+    lotAcres = summaryTotalAcreage;
   }
   const lotObj = {
     lot_type: null,
