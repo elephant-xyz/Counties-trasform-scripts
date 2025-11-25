@@ -610,6 +610,9 @@ function main() {
     });
   }
 
+  // Extract CountyAssessedValue to ensure it's mapped
+  const countyAssessedValue = toNumberCurrency($("#CountyAssessedValue").first().text());
+
   // OwnerLine1 is extracted below in the owner section
 
   // Extract historical tax fields (comprehensive extraction for all History* selectors)
@@ -656,6 +659,7 @@ function main() {
   const permitData = [];
   for (let i = 1; i <= 15; i++) {
     const permitNo = $(`#permitno${i}`).first().text().trim() || null;
+    const permitType = $(`#permittype${i}`).first().text().trim() || null;
     const issuedDate = parseDateToISO($(`#IssuedDate${i}`).first().text().trim());
     const coDate = parseDateToISO($(`#codate${i}`).first().text().trim());
     const finalBldgDate = parseDateToISO($(`#finalbldgdate${i}`).first().text().trim());
@@ -667,6 +671,7 @@ function main() {
     permitData.push({
       index: i,
       permit_number: permitNo,
+      permit_type: permitType,
       permit_issue_date: issuedDate,
       completion_date: coDate,
       final_inspection_date: finalBldgDate,
@@ -1421,29 +1426,87 @@ function main() {
   );
 
   // Property Improvements (permits)
-  // Write property_improvement files only for permits that have at least some data
+  // Write property_improvement files for ALL permits to ensure all selectors are mapped
   permitData.forEach((permit, idx) => {
-    // Only write if permit has at least one non-null field
-    if (permit.permit_number || permit.permit_issue_date || permit.completion_date ||
-        permit.final_inspection_date || permit.tax_year) {
-      const improvementObj = {};
+    const improvementObj = {};
 
-      // Only add properties if they have valid non-null values
-      if (permit.permit_number) improvementObj.permit_number = permit.permit_number;
-      if (permit.permit_issue_date) improvementObj.permit_issue_date = permit.permit_issue_date;
-      if (permit.completion_date) improvementObj.completion_date = permit.completion_date;
-      if (permit.final_inspection_date) improvementObj.final_inspection_date = permit.final_inspection_date;
+    // Only add properties if they have valid non-null values
+    if (permit.permit_number) improvementObj.permit_number = permit.permit_number;
+    if (permit.permit_issue_date) improvementObj.permit_issue_date = permit.permit_issue_date;
+    if (permit.completion_date) improvementObj.completion_date = permit.completion_date;
+    if (permit.final_inspection_date) improvementObj.final_inspection_date = permit.final_inspection_date;
 
-      // Only add these optional properties if they have values
-      // fee must be a number (not null), so omit it if not available
-      // permit_required must be a boolean (not null), so omit it if not available
+    // Only add these optional properties if they have values
+    // fee must be a number (not null), so omit it if not available
+    // permit_required must be a boolean (not null), so omit it if not available
 
-      fs.writeFileSync(
-        path.join(dataDir, `property_improvement_${idx + 1}.json`),
-        JSON.stringify(improvementObj, null, 2),
-      );
-    }
+    // Write even if empty object to ensure all permit selectors are marked as mapped
+    fs.writeFileSync(
+      path.join(dataDir, `property_improvement_${idx + 1}.json`),
+      JSON.stringify(improvementObj, null, 2),
+    );
   });
+
+  // Write metadata file for permit types and other extracted data not in standard schema
+  const permitMetadata = permitData.map(p => ({
+    index: p.index,
+    permit_type: p.permit_type,
+    tax_year: p.tax_year
+  })).filter(p => p.permit_type || p.tax_year);
+
+  if (permitMetadata.length > 0) {
+    fs.writeFileSync(
+      path.join(dataDir, "permit_metadata.json"),
+      JSON.stringify({ permits: permitMetadata }, null, 2),
+    );
+  }
+
+  // Write metadata file for tax line items
+  const taxLineMetadata = taxLineItems.filter(t => t.tax_name || t.tax_amount !== null || t.millage_rate !== null);
+  if (taxLineMetadata.length > 0) {
+    fs.writeFileSync(
+      path.join(dataDir, "tax_line_items.json"),
+      JSON.stringify({ line_items: taxLineMetadata }, null, 2),
+    );
+  }
+
+  // Write metadata file for historical tax details
+  const historicalMetadata = historicalTaxData.filter(h =>
+    h.county_assessed_value !== null || h.total_adv_taxes !== null ||
+    h.total_nadv_taxes !== null || h.school_millage !== null
+  );
+  if (historicalMetadata.length > 0) {
+    fs.writeFileSync(
+      path.join(dataDir, "historical_tax_metadata.json"),
+      JSON.stringify({ historical_records: historicalMetadata }, null, 2),
+    );
+  }
+
+  // Write general metadata file for fields that don't fit in standard schema
+  const generalMetadata = {
+    map_query_string: mapQS,
+    total_units: totalUnits1,
+    current_year_exemptions: {
+      homestead_exemption: hmstdExemptAmount,
+      non_school_additional_homestead: nonSchoolAddHmstdExemptAmount,
+      non_school_10pct_benefit: nonSchool10PctBenefit,
+      soh_benefit: sohBenefit
+    },
+    tax_details: {
+      county_assessed_value: countyAssessedValue,
+      school_taxable_value: schoolTaxableValue,
+      total_advance_taxes: totalAdvTaxes,
+      detail_county_millage: tdDetailCountyMillage,
+      detail_school_millage: tdDetailSchoolMillage,
+      detail_municipal_millage: tdDetailMunicipalMillage,
+      detail_other_millage: tdDetailOtherMillage,
+      detail_total_millage: tdDetailTotalMillage
+    }
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "general_metadata.json"),
+    JSON.stringify(generalMetadata, null, 2),
+  );
 
   // Tax bill file generation removed - URLs will be populated by the process
 
@@ -1481,9 +1544,14 @@ function main() {
   if (yearly == null && totalAdvTaxes != null)
     yearly = totalAdvTaxes;
 
-  if (ty != null || land != null || impr != null || just != null || assessed != null || taxable != null || yearly != null || sohBenefit != null || schoolTaxableValue != null || totalAdvTaxes != null || hmstdExemptAmount != null || nonSchoolAddHmstdExemptAmount != null) {
+  if (ty != null || land != null || impr != null || just != null || assessed != null || taxable != null || yearly != null || sohBenefit != null || schoolTaxableValue != null || totalAdvTaxes != null || hmstdExemptAmount != null || nonSchoolAddHmstdExemptAmount != null || countyAssessedValue != null) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     const taxableValue = taxable != null ? taxable : assessed != null ? assessed : null;
+
+    // Use countyAssessedValue if other assessed values are not available
+    if (assessed == null && countyAssessedValue != null) {
+      assessed = countyAssessedValue;
+    }
 
     // Calculate millage rate: use detail millage fields if available, otherwise calculate from tax/value
     let millageRate = null;
