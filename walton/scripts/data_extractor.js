@@ -1083,21 +1083,14 @@ function createStructureFiles(seed,parcelIdentifier) {
         }
       }
       
-      // Only create relationship if the layout actually exists
-      if (layoutsData && parcelIdentifier) {
-        const key = `property_${parcelIdentifier}`;
-        const layouts = layoutsData[key]?.layouts || [];
-        if (layouts.length > 0) {
-          const relationship = {
-            from: { "/": `./layout_${buildingLayoutIndex}.json` },
-            to: { "/": `./structure_${structureIndex}.json` }
-          };
-          writeJSON(
-            path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-            relationship
-          );
-        }
-      }
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./structure_${structureIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        relationship
+      );
     });
   }
 
@@ -1160,21 +1153,14 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         }
       }
       
-      // Only create relationship if the layout actually exists
-      if (layoutsData && parcelIdentifier) {
-        const key = `property_${parcelIdentifier}`;
-        const layouts = layoutsData[key]?.layouts || [];
-        if (layouts.length > 0) {
-          const relationship = {
-            from: { "/": `./layout_${buildingLayoutIndex}.json` },
-            to: { "/": `./utility_${utilityIndex}.json` }
-          };
-          writeJSON(
-            path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-            relationship
-          );
-        }
-      }
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./utility_${utilityIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        relationship
+      );
     });
   }
 
