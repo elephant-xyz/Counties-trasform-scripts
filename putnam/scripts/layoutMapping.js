@@ -26,7 +26,7 @@ class MultiCounter {
    */
   increment(key, step = 1) {
     if (typeof step !== 'number' || step <= 0) {
-      step = 1; // Use default step if invalid
+      throw new Error("Increment step must be a positive number.");
     }
     const currentCount = this.counts.get(key) || 0;
     this.counts.set(key, currentCount + step);
@@ -40,7 +40,7 @@ class MultiCounter {
    */
   decrement(key, step = 1) {
     if (typeof step !== 'number' || step <= 0) {
-      step = 1; // Use default step if invalid
+      throw new Error("Decrement step must be a positive number.");
     }
     const currentCount = this.counts.get(key) || 0;
     this.counts.set(key, currentCount - step);
@@ -53,7 +53,7 @@ class MultiCounter {
    */
   set(key, value) {
     if (typeof value !== 'number') {
-      value = 0; // Use default value if invalid
+      throw new Error("Count value must be a number.");
     }
     this.counts.set(key, value);
   }
