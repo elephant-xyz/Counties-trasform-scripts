@@ -27448,6 +27448,249 @@ function deriveNormalizedAddressFieldsFromRaw(raw) {
   return result;
 }
 
+function extractLotAndBlock(legalDescription) {
+  if (typeof legalDescription !== "string") {
+    return { block: null, lot: null };
+  }
+
+  const normalized = legalDescription.toUpperCase();
+  const blockMatch = normalized.match(/\bBLOCK\s+([A-Z0-9-]+)/);
+  const lotMatch = normalized.match(/\bLOT\s+([A-Z0-9-]+)/);
+  return {
+    block: blockMatch ? blockMatch[1] : null,
+    lot: lotMatch ? lotMatch[1] : null,
+  };
+}
+
+function enforceFinalNormalizedAddressPayload(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = null,
+    seedPath = null,
+    propertyPath = null,
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const currentPayload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource =
+    (unnormalizedPath && readJSONIfExists(unnormalizedPath)) || {};
+  const seedSource = (seedPath && readJSONIfExists(seedPath)) || {};
+  const propertySource =
+    propertyPath && fs.existsSync(propertyPath)
+      ? readJSONIfExists(propertyPath)
+      : null;
+
+  const normalized = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  const normalizedFieldSet = new Set(NORMALIZED_ADDRESS_FIELDS);
+  const assignField = (field, value) => {
+    if (!normalizedFieldSet.has(field)) return;
+    const sanitized = sanitizeAddressFieldValue
+      ? sanitizeAddressFieldValue(field, value)
+      : value;
+    if (sanitized === undefined) return;
+    if (sanitized === null) {
+      normalized[field] = null;
+      return;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      normalized[field] = trimmed.length ? trimmed : normalized[field];
+      return;
+    }
+    normalized[field] = sanitized;
+  };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(currentPayload, field)) {
+      assignField(field, currentPayload[field]);
+    }
+  }
+
+  const unnormalizedCandidates = [
+    currentPayload.unnormalized_address,
+    currentPayload.full_address,
+    unnormalizedSource.unnormalized_address,
+    unnormalizedSource.full_address,
+    unnormalizedSource.site_address,
+    unnormalizedSource.address,
+    unnormalizedSource.location_address,
+    unnormalizedSource.raw_address,
+  ];
+  if (
+    propertySource &&
+    typeof propertySource.situs_address === "string"
+  ) {
+    unnormalizedCandidates.push(propertySource.situs_address);
+  }
+  const resolvedUnnormalized =
+    resolveFirstNonEmptyString(unnormalizedCandidates);
+
+  const derivedFromRaw =
+    resolvedUnnormalized &&
+    deriveNormalizedAddressFieldsFromRaw(resolvedUnnormalized);
+  if (resolvedUnnormalized) {
+    normalized.unnormalized_address = resolvedUnnormalized;
+  } else if (
+    Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+  ) {
+    normalized.unnormalized_address = null;
+  }
+
+  if (derivedFromRaw && typeof derivedFromRaw === "object") {
+    for (const [field, value] of Object.entries(derivedFromRaw)) {
+      assignField(field, value);
+    }
+  }
+
+  if (normalized.city_name) {
+    normalized.city_name = normalized.city_name.toUpperCase();
+  }
+  if (!normalized.municipality_name && normalized.city_name) {
+    normalized.municipality_name = normalized.city_name;
+  }
+
+  const countyCandidates = [
+    currentPayload.county_name,
+    unnormalizedSource.county_name,
+    unnormalizedSource.county_jurisdiction,
+    seedSource.county_name,
+    defaultCountyName,
+  ];
+  const resolvedCounty = resolveFirstNonEmptyString(countyCandidates);
+  if (resolvedCounty) {
+    normalized.county_name = titleCaseCounty
+      ? titleCaseCounty(resolvedCounty)
+      : resolvedCounty;
+  }
+
+  const stateCandidates = [
+    normalized.state_code,
+    derivedFromRaw && derivedFromRaw.state_code,
+    unnormalizedSource.state_code,
+    seedSource.state_code,
+    defaultStateCode,
+  ].filter(Boolean);
+  const resolvedState = resolveFirstNonEmptyString(stateCandidates);
+  if (resolvedState) {
+    normalized.state_code = resolvedState.toUpperCase();
+  } else if (!normalized.state_code) {
+    normalized.state_code = defaultStateCode || null;
+  }
+
+  if (normalized.state_code && !normalized.country_code) {
+    normalized.country_code = defaultCountryCode || "US";
+  } else if (!normalized.country_code && defaultCountryCode) {
+    normalized.country_code = defaultCountryCode;
+  }
+
+  const coordinateSources = [];
+  const pushCoordinateSource = (source) => {
+    if (!source || typeof source !== "object") return;
+    if (
+      Object.prototype.hasOwnProperty.call(source, "latitude") ||
+      Object.prototype.hasOwnProperty.call(source, "longitude")
+    ) {
+      coordinateSources.push({
+        latitude: source.latitude,
+        longitude: source.longitude,
+      });
+    }
+  };
+  [currentPayload, unnormalizedSource, seedSource].forEach(pushCoordinateSource);
+  const resolvedCoordinates = resolveCoordinateFromCandidates(
+    coordinateSources,
+  );
+  normalized.latitude = resolvedCoordinates
+    ? resolvedCoordinates.latitude
+    : null;
+  normalized.longitude = resolvedCoordinates
+    ? resolvedCoordinates.longitude
+    : null;
+
+  if (!normalized.postal_code) {
+    const postalCandidates = [
+      derivedFromRaw && derivedFromRaw.postal_code,
+      unnormalizedSource.postal_code,
+      seedSource.postal_code,
+    ];
+    const fallbackPostal = resolveFieldFromCandidates
+      ? resolveFieldFromCandidates("postal_code", postalCandidates)
+      : resolveFirstNonEmptyString(postalCandidates);
+    if (fallbackPostal) {
+      normalized.postal_code = fallbackPostal;
+    }
+  }
+
+  if (!normalized.plus_four_postal_code) {
+    const plus4Candidates = [
+      derivedFromRaw && derivedFromRaw.plus_four_postal_code,
+      unnormalizedSource.plus_four_postal_code,
+      seedSource.plus_four_postal_code,
+    ];
+    const resolvedPlusFour = resolveFieldFromCandidates
+      ? resolveFieldFromCandidates("plus_four_postal_code", plus4Candidates)
+      : resolveFirstNonEmptyString(plus4Candidates);
+    if (resolvedPlusFour) {
+      normalized.plus_four_postal_code = resolvedPlusFour;
+    }
+  }
+
+  if (!normalized.postal_code) {
+    normalized.plus_four_postal_code = null;
+  }
+
+  if (propertySource && propertySource.property_legal_description_text) {
+    const { block, lot } = extractLotAndBlock(
+      propertySource.property_legal_description_text,
+    );
+    if (block && !normalized.block) {
+      normalized.block = block;
+    }
+    if (lot && !normalized.lot) {
+      normalized.lot = lot;
+    }
+  }
+
+  const requestIdentifier = safeNullIfEmpty(
+    currentPayload.request_identifier ||
+      unnormalizedSource.request_identifier ||
+      seedSource.request_identifier ||
+      seedSource.parcel_id,
+  );
+  const preparedSource = prepareSourceHttpRequest(
+    currentPayload.source_http_request ||
+      unnormalizedSource.source_http_request ||
+      seedSource.source_http_request,
+  );
+
+  const finalPayload = {
+    ...normalized,
+    request_identifier: requestIdentifier ?? null,
+  };
+  if (preparedSource) {
+    finalPayload.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(finalPayload, "source_http_request")
+  ) {
+    delete finalPayload.source_http_request;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(finalPayload, "__force_raw_variant")) {
+    delete finalPayload.__force_raw_variant;
+  }
+
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    JSON.stringify(finalPayload, null, 2),
+  );
+}
+
 function enforceStreetComponentsFromRaw(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -51661,6 +51904,24 @@ async function run() {
       "Failed to enforce raw address fallback and null relationships:",
       error,
     );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceFinalNormalizedAddressPayload(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      propertyPath: path.join(dataDir, "property.json"),
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error("Failed to enforce normalized address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
