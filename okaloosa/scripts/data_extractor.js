@@ -1624,7 +1624,7 @@ function titleCaseName(s) {
     .join(" ");
 }
 
-function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress) {
+function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress, mailingAddress) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
@@ -1721,46 +1721,54 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         }
       });
   });
-  if (hasOwnerMailingAddress) {
+  if (hasOwnerMailingAddress && mailingAddress) {
     const currentOwner = ownersByDate["current"] || [];
-    relPersonCounter = 0;
-    relCompanyCounter = 0;
-    currentOwner
-    .filter((o) => o.type === "person")
-    .forEach((o) => {
-      const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-      if (pIdx) {
-        relPersonCounter++;
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_person_has_mailing_address_${relPersonCounter}.json`,
-          ),
-          {
-            from: { "/": `./person_${pIdx}.json` },
-            to: { "/": `./mailing_address.json` },
-          },
-        );
-      }
-    });
-    currentOwner
-    .filter((o) => o.type === "company")
-    .forEach((o) => {
-      const cIdx = findCompanyIndexByName(o.name);
-      if (cIdx) {
-        relCompanyCounter++;
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_company_has_mailing_address_${relCompanyCounter}.json`,
-          ),
-          {
-            from: { "/": `./company_${cIdx}.json` },
-            to: { "/": `./mailing_address.json` },
-          },
-        );
-      }
-    });
+    if (currentOwner && currentOwner.length > 0) {
+      // Only create mailing_address.json if there are current owners to link to it
+      const mailingAddressObj = {
+        unnormalized_address: mailingAddress,
+      };
+      writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+
+      relPersonCounter = 0;
+      relCompanyCounter = 0;
+      currentOwner
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+        if (pIdx) {
+          relPersonCounter++;
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_person_has_mailing_address_${relPersonCounter}.json`,
+            ),
+            {
+              from: { "/": `./person_${pIdx}.json` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
+        }
+      });
+      currentOwner
+      .filter((o) => o.type === "company")
+      .forEach((o) => {
+        const cIdx = findCompanyIndexByName(o.name);
+        if (cIdx) {
+          relCompanyCounter++;
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_company_has_mailing_address_${relCompanyCounter}.json`,
+            ),
+            {
+              from: { "/": `./company_${cIdx}.json` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
+        }
+      });
+    }
   }
 }
 
@@ -1910,10 +1918,8 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   }
   const county_name = inputCounty || null;
   if (mailingAddress) {
-    const mailingAddressObj = {
-      unnormalized_address: mailingAddress,
-    };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+    // Don't create mailing_address.json here - it will be created in writePersonCompaniesSalesRelationships
+    // only if there are owners to link to it
     hasOwnerMailingAddress = true;
   }
   if (siteAddress) {
@@ -2267,7 +2273,7 @@ function main() {
   const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress);
 
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
+    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress, mailingAddress);
     // Layout extraction from owners/layout_data.json
     if (layoutData) {
       const lset =
