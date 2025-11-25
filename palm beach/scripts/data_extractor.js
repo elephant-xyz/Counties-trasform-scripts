@@ -51374,6 +51374,10 @@ function buildNormalizedAddressCandidate(addressPayload) {
     return null;
   }
 
+  if (!hasStrictNormalizedAddressCoverage(normalizedOutput)) {
+    return null;
+  }
+
   if (
     Object.prototype.hasOwnProperty.call(
       normalizedOutput,
