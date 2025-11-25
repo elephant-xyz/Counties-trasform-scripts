@@ -1411,47 +1411,25 @@ function main() {
 
   // Property Improvements (permits)
   permitData.forEach((permit, idx) => {
-    const improvementObj = {
-      permit_number: permit.permit_number,
-      permit_issue_date: permit.permit_issue_date,
-      completion_date: permit.completion_date,
-      final_inspection_date: permit.final_inspection_date,
-      application_received_date: null,
-      fee: null,
-      improvement_action: null,
-      improvement_status: null,
-      improvement_type: null,
-      is_disaster_recovery: null,
-      is_owner_builder: null,
-      permit_close_date: null,
-      permit_required: null,
-      private_provider_inspections: null,
-      private_provider_plan_review: null,
-      contractor_type: null,
-    };
+    const improvementObj = {};
+
+    // Only add properties if they have valid non-null values
+    if (permit.permit_number) improvementObj.permit_number = permit.permit_number;
+    if (permit.permit_issue_date) improvementObj.permit_issue_date = permit.permit_issue_date;
+    if (permit.completion_date) improvementObj.completion_date = permit.completion_date;
+    if (permit.final_inspection_date) improvementObj.final_inspection_date = permit.final_inspection_date;
+
+    // Only add these optional properties if they have values
+    // fee must be a number (not null), so omit it if not available
+    // permit_required must be a boolean (not null), so omit it if not available
+
     fs.writeFileSync(
       path.join(dataDir, `property_improvement_${idx + 1}.json`),
       JSON.stringify(improvementObj, null, 2),
     );
   });
 
-  // Write tax bill links as file records if they exist
-  const taxBillLinks = [taxBillLink1, taxBillLink2, taxBillLink3, taxBillLink4, taxBillMainLink].filter(Boolean);
-  taxBillLinks.forEach((link, idx) => {
-    if (link) {
-      const taxBillFileObj = {
-        file_format: null,
-        name: link,
-        original_url: null,
-        ipfs_url: null,
-        document_type: "TaxBill",
-      };
-      fs.writeFileSync(
-        path.join(dataDir, `tax_bill_file_${idx + 1}.json`),
-        JSON.stringify(taxBillFileObj, null, 2),
-      );
-    }
-  });
+  // Tax bill file generation removed - URLs will be populated by the process
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
