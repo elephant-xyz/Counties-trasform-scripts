@@ -1457,16 +1457,6 @@ function main() {
     if (code || desc) zoning = [code, desc].filter(Boolean).join(" ");
   }
 
-  // Extract census block and other property details from Summary section
-  let censusBlock = null;
-  $('.details-card:contains("Summary") table tbody tr').each((i, tr) => {
-    const label = textClean($(tr).find('td.row-heading').text());
-    const value = textClean($(tr).find('td').eq(1).text());
-    if (/Census Block/i.test(label)) {
-      censusBlock = value || null;
-    }
-  });
-
   const propertyOut = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDescription || null,
@@ -1592,61 +1582,6 @@ function main() {
     rows[label] = tr;
   });
 
-  // Extract cap and exemption data from Value section
-  let capPercentage = null;
-  let capResetYear = null;
-  let deferredValue = null;
-  let priorOwnerPercent = null;
-  let capAdditions = null;
-
-  $('#details-Value .card .table-wrapper table tbody tr').each((i, tr) => {
-    const label = textClean($(tr).find('td.row-heading').text());
-    const value = textClean($(tr).find('td').eq(1).text());
-
-    if (/^Cap %:$/i.test(label)) {
-      const parsed = parseNumber(value);
-      if (parsed != null && capPercentage === null) capPercentage = parsed;
-    }
-    if (/Cap Reset Year/i.test(label)) {
-      const parsed = parseNumber(value);
-      if (parsed != null && capResetYear === null) capResetYear = parsed;
-    }
-    if (/Deferred Value/i.test(label)) {
-      const parsed = parseNumber(value);
-      if (parsed != null && deferredValue === null) deferredValue = parsed;
-    }
-    if (/Prior Owner %/i.test(label)) {
-      const parsed = parseNumber(value);
-      if (parsed != null && priorOwnerPercent === null) priorOwnerPercent = parsed;
-    }
-    if (/^Additions:$/i.test(label)) {
-      const parsed = parseNumber(value);
-      if (parsed != null && capAdditions === null) capAdditions = parsed;
-    }
-  });
-
-  // Extract exemption type text (e.g., "Save Our Homes")
-  let exemptionType = null;
-  $('#details-Value .card:contains("Deferred Value") .card-body .font-weight-bold.font-italic').each((i, el) => {
-    const text = textClean($(el).text());
-    if (text && text.length > 0 && !exemptionType) {
-      exemptionType = text;
-    }
-  });
-
-  // Extract taxing district information
-  const taxingDistricts = [];
-  $('#details-Value .card:contains("Current Taxes") table tbody tr.text-nowrap').each((i, tr) => {
-    const districtName = textClean($(tr).find('td').eq(0).text());
-    const taxableValue = parseNumber(textClean($(tr).find('td.text-center').eq(0).text()));
-    if (districtName && districtName.length > 0) {
-      taxingDistricts.push({
-        name: districtName,
-        taxable_value: taxableValue
-      });
-    }
-  });
-
   for (const year of years) {
     const col = colIndexByYear[year];
     function getVal(labelRegex) {
@@ -1659,8 +1594,6 @@ function main() {
     const landVal = getVal(/Just Value of Land/i);
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
-    const marketClassified = getVal(/Market Classified/i);
-    const marketAdjusted = getVal(/Market Adjusted/i);
 
     const taxObj = {
       tax_year: year,
@@ -1678,28 +1611,16 @@ function main() {
 
   // LOT from Land
   let lotAcres = null;
-  let landUseDescription = null;
-  let unitPrice = null;
   const landRow = $(
     '#details-Land .card:contains("Land") table tbody tr',
   ).first();
   if (landRow && landRow.length) {
-    // Extract land use description (column 2)
-    const landUseText = textClean(landRow.find("td").eq(1).text());
-    if (landUseText) landUseDescription = landUseText;
-
-    // Extract unit price (column 8)
-    const unitPriceText = textClean(landRow.find("td").eq(7).text());
-    const parsedUnitPrice = parseNumber(unitPriceText);
-    if (parsedUnitPrice != null) unitPrice = parsedUnitPrice;
-
-    // Extract units/acres (column 10)
     const unitsText = textClean(landRow.find("td").eq(9).text());
     const units = parseNumber(unitsText);
     if (units != null) lotAcres = units;
   }
   const lotObj = {
-    lot_type: landUseDescription || null,
+    lot_type: null,
     lot_length_feet: null,
     lot_width_feet: null,
     lot_area_sqft: (lotAcres != null && lotAcres > 0) ? Math.round(lotAcres * 43560) : null,
