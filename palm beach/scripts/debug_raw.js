@@ -2767,10 +2767,6 @@ function composeFallbackUnnormalizedAddressFromFields(address) {
       : unitSegment;
   }
 
-  if (!streetLine.length) {
-    return null;
-  }
-
   const localitySegments = [];
   const city = normalize(address.city_name) || normalize(address.municipality_name);
   if (city) {
@@ -2800,9 +2796,66 @@ function composeFallbackUnnormalizedAddressFromFields(address) {
     }
   }
 
-  const parts = [streetLine];
+  const parts = [];
+  if (streetLine.length) {
+    parts.push(streetLine);
+  }
   if (localitySegments.length) {
     parts.push(localitySegments.join(", "));
+  }
+
+  if (!parts.length) {
+    const fallbackLocality = [
+      normalize(address.city_name) || normalize(address.municipality_name),
+      stateCode,
+      postalCode,
+    ].filter(Boolean);
+    if (fallbackLocality.length) {
+      parts.push(fallbackLocality.join(", "));
+    }
+  }
+
+  if (!parts.length) {
+    const county = normalize(address.county_name);
+    const fallbackState = stateCode || normalize(address.state_code);
+    const fallbackCountry = normalize(address.country_code);
+    const regionalSegments = [county, fallbackState, fallbackCountry].filter(Boolean);
+    if (regionalSegments.length) {
+      parts.push(regionalSegments.join(", "));
+    }
+  }
+
+  if (!parts.length) {
+    const township = normalize(address.township);
+    const range = normalize(address.range);
+    const section = normalize(address.section);
+    const block = normalize(address.block);
+    const lot = normalize(address.lot);
+
+    const legalSegments = [];
+    const trs = [township && `T${township}`, range && `R${range}`, section && `S${section}`]
+      .filter(Boolean)
+      .join(" ");
+    if (trs.length) {
+      legalSegments.push(trs);
+    }
+    if (block) {
+      legalSegments.push(`Block ${block}`);
+    }
+    if (lot) {
+      legalSegments.push(`Lot ${lot}`);
+    }
+
+    if (legalSegments.length) {
+      parts.push(legalSegments.join(", "));
+    }
+  }
+
+  if (!parts.length) {
+    const fallbackRoute = normalize(address.route_number);
+    if (fallbackRoute) {
+      parts.push(fallbackRoute);
+    }
   }
 
   const candidate = parts.join(", ").replace(/\s+/g, " ").trim();
