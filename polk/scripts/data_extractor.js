@@ -3970,6 +3970,9 @@ function main() {
     if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
   });
 
+  // Track which sales have been linked to avoid duplicates
+  const salesLinked = new Set();
+
   sales.forEach((s, idx) => {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
@@ -3982,6 +3985,7 @@ function main() {
         path.join("data", `relationship_sales_company_${idx + 1}.json`),
         rel,
       );
+      salesLinked.add(idx + 1);
     } else {
       // try direct or swapped person match
       let toPath = null;
@@ -4006,9 +4010,101 @@ function main() {
           path.join("data", `relationship_sales_person_${idx + 1}.json`),
           rel,
         );
+        salesLinked.add(idx + 1);
       }
     }
   });
+
+  // Date-based matching: link sales to persons based on owner_by_date
+  if (ownerJSON && ownerJSON[key] && ownerJSON[key].owners_by_date) {
+    const ownersByDate = ownerJSON[key].owners_by_date;
+    let relCounter = sales.length + 1;
+
+    // Build a map of dates to sales indices
+    const salesByDate = new Map();
+    sales.forEach((s, idx) => {
+      if (s.ownership_transfer_date) {
+        salesByDate.set(s.ownership_transfer_date, idx + 1);
+      }
+    });
+
+    // For each date in owners_by_date, link to corresponding sale
+    Object.entries(ownersByDate).forEach(([dateKey, owners]) => {
+      if (dateKey === "current") return;
+      const saleIdx = salesByDate.get(dateKey);
+      if (!saleIdx) return;
+
+      (owners || []).forEach((owner) => {
+        if (owner.type === "person") {
+          const firstName = toTitleCase(owner.first_name);
+          const middleName = owner.middle_name ? toTitleCase(owner.middle_name) : null;
+          const lastName = toTitleCase(owner.last_name);
+          const personKey = `${firstName}|${middleName || ""}|${lastName}`;
+          const personIdx = pc.personIndexByKey.get(personKey);
+
+          if (personIdx) {
+            // Check if this relationship already exists
+            const relPath = path.join("data", `relationship_sales_person_${relCounter}.json`);
+            const relExists = fs.existsSync(relPath) ||
+                            Array.from({length: sales.length}, (_, i) => i + 1)
+                              .some(i => {
+                                const existingRelPath = path.join("data", `relationship_sales_person_${i}.json`);
+                                if (fs.existsSync(existingRelPath)) {
+                                  const existingRel = readJSON(existingRelPath);
+                                  return existingRel &&
+                                         existingRel.from && existingRel.from["/"] === `./sales_${saleIdx}.json` &&
+                                         existingRel.to && existingRel.to["/"] === `./person_${personIdx}.json`;
+                                }
+                                return false;
+                              });
+
+            if (!relExists) {
+              const rel = {
+                to: { "/": `./person_${personIdx}.json` },
+                from: { "/": `./sales_${saleIdx}.json` },
+              };
+              writeJSON(
+                path.join("data", `relationship_sales_person_${relCounter}.json`),
+                rel,
+              );
+              relCounter++;
+            }
+          }
+        } else if (owner.type === "company") {
+          const name = (owner.name || "").trim();
+          const companyIdx = pc.companyIndexByName.get(name);
+
+          if (companyIdx) {
+            const relPath = path.join("data", `relationship_sales_company_${relCounter}.json`);
+            const relExists = fs.existsSync(relPath) ||
+                            Array.from({length: sales.length}, (_, i) => i + 1)
+                              .some(i => {
+                                const existingRelPath = path.join("data", `relationship_sales_company_${i}.json`);
+                                if (fs.existsSync(existingRelPath)) {
+                                  const existingRel = readJSON(existingRelPath);
+                                  return existingRel &&
+                                         existingRel.from && existingRel.from["/"] === `./sales_${saleIdx}.json` &&
+                                         existingRel.to && existingRel.to["/"] === `./company_${companyIdx}.json`;
+                                }
+                                return false;
+                              });
+
+            if (!relExists) {
+              const rel = {
+                to: { "/": `./company_${companyIdx}.json` },
+                from: { "/": `./sales_${saleIdx}.json` },
+              };
+              writeJSON(
+                path.join("data", `relationship_sales_company_${relCounter}.json`),
+                rel,
+              );
+              relCounter++;
+            }
+          }
+        }
+      });
+    });
+  }
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     const lset =
