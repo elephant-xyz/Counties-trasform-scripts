@@ -2517,6 +2517,7 @@ async function main() {
 
   // Tax extraction: clear old and create one file per year option present
   await removeExisting(/^tax_.*\.json$/);
+  await removeExisting(/^relationship_property_has_tax_.*\.json$/);
   if (!isMulti) {
     const targetTaxYear = 2025; // Only include tax for 2025
 
@@ -2560,7 +2561,7 @@ async function main() {
           buildingVal && buildingVal > 0 ? buildingVal : null,
         property_land_amount: landVal && landVal > 0 ? landVal : null,
         property_taxable_value_amount:
-          taxableVal && taxableVal > 0 ? taxableVal : null,
+          typeof taxableVal === 'number' && Number.isFinite(taxableVal) ? taxableVal : 0,
         monthly_tax_amount: null,
         period_end_date: null,
         period_start_date: null,
@@ -2572,6 +2573,19 @@ async function main() {
         path.join("data", taxFileName),
         JSON.stringify(taxOut, null, 2),
       );
+
+      // Create relationship from property to tax
+      if (propertyOut) {
+        const relFileName = `relationship_property_has_tax_${targetTaxYear}.json`;
+        const relOut = {
+          from: { "/": "./property.json" },
+          to: { "/": `./${taxFileName}` },
+        };
+        await fsp.writeFile(
+          path.join("data", relFileName),
+          JSON.stringify(relOut, null, 2),
+        );
+      }
     }
   }
 
