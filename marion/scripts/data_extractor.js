@@ -1189,17 +1189,19 @@ function main() {
     writeJSON(salePath, salesObj);
 
     // Deed mapping
-    let deed_type = null;
+    let deed_type = "Miscellaneous"; // Default to valid enum value
     const inst = (s.instrument || "").toUpperCase();
-    if (inst.includes("SPECIAL WARRANTY")) deed_type = "Special Warranty Deed";
-    else if (inst.includes("WARRANTY")) deed_type = "Warranty Deed";
-    else if (inst.includes("QUIT")) deed_type = "Quitclaim Deed";
-    else deed_type = "Miscellaneous";
+    if (inst.includes("SPECIAL WARRANTY")) {
+      deed_type = "Special Warranty Deed";
+    } else if (inst.includes("WARRANTY")) {
+      deed_type = "Warranty Deed";
+    } else if (inst.includes("QUIT")) {
+      deed_type = "Quitclaim Deed";
+    }
 
-    // if (deed_type) {
     deedIdx += 1;
     const deedPath = path.join(dataDir, `deed_${deedIdx}.json`);
-    let deed = { deed_type }
+    const deed = { deed_type: deed_type }
     if (s.bookPage && s.bookPage.split("/").length === 2) {
       deed.book = s.bookPage.split("/")[0];
       deed.page = s.bookPage.split("/")[1];
