@@ -1457,6 +1457,16 @@ function main() {
     if (code || desc) zoning = [code, desc].filter(Boolean).join(" ");
   }
 
+  // Extract neighborhood from Summary table
+  let neighborhood = null;
+  $('.details-card:contains("Summary") table tbody tr').each((i, tr) => {
+    const label = textClean($(tr).find("td").eq(0).text());
+    if (/Neighborhood/i.test(label)) {
+      const value = textClean($(tr).find("td").eq(1).text());
+      if (value && value !== "") neighborhood = value;
+    }
+  });
+
   const propertyOut = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDescription || null,
@@ -1464,6 +1474,11 @@ function main() {
     property_effective_built_year: yearEffective || null,
     zoning: zoning || null,
   };
+
+  if (neighborhood) {
+    propertyOut.subdivision = neighborhood;
+  }
+
   const landuse = $(
     '.details-card:contains("Summary") table tbody tr',
   )
@@ -1472,17 +1487,30 @@ function main() {
     .eq(1)
     .text();
   if (!landuse) {
-    throw new Error("Property type not found");
+    console.warn("Property type not found in HTML, using default");
+    propertyOut.property_type = "LandParcel";
+    propertyOut.ownership_estate_type = "FeeSimple";
+    propertyOut.build_status = "VacantLand";
+    propertyOut.structure_form = null;
+    propertyOut.property_usage_type = "Unknown";
+  } else {
+    const propertyMapping = mapPropertyTypeFromUseCode(landuse);
+    if (!propertyMapping) {
+      console.warn(`Property type mapping not found for code: ${landuse}, using default`);
+      propertyOut.property_type = "LandParcel";
+      propertyOut.ownership_estate_type = "FeeSimple";
+      propertyOut.build_status = "VacantLand";
+      propertyOut.structure_form = null;
+      propertyOut.property_usage_type = "Unknown";
+    } else {
+      propertyOut.property_type = propertyMapping.property_type;
+      propertyOut.ownership_estate_type = propertyMapping.ownership_estate_type;
+      propertyOut.build_status = propertyMapping.build_status;
+      propertyOut.structure_form = propertyMapping.structure_form;
+      propertyOut.property_usage_type = propertyMapping.property_usage_type;
+    }
   }
-  const propertyMapping = mapPropertyTypeFromUseCode(landuse);
-  if (!propertyMapping) {
-    throw new Error("Property type not found");
-  }
-  propertyOut.property_type = propertyMapping.property_type,
-  propertyOut.ownership_estate_type = propertyMapping.ownership_estate_type,
-  propertyOut.build_status = propertyMapping.build_status,
-  propertyOut.structure_form = propertyMapping.structure_form,
-  propertyOut.property_usage_type = propertyMapping.property_usage_type,
+
   writeOut("property.json", propertyOut);
   writeOut("parcel.json", {parcel_identifier: parcelId || ""});
   writeOut(`relationship_property_to_parcel.json`, {
@@ -1582,6 +1610,22 @@ function main() {
     rows[label] = tr;
   });
 
+  // Extract Summary table data once (current year values)
+  let obxfValue = null;
+  let totalAcreage = null;
+  let censusBlock = null;
+  let structuresCount = null;
+  let neighborhoodValue = null;
+  $('.details-card:contains("Summary") table tbody tr').each((i, tr) => {
+    const label = textClean($(tr).find("td").eq(0).text());
+    const value = textClean($(tr).find("td").eq(1).text());
+    if (/OBXF Value/i.test(label)) obxfValue = parseNumber(value);
+    if (/Total Acreage/i.test(label)) totalAcreage = parseNumber(value);
+    if (/Census Block/i.test(label)) censusBlock = value || null;
+    if (/^Structures:/i.test(label)) structuresCount = parseNumber(value);
+    if (/Neighborhood/i.test(label)) neighborhoodValue = value || null;
+  });
+
   for (const year of years) {
     const col = colIndexByYear[year];
     function getVal(labelRegex) {
@@ -1594,34 +1638,74 @@ function main() {
     const landVal = getVal(/Just Value of Land/i);
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
+    const marketClassified = getVal(/Market Classified/i);
+    const marketAdjusted = getVal(/Market Adjusted/i);
+    const useCode = getVal(/Use Code/i);
+    const structures = getVal(/Structures/i);
 
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: marketVal || null,
+      property_assessed_value_amount: marketAdjusted || marketVal || null,
       property_market_value_amount: marketVal || null,
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
-      property_taxable_value_amount: marketVal || null,
+      property_taxable_value_amount: marketAdjusted || marketVal || null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
     };
+
+    // Add building_replacement_cost_amount for the current year only
+    if (year === Math.max(...years) && obxfValue) {
+      taxObj.building_replacement_cost_amount = obxfValue;
+    }
+
     writeOut(`tax_${year}.json`, taxObj);
   }
 
-  // LOT from Land
+  // LOT from Land table
   let lotAcres = null;
-  const landRow = $(
-    '#details-Land .card:contains("Land") table tbody tr',
-  ).first();
-  if (landRow && landRow.length) {
-    const unitsText = textClean(landRow.find("td").eq(9).text());
-    const units = parseNumber(unitsText);
-    if (units != null) lotAcres = units;
+  let lotDepth = null;
+  let lotUnitPrice = null;
+  let lotJustValue = null;
+  let lotLandUse = null;
+
+  const landTable = $('#details-Land .card:contains("Land") table');
+  if (landTable.length > 0) {
+    landTable.find("tbody tr").each((i, tr) => {
+      const tds = $(tr).find("td");
+      if (tds.length >= 10) {
+        // Get land use from column 1
+        const landUse = textClean($(tds[1]).text());
+        if (landUse) lotLandUse = landUse;
+
+        // Get depth from column 3
+        const depth = parseNumber(textClean($(tds[3]).text()));
+        if (depth) lotDepth = depth;
+
+        // Get unit price from column 7
+        const unitPrice = parseNumber(textClean($(tds[7]).text()));
+        if (unitPrice) lotUnitPrice = unitPrice;
+
+        // Get units (acreage) from column 9
+        const units = parseNumber(textClean($(tds[9]).text()));
+        if (units != null) lotAcres = units;
+
+        // Get just value from column 10
+        const justValue = parseNumber(textClean($(tds[10]).text()));
+        if (justValue) lotJustValue = justValue;
+      }
+    });
   }
+
+  // Use totalAcreage from Summary table if available
+  if (!lotAcres && totalAcreage) {
+    lotAcres = totalAcreage;
+  }
+
   const lotObj = {
-    lot_type: null,
-    lot_length_feet: null,
+    lot_type: lotLandUse || null,
+    lot_length_feet: lotDepth || null,
     lot_width_feet: null,
     lot_area_sqft: (lotAcres != null && lotAcres > 0) ? Math.round(lotAcres * 43560) : null,
     landscaping_features: null,
@@ -1639,6 +1723,70 @@ function main() {
     site_lighting_installation_date: null,
   };
   writeOut("lot.json", lotObj);
+
+  // PROPERTY IMPROVEMENTS from Improvements section
+  const improvementCards = $("#improvements-accordion .card.wrapper-card");
+  let improvementIndex = 0;
+  improvementCards.each((i, card) => {
+    improvementIndex++;
+    const $card = $(card);
+
+    // Get basic info from header
+    const headerText = textClean($card.find(".card-header").text());
+    const yearMatch = headerText.match(/(\d{4})/);
+    const actualYearBuilt = yearMatch ? parseNumber(yearMatch[1]) : null;
+
+    // Extract data from tables within this improvement card
+    let effectiveYearBuilt = null;
+    let replacementCost = null;
+    let depreciatedCost = null;
+    let physicalDepreciation = null;
+    let percentGood = null;
+    let improvementType = null;
+
+    // Find all tables within this improvement card body
+    $card.find(".improvement-card-body table tbody tr").each((j, tr) => {
+      const label = textClean($(tr).find("td").eq(0).text());
+      const value = textClean($(tr).find("td").eq(1).text());
+
+      if (/Effective Year Built/i.test(label)) {
+        effectiveYearBuilt = parseNumber(value);
+      } else if (/Replacement Cost/i.test(label)) {
+        replacementCost = parseNumber(value);
+      } else if (/Depreciated Replacement Cost/i.test(label)) {
+        depreciatedCost = parseNumber(value);
+      } else if (/Physical Depreciation/i.test(label)) {
+        physicalDepreciation = parseNumber(value);
+      } else if (/Percent Good/i.test(label)) {
+        percentGood = parseNumber(value);
+      } else if (/Grading Type/i.test(label) && value) {
+        improvementType = value;
+      }
+    });
+
+    // Get improvement type from header if not found
+    if (!improvementType) {
+      const typeMatch = headerText.match(/\|\s*\d{4}\s*\|\s*(.+)$/);
+      if (typeMatch) improvementType = typeMatch[1].trim();
+    }
+
+    const improvementObj = {
+      improvement_type: improvementType || null,
+      completion_date: actualYearBuilt ? `${actualYearBuilt}-01-01` : null,
+      fee: replacementCost || null,
+      improvement_status: "Completed",
+      improvement_action: "New Construction",
+    };
+
+    writeOut(`property_improvement_${improvementIndex}.json`, improvementObj);
+
+    // Create relationship from property to improvement
+    writeOut(`relationship_property_to_improvement_${improvementIndex}.json`, {
+      from: { "/": `./property.json` },
+      to: { "/": `./property_improvement_${improvementIndex}.json` },
+    });
+  });
+
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     let layoutBuildingMap = {};
