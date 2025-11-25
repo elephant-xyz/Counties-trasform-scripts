@@ -428,6 +428,8 @@ function buildLayouts($) {
           spaceType = "Attached Garage";
         } else if(featureType.includes("GREENHOUSE")) {
           spaceType = "Greenhouse";
+        } else if(featureType.includes("BARN")) {
+          spaceType = "Barn";
         } else if(featureType.includes("PORCH") && featureType.includes("OPEN") ) {
           spaceType = "Open Porch";
         } else if(featureType.includes("PORCH") && featureType.includes("ENCLOSED") ) {
@@ -440,6 +442,10 @@ function buildLayouts($) {
           spaceType = "Outdoor Kitchen";
         } else if(featureType.includes("OFFICE") ) {
           spaceType = "Office Room";
+        } else if(featureType.includes("CANOPY") && featureType.includes("DET")) {
+          spaceType = "Detached Carport";
+        } else if(featureType.includes("UTILITY") && featureType.includes("DET")) {
+          spaceType = "Detached Utility Closet";
         }
         if (spaceType) {
           spaceTypeCounter.increment(spaceType);
@@ -476,6 +482,8 @@ function buildLayouts($) {
         spaceType = "Attached Garage";
       } else if(featureType.includes("GREEN HOUSE")) {
         spaceType = "Greenhouse";
+      } else if(featureType.includes("BARN")) {
+        spaceType = "Barn";
       } else if(featureType.includes("PORCH") && featureType.includes("OPEN") ) {
         spaceType = "Open Porch";
       } else if(featureType.includes("PORCH") && featureType.includes("ENCLOSED") ) {
@@ -496,6 +504,10 @@ function buildLayouts($) {
         spaceType = "Pool Area";
       } else if(featureType.includes("POOL")) {
         spaceType = "Outdoor Pool";
+      } else if(featureType.includes("CANOPY") && featureType.includes("DET")) {
+        spaceType = "Detached Carport";
+      } else if(featureType.includes("UTILITY") && featureType.includes("DET")) {
+        spaceType = "Detached Utility Closet";
       } 
       if (spaceType) {
         spaceTypeCounter.increment(spaceType);
