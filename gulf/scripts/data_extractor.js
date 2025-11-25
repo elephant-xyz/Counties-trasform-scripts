@@ -1271,7 +1271,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only process owners from valid date entries or "current", exclude "unknown_date_*"
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date_* entries as they don't link to any sales
+    if (/^unknown_date_\d+$/.test(dateKey)) {
+      return;
+    }
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1304,7 +1309,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only process companies from valid date entries or "current", exclude "unknown_date_*"
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date_* entries as they don't link to any sales
+    if (/^unknown_date_\d+$/.test(dateKey)) {
+      return;
+    }
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
