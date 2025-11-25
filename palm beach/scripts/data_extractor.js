@@ -27698,12 +27698,57 @@ function enforceFinalNormalizedAddressPayload(addressPath, options = {}) {
   );
 
   const writeRawPayload = (rawValue) => {
-    const rawPayload = { unnormalized_address: rawValue };
+    if (!rawValue) {
+      return;
+    }
+
+    const normalizedBase =
+      normalizedSurface && typeof normalizedSurface === "object"
+        ? normalizedSurface
+        : normalized;
+
+    const rawPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const candidate =
+        normalizedBase &&
+        Object.prototype.hasOwnProperty.call(normalizedBase, field)
+          ? normalizedBase[field]
+          : null;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(candidate);
+        rawPayload[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        rawPayload[field] = trimmed.length ? trimmed : null;
+        continue;
+      }
+      rawPayload[field] =
+        candidate === undefined || candidate === null ? null : candidate;
+    }
+
+    rawPayload.unnormalized_address = rawValue;
+
+    if (!rawPayload.postal_code) {
+      rawPayload.plus_four_postal_code = null;
+    }
+
+    if (rawPayload.state_code && !rawPayload.country_code) {
+      rawPayload.country_code = (defaultCountryCode || "US").toUpperCase();
+    }
+
+    if ((rawPayload.latitude == null) !== (rawPayload.longitude == null)) {
+      rawPayload.latitude = null;
+      rawPayload.longitude = null;
+    }
+
     rawPayload.request_identifier =
       requestIdentifier === undefined ? null : requestIdentifier ?? null;
-    if (preparedSource) {
-      rawPayload.source_http_request = deepClone(preparedSource);
-    }
+    rawPayload.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
+
     originalWriteFileSync.call(
       fs,
       addressPath,
