@@ -1157,12 +1157,6 @@ function writeProperty($, parcelId) {
   const years = extractBuildingYears($);
   const totalArea = extractAreas($);
 
-  // Create parcel.json
-  const parcel = {
-    parcel_identifier: parcelId || "",
-  };
-  writeJSON(path.join("data", "parcel.json"), parcel);
-
   const property = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legal || null,
