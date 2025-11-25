@@ -1609,6 +1609,14 @@ function main() {
     }
     writeJson(path.join(dataDir, "property.json"), property);
 
+    // Parcel - must be created before any relationships reference it
+    const parcelId = extractParcelId($);
+    const parcel = {
+      parcel_identifier: parcelId || "unknown",
+      request_identifier: null
+    };
+    writeJson(path.join(dataDir, "parcel.json"), parcel);
+
     // Address
     const secTwpRng = extractSecTwpRng($);
     const addressText = extractAddressText($);
