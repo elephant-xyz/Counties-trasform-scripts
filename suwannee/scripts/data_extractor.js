@@ -1128,19 +1128,11 @@ function extractOwnerMailingAddress($) {
 }
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
-  let hasOwnerMailingAddress = false;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
   const county_name = inputCounty || null;
-  if (mailingAddress) {
-    const mailingAddressObj = {
-      unnormalized_address: mailingAddress,
-    };
-    writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
-    hasOwnerMailingAddress = true;
-  }
   if (siteAddress) {
     const addressObj = {
       county_name,
@@ -1157,7 +1149,7 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
                 from: { "/": `./property.json` },
               });
   }
-  return hasOwnerMailingAddress;
+  return mailingAddress;
 }
 
 function extractTaxes($) {
@@ -1609,11 +1601,18 @@ function main() {
     }
     writeJson(path.join(dataDir, "property.json"), property);
 
+    // Parcel
+    const parcelDashed = extractParcelId($) || (propSeed && propSeed.parcel_id) || "";
+    const parcel = {
+      parcel_identifier: parcelDashed || "unknown",
+    };
+    writeJson(path.join(dataDir, "parcel.json"), parcel);
+
     // Address
     const secTwpRng = extractSecTwpRng($);
     const addressText = extractAddressText($);
-    const mailingAddress = extractOwnerMailingAddress($);
-    const hasOwnerMailingAddress = attemptWriteAddress(unAddr, secTwpRng, addressText, mailingAddress);
+    const mailingAddressText = extractOwnerMailingAddress($);
+    const mailingAddress = attemptWriteAddress(unAddr, secTwpRng, addressText, mailingAddressText);
 
     // Taxes
     const taxes = extractTaxes($);
@@ -1663,8 +1662,6 @@ function main() {
     });
 
     // Owners
-    const parcelDashed =
-      extractParcelId($) || (propSeed && propSeed.parcel_id) || "";
     const parcelFlat = parcelDashed.replace(/[-]/g, "");
     const ownerFiles = writeOwners(
       ownerData,
@@ -1679,7 +1676,11 @@ function main() {
           to: { "/": `./${ownerFiles.companyFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
-        if (hasOwnerMailingAddress) {
+        if (mailingAddress) {
+          const mailingAddressObj = {
+            unnormalized_address: mailingAddress,
+          };
+          writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
           writeJson(
             path.join(
               "data",
@@ -1696,7 +1697,11 @@ function main() {
           to: { "/": `./${ownerFiles.personFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
-        if (hasOwnerMailingAddress) {
+        if (mailingAddress) {
+          const mailingAddressObj = {
+            unnormalized_address: mailingAddress,
+          };
+          writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
           writeJson(
             path.join(
               "data",
