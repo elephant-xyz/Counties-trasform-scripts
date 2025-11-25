@@ -1199,7 +1199,6 @@ const BUILDING_SECTION_TITLE = "Building Information";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl10_ctl01_grdSales_grdFlat tbody tr";
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl03_ctl01_grdValuation";
 // const HISTORICAL_VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl13_ctl01_grdLand_grdFlat";
-const OWNER_MAILING_ADDRESS_SELECTOR = "#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress";
 
 function readJSON(p) {
   try {
