@@ -1270,56 +1270,25 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-
-  // Collect persons that will have relationships
-  const personsWithRelationships = new Set();
-
-  // Persons from sales
-  sales.forEach((rec) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        personsWithRelationships.add(k);
-      });
-  });
-
-  // Persons from current owners (if mailing address exists)
-  if (hasOwnerMailingAddress) {
-    const currentOwner = ownersByDate["current"] || [];
-    currentOwner
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        personsWithRelationships.add(k);
-      });
-  }
-
-  // Only create person files for persons with relationships
   const personMap = new Map();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (personsWithRelationships.has(k)) {
-          if (!personMap.has(k))
-            personMap.set(k, {
-              first_name: o.first_name,
-              middle_name: o.middle_name,
-              last_name: o.last_name,
-            });
-          else {
-            const existing = personMap.get(k);
-            if (!existing.middle_name && o.middle_name)
-              existing.middle_name = o.middle_name;
-          }
+        if (!personMap.has(k))
+          personMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+          });
+        else {
+          const existing = personMap.get(k);
+          if (!existing.middle_name && o.middle_name)
+            existing.middle_name = o.middle_name;
         }
       }
     });
   });
-
   people = Array.from(personMap.values()).map((p) => ({
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -1334,7 +1303,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-
   const companyNames = new Set();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
@@ -1342,7 +1310,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({
+  companies = Array.from(companyNames).map((n) => ({ 
     name: n,
     request_identifier: parcelId,
   }));
