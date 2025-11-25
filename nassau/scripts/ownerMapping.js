@@ -143,13 +143,13 @@ function isCompanyName(name) {
   return false;
 }
 
-// Parse possible multiple owners joined by '&' or ' and '
+// Parse possible multiple owners joined by '&', ' and ', or '/'
 function splitJointOwners(raw) {
   const s = normalizeSpace(raw).replace(/&amp;/g, '&').replace(/\s*\([^)]*\)\s*/g, ' ');
   if (!s) return [];
-  // Split on & or ' and ' while preserving meaningful tokens
+  // Split on &, ' and ', or / while preserving meaningful tokens
   const parts = s
-    .split(/\s*(?:&|\band\b)\s*/i)
+    .split(/\s*(?:&|\band\b|\/)\s*/i)
     .map((p) => normalizeSpace(p))
     .filter(Boolean);
   return parts.length ? parts : [s];
