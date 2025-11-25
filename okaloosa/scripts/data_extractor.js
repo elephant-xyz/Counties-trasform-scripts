@@ -1630,9 +1630,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // First, collect persons and companies that appear on sale dates
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
+  const companyNamesUsedInSales = new Set();
+
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate.forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
         if (!personMap.has(k))
@@ -1647,8 +1653,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             existing.middle_name = o.middle_name;
         }
       }
+      if (o.type === "company" && (o.name || "").trim()) {
+        companyNamesUsedInSales.add((o.name || "").trim().toUpperCase());
+      }
     });
   });
+
   people = Array.from(personMap.values()).map((p) => ({
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -1663,20 +1673,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim().toUpperCase());
-    });
-  });
-  companies = Array.from(companyNames).map((n) => ({
+
+  // Only create company files for companies that appear on sale dates
+  companies = Array.from(companyNamesUsedInSales).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
+
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
