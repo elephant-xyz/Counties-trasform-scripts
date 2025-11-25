@@ -1551,7 +1551,7 @@ function createGeometryClass(geometryInstances) {
       geometry.polygon = polygon;
     }
     writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+    writeJSON(path.join("data", `relationship_parcel_has_geometry_${geomIndex}.json`), {
         from: { "/": `./parcel.json` },
         to: { "/": `./geometry_${geomIndex}.json` },
     });
@@ -1638,7 +1638,21 @@ function main() {
       throw e;
     }
   }
+  // Create parcel.json with only identifiers
+  const parcelObj = {
+    parcel_identifier: propertyObj.parcel_identifier,
+    request_identifier: seed.request_identifier || parcelId || null,
+  };
+  writeJSON(path.join(outDir, "parcel.json"), parcelObj);
+
+  // Create property.json with all property details
   writeJSON(path.join(outDir, "property.json"), propertyObj);
+
+  // Create relationship linking parcel to property
+  writeJSON(path.join(outDir, "relationship_parcel_has_property.json"), {
+    from: { "/": `./parcel.json` },
+    to: { "/": `./property.json` },
+  });
 
     // Address
   const addressText = extractAddressText(leonSummary);
