@@ -1150,15 +1150,18 @@ function extractTax($, outDir) {
       const land = parseCurrencyToNumber($(tds[1]).text());
       const building = parseCurrencyToNumber($(tds[2]).text());
       const market = parseCurrencyToNumber($(tds[3]).text());
+      const homesteadSavings = parseCurrencyToNumber($(tds[4]).text());
+      const classifiedUse = parseCurrencyToNumber($(tds[5]).text());
       if (year && land != null && building != null && market != null) {
-        histRows.push({ year, land, building, market });
+        histRows.push({ year, land, building, market, homesteadSavings, classifiedUse });
       }
     }
   });
   if (!histRows.length) return;
 
   let assessed2025 = null,
-    taxable2025 = null;
+    taxable2025 = null,
+    millageRate2025 = 0;
   const ctv = $('h5:contains("2025 Certified Taxable Values")').closest(
     ".card",
   );
@@ -1171,14 +1174,28 @@ function extractTax($, outDir) {
     }
   }
 
+  // Extract and sum all millage rates from different taxing authorities
+  ctv.find("tbody tr").each((i, el) => {
+    const tds = $(el).find("td");
+    if (tds.length >= 2) {
+      const millageText = $(tds[1]).text().trim();
+      const millage = parseFloat(millageText);
+      if (!isNaN(millage)) {
+        millageRate2025 += millage;
+      }
+    }
+  });
+
   histRows.sort((a, b) => b.year - a.year);
   let taxIdx = 1;
   histRows.forEach((r) => {
     let assessed = null,
-      taxable = null;
+      taxable = null,
+      millageRate = null;
     if (r.year === 2025 && assessed2025 != null && taxable2025 != null) {
       assessed = assessed2025;
       taxable = taxable2025;
+      millageRate = millageRate2025 > 0 ? millageRate2025 : null;
     } else {
       return; // assessed and taxable are mandatory fields
     }
@@ -1189,6 +1206,9 @@ function extractTax($, outDir) {
       property_building_amount: r.building,
       property_land_amount: r.land,
       property_taxable_value_amount: taxable,
+      homestead_cap_loss_amount: r.homesteadSavings,
+      agricultural_valuation_amount: r.classifiedUse,
+      millage_rate: millageRate,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
