@@ -1640,15 +1640,6 @@ function main() {
   }
   writeJSON(path.join(outDir, "property.json"), propertyObj);
 
-  // Parcel
-  if (!parcelId) {
-    throw new Error("parcel_identifier is required but was not found");
-  }
-  const parcelObj = {
-    parcel_identifier: String(parcelId),
-  };
-  writeJSON(path.join(outDir, "parcel.json"), parcelObj);
-
     // Address
   const addressText = extractAddressText(leonSummary);
   const mailingAddress = extractOwnerMailingAddress(leonSummary);
