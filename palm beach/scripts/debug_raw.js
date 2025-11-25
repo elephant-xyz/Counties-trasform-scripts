@@ -242,15 +242,90 @@ function stripAddressRequestMetadata(address) {
     return address;
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    delete address.request_identifier;
+  const working = { ...address };
+  const forceRawVariant =
+    Object.prototype.hasOwnProperty.call(working, "__force_raw_variant") &&
+    working.__force_raw_variant === true;
+  if (forceRawVariant) {
+    delete working.__force_raw_variant;
+  }
+  const rawValue =
+    typeof working.unnormalized_address === "string"
+      ? working.unnormalized_address.trim()
+      : "";
+
+  if (rawValue.length) {
+    working.unnormalized_address = rawValue;
+  } else if (
+    Object.prototype.hasOwnProperty.call(working, "unnormalized_address")
+  ) {
+    delete working.unnormalized_address;
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    delete address.source_http_request;
+  const hasRequestIdentifier = Object.prototype.hasOwnProperty.call(
+    working,
+    "request_identifier",
+  );
+  const requestIdentifier = hasRequestIdentifier
+    ? safeNullIfEmpty(working.request_identifier)
+    : undefined;
+  if (hasRequestIdentifier) {
+    working.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
   }
 
-  return address;
+  if (Object.prototype.hasOwnProperty.call(working, "source_http_request")) {
+    delete working.source_http_request;
+  }
+
+  const canUseNormalized =
+    !forceRawVariant &&
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...working });
+
+  if (canUseNormalized) {
+    const normalizedSurface = ensureNormalizedAddressSchemaSurface
+      ? ensureNormalizedAddressSchemaSurface({ ...working })
+      : { ...working };
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedSurface,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedSurface.unnormalized_address;
+    }
+
+    if (requestIdentifier !== undefined) {
+      normalizedSurface.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedSurface,
+        "request_identifier",
+      ) &&
+      normalizedSurface.request_identifier === undefined
+    ) {
+      normalizedSurface.request_identifier = null;
+    }
+
+    return normalizedSurface;
+  }
+
+  if (!rawValue.length) {
+    return working;
+  }
+
+  const minimalRaw = {
+    unnormalized_address: rawValue,
+  };
+
+  if (hasRequestIdentifier) {
+    minimalRaw.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
+  }
+
+  return minimalRaw;
 }
 
 function sanitizeAddressPayloadForWrite(payload) {
