@@ -1009,7 +1009,6 @@ function buildLeanRawAddressOutput(rawOutput) {
   }
 
   const minimal = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
@@ -1017,18 +1016,27 @@ function buildLeanRawAddressOutput(rawOutput) {
     if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
       continue;
     }
-    minimal[field] = rawOutput[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, rawOutput[field]);
+    if (sanitized === undefined || sanitized === null) {
+      continue;
+    }
+    minimal[field] = sanitized;
   }
 
-  const parsedLatitude = parseCoordinate(minimal.latitude);
-  const parsedLongitude = parseCoordinate(minimal.longitude);
+  const parsedLatitude = parseCoordinate(rawOutput.latitude);
+  const parsedLongitude = parseCoordinate(rawOutput.longitude);
   const hasCoordinatePair =
     Number.isFinite(parsedLatitude) && Number.isFinite(parsedLongitude);
-  minimal.latitude = hasCoordinatePair ? parsedLatitude : null;
-  minimal.longitude = hasCoordinatePair ? parsedLongitude : null;
+  if (hasCoordinatePair) {
+    minimal.latitude = parsedLatitude;
+    minimal.longitude = parsedLongitude;
+  }
 
-  if (!minimal.postal_code) {
-    minimal.plus_four_postal_code = null;
+  if (!minimal.postal_code && Object.prototype.hasOwnProperty.call(minimal, "plus_four_postal_code")) {
+    delete minimal.plus_four_postal_code;
   }
   if (minimal.state_code && !minimal.country_code) {
     minimal.country_code = "US";
