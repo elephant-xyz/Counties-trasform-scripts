@@ -3358,7 +3358,7 @@ function extractSales($) {
   return sales;
 }
 
-function buildPersonsAndCompanies(ownerJSON, parcelId) {
+function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
   const res = {
     persons: [],
     companies: [],
@@ -3371,6 +3371,14 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
   const key = `property_${parcelId}`;
   const obj = ownerJSON[key];
   if (!obj || !obj.owners_by_date) return res;
+
+  // Build a set of sale dates to know which historical owners to include
+  const saleDates = new Set();
+  sales.forEach((s) => {
+    if (s.ownership_transfer_date) {
+      saleDates.add(s.ownership_transfer_date);
+    }
+  });
 
   // Current owners first
   const current = obj.owners_by_date["current"] || [];
@@ -3404,9 +3412,12 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
     }
   });
 
-  // Historical owners
+  // Historical owners - ONLY include those that match sale dates
   Object.entries(obj.owners_by_date).forEach(([dt, owners]) => {
     if (dt === "current") return;
+    // Only process historical owners if they have a matching sale date
+    if (!saleDates.has(dt)) return;
+
     (owners || []).forEach((o) => {
       if (o.type === "person") {
         const firstName = toTitleCase(o.first_name); // Apply title case
@@ -3914,7 +3925,7 @@ function main() {
   });
 
   // Owners (persons/companies)
-  const pc = buildPersonsAndCompanies(ownerJSON, parcelId);
+  const pc = buildPersonsAndCompanies(ownerJSON, parcelId, sales);
   pc.persons.forEach((p, i) =>
     writeJSON(path.join("data", `person_${i + 1}.json`), p),
   );
