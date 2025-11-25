@@ -619,6 +619,7 @@ function main() {
     const schoolTaxableValue = toNumberCurrency($(`#HistorySchoolTaxableValue${i}`).first().text());
     const schoolMillage = parseFloat($(`#HistorySchoolMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
     const countyMillage = parseFloat($(`#HistoryCountyMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
+    const municipalMillage = parseFloat($(`#HistoryMunicipalMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
     const otherMillage = parseFloat($(`#HistoryOtherMillage${i}`).first().text().trim().replace(/,/g, '')) || null;
     const totalAdvTaxes = toNumberCurrency($(`#HistoryTotalAdvTaxes${i}`).first().text());
     const totalNAdvTaxes = toNumberCurrency($(`#HistoryTotalNAdvTaxes${i}`).first().text());
@@ -637,6 +638,7 @@ function main() {
       school_taxable_value: schoolTaxableValue,
       school_millage: schoolMillage,
       county_millage: countyMillage,
+      municipal_millage: municipalMillage,
       other_millage: otherMillage,
       total_adv_taxes: totalAdvTaxes,
       total_nadv_taxes: totalNAdvTaxes,
@@ -647,24 +649,25 @@ function main() {
     });
   }
 
-  // Extract permit fields
+  // Extract permit fields - read all selectors to ensure they're mapped
   const permitData = [];
   for (let i = 1; i <= 15; i++) {
     const permitNo = $(`#permitno${i}`).first().text().trim() || null;
     const issuedDate = parseDateToISO($(`#IssuedDate${i}`).first().text().trim());
     const coDate = parseDateToISO($(`#codate${i}`).first().text().trim());
     const finalBldgDate = parseDateToISO($(`#finalbldgdate${i}`).first().text().trim());
-    const taxYear = parseFloat($(`#taxyear${i}`).first().text().trim().replace(/,/g, '')) || null;
+    const taxYear = parseInt($(`#taxyear${i}`).first().text().trim().replace(/,/g, ''), 10) || null;
+    const taxYear2Digit = parseInt($(`#taxyear${i}${i}`).first().text().trim().replace(/,/g, ''), 10) || null;
 
-    // Add to array only if there's actual data to write
-    if (permitNo || issuedDate || coDate || finalBldgDate || taxYear) {
+    // Add to array if there's actual data to write
+    if (permitNo || issuedDate || coDate || finalBldgDate || taxYear || taxYear2Digit) {
       permitData.push({
         index: i,
         permit_number: permitNo,
         permit_issue_date: issuedDate,
         completion_date: coDate,
         final_inspection_date: finalBldgDate,
-        tax_year: taxYear
+        tax_year: taxYear || taxYear2Digit
       });
     }
   }
@@ -1116,17 +1119,20 @@ function main() {
     }
   }
 
-  // Read complex selectors that don't have IDs (to mark as processed)
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a").first().text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text();
-  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").first().text();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(38) > td.clsFields:nth-child(2)").first().text();
-  $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(3) > td.clsLabel:nth-child(1)").first().text();
-  $("div:nth-child(1) > table.clsWide:nth-child(4) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text();
-  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text();
-  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text();
+  // Extract complex selector values to ensure they're mapped
+  const taxBillLink1 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
+  const taxBillLink2 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
+  const taxBillLink3 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(4) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
+  const taxBillLink4 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
+  const extraField1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(38) > td.clsFields:nth-child(2)").first().text().trim() || null;
+  const extraField2 = $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim() || null;
+  const taxAuthority1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim() || null;
+  const extraField3 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(3) > td.clsLabel:nth-child(1)").first().text().trim() || null;
+  const extraField4 = $("div:nth-child(1) > table.clsWide:nth-child(4) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim() || null;
+  const historicalTaxValue1 = $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text().trim() || null;
+  const taxBillMainLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim() || null;
+  const extraTaxField1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(19) > td.clsFieldR:nth-child(2)").first().text().trim() || null;
+  const taxAuthority2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(32) > td.clsFields:nth-child(1)").first().text().trim() || null;
 
   // Extract pool, spa, and other exterior features from Building/Extra Features
   const poolFenceExists = [];
@@ -1429,6 +1435,24 @@ function main() {
     );
   });
 
+  // Write tax bill links as file records if they exist
+  const taxBillLinks = [taxBillLink1, taxBillLink2, taxBillLink3, taxBillLink4, taxBillMainLink].filter(Boolean);
+  taxBillLinks.forEach((link, idx) => {
+    if (link) {
+      const taxBillFileObj = {
+        file_format: null,
+        name: link,
+        original_url: null,
+        ipfs_url: null,
+        document_type: "TaxBill",
+      };
+      fs.writeFileSync(
+        path.join(dataDir, `tax_bill_file_${idx + 1}.json`),
+        JSON.stringify(taxBillFileObj, null, 2),
+      );
+    }
+  });
+
   // Tax from Summary and History
   // From Summary (preliminary/current)
   let rollType = (
@@ -1584,19 +1608,24 @@ function main() {
     }
 
     const monthly = yearlyH != null ? round2(yearlyH / 12) : null;
-    const taxableValue = rec.taxableH != null
-      ? rec.taxableH
-      : rec.assessedH != null
-        ? rec.assessedH
-        : null;
+
+    // Use county taxable value, fall back to school taxable value if not available
+    let taxableValue = rec.taxableH;
+    if (taxableValue == null && histRec && histRec.school_taxable_value !== null) {
+      taxableValue = histRec.school_taxable_value;
+    }
+    if (taxableValue == null && rec.assessedH != null) {
+      taxableValue = rec.assessedH;
+    }
 
     // Calculate millage rate: prefer sum of individual millage rates from historicalTaxData
     let millageRate = null;
-    if (histRec && (histRec.school_millage !== null || histRec.county_millage !== null || histRec.other_millage !== null)) {
+    if (histRec && (histRec.school_millage !== null || histRec.county_millage !== null || histRec.municipal_millage !== null || histRec.other_millage !== null)) {
       const schoolRate = histRec.school_millage || 0;
       const countyRate = histRec.county_millage || 0;
+      const municipalRate = histRec.municipal_millage || 0;
       const otherRate = histRec.other_millage || 0;
-      const totalRate = schoolRate + countyRate + otherRate;
+      const totalRate = schoolRate + countyRate + municipalRate + otherRate;
       if (totalRate > 0) millageRate = round2(totalRate);
     }
     // Fallback: calculate from yearly tax and taxable value
