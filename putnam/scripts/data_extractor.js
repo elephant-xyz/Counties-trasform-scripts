@@ -1594,18 +1594,14 @@ function main() {
     const landVal = getVal(/Just Value of Land/i);
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
-    const assessedVal = getVal(/Assessed Value/i);
-    const taxableVal = getVal(/Taxable Value/i);
-    const exemptionVal = getVal(/Exemptions/i);
 
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: assessedVal || marketVal || null,
+      property_assessed_value_amount: marketVal || null,
       property_market_value_amount: marketVal || null,
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
-      property_taxable_value_amount: taxableVal || marketVal || null,
-      property_exemption_amount: exemptionVal || null,
+      property_taxable_value_amount: marketVal || null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -1613,103 +1609,16 @@ function main() {
     writeOut(`tax_${year}.json`, taxObj);
   }
 
-  // EXEMPTIONS: Extract exemption details
-  const exemptionsTable = $('#details-Value .card:contains("Exemptions") table');
-  exemptionsTable.find("tbody tr").each((idx, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 6) {
-      const description = textClean($(tds[0]).text());
-      const granted = textClean($(tds[1]).text());
-      const amount = parseNumber(textClean($(tds[2]).text()));
-      const remainder = parseNumber(textClean($(tds[3]).text()));
-      const ownerPercent = parseNumber(textClean($(tds[4]).text()));
-      const applicableTo = textClean($(tds[5]).text());
-      // Note: exemption data is captured in the extraction above
-    }
-  });
-
-  // TAXING AUTHORITIES: Extract taxing authority details
-  const taxAuthTable = $('#details-Value .card:contains("Taxing Authorities") table');
-  taxAuthTable.find("tbody tr").each((idx, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 7) {
-      const authority = textClean($(tds[0]).text());
-      const deferredValue = parseNumber(textClean($(tds[1]).text()));
-      const assessedValue = parseNumber(textClean($(tds[2]).text()));
-      const classifiedLand = parseNumber(textClean($(tds[3]).text()));
-      const assessedLimited = parseNumber(textClean($(tds[4]).text()));
-      const exemptions = parseNumber(textClean($(tds[5]).text()));
-      const taxableValue = parseNumber(textClean($(tds[6]).text()));
-      // Note: taxing authority data is captured in the extraction above
-    }
-  });
-
-  // NON-AD VALOREM ASSESSMENTS: Extract assessment details
-  const nonAdValoremTable = $('#details-Value .card:contains("Non-Ad Valorem") table');
-  nonAdValoremTable.find("tbody tr").each((idx, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 5) {
-      const code = textClean($(tds[0]).text());
-      const description = textClean($(tds[1]).text());
-      const units = parseNumber(textClean($(tds[2]).text()));
-      const rate = parseNumber(textClean($(tds[3]).text()));
-      const amount = parseNumber(textClean($(tds[4]).text()));
-      // Note: non-ad valorem data is captured in the extraction above
-    }
-  });
-
-  // OUTBUILDINGS AND EXTRA FEATURES: Extract as layout instances
-  const outbuildingsCard = $('.card').filter((i, card) => {
-    const header = $(card).find('.card-header').text().trim();
-    return header === 'Outbuildings and Extra Features';
-  });
-  const outbuildingsTable = outbuildingsCard.find('table').first();
-  let outbuildingIdx = 1;
-  outbuildingsTable.find("tbody tr").each((idx, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 8) {
-      const code = textClean($(tds[0]).text());
-      const description = textClean($(tds[1]).text());
-      const units = parseNumber(textClean($(tds[2]).text()));
-      const length = parseNumber(textClean($(tds[3]).text()));
-      const width = parseNumber(textClean($(tds[4]).text()));
-      const sqFootage = parseNumber(textClean($(tds[5]).text()));
-      const rate = parseNumber(textClean($(tds[6]).text()));
-      const amount = parseNumber(textClean($(tds[7]).text()));
-
-      if (description) {
-        const layoutOut = {
-          space_type: "Outbuilding",
-          is_exterior: true,
-          size_square_feet: sqFootage || null,
-          total_area_sq_ft: sqFootage || null,
-        };
-        const layoutIdx = 1000 + outbuildingIdx; // Use high numbers to avoid conflicts
-        writeOut(`layout_${layoutIdx}.json`, layoutOut);
-        outbuildingIdx++;
-      }
-    }
-  });
-
-  // LOT from Land - extract all columns from all rows
+  // LOT from Land
   let lotAcres = null;
-  const landTable = $('#details-Land .card:contains("Land") table');
-  landTable.find("tbody tr").each((idx, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 10) {
-      const line = textClean($(tds[0]).text());
-      const landUse = textClean($(tds[1]).text());
-      const depthChart = textClean($(tds[2]).text());
-      const depthFeet = parseNumber(textClean($(tds[3]).text()));
-      const cornerFactor = parseNumber(textClean($(tds[4]).text()));
-      const depthFactor = textClean($(tds[5]).text());
-      const condition = textClean($(tds[6]).text());
-      const unitPrice = parseNumber(textClean($(tds[7]).text()));
-      const adjustedUnitPrice = parseNumber(textClean($(tds[8]).text()));
-      const units = parseNumber(textClean($(tds[9]).text()));
-      if (idx === 0 && units != null) lotAcres = units;
-    }
-  });
+  const landRow = $(
+    '#details-Land .card:contains("Land") table tbody tr',
+  ).first();
+  if (landRow && landRow.length) {
+    const unitsText = textClean(landRow.find("td").eq(9).text());
+    const units = parseNumber(unitsText);
+    if (units != null) lotAcres = units;
+  }
   const lotObj = {
     lot_type: null,
     lot_length_feet: null,
@@ -1730,25 +1639,6 @@ function main() {
     site_lighting_installation_date: null,
   };
   writeOut("lot.json", lotObj);
-
-  // AREA AND ADDITIONS: Extract from building tables
-  const areaTablesSelectors = [
-    '#improvements-accordion .card:contains("Area and Additions") table',
-  ];
-  areaTablesSelectors.forEach(selector => {
-    const areaTable = $(selector);
-    areaTable.find("tbody tr").each((idx, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 5) {
-        const description = textClean($(tds[0]).text());
-        const percentRate = parseNumber(textClean($(tds[1]).text()));
-        const rate = parseNumber(textClean($(tds[2]).text()));
-        const squareFeet = parseNumber(textClean($(tds[3]).text()));
-        const cost = parseNumber(textClean($(tds[4]).text()));
-        // Data extracted for validation
-      }
-    });
-  });
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     let layoutBuildingMap = {};
@@ -1935,75 +1825,6 @@ function main() {
         }
     }
   }
-
-  // COMPREHENSIVE EXTRACTION: Read all remaining selectors to ensure validation passes
-  // This section ensures all data in the HTML is "mapped" by reading all selectors
-  // Summary table - extract all visible data
-  $('.details-card:contains("Summary") table tbody tr').each((idx, tr) => {
-    const tds = $(tr).find("td");
-    tds.each((i, td) => {
-      const value = textClean($(td).text());
-      // Data captured for validation
-    });
-  });
-
-  // Homestead and Non-Homestead cap tables
-  $('.card:contains("Homestead") table tbody tr').each((idx, tr) => {
-    const tds = $(tr).find("td");
-    tds.each((i, td) => {
-      const value = textClean($(td).text());
-      // Data captured for validation
-    });
-  });
-
-  // Grading tables
-  $('.card:contains("Grading") table tbody tr').each((idx, tr) => {
-    const tds = $(tr).find("td");
-    tds.each((i, td) => {
-      const value = textClean($(td).text());
-      // Data captured for validation
-    });
-  });
-
-  // Building details tables
-  $('#improvements-accordion .card table tbody tr').each((idx, tr) => {
-    const tds = $(tr).find("td");
-    tds.each((i, td) => {
-      const value = textClean($(td).text());
-      // Data captured for validation
-    });
-  });
-
-  // Zoning and FLUM tables
-  $('#details-Land .card table tbody tr').each((idx, tr) => {
-    const tds = $(tr).find("td");
-    tds.each((i, td) => {
-      const value = textClean($(td).text());
-      // Data captured for validation
-    });
-  });
-
-  // Sales table - ensure book/page links are captured
-  $('#details-Sales table tbody tr').each((idx, tr) => {
-    const link = $(tr).find("a[data-book]");
-    if (link.length > 0) {
-      const book = link.attr("data-book");
-      const page = link.attr("data-page");
-      // Data captured for validation
-    }
-  });
-
-  // Extract any remaining card-body data
-  $('.card-body .row .col-4, .card-body .row .col-8, .card-body .row .col-12').each((idx, el) => {
-    const value = textClean($(el).text());
-    // Data captured for validation
-  });
-
-  // Extract result-cards data
-  $('.result-cards .card .card-header .row .col-12').each((idx, el) => {
-    const value = textClean($(el).text());
-    // Data captured for validation
-  });
 }
 
 if (require.main === module) {
