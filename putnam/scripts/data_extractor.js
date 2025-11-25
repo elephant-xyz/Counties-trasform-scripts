@@ -1103,47 +1103,6 @@ function getAddreses($) {
 
 
 
-function parseAddressComponents(addressString) {
-  // Parse city and postal code from address like "168 CAMP SHALOM TRL HAWTHORNE 32640"
-  if (!addressString) return { city_name: null, postal_code: null };
-
-  const parts = addressString.trim().split(/\s+/);
-  let postal_code = null;
-  let city_name = null;
-
-  // Look for 5-digit zip code at the end
-  if (parts.length > 0) {
-    const lastPart = parts[parts.length - 1];
-    if (/^\d{5}$/.test(lastPart)) {
-      postal_code = lastPart;
-
-      // City is typically the word(s) just before the zip
-      // Skip street address parts (numbers, directionals, etc) and get last non-numeric token before zip
-      const beforeZip = parts.slice(0, -1);
-      // Find the last sequence of non-numeric, non-directional words as city
-      let cityParts = [];
-      for (let i = beforeZip.length - 1; i >= 0; i--) {
-        const part = beforeZip[i];
-        // Stop if we hit a number, or common street suffixes/directionals
-        if (/^\d+$/.test(part)) break;
-        if (/^(ST|RD|AVE|BLVD|LN|DR|CT|CIR|WAY|PL|TRL|PKWY|N|S|E|W|NE|NW|SE|SW)$/i.test(part)) break;
-        cityParts.unshift(part);
-        // Typically city is 1-2 words, stop after getting a reasonable amount
-        if (cityParts.length >= 2) break;
-      }
-
-      city_name = cityParts.length > 0 ? cityParts.join(" ") : beforeZip[beforeZip.length - 1];
-    } else {
-      city_name = parts.join(" ");
-    }
-  }
-
-  return {
-    city_name: city_name && city_name.length > 0 ? city_name.toUpperCase() : null,
-    postal_code: postal_code
-  };
-}
-
 function extractAddress(addressDetails, unnorm) {
   let hasOwnerMailingAddress = false;
   let inputCounty = (unnorm.county_jurisdiction || "").trim();
@@ -1157,13 +1116,6 @@ function extractAddress(addressDetails, unnorm) {
     const mailingAddressObj = {
       unnormalized_address: mailingAddress,
     };
-    const mailingComponents = parseAddressComponents(mailingAddress);
-    if (mailingComponents.city_name) {
-      mailingAddressObj.city_name = mailingComponents.city_name;
-    }
-    if (mailingComponents.postal_code) {
-      mailingAddressObj.postal_code = mailingComponents.postal_code;
-    }
     writeOut("mailing_address.json", mailingAddressObj);
     hasOwnerMailingAddress = true;
   }
@@ -1175,13 +1127,6 @@ function extractAddress(addressDetails, unnorm) {
       section: null,
       unnormalized_address: siteAddress,
     };
-    const siteComponents = parseAddressComponents(siteAddress);
-    if (siteComponents.city_name) {
-      addressObj.city_name = siteComponents.city_name;
-    }
-    if (siteComponents.postal_code) {
-      addressObj.postal_code = siteComponents.postal_code;
-    }
     writeOut("address.json", addressObj);
     writeOut("relationship_property_has_address.json", {
                 to: { "/": `./address.json` },
@@ -1664,66 +1609,23 @@ function main() {
     writeOut(`tax_${year}.json`, taxObj);
   }
 
-  // Extract outbuildings and extra features as property improvements
-  const featuresTable = $('#details-Features .card:contains("Outbuildings") table tbody tr');
-  let improvementIndex = 1;
-  featuresTable.each((i, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 4) {
-      const code = textClean($(tds[0]).text());
-      const description = textClean($(tds[1]).text());
-      const yearBuilt = parseNumber(textClean($(tds[2]).text()));
-      const sqft = parseNumber(textClean($(tds[3]).text()));
-
-      if (description) {
-        const improvement = {
-          improvement_type: description || null,
-          improvement_action: null,
-          improvement_status: null,
-          permit_number: null,
-          permit_issue_date: yearBuilt ? `${yearBuilt}` : null,
-          completion_date: null,
-          fee: null,
-        };
-        writeOut(`property_improvement_${improvementIndex}.json`, improvement);
-        improvementIndex++;
-      }
-    }
-  });
-
-  // LOT from Land - extract all land details
+  // LOT from Land
   let lotAcres = null;
-  let lakeFrontFeet = null;
-  const landTable = $('#details-Land .card:contains("Land") table');
-
-  // Extract from Land table rows
-  landTable.find("tbody tr").each((i, tr) => {
-    const tds = $(tr).find("td");
-    if (tds.length >= 10) {
-      const code = textClean($(tds[0]).text());
-      const description = textClean($(tds[1]).text());
-      const units = parseNumber(textClean($(tds[3]).text()));
-
-      // Check if this is lake frontage
-      if (description && /lake.*front/i.test(description) && units) {
-        lakeFrontFeet = units;
-      }
-
-      // Get total acreage from units column
-      const acreage = parseNumber(textClean($(tds[9]).text()));
-      if (acreage != null && i === 0) {
-        lotAcres = acreage;
-      }
-    }
-  });
-
+  const landRow = $(
+    '#details-Land .card:contains("Land") table tbody tr',
+  ).first();
+  if (landRow && landRow.length) {
+    const unitsText = textClean(landRow.find("td").eq(9).text());
+    const units = parseNumber(unitsText);
+    if (units != null) lotAcres = units;
+  }
   const lotObj = {
     lot_type: null,
-    lot_length_feet: lakeFrontFeet || null,
+    lot_length_feet: null,
     lot_width_feet: null,
     lot_area_sqft: (lotAcres != null && lotAcres > 0) ? Math.round(lotAcres * 43560) : null,
     landscaping_features: null,
-    view: lakeFrontFeet ? "Waterfront" : null,
+    view: null,
     fencing_type: null,
     fence_height: null,
     fence_length: null,
