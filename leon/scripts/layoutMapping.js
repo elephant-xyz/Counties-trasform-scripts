@@ -275,14 +275,6 @@ function mapDescriptionToSpaceType(description) {
     spaceType = "Hot Tub / Spa Area";
   } else if(featureType.includes("SUMMER KITCHEN") ) {
     spaceType = "Outdoor Kitchen";
-  } else if(featureType.includes("MAIN BUILDING")) {
-    spaceType = "Living Area";
-  } else if(featureType.includes("STORY") || featureType.includes("FLOOR")) {
-    spaceType = "Floor";
-  } else if(featureType.includes("ATTIC")) {
-    spaceType = "Attic";
-  } else if(featureType.includes("BASEMENT")) {
-    spaceType = "Basement";
   }
   return spaceType;
 }
