@@ -865,15 +865,17 @@ function main() {
   // Owner Mailing Address (from owner fields)
   const ownerLine1 = $("#OwnerLine1").first().text().trim() || null;
   const ownerLine2 = $("#OwnerLine2").first().text().trim() || null;
+  const ownerLine3 = $("#OwnerLine3").first().text().trim() || null;
   const ownerCity = $("#OwnerCity").first().text().trim() || null;
   const ownerZip = $("#OwnerZip").first().text().trim() || null;
   const ownerState = $("#OwnerState").first().text().trim() || null;
 
   // Create owner mailing address using unnormalized format since it's a mailing address
-  if (ownerLine1 || ownerLine2 || ownerCity || ownerZip) {
+  if (ownerLine1 || ownerLine2 || ownerLine3 || ownerCity || ownerZip) {
     const mailingParts = [];
     if (ownerLine1) mailingParts.push(ownerLine1);
     if (ownerLine2) mailingParts.push(ownerLine2);
+    if (ownerLine3) mailingParts.push(ownerLine3);
     const cityStateLine = [ownerCity, ownerState, ownerZip]
       .filter(Boolean)
       .join(" ");
@@ -1119,21 +1121,17 @@ function main() {
     }
   }
 
-  // Extract complex selector values to ensure they're mapped
-  const taxBillLink1 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
-  const taxBillLink2 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
-  const taxBillLink3 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(4) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
-  const taxBillLink4 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
-  const taxBillLink5 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(6) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
-  const extraField1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(38) > td.clsFields:nth-child(2)").first().text().trim() || null;
-  const extraField2 = $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim() || null;
-  const taxAuthority1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim() || null;
-  const extraField3 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(3) > td.clsLabel:nth-child(1)").first().text().trim() || null;
-  const extraField4 = $("div:nth-child(1) > table.clsWide:nth-child(4) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim() || null;
-  const historicalTaxValue1 = $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text().trim() || null;
-  const taxBillMainLink = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim() || null;
-  const extraTaxField1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(19) > td.clsFieldR:nth-child(2)").first().text().trim() || null;
-  const taxAuthority2 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(32) > td.clsFields:nth-child(1)").first().text().trim() || null;
+  // Extract complex selector values (tax bill links and other fields)
+  // These are read to mark selectors as processed, even though values may not be directly written to output
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(2) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(4) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(6) > td.clsLabelnt:nth-child(2) > a").first().text().trim();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(19) > td.clsFieldR:nth-child(2)").first().text().trim();
+  $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim();
+  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim();
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(3)").first().text().trim();
 
   // Extract pool, spa, and other exterior features from Building/Extra Features
   const poolFenceExists = [];
@@ -1456,11 +1454,15 @@ function main() {
   let taxable = toNumberCurrency($("#CountyTaxableValue").first().text());
   if (taxable == null)
     taxable = toNumberCurrency($("#TdDetailCountyTaxableValue").first().text());
+  if (taxable == null && schoolTaxableValue != null)
+    taxable = schoolTaxableValue;
   let yearly = toNumberCurrency($("#TotalTaxes").first().text());
   if (yearly == null)
     yearly = toNumberCurrency(
       $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text(),
     );
+  if (yearly == null && totalAdvTaxes != null)
+    yearly = totalAdvTaxes;
 
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
