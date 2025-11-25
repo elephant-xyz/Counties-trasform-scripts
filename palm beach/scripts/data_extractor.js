@@ -5841,15 +5841,16 @@ function ensureRawVariantFieldSurface(address) {
     return address;
   }
 
-  const hasRawValue =
-    typeof address.unnormalized_address === "string" &&
-    address.unnormalized_address.trim().length > 0;
-  if (!hasRawValue) {
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
     return address;
   }
 
   const surfaced = {
-    unnormalized_address: address.unnormalized_address.trim(),
+    unnormalized_address: rawValue,
   };
 
   for (const [key, value] of Object.entries(address)) {
@@ -5859,46 +5860,52 @@ function ensureRawVariantFieldSurface(address) {
     if (!RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET.has(key)) {
       continue;
     }
-    surfaced[key] = value;
+
+    if (key === "request_identifier") {
+      const identifier = safeNullIfEmpty(value);
+      surfaced.request_identifier =
+        identifier === undefined ? null : identifier;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(key)) {
+      const numeric = parseCoordinate(value);
+      if (Number.isFinite(numeric)) {
+        surfaced[key] = numeric;
+      }
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        continue;
+      }
+      surfaced[key] = trimmed;
+      continue;
+    }
+
+    if (value !== undefined && value !== null) {
+      surfaced[key] = value;
+    }
   }
 
   if (!Object.prototype.hasOwnProperty.call(surfaced, "request_identifier")) {
     surfaced.request_identifier = null;
   }
 
-  // County schema's raw branch still expects the normalized field surface to
-  // exist (even when the source could only supply the raw string). Guarantee
-  // every normalized field is present and normalized to either a trimmed value
-  // or null so the oneOf check can succeed.
-  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
-    if (!Object.prototype.hasOwnProperty.call(surfaced, field)) {
-      surfaced[field] = null;
-      continue;
-    }
-
-    let candidate = surfaced[field];
-    if (candidate === undefined) {
-      surfaced[field] = null;
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(candidate);
-      surfaced[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (typeof candidate === "string") {
-      const trimmed = candidate.trim();
-      surfaced[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-
-    surfaced[field] = candidate;
+  if (!surfaced.postal_code && Object.prototype.hasOwnProperty.call(
+    surfaced,
+    "plus_four_postal_code",
+  )) {
+    delete surfaced.plus_four_postal_code;
   }
 
-  if (!surfaced.postal_code) {
-    surfaced.plus_four_postal_code = null;
+  if (
+    Object.prototype.hasOwnProperty.call(surfaced, "postal_code") &&
+    surfaced.postal_code === ""
+  ) {
+    delete surfaced.postal_code;
   }
 
   if (surfaced.state_code && !surfaced.country_code) {
