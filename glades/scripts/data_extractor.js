@@ -1557,6 +1557,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
+  // Update global people array to match the files we actually wrote
+  people = validPeople;
 
   //Company processing and mapping creation.
   const companyNames = new Set();
