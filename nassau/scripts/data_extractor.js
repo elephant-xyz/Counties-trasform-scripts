@@ -2266,12 +2266,19 @@ function main() {
       const firstNameRaw = formatName(parsed.firstName);
       const lastNameRaw = formatName(parsed.lastName);
       let middleName = formatName(parsed.middleName);
+
+      // Skip creating person if first or last name is invalid after formatting
+      if (!firstNameRaw || firstNameRaw.trim() === "" || !lastNameRaw || lastNameRaw.trim() === "") {
+        console.log(`Skipping invalid person name: ${owner.name} (firstName: ${firstNameRaw}, lastName: ${lastNameRaw})`);
+        return;
+      }
+
       const firstName = validatePersonName(firstNameRaw, 'first_name');
       const lastName = validatePersonName(lastNameRaw, 'last_name');
       if (middleName != null) {
         middleName = validatePersonName(middleName, 'middle_name');
       }
-      
+
       const person = {
         source_http_request: {
           method: "GET",
