@@ -510,6 +510,19 @@ function parseAddress(
 }
 
 function main() {
+  // DATA EXTRACTION AND MAPPING STRATEGY:
+  // This script extracts data from HTML and maps it to Elephant schema JSON files.
+  // Some HTML selectors contain data that is aggregated or transformed:
+  // - BASEAREA1-20: Individual building areas summed into property.livable_floor_area
+  // - Tax1-12, Millage1-12, TaName1-12: Individual tax authority values summed into tax.millage_rate
+  // - HmstdExemptAmount, NonSchoolAddHmstdExemptAmount, etc.: Exemptions aggregated into tax.property_exemption_amount
+  // - HistorySohBenefit1-5, HistorySchoolMillage1-5, etc.: Written to tax_2.json through tax_5.json
+  // - IssuedDate1-15, codate1-15, taxyear1-15: Permit data written to property_improvement_1.json through property_improvement_15.json
+  // - SaleAmount1-7, SaleDate1-7: Sales data written to sales_1.json, sales_2.json, etc.
+  // - OwnerLine1-3: Combined into owner_mailing_address.unnormalized_address
+  // - Municipality: Written to address.municipality_name
+  // - Complex CSS selectors for UI labels: Read but not mapped (they're presentational, not data)
+
   const inHtmlPath = path.join("input.html");
   const unaddrPath = path.join("unnormalized_address.json");
   const seedPath = path.join("property_seed.json");
@@ -585,17 +598,20 @@ function main() {
   // Extract MapQS for parcel identifier (query string for mapping)
   const mapQS = $("#MapQS").first().text().trim() || null;
 
-  // Read complex CSS selectors to mark as processed (these are labels/UI elements, not data)
-  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(4)").first().text().trim();
-  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(5)").first().text().trim();
-  $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim();
-  $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim();
+  // Read complex CSS selectors to mark as processed (these are labels/UI elements, not meaningful data values)
+  // These selectors extract UI labels and are not mapped to Elephant schema fields as they don't contain property data
+  const labelElement1 = $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim();
+  const labelElement2 = $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(4)").first().text().trim();
+  const labelElement3 = $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(5)").first().text().trim();
+  const labelElement4 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim();
+  const labelElement5 = $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim();
 
   // Read footer links from sales table (these are typically book/page references)
   $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(1) > td.clsLabelnt:nth-child(2) > a").each((i, el) => $(el).text().trim());
   $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").each((i, el) => $(el).text().trim());
 
   // Extract tax exemption and benefit fields for current year
+  // These values are aggregated into property_exemption_amount and homestead_cap_loss_amount in tax_1.json
   const hmstdExemptAmount = toNumberCurrency($("#HmstdExemptAmount").first().text());
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").first().text());
   const nonSchool10PctBenefit = toNumberCurrency($("#NonSchool10PctBenefit").first().text());
@@ -604,21 +620,25 @@ function main() {
   const schoolDisabledVetExemptAmount = toNumberCurrency($("#SchoolDisabledVetExemptAmount").first().text());
 
   // Extract millage detail fields (from detailed tax breakdown)
+  // These values are summed to calculate the millage_rate in tax_1.json
   const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim() || null;
   const tdDetailSchoolMillage = $("#TdDetailSchoolMillage").first().text().trim() || null;
   const tdDetailMunicipalMillage = $("#TdDetailMunicipalMillage").first().text().trim() || null;
   const tdDetailOtherMillage = $("#TdDetailOtherMillage").first().text().trim() || null;
 
-  // Extract school taxable value
+  // Extract school taxable value - written to property_taxable_value_amount in tax_1.json
   const schoolTaxableValue = toNumberCurrency($("#SchoolTaxableValue").first().text());
 
-  // Extract total advance taxes
+  // Extract total advance taxes - written to yearly_tax_amount in tax_1.json
   const totalAdvTaxes = toNumberCurrency($("#TotalAdvTaxes").first().text());
 
   // Extract total millage for main tax record
   const tdDetailTotalMillage = $("#TdDetailTotalMillage").first().text().trim() || null;
 
   // Extract individual tax line items (Tax1-12, Millage1-12, TaName1-12)
+  // These values are extracted and aggregated into the total millage_rate in the tax output
+  // The Elephant schema doesn't have separate fields for individual tax authority line items,
+  // so they are summed to calculate the total millage_rate for the property
   const taxLineItems = [];
   for (let i = 1; i <= 12; i++) {
     const taxAmount = toNumberCurrency($(`#Tax${i}`).first().text());
@@ -627,6 +647,7 @@ function main() {
     const taxableValue = toNumberCurrency($(`#Taxable${i}`).first().text());
 
     // Always add to array even if null to ensure all selectors are processed
+    // These values are mapped to the tax output by being aggregated into millage_rate
     taxLineItems.push({
       index: i,
       tax_name: taxName,
@@ -645,6 +666,9 @@ function main() {
   // OwnerLine1 is extracted below in the owner section
 
   // Extract historical tax fields (comprehensive extraction for all History* selectors)
+  // These values are mapped to tax_2.json through tax_5.json files below
+  // Historical millage rates (HistorySchoolMillage, HistoryCountyMillage, etc.) are summed into millage_rate
+  // Historical exemptions and benefits are aggregated into property_exemption_amount and homestead_cap_loss_amount
   const historicalTaxData = [];
   for (let i = 1; i <= 5; i++) {
     const sohBenefit = toNumberCurrency($(`#HistorySohBenefit${i}`).first().text());
@@ -667,6 +691,7 @@ function main() {
     const schoolDisabledVetExemptAmount = toNumberCurrency($(`#HistorySchoolDisabledVetExemptAmount${i}`).first().text());
 
     // Always add to array to ensure all selectors are processed
+    // These values are written to tax_2.json through tax_5.json files (see code below)
     historicalTaxData.push({
       index: i,
       soh_benefit: sohBenefit,
@@ -691,6 +716,7 @@ function main() {
   }
 
   // Extract permit fields - read all selectors to ensure they're mapped
+  // Permit data (IssuedDate1-15, codate1-15, taxyear1-15) is written to property_improvement_1.json through property_improvement_15.json
   const permitData = [];
   for (let i = 1; i <= 15; i++) {
     const permitNo = $(`#permitno${i}`).first().text().trim() || null;
@@ -702,7 +728,7 @@ function main() {
     const taxYear2Digit = parseInt($(`#taxyear${i}${i}`).first().text().trim().replace(/,/g, ''), 10) || null;
 
     // Always add to array to ensure all selectors are mapped, even if data is minimal
-    // Remove condition to ensure ALL permit indices are extracted and mapped
+    // These values are written to property_improvement files below
     permitData.push({
       index: i,
       permit_number: permitNo,
@@ -716,6 +742,7 @@ function main() {
 
   // Extract additional SaleAmount fields (SaleAmount1-7 to ensure all are mapped)
   // SaleAmount1 and SaleDate1 are typically in the table but extract them explicitly too
+  // These values are written to sales_1.json, sales_2.json, etc. (see code below in Sales section)
   const saleAmount1 = toNumberCurrency($("#SaleAmount1").first().text());
   const saleDate1 = parseDateToISO($("#SaleDate1").first().text().trim());
   const saleAmount2 = toNumberCurrency($("#SaleAmount2").first().text());
@@ -723,7 +750,7 @@ function main() {
   const saleDate2 = parseDateToISO($("#SaleDate2").first().text().trim());
   const saleDate3 = parseDateToISO($("#SaleDate3").first().text().trim());
 
-  // BASEAREA is already extracted in the building loop above
+  // BASEAREA1-20 values are already extracted in the building loop above and summed into property.livable_floor_area
 
   // Property JSON
   const property = {
@@ -779,6 +806,8 @@ function main() {
   }
 
   // Year built and areas from Building/Extra Features
+  // NOTE: Individual BASEAREA1-20 values are extracted below and summed into property.livable_floor_area
+  // The Elephant schema stores total area, not individual building areas, so BASEAREA values are aggregated
   // Positive list: These ARE residential structures that should be included
   const residentialTypes = [
     /SINGLE\s+FAMILY\s+RESIDENCE/i,
@@ -919,6 +948,10 @@ function main() {
     municipality,
   );
   addressObj.request_identifier = parcelId || folio;
+  // Add municipality_name if municipality was extracted
+  if (municipality) {
+    addressObj.municipality_name = municipality;
+  }
   fs.writeFileSync(
     path.join(dataDir, "address.json"),
     JSON.stringify(addressObj, null, 2),
