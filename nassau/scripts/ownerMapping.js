@@ -11,9 +11,37 @@ function normalizeSpace(str) {
   return (str || "").replace(/\s+/g, " ").trim();
 }
 
+// Utility: clean name by removing legal designations and invalid characters
+function cleanNameString(name) {
+  if (!name) return null;
+
+  // Remove common legal designations that may contain invalid characters
+  let cleaned = name.trim();
+  const legalDesignations = [
+    /\bL\/E\b/gi,           // Life Estate
+    /\bET\s+AL\b/gi,        // Et Al
+    /\bETAL\b/gi,           // Etal
+    /\bLIFE\s+ESTATE\b/gi,  // Life Estate
+    /\bTRUSTEE\b/gi,        // Trustee
+    /\bTTE\b/gi,            // Trustee abbreviation
+  ];
+
+  legalDesignations.forEach(pattern => {
+    cleaned = cleaned.replace(pattern, '');
+  });
+
+  // Remove any remaining characters that don't match the person name pattern
+  // Allow: letters, spaces, hyphens, apostrophes, commas, periods
+  cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  return cleaned.trim().replace(/\s+/g, ' ');
+}
+
 // Utility: title-case words conservatively (keep all-caps acronyms)
 function titleCase(str) {
-  return (str || "")
+  // First clean the string
+  const cleaned = cleanNameString(str);
+  return (cleaned || "")
     .toLowerCase()
     .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
 }
