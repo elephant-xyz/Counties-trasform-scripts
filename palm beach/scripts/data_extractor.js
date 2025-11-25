@@ -27668,26 +27668,81 @@ function enforceFinalNormalizedAddressPayload(addressPath, options = {}) {
       seedSource.source_http_request,
   );
 
-  const finalPayload = {
-    ...normalized,
-    request_identifier: requestIdentifier ?? null,
-  };
-  if (preparedSource) {
-    finalPayload.source_http_request = deepClone(preparedSource);
-  } else if (
-    Object.prototype.hasOwnProperty.call(finalPayload, "source_http_request")
+  const normalizedSurface = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...normalized })
+    : { ...normalized };
+  const hasNormalizedCoverage =
+    normalizedSurface &&
+    hasRobustNormalizedAddress({ ...normalizedSurface });
+
+  if (
+    normalizedSurface &&
+    Object.prototype.hasOwnProperty.call(normalizedSurface, "__force_raw_variant")
   ) {
-    delete finalPayload.source_http_request;
+    delete normalizedSurface.__force_raw_variant;
   }
 
-  if (Object.prototype.hasOwnProperty.call(finalPayload, "__force_raw_variant")) {
-    delete finalPayload.__force_raw_variant;
+  const rawFallbackValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      resolvedUnnormalized,
+      normalizedSurface && normalizedSurface.unnormalized_address,
+      currentPayload.unnormalized_address,
+      currentPayload.full_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+      unnormalizedSource.site_address,
+      unnormalizedSource.address,
+      unnormalizedSource.location_address,
+      unnormalizedSource.raw_address,
+    ]),
+  );
+
+  const writeRawPayload = (rawValue) => {
+    const rawPayload = { unnormalized_address: rawValue };
+    rawPayload.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier ?? null;
+    if (preparedSource) {
+      rawPayload.source_http_request = deepClone(preparedSource);
+    }
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      JSON.stringify(rawPayload, null, 2),
+    );
+  };
+
+  if (!hasNormalizedCoverage) {
+    if (!rawFallbackValue) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+    writeRawPayload(rawFallbackValue);
+    return;
+  }
+
+  const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    normalizedOutput[field] =
+      normalizedSurface[field] === undefined ||
+      normalizedSurface[field] === null
+        ? null
+        : normalizedSurface[field];
+  }
+  if (!normalizedOutput.postal_code) {
+    normalizedOutput.plus_four_postal_code = null;
+  }
+  if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+    normalizedOutput.country_code = (defaultCountryCode || "US").toUpperCase();
+  }
+  normalizedOutput.request_identifier = requestIdentifier ?? null;
+  if (preparedSource) {
+    normalizedOutput.source_http_request = deepClone(preparedSource);
   }
 
   originalWriteFileSync.call(
     fs,
     addressPath,
-    JSON.stringify(finalPayload, null, 2),
+    JSON.stringify(normalizedOutput, null, 2),
   );
 }
 
