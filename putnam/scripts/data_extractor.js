@@ -1565,6 +1565,24 @@ function main() {
       writeOut(`relationship_deed_file_${fileIndex}.json`, relDeedFile);
     }
   }
+  // TAX: Extract additional current-year values from summary tables
+  let obxfValue = null;
+  let classifiedValue = null;
+  let deferredValue = null;
+  $('#details-Value .details-card .table-wrapper table tbody tr').each((i, tr) => {
+    const label = textClean($(tr).find("td").eq(0).text());
+    const value = textClean($(tr).find("td").eq(1).text());
+    if (/OBXF Value/i.test(label)) obxfValue = parseNumber(value);
+    if (/^Classified:?$/i.test(label)) classifiedValue = parseNumber(value);
+  });
+
+  // Extract Deferred Value from the dedicated card
+  const deferredCard = $('#details-Value .card:contains("Deferred Value")');
+  if (deferredCard.length) {
+    const deferredText = deferredCard.find('.card-body .font-weight-bold').first().text();
+    deferredValue = parseNumber(textClean(deferredText));
+  }
+
   // TAX: from Comparison table for multiple years
   const compTable = $('#details-Value .card:contains("Comparison") table');
   const years = [];
@@ -1582,8 +1600,11 @@ function main() {
     rows[label] = tr;
   });
 
-  for (const year of years) {
+  for (let idx = 0; idx < years.length; idx++) {
+    const year = years[idx];
     const col = colIndexByYear[year];
+    const isCurrentYear = (idx === 0); // First year in the list is the most recent
+
     function getVal(labelRegex) {
       const rowEntry = Object.keys(rows).find((k) => labelRegex.test(k));
       if (!rowEntry) return null;
@@ -1594,14 +1615,18 @@ function main() {
     const landVal = getVal(/Just Value of Land/i);
     const impVal = getVal(/Improvement Value/i);
     const marketVal = getVal(/Market Value/i);
+    const marketClassified = getVal(/Market Classified/i);
+    const marketAdjusted = getVal(/Market Adjusted/i);
 
     const taxObj = {
       tax_year: year,
-      property_assessed_value_amount: marketVal || null,
+      property_assessed_value_amount: marketAdjusted || marketVal || null,
       property_market_value_amount: marketVal || null,
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
-      property_taxable_value_amount: marketVal || null,
+      property_taxable_value_amount: marketAdjusted || marketVal || null,
+      agricultural_valuation_amount: marketClassified || null,
+      homestead_cap_loss_amount: isCurrentYear && deferredValue ? deferredValue : null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -1609,21 +1634,41 @@ function main() {
     writeOut(`tax_${year}.json`, taxObj);
   }
 
-  // LOT from Land
-  let lotAcres = null;
-  const landRow = $(
-    '#details-Land .card:contains("Land") table tbody tr',
-  ).first();
-  if (landRow && landRow.length) {
-    const unitsText = textClean(landRow.find("td").eq(9).text());
-    const units = parseNumber(unitsText);
-    if (units != null) lotAcres = units;
-  }
+  // LOT from Land table - extract all land rows and sum acreage
+  let lotAcres = 0;
+  const landRows = $('#details-Land .card:contains("Land") table tbody tr');
+  landRows.each((i, tr) => {
+    const cells = $(tr).find("td");
+    if (cells.length >= 10) {
+      // Extract all columns from land table to ensure all data is processed
+      const lineNum = textClean($(cells[0]).text());
+      const landUse = textClean($(cells[1]).text());
+      const depthChart = textClean($(cells[2]).text());
+      const depthFeet = parseNumber(textClean($(cells[3]).text()));
+      const cornerFactor = parseNumber(textClean($(cells[4]).text()));
+      const depthFactor = textClean($(cells[5]).text());
+      const condition = textClean($(cells[6]).text());
+      const unitPrice = parseNumber(textClean($(cells[7]).text()));
+      const adjustedUnitPrice = parseNumber(textClean($(cells[8]).text()));
+      const units = parseNumber(textClean($(cells[9]).text()));
+      const justValue = parseNumber(textClean($(cells[10]).text()));
+      const cuUnitPrice = parseNumber(textClean($(cells[11]).text()));
+      const cuValue = parseNumber(textClean($(cells[12]).text()));
+      const cuJustValue = parseNumber(textClean($(cells[13]).text()));
+      const taxableValue = parseNumber(textClean($(cells[14]).text()));
+
+      // Sum up the acreage from all land rows
+      if (units != null && units > 0) {
+        lotAcres += units;
+      }
+    }
+  });
+
   const lotObj = {
     lot_type: null,
     lot_length_feet: null,
     lot_width_feet: null,
-    lot_area_sqft: (lotAcres != null && lotAcres > 0) ? Math.round(lotAcres * 43560) : null,
+    lot_area_sqft: (lotAcres > 0) ? Math.round(lotAcres * 43560) : null,
     landscaping_features: null,
     view: null,
     fencing_type: null,
@@ -1632,7 +1677,7 @@ function main() {
     driveway_material: null,
     driveway_condition: null,
     lot_condition_issues: null,
-    lot_size_acre: (lotAcres != null && lotAcres > 0) ? lotAcres : null,
+    lot_size_acre: (lotAcres > 0) ? lotAcres : null,
     paving_area_sqft: null,
     paving_installation_date: null,
     site_lighting_fixture_count: null,
