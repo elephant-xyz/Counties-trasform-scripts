@@ -3931,12 +3931,104 @@ function main() {
   });
 
   // Owners (persons/companies) - already extracted above
-  pc.persons.forEach((p, i) =>
-    writeJSON(path.join("data", `person_${i + 1}.json`), p),
-  );
+  // CRITICAL FIX: Only create person files for persons that will have valid relationships
+  // Current owners will have property relationships, historical owners need sales relationships
+
+  // First, collect which person indices will have valid relationships
+  const personsWithValidRelationships = new Set();
+
+  // Current owners will have property relationships
+  pc.personCurrentOwners.forEach((idx) => {
+    personsWithValidRelationships.add(idx);
+  });
+
+  // Check which historical persons will have sales relationships
+  const personNameToIndex = new Map();
+  pc.persons.forEach((p, i) => {
+    const nameVariants = [];
+    const f = (p.first_name || "").trim();
+    const m = (p.middle_name || "").trim();
+    const l = (p.last_name || "").trim();
+    if (f && l) {
+      nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
+      nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
+      nameVariants.push(`${l} ${f}`.toUpperCase());
+    }
+    nameVariants.forEach((v) => personNameToIndex.set(v, i + 1));
+  });
+
+  // Check which persons match sales grantees
+  sales.forEach((s) => {
+    const g = normalizeNameForMatch(s.grantee);
+    if (g && personNameToIndex.has(g)) {
+      personsWithValidRelationships.add(personNameToIndex.get(g));
+    }
+  });
+
+  // Check which persons match by date in ownerJSON
+  if (ownerJSON && ownerJSON[`property_${parcelId}`] && ownerJSON[`property_${parcelId}`].owners_by_date) {
+    const ownersByDate = ownerJSON[`property_${parcelId}`].owners_by_date;
+    Object.entries(ownersByDate).forEach(([dateKey, owners]) => {
+      if (dateKey === "current") return;
+      const saleIdx = sales.findIndex(s => s.ownership_transfer_date === dateKey);
+      if (saleIdx >= 0) {
+        (owners || []).forEach((owner) => {
+          if (owner.type === "person") {
+            const firstName = toTitleCase(owner.first_name);
+            const middleName = owner.middle_name ? toTitleCase(owner.middle_name) : null;
+            const lastName = toTitleCase(owner.last_name);
+            const personKey = `${firstName}|${middleName || ""}|${lastName}`;
+            const personIdx = pc.personIndexByKey.get(personKey);
+            if (personIdx) {
+              personsWithValidRelationships.add(personIdx);
+            }
+          }
+        });
+      }
+    });
+  }
+
+  // Now write only the persons that have valid relationships
+  const personsWritten = [];
+  pc.persons.forEach((p, i) => {
+    if (personsWithValidRelationships.has(i + 1)) {
+      writeJSON(path.join("data", `person_${i + 1}.json`), p);
+      personsWritten.push(i + 1);
+    }
+  });
+
   pc.companies.forEach((c, i) =>
     writeJSON(path.join("data", `company_${i + 1}.json`), c),
   );
+
+  // Create property-person relationships for current owners
+  pc.personCurrentOwners.forEach((idx, i) =>
+    writeJSON(
+      path.join(
+        "data",
+        `relationship_property_has_person_${idx}.json`,
+      ),
+      {
+        from: { "/": `./property.json` },
+        to: { "/": `./person_${idx}.json` },
+      }
+    )
+  );
+
+  // Create property-company relationships for current owners
+  pc.companyCurrentOwners.forEach((idx, i) =>
+    writeJSON(
+      path.join(
+        "data",
+        `relationship_property_has_company_${idx}.json`,
+      ),
+      {
+        from: { "/": `./property.json` },
+        to: { "/": `./company_${idx}.json` },
+      }
+    )
+  );
+
   if (hasOwnerMailingAddress) {
     pc.personCurrentOwners.forEach((idx, i) =>
       writeJSON(
