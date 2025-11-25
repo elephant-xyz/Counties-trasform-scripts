@@ -1259,48 +1259,16 @@ function pruneNormalizedFieldsFromRawAddressPayload(addressPath, options = {}) {
     return;
   }
 
-  const lean = {};
-  for (const field of RAW_ADDRESS_TERMINAL_FIELD_WHITELIST) {
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
-      continue;
-    }
-    if (field === "request_identifier") {
-      const identifier = safeNullIfEmpty(payload[field]);
-      lean.request_identifier =
-        identifier === undefined ? null : identifier;
-      continue;
-    }
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(payload[field]);
-      lean[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-    const value = payload[field];
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      lean[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-    lean[field] = value;
-  }
+  const hydrated =
+    ensureAddressOutputFieldPresence({
+      ...payload,
+      unnormalized_address: trimmedRaw,
+    }) || {
+      ...payload,
+      unnormalized_address: trimmedRaw,
+    };
 
-  lean.unnormalized_address = trimmedRaw;
-
-  if (!Object.prototype.hasOwnProperty.call(lean, "request_identifier")) {
-    lean.request_identifier = null;
-  }
-
-  const paddedOutput = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    ...lean,
-  };
-  paddedOutput.unnormalized_address = trimmedRaw;
-
-  if (!Object.prototype.hasOwnProperty.call(paddedOutput, "request_identifier")) {
-    paddedOutput.request_identifier = null;
-  }
-
-  const serialized = JSON.stringify(paddedOutput, null, 2);
+  const serialized = JSON.stringify(hydrated, null, 2);
   originalWriteFileSync.call(fs, addressPath, serialized);
 }
 
@@ -5753,13 +5721,11 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-// Keep the raw variant limited to the true unnormalized payload so it satisfies
-// the schema's raw branch instead of partially matching the normalized one.
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set(NORMALIZED_ADDRESS_FIELDS);
+// Persist the normalized field surface on raw variants so oneOf validators still
+// see every required key (even when the source only provided a raw string).
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
-  (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
-);
+const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
@@ -5878,7 +5844,7 @@ function ensureRawVariantFieldSurface(address) {
 }
 
 const RAW_VARIANT_METADATA_FIELDS = ["request_identifier"];
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([]);
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([...NORMALIZED_ADDRESS_FIELDS]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
@@ -11502,33 +11468,17 @@ function ensureAddressOutputFieldPresence(address) {
     typeof result.unnormalized_address === "string" &&
     result.unnormalized_address.trim().length > 0;
 
-  const normalizedUnnormalized =
-    hasUnnormalized && result.unnormalized_address
-      ? result.unnormalized_address.trim()
-      : "";
-
-  if (hasUnnormalized && !normalizedUnnormalized.length) {
-    delete result.unnormalized_address;
-  } else if (hasUnnormalized) {
-    result.unnormalized_address = normalizedUnnormalized;
-  } else if (Object.prototype.hasOwnProperty.call(result, "unnormalized_address")) {
-    delete result.unnormalized_address;
-  }
   if (hasUnnormalized) {
-    const rawSeed = {
-      ...result,
-      unnormalized_address: normalizedUnnormalized.length
-        ? normalizedUnnormalized
-        : result.unnormalized_address,
-    };
-    const projectedRaw = projectRawVariantFieldSurface(rawSeed);
-    if (projectedRaw) {
-      if (result.__force_raw_variant) {
-        projectedRaw.__force_raw_variant = true;
-      }
-      return stripAddressRequestMetadata(projectedRaw);
+    const trimmed = result.unnormalized_address.trim();
+    if (trimmed.length) {
+      result.unnormalized_address = trimmed;
+    } else {
+      delete result.unnormalized_address;
     }
-    return stripAddressRequestMetadata(rawSeed);
+  } else if (
+    Object.prototype.hasOwnProperty.call(result, "unnormalized_address")
+  ) {
+    delete result.unnormalized_address;
   }
 
   const fieldList = NORMALIZED_ADDRESS_FIELDS;
@@ -11561,13 +11511,11 @@ function ensureAddressOutputFieldPresence(address) {
     }
   }
 
-  if (!hasUnnormalized) {
-    if (!result.postal_code) {
-      result.plus_four_postal_code = null;
-    }
-    if (result.state_code && !result.country_code) {
-      result.country_code = "US";
-    }
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
   }
 
   return stripAddressRequestMetadata(result);
