@@ -2090,17 +2090,46 @@ function main() {
 
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    latitude: null,
-    longitude: null,
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // Create mailing address relationships with current owners
+  // First check if we can create any mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
+  let hasMailingAddressRelationships = false;
+
   if (owners) {
+    const key = `property_${parcelId}`;
+    const record = owners[key];
+    if (record && record.owners_by_date && record.owners_by_date['current']) {
+      const currentOwners = record.owners_by_date['current'];
+      // Check if at least one owner can be linked
+      for (const owner of currentOwners) {
+        if (owner.type === "person") {
+          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+          if (pIdx) {
+            hasMailingAddressRelationships = true;
+            break;
+          }
+        } else if (owner.type === "company") {
+          const cIdx = findCompanyIndexByName(owner.name);
+          if (cIdx) {
+            hasMailingAddressRelationships = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Only write mailing address if we can create relationships to it
+  if (hasMailingAddressRelationships) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(seed),
+      latitude: null,
+      longitude: null,
+      unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+    // Create mailing address relationships with current owners
     const key = `property_${parcelId}`;
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
