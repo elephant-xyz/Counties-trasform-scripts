@@ -141,7 +141,10 @@ function finalizeAddressWritePayload(rawPayload) {
   const surfacedOutput =
     ensureRawVariantFieldSurface(strippedOutput) || strippedOutput;
   const rawOnlyOutput = collapseAddressToRawOnlySurface(surfacedOutput);
-  return rawOnlyOutput || surfacedOutput;
+  const finalRawOutput = rawOnlyOutput || surfacedOutput;
+  const minimalRawOutput =
+    buildLeanRawAddressOutput(finalRawOutput) || finalRawOutput;
+  return minimalRawOutput;
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -785,7 +788,8 @@ function stripAddressRequestMetadata(address) {
   fallbackRaw.request_identifier =
     requestIdentifier === undefined ? null : requestIdentifier;
 
-  return fallbackRaw;
+  const leanFallback = buildLeanRawAddressOutput(fallbackRaw);
+  return leanFallback || fallbackRaw;
 }
 function buildRawVariantOneOfPayload(address) {
   return projectRawVariantFieldSurface(address);
@@ -905,105 +909,38 @@ function buildLeanRawAddressOutput(rawOutput) {
     return null;
   }
 
-  const leanOutput = {};
-
-  for (const field of RAW_VARIANT_ALLOWED_OUTPUT_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
-      continue;
-    }
-
-    let value = rawOutput[field];
-
-    if (field === "unnormalized_address") {
-      if (typeof value !== "string") {
-        continue;
-      }
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      leanOutput.unnormalized_address = trimmed;
-      continue;
-    }
-
-    if (field === "request_identifier") {
-      if (value === undefined) {
-        continue;
-      }
-      leanOutput.request_identifier =
-        value === null || value === "" ? null : value;
-      continue;
-    }
-
-    if (value === undefined || value === null) {
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      if (!Number.isFinite(numeric)) {
-        continue;
-      }
-      leanOutput[field] = numeric;
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      value = trimmed;
-    }
-
-    leanOutput[field] = value;
-  }
-
-  if (!leanOutput.unnormalized_address) {
+  const rawValue =
+    typeof rawOutput.unnormalized_address === "string"
+      ? rawOutput.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
     return null;
   }
 
   const minimalOutput = {
-    unnormalized_address: leanOutput.unnormalized_address,
+    unnormalized_address: rawValue,
   };
 
-  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
-    if (!Object.prototype.hasOwnProperty.call(leanOutput, field)) {
-      continue;
-    }
-    minimalOutput[field] = leanOutput[field];
-  }
-
-  if (Object.prototype.hasOwnProperty.call(leanOutput, "request_identifier")) {
-    minimalOutput.request_identifier = leanOutput.request_identifier;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(leanOutput, "source_http_request")) {
-    minimalOutput.source_http_request = leanOutput.source_http_request;
-  }
-
-  if (
-    !Object.prototype.hasOwnProperty.call(minimalOutput, "request_identifier")
-  ) {
+  if (Object.prototype.hasOwnProperty.call(rawOutput, "request_identifier")) {
+    const normalizedIdentifier = safeNullIfEmpty(
+      rawOutput.request_identifier,
+    );
+    minimalOutput.request_identifier =
+      normalizedIdentifier === undefined ? null : normalizedIdentifier;
+  } else {
     minimalOutput.request_identifier = null;
   }
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(minimalOutput, field)) {
-      continue;
-    }
-    minimalOutput[field] = null;
-  }
-
-  if (!minimalOutput.postal_code) {
-    minimalOutput.plus_four_postal_code = null;
-  }
-
   if (
-    minimalOutput.state_code &&
-    !minimalOutput.country_code
+    Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request") &&
+    rawOutput.source_http_request
   ) {
-    minimalOutput.country_code = "US";
+    const prepared = prepareSourceHttpRequest(
+      rawOutput.source_http_request,
+    );
+    if (prepared) {
+      minimalOutput.source_http_request = deepClone(prepared);
+    }
   }
 
   return minimalOutput;
