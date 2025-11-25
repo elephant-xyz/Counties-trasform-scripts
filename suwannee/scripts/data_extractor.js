@@ -1247,7 +1247,7 @@ function extractTaxes($) {
 }
 
 function mapDeedCode(code) {
-  if (!code) return "Miscellaneous";
+  if (!code) return {};
   const u = code.trim().toUpperCase();
   if (u === "CT") return "Contract for Deed";
   if (u === "WD") return "Warranty Deed";
