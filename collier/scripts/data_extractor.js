@@ -1425,22 +1425,57 @@ function main() {
     JSON.stringify(structureObj, null, 2),
   );
 
-  // Property Improvements (permits)
-  // Write property_improvement files for ALL permits to ensure all selectors are mapped
-  permitData.forEach((permit, idx) => {
-    const improvementObj = {};
+  // Helper function to map permit type to improvement_type enum
+  function mapPermitTypeToImprovementType(permitType) {
+    if (!permitType) return null;
+    const type = permitType.toUpperCase();
 
-    // Only add properties if they have valid non-null values
+    if (type.includes('ROOF')) return 'Roofing';
+    if (type.includes('POOL') || type.includes('SPA')) return 'PoolSpaInstallation';
+    if (type.includes('SCREEN')) return 'ScreenEnclosure';
+    if (type.includes('FENCE')) return 'Fencing';
+    if (type.includes('DOCK') || type.includes('SHORE') || type.includes('SEA WALL')) return 'DockAndShore';
+    if (type.includes('ELECTRIC')) return 'Electrical';
+    if (type.includes('PLUMB')) return 'Plumbing';
+    if (type.includes('HVAC') || type.includes('MECHANICAL') || type.includes('A/C') || type.includes('AIR')) return 'MechanicalHVAC';
+    if (type.includes('GAS')) return 'GasInstallation';
+    if (type.includes('SOLAR')) return 'Solar';
+    if (type.includes('DEMOL')) return 'Demolition';
+    if (type.includes('FIRE')) return 'FireProtectionSystem';
+    if (type.includes('IRRIG')) return 'LandscapeIrrigation';
+    if (type.includes('SHUTTER') || type.includes('AWNING')) return 'ShutterAwning';
+    if (type.includes('WELL')) return 'WellPermit';
+    if (type.includes('ADDITION')) return 'BuildingAddition';
+    if (type.includes('COMMERCIAL')) return 'CommercialConstruction';
+    if (type.includes('RESIDENTIAL')) return 'ResidentialConstruction';
+
+    return 'GeneralBuilding'; // Default for 'OTHER' and unrecognized types
+  }
+
+  // Property Improvements (permits)
+  // Write property_improvement files ONLY for permits with actual data
+  // All selectors are already read above to ensure they're marked as processed
+  permitData.forEach((permit, idx) => {
+    // Only create file if there's actual permit data (permit number or type)
+    if (!permit.permit_number && !permit.permit_type) {
+      return; // Skip empty permits
+    }
+
+    const improvementObj = {
+      // Required fields
+      improvement_type: mapPermitTypeToImprovementType(permit.permit_type) || 'GeneralBuilding',
+      improvement_status: permit.completion_date ? 'Completed' : 'Permitted',
+      contractor_type: 'Unknown', // Not provided in source data
+      permit_required: true, // All these are permits, so true
+    };
+
+    // Optional fields - only add if they have valid non-null values
     if (permit.permit_number) improvementObj.permit_number = permit.permit_number;
     if (permit.permit_issue_date) improvementObj.permit_issue_date = permit.permit_issue_date;
     if (permit.completion_date) improvementObj.completion_date = permit.completion_date;
     if (permit.final_inspection_date) improvementObj.final_inspection_date = permit.final_inspection_date;
 
-    // Only add these optional properties if they have values
-    // fee must be a number (not null), so omit it if not available
-    // permit_required must be a boolean (not null), so omit it if not available
-
-    // Write even if empty object to ensure all permit selectors are marked as mapped
+    // Write the improvement object
     fs.writeFileSync(
       path.join(dataDir, `property_improvement_${idx + 1}.json`),
       JSON.stringify(improvementObj, null, 2),
@@ -1462,13 +1497,8 @@ function main() {
   }
 
   // Write metadata file for tax line items
-  const taxLineMetadata = taxLineItems.filter(t => t.tax_name || t.tax_amount !== null || t.millage_rate !== null);
-  if (taxLineMetadata.length > 0) {
-    fs.writeFileSync(
-      path.join(dataDir, "tax_line_items.json"),
-      JSON.stringify({ line_items: taxLineMetadata }, null, 2),
-    );
-  }
+  // Note: tax_line_items data is stored in general_metadata.json instead
+  // The tax schema doesn't have a separate line_items structure
 
   // Write metadata file for historical tax details
   const historicalMetadata = historicalTaxData.filter(h =>
@@ -1483,6 +1513,7 @@ function main() {
   }
 
   // Write general metadata file for fields that don't fit in standard schema
+  const taxLineMetadata = taxLineItems.filter(t => t.tax_name || t.tax_amount !== null || t.millage_rate !== null);
   const generalMetadata = {
     map_query_string: mapQS,
     total_units: totalUnits1,
@@ -1501,7 +1532,8 @@ function main() {
       detail_municipal_millage: tdDetailMunicipalMillage,
       detail_other_millage: tdDetailOtherMillage,
       detail_total_millage: tdDetailTotalMillage
-    }
+    },
+    tax_line_items: taxLineMetadata.length > 0 ? taxLineMetadata : null
   };
   fs.writeFileSync(
     path.join(dataDir, "general_metadata.json"),
