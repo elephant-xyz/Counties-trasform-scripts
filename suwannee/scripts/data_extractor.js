@@ -1581,22 +1581,21 @@ function main() {
     const structuresData = readJson(path.join("owners", "structure_data.json"));
     const layoutData = readJson(path.join("owners", "layout_data.json"));
 
-    // Geometry generation removed - geometry class is not part of the Seed data group
-    // try {
-    //   const seedCsvPath = path.join(".", "input.csv");
-    //   const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-    //   createGeometryClass(createGeometryInstances(seedCsv));
-    // } catch (e) {
-    //   const latitude = unAddr && unAddr.latitude ? unAddr.latitude : null;
-    //   const longitude = unAddr && unAddr.longitude ? unAddr.longitude : null;
-    //   if (latitude && longitude) {
-    //     const coordinate = new Geometry({
-    //       latitude: latitude,
-    //       longitude: longitude
-    //     });
-    //     createGeometryClass([coordinate]);
-    //   }
-    // }
+    try {
+      const seedCsvPath = path.join(".", "input.csv");
+      const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+      createGeometryClass(createGeometryInstances(seedCsv));
+    } catch (e) {
+      const latitude = unAddr && unAddr.latitude ? unAddr.latitude : null;
+      const longitude = unAddr && unAddr.longitude ? unAddr.longitude : null;
+      if (latitude && longitude) {
+        const coordinate = new Geometry({
+          latitude: latitude,
+          longitude: longitude
+        });
+        createGeometryClass([coordinate]);
+      }
+    }
 
     // Property
     const property = extractProperty($);
