@@ -589,9 +589,9 @@ function main() {
   // Extract total millage for main tax record
   const tdDetailTotalMillage = $("#TdDetailTotalMillage").first().text().trim() || null;
 
-  // Extract individual tax line items (Tax1-10, Millage1-10, TaName1-10)
+  // Extract individual tax line items (Tax1-12, Millage1-12, TaName1-12)
   const taxLineItems = [];
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 12; i++) {
     const taxAmount = toNumberCurrency($(`#Tax${i}`).first().text());
     const millageRate = parseFloat($(`#Millage${i}`).first().text().trim().replace(/,/g, '')) || null;
     const taxName = $(`#TaName${i}`).first().text().trim() || null;
@@ -1124,6 +1124,7 @@ function main() {
   const taxBillLink2 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
   const taxBillLink3 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(4) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
   const taxBillLink4 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(5) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
+  const taxBillLink5 = $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(6) > td.clsLabelnt:nth-child(2) > a").first().text().trim() || null;
   const extraField1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(38) > td.clsFields:nth-child(2)").first().text().trim() || null;
   const extraField2 = $("div:nth-child(1) > table.clsWide:nth-child(2) > tbody > tr:nth-child(2) > td.clsLabel:nth-child(1)").first().text().trim() || null;
   const taxAuthority1 = $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim() || null;
