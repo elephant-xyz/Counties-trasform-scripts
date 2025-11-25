@@ -1679,38 +1679,35 @@ function main() {
           to: { "/": `./${ownerFiles.companyFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
+        if (hasOwnerMailingAddress) {
+          writeJson(
+            path.join(
+              "data",
+              `relationship_company_has_mailing_address.json`,
+            ),
+            {
+              from: { "/": `./${ownerFiles.companyFiles[0]}` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
+        }
       } else if (ownerFiles.personFiles.length > 0) {
         writeJson(path.join(dataDir, "relationship_sales_person.json"), {
           to: { "/": `./${ownerFiles.personFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
-      }
-    }
-
-    // Create mailing address relationships regardless of sales
-    if (hasOwnerMailingAddress) {
-      if (ownerFiles.companyFiles.length > 0) {
-        writeJson(
-          path.join(
-            "data",
-            `relationship_company_has_mailing_address.json`,
-          ),
-          {
-            from: { "/": `./${ownerFiles.companyFiles[0]}` },
-            to: { "/": `./mailing_address.json` },
-          },
-        );
-      } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(
-          path.join(
-            "data",
-            `relationship_person_has_mailing_address.json`,
-          ),
-          {
-            from: { "/": `./${ownerFiles.personFiles[0]}` },
-            to: { "/": `./mailing_address.json` },
-          },
-        );
+        if (hasOwnerMailingAddress) {
+          writeJson(
+            path.join(
+              "data",
+              `relationship_person_has_mailing_address.json`,
+            ),
+            {
+              from: { "/": `./${ownerFiles.personFiles[0]}` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
+        }
       }
     }
 
