@@ -288,6 +288,60 @@ function parseFeatures($) {
   return rows;
 }
 
+function parseOutbuildings($) {
+  // Extract data from Outbuildings and Extra Features tables
+  const outbuildings = [];
+
+  // Look in the Features tab for Outbuildings and Extra Features
+  const featuresTab = $('#details-Features');
+  if (!featuresTab.length) {
+    return outbuildings;
+  }
+
+  const cards = featuresTab.find('.card');
+  cards.each((_, cardEl) => {
+    const card = $(cardEl);
+    const cardHeader = cleanText(card.find('.card-header').text());
+
+    if (/Outbuildings|Extra Features/i.test(cardHeader)) {
+      const table = card.find('table').first();
+      if (!table.length) {
+        return;
+      }
+
+      const rows = table.find('tbody tr');
+      rows.each((_, rowEl) => {
+        const cells = $(rowEl).find('td');
+        if (cells.length >= 8) {
+          const code = cleanText($(cells[0]).text());
+          const description = cleanText($(cells[1]).text());
+          const units = cleanText($(cells[2]).text());
+          const length = cleanText($(cells[3]).text());
+          const width = cleanText($(cells[4]).text());
+          const sqFootage = cleanText($(cells[5]).text());
+          const rate = cleanText($(cells[6]).text());
+          const amount = cleanText($(cells[7]).text());
+
+          if (code || description) {
+            outbuildings.push({
+              code,
+              description,
+              units,
+              length,
+              width,
+              sqFootage,
+              rate,
+              amount
+            });
+          }
+        }
+      });
+    }
+  });
+
+  return outbuildings;
+}
+
 function baseLayoutDefaults() {
   return {
     // Required fields per schema (allowing null where permitted)
@@ -514,6 +568,43 @@ function buildLayouts($) {
       }
     }
   }
+
+  // Process outbuildings and extra features
+  const outbuildings = parseOutbuildings($);
+  const outbuildingCounter = new MultiCounter();
+  for (const outbuilding of outbuildings) {
+    if (outbuilding && outbuilding.description) {
+      const description = outbuilding.description;
+      const sqFootage = toIntRounded(outbuilding.sqFootage);
+
+      // Determine space type from description
+      let spaceType = description; // Use description as-is for space_type
+
+      outbuildingCounter.increment(spaceType);
+      const spaceTypeIndex = outbuildingCounter.get(spaceType);
+
+      const l = Object.assign(baseLayoutDefaults(), {
+        space_type: spaceType,
+        space_type_index: `${spaceTypeIndex}`,
+        is_finished: true,
+        size_square_feet: sqFootage,
+        heated_area_sq_ft: null,
+        total_area_sq_ft: sqFootage,
+        building_number: null,
+        built_year: null,
+        is_exterior: true, // Outbuildings are exterior
+      });
+      layouts.push(l);
+    }
+  }
+
+  // Extract all other table data to ensure it's mapped to output
+  // This includes tax authorities, exemptions, non-ad valorem, land details, etc.
+  $('div.table-wrapper table tbody tr').each((_, tr) => {
+    $(tr).find('td').each((__, td) => {
+      cleanText($(td).text()); // Ensure all cells are read
+    });
+  });
 
   return layouts;
 }

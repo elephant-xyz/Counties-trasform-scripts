@@ -1639,7 +1639,9 @@ function main() {
     site_lighting_installation_date: null,
   };
   writeOut("lot.json", lotObj);
+
   // Layout extraction from owners/layout_data.json
+  // (Outbuildings, extra features, and other data are extracted by separate mapping scripts)
   if (layoutData) {
     let layoutBuildingMap = {};
     const lset =
