@@ -1457,12 +1457,23 @@ function main() {
     if (code || desc) zoning = [code, desc].filter(Boolean).join(" ");
   }
 
+  // Extract subdivision
+  let subdivision = null;
+  $(".card-body .row").each((i, el) => {
+    const label = textClean($(el).find(".col-4").text());
+    if (/^Subdivision:/i.test(label)) {
+      const value = textClean($(el).find(".col-8").text());
+      if (value) subdivision = value;
+    }
+  });
+
   const propertyOut = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDescription || null,
     property_structure_built_year: yearBuilt || null,
     property_effective_built_year: yearEffective || null,
     zoning: zoning || null,
+    subdivision: subdivision || null,
   };
   const landuse = $(
     '.details-card:contains("Summary") table tbody tr',
