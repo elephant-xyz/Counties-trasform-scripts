@@ -1436,15 +1436,21 @@ function main() {
     legalDescription = textClean(descRow.find(".col-md-10").text());
   }
 
+  let subdivision = null;
+  $(".summary-card .row").each((i, el) => {
+    const label = textClean($(el).find(".col-4").text());
+    if (/^Subdivision:?$/i.test(label)) {
+      const value = textClean($(el).find(".col-8").text());
+      if (value) subdivision = value;
+    }
+  });
 
   let yearBuilt = null;
-  let yearEffective = null;
   const impSection = $("#improvements-accordion .card.wrapper-card").first();
   impSection.find("table tbody tr").each((i, tr) => {
     const k = textClean($(tr).find("td").eq(0).text());
     const v = textClean($(tr).find("td").eq(1).text());
     if (/Actual Year Built/i.test(k)) yearBuilt = parseNumber(v);
-    if (/Effective Year Built/i.test(k)) yearEffective = parseNumber(v);
   });
 
   let zoning = null;
@@ -1461,7 +1467,7 @@ function main() {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legalDescription || null,
     property_structure_built_year: yearBuilt || null,
-    property_effective_built_year: yearEffective || null,
+    subdivision: subdivision || null,
     zoning: zoning || null,
   };
   const landuse = $(
@@ -1471,18 +1477,22 @@ function main() {
     .find("td")
     .eq(1)
     .text();
-  if (!landuse) {
-    throw new Error("Property type not found");
+
+  const propertyMapping = landuse ? mapPropertyTypeFromUseCode(landuse) : null;
+
+  if (propertyMapping) {
+    propertyOut.property_type = propertyMapping.property_type;
+    propertyOut.ownership_estate_type = propertyMapping.ownership_estate_type;
+    propertyOut.build_status = propertyMapping.build_status;
+    propertyOut.structure_form = propertyMapping.structure_form;
+    propertyOut.property_usage_type = propertyMapping.property_usage_type;
+  } else {
+    propertyOut.property_type = "MAPPING NOT AVAILABLE";
+    propertyOut.ownership_estate_type = "MAPPING NOT AVAILABLE";
+    propertyOut.build_status = "MAPPING NOT AVAILABLE";
+    propertyOut.structure_form = null;
+    propertyOut.property_usage_type = "MAPPING NOT AVAILABLE";
   }
-  const propertyMapping = mapPropertyTypeFromUseCode(landuse);
-  if (!propertyMapping) {
-    throw new Error("Property type not found");
-  }
-  propertyOut.property_type = propertyMapping.property_type,
-  propertyOut.ownership_estate_type = propertyMapping.ownership_estate_type,
-  propertyOut.build_status = propertyMapping.build_status,
-  propertyOut.structure_form = propertyMapping.structure_form,
-  propertyOut.property_usage_type = propertyMapping.property_usage_type,
   writeOut("property.json", propertyOut);
   writeOut("parcel.json", {parcel_identifier: parcelId || ""});
   writeOut(`relationship_property_to_parcel.json`, {
