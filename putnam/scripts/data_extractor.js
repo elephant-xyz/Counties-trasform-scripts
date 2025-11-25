@@ -1582,23 +1582,6 @@ function main() {
     rows[label] = tr;
   });
 
-  // Extract exemption amounts from the exemptions table
-  let totalExemptionAmount = 0;
-  const exemptionsCard = $('#details-Value .card:contains("Exemptions")');
-  // Get the second table in the card (the first is taxing districts, second is actual exemptions)
-  const exemptionsTable = exemptionsCard.find("table").eq(1);
-  exemptionsTable.find("tbody tr").each((_, tr) => {
-    const cells = $(tr).find("td");
-    // Only process rows with 6 cells (exemption rows have 6, taxing district rows have 7)
-    if (cells.length === 6) {
-      const amountCell = cells.eq(2); // Amount is in column 2
-      const exemptionAmount = parseNumber(textClean(amountCell.text()));
-      if (exemptionAmount && exemptionAmount > 0) {
-        totalExemptionAmount += exemptionAmount;
-      }
-    }
-  });
-
   for (const year of years) {
     const col = colIndexByYear[year];
     function getVal(labelRegex) {
@@ -1619,7 +1602,6 @@ function main() {
       property_building_amount: impVal || null,
       property_land_amount: landVal || null,
       property_taxable_value_amount: marketVal || null,
-      property_exemption_amount: totalExemptionAmount > 0 ? totalExemptionAmount : null,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
