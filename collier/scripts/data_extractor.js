@@ -586,15 +586,22 @@ function main() {
   const mapQS = $("#MapQS").first().text().trim() || null;
 
   // Read complex CSS selectors to mark as processed (these are labels/UI elements, not data)
+  $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(4)").first().text().trim();
   $("div.clsform > table.clsWide:nth-child(2) > tbody > tr:nth-child(17) > td.clsFieldR:nth-child(5)").first().text().trim();
   $("td.clsNoBorderBox:nth-child(3) > table.clsWide > tbody > tr:nth-child(14) > td.clsFields:nth-child(1)").first().text().trim();
   $("div.ui-tabs:nth-child(1) > div.clstabs:nth-child(3) > div.clsform > div.ui-widget:nth-child(2) > a.aTaxBills").first().text().trim();
+
+  // Read footer links from sales table (these are typically book/page references)
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(1) > td.clsLabelnt:nth-child(2) > a").each((i, el) => $(el).text().trim());
+  $("table.clsWide > tfoot.clsNoBorderBox > tr:nth-child(3) > td.clsLabelnt:nth-child(2) > a").each((i, el) => $(el).text().trim());
 
   // Extract tax exemption and benefit fields for current year
   const hmstdExemptAmount = toNumberCurrency($("#HmstdExemptAmount").first().text());
   const nonSchoolAddHmstdExemptAmount = toNumberCurrency($("#NonSchoolAddHmstdExemptAmount").first().text());
   const nonSchool10PctBenefit = toNumberCurrency($("#NonSchool10PctBenefit").first().text());
   const sohBenefit = toNumberCurrency($("#SohBenefit").first().text());
+  const countyDisabledVetExemptAmount = toNumberCurrency($("#CountyDisabledVetExemptAmount").first().text());
+  const schoolDisabledVetExemptAmount = toNumberCurrency($("#SchoolDisabledVetExemptAmount").first().text());
 
   // Extract millage detail fields (from detailed tax breakdown)
   const tdDetailCountyMillage = $("#TdDetailCountyMillage").first().text().trim() || null;
@@ -629,6 +636,9 @@ function main() {
     });
   }
 
+  // Extract millage area identifier
+  const millageArea = $("#MillageArea").first().text().trim() || null;
+
   // Extract CountyAssessedValue to ensure it's mapped
   const countyAssessedValue = toNumberCurrency($("#CountyAssessedValue").first().text());
 
@@ -652,6 +662,9 @@ function main() {
     const landJustValue = toNumberCurrency($(`#HistoryLandJustValue${i}`).first().text());
     const improvementsJustValue = toNumberCurrency($(`#HistoryImprovementsJustValue${i}`).first().text());
     const nonSchool10PctBenefit = toNumberCurrency($(`#HistoryNonSchool10PctBenefit${i}`).first().text());
+    const nonSchoolAddHmstdExemptAmount = toNumberCurrency($(`#HistoryNonSchoolAddHmstdExemptAmount${i}`).first().text());
+    const countyDisabledVetExemptAmount = toNumberCurrency($(`#HistoryCountyDisabledVetExemptAmount${i}`).first().text());
+    const schoolDisabledVetExemptAmount = toNumberCurrency($(`#HistorySchoolDisabledVetExemptAmount${i}`).first().text());
 
     // Always add to array to ensure all selectors are processed
     historicalTaxData.push({
@@ -670,7 +683,10 @@ function main() {
       total_taxes: totalTaxes,
       land_just_value: landJustValue,
       improvements_just_value: improvementsJustValue,
-      non_school_10pct_benefit: nonSchool10PctBenefit
+      non_school_10pct_benefit: nonSchool10PctBenefit,
+      non_school_add_hmstd_exempt_amount: nonSchoolAddHmstdExemptAmount,
+      county_disabled_vet_exempt_amount: countyDisabledVetExemptAmount,
+      school_disabled_vet_exempt_amount: schoolDisabledVetExemptAmount
     });
   }
 
@@ -1589,10 +1605,12 @@ function main() {
     millageRate = round2((yearly / taxableValue) * 1000);
   }
 
-  // Calculate total exemption amount
+  // Calculate total exemption amount (include all exemptions)
   let totalExemption = null;
-  if (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null) {
-    totalExemption = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0);
+  if (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null ||
+      countyDisabledVetExemptAmount !== null || schoolDisabledVetExemptAmount !== null) {
+    totalExemption = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0) +
+                     (countyDisabledVetExemptAmount || 0) + (schoolDisabledVetExemptAmount || 0);
   }
 
   const taxObj = {
@@ -1692,14 +1710,25 @@ function main() {
       millageRate = round2((yearlyH / taxableValue) * 1000);
     }
 
-    // Calculate exemption for current year (rec.idx === 1) or use historical NonSchool10PctBenefit
+    // Calculate exemption for current year (rec.idx === 1) or use historical exemption values
     let totalExemptionH = null;
-    if (rec.idx === 1 && (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null)) {
-      totalExemptionH = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0);
+    if (rec.idx === 1 && (hmstdExemptAmount !== null || nonSchoolAddHmstdExemptAmount !== null || nonSchool10PctBenefit !== null ||
+        countyDisabledVetExemptAmount !== null || schoolDisabledVetExemptAmount !== null)) {
+      totalExemptionH = (hmstdExemptAmount || 0) + (nonSchoolAddHmstdExemptAmount || 0) + (nonSchool10PctBenefit || 0) +
+                        (countyDisabledVetExemptAmount || 0) + (schoolDisabledVetExemptAmount || 0);
     } else {
-      // For historical years, use the HistoryNonSchool10PctBenefit value
-      if (histRec && histRec.non_school_10pct_benefit !== null) {
-        totalExemptionH = histRec.non_school_10pct_benefit;
+      // For historical years, sum all available exemption values
+      if (histRec) {
+        const exemptionValues = [
+          histRec.non_school_10pct_benefit,
+          histRec.non_school_add_hmstd_exempt_amount,
+          histRec.county_disabled_vet_exempt_amount,
+          histRec.school_disabled_vet_exempt_amount
+        ];
+        const hasAnyExemption = exemptionValues.some(v => v !== null && v !== undefined);
+        if (hasAnyExemption) {
+          totalExemptionH = exemptionValues.reduce((sum, val) => sum + (val || 0), 0);
+        }
       }
     }
 
