@@ -10179,6 +10179,19 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
   return finalized;
 }
 
+const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [
+  "plus_four_postal_code",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+];
+
 const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "street_number",
   "street_name",
@@ -10189,6 +10202,7 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "county_name",
   "latitude",
   "longitude",
+  ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
 ];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -10247,16 +10261,7 @@ const COUNTY_STRICT_NORMALIZED_FIELDS = [
 ];
 
 const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
+  ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
 ];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
