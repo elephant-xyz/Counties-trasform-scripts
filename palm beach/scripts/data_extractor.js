@@ -1915,6 +1915,12 @@ function sanitizeAddressPayloadForWrite(payload) {
   const forceRawVariant =
     Object.prototype.hasOwnProperty.call(payload, "__force_raw_variant") &&
     payload.__force_raw_variant === true;
+  const preserveStructuredFields =
+    Object.prototype.hasOwnProperty.call(payload, "__preserve_structured_fields") &&
+    payload.__preserve_structured_fields === true;
+  if (preserveStructuredFields) {
+    delete payload.__preserve_structured_fields;
+  }
 
   const directUnnormalized =
     typeof payload.unnormalized_address === "string"
@@ -2080,7 +2086,7 @@ function sanitizeAddressPayloadForWrite(payload) {
       ? deepClone(preparedSource)
       : null;
 
-    if (forceRawVariant) {
+    if (forceRawVariant || preserveStructuredFields) {
       rawSurface.__force_raw_variant = true;
     }
 
@@ -2090,6 +2096,16 @@ function sanitizeAddressPayloadForWrite(payload) {
           delete rawSurface[field];
         }
       }
+    }
+
+    if (preserveStructuredFields) {
+      if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
+        console.error(
+          "rawSurface with structured fields",
+          JSON.stringify(rawSurface, null, 2),
+        );
+      }
+      return rawSurface;
     }
 
     return stripAddressRequestMetadata(rawSurface);
@@ -51131,6 +51147,198 @@ function buildRawAddressPayloadFromSources(rawValue, options = {}) {
   }
   if (!payload.county_name && defaultCountyName) {
     payload.county_name = titleCaseCounty(defaultCountyName);
+  }
+
+  const adoptFieldIfMissing = (field, value) => {
+    if (!field) return;
+    if (hasMeaningfulAddressValue(payload[field])) {
+      return;
+    }
+    if (value === undefined || value === null) {
+      return;
+    }
+    const sanitized =
+      typeof sanitizeAddressFieldValue === "function"
+        ? sanitizeAddressFieldValue(field, value)
+        : value;
+    if (sanitized === undefined || sanitized === null) {
+      return;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      if (!trimmed.length) {
+        return;
+      }
+      payload[field] = trimmed;
+      return;
+    }
+    payload[field] = sanitized;
+  };
+
+  const fallbackFieldMap =
+    ADDRESS_FALLBACK_CONTEXT &&
+    ADDRESS_FALLBACK_CONTEXT.fieldFallbacks &&
+    typeof ADDRESS_FALLBACK_CONTEXT.fieldFallbacks === "object"
+      ? ADDRESS_FALLBACK_CONTEXT.fieldFallbacks
+      : null;
+
+  const resolveFallbackValue = (field) => {
+    if (!fallbackFieldMap) return null;
+    if (!Object.prototype.hasOwnProperty.call(fallbackFieldMap, field)) {
+      return null;
+    }
+    const candidates = flattenCandidateValues(fallbackFieldMap[field]);
+    if (!candidates.length) return null;
+    return resolveFirstNonEmptyString(candidates.map(normalizeStringCandidate));
+  };
+
+  const structuredRawCandidates = flattenCandidateValues(
+    addressPayload && addressPayload.unnormalized_address,
+    addressPayload && addressPayload.full_address,
+    addressPayload && addressPayload.site_address,
+    unnormalizedPayload && unnormalizedPayload.unnormalized_address,
+    unnormalizedPayload && unnormalizedPayload.full_address,
+    unnormalizedPayload && unnormalizedPayload.site_address,
+    seedPayload && seedPayload.unnormalized_address,
+    seedPayload && seedPayload.full_address,
+    seedPayload && seedPayload.site_address,
+    fallbackFieldMap && fallbackFieldMap.unnormalized_address,
+    fallbackFieldMap && fallbackFieldMap.full_address,
+    ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+      : [],
+  );
+
+  const derivedRawValue = resolveFirstNonEmptyString(
+    structuredRawCandidates.map(normalizeStringCandidate),
+  );
+  if (derivedRawValue) {
+    const derivedFields =
+      deriveNormalizedAddressFieldsFromRaw(derivedRawValue) || null;
+    if (derivedFields && typeof derivedFields === "object") {
+      adoptFieldIfMissing("street_number", derivedFields.street_number);
+      adoptFieldIfMissing("street_name", derivedFields.street_name);
+      adoptFieldIfMissing(
+        "street_pre_directional_text",
+        derivedFields.street_pre_directional_text,
+      );
+      adoptFieldIfMissing(
+        "street_post_directional_text",
+        derivedFields.street_post_directional_text,
+      );
+      adoptFieldIfMissing("street_suffix_type", derivedFields.street_suffix_type);
+      adoptFieldIfMissing("unit_identifier", derivedFields.unit_identifier);
+      adoptFieldIfMissing("route_number", derivedFields.route_number);
+      adoptFieldIfMissing("city_name", derivedFields.city_name);
+      adoptFieldIfMissing("state_code", derivedFields.state_code);
+      adoptFieldIfMissing("postal_code", derivedFields.postal_code);
+      adoptFieldIfMissing(
+        "plus_four_postal_code",
+        derivedFields.plus_four_postal_code,
+      );
+    }
+  }
+
+  const parcelIdentifierCandidates = flattenCandidateValues(
+    addressPayload && addressPayload.parcel_identifier,
+    seedPayload && seedPayload.parcel_identifier,
+    seedPayload && seedPayload.parcel_id,
+    ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.parcelIdCandidates
+      : [],
+  );
+  for (const candidate of parcelIdentifierCandidates) {
+    const grid = parseGridFromPcn(candidate);
+    if (grid) {
+      adoptFieldIfMissing("township", grid.township);
+      adoptFieldIfMissing("range", grid.range);
+      adoptFieldIfMissing("section", grid.section);
+      adoptFieldIfMissing("block", grid.block);
+      adoptFieldIfMissing("lot", grid.lot);
+      break;
+    }
+  }
+
+  [
+    "street_number",
+    "street_name",
+    "street_pre_directional_text",
+    "street_post_directional_text",
+    "street_suffix_type",
+    "unit_identifier",
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+    "plus_four_postal_code",
+  ].forEach((field) => {
+    const fallbackValue = resolveFallbackValue(field);
+    if (fallbackValue) {
+      adoptFieldIfMissing(field, fallbackValue);
+    }
+  });
+
+  const fieldSourceList =
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+      ? ADDRESS_FALLBACK_CONTEXT.fieldSources
+      : [];
+
+  const adoptFromFieldSources = (field) => {
+    if (!fieldSourceList.length) return;
+    if (hasMeaningfulAddressValue(payload[field])) return;
+    for (const source of fieldSourceList) {
+      if (!source || typeof source !== "object") continue;
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      adoptFieldIfMissing(field, source[field]);
+      if (hasMeaningfulAddressValue(payload[field])) {
+        break;
+      }
+    }
+  };
+
+  [
+    "street_number",
+    "street_name",
+    "street_pre_directional_text",
+    "street_post_directional_text",
+    "street_suffix_type",
+    "unit_identifier",
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+    "latitude",
+    "longitude",
+    "city_name",
+    "municipality_name",
+  ].forEach(adoptFromFieldSources);
+
+  const structuredFieldProbe = [
+    "street_number",
+    "street_name",
+    "street_suffix_type",
+    "street_post_directional_text",
+    "street_pre_directional_text",
+    "unit_identifier",
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+  ];
+  const hasStructuredCoverage = structuredFieldProbe.some((field) =>
+    hasMeaningfulAddressValue(payload[field]),
+  );
+  if (hasStructuredCoverage) {
+    payload.__preserve_structured_fields = true;
   }
 
   return payload;
