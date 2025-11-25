@@ -2002,8 +2002,6 @@ async function main() {
         }));
 
         const ownerLineIndices = new Set();
-
-        // First pass: identify lines that match known current owners from owner_data.json
         for (const item of normalizedLines) {
           const { index, key, line } = item;
           if (key && currentOwnerAliasKeys.has(key)) {
@@ -2016,42 +2014,6 @@ async function main() {
           }
         }
 
-        // Second pass: identify lines that look like owner names (company names or person names)
-        // These should NOT be part of the mailing address
-        // Strategy: Lines at the beginning that don't look like addresses are likely owner names
-        for (const item of normalizedLines) {
-          const { index, line } = item;
-          // Check if this line is already marked as an owner
-          if (ownerLineIndices.has(index)) continue;
-
-          // Check if this line looks like an address (has numbers, street indicators)
-          const addressPattern = /\d+\s+[\w\s]+(?:st|ave|rd|dr|blvd|ln|ct|cir|pl|way|ter|pkwy|hwy|sq|trl)/i;
-          if (addressPattern.test(line)) {
-            // This is likely an address line, not an owner
-            continue;
-          }
-
-          // Check if this line looks like city/state/zip
-          const cityStateZipPattern = /^[\w\s\-\']+,\s*[A-Z]{2}\s+\d{5}/i;
-          if (cityStateZipPattern.test(line)) {
-            // This is likely city/state/zip, not an owner
-            continue;
-          }
-
-          // Check if this line looks like a company name
-          if (COMPANY_NAME_REGEX.test(line)) {
-            ownerLineIndices.add(index);
-            continue;
-          }
-
-          // If we haven't found any address lines yet and this is one of the first lines,
-          // it's likely an owner name
-          if (index < 2 && !addressPattern.test(line) && !cityStateZipPattern.test(line)) {
-            ownerLineIndices.add(index);
-            continue;
-          }
-        }
-
         if (ownerLineIndices.size === 0) {
           ownerLineIndices.add(0);
         }
@@ -2059,29 +2021,10 @@ async function main() {
         const sortedOwnerIndices = Array.from(ownerLineIndices).sort(
           (a, b) => a - b,
         );
-
-        // Extract the first owner name as the current owner
         if (!currentOwnerName && sortedOwnerIndices.length) {
           currentOwnerName = normalizedLines[sortedOwnerIndices[0]].line;
         } else if (!currentOwnerName && normalizedLines.length) {
           currentOwnerName = normalizedLines[0].line;
-        }
-
-        // Create records for ALL identified owners (not just the first one)
-        const allOwnerNames = sortedOwnerIndices.map(idx => normalizedLines[idx].line);
-
-        // Ensure all owner names have records
-        for (const ownerName of allOwnerNames) {
-          if (!ownerName) continue;
-          const existing = getOwnerRecordByAlias(ownerName);
-          if (!existing) {
-            const newRecord = ensureOwnerRecordFromName(ownerName);
-            registerPropertyRole(newRecord, "current");
-            if (!currentOwnerRecordIds.has(newRecord.id)) {
-              currentOwnerRecordIds.add(newRecord.id);
-              currentOwnerRecordsList.push(newRecord);
-            }
-          }
         }
 
         const mailingAddressLines = normalizedLines
