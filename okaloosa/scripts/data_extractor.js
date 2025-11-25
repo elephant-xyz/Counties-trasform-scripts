@@ -1624,7 +1624,7 @@ function titleCaseName(s) {
     .join(" ");
 }
 
-function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress, mailingAddress) {
+function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
@@ -1858,12 +1858,7 @@ function extractAddressText($) {
   return add;
 }
 
-function extractOwnerMailingAddress($) {
-  return textOf($(OWNER_MAILING_ADDRESS_SELECTOR)).replace(/  +/g, ' ');;
-}
-
-function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
-  let hasOwnerMailingAddress = false;
+function attemptWriteAddress(unnorm, secTwpRng, siteAddress) {
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
@@ -1886,7 +1881,6 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
                 from: { "/": `./property.json` },
               });
   }
-  return hasOwnerMailingAddress;
 
   // const full =
   //   unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
@@ -2217,11 +2211,10 @@ function main() {
 
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
-  const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress);
+  attemptWriteAddress(unnormalized, secTwpRng, addressText);
 
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress, mailingAddress);
+    writePersonCompaniesSalesRelationships(parcelId, sales);
     // Layout extraction from owners/layout_data.json
     if (layoutData) {
       const lset =
