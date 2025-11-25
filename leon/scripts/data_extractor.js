@@ -1158,13 +1158,10 @@ function extractTax($, outDir) {
   if (!histRows.length) return;
 
   let assessed2025 = null,
-    taxable2025 = null,
-    millageRate2025 = null;
+    taxable2025 = null;
   const ctv = $('h5:contains("2025 Certified Taxable Values")').closest(
     ".card",
   );
-
-  // Extract assessed and taxable from first row
   const row = ctv.find("tbody tr").first();
   if (row && row.length) {
     const tds = row.find("td");
@@ -1174,39 +1171,16 @@ function extractTax($, outDir) {
     }
   }
 
-  // Extract and sum all millage rates from all taxing authorities
-  let totalMillage = 0;
-  let millageCount = 0;
-  ctv.find("tbody tr").each((i, el) => {
-    const tds = $(el).find("td");
-    if (tds.length >= 2) {
-      const millageText = $(tds[1]).text().trim();
-      const millage = parseFloat(millageText.replace(/[^0-9.\-]/g, ""));
-      if (!isNaN(millage) && millage > 0) {
-        totalMillage += millage;
-        millageCount++;
-      }
-    }
-  });
-  if (millageCount > 0) {
-    millageRate2025 = totalMillage;
-  }
-
   histRows.sort((a, b) => b.year - a.year);
   let taxIdx = 1;
   histRows.forEach((r) => {
     let assessed = null,
-      taxable = null,
-      millage = null;
+      taxable = null;
     if (r.year === 2025 && assessed2025 != null && taxable2025 != null) {
       assessed = assessed2025;
       taxable = taxable2025;
-      millage = millageRate2025;
     } else {
-      // For historical years, use market value as assessed and taxable
-      // since these specific values are not available in the Certified Value History table
-      assessed = r.market || 0;
-      taxable = r.market || 0;
+      return; // assessed and taxable are mandatory fields
     }
     const tax = {
       tax_year: r.year,
@@ -1215,7 +1189,6 @@ function extractTax($, outDir) {
       property_building_amount: r.building,
       property_land_amount: r.land,
       property_taxable_value_amount: taxable,
-      millage_rate: millage,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -1586,33 +1559,6 @@ function createGeometryClass(geometryInstances) {
   }
 }
 
-function extractBuildingAreasFromHTML($) {
-  const buildingAreas = [];
-  // Look for building areas table
-  const table = $('div.table-wrapper-area > table.table, table.table:has(th:contains("SqFt"))').first();
-  if (!table.length) return buildingAreas;
-
-  table.find("tbody tr").each((i, el) => {
-    const tds = $(el).find("td");
-    if (tds.length >= 3) {
-      const areaCode = $(tds[0]).text().trim();
-      const description = $(tds[1]).text().trim();
-      const sqftText = $(tds[2]).text().trim();
-      const sqft = parseIntStrict(sqftText.replace(/,/g, ''));
-
-      if (sqft && sqft > 0) {
-        buildingAreas.push({
-          area_code: areaCode,
-          description: description,
-          size_square_feet: sqft
-        });
-      }
-    }
-  });
-
-  return buildingAreas;
-}
-
 function extractLot($, outDir) {
   let acreage = null;
   $("label").each((i, el) => {
@@ -1810,59 +1756,6 @@ function main() {
         }
       }
       idx++;
-    }
-  } else {
-    // If no layout data from JSON, extract building areas from HTML
-    const buildingAreas = extractBuildingAreasFromHTML($);
-    if (buildingAreas.length > 0) {
-      buildingAreas.forEach((area, index) => {
-        const layoutOut = {
-          space_type: "Building",
-          space_type_index: null,
-          flooring_material_type: null,
-          size_square_feet: area.size_square_feet,
-          has_windows: null,
-          window_design_type: null,
-          window_material_type: null,
-          window_treatment_type: null,
-          is_finished: null,
-          furnished: null,
-          paint_condition: null,
-          flooring_wear: null,
-          clutter_level: null,
-          visible_damage: null,
-          countertop_material: null,
-          cabinet_style: null,
-          fixture_finish_quality: null,
-          design_style: null,
-          natural_light_quality: null,
-          decor_elements: null,
-          pool_type: null,
-          pool_equipment: null,
-          spa_type: null,
-          safety_features: null,
-          view_type: null,
-          lighting_features: null,
-          condition_issues: null,
-          is_exterior: false,
-          pool_condition: null,
-          pool_surface_type: null,
-          pool_water_quality: null,
-          adjustable_area_sq_ft: null,
-          area_under_air_sq_ft: null,
-          bathroom_renovation_date: null,
-          building_number: null,
-          kitchen_renovation_date: null,
-          heated_area_sq_ft: null,
-          installation_date: null,
-          livable_area_sq_ft: null,
-          pool_installation_date: null,
-          spa_installation_date: null,
-          story_type: null,
-          total_area_sq_ft: area.size_square_feet,
-        };
-        writeJSON(path.join("data", `layout_${index + 1}.json`), layoutOut);
-      });
     }
   }
   extractLot($, outDir);
