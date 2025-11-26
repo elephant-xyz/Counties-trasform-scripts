@@ -574,8 +574,8 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   const titleCasedLast = titleCase(last || "");
   const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
 
-  // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  // Validate names match the schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
 
   if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
@@ -1595,17 +1595,6 @@ function parseBuildingInfo($) {
       }
     }
   }
-  if (txt.includes("ELECTR")) return "Electrical";
-  if (txt.includes("PLUMB")) return "Plumbing";
-  if (txt.includes("PAVE")) return "SiteDevelopment";
-  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
-  if (txt.includes("DECK")) return "BuildingAddition";
-  if (txt.includes("SIGN")) return "GeneralBuilding";
-  if (txt.includes("DEMOL")) return "Demolition";
-  if (txt.includes("IRRIG")) return "LandscapeIrrigation";
-  if (txt.includes("SOLAR")) return "Solar";
-  return "GeneralBuilding";
-}
 
   const hvac =
     getValue(rightMap, ["hvac", "cooling type", "cooling", "air conditioning"]) ||
@@ -2205,8 +2194,8 @@ function main() {
     const lastName = lastNameStripped ? titleCase(lastNameStripped) : "";
     const middleNameRaw = middleStripped ? titleCase(middleStripped) : null;
 
-    // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+    // Validate names match the schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+    const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
     const isValidName = (name) => name && namePattern.test(name);
 
     // Both first_name and last_name are required and must match pattern
