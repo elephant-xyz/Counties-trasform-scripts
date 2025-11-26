@@ -3387,6 +3387,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
       const firstName = toTitleCase(o.first_name); // Apply title case
       const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
+      const suffixName = o.suffix_name || null;
       const personKey = `${firstName}|${middleName || ""}|${lastName}`;
       if (!res.personIndexByKey.has(personKey)) {
         res.persons.push({
@@ -3395,7 +3396,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
           last_name: lastName,
           middle_name: middleName,
           prefix_name: null,
-          suffix_name: null,
+          suffix_name: suffixName,
           us_citizenship_status: null,
           veteran_status: null,
         });
@@ -3423,6 +3424,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
         const firstName = toTitleCase(o.first_name); // Apply title case
         const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
+        const suffixName = o.suffix_name || null;
         const personKey = `${firstName}|${middleName || ""}|${lastName}`;
         if (!res.personIndexByKey.has(personKey)) {
           res.persons.push({
@@ -3431,7 +3433,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
             last_name: lastName,
             middle_name: middleName,
             prefix_name: null,
-            suffix_name: null,
+            suffix_name: suffixName,
             us_citizenship_status: null,
             veteran_status: null,
           });
@@ -4128,21 +4130,26 @@ function main() {
     const ownersByDate = ownerJSON[key].owners_by_date;
     let relCounter = sales.length + 1;
 
-    // Build a map of dates to sales indices
+    // Build a map of dates to sales indices (handle multiple sales per date)
     const salesByDate = new Map();
     sales.forEach((s, idx) => {
       if (s.ownership_transfer_date) {
-        salesByDate.set(s.ownership_transfer_date, idx + 1);
+        if (!salesByDate.has(s.ownership_transfer_date)) {
+          salesByDate.set(s.ownership_transfer_date, []);
+        }
+        salesByDate.get(s.ownership_transfer_date).push(idx + 1);
       }
     });
 
-    // For each date in owners_by_date, link to corresponding sale
+    // For each date in owners_by_date, link to corresponding sale(s)
     Object.entries(ownersByDate).forEach(([dateKey, owners]) => {
       if (dateKey === "current") return;
-      const saleIdx = salesByDate.get(dateKey);
-      if (!saleIdx) return;
+      const saleIndices = salesByDate.get(dateKey);
+      if (!saleIndices || saleIndices.length === 0) return;
 
-      (owners || []).forEach((owner) => {
+      // Create relationships for each sale on this date
+      saleIndices.forEach((saleIdx) => {
+        (owners || []).forEach((owner) => {
         if (owner.type === "person") {
           const firstName = toTitleCase(owner.first_name);
           const middleName = owner.middle_name ? toTitleCase(owner.middle_name) : null;
@@ -4210,6 +4217,7 @@ function main() {
             }
           }
         }
+        });
       });
     });
   }
