@@ -1554,6 +1554,7 @@ function formatName(name) {
 
   // Remove common legal designations that may contain invalid characters
   // Note: patterns are for AFTER slash replacement (e.g., "L E" not "L/E")
+  // Apply these patterns iteratively to handle compound designations like "Henry L E Etal"
   cleaned = cleaned.trim();
   const legalDesignations = [
     /\bL\s*E\b/gi,          // Life Estate (now without slash: "L E" or "LE")
@@ -1561,15 +1562,24 @@ function formatName(name) {
     /\bF\s*B\s*O\b/gi,      // For Benefit Of (now without slashes: "F B O" or "FBO")
     /\bFBO\b/gi,            // For Benefit Of abbreviation
     /\bET\s+AL\b/gi,        // Et Al
-    /\bETAL\b/gi,           // Etal
+    /\bETAL\b/gi,           // Etal (case insensitive, so matches "Etal", "ETAL", "etal")
     /\bLIFE\s+ESTATE\b/gi,  // Life Estate
     /\bTRUSTEE\b/gi,        // Trustee
     /\bTTE\b/gi,            // Trustee abbreviation
   ];
 
-  legalDesignations.forEach(pattern => {
-    cleaned = cleaned.replace(pattern, ' ');
-  });
+  // Apply legal designation removal multiple times to handle compound designations
+  let prevCleaned = '';
+  let iterations = 0;
+  const maxIterations = 5;
+  while (cleaned !== prevCleaned && iterations < maxIterations) {
+    prevCleaned = cleaned;
+    legalDesignations.forEach(pattern => {
+      cleaned = cleaned.replace(pattern, ' ');
+    });
+    cleaned = cleaned.trim().replace(/\s+/g, ' ');
+    iterations++;
+  }
 
   // Remove any content within parentheses first
   // First remove properly closed parentheses
