@@ -1764,6 +1764,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   // Relationships: link sale to owners present on that date (both persons and companies)
   const writtenSalePersonRels = new Set();
   const writtenSaleCompanyRels = new Set();
+  const linkedPersons = new Set();
+  const linkedCompanies = new Set();
+
   sales.forEach((rec, idx) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
@@ -1781,6 +1784,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
           const relKey = `${saleIndex}|${pIdx}`;
           if (writtenSalePersonRels.has(relKey)) return;
           writtenSalePersonRels.add(relKey);
+          linkedPersons.add(pIdx);
           const relName = `relationship_sales_history_${saleIndex}_person_${pIdx}.json`;
           writeJSON(path.join("data", relName), {
             to: { "/": `./person_${pIdx}.json` },
@@ -1796,6 +1800,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
           const relKey = `${saleIndex}|${cIdx}`;
           if (writtenSaleCompanyRels.has(relKey)) return;
           writtenSaleCompanyRels.add(relKey);
+          linkedCompanies.add(cIdx);
           const relName = `relationship_sales_history_${saleIndex}_company_${cIdx}.json`;
           writeJSON(path.join("data", relName), {
             to: { "/": `./company_${cIdx}.json` },
@@ -1804,6 +1809,54 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
         }
       });
   });
+
+  // Link current owners who haven't been linked to any sale yet
+  const currentOwners = ownersByDate["current"] || [];
+  if (currentOwners.length > 0 && sales.length > 0) {
+    // Link to the most recent sale (first in the list)
+    const mostRecentSaleIndex = 1;
+    const mostRecentSalePath = `./sales_history_${mostRecentSaleIndex}.json`;
+
+    currentOwners
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const pIdx = findPersonIndexByName(
+          o.first_name,
+          o.last_name,
+          o.suffix_name,
+        );
+        if (pIdx && !linkedPersons.has(pIdx)) {
+          const relKey = `${mostRecentSaleIndex}|${pIdx}`;
+          if (!writtenSalePersonRels.has(relKey)) {
+            writtenSalePersonRels.add(relKey);
+            linkedPersons.add(pIdx);
+            const relName = `relationship_sales_history_${mostRecentSaleIndex}_person_${pIdx}.json`;
+            writeJSON(path.join("data", relName), {
+              to: { "/": `./person_${pIdx}.json` },
+              from: { "/": mostRecentSalePath },
+            });
+          }
+        }
+      });
+
+    currentOwners
+      .filter((o) => o.type === "company")
+      .forEach((o) => {
+        const cIdx = findCompanyIndexByName(o.name);
+        if (cIdx && !linkedCompanies.has(cIdx)) {
+          const relKey = `${mostRecentSaleIndex}|${cIdx}`;
+          if (!writtenSaleCompanyRels.has(relKey)) {
+            writtenSaleCompanyRels.add(relKey);
+            linkedCompanies.add(cIdx);
+            const relName = `relationship_sales_history_${mostRecentSaleIndex}_company_${cIdx}.json`;
+            writeJSON(path.join("data", relName), {
+              to: { "/": `./company_${cIdx}.json` },
+              from: { "/": mostRecentSalePath },
+            });
+          }
+        }
+      });
+  }
 }
 
 function writeTaxes($) {
