@@ -1547,6 +1547,9 @@ function formatName(name) {
     cleaned = cleaned.replace(pattern, ' ');
   });
 
+  // Explicitly remove parentheses and other common unwanted characters
+  cleaned = cleaned.replace(/[()[\]{}]/g, '');
+
   // Remove any remaining characters that don't match the person name pattern (except spaces for now)
   // Allow: letters, spaces, hyphens, apostrophes, commas, periods
   cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
