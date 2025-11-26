@@ -204,11 +204,24 @@ function buildPerson(first, last, middle, prefix, suffix) {
   // If cleaning removed all content, return null for that field
   if (!cleanFirst || !cleanLast) return null;
 
+  // Title case the names
+  const titleFirst = titleCase(cleanFirst);
+  const titleLast = titleCase(cleanLast);
+  let titleMiddle = cleanMiddle ? titleCase(cleanMiddle) : null;
+
+  // Validate middle name against Elephant schema pattern - if invalid, set to null
+  if (titleMiddle) {
+    const elephantNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+    if (!elephantNamePattern.test(titleMiddle)) {
+      titleMiddle = null;
+    }
+  }
+
   return {
     type: "person",
-    first_name: titleCase(cleanFirst),
-    last_name: titleCase(cleanLast),
-    middle_name: cleanMiddle ? titleCase(cleanMiddle) : null,
+    first_name: titleFirst,
+    last_name: titleLast,
+    middle_name: titleMiddle,
     prefix_name: prefix ? validatePrefix(prefix) : null,
     suffix_name: suffix ? validateSuffix(suffix) : null,
   };

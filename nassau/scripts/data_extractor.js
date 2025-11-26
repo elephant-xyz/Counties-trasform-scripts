@@ -1589,8 +1589,8 @@ function isValidPersonName(name) {
   if (!name || typeof name !== 'string' || name.trim() === '') {
     return false;
   }
-  // Check if name matches the required pattern
-  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  // Check if name matches the Elephant schema pattern for person names
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   return namePattern.test(name.trim());
 }
 
