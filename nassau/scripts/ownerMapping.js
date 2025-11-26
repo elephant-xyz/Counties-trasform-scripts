@@ -26,6 +26,8 @@ function cleanNameString(name) {
   const legalDesignations = [
     /\bL\s*E\b/gi,          // Life Estate (now without slash: "L E" or "LE")
     /\bLE\b/gi,             // Life Estate abbreviation
+    /\bP\s*R\b/gi,          // Personal Representative (now without slash: "P R" or "PR")
+    /\bPR\b/gi,             // Personal Representative abbreviation
     /\bF\s*B\s*O\b/gi,      // For Benefit Of (now without slashes)
     /\bFBO\b/gi,            // For Benefit Of abbreviation
     /\bET\s+AL\b/gi,        // Et Al
