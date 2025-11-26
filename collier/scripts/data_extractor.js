@@ -1221,7 +1221,7 @@ function main() {
   });
 
   // Owners (company/person) from owners/owner_data.json
-  const ownerKey = `property_${folio}`;
+  const ownerKey = `property_${parcelId}`;
   const ownerEntry = owners[ownerKey];
   const curr =
     ownerEntry &&
@@ -1363,14 +1363,6 @@ function main() {
         );
       });
     }
-  } else if (!fs.existsSync(mailingAddressPath)) {
-    writeMailingAddressFile(
-      mailingAddressPath,
-      mailingComponents,
-      new Set(),
-      seed.source_http_request,
-      seed.request_identifier || parcelId,
-    );
   }
 
   let utilityFileWritten = false;
