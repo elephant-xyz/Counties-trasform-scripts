@@ -10,8 +10,7 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR =
-  "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Information";
 
 function textTrim(s) {
@@ -72,9 +71,9 @@ function collectBuildings($) {
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) {
-        const combined_map = { ...buildings[buildingCount], ...map };
+        const combined_map = {...buildings[buildingCount], ...map};
         buildings[buildingCount++] = combined_map;
-      }
+      };
     });
   return buildings;
 }
@@ -88,8 +87,7 @@ function mapExteriorMaterials(tokens) {
     if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Siding");
     if (t.includes("STUC")) out.push("Stucco");
     if (t.includes("VINYL")) out.push("Vinyl Siding");
-    if (t.includes("BLOCK") || t.includes("CONCRETE"))
-      out.push("Concrete Block");
+    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
   });
   return out;
 }
@@ -101,8 +99,7 @@ function mapInteriorSurface(tokens) {
     if (t.includes("BRK") || t.includes("BRICK")) out.push("Brick");
     if (t.includes("CEDAR") || t.includes("WOOD")) out.push("Wood Frame");
     if (t.includes("STEEL")) out.push("Steel Frame");
-    if (t.includes("BLOCK") || t.includes("CONCRETE"))
-      out.push("Concrete Block");
+    if (t.includes("BLOCK") || t.includes("CONCRETE")) out.push("Concrete Block");
   });
   return out;
 }
