@@ -1527,8 +1527,11 @@ function formatName(name) {
     return null;
   }
 
+  // Remove all digits from the name early to prevent them from appearing in the output
+  name = name.replace(/\d/g, '');
+
   // Check if the name contains percentage signs or looks like an ownership interest designation
-  if (/%/.test(name) || /\d+%/.test(name) || /INT$/i.test(name.trim())) {
+  if (/%/.test(name) || /INT$/i.test(name.trim())) {
     console.log(`Rejecting name that looks like ownership interest: ${name}`);
     return null;
   }
