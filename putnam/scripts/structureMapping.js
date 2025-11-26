@@ -322,7 +322,7 @@ function parseInterior(value) {
     "11 - Ceiling Only - Avg": null,
     "07 - 1x6 V Joint (RES)": null,
     "14 - Redwood-Cedar-Cypress": null,
-    "15 - Log (RES)": "Log",
+    "15 - Log (RES)": "Wood Paneling",
   }
   if (value in valueMapping) {
     return valueMapping[value];
