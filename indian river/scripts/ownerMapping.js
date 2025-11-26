@@ -281,6 +281,25 @@ function formatCompanyName(raw) {
 function splitCompositeNames(raw) {
   const sanitized = sanitizeRawOwner(raw);
   if (!sanitized) return [];
+
+  // First split by semicolons
+  const semicolonParts = sanitized.split(/;/).map((p) => normalizeWhitespace(p)).filter(Boolean);
+  if (semicolonParts.length > 1) {
+    // Further split each semicolon part by & or AND
+    const allParts = [];
+    semicolonParts.forEach((part) => {
+      const connectors = /\s+(?:&|AND)\s+/i;
+      if (connectors.test(part)) {
+        const subParts = part.split(connectors).map((p) => normalizeWhitespace(p)).filter(Boolean);
+        allParts.push(...subParts);
+      } else {
+        allParts.push(part);
+      }
+    });
+    return allParts;
+  }
+
+  // If no semicolons, try splitting by & or AND
   const connectors = /\s+(?:&|AND)\s+/i;
   if (!connectors.test(sanitized)) return [sanitized];
   const parts = sanitized
@@ -404,8 +423,11 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
       invalidCollector.push({ raw, reason: "unparseable_or_empty" });
       return;
     }
+    // Detect surname-first format: asterisk OR all uppercase (common in legal documents)
+    const rawTrimmed = (raw || "").trim();
+    const isAllUpperCase = rawTrimmed === rawTrimmed.toUpperCase() && /[A-Z]/.test(rawTrimmed);
     const surnameFirstHint =
-      /^\*/.test((raw || "").trim()) || /\*\s*$/.test((raw || "").trim());
+      /^\*/.test(rawTrimmed) || /\*\s*$/.test(rawTrimmed) || isAllUpperCase;
     const parsedOwners = [];
     const partInvalids = [];
     parts.forEach((part) => {
@@ -447,15 +469,18 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
 
 function parseOwnersFromEntries(entries, invalidCollector) {
   const ownerMap = new Map();
-  entries.forEach(({ rawName, rawAddress }) => {
+  entries.forEach(({ rawName, rawAddress, isPrimaryOwner }) => {
     if (!rawName) return;
     const parts = splitCompositeNames(rawName);
     if (parts.length === 0) {
       invalidCollector.push({ raw: rawName, reason: "unparseable_or_empty" });
       return;
     }
+    // Detect surname-first format: asterisk OR all uppercase (common in legal documents) OR primary owner field
+    const rawNameTrimmed = (rawName || "").trim();
+    const isAllUpperCase = rawNameTrimmed === rawNameTrimmed.toUpperCase() && /[A-Z]/.test(rawNameTrimmed);
     const surnameFirstHint =
-      /^\*/.test((rawName || "").trim()) || /\*\s*$/.test((rawName || "").trim());
+      /^\*/.test(rawNameTrimmed) || /\*\s*$/.test(rawNameTrimmed) || isAllUpperCase || isPrimaryOwner;
     const parsedOwners = [];
     const partInvalids = [];
     parts.forEach((part) => {
@@ -618,6 +643,7 @@ function extractCurrentOwnerEntries($doc) {
     entries.push({
       rawName,
       rawAddress,
+      isPrimaryOwner: true, // Mark as primary owner (surname-first format)
     });
   });
   return entries;
