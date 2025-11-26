@@ -1854,6 +1854,30 @@ function main() {
         }
     }
   }
+
+  // Final cleanup: Remove any orphaned files that are not part of the County data group schema
+  // This ensures mailing_address.json and other orphaned files are removed even if created during execution
+  const orphanedFilesCleanup = ["mailing_address.json"];
+  orphanedFilesCleanup.forEach((fileName) => {
+    const filePath = path.join(dataDir, fileName);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`Final cleanup: Removed orphaned file: ${fileName}`);
+    }
+  });
+
+  // Also clean up any orphaned relationship files at the end
+  const relationshipPatternFinal = /^relationship_(person|company)_has_mailing_address_\d+\.json$/;
+  if (fs.existsSync(dataDir)) {
+    const files = fs.readdirSync(dataDir);
+    files.forEach((file) => {
+      if (relationshipPatternFinal.test(file)) {
+        const filePath = path.join(dataDir, file);
+        fs.unlinkSync(filePath);
+        console.log(`Final cleanup: Removed orphaned relationship file: ${file}`);
+      }
+    });
+  }
 }
 
 if (require.main === module) {
