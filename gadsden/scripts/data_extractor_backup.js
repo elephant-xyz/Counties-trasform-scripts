@@ -471,10 +471,7 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Strip trailing periods before processing
   const stripTrailingPeriod = (str) => {
     if (!str) return str;
-    const stripped = str.replace(/\.$/, '');
-    // If the result is empty or contains no letters, return null
-    if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
-    return stripped;
+    return str.replace(/\.$/, '');
   };
 
   // Extract suffix from tokens - check last token(s)
@@ -514,9 +511,9 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Check last token for suffix
   if (workingTokens.length > 2) {
     const lastToken = workingTokens[workingTokens.length - 1];
-    const stripped = stripTrailingPeriod(lastToken);
-    if (stripped && suffixMap[stripped.toLowerCase()]) {
-      suffix = suffixMap[stripped.toLowerCase()];
+    const stripped = stripTrailingPeriod(lastToken).toLowerCase();
+    if (suffixMap[stripped]) {
+      suffix = suffixMap[stripped];
       workingTokens.pop();
     }
   }
@@ -646,14 +643,11 @@ function parseOwnersFromText(rawText) {
       // Check if last token is a suffix before trying to split multiple persons
       const stripTrailingPeriod = (str) => {
         if (!str) return str;
-        const stripped = str.replace(/\.$/, '');
-        // If the result is empty or contains no letters, return null
-        if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
-        return stripped;
+        return str.replace(/\.$/, '');
       };
       const lastToken = tokens[tokens.length - 1];
-      const lastTokenStripped = stripTrailingPeriod(lastToken);
-      const isLastTokenSuffix = lastTokenStripped && SUFFIXES_IGNORE.test(lastTokenStripped.toLowerCase());
+      const lastTokenStripped = stripTrailingPeriod(lastToken).toLowerCase();
+      const isLastTokenSuffix = SUFFIXES_IGNORE.test(lastTokenStripped);
 
       if (andParts.length === 1 && tokens.length >= 4 && !isLastTokenSuffix) {
         const multi = splitMultiplePersonsWithSharedLast(tokens);
@@ -1595,17 +1589,6 @@ function parseBuildingInfo($) {
       }
     }
   }
-  if (txt.includes("ELECTR")) return "Electrical";
-  if (txt.includes("PLUMB")) return "Plumbing";
-  if (txt.includes("PAVE")) return "SiteDevelopment";
-  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
-  if (txt.includes("DECK")) return "BuildingAddition";
-  if (txt.includes("SIGN")) return "GeneralBuilding";
-  if (txt.includes("DEMOL")) return "Demolition";
-  if (txt.includes("IRRIG")) return "LandscapeIrrigation";
-  if (txt.includes("SOLAR")) return "Solar";
-  return "GeneralBuilding";
-}
 
   const hvac =
     getValue(rightMap, ["hvac", "cooling type", "cooling", "air conditioning"]) ||
@@ -1861,12 +1844,12 @@ function parseSales($) {
     if (!instrumentNumberText) {
       instrumentNumberText = cleanText(instrumentCell.find("span").text());
     }
-    const book = cleanText(textOf($, tds.eq(2)) || "");
-    const page = cleanText(textOf($, tds.eq(3)) || "");
-    const qualification = textOf($, tds.eq(4));
-    const vacantImproved = textOf($, tds.eq(5));
-    const grantor = textOf($, tds.eq(6));
-    const grantee = textOf($, tds.eq(7));
+    const book = cleanText(textOf($, tds.eq(3)) || "");
+    const page = cleanText(textOf($, tds.eq(4)) || "");
+    const qualification = textOf($, tds.eq(5));
+    const vacantImproved = textOf($, tds.eq(6));
+    const grantor = textOf($, tds.eq(7));
+    const grantee = textOf($, tds.eq(8));
     let clerkUrl = null;
     const linkTd = tds.length > 9 ? tds.eq(9) : null;
     if (linkTd && linkTd.find("input").length) {
@@ -2178,10 +2161,7 @@ function main() {
     // Strip trailing periods before processing (handles abbreviations like "C.")
     const stripTrailingPeriod = (str) => {
       if (!str) return str;
-      const stripped = str.replace(/\.$/, '');
-      // If the result is empty or contains no letters, return null
-      if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
-      return stripped;
+      return str.replace(/\.$/, '');
     };
 
     const firstNameRaw =
