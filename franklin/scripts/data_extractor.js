@@ -2870,11 +2870,17 @@ function main() {
     }
   }
 
+  // Use situs address if available, otherwise construct from parcel identifier
+  const addressValue = situsAddress && situsAddress.trim()
+    ? situsAddress
+    : `Parcel ${parcelIdentifier || seed.parcel_id || "Unknown"}, Franklin County, FL`;
+
   const address = {
     source_http_request: {
           method: "GET",
           url: seed.source_http_request.url
-        },    
+        },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
     // street_number: street_number || null,
     // street_name: street_name || null,
     // street_suffix_type: street_suffix_type || null,
@@ -2896,11 +2902,15 @@ function main() {
     // block: null,
     // lot: lotNumber || null,
     // municipality_name: null,
-    unnormalized_address: situsAddress
+    unnormalized_address: addressValue
   };
   writeJSON(path.join("data", "address.json"), address);
+  writeJSON(path.join("data", "relationship_property_has_address.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  });
   console.log(address)
-  
+
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
