@@ -1798,13 +1798,6 @@ function main() {
     util = key && utilitiesData[key] ? utilitiesData[key] : null;
   }
 
-  // Write parcel.json
-  const parcelObj = {
-    parcel_identifier: parcelId || "",
-    request_identifier: parcelId || null,
-  };
-  writeJSON(path.join("data", "parcel.json"), parcelObj);
-
   writeProperty($, parcelId);
   const sales = extractSales($);
   writeSalesDeedsFilesAndRelationships($);
