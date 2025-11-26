@@ -2946,12 +2946,6 @@ function main() {
     });
   });
 
-  // Create relationships from property to current owners (persons and companies)
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path) return;
-    writeRelationshipUnique(propertyPath, entity.path);
-  });
-
   const mailingRelationshipKeys = new Set();
   currentOwnerEntities.forEach((entity) => {
     if (!entity.path || !entity.mailingPath) return;
