@@ -1558,12 +1558,6 @@ function writeUtilities(parcelId) {
     });
   });
 
-  // Maintain backwards compatibility by writing utility.json when only one record exists.
-  if (utilities.length === 1 && fileRefs[0]) {
-    const single = readJSON(path.join("data", fileRefs[0])) || {};
-    writeJSON(path.join("data", "utility.json"), single);
-  }
-
   return { files: fileRefs, buildingIndexMap, meta };
 }
 
