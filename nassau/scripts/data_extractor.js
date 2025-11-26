@@ -1521,6 +1521,12 @@ function formatName(name) {
 
   if (!name || typeof name !== 'string' || name.trim() === "") return null;
 
+  // Reject names that start with a digit (e.g., "1st", "2nd", "3rd")
+  if (/^\d/.test(name.trim())) {
+    console.log(`Rejecting name that starts with a digit: ${name}`);
+    return null;
+  }
+
   // Check if the name contains percentage signs or looks like an ownership interest designation
   if (/%/.test(name) || /\d+%/.test(name) || /INT$/i.test(name.trim())) {
     console.log(`Rejecting name that looks like ownership interest: ${name}`);
@@ -1634,8 +1640,14 @@ function isValidPersonName(name) {
 
 function parsePerson(name) {
   if (!name) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-  
+
   let tokens = name.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
+
+  // Filter out tokens that are purely numeric or start with digits (like "1ST", "2ND")
+  tokens = tokens.filter(token => !/^\d/.test(token));
+
+  // After filtering, ensure we still have at least 2 tokens for first and last name
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
 
   // Extract prefix
@@ -2678,6 +2690,17 @@ function main() {
       const rawFirstName = typeof owner.first_name === 'number' ? String(owner.first_name) : owner.first_name;
       const rawLastName = typeof owner.last_name === 'number' ? String(owner.last_name) : owner.last_name;
       const rawMiddleName = typeof owner.middle_name === 'number' ? String(owner.middle_name) : owner.middle_name;
+
+      // Early validation: reject if first or last name starts with a digit
+      if (!rawFirstName || !rawLastName) {
+        console.log(`Skipping person with missing name from owner_data: ${rawFirstName} ${rawLastName}`);
+        return null;
+      }
+
+      if (/^\d/.test(String(rawFirstName).trim()) || /^\d/.test(String(rawLastName).trim())) {
+        console.log(`Skipping person with name starting with digit from owner_data: ${rawFirstName} ${rawLastName}`);
+        return null;
+      }
 
       const key = `${rawFirstName}|${rawMiddleName || ""}|${rawLastName}`;
       if (!personIndexByKey.has(key)) {
