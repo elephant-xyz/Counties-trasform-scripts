@@ -3006,7 +3006,7 @@ function main() {
 
   const saleFileRefs = [];
   const saleOwnerRelations = [];
-  const saleGrantorRelations = [];
+  const saleGrantorInfo = [];
   const saleBuyerStatus = new Map();
 
   salesSorted.forEach((s, idx) => {
@@ -3101,10 +3101,8 @@ function main() {
     const grantorParsed = parseOwnersFromText(s.grantor || "");
     grantorParsed.owners.forEach((owner) => {
       if (!owner || !owner.type) return;
-      const ownerPath = registerPreviousOwner(owner, iso);
-      if (!ownerPath) return;
-      saleGrantorRelations.push({
-        ownerPath,
+      saleGrantorInfo.push({
+        owner,
         saleDateISO: iso,
       });
     });
@@ -3198,10 +3196,14 @@ function main() {
   }
 
   const saleGrantorRelationshipKeys = new Set();
-  saleGrantorRelations.forEach(({ ownerPath, saleDateISO }) => {
-    if (!ownerPath || !saleDateISO) return;
+  saleGrantorInfo.forEach(({ owner, saleDateISO }) => {
+    if (!owner || !saleDateISO) return;
     const prevSalePath = saleDateToPrevSalePath.get(saleDateISO);
     if (!prevSalePath) return;
+
+    const ownerPath = registerPreviousOwner(owner, saleDateISO);
+    if (!ownerPath) return;
+
     const relKey = `${prevSalePath}|${ownerPath}`;
     if (saleGrantorRelationshipKeys.has(relKey)) return;
     saleGrantorRelationshipKeys.add(relKey);
