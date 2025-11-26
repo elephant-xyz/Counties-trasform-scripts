@@ -85,7 +85,11 @@ function formatNameToPattern(name) {
 // Build owner object(s) from a raw string
 function buildOwnersFromRaw(raw) {
   const owners = [];
-  const s = norm(raw);
+  let s = norm(raw);
+  if (!s) return owners;
+
+  // Remove continuation markers early
+  s = s.replace(/\s*-CONT-?\s*/gi, " ").trim();
   if (!s) return owners;
 
   // Exclude lines that clearly are not owner names
@@ -115,7 +119,9 @@ function buildOwnersFromRaw(raw) {
 
 function buildPersonFromSingleName(s) {
   const out = [];
-  const cleaned = s.replace(/\s{2,}/g, " ");
+  // Remove continuation markers and other non-name patterns
+  let cleaned = s.replace(/\s{2,}/g, " ");
+  cleaned = cleaned.replace(/\s*-CONT-?\s*/gi, " ").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
 
   if (parts.length < 2) {
