@@ -1737,14 +1737,6 @@ function createGeometryInstances(csvContent) {
   return records.flatMap((record) => splitGeometry(record));
 }
 
-function writeParcel(parcelId) {
-  const parcel = {
-    parcel_identifier: parcelId || "",
-    request_identifier: parcelId || null,
-  };
-  writeJSON(path.join("data", "parcel.json"), parcel);
-}
-
 function createGeometryClass(geometryInstances) {
   let geomIndex = 1;
   for(let geom of geometryInstances) {
@@ -1781,11 +1773,7 @@ function main() {
   const layoutData = readJSON(path.join("owners", "layout_data.json"));
   const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
   const structureData = readJSON(path.join("owners", "structure_data.json"));
-  const key = `property_${parcelId}`;
-
-  // Write parcel before creating geometry relationships
-  writeParcel(parcelId);
-
+  const key = `property_${parcelId}`;  
   try {
     const seedCsvPath = path.join(".", "input.csv");
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
