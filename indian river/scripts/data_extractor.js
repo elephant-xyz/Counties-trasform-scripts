@@ -1184,7 +1184,12 @@ function clearExistingSalesHistoryFiles() {
         /^relationship_sales_company_\d+\.json$/.test(f) ||
         /^relationship_sales_history_deed_\d+\.json$/.test(f) ||
         /^relationship_sales_history_\d+_person_\d+\.json$/.test(f) ||
-        /^relationship_sales_history_\d+_company_\d+\.json$/.test(f)
+        /^relationship_sales_history_\d+_company_\d+\.json$/.test(f) ||
+        /^person_\d+\.json$/.test(f) ||
+        /^company_\d+\.json$/.test(f) ||
+        /^mailing_address_\d+\.json$/.test(f) ||
+        /^relationship_person_\d+_has_mailing_address(?:_\d+)?\.json$/.test(f) ||
+        /^relationship_company_\d+_has_mailing_address(?:_\d+)?\.json$/.test(f)
       ) {
         fs.unlinkSync(path.join("data", f));
       }
@@ -1689,189 +1694,10 @@ function validateNamePattern(name) {
 }
 
 function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (!owners) return;
-  const key = `property_${parcelId}`;
-  const record = owners[key];
-  if (!record || !record.owners_by_date) return;
-  const ownersByDate = record.owners_by_date;
-  const ownerMailingData = record.owner_mailing_addresses || [];
-  const personMap = new Map();
-  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
-    // Skip unknown_prior_sale_* entries as they represent historical owners without linkable sale dates
-    if (dateKey.startsWith("unknown_prior_sale_")) return;
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
-        const suffixKey = normalizeSuffixForCompare(o.suffix_name);
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}|${suffixKey}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-            prefix_name: o.prefix_name,
-            suffix_name: o.suffix_name,
-          });
-        else {
-          const existing = personMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
-          if (!existing.prefix_name && o.prefix_name)
-            existing.prefix_name = o.prefix_name;
-          if (!existing.suffix_name && o.suffix_name)
-            existing.suffix_name = o.suffix_name;
-        }
-      }
-    });
-  });
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? validateNamePattern(titleCaseName(p.middle_name)) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    birth_date: null,
-    prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
-    suffix_name: p.suffix_name ? validateSuffixName(p.suffix_name) : null,
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
-  // First, determine which companies will actually be linked to sales
-  const companyNamesToLink = new Set();
-
-  // Collect companies from sales that match a date
-  sales.forEach((rec) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "company" && (o.name || "").trim())
-      .forEach((o) => {
-        companyNamesToLink.add((o.name || "").trim());
-      });
-  });
-
-  // Collect companies from current owners if there are sales
-  const currentOwners = ownersByDate["current"] || [];
-  if (currentOwners.length > 0 && sales.length > 0) {
-    currentOwners
-      .filter((o) => o.type === "company" && (o.name || "").trim())
-      .forEach((o) => {
-        companyNamesToLink.add((o.name || "").trim());
-      });
-  }
-
-  // Now create company files only for companies that will be linked
-  companies = Array.from(companyNamesToLink).map((n) => ({
-    name: n,
-    request_identifier: parcelId,
-  }));
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
-
-  const sourceHttpRequest =
-    propertySeed && propertySeed.source_http_request
-      ? propertySeed.source_http_request
-      : null;
-  writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest);
-
-  // Relationships: link sale to owners present on that date (both persons and companies)
-  const writtenSalePersonRels = new Set();
-  const writtenSaleCompanyRels = new Set();
-  const linkedPersons = new Set();
-  const linkedCompanies = new Set();
-
-  sales.forEach((rec, idx) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    const saleIndex = idx + 1;
-    const salePath = `./sales_history_${saleIndex}.json`;
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(
-          o.first_name,
-          o.last_name,
-          o.suffix_name,
-        );
-        if (pIdx) {
-          const relKey = `${saleIndex}|${pIdx}`;
-          if (writtenSalePersonRels.has(relKey)) return;
-          writtenSalePersonRels.add(relKey);
-          linkedPersons.add(pIdx);
-          const relName = `relationship_sales_history_${saleIndex}_person_${pIdx}.json`;
-          writeJSON(path.join("data", relName), {
-            to: { "/": `./person_${pIdx}.json` },
-            from: { "/": salePath },
-          });
-        }
-      });
-    ownersOnDate
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const cIdx = findCompanyIndexByName(o.name);
-        if (cIdx) {
-          const relKey = `${saleIndex}|${cIdx}`;
-          if (writtenSaleCompanyRels.has(relKey)) return;
-          writtenSaleCompanyRels.add(relKey);
-          linkedCompanies.add(cIdx);
-          const relName = `relationship_sales_history_${saleIndex}_company_${cIdx}.json`;
-          writeJSON(path.join("data", relName), {
-            to: { "/": `./company_${cIdx}.json` },
-            from: { "/": salePath },
-          });
-        }
-      });
-  });
-
-  // Link current owners who haven't been linked to any sale yet
-  if (currentOwners.length > 0 && sales.length > 0) {
-    // Link to the most recent sale (first in the list)
-    const mostRecentSaleIndex = 1;
-    const mostRecentSalePath = `./sales_history_${mostRecentSaleIndex}.json`;
-
-    currentOwners
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(
-          o.first_name,
-          o.last_name,
-          o.suffix_name,
-        );
-        if (pIdx && !linkedPersons.has(pIdx)) {
-          const relKey = `${mostRecentSaleIndex}|${pIdx}`;
-          if (!writtenSalePersonRels.has(relKey)) {
-            writtenSalePersonRels.add(relKey);
-            linkedPersons.add(pIdx);
-            const relName = `relationship_sales_history_${mostRecentSaleIndex}_person_${pIdx}.json`;
-            writeJSON(path.join("data", relName), {
-              to: { "/": `./person_${pIdx}.json` },
-              from: { "/": mostRecentSalePath },
-            });
-          }
-        }
-      });
-
-    currentOwners
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const cIdx = findCompanyIndexByName(o.name);
-        if (cIdx && !linkedCompanies.has(cIdx)) {
-          const relKey = `${mostRecentSaleIndex}|${cIdx}`;
-          if (!writtenSaleCompanyRels.has(relKey)) {
-            writtenSaleCompanyRels.add(relKey);
-            linkedCompanies.add(cIdx);
-            const relName = `relationship_sales_history_${mostRecentSaleIndex}_company_${cIdx}.json`;
-            writeJSON(path.join("data", relName), {
-              to: { "/": `./company_${cIdx}.json` },
-              from: { "/": mostRecentSalePath },
-            });
-          }
-        }
-      });
-  }
+  // Person and company entities are not part of the Sales_History data group
+  // This function is disabled to prevent creating person/company files
+  // that would be flagged as unused in the Sales_History data group
+  return;
 }
 
 function writeTaxes($) {
