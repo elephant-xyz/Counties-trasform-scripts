@@ -1,566 +1,382 @@
-// Node.js script to transform a single-property HTML file into a JSON object per the specified schema
-// Parsing exclusively with cheerio; JSON processing with vanilla JS.
-
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-// Utilities
-const readHtml = () =>
-  fs.readFileSync(path.join(process.cwd(), "input.html"), "utf8");
+// Read HTML input
+const htmlPath = path.join(process.cwd(), "input.html");
+const html = fs.readFileSync(htmlPath, "utf-8");
+const $ = cheerio.load(html);
 
-const titleCase = (s) => {
-  if (!s) return s;
-  return s
-    .split(/\s+/)
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
-    .join(" ")
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_gvwList tbody tr";
+const CURRENT_OWNER_SELECTOR = ".module-content .three-column-blocks";
+
+// Utility helpers
+const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
+const normalizeName = (s) => txt(s).toLowerCase();
+
+function formatNameForSchema(name) {
+  if (!name) return null;
+  const formatted = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return pattern.test(formatted) ? formatted : null;
+}
+
+function formatMiddleNameForSchema(name) {
+  if (!name) return null;
+  const formatted = name.charAt(0).toUpperCase() + name.slice(1);
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return pattern.test(formatted) ? formatted : null;
+}
+
+function cleanRawName(raw) {
+  let s = (raw || "").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  const noisePatterns = [
+    /\bET\s*AL\b/gi,
+    /\bETAL\b/gi,
+    /\bET\s*UX\b/gi,
+    /\bET\s*VIR\b/gi,
+    /\bET\s+UXOR\b/gi,
+    /\bTRUSTEE[S]?\b/gi,
+    /\bTTEE[S]?\b/gi,
+    /\bU\/A\b/gi,
+    /\bU\/D\/T\b/gi,
+    /\bAKA\b/gi,
+    /\bA\/K\/A\b/gi,
+    /\bFBO\b/gi,
+    /\bC\/O\b/gi,
+    /\b%\s*INTEREST\b/gi,
+    /\b\d{1,3}%\b/gi,
+    /\b\d{1,3}%\s*INTEREST\b/gi,
+    /\bJR\.?\b/gi,
+    /\bSR\.?\b/gi,
+  ];
+  noisePatterns.forEach((re) => {
+    s = s.replace(re, " ");
+  });
+  s = s.replace(/[(),]/g, " ").replace(/\s+/g, " ").trim();
+  s = s
+    .replace(/^(&|and)\s+/i, "")
+    .replace(/\s+(&|and)$/i, "")
     .trim();
-};
+  // If a trailing bare number remains right after a company suffix, drop it
+  const companySuffix =
+    "(?:LLC|L\\.L\\.C|INC|CORP|CO|COMPANY|LTD|TRUST|LP|LLP|PLC|PLLC)";
+  const trailingNumAfterCo = new RegExp(
+    `^(.*?\\b${companySuffix}\\b)\\s+\\d{1,3}$`,
+    "i",
+  );
+  const m = s.match(trailingNumAfterCo);
+  if (m) {
+    s = m[1].trim();
+  }
+  return s;
+}
 
-const normalize = (s) => (s || "").replace(/\s+/g, " ").trim();
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
 
-const commonFirstNames = new Set([
-  "james",
-  "john",
-  "robert",
-  "michael",
-  "william",
-  "david",
-  "richard",
-  "joseph",
-  "thomas",
-  "charles",
-  "christopher",
-  "daniel",
-  "matthew",
-  "anthony",
-  "mark",
-  "donald",
-  "steven",
-  "paul",
-  "andrew",
-  "joshua",
-  "kenneth",
-  "kevin",
-  "brian",
-  "george",
-  "edward",
-  "ronald",
-  "timothy",
-  "jason",
-  "jeffrey",
-  "ryan",
-  "jacob",
-  "gary",
-  "nicholas",
-  "eric",
-  "stephen",
-  "larry",
-  "justin",
-  "scott",
-  "brandon",
-  "benjamin",
-  "adam",
-  "samuel",
-  "gregory",
-  "alexander",
-  "patrick",
-  "frank",
-  "tyler",
-  "raymond",
-  "jack",
-  "dennis",
-  "jerry",
-  "mary",
-  "patricia",
-  "jennifer",
-  "linda",
-  "elizabeth",
-  "barbara",
-  "susan",
-  "jessica",
-  "sarah",
-  "karen",
-  "nancy",
-  "lisa",
-  "margaret",
-  "betty",
-  "sandra",
-  "ashley",
-  "dorothy",
-  "kim",
-  "emily",
-  "donna",
-  "michelle",
-  "carol",
-  "amanda",
-  "melissa",
-  "deborah",
-  "stephanie",
-  "rebecca",
-  "laura",
-  "helen",
-  "sharon",
-  "cynthia",
-  "kathleen",
-  "amy",
-  "angela",
-  "shirley",
-  "anna",
-  "brenda",
-  "pamela",
-  "nicole",
-  "ruth",
-  "katherine",
-  "samantha",
-  "christine",
-  "emma",
-  "catherine",
-  "debra",
-  "virginia",
-  "rachel",
-  "carolyn",
-  "janet",
-  "maria",
-  "megan",
-  "june",
-  "sherrie",
-  "jessica",
-  "meghan",
-  "meaghan",
-  "meagan",
-  "jenny",
-  "jennyfer",
-  "alison",
-  "allison",
-  "alyson",
-  "alyssa",
-  "miriam",
-  "miryam",
-  "jason",
-  "mark",
-  "sherry",
-  "shari",
-  "sheri",
-]);
+function cleanInvalidCharsFromName(raw) {
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
+}
 
-const companyIndicators = [
+const COMPANY_KEYWORDS = [
   "inc",
   "llc",
   "l.l.c",
   "ltd",
-  "co",
-  "corp",
-  "corporation",
-  "company",
   "foundation",
   "alliance",
   "solutions",
+  "corp",
+  "co",
+  "company",
   "services",
   "trust",
-  " tr ",
-  " tr.",
-  "bank",
+  "tr",
   "associates",
   "association",
-  "partners",
   "holdings",
   "group",
-  "properties",
-  "property",
-  "realty",
-  "management",
-  "mortgage",
-  "finance",
-  "plc",
+  "partners",
   "lp",
   "llp",
-  "pc",
-  "p.c",
-  "na",
-  "n.a",
-  "hoa",
+  "plc",
+  "pllc",
+  "bank",
+  "church",
+  "school",
+  "university",
+  "authority",
 ];
 
-const containsCompanyIndicator = (name) => {
-  const lc = ` ${name.toLowerCase()} `;
-  return companyIndicators.some(
-    (kw) =>
-      lc.includes(` ${kw} `) ||
-      lc.includes(` ${kw}. `) ||
-      lc.endsWith(` ${kw}`) ||
-      lc.startsWith(`${kw} `) ||
-      lc.includes(` ${kw}.`),
+
+function isCompanyName(name) {
+  const n = name.toLowerCase();
+  return COMPANY_KEYWORDS.some((kw) =>
+    new RegExp(`(^|\\b)${kw}(\\b|\.$)`, "i").test(n),
   );
-};
+}
 
-const looksLikeCompany = (name) => {
-  const cleaned = normalize(name);
-  if (!cleaned) return false;
-  if (containsCompanyIndicator(cleaned)) return true;
-  // All caps and multi-word often indicates company names
-  const words = cleaned.split(" ");
-  const manyWords = words.length >= 3;
-  const hasOf = /\bof\b/i.test(cleaned);
-  const isAllCaps = cleaned === cleaned.toUpperCase();
-  const hasComma = cleaned.includes(",");
-  return (manyWords && (isAllCaps || hasOf)) || hasComma;
-};
-
-const parseDateToYMD = (s) => {
-  if (!s) return null;
-  const str = s.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-  // Expect US format M/D/YYYY or MM/DD/YYYY
-  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    const mm = m[1].padStart(2, "0");
-    const dd = m[2].padStart(2, "0");
-    const yyyy = m[3];
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  return null;
-};
-
-// Person parsing heuristics
-const stripSuffixes = (tokens) => {
-  const suffixes = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
-  return tokens.filter((t) => !suffixes.has(t.toLowerCase()));
-};
-
-const tokensToPerson = (tokens) => {
-  const t = stripSuffixes(
-    tokens
-      .filter(Boolean)
-      .map((x) => x.trim())
-      .filter(Boolean),
-  );
-  if (t.length === 0) return null;
-  // If comma present case handled before; here we assume no commas
-  if (t.length === 1) {
-    // Not enough to form first/last reliably
-    return null;
-  }
-  if (t.length === 2) {
-    const a = t[0];
-    const b = t[1];
-    const aIsFirst = commonFirstNames.has(a.toLowerCase());
-    const bIsFirst = commonFirstNames.has(b.toLowerCase());
-    if (aIsFirst && !bIsFirst) {
-      return {
-        first_name: titleCase(a),
-        middle_name: null,
-        last_name: titleCase(b),
-      };
-    }
-    if (bIsFirst && !aIsFirst) {
-      return {
-        first_name: titleCase(b),
-        middle_name: null,
-        last_name: titleCase(a),
-      };
-    }
-    // If uncertain, prefer First Last ordering
-    return {
-      first_name: titleCase(a),
-      middle_name: null,
-      last_name: titleCase(b),
-    };
-  }
-  // 3+ tokens: try Last, First Middle or First Middle Last
-  // If second token looks like first name and last token does not, assume [Last, First, Middle*]
-  const a = t[0];
-  const b = t[1];
-  const last = t[t.length - 1];
-  const mids = t.slice(2, t.length - 1);
-  const aIsFirst = commonFirstNames.has(a.toLowerCase());
-  const bIsFirst = commonFirstNames.has(b.toLowerCase());
-  if (!aIsFirst && bIsFirst) {
-    return {
-      first_name: titleCase(b),
-      middle_name: mids.length ? titleCase(mids.join(" ")) : null,
-      last_name: titleCase(a),
-    };
-  }
-  // Otherwise assume [First, Middle*, Last]
-  return {
-    first_name: titleCase(a),
-    middle_name:
-      t.length > 2 ? titleCase(t.slice(1, t.length - 1).join(" ")) : null,
-    last_name: titleCase(last),
-  };
-};
-
-const parsePersonName = (raw) => {
-  const cleaned = normalize(raw)
-    .replace(/\.+/g, "")
-    .replace(/\s*&\s*/g, " & ");
-  if (!cleaned) return null;
-  if (cleaned.includes(",")) {
-    // Last, First Middle
-    const parts = cleaned.split(",");
-    const last = parts[0];
-    const rest = normalize(parts.slice(1).join(" "));
-    const rtokens = rest.split(/\s+/).filter(Boolean);
-    const first = rtokens[0] || "";
-    const middle = rtokens.slice(1).join(" ");
-    if (!first || !last) return null;
-    return {
-      first_name: titleCase(first),
-      middle_name: middle ? titleCase(middle) : null,
-      last_name: titleCase(last),
-    };
-  }
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
-  const p = tokensToPerson(tokens);
-  return p;
-};
-
-const splitAmpersandNames = (name) =>
-  normalize(name)
-    .split(/\s*&\s*/)
-    .map((s) => normalize(s))
-    .filter(Boolean);
-
-const ownerKeyForDedup = (owner) => {
-  if (!owner) return null;
-  if (owner.type === "company")
-    return `company:${normalize(owner.name).toLowerCase()}`;
-  const mid = owner.middle_name
-    ? ` ${normalize(owner.middle_name).toLowerCase()}`
-    : "";
-  return `person:${normalize(owner.first_name).toLowerCase()}${mid} ${normalize(owner.last_name).toLowerCase()}`;
-};
-
-// Extraction functions
-const extractPropertyId = ($) => {
-  let id = null;
-  $("tr").each((_, tr) => {
-    const th = $(tr).find("th").first();
-    const label = normalize(th.text());
-    if (/parcel\s*id/i.test(label)) {
-      const val = normalize($(tr).find("td").first().text());
-      if (val) id = val;
-    }
-  });
-  if (!id) {
-    const t = normalize($("title").text());
-    const m = t.match(/Report:\s*([^\s]+)$/i);
-    if (m) id = m[1];
-  }
-  return id || "unknown_id";
-};
-
-const findSectionByTitle = ($, titleFragment) => {
-  let found = null;
-  $("section").each((_, sec) => {
-    const title = normalize($(sec).find("header .title").first().text());
-    if (title.toLowerCase().includes(titleFragment.toLowerCase())) {
-      found = sec;
-      return false;
-    }
-  });
-  return found;
-};
-
-const extractCurrentOwnerCandidates = ($) => {
-  const sec = findSectionByTitle($, "Owner Information");
-  const names = [];
-  if (sec) {
-    // Prefer obvious owner name anchors, fallback to any strong candidates
-    $(sec)
-      .find("a")
-      .each((_, a) => {
-        const id = $(a).attr("id") || "";
-        const text = normalize($(a).text());
-        if (!text) return;
-        // Try to only pick owner name anchors, not links like address or sharing
-        if (/sprDeedName|lnkUpmSearch|lstDeed/i.test(id)) {
-          names.push(text);
-        }
-      });
-    if (names.length === 0) {
-      // Fallback: first bold-like line inside module-content
-      const possible = normalize($(sec).find(".module-content").first().text());
-      if (possible) {
-        // Heuristic: take first line
-        const firstLine = possible.split(/\n|<br\s*\/?>/i)[0];
-        if (firstLine) names.push(normalize(firstLine));
-      }
-    }
-  }
-  return names;
-};
-
-const extractSalesGrantees = ($) => {
-  const sec = findSectionByTitle($, "Sales");
-  const sales = [];
-  if (!sec) return sales;
-  $(sec)
-    .find("table tbody tr")
-    .each((_, tr) => {
-      const dateText = normalize($(tr).find('th[scope="row"]').first().text());
-      const dateYMD = parseDateToYMD(dateText);
-      if (!dateYMD) return;
-      // Grantee is typically the last column
-      const tds = $(tr).find("td");
-      let granteeText = "";
-      if (tds.length) {
-        granteeText = normalize($(tds[tds.length - 1]).text());
-      }
-      if (granteeText) {
-        sales.push({ date: dateYMD, grantee: granteeText });
-      }
-    });
-  return sales;
-};
-
-// Classification
-const classifyAndExpandOwners = (raw, invalid) => {
-  const cleaned = normalize(raw).replace(/\u00A0/g, " ");
+function splitCompositeNames(name) {
+  const cleaned = cleanRawName(name);
   if (!cleaned) return [];
+  const parts = cleaned
+    .split(/\s*&\s*|\s+and\s+/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts;
+}
 
-  // If the string contains an ampersand, prioritize splitting into potential multiple owners
-  if (cleaned.includes("&")) {
-    const parts = splitAmpersandNames(cleaned);
-    const owners = [];
-    parts.forEach((p) => {
-      if (!p) return;
-      if (looksLikeCompany(p)) {
-        owners.push({ type: "company", name: p });
-      } else {
-        const person = parsePersonName(p);
-        if (person && person.first_name && person.last_name) {
-          owners.push({
-            type: "person",
-            first_name: person.first_name,
-            last_name: person.last_name,
-            middle_name: person.middle_name || null,
-          });
-        } else {
-          invalid.push({
-            raw: p,
-            reason: "Ambiguous ampersand name could not be parsed as person",
-          });
-        }
-      }
-    });
-    return owners;
+function classifyOwner(raw) {
+  const cleaned = cleanRawName(raw);
+  if (!cleaned) {
+    return { valid: false, reason: "empty_after_clean", raw };
   }
-
-  // If it clearly looks like a company
-  if (looksLikeCompany(cleaned)) {
-    return [{ type: "company", name: cleaned }];
+  if (isCompanyName(cleaned)) {
+    return { valid: true, owner: { type: "company", name: cleaned } };
   }
-
-  // Person fallback
-  const person = parsePersonName(cleaned);
-  if (person && person.first_name && person.last_name) {
-    return [
-      {
-        type: "person",
-        first_name: person.first_name,
-        last_name: person.last_name,
-        middle_name: person.middle_name || null,
-      },
-    ];
+  const tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
+  if (tokens.length < 2) {
+    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
+  const first = cleanInvalidCharsFromName(tokens[0]);
+  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
+  const middleTokens = tokens.slice(1, -1);
+  // if (/^[A-Za-z]$/.test(last)) {
+  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
+  // }
+  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
+  if (first && last) {
+    const person = {
+      type: "person",
+      first_name: first,
+      last_name: last,
+      middle_name: middle ? middle : null,
+    };
+    return { valid: true, owner: person };
+  }
+  return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
+}
 
-  // If neither person nor company confidently parsed, mark invalid
-  invalid.push({
-    raw: cleaned,
-    reason: "Unable to confidently classify owner",
-  });
-  return [];
-};
-
-const dedupeOwners = (owners) => {
+function dedupeOwners(owners) {
   const seen = new Set();
   const out = [];
-  owners.forEach((o) => {
-    const key = ownerKeyForDedup(o);
-    if (key && !seen.has(key)) {
-      seen.add(key);
-      // Ensure person.middle_name is null when empty
-      if (
-        o.type === "person" &&
-        (!o.middle_name || !normalize(o.middle_name))
-      ) {
-        out.push({
-          type: "person",
-          first_name: o.first_name,
-          last_name: o.last_name,
-          middle_name: null,
-        });
-      } else {
-        out.push(o);
+  for (const o of owners) {
+    let norm;
+    if (o.type === "company") {
+      norm = `company:${normalizeName(o.name)}`;
+    } else {
+      const middle = o.middle_name ? normalizeName(o.middle_name) : "";
+      norm = `person:${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}`;
+    }
+    if (!seen.has(norm)) {
+      seen.add(norm);
+      out.push(o);
+    }
+  }
+  return out;
+}
+
+function getParcelId($) {
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
+}
+
+function extractCurrentOwners($) {
+  const owners = [];
+  $(CURRENT_OWNER_SELECTOR).each((i, el) => {
+    const owner_text_split = $(el).text().split('\n');
+    for (const owner of owner_text_split) {
+      if (owner.trim()) {
+        const t = txt(owner.trim());
+        owners.push(t);
+        break;
       }
     }
   });
-  return out;
-};
+  return owners;
+}
 
-// Main transform
-const html = readHtml();
-const $ = cheerio.load(html);
+function extractSalesOwnersByDate($) {
+  const map = {};
+  const priorOwners = [];
+  const rows = $(SALES_TABLE_SELECTOR);
+  rows.each((i, tr) => {
+    const $tr = $(tr);
+    const th = $tr.find("th").first();
+    const tds = $tr.find("td");
+    const saleDateRaw = txt(th.text());
+    if (!saleDateRaw) return;
+    const dm = saleDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!dm) return;
+    const mm = dm[1].padStart(2, "0");
+    const dd = dm[2].padStart(2, "0");
+    const yyyy = dm[3];
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const grantee = txt(tds.last().text());
+    if (grantee) {
+      if (!map[dateStr]) map[dateStr] = [];
+      map[dateStr].push(grantee);
+    }
+    const grantor = txt(tds.eq(tds.length - 2).text());
+    if (grantor) priorOwners.push(grantor);
+  });
+  return { map, priorOwners };
+}
 
-const propertyId = extractPropertyId($);
-
-const invalidOwners = [];
-
-// Current owners
-const currentOwnerStrings = extractCurrentOwnerCandidates($);
-let currentOwners = [];
-currentOwnerStrings.forEach((raw) => {
-  const parsed = classifyAndExpandOwners(raw, invalidOwners);
-  currentOwners = currentOwners.concat(parsed);
-});
-currentOwners = dedupeOwners(currentOwners);
-
-// Historical from Sales (grantees)
-const sales = extractSalesGrantees($);
-// Build date -> owners
-const ownersByDateMap = new Map();
-
-sales.forEach(({ date, grantee }) => {
-  const owners = classifyAndExpandOwners(grantee, invalidOwners);
-  const valid = dedupeOwners(owners);
-  if (valid.length) {
-    const key = date; // already YYYY-MM-DD
-    ownersByDateMap.set(key, valid);
+function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
+  const owners = [];
+  for (const raw of rawStrings) {
+    const parts = splitCompositeNames(raw);
+    if (parts.length === 0) {
+      invalidCollector.push({ raw, reason: "unparseable_or_empty" });
+      continue;
+    }
+    for (const part of parts) {
+      const res = classifyOwner(part);
+      if (res.valid) {
+        owners.push(res.owner);
+      } else {
+        invalidCollector.push({
+          raw: part,
+          reason: res.reason || "invalid_owner",
+        });
+      }
+    }
   }
-});
+  return dedupeOwners(owners);
+}
 
-// Ensure chronological order and append 'current'
-const dateKeys = Array.from(ownersByDateMap.keys()).sort();
+const parcelId = getParcelId($);
+const currentOwnerRaw = extractCurrentOwners($);
+const { map: salesMap, priorOwners } = extractSalesOwnersByDate($);
+
+const invalid_owners = [];
+const dates = Object.keys(salesMap).sort();
 const owners_by_date = {};
+for (const d of dates) {
+  const owners = resolveOwnersFromRawStrings(salesMap[d], invalid_owners);
+  if (owners.length > 0) {
+    owners_by_date[d] = owners;
+  }
+}
 
-dateKeys.forEach((k) => {
-  owners_by_date[k] = ownersByDateMap.get(k);
-});
+if (priorOwners && priorOwners.length > 0) {
+  const granteeNamesNorm = new Set();
+  Object.values(owners_by_date).forEach((arr) => {
+    arr.forEach((o) => {
+      if (o.type === "company")
+        granteeNamesNorm.add(`company:${normalizeName(o.name)}`);
+      else
+        granteeNamesNorm.add(
+          `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
+        );
+    });
+  });
+  const placeholderRaw = [];
+  for (const p of priorOwners) {
+    const parts = splitCompositeNames(p);
+    for (const part of parts) {
+      const res = classifyOwner(part);
+      if (res.valid) {
+        const o = res.owner;
+        let key;
+        if (o.type === "company") key = `company:${normalizeName(o.name)}`;
+        else
+          key = `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`;
+        if (!granteeNamesNorm.has(key)) {
+          placeholderRaw.push(part);
+        }
+      } else {
+        invalid_owners.push({
+          raw: part,
+          reason: res.reason || "invalid_owner",
+        });
+      }
+    }
+  }
+  if (placeholderRaw.length > 0) {
+    const unknownOwners = resolveOwnersFromRawStrings(
+      placeholderRaw,
+      invalid_owners,
+    );
+    if (unknownOwners.length > 0) {
+      let idx = 1;
+      let unknownKey = `unknown_date_${idx}`;
+      while (Object.prototype.hasOwnProperty.call(owners_by_date, unknownKey)) {
+        idx += 1;
+        unknownKey = `unknown_date_${idx}`;
+      }
+      owners_by_date[unknownKey] = unknownOwners;
+    }
+  }
+}
 
-// Current: if we found explicit current owners, use them; otherwise use latest grantee
-if (currentOwners.length) {
-  owners_by_date["current"] = currentOwners;
-} else if (dateKeys.length) {
-  owners_by_date["current"] = ownersByDateMap.get(
-    dateKeys[dateKeys.length - 1],
-  );
+const currentOwnersStructured = resolveOwnersFromRawStrings(
+  currentOwnerRaw,
+  invalid_owners,
+);
+if (currentOwnersStructured.length > 0) {
+  owners_by_date["current"] = currentOwnersStructured;
 } else {
   owners_by_date["current"] = [];
 }
 
-const result = {};
-const topKey = `property_${propertyId}`;
-result[topKey] = {
-  owners_by_date: owners_by_date,
-  invalid_owners: invalidOwners,
-};
+const orderedOwnersByDate = {};
+const dateKeys = Object.keys(owners_by_date)
+  .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+  .sort();
+for (const dk of dateKeys) orderedOwnersByDate[dk] = owners_by_date[dk];
+Object.keys(owners_by_date)
+  .filter((k) => /^unknown_date_\d+$/.test(k))
+  .forEach((k) => {
+    orderedOwnersByDate[k] = owners_by_date[k];
+  });
+if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
+  orderedOwnersByDate["current"] = owners_by_date["current"];
+}
+
+const propKey = `property_${parcelId || "unknown_id"}`;
+const output = {};
+output[propKey] = { owners_by_date: orderedOwnersByDate };
+
+function dedupeInvalidOwners(list) {
+  const seen = new Set();
+  const out = [];
+  for (const item of list) {
+    const key = `${normalizeName(item.raw)}|${item.reason}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push({ raw: item.raw, reason: item.reason });
+    }
+  }
+  return out;
+}
+
+output.invalid_owners = dedupeInvalidOwners(invalid_owners);
 
 const outDir = path.join(process.cwd(), "owners");
 fs.mkdirSync(outDir, { recursive: true });
 const outPath = path.join(outDir, "owner_data.json");
-fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf8");
+fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf-8");
 
-console.log(JSON.stringify(result, null, 2));
+console.log(JSON.stringify(output));
