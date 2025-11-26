@@ -1056,6 +1056,14 @@ function stripAddressRequestMetadata(address) {
   if (forceRawVariant) {
     delete working.__force_raw_variant;
   }
+  const preferMinimalRawSurface =
+    Object.prototype.hasOwnProperty.call(
+      working,
+      "__raw_minimal_surface",
+    ) && working.__raw_minimal_surface === true;
+  if (preferMinimalRawSurface) {
+    delete working.__raw_minimal_surface;
+  }
   const rawValue =
     typeof working.unnormalized_address === "string"
       ? working.unnormalized_address.trim()
@@ -1114,10 +1122,26 @@ function stripAddressRequestMetadata(address) {
   }
 
   const surfaced = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...(preferMinimalRawSurface ? {} : RAW_ADDRESS_SCHEMA_TEMPLATE),
     ...working,
     unnormalized_address: rawValue,
   };
+
+  if (preferMinimalRawSurface) {
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(surfaced, field)) {
+        continue;
+      }
+      const value = surfaced[field];
+      if (value === undefined || value === null) {
+        delete surfaced[field];
+        continue;
+      }
+      if (typeof value === "string" && !value.trim().length) {
+        delete surfaced[field];
+      }
+    }
+  }
 
   if (hasRequestIdentifier) {
     surfaced.request_identifier =
@@ -2447,8 +2471,25 @@ function sanitizeAddressPayloadForWrite(payload) {
   }
 
   if (trimmedUnnormalized.length) {
-    const rawSurface = { ...normalizedCandidate };
-    rawSurface.unnormalized_address = trimmedUnnormalized;
+    const rawSurface = {
+      unnormalized_address: trimmedUnnormalized,
+    };
+
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const value = normalizedCandidate[field];
+      if (value === undefined || value === null) {
+        continue;
+      }
+      if (typeof value === "string") {
+        const trimmedValue = value.trim();
+        if (!trimmedValue.length) {
+          continue;
+        }
+        rawSurface[field] = trimmedValue;
+        continue;
+      }
+      rawSurface[field] = value;
+    }
 
     if (!rawSurface.postal_code) {
       rawSurface.plus_four_postal_code = null;
@@ -2471,6 +2512,8 @@ function sanitizeAddressPayloadForWrite(payload) {
     rawSurface.source_http_request = preparedSource
       ? deepClone(preparedSource)
       : null;
+
+    rawSurface.__raw_minimal_surface = true;
 
     if (forceRawVariant || preserveStructuredFields) {
       rawSurface.__force_raw_variant = true;
@@ -6496,6 +6539,7 @@ process.on("exit", () => {
       defaultStateCode: "FL",
       defaultCountryCode: "US",
     });
+    emitMinimalRawAddressOverride();
   } catch (error) {
     console.error("Failed to enforce terminal address schema on exit:", error);
   }
@@ -53000,7 +53044,37 @@ function emitMinimalRawAddressOverride() {
     delete minimalRawPayload.source_http_request;
   }
 
-  writeJSON(addressPath, minimalRawPayload);
+  const trimmedRaw =
+    typeof minimalRawPayload.unnormalized_address === "string"
+      ? minimalRawPayload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const leanRawPayload = {
+    unnormalized_address: trimmedRaw,
+  };
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      minimalRawPayload,
+      "request_identifier",
+    )
+  ) {
+    const normalizedIdentifier = safeNullIfEmpty(
+      minimalRawPayload.request_identifier,
+    );
+    leanRawPayload.request_identifier =
+      normalizedIdentifier === undefined ? null : normalizedIdentifier;
+  }
+
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    JSON.stringify(leanRawPayload, null, 2),
+  );
 }
 
 async function run() {
@@ -54549,6 +54623,18 @@ run()
     } catch (error) {
       console.error(
         "Failed to enforce terminal address schema compliance:",
+        error,
+      );
+      if (!process.exitCode) {
+        process.exitCode = 1;
+      }
+    }
+
+    try {
+      emitMinimalRawAddressOverride();
+    } catch (error) {
+      console.error(
+        "Failed to emit the final minimal/raw address override:",
         error,
       );
       if (!process.exitCode) {
