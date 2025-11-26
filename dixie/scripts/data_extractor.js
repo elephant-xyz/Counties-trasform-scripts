@@ -1867,6 +1867,23 @@ function mapExteriorWallMaterial(value) {
   return null;
 }
 
+function mapExteriorWallMaterialSecondary(value) {
+  const v = valueOrNull(value);
+  if (!v) return null;
+  const upper = v.toUpperCase();
+  if (upper.includes("BRICK")) return "Brick Accent";
+  if (upper.includes("MANUFACTURED") && upper.includes("STONE")) return "Stone Accent";
+  if (upper.includes("STONE")) return "Stone Accent";
+  if (upper.includes("STUCCO")) return "Stucco Accent";
+  if (upper.includes("VINYL")) return "Vinyl Accent";
+  if (upper.includes("WOOD") || upper.includes("PLYWOOD") || upper.includes("T-111") || upper.includes("BOARD")) {
+    return "Wood Trim";
+  }
+  if (upper.includes("METAL") || upper.includes("ALUMINUM")) return "Metal Trim";
+  if (upper.includes("CONCRETE") && upper.includes("BLOCK")) return "Decorative Block";
+  return null;
+}
+
 function mapInteriorWallMaterial(value) {
   const v = valueOrNull(value);
   if (!v) return null;
@@ -2066,7 +2083,7 @@ function buildStructureFromBuilding(building, parcelId, idx) {
   structure.exterior_wall_material_primary = mapExteriorWallMaterial(
     building["Primary Exterior Wall"],
   );
-  structure.exterior_wall_material_secondary = mapExteriorWallMaterial(
+  structure.exterior_wall_material_secondary = mapExteriorWallMaterialSecondary(
     building["Second Exterior Wall"],
   );
   structure.interior_wall_surface_material_primary = mapInteriorWallMaterial(
