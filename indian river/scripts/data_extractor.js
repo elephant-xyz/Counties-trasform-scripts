@@ -1697,7 +1697,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   const ownersByDate = record.owners_by_date;
   const ownerMailingData = record.owner_mailing_addresses || [];
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_prior_sale_* entries as they represent historical owners without linkable sale dates
+    if (dateKey.startsWith("unknown_prior_sale_")) return;
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const suffixKey = normalizeSuffixForCompare(o.suffix_name);
@@ -1737,7 +1739,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_prior_sale_* entries as they represent historical owners without linkable sale dates
+    if (dateKey.startsWith("unknown_prior_sale_")) return;
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim());
