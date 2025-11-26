@@ -2269,9 +2269,11 @@ async function main() {
     // First, identify which owner records will be referenced by relationships
     const referencedOwnerIds = new Set();
 
-    // 1. Current owner with mailing address
-    if (currentOwnerRecord && mailingAddressOut) {
-      referencedOwnerIds.add(currentOwnerRecord.id);
+    // 1. ALL current owners with mailing address (not just the first one)
+    if (mailingAddressOut && currentOwnerRecordsList.length > 0) {
+      for (const record of currentOwnerRecordsList) {
+        referencedOwnerIds.add(record.id);
+      }
     }
 
     // 2. Companies with property roles (only companies get property relationships, not persons)
