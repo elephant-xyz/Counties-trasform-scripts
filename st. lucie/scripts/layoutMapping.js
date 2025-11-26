@@ -233,9 +233,9 @@ function inferFlooringMaterialFromFeature(feature, flooringEnum, mapEnumFn) {
 function dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) {
   if (layout.decor_elements && layout.decor_elements.length > 0) {
     const uniqueDecor = Array.from(new Set(layout.decor_elements));
-    // Filter to valid enum values and pick the first one, or concatenate if schema allows multiple (but it seems not)
+    // Filter to valid enum values only - exact matches
     const validDecor = uniqueDecor.filter(element =>
-      DECOR_ELEMENTS_ENUM.includes(element) || DECOR_ELEMENTS_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+      DECOR_ELEMENTS_ENUM.includes(element)
     );
     layout.decor_elements = validDecor.length > 0 ? validDecor[0] : null; // Pick first valid or null
   } else {
@@ -244,9 +244,9 @@ function dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) {
 
   if (layout.safety_features && layout.safety_features.length > 0) {
     const uniqueSafety = Array.from(new Set(layout.safety_features));
-    // Filter to valid enum values and pick the first one, or concatenate if schema allows multiple (but it seems not)
+    // Filter to valid enum values only - exact matches
     const validSafety = uniqueSafety.filter(element =>
-      SAFETY_FEATURES_ENUM.includes(element) || SAFETY_FEATURES_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+      SAFETY_FEATURES_ENUM.includes(element)
     );
     layout.safety_features = validSafety.length > 0 ? validSafety[0] : null; // Pick first valid or null
   } else {
@@ -1344,11 +1344,12 @@ function extractLayouts($, parcelId) {
         if (!flooringMaterial && freeformMapped.flooring_material_type) {
           flooringMaterial = freeformMapped.flooring_material_type;
         }
-        if (freeformMapped.decor_elements?.length) {
-          decorElements = decorElements.concat(freeformMapped.decor_elements);
+        // freeformMapped.decor_elements and safety_features are single strings or null after dedupeLayoutArrays
+        if (freeformMapped.decor_elements && typeof freeformMapped.decor_elements === 'string') {
+          decorElements.push(freeformMapped.decor_elements);
         }
-        if (freeformMapped.safety_features?.length) {
-          safetyFeatures = safetyFeatures.concat(freeformMapped.safety_features);
+        if (freeformMapped.safety_features && typeof freeformMapped.safety_features === 'string') {
+          safetyFeatures.push(freeformMapped.safety_features);
         }
         if (!viewType && freeformMapped.view_type) {
           viewType = freeformMapped.view_type;
@@ -1378,13 +1379,13 @@ function extractLayouts($, parcelId) {
           // Process decor_elements and safety_features to be single string or null
           const uniqueDecor = Array.from(new Set(decorElements));
           const validDecor = uniqueDecor.filter(element =>
-            DECOR_ELEMENTS_ENUM.includes(element) || DECOR_ELEMENTS_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+            DECOR_ELEMENTS_ENUM.includes(element)
           );
           sfyiLayout.decor_elements = validDecor.length > 0 ? validDecor[0] : null;
 
           const uniqueSafety = Array.from(new Set(safetyFeatures));
           const validSafety = uniqueSafety.filter(element =>
-            SAFETY_FEATURES_ENUM.includes(element) || SAFETY_FEATURES_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+            SAFETY_FEATURES_ENUM.includes(element)
           );
           sfyiLayout.safety_features = validSafety.length > 0 ? validSafety[0] : null;
 
