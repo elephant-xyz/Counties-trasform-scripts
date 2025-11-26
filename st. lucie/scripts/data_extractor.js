@@ -55,6 +55,56 @@ function guessOwnerType(name) {
   return COMPANY_NAME_REGEX.test(name) ? "company" : "person";
 }
 
+/**
+ * Normalize a person name to match the Elephant schema pattern:
+ * ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+ *
+ * This means:
+ * - First letter uppercase, rest lowercase
+ * - After separators (space, hyphen, apostrophe, comma, period),
+ *   capitalize the next letter and lowercase the rest
+ */
+function normalizePersonName(name) {
+  if (!name || typeof name !== 'string') return null;
+
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Split by separators while keeping them
+  const separators = /[ \-',.]/;
+  const parts = [];
+  let currentPart = '';
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (separators.test(char)) {
+      if (currentPart) {
+        parts.push(currentPart);
+      }
+      parts.push(char);
+      currentPart = '';
+    } else {
+      currentPart += char;
+    }
+  }
+  if (currentPart) {
+    parts.push(currentPart);
+  }
+
+  // Normalize each part: capitalize first letter, lowercase the rest
+  const normalized = parts.map((part, index) => {
+    if (separators.test(part)) {
+      return part; // Keep separators as-is
+    }
+    if (!part) return part;
+
+    // Capitalize first letter, lowercase the rest
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join('');
+
+  return normalized || null;
+}
+
 function parsePersonNameTokens(name) {
   let cleaned = textClean(name);
   if (!cleaned) return null;
@@ -75,16 +125,16 @@ function parsePersonNameTokens(name) {
       return {
         first_name: null,
         middle_name: null,
-        last_name: textClean(lastPart) || null,
+        last_name: normalizePersonName(textClean(lastPart)),
       };
     }
     const first = restTokens[0] || null;
     const middle =
       restTokens.length > 1 ? restTokens.slice(1).join(" ") : null;
     return {
-      first_name: first || null,
-      middle_name: middle || null,
-      last_name: textClean(lastPart) || null,
+      first_name: normalizePersonName(first),
+      middle_name: normalizePersonName(middle),
+      last_name: normalizePersonName(textClean(lastPart)),
     };
   }
 
@@ -93,21 +143,17 @@ function parsePersonNameTokens(name) {
     return { first_name: null, middle_name: null, last_name: null };
   }
   if (tokens.length === 1) {
-    return { first_name: tokens[0], middle_name: null, last_name: null };
+    return { first_name: normalizePersonName(tokens[0]), middle_name: null, last_name: null };
   }
   const first = tokens[0];
   const last = tokens[tokens.length - 1];
   const middle =
     tokens.length > 2 ? tokens.slice(1, -1).join(" ") || null : null;
 
-  // Validate middle name against the pattern if it exists
-  const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  const validatedMiddle = (middle && middleNamePattern.test(middle)) ? middle : null;
-
   return {
-    first_name: first || null,
-    middle_name: validatedMiddle, // Use the validated middle name
-    last_name: last || null,
+    first_name: normalizePersonName(first),
+    middle_name: normalizePersonName(middle),
+    last_name: normalizePersonName(last),
   };
 }
 
@@ -1779,9 +1825,9 @@ async function main() {
       if (ownerType === "person") {
         const personData = {
           birth_date: ownerEntry.birth_date ?? null,
-          first_name: ownerEntry.first_name ?? null,
-          last_name: ownerEntry.last_name ?? null,
-          middle_name: ownerEntry.middle_name ?? null,
+          first_name: normalizePersonName(ownerEntry.first_name) ?? null,
+          last_name: normalizePersonName(ownerEntry.last_name) ?? null,
+          middle_name: normalizePersonName(ownerEntry.middle_name) ?? null,
           prefix_name: ownerEntry.prefix_name ?? null,
           suffix_name: ownerEntry.suffix_name ?? null,
           us_citizenship_status: ownerEntry.us_citizenship_status ?? null,
