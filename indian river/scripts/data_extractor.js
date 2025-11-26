@@ -1343,9 +1343,12 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
     if (!addresses.length) return;
 
     if (info.type === "person") {
+      // Clean names before lookup to match how they were cleaned during person creation
+      const cleanedFirstName = info.first_name ? cleanNameForValidation(info.first_name) : null;
+      const cleanedLastName = info.last_name ? cleanNameForValidation(info.last_name) : null;
       const personIdx = findPersonIndexByName(
-        info.first_name,
-        info.last_name,
+        cleanedFirstName,
+        cleanedLastName,
         info.suffix_name,
       );
       if (!personIdx) return; // Skip if person not found
@@ -1993,7 +1996,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     ownersOnDate
       .filter((o) => o.type === "person")
       .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name, o.suffix_name);
+        // Clean names before lookup to match how they were cleaned during person creation
+        const cleanedFirstName = o.first_name ? cleanNameForValidation(o.first_name) : null;
+        const cleanedLastName = o.last_name ? cleanNameForValidation(o.last_name) : null;
+        const pIdx = findPersonIndexByName(cleanedFirstName, cleanedLastName, o.suffix_name);
         if (pIdx && !linked.has(`person:${pIdx}`)) {
           linked.add(`person:${pIdx}`);
           writeJSON(
