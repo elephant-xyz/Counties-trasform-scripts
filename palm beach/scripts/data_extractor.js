@@ -1230,13 +1230,18 @@ function buildMinimalRawAddressSurface(address) {
   }
 
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const candidate = address.request_identifier;
+    const candidate = safeNullIfEmpty(address.request_identifier);
     minimal.request_identifier =
       candidate === undefined ? null : candidate;
+  } else if (
+    Object.prototype.hasOwnProperty.call(minimal, "request_identifier")
+  ) {
+    minimal.request_identifier = null;
   }
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
@@ -1245,25 +1250,28 @@ function buildMinimalRawAddressSurface(address) {
     }
     const value = address[field];
     if (value === undefined || value === null) {
+      minimal[field] = null;
       continue;
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      minimal[field] = trimmed;
+      minimal[field] = trimmed.length ? trimmed : null;
       continue;
     }
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
-      if (!Number.isFinite(numeric)) {
-        continue;
-      }
-      minimal[field] = numeric;
+      minimal[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
     minimal[field] = value;
+  }
+
+  if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
+  }
+
+  if (minimal.state_code && !minimal.country_code) {
+    minimal.country_code = "US";
   }
 
   return minimal;
