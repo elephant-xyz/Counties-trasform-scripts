@@ -1183,8 +1183,8 @@ function clearExistingSalesHistoryFiles() {
         /^relationship_sales_person_\d+\.json$/.test(f) ||
         /^relationship_sales_company_\d+\.json$/.test(f) ||
         /^relationship_sales_history_deed_\d+\.json$/.test(f) ||
-        /^relationship_sales_history_person_\d+\.json$/.test(f) ||
-        /^relationship_sales_history_company_\d+\.json$/.test(f) ||
+        /^relationship_sales_history_\d+_person_\d+\.json$/.test(f) ||
+        /^relationship_sales_history_\d+_company_\d+\.json$/.test(f) ||
         /^person_\d+\.json$/.test(f) ||
         /^company_\d+\.json$/.test(f) ||
         /^mailing_address_\d+\.json$/.test(f) ||
@@ -1898,9 +1898,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   });
 
   // Create relationships between sales_history and persons/companies
-  let relPersonCounter = 0;
-  let relCompanyCounter = 0;
-
   sales.forEach((s, idx) => {
     const saleIdx = idx + 1;
     const saleDateISO = parseDateToISO(s.saleDate);
@@ -1915,9 +1912,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name, o.suffix_name);
         if (pIdx && !linked.has(`person:${pIdx}`)) {
           linked.add(`person:${pIdx}`);
-          relPersonCounter++;
           writeJSON(
-            path.join("data", `relationship_sales_history_person_${relPersonCounter}.json`),
+            path.join("data", `relationship_sales_history_${saleIdx}_person_${pIdx}.json`),
             {
               from: { "/": `./sales_history_${saleIdx}.json` },
               to: { "/": `./person_${pIdx}.json` },
@@ -1933,9 +1929,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx && !linked.has(`company:${cIdx}`)) {
           linked.add(`company:${cIdx}`);
-          relCompanyCounter++;
           writeJSON(
-            path.join("data", `relationship_sales_history_company_${relCompanyCounter}.json`),
+            path.join("data", `relationship_sales_history_${saleIdx}_company_${cIdx}.json`),
             {
               from: { "/": `./sales_history_${saleIdx}.json` },
               to: { "/": `./company_${cIdx}.json` },
