@@ -11839,21 +11839,57 @@ function hasNormalizedCountyCoverage(address) {
     return false;
   }
 
-  const normalizedProbe = { ...address };
+  const normalizedProbe =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...address })
+      : { ...address };
   if (!hasRobustNormalizedAddress(normalizedProbe)) {
+    return false;
+  }
+
+  const strictNormalized = { ...normalizedProbe };
+  const hasAllStrictFields = COUNTY_NORMALIZED_REQUIRED_FIELDS.every(
+    (field) => {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(strictNormalized[field]);
+        if (!Number.isFinite(numeric)) {
+          return false;
+        }
+        strictNormalized[field] = numeric;
+        return true;
+      }
+
+      const normalizedValue =
+        typeof normalizeAddressFieldForSchema === "function"
+          ? normalizeAddressFieldForSchema(field, strictNormalized[field])
+          : strictNormalized[field];
+
+      if (!hasMeaningfulAddressValue(normalizedValue)) {
+        return false;
+      }
+
+      strictNormalized[field] =
+        typeof normalizedValue === "string"
+          ? normalizedValue.trim()
+          : normalizedValue;
+      return true;
+    },
+  );
+
+  if (!hasAllStrictFields) {
     return false;
   }
 
   if (
     typeof hasStrictCountyAddressCoverage === "function" &&
-    !hasStrictCountyAddressCoverage(normalizedProbe)
+    !hasStrictCountyAddressCoverage(strictNormalized)
   ) {
     return false;
   }
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(normalizedProbe, field)) {
-      address[field] = normalizedProbe[field];
+    if (Object.prototype.hasOwnProperty.call(strictNormalized, field)) {
+      address[field] = strictNormalized[field];
     }
   }
 
