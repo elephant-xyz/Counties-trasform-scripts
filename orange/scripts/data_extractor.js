@@ -5618,7 +5618,23 @@ delete layoutContent.space_type_indexer;
     fileFiles.push(fileFileName);
   });
 
+  // Determine which owner keys will have relationships
+  const ownerKeysWithRelationships = new Set();
+
+  // Track owners that will link to mailing address
+  if (mailingAddressFile) {
+    ownerKeysByDate.forEach((keys) => {
+      keys.forEach((key) => ownerKeysWithRelationships.add(key));
+    });
+  }
+
+  // Track buyers that will link to sales
+  allBuyerOwnerKeys.forEach((key) => ownerKeysWithRelationships.add(key));
+
+  console.log("Owner keys with relationships:", Array.from(ownerKeysWithRelationships)); // DEBUG LOG
+
   // Now that all owners (including buyers from sales) are collected in seenOwners, create their files
+  // Only create files for owners that have at least one relationship
   let personIndex = 1;
   let companyIndex = 1;
   const ownerEntries = [];
@@ -5627,6 +5643,12 @@ delete layoutContent.space_type_indexer;
   });
 
   ownerEntries.forEach(([key, info]) => {
+    // Only create file if this owner has a relationship
+    if (!ownerKeysWithRelationships.has(key)) {
+      console.log("Skipping owner without relationships:", key); // DEBUG LOG
+      return;
+    }
+
     if (info.type === "person") {
       const file = `person_${personIndex}.json`;
       writeJSON(path.join(dataDir, file), info.payload);
