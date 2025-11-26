@@ -1701,9 +1701,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
 
-  // Build unique person map
+  // Helper function to check if a key is a valid ISO date
+  const isISODateKey = (k) => /^\d{4}-\d{2}-\d{2}$/.test(k);
+
+  // Filter ownersByDate to only include valid ISO date entries (exclude unknown_prior_sale_* entries)
+  const validDateEntries = Object.entries(ownersByDate).filter(([k]) => isISODateKey(k));
+
+  // Build unique person map (only from valid ISO date entries)
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  validDateEntries.forEach(([, arr]) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1745,9 +1751,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
 
-  // Create company entities
+  // Create company entities (only from valid ISO date entries)
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  validDateEntries.forEach(([, arr]) => {
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim());
