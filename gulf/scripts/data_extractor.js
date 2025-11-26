@@ -1270,62 +1270,26 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-
-  // First, collect which owners will actually be used (have sales dates or are current with mailing)
-  const usedPersons = new Map();
-  const usedCompanies = new Map();
-
-  // Collect persons/companies that match sale dates
-  sales.forEach((rec, idx) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate.forEach((o) => {
+  const personMap = new Map();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!usedPersons.has(k)) {
-          usedPersons.set(k, {
+        if (!personMap.has(k))
+          personMap.set(k, {
             first_name: o.first_name,
             middle_name: o.middle_name,
             last_name: o.last_name,
           });
-        } else {
-          const existing = usedPersons.get(k);
+        else {
+          const existing = personMap.get(k);
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
         }
-      } else if (o.type === "company" && (o.name || "").trim()) {
-        const ck = (o.name || "").trim().toUpperCase();
-        usedCompanies.set(ck, o.name);
       }
     });
   });
-
-  // If there's a mailing address, also collect current owners
-  if (hasOwnerMailingAddress) {
-    const currentOwner = ownersByDate["current"] || [];
-    currentOwner.forEach((o) => {
-      if (o.type === "person") {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!usedPersons.has(k)) {
-          usedPersons.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-          });
-        } else {
-          const existing = usedPersons.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
-        }
-      } else if (o.type === "company" && (o.name || "").trim()) {
-        const ck = (o.name || "").trim().toUpperCase();
-        usedCompanies.set(ck, o.name);
-      }
-    });
-  }
-
-  // Now create only the persons/companies that will be used
-  people = Array.from(usedPersons.values()).map((p) => ({
+  people = Array.from(personMap.values()).map((p) => ({
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
     last_name: p.last_name ? titleCaseName(p.last_name) : null,
@@ -1339,15 +1303,20 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-
-  companies = Array.from(usedCompanies.values()).map((n) => ({
+  const companyNames = new Set();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim())
+        companyNames.add((o.name || "").trim().toUpperCase());
+    });
+  });
+  companies = Array.from(companyNames).map((n) => ({ 
     name: n,
     request_identifier: parcelId,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
-
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
