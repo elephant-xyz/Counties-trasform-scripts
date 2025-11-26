@@ -55167,6 +55167,90 @@ function buildSchemaReadyRawAddressPayload(payload) {
   return schemaReady;
 }
 
+function buildSubmissionReadyRawAddressPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return null;
+  }
+
+  const submission = {
+    unnormalized_address: rawValue,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const normalizedIdentifier = safeNullIfEmpty(payload.request_identifier);
+    submission.request_identifier =
+      normalizedIdentifier === undefined ? null : normalizedIdentifier;
+  } else {
+    submission.request_identifier = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    submission.source_http_request = prepared
+      ? deepClone(prepared)
+      : null;
+  } else {
+    submission.source_http_request = null;
+  }
+
+  const latitude = parseCoordinate(payload.latitude);
+  const longitude = parseCoordinate(payload.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    submission.latitude = latitude;
+    submission.longitude = longitude;
+  }
+
+  const copyField = (field) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      return;
+    }
+    const value = payload[field];
+    if (!hasMeaningfulAddressValue(value)) {
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        return;
+      }
+      submission[field] = trimmed;
+      return;
+    }
+    submission[field] = value;
+  };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
+    }
+    copyField(field);
+  }
+
+  if (
+    hasMeaningfulAddressValue(submission.state_code) &&
+    !hasMeaningfulAddressValue(submission.country_code)
+  ) {
+    submission.country_code = "US";
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(submission, "plus_four_postal_code") &&
+    !hasMeaningfulAddressValue(submission.postal_code)
+  ) {
+    delete submission.plus_four_postal_code;
+  }
+
+  return submission;
+}
+
 function attachAddressMetadataForSchema(payload, metadataSources = []) {
   if (!payload || typeof payload !== "object") {
     return payload;
@@ -55252,11 +55336,14 @@ function enforceCountyRawAddressAndNullRelationships() {
   if (finalPayload) {
     attachAddressMetadataForSchema(finalPayload, metadataSources);
     const schemaReadyRaw = buildSchemaReadyRawAddressPayload(finalPayload);
-    if (schemaReadyRaw) {
+    const submissionReadyRaw = buildSubmissionReadyRawAddressPayload(
+      schemaReadyRaw,
+    );
+    if (submissionReadyRaw) {
       originalWriteFileSync.call(
         fs,
         addressPath,
-        `${JSON.stringify(schemaReadyRaw, null, 2)}\n`,
+        `${JSON.stringify(submissionReadyRaw, null, 2)}\n`,
       );
       addressWriteLocked = true;
     } else {
