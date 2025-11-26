@@ -515,8 +515,7 @@ function mapFreeformFeatureToLayout(feature, enums, mapEnumFn) {
   if (hasAny(["FENCE"])) {
     layout.space_type = mapEnumFn("Courtyard", SPACE_TYPE_ENUM);
     if (label) {
-      const fenceLabel = `Fencing`; // Map to "Fencing" enum
-      layout.decor_elements.push(fenceLabel);
+      const fenceLabel = `Fencing`; // Map to "Fencing" enum - only valid for safety_features
       layout.safety_features.push(fenceLabel);
     }
     return layout.space_type ? dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) : null;
@@ -760,36 +759,7 @@ function extractLayouts($, parcelId) {
 
   const DECOR_ELEMENTS_ENUM = [
     "Vaulted Ceiling", "Coffered Ceiling", "Beamed Ceiling", "Tray Ceiling", "Accent Wall", "Exposed Brick",
-    "Crown Molding", "Wainscoting", "Built-In Shelving", "Wall Paneling", "Chair Railing", "Picture Railing",
-    "Decorative Columns", "Arched Doorways", "Recessed Lighting", "Chandelier", "Pendant Lighting",
-    "Sconce Lighting", "Under-Cabinet Lighting", "Fireplace", "Stove", "Mantle", "Built-In Bar",
-    "Wine Rack", "Window Seat", "Bay Window", "Skylight", "Sun Tunnel", "French Doors", "Sliding Glass Doors",
-    "Barn Doors", "Pocket Doors", "Transom Windows", "Sidelight Windows", "Stained Glass", "Mirror Wall",
-    "Feature Wall", "Art Niche", "Display Shelves", "Open Shelving", "Floating Shelves", "Bookcase",
-    "Media Console", "Entertainment Center", "Desk", "Vanity", "Bench", "Storage Bench", "Coat Rack",
-    "Mudroom Bench", "Shoe Rack", "Key Holder", "Mail Organizer", "Charging Station", "Pet Feeding Station",
-    "Built-In Pet Bed", "Aquarium", "Terrarium", "Indoor Garden", "Plant Wall", "Water Feature",
-    "Statue", "Sculpture", "Mural", "Artwork", "Tapestry", "Area Rug", "Throw Pillows", "Blankets",
-    "Curtains", "Blinds", "Shades", "Shutters", "Valances", "Cornices", "Drapery", "Sheers",
-    "Blackout Curtains", "Smart Home Devices", "Voice Assistant", "Smart Lighting", "Smart Thermostat",
-    "Smart Locks", "Security Camera", "Video Doorbell", "Intercom System", "Sound System",
-    "Home Theater System", "Projector Screen", "Gaming Console", "Arcade Machine", "Pool Table",
-    "Foosball Table", "Air Hockey Table", "Dartboard", "Bar Cart", "Coffee Station", "Tea Station",
-    "Spice Rack", "Knife Block", "Pot Rack", "Utensil Holder", "Dish Drying Rack", "Paper Towel Holder",
-    "Soap Dispenser", "Toothbrush Holder", "Towel Rack", "Robe Hook", "Shower Caddy", "Bath Mat",
-    "Laundry Hamper", "Ironing Board", "Drying Rack", "Storage Bins", "Baskets", "Containers",
-    "Shelving Units", "Cabinets", "Drawers", "Hooks", "Pegboard", "Tool Rack", "Workbench",
-    "Garden Tools", "Hose Reel", "Planters", "Pots", "Bird Feeder", "Bird Bath", "Wind Chimes",
-    "Outdoor Lighting", "String Lights", "Lanterns", "Fire Pit", "Outdoor Fireplace", "Grill",
-    "Smoker", "Pizza Oven", "Outdoor Seating", "Patio Furniture", "Umbrella", "Awning", "Shade Sail",
-    "Hot Tub Cover", "Pool Cover", "Pool Fence", "Safety Net", "Life Buoy", "Warning Signage",
-    "Surveillance Camera", "Lighting", "Self-Closing Gate", "Slip-Resistant Surface",
-    "Emergency Exit Sign", "Fire Extinguisher", "Smoke Detector", "Carbon Monoxide Detector",
-    "Security System", "Alarm System", "Motion Sensor Lights", "Floodlights", "Gate", "Fence",
-    "Wall", "Seawall", "Bridge", "Canopy", "Bleachers", "Driveway", "Walkway", "Paved Surface",
-    "Truck Scale", "Service Pit", "Vault", "Tower", "Silo", "Screen Panels", "Pool Deck",
-    "Pool Enclosure", "Pool Feature", "Commercial Pool", "Barn", "Dock", "Gate (Mechanical)",
-    "Gate (Auto)", "Fencing" // Simplified fence types to just "Fencing" for decor_elements
+    "Crown Molding", "Wainscoting", "Built-In Shelving", "Wall Paneling"
   ];
 
   const SAFETY_FEATURES_ENUM = [
