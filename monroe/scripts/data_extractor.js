@@ -375,7 +375,10 @@ function moneyToNumber(str) {
   const n = String(str).replace(/[^0-9.\-]/g, "");
   if (n === "" || n === ".") return null;
   const v = Number(n);
-  return isNaN(v) ? null : v;
+  if (isNaN(v)) return null;
+  // Validate that the value is reasonable for currency (less than 1 billion)
+  if (!Number.isFinite(v) || v > 1e9 || v < -1e9) return null;
+  return v;
 }
 
 function parseIntSafe(str) {
@@ -1738,11 +1741,11 @@ function parsePermitTable($) {
     if (!hasContent) return;
     rows.push({
       permitNumber: permitNumber || null,
-      type: cells[0] || null,
-      primary: cells[1] || null,
-      active: cells[2] || null,
-      issueDate: cells[3] || null,
-      value: cells[4] || null,
+      issueDate: cells[0] || null,
+      active: cells[1] || null,
+      value: cells[2] || null,
+      type: cells[3] || null,
+      primary: cells[4] || null,
     });
   });
   return rows;
@@ -2361,6 +2364,9 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, filename), data);
   });
 
+  // Initialize buildingLayoutsInfo early for use in utilityItems
+  const buildingLayoutsInfo = [];
+
   const utilityItems = (() => {
     const wrap = (entry, buildingIndex = null) => {
       const cleanedEntry =
@@ -2668,7 +2674,7 @@ const structureItems = (() => {
       })
     : [];
 
-  const buildingLayoutsInfo = [];
+  // buildingLayoutsInfo already initialized earlier
   const buildingInfoByIndex = new Map();
   const buildingMetaByIndex = new Map();
   normalizedBuildings.forEach((meta) => {
