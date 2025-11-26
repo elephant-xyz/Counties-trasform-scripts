@@ -3639,7 +3639,7 @@ function extract() {
 //   try {
 //     const relationshipsToRemove = [
 //       "relationship_property_address.json",
-//       "relationship_property_lot.json", 
+//       "relationship_property_lot.json",
 //       "relationship_property_structure.json",
 //       "relationship_property_utility.json"
 // ];
@@ -3655,6 +3655,44 @@ function extract() {
 //     console.error("Error removing null relationships:", e);
 //   }
 
+  // CRITICAL FIX: Final validation - remove any sales_history files with null purchase_price_amount
+  // This ensures that no invalid sales records are created that would cause validation errors
+  try {
+    const files = fs.readdirSync(dataDir);
+    files.forEach(file => {
+      if (/^sales_history_\d+\.json$/i.test(file)) {
+        const filePath = path.join(dataDir, file);
+        try {
+          const saleData = readJSON(filePath);
+          // Check if purchase_price_amount is null or not a valid number
+          if (!saleData ||
+              saleData.purchase_price_amount === null ||
+              saleData.purchase_price_amount === undefined ||
+              typeof saleData.purchase_price_amount !== 'number' ||
+              !Number.isFinite(saleData.purchase_price_amount)) {
+            console.log(`Removing invalid sales_history file: ${file} (purchase_price_amount: ${saleData?.purchase_price_amount})`);
+            fs.unlinkSync(filePath);
+
+            // Also remove any relationships that reference this file
+            const saleBase = file.replace('.json', '');
+            files.forEach(relFile => {
+              if (relFile.includes(saleBase) && relFile.startsWith('relationship_')) {
+                const relPath = path.join(dataDir, relFile);
+                if (fs.existsSync(relPath)) {
+                  console.log(`Removing relationship file: ${relFile}`);
+                  fs.unlinkSync(relPath);
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error(`Error validating ${file}:`, e.message);
+        }
+      }
+    });
+  } catch (e) {
+    console.error("Error in final sales validation:", e);
+  }
 
 }
 
