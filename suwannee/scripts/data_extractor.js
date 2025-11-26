@@ -1311,40 +1311,88 @@ function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat) {
       break;
     }
   }
-  const outputs = { companyFiles: [], personFiles: [] };
-  if (
-    ownersEntry &&
-    ownersEntry.owners_by_date &&
-    Array.isArray(ownersEntry.owners_by_date.current)
-  ) {
-    let companyIdx = 0,
-      personIdx = 0;
-    for (const ow of ownersEntry.owners_by_date.current) {
-      if (ow.type === "company") {
-        companyIdx += 1;
-        const file = path.join(dataDir, `company_${companyIdx}.json`);
-        writeJson(file, { name: ow.name ?? null });
-        outputs.companyFiles.push(path.basename(file));
-      } else if (ow.type === "person") {
-        // person schema requires many fields; we cannot synthesize; skip if insufficient
-        if (ow.first_name && ow.last_name) {
-          personIdx += 1;
-          const file = path.join(dataDir, `person_${personIdx}.json`);
-          writeJson(file, {
-            birth_date: ow.birth_date ?? null,
-            first_name: ow.first_name,
-            last_name: ow.last_name,
-            middle_name: ow.middle_name ?? null,
-            prefix_name: ow.prefix_name ?? null,
-            suffix_name: ow.suffix_name ?? null,
-            us_citizenship_status: ow.us_citizenship_status ?? null,
-            veteran_status: ow.veteran_status ?? null,
+  const outputs = {
+    companyFiles: [],
+    personFiles: [],
+    companies: [],
+    people: [],
+    ownersByDate: null
+  };
+
+  if (!ownersEntry || !ownersEntry.owners_by_date) {
+    return outputs;
+  }
+
+  outputs.ownersByDate = ownersEntry.owners_by_date;
+
+  // Deduplicate companies across ALL dates (not just current)
+  const companyNames = new Set();
+  Object.values(ownersEntry.owners_by_date).forEach((arr) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach((o) => {
+      if (o.type === "company" && o.name && o.name.trim()) {
+        companyNames.add(o.name.trim());
+      }
+    });
+  });
+
+  // Create company files
+  const companiesArray = Array.from(companyNames);
+  companiesArray.forEach((name, idx) => {
+    const companyIdx = idx + 1;
+    const file = path.join(dataDir, `company_${companyIdx}.json`);
+    writeJson(file, { name: name });
+    outputs.companyFiles.push(path.basename(file));
+    outputs.companies.push({ name: name, file: path.basename(file), index: companyIdx });
+  });
+
+  // Deduplicate persons across ALL dates
+  const personMap = new Map();
+  Object.values(ownersEntry.owners_by_date).forEach((arr) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach((o) => {
+      if (o.type === "person" && o.first_name && o.last_name) {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!personMap.has(k)) {
+          personMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+            birth_date: o.birth_date,
+            prefix_name: o.prefix_name,
+            suffix_name: o.suffix_name,
+            us_citizenship_status: o.us_citizenship_status,
+            veteran_status: o.veteran_status,
           });
-          outputs.personFiles.push(path.basename(file));
         }
       }
-    }
-  }
+    });
+  });
+
+  // Create person files
+  const personsArray = Array.from(personMap.values());
+  personsArray.forEach((p, idx) => {
+    const personIdx = idx + 1;
+    const file = path.join(dataDir, `person_${personIdx}.json`);
+    writeJson(file, {
+      birth_date: p.birth_date ?? null,
+      first_name: p.first_name,
+      last_name: p.last_name,
+      middle_name: p.middle_name ?? null,
+      prefix_name: p.prefix_name ?? null,
+      suffix_name: p.suffix_name ?? null,
+      us_citizenship_status: p.us_citizenship_status ?? null,
+      veteran_status: p.veteran_status ?? null,
+    });
+    outputs.personFiles.push(path.basename(file));
+    outputs.people.push({
+      first_name: p.first_name,
+      last_name: p.last_name,
+      file: path.basename(file),
+      index: personIdx
+    });
+  });
+
   return outputs;
 }
 /**
@@ -1669,58 +1717,121 @@ function main() {
       parcelDashed,
       parcelFlat,
     );
-    // Relationship sales -> owner (company or person) using first sale
-    if (sales.length > 0) {
-      // Create relationships for ALL companies
-      ownerFiles.companyFiles.forEach((companyFile, idx) => {
-        writeJson(path.join(dataDir, `relationship_sales_company_${idx + 1}.json`), {
-          to: { "/": `./${companyFile}` },
-          from: { "/": "./sales_1.json" },
-        });
+
+    // Helper function to find company index by name
+    const findCompanyIndexByName = (name) => {
+      if (!name) return null;
+      const normalized = name.trim();
+      const company = ownerFiles.companies.find(c => c.name === normalized);
+      return company ? company.index : null;
+    };
+
+    // Helper function to find person index by name
+    const findPersonIndexByName = (firstName, lastName) => {
+      if (!firstName || !lastName) return null;
+      const person = ownerFiles.people.find(p =>
+        p.first_name === firstName && p.last_name === lastName
+      );
+      return person ? person.index : null;
+    };
+
+    // Relationship sales -> owner (company or person) - match by sale date
+    if (sales.length > 0 && ownerFiles.ownersByDate) {
+      let relPersonCounter = 0;
+      let relCompanyCounter = 0;
+
+      sales.forEach((sale, idx) => {
+        const saleIdx = idx + 1;
+        const saleDate = sale.ownership_transfer_date; // ISO date
+
+        // Find owners on this specific sale date
+        const ownersOnDate = ownerFiles.ownersByDate[saleDate] || [];
+
+        // Link companies that were owners on this sale date
+        ownersOnDate
+          .filter(o => o.type === "company")
+          .forEach(o => {
+            const cIdx = findCompanyIndexByName(o.name);
+            if (cIdx) {
+              relCompanyCounter++;
+              writeJson(
+                path.join(dataDir, `relationship_sales_company_${relCompanyCounter}.json`),
+                {
+                  to: { "/": `./company_${cIdx}.json` },
+                  from: { "/": `./sales_${saleIdx}.json` },
+                }
+              );
+            }
+          });
+
+        // Link persons that were owners on this sale date
+        ownersOnDate
+          .filter(o => o.type === "person")
+          .forEach(o => {
+            const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+            if (pIdx) {
+              relPersonCounter++;
+              writeJson(
+                path.join(dataDir, `relationship_sales_person_${relPersonCounter}.json`),
+                {
+                  to: { "/": `./person_${pIdx}.json` },
+                  from: { "/": `./sales_${saleIdx}.json` },
+                }
+              );
+            }
+          });
       });
 
-      // Create relationships for ALL persons
-      ownerFiles.personFiles.forEach((personFile, idx) => {
-        writeJson(path.join(dataDir, `relationship_sales_person_${idx + 1}.json`), {
-          to: { "/": `./${personFile}` },
-          from: { "/": "./sales_1.json" },
-        });
-      });
-
-      // Mailing address relationships
-      if (mailingAddress) {
+      // Mailing address relationships - only link current owners
+      if (mailingAddress && ownerFiles.ownersByDate) {
         const mailingAddressObj = {
           unnormalized_address: mailingAddress,
         };
         writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
 
-        // Link ALL companies to mailing address
-        ownerFiles.companyFiles.forEach((companyFile, idx) => {
-          writeJson(
-            path.join(
-              "data",
-              `relationship_company_has_mailing_address_${idx + 1}.json`,
-            ),
-            {
-              from: { "/": `./${companyFile}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        });
+        const currentOwners = ownerFiles.ownersByDate["current"] || [];
+        let relPersonMailCounter = 0;
+        let relCompanyMailCounter = 0;
 
-        // Link ALL persons to mailing address
-        ownerFiles.personFiles.forEach((personFile, idx) => {
-          writeJson(
-            path.join(
-              "data",
-              `relationship_person_has_mailing_address_${idx + 1}.json`,
-            ),
-            {
-              from: { "/": `./${personFile}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        });
+        // Link only CURRENT companies to mailing address
+        currentOwners
+          .filter(o => o.type === "company")
+          .forEach(o => {
+            const cIdx = findCompanyIndexByName(o.name);
+            if (cIdx) {
+              relCompanyMailCounter++;
+              writeJson(
+                path.join(
+                  "data",
+                  `relationship_company_has_mailing_address_${relCompanyMailCounter}.json`,
+                ),
+                {
+                  from: { "/": `./company_${cIdx}.json` },
+                  to: { "/": `./mailing_address.json` },
+                },
+              );
+            }
+          });
+
+        // Link only CURRENT persons to mailing address
+        currentOwners
+          .filter(o => o.type === "person")
+          .forEach(o => {
+            const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+            if (pIdx) {
+              relPersonMailCounter++;
+              writeJson(
+                path.join(
+                  "data",
+                  `relationship_person_has_mailing_address_${relPersonMailCounter}.json`,
+                ),
+                {
+                  from: { "/": `./person_${pIdx}.json` },
+                  to: { "/": `./mailing_address.json` },
+                },
+              );
+            }
+          });
       }
     }
 
