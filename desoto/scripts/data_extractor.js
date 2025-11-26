@@ -43,6 +43,123 @@ function parseDateToISO(txt) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const norm = (value) => (value || "").replace(/\s+/g, " ").trim();
+
+function pruneNullish(obj) {
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] === null || obj[key] === undefined) delete obj[key];
+  });
+  return obj;
+}
+
+function isCompanyName(name) {
+  const n = (name || "").toLowerCase();
+  return /\b(inc|inc\.|corp|corp\.|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
+    n,
+  );
+}
+
+function normalizePersonKey(person) {
+  const parts = [
+    person.prefix_name ? person.prefix_name.toLowerCase() : "",
+    person.first_name ? person.first_name.toLowerCase() : "",
+    person.middle_name ? person.middle_name.toLowerCase() : "",
+    person.last_name ? person.last_name.toLowerCase() : "",
+    person.suffix_name ? person.suffix_name.toLowerCase() : "",
+  ];
+  return parts.join("|");
+}
+
+function normalizeCompanyKey(name) {
+  return norm(name).toLowerCase();
+}
+
+function buildPersonFromSingleName(s) {
+  const cleaned = norm(s);
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) {
+    return [
+      {
+        type: "company",
+        name: formatNameToPattern(cleaned),
+      },
+    ];
+  }
+
+  if (/,/.test(cleaned)) {
+    const [last, rest] = cleaned.split(",", 2).map((x) => norm(x));
+    const restParts = (rest || "").split(/\s+/).filter(Boolean);
+    const first = restParts.shift() || "";
+    const middle = restParts.length ? norm(restParts.join(" ")) : null;
+    return [
+      {
+        type: "person",
+        first_name: formatNameToPattern(first),
+        last_name: formatNameToPattern(last),
+        middle_name: middle ? formatNameToPattern(middle) : null,
+      },
+    ];
+  }
+
+  if (parts.length === 2) {
+    const [part1, part2] = parts;
+    if (part1 === part1.toUpperCase() && part2 === part2.toUpperCase()) {
+      return [
+        {
+          type: "person",
+          first_name: formatNameToPattern(part2),
+          last_name: formatNameToPattern(part1),
+          middle_name: null,
+        },
+      ];
+    }
+    return [
+      {
+        type: "person",
+        first_name: formatNameToPattern(part1),
+        last_name: formatNameToPattern(part2),
+        middle_name: null,
+      },
+    ];
+  }
+
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  const middleParts = parts.slice(1, -1).filter(Boolean);
+  const middle = middleParts.length ? norm(middleParts.join(" ")) : null;
+
+  return [
+    {
+      type: "person",
+      first_name: formatNameToPattern(first),
+      last_name: formatNameToPattern(last),
+      middle_name: middle ? formatNameToPattern(middle) : null,
+    },
+  ];
+}
+
+function buildEntitiesFromRaw(raw) {
+  const all = [];
+  const s = norm(raw);
+  if (!s) return all;
+
+  if (/^(c\/o|care of)\b/i.test(s)) return all;
+
+  const segments = s
+    .split(/\n|&|;/)
+    .map((piece) => norm(piece))
+    .filter(Boolean);
+
+  segments.forEach((segment) => {
+    if (isCompanyName(segment)) {
+      all.push({ type: "company", name: formatNameToPattern(segment) });
+    } else {
+      all.push(...buildPersonFromSingleName(segment));
+    }
+  });
+  return all;
+}
+
 function raiseEnumError(value, pathStr) {
   const err = {
     type: "error",
@@ -107,7 +224,8 @@ function main() {
 
   const ownerDataPath = path.join("owners", "owner_data.json");
   const utilitiesDataPath = path.join("owners", "utilities_data.json");
-  const layoutDataPath = path.join("owners", "layout_data.json");
+const layoutDataPath = path.join("owners", "layout_data.json");
+const structureDataPath = path.join("owners", "structure_data.json");
 
   const ownerData = fs.existsSync(ownerDataPath)
     ? readJson(ownerDataPath)
@@ -115,9 +233,12 @@ function main() {
   const utilitiesData = fs.existsSync(utilitiesDataPath)
     ? readJson(utilitiesDataPath)
     : null;
-  const layoutData = fs.existsSync(layoutDataPath)
-    ? readJson(layoutDataPath)
-    : null;
+const layoutData = fs.existsSync(layoutDataPath)
+  ? readJson(layoutDataPath)
+  : null;
+const structureData = fs.existsSync(structureDataPath)
+  ? readJson(structureDataPath)
+  : null;
 
   const propertySeed = fs.existsSync("property_seed.json")
     ? readJson("property_seed.json")
@@ -137,6 +258,70 @@ function main() {
     if (fmt) hyphenParcel = fmt.trim();
   }
 
+  let personIndex = 0;
+  let companyIndex = 0;
+  const ownerPersonFiles = [];
+  const ownerCompanyFiles = [];
+  const personRegistry = new Map();
+  const companyRegistry = new Map();
+  let utilityFilePath = null;
+  let structureFilePath = null;
+  const propertyRelationshipQueue = [];
+
+  function ensurePersonFile(personPayload) {
+    const key = normalizePersonKey(personPayload);
+    if (personRegistry.has(key)) return personRegistry.get(key);
+
+    personIndex += 1;
+    const relPath = `./person_${personIndex}.json`;
+    const record = {
+      source_http_request: {
+        method: "GET",
+        url:
+          propertySeed?.source_http_request?.url ||
+          unnormalizedAddress?.source_http_request?.url ||
+          "https://www.desotopa.com/gis",
+      },
+      request_identifier: hyphenParcel,
+      birth_date: null,
+      first_name: formatNameToPattern(personPayload.first_name),
+      last_name: formatNameToPattern(personPayload.last_name),
+      middle_name: personPayload.middle_name
+        ? formatNameToPattern(personPayload.middle_name)
+        : null,
+      prefix_name: personPayload.prefix_name
+        ? mapPrefixName(personPayload.prefix_name)
+        : null,
+      suffix_name: personPayload.suffix_name
+        ? mapSuffixName(personPayload.suffix_name)
+        : null,
+      us_citizenship_status: null,
+      veteran_status: null,
+    };
+    writeJson(path.join("data", `person_${personIndex}.json`), record);
+    personRegistry.set(key, relPath);
+    return relPath;
+  }
+
+  function ensureCompanyFile(companyPayload) {
+    const key = normalizeCompanyKey(companyPayload.name);
+    if (companyRegistry.has(key)) return companyRegistry.get(key);
+
+    companyIndex += 1;
+    const relPath = `./company_${companyIndex}.json`;
+    writeJson(path.join("data", `company_${companyIndex}.json`), {
+      name: companyPayload.name ? formatNameToPattern(companyPayload.name) : null,
+    });
+    companyRegistry.set(key, relPath);
+    return relPath;
+  }
+
+  function relationshipFileName(fromPath, toPath) {
+    const fromBase = path.basename(fromPath, ".json");
+    const toBase = path.basename(toPath, ".json");
+    return `relationship_${fromBase}_has_${toBase}.json`;
+  }
+
   // 1) OWNERS
   if (ownerData) {
     const key = hyphenParcel ? `property_${hyphenParcel}` : null;
@@ -147,40 +332,121 @@ function main() {
       Array.isArray(ownersScope.owners_by_date.current)
     ) {
       const currentOwners = ownersScope.owners_by_date.current;
-      let companyIndex = 0;
-      let personIndex = 0;
-      const companyFiles = [];
-      const personFiles = [];
       for (const ow of currentOwners) {
         if (ow.type === "company") {
-          companyIndex += 1;
-          const company = { name: ow.name || null };
-          writeJson(path.join("data", `company_${companyIndex}.json`), company);
-          companyFiles.push(`./company_${companyIndex}.json`);
+          const relPath = ensureCompanyFile({ name: ow.name || null });
+          if (relPath) ownerCompanyFiles.push(relPath);
         } else if (ow.type === "person") {
-          personIndex += 1;
-          const person = {
-            source_http_request: {
-              method: "GET",
-              url: propertySeed?.source_http_request?.url || "https://www.bradfordappraiser.com/gis"
-            },
-            request_identifier: hyphenParcel,
-            birth_date: null,
-            first_name: formatNameToPattern(ow.first_name),
-            last_name: formatNameToPattern(ow.last_name),
-            middle_name: ow.middle_name ? formatNameToPattern(ow.middle_name) : null,
-            prefix_name: mapPrefixName(ow.prefix_name),
-            suffix_name: mapSuffixName(ow.suffix_name),
-            us_citizenship_status: null,
-            veteran_status: null,
-          };
-          writeJson(path.join("data", `person_${personIndex}.json`), person);
-          personFiles.push(`./person_${personIndex}.json`);
+          const relPath = ensurePersonFile({
+            first_name: ow.first_name,
+            middle_name: ow.middle_name || null,
+            last_name: ow.last_name,
+            prefix_name: ow.prefix_name || null,
+            suffix_name: ow.suffix_name || null,
+          });
+          if (relPath) ownerPersonFiles.push(relPath);
         }
       }
-      globalThis.__ownerCompanyFiles = companyFiles;
-      globalThis.__ownerPersonFiles = personFiles;
     }
+  }
+  globalThis.__ownerCompanyFiles = ownerCompanyFiles;
+  globalThis.__ownerPersonFiles = ownerPersonFiles;
+
+  // 1b) MAILING ADDRESS
+  // Pull mailing address lines from the Owner block, omitting the bolded owner names.
+  function extractMailingAddressLines($root) {
+    let lines = null;
+    $root("table.parcelDetails_insideTable tr").each((_, tr) => {
+      const tds = $root(tr).find("td");
+      if (tds.length >= 2) {
+        const label = $root(tds[0]).text().trim();
+        if (/^Owner$/i.test(label)) {
+          const cellHtml = $root(tds[1]).html() || "";
+          const htmlWithoutBold = cellHtml.replace(/<\s*\/?b[^>]*>/gi, "");
+          const parts = htmlWithoutBold
+            .split(/<br\s*\/?>/i)
+            .map((segment) => segment.replace(/<[^>]+>/g, ""))
+            .map((segment) => segment.replace(/\s+/g, " ").trim())
+            .filter(Boolean);
+          if (parts.length) {
+            // Remove leading owner name(s) if present (bold text originally)
+            const candidateLines = [];
+            parts.forEach((part, idx) => {
+              if (idx === 0) {
+                const looksLikeAddress =
+                  /^(\d+\s+.+)/.test(part) ||
+                  /^P\.?O\.?\s*BOX/i.test(part) ||
+                  /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?$/.test(part);
+                if (looksLikeAddress) candidateLines.push(part);
+              } else {
+                candidateLines.push(part);
+              }
+            });
+            lines =
+              candidateLines.length
+                ? candidateLines
+                : parts.length > 1
+                  ? parts.slice(1)
+                  : parts;
+          }
+          return false;
+        }
+      }
+      return true;
+    });
+    return lines;
+  }
+
+  const mailingAddressLines = extractMailingAddressLines($);
+  if (mailingAddressLines && mailingAddressLines.length) {
+    const unnormalizedMailingAddress = mailingAddressLines.join(", ");
+    const defaultSource =
+      propertySeed?.source_http_request ||
+      unnormalizedAddress?.source_http_request || {
+        method: "GET",
+        url:
+          propertySeed?.source_http_request?.url ||
+          unnormalizedAddress?.source_http_request?.url ||
+          "https://www.desotopa.com/gis",
+        multiValueQueryString: {},
+      };
+    const mailingAddress = {
+      source_http_request: defaultSource,
+      request_identifier:
+        propertySeed?.request_identifier ||
+        unnormalizedAddress?.request_identifier ||
+        hyphenParcel ||
+        propertySeed?.parcel_id ||
+        null,
+      unnormalized_address: unnormalizedMailingAddress,
+      latitude: null,
+      longitude: null,
+    };
+    writeJson(path.join("data", "mailing_address.json"), mailingAddress);
+
+    const mailingPath = "./mailing_address.json";
+
+    ownerCompanyFiles.forEach((companyPath) => {
+      const relName = relationshipFileName(companyPath, mailingPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": companyPath },
+          to: { "/": mailingPath },
+        },
+      );
+    });
+
+    ownerPersonFiles.forEach((personPath) => {
+      const relName = relationshipFileName(personPath, mailingPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": personPath },
+          to: { "/": mailingPath },
+        },
+      );
+    });
   }
 
   // 2) UTILITIES
@@ -189,6 +455,17 @@ function main() {
     const utilScope = key && utilitiesData[key] ? utilitiesData[key] : null;
     if (utilScope) {
       writeJson(path.join("data", "utility.json"), { ...utilScope });
+      utilityFilePath = "./utility.json";
+    }
+  }
+
+  // 2a) STRUCTURE
+  if (structureData) {
+    const key = hyphenParcel ? `property_${hyphenParcel}` : null;
+    const structScope = key && structureData[key] ? structureData[key] : null;
+    if (structScope) {
+      writeJson(path.join("data", "structure.json"), { ...structScope });
+      structureFilePath = "./structure.json";
     }
   }
 
@@ -198,335 +475,483 @@ function main() {
     const layScope = key && layoutData[key] ? layoutData[key] : null;
     if (layScope && Array.isArray(layScope.layouts)) {
       let i = 0;
+      const layoutFiles = [];
+      const buildingLayoutFiles = [];
+      const nonBuildingLayoutFiles = [];
       for (const layout of layScope.layouts) {
         i += 1;
-        writeJson(path.join("data", `layout_${i}.json`), layout);
+        const layoutRecord = { ...layout };
+        if (layoutRecord.space_type_index != null) {
+          layoutRecord.space_type_index = String(layoutRecord.space_type_index);
+        } else {
+          layoutRecord.space_type_index = String(i);
+        }
+        const fileName = `layout_${i}.json`;
+        const relPath = `./${fileName}`;
+        writeJson(path.join("data", fileName), layoutRecord);
+        layoutFiles.push(relPath);
+        if ((layoutRecord.space_type || "").toLowerCase() === "building") {
+          buildingLayoutFiles.push(relPath);
+        } else {
+          nonBuildingLayoutFiles.push(relPath);
+        }
       }
+
+      const buildingCount = buildingLayoutFiles.length;
+
+      if (buildingCount === 1) {
+        const buildingPath = buildingLayoutFiles[0];
+        nonBuildingLayoutFiles.forEach((otherPath) => {
+          const relName = relationshipFileName(buildingPath, otherPath);
+          writeJson(
+            path.join("data", relName),
+            {
+              from: { "/": buildingPath },
+              to: { "/": otherPath },
+            },
+          );
+        });
+        if (structureFilePath) {
+          const relName = relationshipFileName(buildingPath, structureFilePath);
+          writeJson(
+            path.join("data", relName),
+            {
+              from: { "/": buildingPath },
+              to: { "/": structureFilePath },
+            },
+          );
+        }
+        if (utilityFilePath) {
+          const relName = relationshipFileName(buildingPath, utilityFilePath);
+          writeJson(
+            path.join("data", relName),
+            {
+              from: { "/": buildingPath },
+              to: { "/": utilityFilePath },
+            },
+          );
+        }
+      } else {
+        if (structureFilePath) {
+          propertyRelationshipQueue.push(["./property.json", structureFilePath]);
+        }
+        if (utilityFilePath) {
+          propertyRelationshipQueue.push(["./property.json", utilityFilePath]);
+        }
+      }
+    } else {
+      if (structureFilePath) {
+        propertyRelationshipQueue.push(["./property.json", structureFilePath]);
+      }
+      if (utilityFilePath) {
+        propertyRelationshipQueue.push(["./property.json", utilityFilePath]);
+      }
+    }
+  } else {
+    if (structureFilePath) {
+      propertyRelationshipQueue.push(["./property.json", structureFilePath]);
+    }
+    if (utilityFilePath) {
+      propertyRelationshipQueue.push(["./property.json", utilityFilePath]);
     }
   }
 
-  // 4) SALES + DEEDS + FILES
+  // 4) SALES HISTORY, DEEDS, AND FILES
+  function extractPartySegment(text, label) {
+    const split = text.split(new RegExp(`${label}\\s*:`, "i"));
+    if (split.length < 2) return null;
+    const remainder = split[1];
+    const nextLabelMatch = remainder.match(/\b(Grantor|Grantee|Buyer|Seller)\b\s*:/i);
+    const segment = nextLabelMatch
+      ? remainder.slice(0, nextLabelMatch.index)
+      : remainder;
+    return norm(segment);
+  }
+
+  function extractSaleParties($root, rowEl) {
+    const grantors = new Set();
+    const grantees = new Set();
+    const buyers = new Set();
+
+    const $row = $root(rowEl);
+    const attrGrantor =
+      $row.attr("data-grantor") ||
+      $row.find("[data-grantor]").first().attr("data-grantor") ||
+      null;
+    const attrGrantee =
+      $row.attr("data-grantee") ||
+      $row.find("[data-grantee]").first().attr("data-grantee") ||
+      null;
+
+    if (attrGrantor) grantors.add(norm(attrGrantor));
+    if (attrGrantee) grantees.add(norm(attrGrantee));
+
+    const nextTr = $row.next("tr");
+    if (nextTr.length === 1 && nextTr.find("td").length === 1) {
+      const detailText = norm(nextTr.text());
+      const grantorText = extractPartySegment(detailText, "Grantor");
+      const granteeText = extractPartySegment(detailText, "Grantee");
+      const buyerText = extractPartySegment(detailText, "Buyer");
+      if (grantorText) grantors.add(grantorText);
+      if (granteeText) grantees.add(granteeText);
+      if (buyerText) buyers.add(buyerText);
+    }
+
+    return {
+      grantors: Array.from(grantors).filter(Boolean),
+      grantees: Array.from(grantees).filter(Boolean),
+      buyers: Array.from(buyers).filter(Boolean),
+    };
+  }
+
   const salesRows = [];
-  // Updated selector for sales table
   $("#parcelDetails_SalesTable table.parcelDetails_insideTable tr").each(
     (idx, el) => {
-      if (idx === 0) return; // Skip header row
+      if (idx === 0) return;
       const tds = $(el).find("td");
       if (tds.length >= 4) {
         const dateTxt = $(tds[0]).text().trim();
+        if (!dateTxt || !/\d/.test(dateTxt)) return;
         const priceTxt = $(tds[1]).text().trim();
-        const bookPageTxt = $(tds[2]).text().trim();
         const deedCode = $(tds[3]).text().trim();
-        if (dateTxt && /\d/.test(dateTxt)) {
-          const linkEl = $(tds[2]).find("a");
-          let clerkRef = null;
-          const href = linkEl.attr("href") || "";
-          const onClick = linkEl.attr("onclick") || "";
-          const js = href || onClick;
-          // Extract book and page from ClerkLink('book','page')
-          const m1 = js.match(/ClerkLink\('([^']+)'\s*,\s*'([^']+)'\)/);
-          if (m1) clerkRef = `${m1[1]}/${m1[2]}`; // Format as "book/page"
-          salesRows.push({
-            dateTxt,
-            priceTxt,
-            deedCode,
-            bookPageTxt,
-            clerkRef,
-          });
-        }
+        const bookCell = $(tds[2]);
+        const bookPageTxt = bookCell.text().trim();
+        const linkEl = bookCell.find("a");
+        const js = (linkEl.attr("onclick") || linkEl.attr("href") || "").trim();
+        const m1 = js.match(/ClerkLink\('([^']+)'\s*,\s*'([^']+)'\)/);
+        const instrumentFromLink = m1 ? norm(m1[1]) : null;
+        const pageFromLink = m1 && m1[2] ? norm(m1[2]) : null;
+        const parties = extractSaleParties($, el);
+        salesRows.push({
+          dateTxt,
+          priceTxt,
+          deedCode,
+          bookPageTxt,
+          instrumentFromLink,
+          pageFromLink,
+          parties,
+          qualificationCode: $(tds[5]) ? $(tds[5]).text().trim() : null,
+        });
       }
     },
   );
 
   const deedCodeMap = {
-    "WD": "Warranty Deed",
-    "WTY": "Warranty Deed",
-    "SWD": "Special Warranty Deed",
-    "SW": "Special Warranty Deed",
+    WD: "Warranty Deed",
+    WTY: "Warranty Deed",
+    SWD: "Special Warranty Deed",
+    SW: "Special Warranty Deed",
     "Spec WD": "Special Warranty Deed",
-    "QCD": "Quitclaim Deed",
-    "QC": "Quitclaim Deed",
-    "Quitclaim": "Quitclaim Deed",
-    "GD": "Grant Deed",
-    "BSD": "Bargain and Sale Deed",
-    "LBD": "Lady Bird Deed",
-    "TOD": "Transfer on Death Deed",
-    "TODD": "Transfer on Death Deed",
-    "SD": "Sheriff's Deed",
+    QCD: "Quitclaim Deed",
+    QC: "Quitclaim Deed",
+    Quitclaim: "Quitclaim Deed",
+    GD: "Grant Deed",
+    BSD: "Bargain and Sale Deed",
+    LBD: "Lady Bird Deed",
+    TOD: "Transfer on Death Deed",
+    TODD: "Transfer on Death Deed",
+    SD: "Sheriff's Deed",
     "Shrf's Deed": "Sheriff's Deed",
-    "TD": "Tax Deed",
-    "TrD": "Trustee's Deed",
+    TD: "Tax Deed",
+    TrD: "Trustee's Deed",
     "Trustee Deed": "Trustee's Deed",
-    "PRD": "Personal Representative Deed",
+    PRD: "Personal Representative Deed",
     "Pers Rep Deed": "Personal Representative Deed",
-    "CD": "Correction Deed",
+    CD: "Correction Deed",
     "Corr Deed": "Correction Deed",
-    "DIL": "Deed in Lieu of Foreclosure",
-    "DILF": "Deed in Lieu of Foreclosure",
-    "LED": "Life Estate Deed",
-    "JTD": "Joint Tenancy Deed",
-    "TIC": "Tenancy in Common Deed",
-    "CPD": "Community Property Deed",
+    DIL: "Deed in Lieu of Foreclosure",
+    DILF: "Deed in Lieu of Foreclosure",
+    LED: "Life Estate Deed",
+    JTD: "Joint Tenancy Deed",
+    TIC: "Tenancy in Common Deed",
+    CPD: "Community Property Deed",
     "Gift Deed": "Gift Deed",
-    "ITD": "Interspousal Transfer Deed",
+    ITD: "Interspousal Transfer Deed",
     "Wild D": "Wild Deed",
-    "SMD": "Special Master's Deed",
-    "COD": "Court Order Deed",
-    "CFD": "Contract for Deed",
-    "QTD": "Quiet Title Deed",
-    "AD": "Administrator's Deed",
+    SMD: "Special Master\u2019s Deed",
+    COD: "Court Order Deed",
+    CFD: "Contract for Deed",
+    QTD: "Quiet Title Deed",
+    AD: "Administrator's Deed",
     "GD (Guardian)": "Guardian's Deed",
-    "RD": "Receiver's Deed",
-    "ROW": "Right of Way Deed",
-    "VPD": "Vacation of Plat Deed",
-    "AOC": "Assignment of Contract",
-    "ROC": "Release of Contract",
-    "LC": "Land Contract",
-    "MTG": "Mortgage",
-    "LIS": "Lis Pendens",
-    "EASE": "Easement",
-    "AGMT": "Agreement",
-    "AFF": "Affidavit",
-    "ORD": "Order",
-    "CERT": "Certificate",
-    "RES": "Resolution",
-    "DECL": "Declaration",
-    "COV": "Covenant",
-    "SUB": "Subordination",
-    "MOD": "Modification",
-    "REL": "Release",
-    "ASSG": "Assignment",
-    "LEAS": "Lease",
-    "TR": "Trust",
-    "WILL": "Will",
-    "PROB": "Probate",
-    "JUDG": "Judgment",
-    "LIEN": "Lien",
-    "SAT": "Satisfaction",
-    "PART": "Partition",
-    "EXCH": "Exchange",
-    "CONV": "Conveyance",
-    "OTH": "Other",
-    "PR": "Personal Representative Deed" // Added PR for the sample
+    RD: "Receiver's Deed",
+    ROW: "Right of Way Deed",
+    VPD: "Vacation of Plat Deed",
+    AOC: "Assignment of Contract",
+    ROC: "Release of Contract",
+    ASSG: "Assignment of Contract",
+    PR: "Assignment of Contract",
   };
 
-  // UPDATED fileDocTypeMap to match schema enum values
   const fileDocTypeMap = {
-    WD: "ConveyanceDeedWarrantyDeed",
-    WTY: "ConveyanceDeedWarrantyDeed",
-    SWD: "ConveyanceDeedSpecialWarrantyDeed",
-    SW: "ConveyanceDeedSpecialWarrantyDeed",
-    "Spec WD": "ConveyanceDeedSpecialWarrantyDeed",
-    QCD: "ConveyanceDeedQuitClaimDeed",
-    QC: "ConveyanceDeedQuitClaimDeed",
-    Quitclaim: "ConveyanceDeedQuitClaimDeed",
-    GD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    BSD: "ConveyanceDeedBargainAndSaleDeed",
-    LBD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    TOD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    TODD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    SD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    "Shrf's Deed": "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    TD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    TrD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    "Trustee Deed": "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    PRD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    "Pers Rep Deed": "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    CD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    "Corr Deed": "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    DIL: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    DILF: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    LED: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    JTD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    TIC: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    CPD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    "Gift Deed": "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    ITD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    "Wild D": "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    SMD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    COD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    CFD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    QTD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    AD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    "GD (Guardian)": "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    RD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    ROW: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    VPD: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    AOC: "Assignment", // Mapped to general Assignment
-    ROC: null, // No direct match in schema
-    LC: null, // No direct match in schema
-    MTG: null, // No direct match in schema
-    LIS: null, // No direct match in schema
-    EASE: null, // No direct match in schema
-    AGMT: null, // No direct match in schema
-    AFF: "Affidavit",
-    ORD: null, // No direct match in schema
-    CERT: null, // No direct match in schema
-    RES: null, // No direct match in schema
-    DECL: null, // No direct match in schema
-    COV: null, // No direct match in schema
-    SUB: null, // No direct match in schema
-    MOD: null, // No direct match in schema
-    REL: null, // No direct match in schema
+    WD: "Title",
+    WTY: "Title",
+    SWD: "Title",
+    SW: "Title",
+    "Spec WD": "Title",
+    QCD: "Title",
+    QC: "Title",
+    Quitclaim: "Title",
+    GD: "Title",
+    BSD: "Title",
+    LBD: "Title",
+    TOD: "Title",
+    TODD: "Title",
+    SD: "Title",
+    "Shrf's Deed": "Title",
+    TD: "Title",
+    TrD: "Title",
+    "Trustee Deed": "Title",
+    PRD: "Title",
+    "Pers Rep Deed": "Title",
+    CD: "Title",
+    "Corr Deed": "Title",
+    DIL: "Title",
+    DILF: "Title",
+    LED: "Title",
+    JTD: "Title",
+    TIC: "Title",
+    CPD: "Title",
+    "Gift Deed": "Title",
+    ITD: "Title",
+    "Wild D": "Title",
+    SMD: "Title",
+    COD: "Title",
+    CFD: "Title",
+    QTD: "Title",
+    AD: "Title",
+    "GD (Guardian)": "Title",
+    RD: "Title",
+    ROW: "Title",
+    VPD: "Title",
+    AOC: "Assignment",
+    ROC: "Assignment",
     ASSG: "Assignment",
-    LEAS: null, // No direct match in schema
-    TR: null, // No direct match in schema
-    WILL: null, // No direct match in schema
-    PROB: null, // No direct match in schema
-    JUDG: "AbstractOfJudgment", // Mapped to AbstractOfJudgment
-    LIEN: null, // No direct match in schema
-    SAT: null, // No direct match in schema
-    PART: null, // No direct match in schema
-    EXCH: null, // No direct match in schema
-    CONV: "ConveyanceDeed", // Mapped to general ConveyanceDeed
-    OTH: null, // No direct match in schema
-    PR: "ConveyanceDeed" // Added PR for the sample
+    JUDG: "AbstractOfJudgment",
   };
 
+  const qualificationToSaleType = {
+    Q: "TypicallyMotivated",
+  };
 
-  let salesFiles = [];
-  let saleIndex = 0,
-    deedIndex = 0,
-    fileIndex = 0;
+  const saleHistoryFiles = [];
+  let saleIndex = 0;
+  let deedIndex = 0;
+  let fileIndex = 0;
+
   for (const row of salesRows) {
     saleIndex += 1;
-    const sale = {
+    const saleRelPath = `./sales_history_${saleIndex}.json`;
+    const saleRecord = pruneNullish({
+      source_http_request:
+        propertySeed?.source_http_request ||
+        unnormalizedAddress?.source_http_request || {
+          method: "GET",
+          url:
+            propertySeed?.source_http_request?.url ||
+            unnormalizedAddress?.source_http_request?.url ||
+            "https://www.desotopa.com/gis",
+        },
+      request_identifier: hyphenParcel,
       ownership_transfer_date: parseDateToISO(row.dateTxt),
       purchase_price_amount: parseCurrencyToNumber(row.priceTxt),
-    };
-    writeJson(path.join("data", `sales_${saleIndex}.json`), sale);
-    salesFiles.push(`./sales_${saleIndex}.json`);
-
-    deedIndex += 1;
-    const deed = {
-      source_http_request: {
-        method: "GET",
-        url: propertySeed?.source_http_request?.url || "https://www.bradfordappraiser.com/gis"
-      }
-    };
-    const mappedDeedType = deedCodeMap[row.deedCode] || "Unknown Deed Type";
-    deed.deed_type = mappedDeedType;
-    writeJson(path.join("data", `deed_${deedIndex}.json`), deed);
-
-    writeJson(path.join("data", `relationship_sales_deed_${saleIndex}.json`), {
-      to: { "/": `./sales_${saleIndex}.json` },
-      from: { "/": `./deed_${deedIndex}.json` },
+      sale_type: row.qualificationCode
+        ? qualificationToSaleType[row.qualificationCode.replace(/\s+/g, "")]
+          || null
+        : null,
     });
 
+    writeJson(path.join("data", `sales_history_${saleIndex}.json`), saleRecord);
+    saleHistoryFiles.push(saleRelPath);
+
+    deedIndex += 1;
+    const bookPageParts = row.bookPageTxt.includes("/")
+      ? row.bookPageTxt.split("/")
+      : null;
+    const bookFromText =
+      bookPageParts && bookPageParts[0] ? norm(bookPageParts[0]) : null;
+    const pageFromText =
+      bookPageParts && bookPageParts[1] ? norm(bookPageParts[1]) : null;
+
+    const deedType =
+      deedCodeMap[row.deedCode] ||
+      (row.deedCode ? "Miscellaneous" : "Miscellaneous");
+    const deedRecord = pruneNullish({
+      source_http_request:
+        propertySeed?.source_http_request ||
+        unnormalizedAddress?.source_http_request || {
+          method: "GET",
+          url:
+            propertySeed?.source_http_request?.url ||
+            unnormalizedAddress?.source_http_request?.url ||
+            "https://www.desotopa.com/gis",
+        },
+      request_identifier: hyphenParcel,
+      deed_type: deedType,
+      book: bookFromText || null,
+      page: pageFromText || row.pageFromLink || null,
+      volume: null,
+      instrument_number: row.instrumentFromLink || (/\d{6,}/.test(row.bookPageTxt) ? row.bookPageTxt : null),
+    });
+    writeJson(path.join("data", `deed_${deedIndex}.json`), deedRecord);
+
+    writeJson(
+      path.join("data", relationshipFileName(saleRelPath, `./deed_${deedIndex}.json`)),
+      {
+        from: { "/": saleRelPath },
+        to: { "/": `./deed_${deedIndex}.json` },
+      },
+    );
+
     fileIndex += 1;
-    const fileRec = {
+    const fileRecord = {
       document_type: fileDocTypeMap[row.deedCode] || null,
-      file_format: null, // Schema requires this, but it's not extracted. Setting to null.
-      name: row.clerkRef
-        ? `Official Records ${row.clerkRef}`
-        : row.bookPageTxt
-          ? `Book/Page ${row.bookPageTxt}`
-          : null,
-      original_url: null, // Schema requires this, but it's not extracted. Setting to null.
-      ipfs_url: null, // Schema requires this, but it's not extracted. Setting to null.
-      request_identifier: hyphenParcel, // Schema requires this
-      source_http_request: { // Schema requires this
-        method: "GET",
-        url: propertySeed?.source_http_request?.url || "https://www.bradfordappraiser.com/gis"
-      }
+      file_format: null,
+      name: row.bookPageTxt ? `Official Records ${row.bookPageTxt}` : null,
+      original_url: null,
+      ipfs_url: null,
+      request_identifier: hyphenParcel,
+      source_http_request:
+        propertySeed?.source_http_request ||
+        unnormalizedAddress?.source_http_request || {
+          method: "GET",
+          url:
+            propertySeed?.source_http_request?.url ||
+            unnormalizedAddress?.source_http_request?.url ||
+            "https://www.desotopa.com/gis",
+        },
     };
-    writeJson(path.join("data", `file_${fileIndex}.json`), fileRec);
-    writeJson(path.join("data", `relationship_deed_file_${fileIndex}.json`), {
-      to: { "/": `./deed_${deedIndex}.json` },
-      from: { "/": `./file_${fileIndex}.json` },
+    writeJson(path.join("data", `file_${fileIndex}.json`), fileRecord);
+
+    writeJson(
+      path.join(
+        "data",
+        relationshipFileName(`./deed_${deedIndex}.json`, `./file_${fileIndex}.json`),
+      ),
+      {
+        from: { "/": `./deed_${deedIndex}.json` },
+        to: { "/": `./file_${fileIndex}.json` },
+      },
+    );
+
+    const grantorPersonPaths = [];
+    const grantorCompanyPaths = [];
+    const partySources = [
+      ...(row.parties?.grantors || []),
+      ...(row.parties?.buyers || []),
+    ];
+    partySources.forEach((rawParty) => {
+      const entities = buildEntitiesFromRaw(rawParty);
+      entities.forEach((entity) => {
+        if (entity.type === "person") {
+          const relPath = ensurePersonFile(entity);
+          if (relPath && !grantorPersonPaths.includes(relPath)) {
+            grantorPersonPaths.push(relPath);
+          }
+        } else if (entity.type === "company") {
+          const relPath = ensureCompanyFile(entity);
+          if (relPath && !grantorCompanyPaths.includes(relPath)) {
+            grantorCompanyPaths.push(relPath);
+          }
+        }
+      });
+    });
+
+    grantorCompanyPaths.forEach((companyPath) => {
+      const relName = relationshipFileName(saleRelPath, companyPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": saleRelPath },
+          to: { "/": companyPath },
+        },
+      );
+    });
+
+    grantorPersonPaths.forEach((personPath) => {
+      const relName = relationshipFileName(saleRelPath, personPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": saleRelPath },
+          to: { "/": personPath },
+        },
+      );
     });
   }
 
-  if (salesFiles.length > 0) {
-    const mostRecentSale = salesFiles[0];
-    const companies = globalThis.__ownerCompanyFiles || [];
-    const persons = globalThis.__ownerPersonFiles || [];
-    if (companies.length > 0) {
-      companies.forEach((companyPath, idx) =>
-        writeJson(
-          path.join(
-            "data",
-            idx === 0
-              ? "relationship_sales_company.json"
-              : `relationship_sales_company_${idx + 1}.json`,
-          ),
-          { to: { "/": companyPath }, from: { "/": mostRecentSale } },
-        ),
+  if (saleHistoryFiles.length > 0) {
+    const mostRecentSale = saleHistoryFiles[0];
+    ownerCompanyFiles.forEach((companyPath) => {
+      const relName = relationshipFileName(mostRecentSale, companyPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": mostRecentSale },
+          to: { "/": companyPath },
+        },
       );
-    } else if (persons.length > 0) {
-      persons.forEach((personPath, idx) =>
-        writeJson(
-          path.join(
-            "data",
-            idx === 0
-              ? "relationship_sales_person.json"
-              : `relationship_sales_person_${idx + 1}.json`,
-          ),
-          { to: { "/": personPath }, from: { "/": mostRecentSale } },
-        ),
+    });
+
+    ownerPersonFiles.forEach((personPath) => {
+      const relName = relationshipFileName(mostRecentSale, personPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": mostRecentSale },
+          to: { "/": personPath },
+        },
       );
-    }
+    });
   }
 
   // 5) TAX
-  function buildTaxFromSection(sectionTitleContains, taxYear) {
-    let table = null;
-    // Updated selector for tax tables
-    $("table.parcelDetails_insideTable").each((i, el) => {
-      const head = $(el).find("tr").first().text();
-      if (head && head.includes(sectionTitleContains)) {
-        table = $(el);
-        return false;
-      }
-      return true;
-    });
-    if (!table) return null;
-    function findRow(label) {
-      let out = null;
-      table.find("tr").each((i, el) => {
-        const tds = $(el).find("td");
-        if (tds.length >= 2) {
-          const lab = $(tds[0]).text().trim();
-          if (lab.startsWith(label)) {
-            out = $(tds[1]).text().trim();
+  function buildTaxRecord($table, taxYear) {
+    const findCell = (labelStartsWith) => {
+      let cell = null;
+      $table.find("tr").each((i, el) => {
+        const $tds = $(el).find("td");
+        if ($tds.length >= 2) {
+          const labelText = $tds.eq(0).text().replace(/\s+/g, " ").trim();
+          if (labelText.toLowerCase().startsWith(labelStartsWith.toLowerCase())) {
+            cell = $tds.eq(1);
             return false;
           }
         }
         return true;
       });
-      return out;
+      return cell;
+    };
+
+    const landCell = findCell("Mkt Land");
+    const buildingCell = findCell("Building");
+    const justCell = findCell("Just");
+    const assessedCell = findCell("Assessed");
+    const taxableCell = findCell("Total");
+
+    if (!landCell || !buildingCell || !justCell || !assessedCell || !taxableCell) {
+      return null;
     }
-    const land = findRow("Mkt Land");
-    const bldg = findRow("Building");
-    const just = findRow("Just");
-    const assessed = findRow("Assessed");
-    let taxable = null;
-    table.find("tr").each((i, el) => {
-      const tds = $(el).find("td");
-      if (tds.length >= 2) {
-        const label = $(tds[0]).text().trim();
-        if (label.startsWith("Total")) {
-          const htmlContent = $(tds[1]).html() || "";
-          // Look for "county:$" pattern first
-          const m = htmlContent.replace(/\n/g, " ").match(/county:\s*\$([0-9,\.]+)/i);
-          if (m) taxable = m[1];
-          else {
-            // Fallback to general currency regex if "county:" not found
-            const text = $(tds[1]).text();
-            const m2 = text.match(/\$[0-9,\.]+/);
-            if (m2) taxable = m2[0];
-          }
-        }
-      }
-    });
-    if (!land || !bldg || !just || !assessed || !taxable) return null;
+
+    const extractCurrency = (cell) => {
+      const html = cell.html() || "";
+      const matchHtml = html.match(/\$[0-9,.,]+/);
+      if (matchHtml) return matchHtml[0];
+      const text = cell.text();
+      const matchText = text.match(/\$[0-9,.,]+/);
+      return matchText ? matchText[0] : null;
+    };
+
+    const taxableValue = extractCurrency(taxableCell);
+    if (!taxableValue) return null;
+
     return {
       tax_year: taxYear,
-      property_assessed_value_amount: parseCurrencyToNumber(assessed),
-      property_market_value_amount: parseCurrencyToNumber(just),
-      property_building_amount: parseCurrencyToNumber(bldg),
-      property_land_amount: parseCurrencyToNumber(land),
-      property_taxable_value_amount: parseCurrencyToNumber(taxable),
+      property_land_amount: parseCurrencyToNumber(landCell.text().trim()),
+      property_building_amount: parseCurrencyToNumber(buildingCell.text().trim()),
+      property_market_value_amount: parseCurrencyToNumber(justCell.text().trim()),
+      property_assessed_value_amount: parseCurrencyToNumber(assessedCell.text().trim()),
+      property_taxable_value_amount: parseCurrencyToNumber(taxableValue),
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -535,10 +960,21 @@ function main() {
       yearly_tax_amount: null,
     };
   }
-  const tax2025 = buildTaxFromSection("2025 Preliminary Values", 2025); // Updated section title to match sample HTML
-  if (tax2025) writeJson(path.join("data", "tax_2025.json"), tax2025);
-  const tax2024 = buildTaxFromSection("2024 Certified Values", 2024); // Added 2026 tax data from sample HTML
-  if (tax2024) writeJson(path.join("data", "tax_2024.json"), tax2024);
+
+  const taxRecords = [];
+  $("table.parcelDetails_insideTable").each((i, el) => {
+    const headerText = $(el).find("tr").first().text().replace(/\s+/g, " ").trim();
+    const match = headerText.match(/(\d{4})\s+(Preliminary|Certified)\s+Values/i);
+    if (match) {
+      const year = parseInt(match[1], 10);
+      const record = buildTaxRecord($(el), year);
+      if (record) taxRecords.push(record);
+    }
+  });
+
+  taxRecords.forEach((record) => {
+    writeJson(path.join("data", `tax_${record.tax_year}.json`), record);
+  });
 
   // 6) PROPERTY
   const parcelIdentifier =
@@ -1301,7 +1737,40 @@ function main() {
     };
   }
 
-  // Function to determine number_of_units_type based on property_type
+  const propertyTypeDetail = mappedProperty.property_type;
+  const schemaPropertyType = mapPropertyTypeToEnum(
+    propertyTypeDetail,
+    mappedProperty.build_status,
+  );
+
+  function mapPropertyTypeToEnum(detail, buildStatus) {
+    const normalizedDetail = detail || "";
+    switch (normalizedDetail) {
+      case "VacantLand":
+      case "LandParcel":
+        return "LandParcel";
+      case "MobileHome":
+        return "ManufacturedHome";
+      case "Condominium":
+        return "Unit";
+      case "ResidentialCommonElementsAreas":
+        return "Building";
+      case "Building":
+      case "SingleFamily":
+      case "Townhouse":
+      case "MultiFamilyMoreThan10":
+      case "MultiFamilyLessThan10":
+      case "Retirement":
+      case "MiscellaneousResidential":
+        return "Building";
+      default:
+        if (buildStatus === "VacantLand") return "LandParcel";
+        if (buildStatus === "Improved") return "Building";
+        return "Building";
+    }
+  }
+
+  // Function to determine number_of_units_type based on the detailed property_type
   function getNumberOfUnitsType(propertyType) {
     switch (propertyType) {
       case "SingleFamily":
@@ -1337,7 +1806,7 @@ function main() {
     }
   }
 
-  const number_of_units_type_mapped = getNumberOfUnitsType(mappedProperty.property_type);
+  const number_of_units_type_mapped = getNumberOfUnitsType(propertyTypeDetail);
 
   const prop = {
     source_http_request: {
@@ -1350,7 +1819,7 @@ function main() {
     property_legal_description_text: legal || null,
     property_structure_built_year: effYear || null,
     property_effective_built_year: effYear || null,
-    property_type: mappedProperty.property_type,
+    property_type: schemaPropertyType,
     ownership_estate_type: mappedProperty.ownership_estate_type,
     build_status: mappedProperty.build_status,
     structure_form: mappedProperty.structure_form,
@@ -1364,6 +1833,19 @@ function main() {
     zoning: null,
   };
   writeJson(path.join("data", "property.json"), prop);
+
+  if (propertyRelationshipQueue.length > 0) {
+    propertyRelationshipQueue.forEach(([fromPath, toPath]) => {
+      const relName = relationshipFileName(fromPath, toPath);
+      writeJson(
+        path.join("data", relName),
+        {
+          from: { "/": fromPath },
+          to: { "/": toPath },
+        },
+      );
+    });
+  }
 
 
   // 7) LOT
@@ -1409,117 +1891,99 @@ function main() {
 
   // 8) ADDRESS
   try {
-    if (unnormalizedAddress && unnormalizedAddress.full_address) {
-      const full = unnormalizedAddress.full_address.trim();
-      let street_number = null,
-        pre = null,
-        street_name = null,
-        suffix = null,
-        city = null,
-        state = null,
-        zip = null,
-        plus4 = null;
-      const parts = full.split(",");
-      if (parts.length >= 2) {
-        const line1 = parts[0].trim(); // "3936 SE 20TH AVE"
-        const cityPart = parts[1].trim(); // "KEYSTONE HEIGHTS"
-        const stateZipPart = parts[2] ? parts[2].trim() : ""; // "FL 32656"
+    const siteAddressInput =
+      $('input[name="strSiteAddress"]').attr("value") || null;
 
-        // Regex to parse "3936 SE 20TH AVE"
-        const m1 = line1.match(/^(\d+)\s+([NESW]{1,2})?\s*(.+?)\s+(?:(AVE|BLVD|CIR|CT|DR|HWY|LN|PKWY|PL|RD|RTE|ST|TER|TRL|WAY|AVENUE|BOULEVARD|CIRCLE|COURT|DRIVE|HIGHWAY|LANE|PARKWAY|PLACE|ROAD|ROUTE|STREET|TERRACE|TRAIL))?$/i);
-        if (m1) {
-          street_number = m1[1];
-          pre = m1[2] ? m1[2].toUpperCase() : null;
-          street_name = m1[3].trim();
-          suffix = m1[4] ? m1[4].toUpperCase() : null;
-        } else {
-          // Fallback for simpler street names without directional or suffix
-          const m1_simple = line1.match(/^(\d+)\s+(.+)$/);
-          if (m1_simple) {
-            street_number = m1_simple[1];
-            street_name = m1_simple[2].trim();
-          }
-        }
+    const siteAddressCell = $('td:contains("Site")')
+      .filter((i, el) => $(el).text().trim() === "Site")
+      .first()
+      .next();
 
-        city = cityPart.toUpperCase();
-        const m3 = stateZipPart.match(/^([A-Z]{2})\s+(\d{5})(?:-(\d{4}))?$/);
-        if (m3) {
-          state = m3[1];
-          zip = m3[2];
-          plus4 = m3[3] || null;
-        }
+    const siteAddressText = siteAddressCell && siteAddressCell.length
+      ? siteAddressCell.text().replace(/\s+/g, " ").trim()
+      : null;
+
+    const unnormalizedAddressText =
+      (unnormalizedAddress && (unnormalizedAddress.full_address || unnormalizedAddress.unnormalized_address)) || null;
+
+    const unnormalizedAddressValue =
+      unnormalizedAddressText ||
+      siteAddressInput ||
+      siteAddressText ||
+      null;
+
+    let section = null;
+    let township = null;
+    let range = null;
+
+    const strCell = $('td:contains("S/T/R")')
+      .filter((i, el) => $(el).text().trim().startsWith("S/T/R"))
+      .first()
+      .next();
+
+    if (strCell && strCell.length) {
+      const rawStr = strCell.text().replace(/\s+/g, "").toUpperCase();
+      const match = rawStr.match(/^(\d+)-([0-9A-Z]+)-([0-9A-Z]+)$/);
+      if (match) {
+        section = match[1] || null;
+        township = match[2] || null;
+        range = match[3] || null;
       }
-      const suffixMap = {
-        RD: "Rd", ROAD: "Rd", ST: "St", STREET: "St", AVE: "Ave", AVENUE: "Ave",
-        BLVD: "Blvd", BOULEVARD: "Blvd", DR: "Dr", DRIVE: "Dr", LN: "Ln", LANE: "Ln",
-        CT: "Ct", COURT: "Ct", TER: "Ter", TERRACE: "Ter", HWY: "Hwy", HIGHWAY: "Hwy",
-        PKWY: "Pkwy", PARKWAY: "Pkwy", PL: "Pl", PLACE: "Pl", WAY: "Way", CIR: "Cir",
-        CIRCLE: "Cir", PLZ: "Plz", TRL: "Trl", TRAIL: "Trl", RTE: "Rte", ROUTE: "Rte",
-      };
-      const street_suffix_type = suffix
-        ? suffixMap[suffix.toUpperCase()] || null
-        : null;
-
-      let section = null,
-        township = null,
-        range = null;
-      // Updated selector for S/T/R
-      const strTxt = $('td:contains("S/T/R")')
-        .filter((i, el) => $(el).text().trim().startsWith("S/T/R"))
-        .first()
-        .next()
-        .text()
-        .trim(); // "10-5S-16"
-      if (strTxt && /\d{1,2}-\d{1,2}[A-Z]-\d{1,2}/.test(strTxt)) { // Updated regex for "10-5S-16"
-        const parts2 = strTxt.split("-");
-        section = parts2[0];
-        township = parts2[1]; // e.g., "5S"
-        range = parts2[2]; // e.g., "16"
-      }
-
-      // Check if street_name contains directional abbreviations and adjust if necessary
-      let final_street_name = street_name ? street_name.toUpperCase() : null;
-      if (final_street_name && (/\bE\b|\bN\b|\bNE\b|\bNW\b|\bS\b|\bSE\b|\bSW\b|\bW\b/.test(final_street_name))) {
-        // If a directional is part of the street_name, remove it and set pre-directional
-        const streetNameParts = final_street_name.split(' ');
-        const directional = streetNameParts.find(part => ['E', 'N', 'NE', 'NW', 'S', 'SE', 'SW', 'W'].includes(part));
-        if (directional) {
-          pre = directional;
-          final_street_name = streetNameParts.filter(part => part !== directional).join(' ');
-        }
-      }
-
-
-      writeJson(path.join("data", "address.json"), {
-        street_number: street_number || null,
-        street_pre_directional_text: pre || null,
-        street_name: final_street_name,
-        street_suffix_type: street_suffix_type || null,
-        street_post_directional_text: null,
-        unit_identifier: null,
-        city_name: city || null,
-        state_code: state || null,
-        postal_code: zip || null,
-        plus_four_postal_code: plus4 || null,
-        county_name: "DeSoto", // Hardcoded as per the HTML source
-        country_code: "US",
-        latitude:
-          typeof unnormalizedAddress.latitude === "number"
-            ? unnormalizedAddress.latitude
-            : null,
-        longitude:
-            typeof unnormalizedAddress.longitude === "number"
-            ? unnormalizedAddress.longitude
-            : null,
-        route_number: null,
-        township: township || null,
-        range: range || null,
-        section: section || null,
-        lot: null,
-        block: null,
-        municipality_name: null,
-      });
     }
+
+    const defaultSourceRequest =
+      propertySeed?.source_http_request ||
+      unnormalizedAddress?.source_http_request || {
+        method: "GET",
+        url:
+          propertySeed?.source_http_request?.url ||
+          unnormalizedAddress?.source_http_request?.url ||
+          "https://www.desotopa.com/gis",
+        multiValueQueryString: {},
+      };
+
+    const addressRequestIdentifier =
+      propertySeed?.request_identifier ||
+      propertySeed?.parcel_id ||
+      unnormalizedAddress?.request_identifier ||
+      hyphenParcel ||
+      null;
+
+    const addressRecord = {
+      source_http_request: defaultSourceRequest,
+      request_identifier: addressRequestIdentifier,
+      unnormalized_address: unnormalizedAddressValue,
+      section: section || null,
+      township: township || null,
+      range: range || null,
+      county_name: propertySeed?.county_name || "DeSoto",
+      country_code: "US",
+    };
+
+    writeJson(path.join("data", "address.json"), addressRecord);
+
+    const geometryRecord = {
+      source_http_request: defaultSourceRequest,
+      request_identifier: addressRequestIdentifier,
+      latitude:
+        typeof unnormalizedAddress?.latitude === "number"
+          ? unnormalizedAddress.latitude
+          : null,
+      longitude:
+        typeof unnormalizedAddress?.longitude === "number"
+          ? unnormalizedAddress.longitude
+          : null,
+    };
+
+    writeJson(path.join("data", "geometry.json"), geometryRecord);
+
+    writeJson(
+      path.join("data", "relationship_address_has_geometry.json"),
+      {
+        from: { "/": "./address.json" },
+        to: { "/": "./geometry.json" },
+      },
+    );
   } catch (e) {
     console.error("Error processing address data:", e);
   }

@@ -1,55 +1,88 @@
-// Utility data extractor using cheerio
-// Reads input.html and writes owners/utilities_data.json
+// Utility mapping script
+// Reads input.html, parses building hints for HVAC, and writes owners/utilities_data.json
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function loadInput() {
-  const html = fs.readFileSync("input.html", "utf8");
+function readHtml(filepath) {
+  const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-function getValueFromSection($, sectionSelector, label) {
-  let val = null;
-  const $section =
-    typeof sectionSelector === "string" ? $(sectionSelector) : sectionSelector;
-  $section.find("tr").each((_, tr) => {
-    const th = $(tr).find("th strong").first().text().trim();
-    if (th === label) {
-      const tdText = $(tr)
-        .find("td")
-        .first()
-        .text()
-        .replace(/\s+/g, " ")
-        .trim();
-      if (tdText) val = tdText;
-    }
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const BUILDING_SECTION_TITLE = "Buildings";
+
+function textTrim(s) {
+  return (s || "").replace(/\s+/g, " ").trim();
+}
+
+function getParcelId($) {
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
+}
+
+function collectBuildings($) {
+  const buildings = [];
+  const section = $("section")
+    .filter(
+      (_, s) =>
+        textTrim($(s).find(".module-header .title").first().text()) ===
+        BUILDING_SECTION_TITLE,
+    )
+    .first();
+
+  if (!section.length) return buildings;
+  
+  $(section).find(".block-row").each((_, blockRow) => {
+    const building = {};
+    
+    $(blockRow).find(".two-column-blocks").each((__, columnBlock) => {
+      $(columnBlock).find("table tbody tr").each((___, tr) => {
+        const label = textTrim($(tr).find("th strong").first().text());
+        const value = textTrim($(tr).find("td span").first().text());
+        if (label) building[label] = value;
+      });
+    });
+    
+    if (Object.keys(building).length) buildings.push(building);
   });
-  return val;
+  
+  return buildings;
 }
 
-function extractParcelId($) {
-  let pid = getValueFromSection($, "#ctlBodyPane_ctl00_mSection", "Parcel ID");
-  if (pid) pid = pid.replace(/\s+/g, "").trim();
-  return pid || "unknown_id";
-}
+function inferHVAC(buildings) {
+  let cooling_system_type = null;
+  let heating_system_type = null;
 
-function extractUtilities($) {
-  const sectionSel = "#ctlBodyPane_ctl05_mSection";
-  const heatingType =
-    getValueFromSection($, sectionSel, "Heating Type") ||
-    getValueFromSection($, sectionSel, "Heat");
+  buildings.forEach((b) => {
+    const ac = (b["Air Conditioning"] || "").toUpperCase();
+    const heat = (b["Heat"] || "").toUpperCase();
+    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
+    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
+      heating_system_type = "Central";
+  });
 
-  let heating = null;
-  if (heatingType) {
-    const s = heatingType.toLowerCase();
-    if (s.includes("air") && s.includes("duct")) heating = "Central";
+  if (cooling_system_type === "CentralAir") {
+    hvac_system_configuration = "SplitSystem";
+    hvac_equipment_component = "CondenserAndAirHandler";
+    hvac_condensing_unit_present = "Yes";
   }
 
-  const util = {
-    cooling_system_type: null,
-    heating_system_type: heating,
+  return {
+    cooling_system_type,
+    heating_system_type
+  };
+}
+
+function buildUtilityRecord($, buildings) {
+  const hvac = inferHVAC(buildings);
+  const rec = {
+    cooling_system_type: hvac.cooling_system_type,
+    heating_system_type: hvac.heating_system_type,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -67,24 +100,49 @@ function extractUtilities($) {
     hvac_unit_condition: null,
     solar_inverter_visible: false,
     hvac_unit_issues: null,
-
-    hvac_system_configuration: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
     hvac_equipment_component: null,
-    hvac_unit_issues_other: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    plumbing_system_installation_date: null,
+    sewer_connection_date: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    well_installation_date: null,
   };
 
-  return util;
+  return rec;
 }
 
-(function main() {
-  const $ = loadInput();
-  const parcelId = extractParcelId($);
-  const utilities = extractUtilities($);
+function main() {
+  const inputPath = path.resolve("input.html");
+  const $ = readHtml(inputPath);
+  const parcelId = getParcelId($);
+  if (!parcelId) throw new Error("Parcel ID not found");
+  const buildings = collectBuildings($);
+  const utilitiesRecord = buildUtilityRecord($, buildings);
 
-  const data = {};
-  data[`property_${parcelId}`] = utilities;
+  const outDir = path.resolve("owners");
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "utilities_data.json");
+  const outObj = {};
+  outObj[`property_${parcelId}`] = utilitiesRecord;
+  fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
+  console.log(`Wrote ${outPath}`);
+}
 
-  fs.mkdirSync(path.dirname("owners/utilities_data.json"), { recursive: true });
-  fs.writeFileSync("owners/utilities_data.json", JSON.stringify(data, null, 2));
-  console.log("Wrote owners/utilities_data.json for", `property_${parcelId}`);
-})();
+if (require.main === module) {
+  main();
+}
