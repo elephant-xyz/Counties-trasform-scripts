@@ -265,6 +265,7 @@ function mapSubAreaSpaceType(subArea) {
   if (desc.includes("OPEN PORCH")) return "Open Porch";
   if (desc.includes("PAVILION")) return "Gazebo";
   if (desc.includes("CABANA")) return "Enclosed Cabana";
+  if (desc.includes("BARN")) return "Barn";
   if (desc.includes("STAIR") || desc.includes("STAIRWELL")) return null;
   return null;
 }
