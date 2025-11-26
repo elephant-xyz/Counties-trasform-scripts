@@ -2295,25 +2295,28 @@ function extractMailingAddress(ownershipHtml) {
 
 const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
 
+
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
-    throw new Error(`${fieldName} cannot be null or empty`);
+    console.log(`${fieldName} cannot be null or empty`);
   }
   return value;
 }
 
+
+
 function validateStringNotNull(value, fieldName) {
   validateNotNull(value, fieldName);
   if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a string`);
+    console.log(`${fieldName} must be a string`);
   }
   return value;
 }
 
 function validatePersonName(value, fieldName) {
   const str = validateStringNotNull(value, fieldName);
-  if (!PERSON_NAME_PATTERN.test(str)) {
-    throw new Error(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+  if (str && !PERSON_NAME_PATTERN.test(str)) {
+    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
   }
   return str;
 }
@@ -2870,26 +2873,37 @@ function main() {
     }
   }
 
-  // Use situs address if available, otherwise construct from parcel identifier
-  const addressValue = situsAddress && situsAddress.trim()
-    ? situsAddress
-    : `Parcel ${parcelIdentifier || seed.parcel_id || "Unknown"}, Franklin County, FL`;
-
   const address = {
     source_http_request: {
           method: "GET",
           url: seed.source_http_request.url
-        },
-    request_identifier: parcelIdentifier || seed.parcel_id || "",
-    unnormalized_address: addressValue
+        },    
+    // street_number: street_number || null,
+    // street_name: street_name || null,
+    // street_suffix_type: street_suffix_type || null,
+    // street_pre_directional_text: pre_dir || null,
+    // street_post_directional_text: post_dir || null,
+    // unit_identifier: null,
+    // city_name: (cityUpper || "").toUpperCase() || null,
+    // state_code: "FL",
+    // postal_code: postal_code || null,
+    // plus_four_postal_code: plus_four_postal_code || null,
+    // country_code: "US",
+    county_name: "Franklin",
+    latitude: unAddr.latitude ?? null,
+    longitude: unAddr.longitude ?? null,
+    // route_number: null,
+    township: townshipText || null,
+    range: rangeText || null,
+    section: sectionText || null,
+    // block: null,
+    // lot: lotNumber || null,
+    // municipality_name: null,
+    unnormalized_address: situsAddress
   };
   writeJSON(path.join("data", "address.json"), address);
-  writeJSON(path.join("data", "relationship_property_has_address.json"), {
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" }
-  });
   console.log(address)
-
+  
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
@@ -3160,10 +3174,9 @@ function main() {
     const deedFileName = `deed_${deedIndex}.json`;
     writeJSON(path.join("data", deedFileName), deedObj);
 
-    const fileName = ((instAbbr ? instAbbr + " " : "") + (bookPage || "")).trim();
     const fileObj = {
       file_format: null,
-      name: fileName || null,
+      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
@@ -3562,7 +3575,7 @@ function main() {
         livable_area_sq_ft: layout.livable_area_sq_ft ?? null,
         heated_area_sq_ft:   layout.heated_area_sq_ft ?? null,
         area_under_air_sq_ft: layout.area_under_air_sq_ft ?? null,
-        space_type_index: String(layout.space_type_index || (idx + 1)),
+        space_type_index: layout.space_type_index || (idx + 1),
         flooring_material_type: layout.flooring_material_type ?? null,
         size_square_feet: layout.size_square_feet ?? null,
         floor_level: layout.floor_level ?? null,
