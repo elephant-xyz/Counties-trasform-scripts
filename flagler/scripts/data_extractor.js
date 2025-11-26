@@ -1869,10 +1869,7 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    // Validate middle_name against the required pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-    // If it doesn't match (e.g., just "-"), set to null
-    const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-    const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
+    const middleName = middleRaw ? middleRaw : null;
     const key =
       firstName || lastName
         ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
