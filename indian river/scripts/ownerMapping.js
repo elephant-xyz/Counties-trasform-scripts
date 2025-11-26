@@ -246,7 +246,11 @@ function tokenizeOwner(raw) {
 }
 
 function isRomanNumeral(str) {
-  return /^[IVXLCDM]+$/i.test(str || "");
+  if (!str) return false;
+  const upper = str.trim().toUpperCase();
+  // Only treat common generational suffixes as Roman numerals, not all combinations
+  const validGenerationalSuffixes = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  return validGenerationalSuffixes.includes(upper);
 }
 
 function toNameCase(str) {
