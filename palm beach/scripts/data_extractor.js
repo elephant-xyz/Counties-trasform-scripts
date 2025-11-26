@@ -6816,53 +6816,53 @@ function hasStructuredAddressCoverage(address) {
     return false;
   }
 
-  const surfaced =
-    ensureAddressOutputFieldPresence &&
-    typeof ensureAddressOutputFieldPresence === "function"
-      ? ensureAddressOutputFieldPresence({ ...address })
-      : { ...address };
-
   const normalizedSurface =
     typeof ensureNormalizedAddressSchemaSurface === "function"
-      ? ensureNormalizedAddressSchemaSurface({ ...surfaced })
-      : { ...surfaced };
+      ? ensureNormalizedAddressSchemaSurface({ ...address })
+      : { ...address };
 
-  let hasStrictCoverage = false;
-  if (typeof hasRobustNormalizedAddress === "function") {
-    hasStrictCoverage = hasRobustNormalizedAddress({ ...normalizedSurface });
-  } else {
-    hasStrictCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every((field) => {
+  const strictSurface = { ...normalizedSurface };
+
+  if (
+    typeof hasRobustNormalizedAddress === "function" &&
+    !hasRobustNormalizedAddress(strictSurface)
+  ) {
+    return false;
+  }
+
+  const hasExtendedCoverage = STRUCTURED_ADDRESS_STRICT_FIELDS.every(
+    (field) => {
       if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(normalizedSurface[field]);
+        const numeric = parseCoordinate(strictSurface[field]);
         if (!Number.isFinite(numeric)) {
           return false;
         }
-        normalizedSurface[field] = numeric;
+        strictSurface[field] = numeric;
         return true;
       }
 
       const sanitized = sanitizeAddressFieldValue(
         field,
-        normalizedSurface[field],
+        strictSurface[field],
       );
       if (!hasMeaningfulAddressValue(sanitized)) {
         return false;
       }
-      normalizedSurface[field] = sanitized;
+      strictSurface[field] = sanitized;
       return true;
-    });
-  }
+    },
+  );
 
-  if (!hasStrictCoverage) {
+  if (!hasExtendedCoverage) {
     return false;
   }
 
   for (const field of ADDRESS_COORDINATE_FIELDS) {
-    const numeric = parseCoordinate(normalizedSurface[field]);
-    normalizedSurface[field] = Number.isFinite(numeric) ? numeric : null;
+    const numeric = parseCoordinate(strictSurface[field]);
+    strictSurface[field] = Number.isFinite(numeric) ? numeric : null;
   }
 
-  Object.assign(address, normalizedSurface);
+  Object.assign(address, strictSurface);
   return true;
 }
 
@@ -7687,19 +7687,37 @@ function hasStrictCountyAddressCoverage(address) {
     return false;
   }
 
-  const coreFieldSet = new Set(COUNTY_NORMALIZED_CORE_FIELDS);
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...address })
+      : { ...address };
 
-  return COUNTY_ADDRESS_ENSURE_FIELDS.every((field) => {
+  const strictSurface = { ...normalizedSurface };
+
+  const hasAllRequiredFields = COUNTY_ADDRESS_ENSURE_FIELDS.every((field) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      return Number.isFinite(parseCoordinate(address[field]));
+      const numeric = parseCoordinate(strictSurface[field]);
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      strictSurface[field] = numeric;
+      return true;
     }
 
-    if (coreFieldSet.has(field)) {
-      return hasMeaningfulAddressValue(address[field]);
+    const sanitized = sanitizeAddressFieldValue(field, strictSurface[field]);
+    if (!hasMeaningfulAddressValue(sanitized)) {
+      return false;
     }
-
-    return Object.prototype.hasOwnProperty.call(address, field);
+    strictSurface[field] = sanitized;
+    return true;
   });
+
+  if (!hasAllRequiredFields) {
+    return false;
+  }
+
+  Object.assign(address, strictSurface);
+  return true;
 }
 
 function buildStrictRawOnlyAddress(address) {
@@ -11579,6 +11597,13 @@ function hasNormalizedCountyCoverage(address) {
 
   const normalizedProbe = { ...address };
   if (!hasRobustNormalizedAddress(normalizedProbe)) {
+    return false;
+  }
+
+  if (
+    typeof hasStrictCountyAddressCoverage === "function" &&
+    !hasStrictCountyAddressCoverage(normalizedProbe)
+  ) {
     return false;
   }
 
