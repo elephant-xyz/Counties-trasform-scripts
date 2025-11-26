@@ -154,6 +154,23 @@ function parsePersonNameTokens(name) {
   if (tokens.length === 1) {
     return { first_name: normalizePersonName(tokens[0]), middle_name: null, last_name: null };
   }
+
+  // Heuristic: If the last token is a single letter (initial), assume "Last First Middle" format
+  // This handles cases like "McManus Michael A" or "Baker Sean S" from sales tables
+  const lastToken = tokens[tokens.length - 1];
+  if (lastToken.length === 1 && /^[A-Za-z]$/.test(lastToken)) {
+    // Format is "Last First Middle" without comma
+    const last = tokens[0];
+    const first = tokens.length >= 2 ? tokens[1] : null;
+    const middle = tokens.length >= 3 ? tokens.slice(2).join(" ") || null : null;
+    return {
+      first_name: normalizePersonName(first),
+      middle_name: normalizePersonName(middle),
+      last_name: normalizePersonName(last),
+    };
+  }
+
+  // Default to "First Middle Last" format
   const first = tokens[0];
   const last = tokens[tokens.length - 1];
   const middle =
