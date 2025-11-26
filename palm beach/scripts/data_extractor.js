@@ -53111,11 +53111,184 @@ function emitMinimalRawAddressOverride() {
   );
 }
 
+function enforceAddressOneOfCompliance(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const {
+    unnormalizedPath = null,
+    seedPath = null,
+    extraRawCandidates = [],
+  } = options;
+
+  const normalizedProbe = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...payload })
+    : { ...payload };
+
+  let normalizedOutput = null;
+  if (
+    typeof hasNormalizedCountyCoverage === "function" &&
+    typeof buildNormalizedAddressOutputForSchema === "function" &&
+    hasNormalizedCountyCoverage({ ...normalizedProbe })
+  ) {
+    normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...normalizedProbe }) || null;
+  }
+
+  if (normalizedOutput) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+      const normalizedIdentifier = safeNullIfEmpty(
+        payload.request_identifier,
+      );
+      if (normalizedIdentifier !== undefined) {
+        normalizedOutput.request_identifier =
+          normalizedIdentifier === null ? null : normalizedIdentifier;
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "request_identifier",
+        )
+      ) {
+        delete normalizedOutput.request_identifier;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+      const preparedSource = prepareSourceHttpRequest(
+        payload.source_http_request,
+      );
+      if (preparedSource) {
+        normalizedOutput.source_http_request = deepClone(preparedSource);
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "source_http_request",
+        )
+      ) {
+        delete normalizedOutput.source_http_request;
+      }
+    }
+
+    writeJSON(addressPath, normalizedOutput);
+    return;
+  }
+
+  const unnormalizedSource =
+    (unnormalizedPath && readJSONIfExists(unnormalizedPath)) || null;
+  const seedSource = (seedPath && readJSONIfExists(seedPath)) || null;
+
+  const joinedLines = Array.isArray(
+    unnormalizedSource && unnormalizedSource.lines,
+  )
+    ? unnormalizedSource.lines
+        .map((line) => (typeof line === "string" ? line.trim() : ""))
+        .filter((line) => line && line.length)
+        .join(", ")
+    : null;
+
+  const rawCandidates = flattenCandidateValues(
+    payload.unnormalized_address,
+    payload.full_address,
+    payload.site_address,
+    payload.address,
+    composeFallbackUnnormalizedAddressFromFields
+      ? composeFallbackUnnormalizedAddressFromFields(payload)
+      : null,
+    unnormalizedSource && unnormalizedSource.unnormalized_address,
+    unnormalizedSource && unnormalizedSource.full_address,
+    unnormalizedSource && unnormalizedSource.site_address,
+    unnormalizedSource && unnormalizedSource.address,
+    joinedLines,
+    seedSource && seedSource.unnormalized_address,
+    seedSource && seedSource.full_address,
+    seedSource && seedSource.situs_address,
+    Array.isArray(extraRawCandidates) ? extraRawCandidates : [],
+  );
+
+  const resolvedRaw = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    payload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    payload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const strictRaw =
+    buildStrictRawOnlyAddress({
+      unnormalized_address: resolvedRaw,
+      request_identifier: requestIdentifier,
+      source_http_request: sourceHttpRequest,
+    }) ||
+    buildStrictRawOnlyAddress({
+      unnormalized_address: resolvedRaw,
+    });
+
+  if (!strictRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(strictRaw, "request_identifier") &&
+    requestIdentifier !== undefined
+  ) {
+    strictRaw.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+
+  if (
+    sourceHttpRequest &&
+    !Object.prototype.hasOwnProperty.call(strictRaw, "source_http_request")
+  ) {
+    strictRaw.source_http_request = deepClone(sourceHttpRequest);
+  }
+
+  writeJSON(addressPath, strictRaw);
+}
+
 async function run() {
   await main();
   try {
     finalizeAddressOutputs();
     emitMinimalRawAddressOverride();
+    const addressPath = path.join("data", "address.json");
+    const extraRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    enforceAddressOneOfCompliance(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      extraRawCandidates,
+    });
   } catch (error) {
     console.error("Failed to emit canonical county outputs:", error);
     if (!process.exitCode) {
