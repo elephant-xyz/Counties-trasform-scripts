@@ -184,6 +184,12 @@ const COMPANY_PATTERNS = [
   /\bCLUB\b/i,
   /\bDEPARTMENT\b/i,
   /\bAGENCY\b/i,
+  /\bCITY\s+OF\b/i,
+  /\bTOWN\s+OF\b/i,
+  /\bCOUNTY\s+OF\b/i,
+  /\bSTATE\s+OF\b/i,
+  /\bGOVERNMENT\b/i,
+  /\bMUNICIPALITY\b/i,
 ]
   .concat(
     [

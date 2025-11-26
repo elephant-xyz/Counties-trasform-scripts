@@ -2,6 +2,44 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+function readCSV(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const lines = content.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.replace(/"/g, ''));
+  const data = {};
+  
+  if (lines.length > 1) {
+    // Parse CSV line properly handling quoted fields with commas
+    const line = lines[1];
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        values.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    values.push(current); // Add the last value
+    
+    headers.forEach((header, index) => {
+      let value = values[index] || '';
+      value = value.replace(/^"|"$/g, ''); // Remove surrounding quotes
+      // Decode HTML entities
+      value = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+      data[header] = value;
+    });
+  }
+  
+  return data;
+}
+
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
@@ -1255,7 +1293,7 @@ function createStructureFiles(seed,parcelIdentifier) {
   } catch (e) {}
   
   if (structuresData && parcelIdentifier) {
-    console.log("INSIDE")
+    // console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
     structures.forEach((struct, idx) => {
@@ -1505,7 +1543,167 @@ function createLayoutFiles(seed,parcelIdentifier){
 
 }
 
-function main() {
+async function fetchParcelPolygon(altKey) {
+  const https = require('https');
+  const url = `https://maps5.vcgov.org/arcgis/rest/services/Pictometry_Parcels/MapServer/0/query?f=json&where=ALTKEY%20in%20(%27${altKey}%27)&returnGeometry=true&spatialRel=esriSpatialRelIntersects&outFields=ALTKEY`;
+  
+  let timeoutId;
+  
+  const fetchPromise = new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        clearTimeout(timeoutId);
+        try {
+          const response = JSON.parse(data);
+          if (response.features && response.features.length > 0) {
+            const geometry = response.features[0].geometry;
+            if (geometry && geometry.rings) {
+              resolve(geometry.rings);
+            } else {
+              resolve(null);
+            }
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }).on('error', () => {
+      clearTimeout(timeoutId);
+      resolve(null);
+    });
+  });
+
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutId = setTimeout(() => {
+      console.log('API request timed out after 15 seconds. Parcel polygon coordinates not available in api.');
+      resolve(null);
+    }, 15000);
+  });
+
+  return Promise.race([fetchPromise, timeoutPromise]);
+}
+
+async function createParcelAndGeometry(seed, parcelId, dataDir, altKey) {
+  // 1) Create parcel.json
+  const parcel = {
+    ...appendSourceInfo(seed),
+    parcel_identifier: String(parcelId)
+  };
+  writeJSON(path.join(dataDir, "parcel.json"), parcel);
+
+  // 2) Create relationship between property and parcel
+  const propertyParcelRel = {
+    from: { "/": "./property.json" },
+    to: { "/": "./parcel.json" }
+  };
+  writeJSON(path.join(dataDir, "relationship_property_has_parcel.json"), propertyParcelRel);
+
+  // 3) Check parcel_polygon from CSV first
+  let csvData = null;
+  try {
+    csvData = readCSV("input.csv");
+  } catch (e) {
+    console.log("Could not read input.csv:", e.message);
+  }
+  
+  let parcelPolygon = csvData?.parcel_polygon;
+  console.log("PARCEL POLYGON FROM CSV (first 200 chars):", parcelPolygon?.substring(0, 200));
+  console.log("PARCEL POLYGON LENGTH:", parcelPolygon?.length);
+  
+  // If no parcel_polygon in CSV or it's empty, fetch from API
+  if ((!parcelPolygon || parcelPolygon === "") && altKey) {
+    try {
+      console.log("Fetching parcel polygon from API...");
+      parcelPolygon = await fetchParcelPolygon(altKey);
+      if (!parcelPolygon) {
+        console.log("no polygon coordinates found from api request as well.Not creating geometry class for parcel.");
+      }
+      else{
+          console.log("Parcel polygon fetched from API successfully.",parcelPolygon);
+      }
+    } catch (e) {
+      console.log("Failed to fetch parcel polygon:", e);
+    }
+  }
+  
+  if (parcelPolygon) {
+    let polygonData;
+    try {
+      polygonData = typeof parcelPolygon === 'string' ? JSON.parse(parcelPolygon) : parcelPolygon;
+      console.log("Parsed polygon data structure:", JSON.stringify(polygonData).substring(0, 300));
+    } catch (e) {
+      console.log("Failed to parse parcel_polygon:", e);
+      return;
+    }
+
+    // Flatten nested arrays to find coordinate arrays
+    function flattenToCoordinateArrays(data) {
+      if (!Array.isArray(data)) return [];
+      
+      // Check if this is a coordinate pair [lng, lat]
+      if (data.length === 2 && typeof data[0] === 'number' && typeof data[1] === 'number') {
+        return [data];
+      }
+      
+      // Check if this is an array of coordinate pairs
+      if (data.length > 0 && Array.isArray(data[0]) && data[0].length === 2 && typeof data[0][0] === 'number') {
+        return [data];
+      }
+      
+      // Otherwise, flatten recursively
+      const result = [];
+      for (const item of data) {
+        result.push(...flattenToCoordinateArrays(item));
+      }
+      return result;
+    }
+    
+    const coordinateArrays = flattenToCoordinateArrays(polygonData);
+    console.log(`Found ${coordinateArrays.length} coordinate arrays in the polygon data`);
+
+    coordinateArrays.forEach((coords, index) => {
+      if (Array.isArray(coords) && coords.length > 0) {
+        console.log(`Processing polygon ${index + 1} with ${coords.length} coordinate pairs`);
+        
+        // Convert coordinate pairs to lat/lng objects
+        const polygon = coords.map(coord => {
+          if (Array.isArray(coord) && coord.length >= 2) {
+            return {
+              latitude: coord[1],  // Second element is latitude
+              longitude: coord[0]  // First element is longitude
+            };
+          }
+          return null;
+        }).filter(Boolean);
+
+        console.log(`Converted to ${polygon.length} valid coordinate objects`);
+
+        if (polygon.length > 0) {
+          const geometryParcel = {
+            ...appendSourceInfo(seed),
+            polygon: polygon
+          };
+          
+          const geometryFileName = `geometry_parcel_${index + 1}.json`;
+          writeJSON(path.join(dataDir, geometryFileName), geometryParcel);
+
+          // 4) Create relationship between parcel and geometry
+          const parcelGeometryRel = {
+            from: { "/": "./parcel.json" },
+            to: { "/": `./${geometryFileName}` }
+          };
+          writeJSON(path.join(dataDir, `relationship_parcel_has_geometry_${index + 1}.json`), parcelGeometryRel);
+        }
+      }
+    });
+  }
+}
+
+async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
@@ -1561,7 +1759,7 @@ function main() {
   const altKey = (
     altKeyInput && /\d/.test(altKeyInput)
       ? altKeyInput
-      : altKeyFromLabel || ""
+      : altKeyFromLabel || seed.altkey || ""
   ).replace(/[^0-9]/g, "");
 
   // Address components: prefer unnormalized_address.full_address
@@ -2018,10 +2216,6 @@ function main() {
     }
   }
 
-  // Lat/Long
-  const lat = unAddr.latitude || null; // latitude
-  const lon = unAddr.longitude || null; // longitude
-
   // Township/Range/Section & Block/Lot
   function parseTRS() {
     let trs =
@@ -2145,14 +2339,48 @@ function main() {
   const address = {
     ...appendSourceInfo(seed),
     county_name: "Volusia",
-    latitude: Number.isFinite(lat) ? lat : null,
-    longitude: Number.isFinite(lon) ? lon : null,
+    // latitude: Number.isFinite(lat) ? lat : null,
+    // longitude: Number.isFinite(lon) ? lon : null,
     range: trs.range || null,
     section: trs.section || null,
     township:  trs.township || null,
     unnormalized_address: extractTopValue("Physical Address:") || null,
   };
   writeJSON(path.join(dataDir, "address.json"), address);
+
+  // Lat/Long - try unAddr first, then fallback to HTML input fields
+  let lat = unAddr.latitude || null;
+  let lon = unAddr.longitude || null;
+  
+  // If no coordinates in unAddr, extract from HTML input fields
+  if (!lat || !lon) {
+    const xcoordMatch = html.match(/<input[^>]*id="xcoord"[^>]*value="([^"]+)"/i);
+    const ycoordMatch = html.match(/<input[^>]*id="ycoord"[^>]*value="([^"]+)"/i);
+    
+    if (xcoordMatch && ycoordMatch) {
+      lat = parseFloat(xcoordMatch[1]) || lat;
+      lon = parseFloat(ycoordMatch[1]) || lon;
+    }
+  }
+
+  // geometry_address.json
+  const geometryAddress = {
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lon) ? lon : null,
+    ...appendSourceInfo(seed)
+  };
+  writeJSON(path.join(dataDir, "geometry_address.json"), geometryAddress);
+
+  // Relationship between address and geometry_address
+  const addressGeometryRel = {
+    from: { "/": "./address.json" },
+    to: { "/": "./geometry_address.json" }
+  };
+  writeJSON(path.join(dataDir, "relationship_address_has_geometry.json"), addressGeometryRel);
+
+  // Create parcel and geometry files
+  await createParcelAndGeometry(seed, parcelId, dataDir, altKey);
+  
 
   // Mailing Address
   const mailingAddressRaw = extractTopValue("Mailing Address On File:");
@@ -2618,15 +2846,17 @@ function main() {
 
 }
 
-try {
-  main();
-  console.log("Script executed successfully.");
-} catch (e) {
+(async () => {
   try {
-    JSON.parse(e.message);
-    console.error(e.message);
-  } catch {
-    console.error(e.stack || String(e));
+    await main();
+    console.log("Script executed successfully.");
+  } catch (e) {
+    try {
+      JSON.parse(e.message);
+      console.error(e.message);
+    } catch {
+      console.error(e.stack || String(e));
+    }
+    process.exit(1);
   }
-  process.exit(1);
-}
+})();
