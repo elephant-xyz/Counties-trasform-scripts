@@ -1709,6 +1709,22 @@ function titleCaseName(s) {
     .join(" ");
 }
 
+function cleanNameForValidation(name) {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Remove invalid characters: keep only letters, spaces, hyphens, apostrophes, commas, periods
+  // Split on semicolon and take only the first part (handles cases like "M;swearingen")
+  let cleaned = trimmed.split(';')[0].trim();
+
+  // Remove any other invalid characters
+  cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  if (!cleaned) return null;
+  return cleaned;
+}
+
 function validateNamePattern(name) {
   if (!name) return null;
   const trimmed = name.trim();
@@ -1817,9 +1833,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
 
   // Create person entities with validation
   people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? validateNamePattern(titleCaseName(p.first_name)) : null,
-    middle_name: p.middle_name ? validateNamePattern(titleCaseName(p.middle_name)) : null,
-    last_name: p.last_name ? validateNamePattern(titleCaseName(p.last_name)) : null,
+    first_name: p.first_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.first_name))) : null,
+    middle_name: p.middle_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.middle_name))) : null,
+    last_name: p.last_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.last_name))) : null,
     birth_date: null,
     prefix_name: p.prefix_name,
     suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
