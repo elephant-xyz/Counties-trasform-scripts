@@ -2864,6 +2864,7 @@ const structureItems = (() => {
     if (typeCode === "LLF" || (desc.includes("LOW") && desc.includes("LEV") && desc.includes("FIN")))
       return "Basement";
     if (typeCode.includes("GAR") && typeCode.includes("FIN")) return "Attached Garage";
+    if (typeCode === "GBF" || (desc.includes("GAR") && desc.includes("FIN") && desc.includes("BLOCK"))) return "Attached Garage";
     if (desc.includes("BED")) return "Bedroom";
     if (desc.includes("BATH")) return "Full Bathroom";
     if (desc.includes("KITCH")) return "Kitchen";
@@ -2874,7 +2875,7 @@ const structureItems = (() => {
     if (desc.includes("BALCONY")) return "Balcony";
     if (desc.includes("DECK")) return "Deck";
     if (desc.includes("PATIO")) return "Patio";
-    if (desc.includes("GARAGE") || typeCode.includes("GAR")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
+    if (desc.includes("GARAGE") || typeCode.includes("GAR") || desc.startsWith("GAR ")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
     if (desc.includes("CARPORT")) return "Carport";
     if (desc.includes("STORAGE")) return "Storage Room";
     return null;
