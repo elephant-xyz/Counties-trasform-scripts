@@ -2584,8 +2584,6 @@ function sanitizeAddressPayloadForWrite(payload) {
       ? deepClone(preparedSource)
       : null;
 
-    rawSurface.__raw_minimal_surface = true;
-
     if (forceRawVariant || preserveStructuredFields) {
       rawSurface.__force_raw_variant = true;
     }
