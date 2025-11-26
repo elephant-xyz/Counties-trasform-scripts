@@ -2401,6 +2401,8 @@ async function main() {
     await removeExisting(/^file_.*\.json$/);
     await removeExisting(/^relationship_sales_history_.*_to_deed_.*\.json$/);
     await removeExisting(/^relationship_deed_.*_to_file_.*\.json$/);
+    await removeExisting(/^relationship_sales_history_person_.*\.json$/);
+    await removeExisting(/^relationship_sales_history_company_.*\.json$/);
     // await removeExisting(/^relationship_property_has_sales_history_.*\.json$/); // Removed this line
 
     const ALLOWED_DEED_TYPES = [
@@ -2550,6 +2552,9 @@ async function main() {
       return GENERIC_TITLE_DOCUMENT_TYPE;
     }
 
+    let relSalesPersonCounter = 0;
+    let relSalesCompanyCounter = 0;
+
     for (let i = 0; i < sales.length; i++) {
       const sale = sales[i];
       const saleFileName = `sales_history_${i + 1}.json`;
@@ -2566,38 +2571,66 @@ async function main() {
 
       const deedType = mapDeedCodeToType(sale._deed_code);
 
-      // --- Create sales_history_has_person/company relationships ---
+      // --- Create sales_history_person/company relationships ---
       // These should be created for all sales, regardless of whether there's a deed
       if (sale._grantor_record_id) {
         const grantorMeta = ownerToFileMap.get(sale._grantor_record_id);
         if (grantorMeta) {
-          const relFileName = `relationship_sales_history_${i + 1}_has_${grantorMeta.type}_${grantorMeta.index}_grantor.json`;
-          const relOut = {
-            from: { "/": `./${saleFileName}` },
-            to: { "/": `./${grantorMeta.fileName}` },
-          };
-          await fsp.writeFile(
-            path.join("data", relFileName),
-            JSON.stringify(relOut, null, 2),
-          );
+          if (grantorMeta.type === "person") {
+            relSalesPersonCounter++;
+            const relFileName = `relationship_sales_history_person_${relSalesPersonCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${grantorMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          } else if (grantorMeta.type === "company") {
+            relSalesCompanyCounter++;
+            const relFileName = `relationship_sales_history_company_${relSalesCompanyCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${grantorMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          }
         }
       }
 
       if (sale._grantee_record_id) {
         const granteeMeta = ownerToFileMap.get(sale._grantee_record_id);
         if (granteeMeta) {
-          const relFileName = `relationship_sales_history_${i + 1}_has_${granteeMeta.type}_${granteeMeta.index}_grantee.json`;
-          const relOut = {
-            from: { "/": `./${saleFileName}` },
-            to: { "/": `./${granteeMeta.fileName}` },
-          };
-          await fsp.writeFile(
-            path.join("data", relFileName),
-            JSON.stringify(relOut, null, 2),
-          );
+          if (granteeMeta.type === "person") {
+            relSalesPersonCounter++;
+            const relFileName = `relationship_sales_history_person_${relSalesPersonCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${granteeMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          } else if (granteeMeta.type === "company") {
+            relSalesCompanyCounter++;
+            const relFileName = `relationship_sales_history_company_${relSalesCompanyCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${granteeMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          }
         }
       }
-      // --- End of sales_history_has_person/company relationships ---
+      // --- End of sales_history_person/company relationships ---
 
       // Only create deed.json and related files/relationships if deedType is not null
       if (deedType !== null) {
