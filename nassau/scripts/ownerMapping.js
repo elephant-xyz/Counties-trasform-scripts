@@ -178,10 +178,15 @@ function splitJointOwners(raw) {
   s = s.replace(/\s+L\/E\s+/gi, ' ');  // Life Estate in middle
   s = s.replace(/^L\/E\s+/gi, '');     // Life Estate at start
 
+  // Filter out property/condo references that contain slashes
+  // Pattern: name/PROPERTY NAME (e.g., "MARILYN/KETCH COURTYARD I")
+  // These are property references, not person names
+  s = s.replace(/\b[A-Z]+\/[A-Z]+(?:\s+[A-Z]+)*(?:\s+[IVX]+)?\b/g, '');
+
   // Replace "/" with space when it appears between name parts (compound surnames like "BAEZ/DELGADO")
-  // This prevents splitting compound surnames into separate owners
-  // Pattern: word followed by "/" followed by word (both looking like name parts)
-  s = s.replace(/([A-Za-z]+)\s*\/\s*([A-Za-z]+)/g, '$1 $2');
+  // Only do this for simple two-word patterns that look like surnames
+  // Pattern: Single word / Single word (not followed by more uppercase words)
+  s = s.replace(/\b([A-Z][a-z]+)\s*\/\s*([A-Z][a-z]+)(?!\s+[A-Z])/g, '$1 $2');
 
   // Split on &, ' and ' while preserving meaningful tokens
   // Note: We removed "/" from the split pattern since we now treat it as part of compound names

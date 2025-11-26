@@ -1535,6 +1535,13 @@ function formatName(name) {
     return null;
   }
 
+  // Check if this looks like a property/condo reference (e.g., "MARILYN/KETCH COURTYARD I")
+  // Pattern: WORD/WORD followed by more uppercase words and possibly roman numerals
+  if (/\b[A-Z]+\/[A-Z]+(?:\s+[A-Z]+)+(?:\s+[IVX]+)?\b/i.test(name.trim())) {
+    console.log(`Rejecting property/condo reference: ${name}`);
+    return null;
+  }
+
   // First, replace forward slashes with spaces (e.g., "Baez/Delgado" becomes "Baez Delgado", "B L/E" becomes "B L E")
   // This must be done before other cleaning to handle compound surnames and legal designations
   let cleaned = name.trim().replace(/\//g, ' ');
