@@ -489,12 +489,22 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // Strip trailing periods before title casing to handle abbreviations like "Fl."
+  const stripTrailingPeriod = (str) => {
+    if (!str) return str;
+    return str.replace(/\.$/, '');
+  };
+
+  first = stripTrailingPeriod(first);
+  last = stripTrailingPeriod(last);
+  middle = middle ? stripTrailingPeriod(middle) : null;
+
   const titleCasedFirst = titleCase(first || "");
   const titleCasedLast = titleCase(last || "");
   const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
 
-  // Validate names contain at least one letter and match the required pattern
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
 
   if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
@@ -612,7 +622,7 @@ function parseOwnersFromText(rawText) {
 
   const seen = new Set();
   const deduped = [];
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   owners.forEach((o) => {
     const key =
       o.type === "company"
@@ -2081,8 +2091,8 @@ function main() {
         : "";
     const middleNameRaw = middleRaw ? middleRaw : null;
 
-    // Validate names match required pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-    const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+    // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
     const isValidName = (name) => name && namePattern.test(name);
 
     // Both first_name and last_name are required and must match pattern
