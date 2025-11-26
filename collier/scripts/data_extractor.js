@@ -1363,9 +1363,15 @@ function main() {
         );
       });
     }
+  } else if (!fs.existsSync(mailingAddressPath)) {
+    writeMailingAddressFile(
+      mailingAddressPath,
+      mailingComponents,
+      new Set(),
+      seed.source_http_request,
+      seed.request_identifier || parcelId,
+    );
   }
-  // Note: If there are no owners, we don't create mailing_address.json
-  // because it would be unused (no person/company to reference it)
 
   let utilityFileWritten = false;
   // Utilities from owners/utilities_data.json
