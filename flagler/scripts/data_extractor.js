@@ -2942,22 +2942,6 @@ function main() {
     writeJSON(path.join(dataDir, relFilename), relObj);
   });
 
-  // Create property-to-owner relationships for current owners
-  const propertyOwnerRelationshipKeys = new Set();
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path) return;
-    const relKey = `${propertyPath}|${entity.path}`;
-    if (propertyOwnerRelationshipKeys.has(relKey)) return;
-    propertyOwnerRelationshipKeys.add(relKey);
-    const relFilename = makeRelationshipFilename(propertyPath, entity.path);
-    if (!relFilename) return;
-    const relObj = {
-      from: { "/": propertyPath },
-      to: { "/": entity.path },
-    };
-    writeJSON(path.join(dataDir, relFilename), relObj);
-  });
-
   const work = parseValuationsWorking($);
   if (work) {
     const tax = {
