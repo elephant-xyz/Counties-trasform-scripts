@@ -137,7 +137,15 @@ function parsePersonNameTokens(name) {
 
   if (cleaned.includes(",")) {
     const [lastPart, rest] = cleaned.split(",", 2);
-    const restTokens = textClean(rest)
+    // Remove parenthetical content from the rest part (e.g., "(lf Est)", "(TR)", etc.)
+    let cleanedRest = textClean(rest);
+    let previousLength;
+    do {
+      previousLength = cleanedRest.length;
+      cleanedRest = cleanedRest.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+    } while (cleanedRest.length < previousLength && cleanedRest.length > 0);
+
+    const restTokens = cleanedRest
       .split(/\s+/)
       .filter(Boolean);
     if (restTokens.length === 0) {
