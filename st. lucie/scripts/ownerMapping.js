@@ -129,6 +129,75 @@ const isCompany = (name) => {
   );
 };
 
+/**
+ * Normalize a person name component to match Elephant schema pattern:
+ * ^[A-Z][a-zA-Z\s\-',.]*$
+ *
+ * This means:
+ * - First letter uppercase, rest lowercase
+ * - After separators (space, hyphen, apostrophe, comma, period),
+ *   capitalize the next letter and lowercase the rest
+ */
+function normalizePersonNameComponent(name) {
+  if (!name || typeof name !== 'string') return null;
+
+  let trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
+  // Use a loop to ensure all parenthetical content is removed
+  let previousLength;
+  do {
+    previousLength = trimmed.length;
+    trimmed = trimmed.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  } while (trimmed.length < previousLength && trimmed.length > 0);
+
+  if (!trimmed) return null;
+
+  // Remove any remaining parentheses that might be unmatched
+  trimmed = trimmed.replace(/[()]/g, '').trim();
+  if (!trimmed) return null;
+
+  // First, filter out any characters that are not letters or allowed separators
+  // Allowed: letters (a-zA-Z) and separators (space, hyphen, apostrophe, comma, period)
+  const filtered = trimmed.replace(/[^a-zA-Z \-',.]/g, '').trim();
+  if (!filtered) return null;
+
+  // Split by separators while keeping them
+  const separators = /[ \-',.]/;
+  const parts = [];
+  let currentPart = '';
+
+  for (let i = 0; i < filtered.length; i++) {
+    const char = filtered[i];
+    if (separators.test(char)) {
+      if (currentPart) {
+        parts.push(currentPart);
+      }
+      parts.push(char);
+      currentPart = '';
+    } else {
+      currentPart += char;
+    }
+  }
+  if (currentPart) {
+    parts.push(currentPart);
+  }
+
+  // Normalize each part: capitalize first letter, lowercase the rest
+  const normalized = parts.map((part, index) => {
+    if (separators.test(part)) {
+      return part; // Keep separators as-is
+    }
+    if (!part) return part;
+
+    // Capitalize first letter, lowercase the rest
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join('');
+
+  return normalized || null;
+}
+
 // Helper to create a default person object adhering to the schema
 function defaultPerson(propertyId) {
   return {
@@ -150,8 +219,13 @@ function parsePersonName(raw, propertyId) {
   const original = norm(raw);
   if (!original) return null;
 
-  // 1. Strip legal designations first
-  const { cleanedName: nameWithoutDesignations, removedDesignations } = stripLegalDesignations(original);
+  // 1. Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
+  // This handles cases like "(lf Est)", "(EST)", "(TR)", etc.
+  const withoutParens = original.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  if (!withoutParens) return null; // If only parentheses content was present
+
+  // 2. Strip legal designations
+  const { cleanedName: nameWithoutDesignations, removedDesignations } = stripLegalDesignations(withoutParens);
   const workingName = norm(nameWithoutDesignations);
   if (!workingName) return null; // If only designations were present
 
@@ -159,7 +233,7 @@ function parsePersonName(raw, propertyId) {
   let suffix = null;
   let nameTokens = workingName.split(/\s+/).filter(Boolean);
 
-  // 2. Extract Prefix (if present at the beginning)
+  // 3. Extract Prefix (if present at the beginning)
   if (nameTokens.length > 1) {
     const firstToken = nameTokens[0];
     const matchedPrefix = getMatchingPrefix(firstToken);
@@ -169,7 +243,7 @@ function parsePersonName(raw, propertyId) {
     }
   }
 
-  // 3. Extract Suffix (if present at the end)
+  // 4. Extract Suffix (if present at the end)
   if (nameTokens.length > 1) {
     const lastToken = nameTokens[nameTokens.length - 1];
     const matchedSuffix = getMatchingSuffix(lastToken);
@@ -179,7 +253,7 @@ function parsePersonName(raw, propertyId) {
     }
   }
 
-  // 4. Parse the remaining name tokens
+  // 5. Parse the remaining name tokens
   let first = null;
   let last = null;
   let middle = null;
@@ -210,9 +284,9 @@ function parsePersonName(raw, propertyId) {
   if (!first || !last) return null; // Must have at least first and last name
 
   const person = defaultPerson(propertyId);
-  person.first_name = first;
-  person.last_name = last;
-  person.middle_name = middle;
+  person.first_name = normalizePersonNameComponent(first);
+  person.last_name = normalizePersonNameComponent(last);
+  person.middle_name = normalizePersonNameComponent(middle);
   person.prefix_name = prefix;
   person.suffix_name = suffix;
   person._removed_designations = removedDesignations; // For debugging/auditing

@@ -121,39 +121,20 @@ function mapElectricalWiring(value) {
   return null;
 }
 
-function mapUtilityValues($, buildings) {
-  let cooling_system_type = null;
-  let heating_system_type = null;
-  let hvac_condensing_unit_present = null;
-  let sewer_type = null;
-  let water_source_type = null;
-  let plumbing_system_type = null;
-  let electrical_wiring_type = null;
-
-  buildings.forEach((b) => {
-    cooling_system_type = mapCoolingSystem(b["Air Conditioning"]);
-    heating_system_type = mapHeatingSystem(b["Heat"]);
-    plumbing_system_type = mapPlumbingSystem(b["Plumbing"]);
-    electrical_wiring_type = mapElectricalWiring(b["Electrical"]);
-    
-    if (cooling_system_type === "CentralAir") {
-      hvac_condensing_unit_present = "Yes";
-    }
-  });
-
-  const extraFeatures = collectExtraFeatures($);
-  extraFeatures.forEach((feature) => {
-    const desc = feature.Description || "";
-    if (!sewer_type) sewer_type = mapSewerType(desc);
-    if (!water_source_type) water_source_type = mapWaterSource(desc);
-  });
+function mapUtilityValues(building, extraSewer, extraWater) {
+  const cooling_system_type = mapCoolingSystem(building["Air Conditioning"]);
+  const heating_system_type = mapHeatingSystem(building["Heat"]);
+  const plumbing_system_type = mapPlumbingSystem(building["Plumbing"]);
+  const electrical_wiring_type = mapElectricalWiring(building["Electrical"]);
+  const hvac_condensing_unit_present =
+    cooling_system_type === "CentralAir" ? "Yes" : null;
 
   return {
     cooling_system_type,
     heating_system_type,
     hvac_condensing_unit_present,
-    sewer_type,
-    water_source_type,
+    sewer_type: extraSewer ?? null,
+    water_source_type: extraWater ?? null,
     plumbing_system_type,
     electrical_wiring_type
   };
@@ -175,9 +156,7 @@ function collectExtraFeatures($) {
   return features;
 }
 
-function buildUtilityRecord($, parcelId, buildings) {
-  const mapped = mapUtilityValues($, buildings);
-  
+function baseUtility(parcelId, buildingNumber, totalBuildings) {
   return {
     source_http_request: {
       method: "GET",
@@ -192,16 +171,18 @@ function buildUtilityRecord($, parcelId, buildings) {
       }
     },
     request_identifier: parcelId,
-    cooling_system_type: mapped.cooling_system_type,
-    heating_system_type: mapped.heating_system_type,
+    building_number: buildingNumber,
+    number_of_buildings: totalBuildings ?? null,
+    cooling_system_type: null,
+    heating_system_type: null,
     public_utility_type: null,
-    sewer_type: mapped.sewer_type,
-    water_source_type: mapped.water_source_type,
-    plumbing_system_type: mapped.plumbing_system_type,
+    sewer_type: null,
+    water_source_type: null,
+    plumbing_system_type: null,
     plumbing_system_type_other_description: null,
     electrical_panel_capacity: null,
-    electrical_wiring_type: mapped.electrical_wiring_type,
-    hvac_condensing_unit_present: mapped.hvac_condensing_unit_present,
+    electrical_wiring_type: null,
+    hvac_condensing_unit_present: null,
     electrical_wiring_type_other_description: null,
     solar_panel_present: false,
     solar_panel_type: null,
@@ -210,7 +191,43 @@ function buildUtilityRecord($, parcelId, buildings) {
     smart_home_features_other_description: null,
     hvac_unit_condition: null,
     solar_inverter_visible: false,
-    hvac_unit_issues: null
+    hvac_unit_issues: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    plumbing_system_installation_date: null,
+    sewer_connection_date: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    well_installation_date: null,
+  };
+}
+
+function buildUtilityRecord(building, parcelId, buildingNumber, totalBuildings, extraSewer, extraWater) {
+  const mapped = mapUtilityValues(building, extraSewer, extraWater);
+  
+  return {
+    ...baseUtility(parcelId, buildingNumber, totalBuildings),
+    cooling_system_type: mapped.cooling_system_type,
+    heating_system_type: mapped.heating_system_type,
+    sewer_type: mapped.sewer_type,
+    water_source_type: mapped.water_source_type,
+    plumbing_system_type: mapped.plumbing_system_type,
+    electrical_wiring_type: mapped.electrical_wiring_type,
+    hvac_condensing_unit_present: mapped.hvac_condensing_unit_present,
   };
 }
 
@@ -220,13 +237,41 @@ function main() {
   const parcelId = getParcelId($);
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const utilitiesRecord = buildUtilityRecord($, parcelId, buildings);
+  const extraFeatures = collectExtraFeatures($);
+  let sewer_type = null;
+  let water_source_type = null;
+  extraFeatures.forEach((feature) => {
+    const desc = feature.Description || "";
+    if (!sewer_type) sewer_type = mapSewerType(desc);
+    if (!water_source_type) water_source_type = mapWaterSource(desc);
+  });
+
+  if (buildings.length === 0) {
+    const outDir = path.resolve("owners");
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    const outPath = path.join(outDir, "utilities_data.json");
+    fs.writeFileSync(outPath, JSON.stringify([], null, 2), "utf8");
+    console.log(`No buildings found. Wrote empty array to ${outPath}`);
+    return;
+  }
+
+  const totalBuildings = buildings.length;
+  const utilities = buildings.map((building, idx) =>
+    buildUtilityRecord(
+      building,
+      parcelId,
+      idx + 1,
+      totalBuildings,
+      sewer_type,
+      water_source_type,
+    ),
+  );
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = utilitiesRecord;
+  outObj[`property_${parcelId}`] = { utilities };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
