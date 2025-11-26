@@ -2340,7 +2340,7 @@ const specificDocumentTypeMap = {
     };
 
     const createPropertyRelationship = (type, idx) => {
-      const relName = `relationship_property_${type}_${idx}.json`;
+      const relName = `relationship_property_has_${type}_${idx}.json`;
       writeJson(path.join("data", relName), {
         from: { "/": "./property.json" },
         to: { "/": `./${type}_${idx}.json` },
