@@ -3064,8 +3064,13 @@ function extract() {
   try {
     const salesRows = $("#tblSalesHistory tbody tr");
 
+    // Clean up old sales_history files and their relationships
     fs.readdirSync(dataDir).forEach((file) => {
       if (/^sales_history_\d+\.json$/i.test(file) || /^sales_\d+\.json$/i.test(file)) {
+        fs.unlinkSync(path.join(dataDir, file));
+      }
+      // Also remove relationship files that reference sales_history
+      if (file.startsWith("relationship_property_has_sales_history_")) {
         fs.unlinkSync(path.join(dataDir, file));
       }
     });
@@ -3312,6 +3317,18 @@ function extract() {
         from: { "/": companyRef },
         to: { "/": "./mailing_address.json" },
       });
+    });
+
+    // Create relationships between property and sales_history
+    sales.forEach((sale, idx) => {
+      if (sale._file) {
+        const saleBase = sale._file.replace("./", "").replace(".json", "");
+        const relFile = `relationship_property_has_sales_history_${idx + 1}.json`;
+        writeJSON(path.join(dataDir, relFile), {
+          from: { "/": "./property.json" },
+          to: { "/": sale._file },
+        });
+      }
     });
   } catch (e) {
     console.error("Error extracting sales/owner data:", e);
