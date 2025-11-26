@@ -1143,17 +1143,6 @@ function extractValuation($) {
   });
 }
 
-function writeParcel(parcelId) {
-  if (!parcelId) return;
-
-  const parcel = {
-    parcel_identifier: parcelId,
-    request_identifier: parcelId,
-  };
-
-  writeJSON(path.join("data", "parcel.json"), parcel);
-}
-
 function writeProperty($, parcelId) {
   const legal = extractLegalDescription($);
   const useCode = extractUseCode($);
@@ -1809,7 +1798,6 @@ function main() {
     util = key && utilitiesData[key] ? utilitiesData[key] : null;
   }
 
-  writeParcel(parcelId);
   writeProperty($, parcelId);
   const sales = extractSales($);
   writeSalesDeedsFilesAndRelationships($);
