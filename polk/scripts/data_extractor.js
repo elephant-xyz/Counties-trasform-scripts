@@ -3933,121 +3933,22 @@ function main() {
   });
 
   // Owners (persons/companies) - already extracted above
-  // CRITICAL FIX: Only create person files for persons that will have valid relationships
-  // Current owners will have property relationships, historical owners need sales relationships
+  // CRITICAL FIX: Only create person/company files for CURRENT owners (those linked to property)
+  // Do NOT create entities for historical owners that are only linked to sales history
+  // This is because sales_history data group may not include person/company classes
 
-  // First, collect which person indices will have valid relationships
-  const personsWithValidRelationships = new Set();
-
-  // Current owners will have property relationships
-  pc.personCurrentOwners.forEach((idx) => {
-    personsWithValidRelationships.add(idx);
-  });
-
-  // Check which historical persons will have sales relationships
-  const personNameToIndex = new Map();
-  pc.persons.forEach((p, i) => {
-    const nameVariants = [];
-    const f = (p.first_name || "").trim();
-    const m = (p.middle_name || "").trim();
-    const l = (p.last_name || "").trim();
-    if (f && l) {
-      nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
-      nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
-      nameVariants.push(`${l} ${f}`.toUpperCase());
-    }
-    nameVariants.forEach((v) => personNameToIndex.set(v, i + 1));
-  });
-
-  // Check which persons match sales grantees
-  sales.forEach((s) => {
-    const g = normalizeNameForMatch(s.grantee);
-    if (g && personNameToIndex.has(g)) {
-      personsWithValidRelationships.add(personNameToIndex.get(g));
-    }
-  });
-
-  // Check which persons match by date in ownerJSON
-  if (ownerJSON && ownerJSON[`property_${parcelId}`] && ownerJSON[`property_${parcelId}`].owners_by_date) {
-    const ownersByDate = ownerJSON[`property_${parcelId}`].owners_by_date;
-    Object.entries(ownersByDate).forEach(([dateKey, owners]) => {
-      if (dateKey === "current") return;
-      const saleIdx = sales.findIndex(s => s.ownership_transfer_date === dateKey);
-      if (saleIdx >= 0) {
-        (owners || []).forEach((owner) => {
-          if (owner.type === "person") {
-            const firstName = toTitleCase(owner.first_name);
-            const middleName = owner.middle_name ? toTitleCase(owner.middle_name) : null;
-            const lastName = toTitleCase(owner.last_name);
-            const personKey = `${firstName}|${middleName || ""}|${lastName}`;
-            const personIdx = pc.personIndexByKey.get(personKey);
-            if (personIdx) {
-              personsWithValidRelationships.add(personIdx);
-            }
-          }
-        });
-      }
-    });
-  }
-
-  // Now write only the persons that have valid relationships
+  // Only write persons that are current owners (have property relationships)
   const personsWritten = [];
-  pc.persons.forEach((p, i) => {
-    if (personsWithValidRelationships.has(i + 1)) {
-      writeJSON(path.join("data", `person_${i + 1}.json`), p);
-      personsWritten.push(i + 1);
-    }
+  pc.personCurrentOwners.forEach((idx) => {
+    writeJSON(path.join("data", `person_${idx}.json`), pc.persons[idx - 1]);
+    personsWritten.push(idx);
   });
 
-  // Track which companies will have valid relationships
-  const companiesWithValidRelationships = new Set();
-
-  // Current owners will have property relationships
-  pc.companyCurrentOwners.forEach((idx) => {
-    companiesWithValidRelationships.add(idx);
-  });
-
-  // Check which companies match sales grantees
-  const companyNameToIndex = new Map();
-  pc.companies.forEach((c, i) => {
-    const nm = (c.name || "").trim().toUpperCase();
-    if (nm) companyNameToIndex.set(nm, i + 1);
-  });
-
-  sales.forEach((s) => {
-    const g = normalizeNameForMatch(s.grantee);
-    if (g && companyNameToIndex.has(g)) {
-      companiesWithValidRelationships.add(companyNameToIndex.get(g));
-    }
-  });
-
-  // Check which companies match by date in ownerJSON
-  if (ownerJSON && ownerJSON[`property_${parcelId}`] && ownerJSON[`property_${parcelId}`].owners_by_date) {
-    const ownersByDate = ownerJSON[`property_${parcelId}`].owners_by_date;
-    Object.entries(ownersByDate).forEach(([dateKey, owners]) => {
-      if (dateKey === "current") return;
-      const saleIdx = sales.findIndex(s => s.ownership_transfer_date === dateKey);
-      if (saleIdx >= 0) {
-        (owners || []).forEach((owner) => {
-          if (owner.type === "company") {
-            const name = (owner.name || "").trim();
-            const companyIdx = pc.companyIndexByName.get(name);
-            if (companyIdx) {
-              companiesWithValidRelationships.add(companyIdx);
-            }
-          }
-        });
-      }
-    });
-  }
-
-  // Now write only the companies that have valid relationships
+  // Only write companies that are current owners (have property relationships)
   const companiesWritten = [];
-  pc.companies.forEach((c, i) => {
-    if (companiesWithValidRelationships.has(i + 1)) {
-      writeJSON(path.join("data", `company_${i + 1}.json`), c);
-      companiesWritten.push(i + 1);
-    }
+  pc.companyCurrentOwners.forEach((idx) => {
+    writeJSON(path.join("data", `company_${idx}.json`), pc.companies[idx - 1]);
+    companiesWritten.push(idx);
   });
 
   // Create property-person relationships for current owners
@@ -4105,169 +4006,10 @@ function main() {
     );
   }
 
-  // Relationships person/company -> sales
-  const personNameToPath = new Map();
-  pc.persons.forEach((p, i) => {
-    const nameVariants = [];
-    const f = (p.first_name || "").trim();
-    const m = (p.middle_name || "").trim();
-    const l = (p.last_name || "").trim();
-    if (f && l) {
-      // Use the capitalized names for matching
-      nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
-      nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
-      nameVariants.push(`${l} ${f}`.toUpperCase());
-    }
-    const pth = `./person_${i + 1}.json`;
-    nameVariants.forEach((v) => personNameToPath.set(v, pth));
-  });
-  const companyNameToPath = new Map();
-  pc.companies.forEach((c, i) => {
-    const nm = (c.name || "").trim().toUpperCase();
-    if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
-  });
+  // NOTE: We do NOT create sales-person or sales-company relationships
+  // because we only generate person/company entities for current owners (not historical sales).
+  // This prevents "unused file" errors when person/company classes are not in the data group.
 
-  // Track which sales have been linked to avoid duplicates
-  const salesLinked = new Set();
-
-  sales.forEach((s, idx) => {
-    const g = normalizeNameForMatch(s.grantee);
-    if (!g) return;
-    if (companyNameToPath.has(g)) {
-      const rel = {
-        to: { "/": companyNameToPath.get(g) },
-        from: { "/": `./sales_history_${idx + 1}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_sales_history_company_${idx + 1}.json`),
-        rel,
-      );
-      salesLinked.add(idx + 1);
-    } else {
-      // try direct or swapped person match
-      let toPath = null;
-      if (personNameToPath.has(g)) {
-        toPath = personNameToPath.get(g);
-      } else {
-        const parts = g.split(/\s+/);
-        if (parts.length >= 2) {
-          const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
-            .toUpperCase()
-            .trim();
-          if (personNameToPath.has(swapped))
-            toPath = personNameToPath.get(swapped);
-        }
-      }
-      if (toPath) {
-        const rel = {
-          to: { "/": toPath },
-          from: { "/": `./sales_history_${idx + 1}.json` },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_history_person_${idx + 1}.json`),
-          rel,
-        );
-        salesLinked.add(idx + 1);
-      }
-    }
-  });
-
-  // Date-based matching: link sales to persons based on owner_by_date
-  if (ownerJSON && ownerJSON[key] && ownerJSON[key].owners_by_date) {
-    const ownersByDate = ownerJSON[key].owners_by_date;
-    let relCounter = sales.length + 1;
-
-    // Build a map of dates to sales indices (handle multiple sales per date)
-    const salesByDate = new Map();
-    sales.forEach((s, idx) => {
-      if (s.ownership_transfer_date) {
-        if (!salesByDate.has(s.ownership_transfer_date)) {
-          salesByDate.set(s.ownership_transfer_date, []);
-        }
-        salesByDate.get(s.ownership_transfer_date).push(idx + 1);
-      }
-    });
-
-    // For each date in owners_by_date, link to corresponding sale(s)
-    Object.entries(ownersByDate).forEach(([dateKey, owners]) => {
-      if (dateKey === "current") return;
-      const saleIndices = salesByDate.get(dateKey);
-      if (!saleIndices || saleIndices.length === 0) return;
-
-      // Create relationships for each sale on this date
-      saleIndices.forEach((saleIdx) => {
-        (owners || []).forEach((owner) => {
-        if (owner.type === "person") {
-          const firstName = toTitleCase(owner.first_name);
-          const middleName = owner.middle_name ? toTitleCase(owner.middle_name) : null;
-          const lastName = toTitleCase(owner.last_name);
-          const personKey = `${firstName}|${middleName || ""}|${lastName}`;
-          const personIdx = pc.personIndexByKey.get(personKey);
-
-          if (personIdx) {
-            // Check if this relationship already exists
-            const relPath = path.join("data", `relationship_sales_history_person_${relCounter}.json`);
-            const relExists = fs.existsSync(relPath) ||
-                            Array.from({length: sales.length}, (_, i) => i + 1)
-                              .some(i => {
-                                const existingRelPath = path.join("data", `relationship_sales_history_person_${i}.json`);
-                                if (fs.existsSync(existingRelPath)) {
-                                  const existingRel = readJSON(existingRelPath);
-                                  return existingRel &&
-                                         existingRel.from && existingRel.from["/"] === `./sales_history_${saleIdx}.json` &&
-                                         existingRel.to && existingRel.to["/"] === `./person_${personIdx}.json`;
-                                }
-                                return false;
-                              });
-
-            if (!relExists) {
-              const rel = {
-                to: { "/": `./person_${personIdx}.json` },
-                from: { "/": `./sales_history_${saleIdx}.json` },
-              };
-              writeJSON(
-                path.join("data", `relationship_sales_history_person_${relCounter}.json`),
-                rel,
-              );
-              relCounter++;
-            }
-          }
-        } else if (owner.type === "company") {
-          const name = (owner.name || "").trim();
-          const companyIdx = pc.companyIndexByName.get(name);
-
-          if (companyIdx) {
-            const relPath = path.join("data", `relationship_sales_history_company_${relCounter}.json`);
-            const relExists = fs.existsSync(relPath) ||
-                            Array.from({length: sales.length}, (_, i) => i + 1)
-                              .some(i => {
-                                const existingRelPath = path.join("data", `relationship_sales_history_company_${i}.json`);
-                                if (fs.existsSync(existingRelPath)) {
-                                  const existingRel = readJSON(existingRelPath);
-                                  return existingRel &&
-                                         existingRel.from && existingRel.from["/"] === `./sales_history_${saleIdx}.json` &&
-                                         existingRel.to && existingRel.to["/"] === `./company_${companyIdx}.json`;
-                                }
-                                return false;
-                              });
-
-            if (!relExists) {
-              const rel = {
-                to: { "/": `./company_${companyIdx}.json` },
-                from: { "/": `./sales_history_${saleIdx}.json` },
-              };
-              writeJSON(
-                path.join("data", `relationship_sales_history_company_${relCounter}.json`),
-                rel,
-              );
-              relCounter++;
-            }
-          }
-        }
-        });
-      });
-    });
-  }
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     const lset =
