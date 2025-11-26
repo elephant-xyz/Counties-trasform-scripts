@@ -1737,7 +1737,7 @@ function createGeometryInstances(csvContent) {
   return records.flatMap((record) => splitGeometry(record));
 }
 
-function createGeometryClass(geometryInstances) {
+function createGeometryClass(geometryInstances, parcelId) {
   let geomIndex = 1;
   for(let geom of geometryInstances) {
     let polygon = [];
@@ -1758,6 +1758,15 @@ function createGeometryClass(geometryInstances) {
     });
     geomIndex++;
   }
+
+  // Create the parcel.json file that is referenced by the relationships
+  if (parcelId) {
+    const parcel = {
+      parcel_identifier: parcelId,
+      request_identifier: parcelId,
+    };
+    writeJSON(path.join("data", "parcel.json"), parcel);
+  }
 }
 
 function main() {
@@ -1773,11 +1782,11 @@ function main() {
   const layoutData = readJSON(path.join("owners", "layout_data.json"));
   const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
   const structureData = readJSON(path.join("owners", "structure_data.json"));
-  const key = `property_${parcelId}`;  
+  const key = `property_${parcelId}`;
   try {
     const seedCsvPath = path.join(".", "input.csv");
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-    createGeometryClass(createGeometryInstances(seedCsv));
+    createGeometryClass(createGeometryInstances(seedCsv), parcelId);
   } catch (e) {
     const latitude = unnormalized && unnormalized.latitude ? unnormalized.latitude : null;
     const longitude = unnormalized && unnormalized.longitude ? unnormalized.longitude : null;
@@ -1786,7 +1795,7 @@ function main() {
         latitude: latitude,
         longitude: longitude
       });
-      createGeometryClass([coordinate]);
+      createGeometryClass([coordinate], parcelId);
     }
   }
   let struct = null;
