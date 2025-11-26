@@ -1112,13 +1112,14 @@ function extractAddress(addressDetails, unnorm) {
   const county_name = inputCounty || null;
   const mailingAddress = addressDetails.mailingAddress;
   const siteAddress = addressDetails.siteAddress;
-  if (mailingAddress) {
-    const mailingAddressObj = {
-      unnormalized_address: mailingAddress,
-    };
-    writeOut("mailing_address.json", mailingAddressObj);
-    hasOwnerMailingAddress = true;
-  }
+  // mailing_address.json is not part of the County data group schema, so we skip creating it
+  // if (mailingAddress) {
+  //   const mailingAddressObj = {
+  //     unnormalized_address: mailingAddress,
+  //   };
+  //   writeOut("mailing_address.json", mailingAddressObj);
+  //   hasOwnerMailingAddress = true;
+  // }
   if (siteAddress) {
     const addressObj = {
       county_name,
@@ -1376,6 +1377,30 @@ function titleCaseName(s) {
 function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
+
+  // Clean up any orphaned files from previous runs that are not part of the current schema
+  // mailing_address.json is not part of the County data group schema
+  const orphanedFiles = ["mailing_address.json"];
+  orphanedFiles.forEach((fileName) => {
+    const filePath = path.join(dataDir, fileName);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`Removed orphaned file: ${fileName}`);
+    }
+  });
+
+  // Also clean up any orphaned relationship files
+  const relationshipPattern = /^relationship_(person|company)_has_mailing_address_\d+\.json$/;
+  if (fs.existsSync(dataDir)) {
+    const files = fs.readdirSync(dataDir);
+    files.forEach((file) => {
+      if (relationshipPattern.test(file)) {
+        const filePath = path.join(dataDir, file);
+        fs.unlinkSync(filePath);
+        console.log(`Removed orphaned relationship file: ${file}`);
+      }
+    });
+  }
 
   // Load inputs
   const htmlPath = path.join(".", "input.html");
@@ -1781,15 +1806,16 @@ function main() {
               },
             );
           }
-          if (hasOwnerMailingAddress) {
-            writeOut(
-                `relationship_person_has_mailing_address_${loopIdx}.json`,
-              {
-                from: { "/": `./person_${loopIdx}.json` },
-                to: { "/": `./mailing_address.json` },
-              },
-            );
-          }
+          // Removed relationship_person_has_mailing_address creation since mailing_address is not part of schema
+          // if (hasOwnerMailingAddress) {
+          //   writeOut(
+          //       `relationship_person_has_mailing_address_${loopIdx}.json`,
+          //     {
+          //       from: { "/": `./person_${loopIdx}.json` },
+          //       to: { "/": `./mailing_address.json` },
+          //     },
+          //   );
+          // }
           loopIdx++;
         }
         const companyNames = new Set();
@@ -1814,15 +1840,16 @@ function main() {
               },
             );
           }
-          if (hasOwnerMailingAddress) {
-            writeOut(
-                `relationship_company_has_mailing_address_${loopIdx}.json`,
-              {
-                from: { "/": `./company_${loopIdx}.json` },
-                to: { "/": `./mailing_address.json` },
-              },
-            );
-          }
+          // Removed relationship_company_has_mailing_address creation since mailing_address is not part of schema
+          // if (hasOwnerMailingAddress) {
+          //   writeOut(
+          //       `relationship_company_has_mailing_address_${loopIdx}.json`,
+          //     {
+          //       from: { "/": `./company_${loopIdx}.json` },
+          //       to: { "/": `./mailing_address.json` },
+          //     },
+          //   );
+          // }
           loopIdx++;
         }
     }
