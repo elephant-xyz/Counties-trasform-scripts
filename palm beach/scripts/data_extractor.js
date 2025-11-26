@@ -54997,15 +54997,67 @@ function enforceCountyRawAddressAndNullRelationships() {
   ensureDir(dataDir);
   ensureDir(relationshipsDir);
   const addressPath = path.join(dataDir, "address.json");
-  const payload = buildMinimalCountyRawAddressPayload();
-  if (payload && typeof payload === "object") {
-    originalWriteFileSync.call(
-      fs,
-      addressPath,
-      `${JSON.stringify(payload, null, 2)}\n`,
-    );
-  } else {
-    removeFileIfExists(addressPath);
+  const existingPayload = readJSONIfExists(addressPath);
+  const hasUsableExisting =
+    existingPayload &&
+    typeof existingPayload === "object" &&
+    !Array.isArray(existingPayload);
+
+  let addressWritten = false;
+  if (hasUsableExisting && typeof hasNormalizedCountyCoverage === "function") {
+    const normalizedProbe = { ...existingPayload };
+    if (hasNormalizedCountyCoverage(normalizedProbe)) {
+      const normalizedSurface =
+        (typeof ensureNormalizedAddressSchemaSurface === "function"
+          ? ensureNormalizedAddressSchemaSurface(normalizedProbe)
+          : normalizedProbe) || normalizedProbe;
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedSurface,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedSurface.unnormalized_address;
+      }
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(normalizedSurface, null, 2)}\n`,
+      );
+      addressWritten = true;
+    }
+  }
+
+  if (!addressWritten && hasUsableExisting) {
+    const strictRaw =
+      buildStrictRawOnlyAddress(existingPayload) ||
+      buildMinimalRawAddressForSchema(existingPayload);
+    if (strictRaw) {
+      const surfacedRaw =
+        ensureAddressOutputFieldPresence(strictRaw) || strictRaw;
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(surfacedRaw, null, 2)}\n`,
+      );
+      addressWritten = true;
+    } else {
+      removeFileIfExists(addressPath);
+    }
+  }
+
+  if (!addressWritten) {
+    const payload = buildMinimalCountyRawAddressPayload();
+    if (payload && typeof payload === "object") {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(payload, null, 2)}\n`,
+      );
+      addressWritten = true;
+    } else {
+      removeFileIfExists(addressPath);
+    }
   }
 
   enforceExplicitNullAddressRelationships([dataDir, relationshipsDir]);
