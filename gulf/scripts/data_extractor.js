@@ -10,6 +10,833 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const propertyTypeMapping = [
+  {
+    "property_usecode": "AGRI ACRG",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "ANIMAL CLINIC/KENNEL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "BED & BREAKFAST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "CAMPS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "CARWASH",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "CHURCHES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Church",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "CLUBS/LODGES/HALLS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ClubsLodges",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "COLLEGES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "COM VAC. W/MISC. IMP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "TransitionalProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "COMMON PROPERTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ResidentialCommonElementsAreas",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "COMMUNITY SHOPPING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ShoppingCenterCommunity",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "CONDOMINIA",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "CONSERVATION EASEMEN",
+    "ownership_estate_type": "OtherEstate",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Conservation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "COUNTY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "COUNTY (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "CROPLAND CLASS 1",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "CULTURAL GROUPS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "CulturalOrganization",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "DEPARTMENT STORES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DepartmentStore",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "DRIVE-IN REST.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "DRY CLEANER/LAUNDRO",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "RetailStore",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "FINANCIAL BLDG",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "FinancialInstitution",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "HANGAR",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TransportationTerminal",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "HEALTH/FITNESS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "HOMES FOR THE AGED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "HomesForAged",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "HOTELS AND MOTELS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "IMPROVED AG",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "INDUSTRIAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "INSURANCE COMPANY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OfficeBuilding",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "I-PASTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ImprovedPasture",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "LEASEHOLD INTEREST",
+    "ownership_estate_type": "Leasehold",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "LIGHT MANUFACTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "LightManufacturing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "LUMBER YARD",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "LumberYard",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MINERAL PROCESSING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MINI WAREHOUSES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MISCELLANEOUS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MOBILE HOME",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHousing",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "MOBILE HOME(NO ASMT)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHousing",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "MORTUARY/CEMETARY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MortuaryCemetery",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MULTI-FAMILY 10 LESS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MULTI-FAMILY 10 MORE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MULTI-STORY OFFICE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OfficeBuilding",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MUNICIPAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MUNICIPAL (PSJ)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "MUNICIPAL (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "MUNICIPAL (WEWA)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "NIGHTCLUB/BARS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Entertainment",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "NO AG ACREAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "NO AG W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Agricultural",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "NON-PROFIT SERVICE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NonProfitCharity",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "OFFICE BUILDINGS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OfficeBuilding",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "ORCHARDS, GROVES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "ORNAMENTALS,MISC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Ornamentals",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "OTHER STRUCTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "P.U.D. W/MARINA",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "P.U.D. W/TAPS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "PARKING/MH LOT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OpenStorage",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "PASTURELAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NativePasture",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "PASTURELAND 1",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ImprovedPasture",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "PASTURELAND 6",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Rangeland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "POULTRY,BEES,FISH",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "PRIVATE HOSPITALS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateHospital",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "PRIVATE SCHOOLS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "PROFESSIONAL BLDG",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OfficeBuilding",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "PUBLIC SCHOOLS (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "REPAIR SERVICE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "REST HOMES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "HomesForAged",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "REST./CAFE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "RETIREMENT HOMES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Retirement",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "RIGHTS-OF-WAY",
+    "ownership_estate_type": "RightOfWay",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "ReferenceParcel",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "RV PARK",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeInPark",
+    "property_usage_type": "MobileHomePark",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "SERVICE STATION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ServiceStation",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "SINGLE FAMILY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "SINGLE FAMILY-MOD",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "STATE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "STATE (VAC)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "STORE/OFFICE/RESID",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "STORES, 1 ST (DRUG)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "RetailStore",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "STORES, 1 STORY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "RetailStore",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "STORM WATER MNGT FAC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Utility",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "SUBMERGED LANDS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "SUB-SURFACE RIGHTS",
+    "ownership_estate_type": "SubsurfaceRights",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "SUPERMARKET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Supermarket",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "SWAMP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Conservation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "THEATER/AUDITORIUM",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Theater",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "TIITF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "TIITF (VACANT)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "TIMBER NP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "TIMBER SITE INDEX 55",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "TIMBER SITE INDEX 60",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "TIMBER SITE INDEX 65",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "TIMBER SITE INDEX 70",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "TOWER SITE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TelecommunicationsFacility",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "TRAVEL TRAILER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHousingSingleWide",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "UNBUILDABLE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "UTILITIES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Utility",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "VAC RES. W/MISC. IMP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "VACANT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Unknown",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "VACANT COMMERCIAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "VEH SALE/REPAIR",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "WAREHOUSE-STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "WATER MANAGEMENT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Utility",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "WETLANDS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Conservation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "WHOLESALE OUTLET",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "WholesaleOutlet",
+    "property_type": "Building"
+  }
+];
+
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
@@ -19,6 +846,7 @@ const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummary_
 const BUILDING_SECTION_TITLE = "Building Information";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl06_ctl01_grdSales tbody tr";
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl08_ctl01_grdValuation";
+const OWNER_MAILING_ADDRESS_SELECTOR = "#ctlBodyPane_ctl02_ctl01_rptOwner_ctl00_lblOwnerAddress";
 
 function readJSON(p) {
   try {
@@ -104,28 +932,35 @@ function extractUseCode($) {
   return code || null;
 }
 
-function mapPropertyTypeFromUseCode(code) {
-  if (!code) return null;
-  const u = code.toUpperCase();
-  if (u.includes("MULTI")) {
-    if (u.includes("10+") || u.includes("MORE")) {
-      return "MultiFamilyMoreThan10";
-    }
-    if (u.includes("LESS")) {
-      return "MultiFamilyLessThan10";
-    }
-    return "MultipleFamily";
+const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) {
+    return lookup;
   }
-  if (u.includes("SINGLE")) return "SingleFamily";
-  if (u.includes("CONDO")) return "Condominium";
-  if (u.includes("VACANT")) return "VacantLand";
-  if (u.includes("DUPLEX")) return "Duplex";
-  if (u.includes("TOWNHOUSE")) return "Townhouse";
-  if (u.includes("APARTMENT")) return "Apartment";
-  if (u.includes("MOBILE")) return "MobileHome";
-  if (u.includes("PUD")) return "Pud";
-  if (u.includes("RETIREMENT")) return "Retirement";
-  if (u.includes("COOPERATIVE")) return "Cooperative";
+
+  const normalizedUseCode = entry.property_usecode;
+
+  if (!normalizedUseCode) {
+    return lookup;
+    }
+
+  lookup[normalizedUseCode] = entry;
+  return lookup;
+}, {});
+
+function mapPropertyTypeFromUseCode(code) {
+  if (!code && code !== 0) return null;
+
+  const normalizedInput = String(code);
+  if (!normalizedInput) return null;
+
+  // if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+  //   return propertyTypeByUseCode[normalizedInput];
+  // }
+  for (const [key, value] of Object.entries(propertyTypeByUseCode)) {
+    if (normalizedInput.includes(key)) {
+      return value;
+    }
+  }
   return null;
 }
 
@@ -216,7 +1051,17 @@ function extractSales($) {
     const saleDate = textOf($(tds[1]));
     const salePrice = textOf($(tds[2]));
     const instrument = textOf($(tds[3]));
-    const bookPage = textOf($(tds[4]));
+    const bookPageRaw = textOf($(tds[4]));
+    let bookPage = null;
+    if (bookPageRaw) {
+      bookPage = bookPageRaw.split("\n")[0];
+    }
+    let book = null;
+    let page = null;
+    if (bookPage && bookPage.split("/").length == 2) {
+      book = bookPage.split("/")[0];
+      page = bookPage.split("/")[1];
+    }
     const link = $(tds[4]).find("a").last().attr("href") || null;
     const grantor = textOf($(tds[8]));
     const grantee = textOf($(tds[9]));
@@ -228,19 +1073,25 @@ function extractSales($) {
       link,
       grantor,
       grantee,
+      book,
+      page
     });
   });
   return out;
 }
 
 function mapInstrumentToDeedType(instr) {
-  if (!instr) return null;
+  if (!instr) return "Miscellaneous";
   const u = instr.trim().toUpperCase();
   if (u === "WD") return "Warranty Deed";
+  if (u === "WARRANTY DEED") return "Warranty Deed";
   if (u == "TD") return "Tax Deed";
+  if (u == "TAX DEED") return "Tax Deed";
   if (u == "QC") return "Quitclaim Deed";
+  if (u == "QUITCLAIM DEED") return "Quitclaim Deed";
   if (u == "SW") return "Special Warranty Deed";
-  return null;
+  if (u == "SPECIAL WARRANTY DEED") return "Special Warranty Deed";
+  return "Miscellaneous";
   // throw {
   //   type: "error",
   //   message: `Unknown enum value ${instr}.`,
@@ -287,6 +1138,7 @@ function extractValuation($) {
       market: get("Just (Market) Value"),
       assessed: get("Assessed Value"),
       taxable: get("Taxable Value"),
+      exemption: get("Exempt Value"),
     };
   });
 }
@@ -294,8 +1146,8 @@ function extractValuation($) {
 function writeProperty($, parcelId) {
   const legal = extractLegalDescription($);
   const useCode = extractUseCode($);
-  const propertyType = mapPropertyTypeFromUseCode(useCode);
-  if (!propertyType) {
+  const propertyMapping = mapPropertyTypeFromUseCode(useCode);
+  if (!propertyMapping) {
     throw {
       type: "error",
       message: `Unknown enum value ${useCode}.`,
@@ -309,12 +1161,13 @@ function writeProperty($, parcelId) {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legal || null,
     property_structure_built_year: years.actual || null,
-    property_effective_built_year: years.effective || null,
-    property_type: propertyType,
-    livable_floor_area: null,
-    total_area: String(totalArea),
-    number_of_units_type: null,
-    area_under_air: null,
+    // property_effective_built_year: years.effective || null,
+    property_type: propertyMapping.property_type,
+    ownership_estate_type: propertyMapping.ownership_estate_type,
+    build_status: propertyMapping.build_status,
+    structure_form: propertyMapping.structure_form,
+    property_usage_type: propertyMapping.property_usage_type,
+    // total_area: String(totalArea),
     number_of_units: null,
     subdivision: null,
     zoning: null,
@@ -342,12 +1195,18 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `sales_${idx}.json`), saleObj);
 
     const deedType = mapInstrumentToDeedType(s.instrument);
-    const deed = { deed_type: deedType };
+    let deed = { deed_type: deedType };
+    if (s.book) {
+      deed.book = s.book.split("\n")[0];
+    }
+    if (s.page) {
+      deed.page = s.page.split("\n")[0];
+    }
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
-    let fileName = s.bookPage ? s.bookPage.split("\n")[0] : null;
+    let fileName = deed.book && deed.page ? `${deed.book}/${deed.page}` : null;
     const file = {
-      document_type: null,
+      document_type: "Title",
       file_format: null,
       ipfs_url: null,
       name: fileName ? `Deed ${fileName}` : "Deed Document",
@@ -356,8 +1215,8 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
     const relDeedFile = {
-      to: { "/": `./deed_${idx}.json` },
-      from: { "/": `./file_${idx}.json` },
+      from: { "/": `./deed_${idx}.json` },
+      to: { "/": `./file_${idx}.json` },
     };
     writeJSON(
       path.join("data", `relationship_deed_file_${idx}.json`),
@@ -365,8 +1224,8 @@ function writeSalesDeedsFilesAndRelationships($) {
     );
 
     const relSalesDeed = {
-      to: { "/": `./sales_${idx}.json` },
-      from: { "/": `./deed_${idx}.json` },
+      from: { "/": `./sales_${idx}.json` },
+      to: { "/": `./deed_${idx}.json` },
     };
     writeJSON(
       path.join("data", `relationship_sales_deed_${idx}.json`),
@@ -388,7 +1247,7 @@ function findPersonIndexByName(first, last) {
 }
 
 function findCompanyIndexByName(name) {
-  const tn = (name || "").trim();
+  const tn = (name || "").trim().toUpperCase();
   for (let i = 0; i < companies.length; i++) {
     if ((companies[i].name || "").trim() === tn) return i + 1;
   }
@@ -404,7 +1263,7 @@ function titleCaseName(s) {
     .join(" ");
 }
 
-function writePersonCompaniesSalesRelationships(parcelId, sales) {
+function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
@@ -448,7 +1307,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
+        companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
   companies = Array.from(companyNames).map((n) => ({ 
@@ -501,6 +1360,103 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
       });
   });
+  if (hasOwnerMailingAddress) {
+    const currentOwner = ownersByDate["current"] || [];
+    relPersonCounter = 0;
+    relCompanyCounter = 0;
+    currentOwner
+    .filter((o) => o.type === "person")
+    .forEach((o) => {
+      const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+      if (pIdx) {
+        relPersonCounter++;
+        writeJSON(
+          path.join(
+            "data",
+            `relationship_person_has_mailing_address_${relPersonCounter}.json`,
+          ),
+          {
+            from: { "/": `./person_${pIdx}.json` },
+            to: { "/": `./mailing_address.json` },
+          },
+        );
+      }
+    });
+    currentOwner
+    .filter((o) => o.type === "company")
+    .forEach((o) => {
+      const cIdx = findCompanyIndexByName(o.name);
+      if (cIdx) {
+        relCompanyCounter++;
+        writeJSON(
+          path.join(
+            "data",
+            `relationship_company_has_mailing_address_${relCompanyCounter}.json`,
+          ),
+          {
+            from: { "/": `./company_${cIdx}.json` },
+            to: { "/": `./mailing_address.json` },
+          },
+        );
+      }
+    });
+  }
+}
+
+function extractHistoricalValuation($) {
+  const table = $(HISTORICAL_VALUATION_TABLE_SELECTOR);
+  if (table.length === 0) return [];
+  // const years = [];
+  // const headerThs = table.find("tbody tr th").toArray();
+  // headerThs.forEach((th, idx) => {
+  //   const txt = $(th).text().trim();
+  //   const m = txt.match(/(\d{4})/);
+  //   if (m && m.length > 1) {
+  //     let y = parseInt(m[1], 10);
+  //     if (!isNaN(y)) {
+  //       years.push({ year: y, idx });
+  //     }
+  //   }
+  // });
+  const rows = table.find("tbody tr");
+  const dataMap = {};
+  rows.each((i, tr) => {
+    const $tr = $(tr);
+    const label = textOf($tr.find("th"));
+    const tds = $tr.find("td");
+    const vals = [];
+    tds.each((j, td) => {
+      vals.push($(td).text().trim());
+    });
+    if (label) dataMap[label] = vals;
+  });
+  let mapped_values = [];
+  for (const [key, values] of Object.entries(dataMap)) {
+    mapped_values.push({
+        year: parseInt(key, 10),
+        building: values[0],
+        land: values[2],
+        market: values[5],
+        assessed: values[6],
+        exemption: values[7],
+        taxable: values[8],
+    });
+  }
+  return mapped_values;
+  // return years.map(({ year, idx }) => {
+  //   const get = (label) => {
+  //     const arr = dataMap[label] || [];
+  //     return arr[idx] || null;
+  //   };
+  //   return {
+  //     year,
+  //     building: get("Building Value"),
+  //     land: get("Total Land Value"),
+  //     market: get("Just Market"),
+  //     assessed: get("Assessed Value"),
+  //     taxable: get("Taxable Value"),
+  //   };
+  // });
 }
 
 function writeTaxes($) {
@@ -513,114 +1469,12 @@ function writeTaxes($) {
       property_building_amount: parseCurrencyToNumber(v.building),
       property_land_amount: parseCurrencyToNumber(v.land),
       property_taxable_value_amount: parseCurrencyToNumber(v.taxable),
+      property_exemption_amount: parseCurrencyToNumber(v.exemption),
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
     };
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
-  });
-}
-
-function writeUtility(parcelId) {
-  const utils = readJSON(path.join("owners", "utilities_data.json"));
-  if (!utils) return;
-  const key = `property_${parcelId}`;
-  const u = utils[key];
-  if (!u) return;
-  const utility = {
-    cooling_system_type: u.cooling_system_type ?? null,
-    heating_system_type: u.heating_system_type ?? null,
-    public_utility_type: u.public_utility_type ?? null,
-    sewer_type: u.sewer_type ?? null,
-    water_source_type: u.water_source_type ?? null,
-    plumbing_system_type: u.plumbing_system_type ?? null,
-    plumbing_system_type_other_description:
-      u.plumbing_system_type_other_description ?? null,
-    electrical_panel_capacity: u.electrical_panel_capacity ?? null,
-    electrical_wiring_type: u.electrical_wiring_type ?? null,
-    hvac_condensing_unit_present: u.hvac_condensing_unit_present ?? null,
-    electrical_wiring_type_other_description:
-      u.electrical_wiring_type_other_description ?? null,
-    solar_panel_present: false,
-    solar_panel_type: u.solar_panel_type ?? null,
-    solar_panel_type_other_description:
-      u.solar_panel_type_other_description ?? null,
-    smart_home_features: u.smart_home_features ?? null,
-    smart_home_features_other_description:
-      u.smart_home_features_other_description ?? null,
-    hvac_unit_condition: u.hvac_unit_condition ?? null,
-    solar_inverter_visible: false,
-    hvac_unit_issues: u.hvac_unit_issues ?? null,
-    electrical_panel_installation_date:
-      u.electrical_panel_installation_date ?? null,
-    electrical_rewire_date: u.electrical_rewire_date ?? null,
-    hvac_capacity_kw: u.hvac_capacity_kw ?? null,
-    hvac_capacity_tons: u.hvac_capacity_tons ?? null,
-    hvac_equipment_component: u.hvac_equipment_component ?? null,
-    hvac_equipment_manufacturer: u.hvac_equipment_manufacturer ?? null,
-    hvac_equipment_model: u.hvac_equipment_model ?? null,
-    hvac_installation_date: u.hvac_installation_date ?? null,
-    hvac_seer_rating: u.hvac_seer_rating ?? null,
-    hvac_system_configuration: u.hvac_system_configuration ?? null,
-    plumbing_system_installation_date:
-      u.plumbing_system_installation_date ?? null,
-    sewer_connection_date: u.sewer_connection_date ?? null,
-    solar_installation_date: u.solar_installation_date ?? null,
-    solar_inverter_installation_date:
-      u.solar_inverter_installation_date ?? null,
-    solar_inverter_manufacturer: u.solar_inverter_manufacturer ?? null,
-    solar_inverter_model: u.solar_inverter_model ?? null,
-    water_connection_date: u.water_connection_date ?? null,
-    water_heater_installation_date: u.water_heater_installation_date ?? null,
-    water_heater_manufacturer: u.water_heater_manufacturer ?? null,
-    water_heater_model: u.water_heater_model ?? null,
-    well_installation_date: u.well_installation_date ?? null,
-  };
-  writeJSON(path.join("data", "utility.json"), utility);
-}
-
-function writeLayout(parcelId) {
-  const layouts = readJSON(path.join("owners", "layout_data.json"));
-  if (!layouts) return;
-  const key = `property_${parcelId}`;
-  const record = (layouts[key] && layouts[key].layouts) ? layouts[key].layouts : [];
-  record.forEach((l, idx) => {
-    const out = {
-      space_type: l.space_type ?? null,
-      space_index: l.space_index ?? null,
-      flooring_material_type: l.flooring_material_type ?? null,
-      size_square_feet: l.size_square_feet ?? null,
-      floor_level: l.floor_level ?? null,
-      has_windows: l.has_windows ?? null,
-      window_design_type: l.window_design_type ?? null,
-      window_material_type: l.window_material_type ?? null,
-      window_treatment_type: l.window_treatment_type ?? null,
-      is_finished: l.is_finished ?? null,
-      furnished: l.furnished ?? null,
-      paint_condition: l.paint_condition ?? null,
-      flooring_wear: l.flooring_wear ?? null,
-      clutter_level: l.clutter_level ?? null,
-      visible_damage: l.visible_damage ?? null,
-      countertop_material: l.countertop_material ?? null,
-      cabinet_style: l.cabinet_style ?? null,
-      fixture_finish_quality: l.fixture_finish_quality ?? null,
-      design_style: l.design_style ?? null,
-      natural_light_quality: l.natural_light_quality ?? null,
-      decor_elements: l.decor_elements ?? null,
-      pool_type: l.pool_type ?? null,
-      pool_equipment: l.pool_equipment ?? null,
-      spa_type: l.spa_type ?? null,
-      safety_features: l.safety_features ?? null,
-      view_type: l.view_type ?? null,
-      lighting_features: l.lighting_features ?? null,
-      condition_issues: l.condition_issues ?? null,
-      is_exterior: l.is_exterior ?? false,
-      pool_condition: l.pool_condition ?? null,
-      pool_surface_type: l.pool_surface_type ?? null,
-      pool_water_quality: l.pool_water_quality ?? null,
-      request_identifier: parcelId,
-    };
-    writeJSON(path.join("data", `layout_${idx + 1}.json`), out);
   });
 }
 
@@ -640,188 +1494,270 @@ function extractSecTwpRng($) {
   return { section: m[1], township: m[2], range: m[3] };
 }
 
-function normalizeSuffix(s) {
-  if (!s) return null;
-  const map = {
-    ALY: "Aly",
-    AVE: "Ave",
-    AV: "Ave",
-    BLVD: "Blvd",
-    BND: "Bnd",
-    CIR: "Cir",
-    CIRS: "Cirs",
-    CRK: "Crk",
-    CT: "Ct",
-    CTR: "Ctr",
-    CTRS: "Ctrs",
-    CV: "Cv",
-    CYN: "Cyn",
-    DR: "Dr",
-    DRS: "Drs",
-    EXPY: "Expy",
-    FWY: "Fwy",
-    GRN: "Grn",
-    GRNS: "Grns",
-    GRV: "Grv",
-    GRVS: "Grvs",
-    HWY: "Hwy",
-    HL: "Hl",
-    HLS: "Hls",
-    HOLW: "Holw",
-    JCT: "Jct",
-    JCTS: "Jcts",
-    LN: "Ln",
-    LOOP: "Loop",
-    MALL: "Mall",
-    MDW: "Mdw",
-    MDWS: "Mdws",
-    MEWS: "Mews",
-    ML: "Ml",
-    MNRS: "Mnrs",
-    MT: "Mt",
-    MTN: "Mtn",
-    MTNS: "Mtns",
-    OPAS: "Opas",
-    ORCH: "Orch",
-    OVAL: "Oval",
-    PARK: "Park",
-    PASS: "Pass",
-    PATH: "Path",
-    PIKE: "Pike",
-    PL: "Pl",
-    PLN: "Pln",
-    PLNS: "Plns",
-    PLZ: "Plz",
-    PT: "Pt",
-    PTS: "Pts",
-    PNE: "Pne",
-    PNES: "Pnes",
-    RADL: "Radl",
-    RD: "Rd",
-    RDG: "Rdg",
-    RDGS: "Rdgs",
-    RIV: "Riv",
-    ROW: "Row",
-    RTE: "Rte",
-    RUN: "Run",
-    SHL: "Shl",
-    SHLS: "Shls",
-    SHR: "Shr",
-    SHRS: "Shrs",
-    SMT: "Smt",
-    SQ: "Sq",
-    SQS: "Sqs",
-    ST: "St",
-    STA: "Sta",
-    STRA: "Stra",
-    STRM: "Strm",
-    TER: "Ter",
-    TPKE: "Tpke",
-    TRL: "Trl",
-    TRCE: "Trce",
-    UN: "Un",
-    VIS: "Vis",
-    VLY: "Vly",
-    VLYS: "Vlys",
-    VIA: "Via",
-    VL: "Vl",
-    VLGS: "Vlgs",
-    VWS: "Vws",
-    WALK: "Walk",
-    WALL: "Wall",
-    WAY: "Way",
-  };
-  const key = s.toUpperCase().trim();
-  if (map[key]) return map[key];
-  return null;
-}
-
 function isNumeric(value) {
     return /^-?\d+$/.test(value);
 }
 
-function attemptWriteAddress(unnorm, secTwpRng) {
-  const full =
-    unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
-  if (!full) return;
-  let city = null;
-  let zip = null;
-  const fullAddressParts = (full || "").split(",");
-  if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
-    state_and_pin = fullAddressParts[2].split(/\s+/);
-    if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
-      zip = state_and_pin[state_and_pin.length - 1].trim();
-      city = fullAddressParts[1].trim();
+function extractAddressText($) {
+  let add = null;
+  $(
+    OVERALL_DETAILS_TABLE_SELECTOR,
+  ).each((i, tr) => {
+    const th = textOf($(tr).find("th strong"));
+    if ((th || "").toLowerCase().includes("address")) {
+      add = textOf($(tr).find("td span")).replace(/  +/g, ' ');
     }
-  }
-  const parts = (fullAddressParts[0] || "").split(/\s+/);
-  let street_number = null;
-  if (parts && parts.length > 1) {
-    street_number_candidate = parts[0];
-    if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
-      street_number = parts.shift() || null;
-    }
-  }
-  let suffix = null;
-  if (parts && parts.length > 1) {
-    suffix_candidate = parts[parts.length - 1];
-    if (normalizeSuffix(suffix_candidate)) {
-      suffix = parts.pop() || null;
-    }
-  }
-  let street_name = parts.join(" ") || null;
-  if (street_name) {
-    street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
-  }
-  // const m = full.match(
-  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
-  // );
-  // if (!m) return;
-  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
+  });
+  return add;
+}
 
-  // let street_name = streetRest.trim();
-  // let route_number = null;
-  // let street_suffix_type = null;
-  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
-  // if (m2) {
-  //   street_name = m2[1].toUpperCase();
-  //   route_number = m2[2];
-  //   if (street_name === "HWY" || street_name === "HIGHWAY")
-  //     street_suffix_type = "Hwy";
-  // }
-  const city_name = city ? city.toUpperCase() : null;
-  // const state_code = state.toUpperCase();
-  const postal_code = zip;
-  // const plus_four_postal_code = plus4 || null;
+function extractOwnerMailingAddress($) {
+  const ownerAddressText = textOf($(OWNER_MAILING_ADDRESS_SELECTOR));
+  if (ownerAddressText) {
+    return ownerAddressText.replace(/  +/g, ' ');
+  }
+  return null;
+}
 
-  // Per evaluator expectation, set county_name from input jurisdiction
+function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
+  let hasOwnerMailingAddress = false;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
+  if (!inputCounty) {
+    inputCounty = (unnorm.county_name || "").trim();
+    }
   const county_name = inputCounty || null;
-
-  const address = {
-    city_name,
-    country_code: "US",
+  if (mailingAddress) {
+    const mailingAddressObj = {
+      unnormalized_address: mailingAddress,
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+    hasOwnerMailingAddress = true;
+  }
+  if (siteAddress) {
+    const addressObj = {
     county_name,
-    latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-    longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
-    plus_four_postal_code: null,
-    postal_code,
-    state_code: "FL",
-    street_name: street_name,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_number: street_number,
-    street_suffix_type: normalizeSuffix(suffix),
-    unit_identifier: null,
-    route_number: null,
+    // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+    // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
     township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
     range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
     section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
-    block: null,
-    lot: null,
-    municipality_name: null,
-  };
-  writeJSON(path.join("data", "address.json"), address);
+      unnormalized_address: siteAddress,
+    };
+    writeJSON(path.join("data", "address.json"), addressObj);
+    writeJSON(path.join("data", "relationship_property_has_address.json"), {
+                to: { "/": `./address.json` },
+                from: { "/": `./property.json` },
+              });
+  }
+  return hasOwnerMailingAddress;
+}
+/**
+ * Minimal Geometry model that mirrors the Elephant Geometry class.
+ */
+class Geometry {
+  constructor({ latitude, longitude, polygon }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(
+        record.parcel_polygon
+      )
+    });
+  }
+}
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (char === '"') {
+      if (insideQuotes && content[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (char === '\r' && content[i + 1] === '\n') {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function coordinatesDepth(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 0;
+  }
+
+  return 1 + coordinatesDepth(value[0]);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+/**
+ * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const headers = rows[0].map((header) => header.trim());
+  const records = rows.slice(1).map((values) =>
+    headers.reduce((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+function createGeometryClass(geometryInstances) {
+  let geomIndex = 1;
+  for(let geom of geometryInstances) {
+    let polygon = [];
+    let geometry = {
+      "latitude": geom.latitude,
+      "longitude": geom.longitude,
+    }
+    if (geom && geom.polygon) {
+      for (const coordinate of geom.polygon.coordinates[0]) {
+        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+      }
+      geometry.polygon = polygon;
+    }
+    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
+    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./parcel.json` },
+        to: { "/": `./geometry_${geomIndex}.json` },
+    });
+    geomIndex++;
+  }
 }
 
 function main() {
@@ -834,25 +1770,139 @@ function main() {
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
+  const layoutData = readJSON(path.join("owners", "layout_data.json"));
+  const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
+  const structureData = readJSON(path.join("owners", "structure_data.json"));
+  const key = `property_${parcelId}`;  
+  try {
+    const seedCsvPath = path.join(".", "input.csv");
+    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+    createGeometryClass(createGeometryInstances(seedCsv));
+  } catch (e) {
+    const latitude = unnormalized && unnormalized.latitude ? unnormalized.latitude : null;
+    const longitude = unnormalized && unnormalized.longitude ? unnormalized.longitude : null;
+    if (latitude && longitude) {
+      const coordinate = new Geometry({
+        latitude: latitude,
+        longitude: longitude
+      });
+      createGeometryClass([coordinate]);
+    }
+  }
+  let struct = null;
+  if (structureData) {
+    struct = key && structureData[key] ? structureData[key] : null;
+  }
+  let util = null;
+  if (utilitiesData) {
+    util = key && utilitiesData[key] ? utilitiesData[key] : null;
+  }
 
-  if (parcelId) writeProperty($, parcelId);
-
+  writeProperty($, parcelId);
   const sales = extractSales($);
   writeSalesDeedsFilesAndRelationships($);
 
   writeTaxes($);
 
-  if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales);
-    // writeOwnersCurrentAndRelationships(parcelId);
-    // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
-    writeUtility(parcelId);
-    writeLayout(parcelId);
-  }
-
-  // Address last
   const secTwpRng = extractSecTwpRng($);
-  attemptWriteAddress(unnormalized, secTwpRng);
+  const addressText = extractAddressText($);
+  const mailingAddress = extractOwnerMailingAddress($);
+  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress);
+
+  if (parcelId) {
+    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
+    // Layout extraction from owners/layout_data.json
+    if (layoutData) {
+      const lset =
+        key && layoutData[key] && Array.isArray(layoutData[key].layouts)
+          ? layoutData[key].layouts
+          : [];
+      let layoutBuildingMap = {};
+      let idx = 1;
+      for (const l of lset) {
+        const layoutOut = {
+          space_type: l.space_type ?? null,
+          space_type_index: l.space_type_index ?? null,
+          flooring_material_type: l.flooring_material_type ?? null,
+          size_square_feet: l.size_square_feet ?? null,
+          has_windows: l.has_windows ?? null,
+          window_design_type: l.window_design_type ?? null,
+          window_material_type: l.window_material_type ?? null,
+          window_treatment_type: l.window_treatment_type ?? null,
+          is_finished: l.is_finished ?? null,
+          furnished: l.furnished ?? null,
+          paint_condition: l.paint_condition ?? null,
+          flooring_wear: l.flooring_wear ?? null,
+          clutter_level: l.clutter_level ?? null,
+          visible_damage: l.visible_damage ?? null,
+          countertop_material: l.countertop_material ?? null,
+          cabinet_style: l.cabinet_style ?? null,
+          fixture_finish_quality: l.fixture_finish_quality ?? null,
+          design_style: l.design_style ?? null,
+          natural_light_quality: l.natural_light_quality ?? null,
+          decor_elements: l.decor_elements ?? null,
+          pool_type: l.pool_type ?? null,
+          pool_equipment: l.pool_equipment ?? null,
+          spa_type: l.spa_type ?? null,
+          safety_features: l.safety_features ?? null,
+          view_type: l.view_type ?? null,
+          lighting_features: l.lighting_features ?? null,
+          condition_issues: l.condition_issues ?? null,
+          is_exterior: l.is_exterior ?? false,
+          pool_condition: l.pool_condition ?? null,
+          pool_surface_type: l.pool_surface_type ?? null,
+          pool_water_quality: l.pool_water_quality ?? null,
+
+          adjustable_area_sq_ft: l.adjustable_area_sq_ft ?? null,
+          area_under_air_sq_ft: l.area_under_air_sq_ft ?? null,
+          bathroom_renovation_date: l.bathroom_renovation_date ?? null,
+          building_number: l.building_number ?? null,
+          kitchen_renovation_date: l.kitchen_renovation_date ?? null,
+          heated_area_sq_ft: l.heated_area_sq_ft ?? null,
+          installation_date: l.installation_date ?? null,
+          livable_area_sq_ft: l.livable_area_sq_ft ?? null,
+          pool_installation_date: l.pool_installation_date ?? null,
+          spa_installation_date: l.spa_installation_date ?? null,
+          story_type: l.story_type ?? null,
+          total_area_sq_ft: l.total_area_sq_ft ?? null,
+        };
+        writeJSON(path.join("data", `layout_${idx}.json`), layoutOut);
+        if (l.space_type === "Building") {
+          const building_number = l.building_number;
+          layoutBuildingMap[building_number.toString()] = idx;
+        }
+        if (l.space_type !== "Building") {
+          const building_number = l.building_number;
+          if (building_number) {
+            const building_layout_number = layoutBuildingMap[building_number.toString()];
+            writeJSON(path.join("data", `relationship_layout_${building_layout_number}_to_layout_${idx}.json`), {
+              to: { "/": `./layout_${idx}.json` },
+              from: { "/": `./layout_${building_layout_number}.json` },
+            },);
+          }
+        }
+        if (util && l.space_type === "Building") {
+          if (l.building_number && l.building_number.toString() in util) {
+            writeJSON(path.join("data", `utility_${idx}.json`), util[l.building_number.toString()]);
+            writeJSON(path.join("data", `relationship_layout_to_utility_${idx}.json`), {
+                      to: { "/": `./utility_${idx}.json` },
+                      from: { "/": `./layout_${idx}.json` },
+            },);
+          }
+        }
+        if (struct && l.space_type === "Building") {
+          if (l.building_number && l.building_number.toString() in struct) {
+            writeJSON(path.join("data", `structure_${idx}.json`), struct[l.building_number.toString()]);
+            writeJSON(path.join("data", `relationship_layout_to_structure_${idx}.json`), {
+                      to: { "/": `./structure_${idx}.json` },
+                      from: { "/": `./layout_${idx}.json` },
+            },);
+          }
+        }
+        idx++;
+      }
+    }
+  }
 }
 
 if (require.main === module) {
