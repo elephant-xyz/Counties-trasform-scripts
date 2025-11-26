@@ -95,11 +95,12 @@ function capitalizeProperName(name) {
     }
 
     // Handle special prefixes (Mc, Mac, O')
+    // Add space after prefix to match Elephant schema pattern requirements
     if (part.toLowerCase().startsWith("mc") && part.length > 2) {
-      return "Mc" + part.charAt(2).toUpperCase() + part.slice(3).toLowerCase();
+      return "Mc " + part.charAt(2).toUpperCase() + part.slice(3).toLowerCase();
     }
     if (part.toLowerCase().startsWith("mac") && part.length > 3) {
-      return "Mac" + part.charAt(3).toUpperCase() + part.slice(4).toLowerCase();
+      return "Mac " + part.charAt(3).toUpperCase() + part.slice(4).toLowerCase();
     }
 
     // Standard capitalization
