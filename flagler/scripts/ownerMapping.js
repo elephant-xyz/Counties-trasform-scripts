@@ -132,11 +132,17 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // Validate middle_name against the required pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // If it doesn't match (e.g., just "-"), set to null
+  const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  const middleNameValue = middle ? titleCase(middle) : null;
+  const validatedMiddleName = middleNameValue && middleNamePattern.test(middleNameValue) ? middleNameValue : null;
+
   return {
     type: "person",
     first_name: titleCase(first || ""),
     last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    middle_name: validatedMiddleName,
   };
 }
 
@@ -249,13 +255,16 @@ function parseOwnersFromText(rawText) {
   // Deduplicate by normalized key
   const seen = new Set();
   const deduped = [];
+  const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   owners.forEach((o) => {
     const key = normalizeOwnerKey(o);
     if (!key || seen.has(key)) return;
     seen.add(key);
-    // Nullify empty middle_name
-    if (o.type === "person" && (!o.middle_name || !o.middle_name.trim())) {
-      o.middle_name = null;
+    // Nullify empty or invalid middle_name
+    if (o.type === "person") {
+      if (!o.middle_name || !o.middle_name.trim() || !middleNamePattern.test(o.middle_name)) {
+        o.middle_name = null;
+      }
     }
     deduped.push(o);
   });
