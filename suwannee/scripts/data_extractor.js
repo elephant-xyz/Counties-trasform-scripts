@@ -1793,54 +1793,59 @@ function main() {
 
     // Mailing address relationships - only link current owners (independent of sales)
     if (mailingAddress && ownerFiles.ownersByDate) {
-      const mailingAddressObj = {
-        unnormalized_address: mailingAddress,
-      };
-      writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
-
       const currentOwners = ownerFiles.ownersByDate["current"] || [];
       let relPersonMailCounter = 0;
       let relCompanyMailCounter = 0;
 
-      // Link only CURRENT companies to mailing address
-      currentOwners
+      // Collect companies that will be linked
+      const companiesToLink = currentOwners
         .filter(o => o.type === "company")
-        .forEach(o => {
-          const cIdx = findCompanyIndexByName(o.name);
-          if (cIdx) {
-            relCompanyMailCounter++;
-            writeJson(
-              path.join(
-                "data",
-                `relationship_company_has_mailing_address_${relCompanyMailCounter}.json`,
-              ),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": `./mailing_address.json` },
-              },
-            );
-          }
+        .map(o => ({ owner: o, idx: findCompanyIndexByName(o.name) }))
+        .filter(item => item.idx !== null);
+
+      // Collect persons that will be linked
+      const personsToLink = currentOwners
+        .filter(o => o.type === "person")
+        .map(o => ({ owner: o, idx: findPersonIndexByName(o.first_name, o.last_name) }))
+        .filter(item => item.idx !== null);
+
+      // Only create mailing_address.json if at least one relationship will be created
+      if (companiesToLink.length > 0 || personsToLink.length > 0) {
+        const mailingAddressObj = {
+          unnormalized_address: mailingAddress,
+        };
+        writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
+
+        // Link companies to mailing address
+        companiesToLink.forEach(item => {
+          relCompanyMailCounter++;
+          writeJson(
+            path.join(
+              "data",
+              `relationship_company_has_mailing_address_${relCompanyMailCounter}.json`,
+            ),
+            {
+              from: { "/": `./company_${item.idx}.json` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
         });
 
-      // Link only CURRENT persons to mailing address
-      currentOwners
-        .filter(o => o.type === "person")
-        .forEach(o => {
-          const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-          if (pIdx) {
-            relPersonMailCounter++;
-            writeJson(
-              path.join(
-                "data",
-                `relationship_person_has_mailing_address_${relPersonMailCounter}.json`,
-              ),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": `./mailing_address.json` },
-              },
-            );
-          }
+        // Link persons to mailing address
+        personsToLink.forEach(item => {
+          relPersonMailCounter++;
+          writeJson(
+            path.join(
+              "data",
+              `relationship_person_has_mailing_address_${relPersonMailCounter}.json`,
+            ),
+            {
+              from: { "/": `./person_${item.idx}.json` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
         });
+      }
     }
 
     // Utilities
