@@ -1521,6 +1521,12 @@ function formatName(name) {
 
   if (!name || typeof name !== 'string' || name.trim() === "") return null;
 
+  // Check if the name contains percentage signs or looks like an ownership interest designation
+  if (/%/.test(name) || /\d+%/.test(name) || /INT$/i.test(name.trim())) {
+    console.log(`Rejecting name that looks like ownership interest: ${name}`);
+    return null;
+  }
+
   // Check if the name is just "L/E" or similar legal designation by itself
   const trimmedName = name.trim().toUpperCase();
   if (trimmedName === 'L/E' || trimmedName === 'LE' || trimmedName === 'LIFE ESTATE' ||
@@ -2332,7 +2338,11 @@ function main() {
       const firstName = validatePersonName(firstNameRaw, 'first_name');
       const lastName = validatePersonName(lastNameRaw, 'last_name');
       if (middleName != null) {
-        if (isValidPersonName(middleName)) {
+        // Check if middle name contains digits or special characters after formatting
+        if (middleName && /[\d%&$#@!]/.test(middleName)) {
+          console.log(`Skipping middle name with invalid characters: ${middleName}`);
+          middleName = null;
+        } else if (isValidPersonName(middleName)) {
           middleName = validatePersonName(middleName, 'middle_name');
         } else {
           middleName = null;
@@ -2682,9 +2692,13 @@ function main() {
         const firstName = validatePersonName(firstNameRaw, 'first_name');
         const lastName = validatePersonName(lastNameRaw, 'last_name');
         if (middleName != null) {
-          // Also check if middle name is purely numeric
+          // Also check if middle name is purely numeric or contains digits/special chars
           if (rawMiddleName && /^\d+$/.test(rawMiddleName)) {
             console.log(`Skipping numeric middle name: ${rawMiddleName}`);
+            middleName = null;
+          } else if (middleName && /[\d%&$#@!]/.test(middleName)) {
+            // Check if formatted middle name still contains digits or special characters
+            console.log(`Skipping middle name with invalid characters: ${middleName}`);
             middleName = null;
           } else if (isValidPersonName(middleName)) {
             middleName = validatePersonName(middleName, 'middle_name');
