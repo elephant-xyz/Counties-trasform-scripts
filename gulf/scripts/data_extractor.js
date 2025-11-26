@@ -1271,7 +1271,18 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only collect persons from valid date keys (YYYY-MM-DD) and "current" key
+  // Exclude unknown_date_* keys since they have no relationships
+  Object.keys(ownersByDate).forEach((dateKey) => {
+    const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(dateKey);
+    const isCurrent = dateKey === "current";
+    const hasMailingAddressRelationship = isCurrent && hasOwnerMailingAddress;
+
+    if (!isValidDate && !hasMailingAddressRelationship) {
+      return; // Skip unknown_date_* keys
+    }
+
+    const arr = ownersByDate[dateKey];
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1304,13 +1315,24 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only collect companies from valid date keys (YYYY-MM-DD) and "current" key
+  // Exclude unknown_date_* keys since they have no relationships
+  Object.keys(ownersByDate).forEach((dateKey) => {
+    const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(dateKey);
+    const isCurrent = dateKey === "current";
+    const hasMailingAddressRelationship = isCurrent && hasOwnerMailingAddress;
+
+    if (!isValidDate && !hasMailingAddressRelationship) {
+      return; // Skip unknown_date_* keys
+    }
+
+    const arr = ownersByDate[dateKey];
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({ 
+  companies = Array.from(companyNames).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
