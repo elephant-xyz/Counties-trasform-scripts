@@ -1623,42 +1623,23 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
   
   // Create relationship between current owner and first sale (sales_1) if not already created
-  // Also create relationships for "unknown_date" owners (prior owners without specific dates)
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
     const currentOwners = ownersByDate["current"] || [];
-
-    // Collect all owners that have already been linked to any sale
-    const alreadyLinkedPersons = new Set();
-    const alreadyLinkedCompanies = new Set();
-
-    Object.keys(ownersByDate).forEach(dateKey => {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
-        const ownersOnDate = ownersByDate[dateKey] || [];
-        ownersOnDate.forEach(owner => {
-          if (owner.type === "person") {
-            const key = `${(owner.first_name || "").trim().toUpperCase()}|${(owner.last_name || "").trim().toUpperCase()}`;
-            alreadyLinkedPersons.add(key);
-          } else if (owner.type === "company") {
-            const key = (owner.name || "").trim().toUpperCase();
-            alreadyLinkedCompanies.add(key);
-          }
-        });
-      }
-    });
-
-    // Link current owners to sales_1 if not already linked
+    
     currentOwners.forEach((owner) => {
-      let alreadyLinked = false;
-      if (owner.type === "person") {
-        const key = `${(owner.first_name || "").trim().toUpperCase()}|${(owner.last_name || "").trim().toUpperCase()}`;
-        alreadyLinked = alreadyLinkedPersons.has(key);
-      } else if (owner.type === "company") {
-        const key = (owner.name || "").trim().toUpperCase();
-        alreadyLinked = alreadyLinkedCompanies.has(key);
-      }
-
+      // Check if this owner already has a relationship with sales_1
+      const alreadyLinked = ownersOnFirstSale.some(existingOwner => {
+        if (owner.type === "person" && existingOwner.type === "person") {
+          return owner.first_name === existingOwner.first_name && owner.last_name === existingOwner.last_name;
+        }
+        if (owner.type === "company" && existingOwner.type === "company") {
+          return owner.name === existingOwner.name;
+        }
+        return false;
+      });
+      
       if (!alreadyLinked) {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
@@ -1691,57 +1672,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             );
           }
         }
-      }
-    });
-
-    // Link "unknown_date" owners to sales_1 if not already linked
-    Object.keys(ownersByDate).forEach(dateKey => {
-      if (/^unknown_date_\d+$/.test(dateKey)) {
-        const unknownOwners = ownersByDate[dateKey] || [];
-        unknownOwners.forEach(owner => {
-          let alreadyLinked = false;
-          if (owner.type === "person") {
-            const key = `${(owner.first_name || "").trim().toUpperCase()}|${(owner.last_name || "").trim().toUpperCase()}`;
-            alreadyLinked = alreadyLinkedPersons.has(key);
-          } else if (owner.type === "company") {
-            const key = (owner.name || "").trim().toUpperCase();
-            alreadyLinked = alreadyLinkedCompanies.has(key);
-          }
-
-          if (!alreadyLinked) {
-            if (owner.type === "person") {
-              const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-              if (pIdx) {
-                relPersonCounter++;
-                writeJSON(
-                  path.join(
-                    "data",
-                    `relationship_sales_person_${relPersonCounter}.json`,
-                  ),
-                  {
-                    from: { "/": "./sales_1.json" },
-                    to: { "/": `./person_${pIdx}.json` }
-                  },
-                );
-              }
-            } else if (owner.type === "company") {
-              const cIdx = findCompanyIndexByName(owner.name);
-              if (cIdx) {
-                relCompanyCounter++;
-                writeJSON(
-                  path.join(
-                    "data",
-                    `relationship_sales_company_${relCompanyCounter}.json`,
-                  ),
-                  {
-                    from: { "/": "./sales_1.json" },
-                    to: { "/": `./company_${cIdx}.json` }
-                  },
-                );
-              }
-            }
-          }
-        });
       }
     });
   }
