@@ -6731,6 +6731,11 @@ const RAW_MINIMAL_ADDRESS_FIELDS = [
 ];
 const RAW_MINIMAL_ADDRESS_FIELD_SET = new Set(RAW_MINIMAL_ADDRESS_FIELDS);
 
+const RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS = new Set([
+  "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
+]);
 
 const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   RAW_ADDRESS_OUTPUT_FIELDS.reduce((acc, field) => {
@@ -55108,6 +55113,47 @@ function buildRawCountyAddressPayload(addressSource, rawSource, seedSource) {
   return { unnormalized_address: resolvedRaw };
 }
 
+function buildSchemaReadyRawAddressPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return null;
+  }
+
+  const schemaReady = {
+    unnormalized_address: rawValue,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const normalizedIdentifier = safeNullIfEmpty(payload.request_identifier);
+    schemaReady.request_identifier =
+      normalizedIdentifier === undefined ? null : normalizedIdentifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const preparedSource = prepareSourceHttpRequest(
+      payload.source_http_request,
+    );
+    if (preparedSource) {
+      schemaReady.source_http_request = deepClone(preparedSource);
+    }
+  }
+
+  for (const key of Object.keys(schemaReady)) {
+    if (!RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS.has(key)) {
+      delete schemaReady[key];
+    }
+  }
+
+  return schemaReady;
+}
+
 function attachAddressMetadataForSchema(payload, metadataSources = []) {
   if (!payload || typeof payload !== "object") {
     return payload;
@@ -55192,12 +55238,17 @@ function enforceCountyRawAddressAndNullRelationships() {
 
   if (finalPayload) {
     attachAddressMetadataForSchema(finalPayload, metadataSources);
-    originalWriteFileSync.call(
-      fs,
-      addressPath,
-      `${JSON.stringify(finalPayload, null, 2)}\n`,
-    );
-    addressWriteLocked = true;
+    const schemaReadyRaw = buildSchemaReadyRawAddressPayload(finalPayload);
+    if (schemaReadyRaw) {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(schemaReadyRaw, null, 2)}\n`,
+      );
+      addressWriteLocked = true;
+    } else {
+      removeFileIfExists(addressPath);
+    }
   } else {
     removeFileIfExists(addressPath);
   }
