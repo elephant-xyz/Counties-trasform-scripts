@@ -1546,6 +1546,8 @@ function formatName(name) {
     /\bLIFE\s+ESTATE\b/gi,  // Life Estate
     /\bTRUSTEE\b/gi,        // Trustee
     /\bTTE\b/gi,            // Trustee abbreviation
+    /\bL\/E\b/gi,           // Life Estate abbreviation (word boundary)
+    /L\/E/gi,               // Life Estate abbreviation (anywhere)
   ];
 
   legalDesignations.forEach(pattern => {
@@ -1570,9 +1572,10 @@ function formatName(name) {
   const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
   const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
 
-  // Final validation: check if the result matches the required pattern
-  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
-  if (!namePattern.test(sanitized)) {
+  // Final validation: check if the result matches the Elephant schema pattern
+  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$ (capital letter followed by letters, spaces, hyphens, apostrophes, commas, periods)
+  const elephantNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!elephantNamePattern.test(sanitized)) {
     return null;
   }
 
