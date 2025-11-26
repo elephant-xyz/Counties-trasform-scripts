@@ -3077,8 +3077,9 @@ function extract() {
       const iso = toISODate(dateTxt);
       const price = parseCurrencyToNumber(priceTxt);
       console.log(granteeRaw,price)
-      // && price !== null && price > 0
-      if (iso) {
+      // Only create sales records when both date and price are valid
+      // purchase_price_amount is required and must be a number (cannot be null)
+      if (iso && price !== null && typeof price === 'number' && isFinite(price)) {
         sales.push({
           ownership_transfer_date: iso,
           purchase_price_amount: price,
