@@ -70,13 +70,18 @@ function normalizePersonName(name) {
   const trimmed = name.trim();
   if (!trimmed) return null;
 
+  // First, filter out any characters that are not letters or allowed separators
+  // Allowed: letters (a-zA-Z) and separators (space, hyphen, apostrophe, comma, period)
+  const filtered = trimmed.replace(/[^a-zA-Z \-',.]/g, '').trim();
+  if (!filtered) return null;
+
   // Split by separators while keeping them
   const separators = /[ \-',.]/;
   const parts = [];
   let currentPart = '';
 
-  for (let i = 0; i < trimmed.length; i++) {
-    const char = trimmed[i];
+  for (let i = 0; i < filtered.length; i++) {
+    const char = filtered[i];
     if (separators.test(char)) {
       if (currentPart) {
         parts.push(currentPart);
