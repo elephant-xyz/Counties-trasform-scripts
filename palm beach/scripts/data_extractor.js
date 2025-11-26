@@ -54740,7 +54740,37 @@ function buildFinalCountyRawAddressPayload() {
   );
   const parsedFromRaw = parseCityStatePostalFromRaw(unnormalizedAddress);
 
-  const payload = { unnormalized_address: unnormalizedAddress };
+  const payload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: unnormalizedAddress,
+  };
+
+  const primeFromSource = (source) => {
+    if (!source || typeof source !== "object") return;
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (!hasMeaningfulAddressValue(source[field])) continue;
+      const sanitized = sanitizeAddressFieldValue(field, source[field]);
+      if (sanitized !== null && sanitized !== undefined) {
+        payload[field] = sanitized;
+      }
+    }
+  };
+  primeFromSource(existing);
+  primeFromSource(unnormalized);
+  primeFromSource(seed);
+
+  const assignIfMissing = (field, candidate) => {
+    if (!hasMeaningfulAddressValue(candidate)) {
+      return;
+    }
+    if (hasMeaningfulAddressValue(payload[field])) {
+      return;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, candidate);
+    if (sanitized !== null && sanitized !== undefined) {
+      payload[field] = sanitized;
+    }
+  };
 
   const requestIdentifier = pickFirstString(
     existing.request_identifier,
@@ -54752,43 +54782,51 @@ function buildFinalCountyRawAddressPayload() {
     payload.request_identifier = requestIdentifier;
   }
 
-  const countyCandidate = titleCaseCounty(
-    pickFirstString(
-      existing.county_name,
-      unnormalized.county_name,
-      unnormalized.county_jurisdiction,
-      seed.county_name,
-      "Palm Beach",
-    ),
+  const sourceHttpRequest = resolveSourceHttpRequest(
+    existing.source_http_request,
+    unnormalized.source_http_request,
+    seed.source_http_request,
   );
-  if (countyCandidate) {
-    payload.county_name = countyCandidate;
+  if (sourceHttpRequest) {
+    payload.source_http_request = deepClone(sourceHttpRequest);
   }
 
-  const cityName = formatCityName(
-    pickFirstString(
-      existing.city_name,
-      unnormalized.city_name,
-      parsedFromLine3.cityName,
-      parsedFromRaw.cityName,
-      propertyDetail && (propertyDetail.Municipality || propertyDetail.municipality),
+  assignIfMissing(
+    "county_name",
+    titleCaseCounty(
+      pickFirstString(
+        existing.county_name,
+        unnormalized.county_name,
+        unnormalized.county_jurisdiction,
+        seed.county_name,
+        "Palm Beach",
+      ),
     ),
   );
-  if (cityName) {
-    payload.city_name = cityName;
-  }
 
-  const stateCodeCandidate = pickFirstString(
-    existing.state_code,
-    unnormalized.state_code,
-    parsedFromLine3.stateCode,
-    parsedFromRaw.stateCode,
-    "FL",
+  assignIfMissing(
+    "city_name",
+    formatCityName(
+      pickFirstString(
+        existing.city_name,
+        unnormalized.city_name,
+        parsedFromLine3.cityName,
+        parsedFromRaw.cityName,
+        propertyDetail && (propertyDetail.Municipality || propertyDetail.municipality),
+      ),
+    ),
   );
-  if (stateCodeCandidate) {
-    payload.state_code = stateCodeCandidate.toUpperCase();
-    payload.country_code = "US";
-  }
+
+  assignIfMissing(
+    "state_code",
+    pickFirstString(
+      existing.state_code,
+      unnormalized.state_code,
+      parsedFromLine3.stateCode,
+      parsedFromRaw.stateCode,
+      "FL",
+    ),
+  );
 
   const postalCodeCandidate =
     normalizePostalCode(
@@ -54801,9 +54839,7 @@ function buildFinalCountyRawAddressPayload() {
     ) ||
     parsedFromLine3.postalCode ||
     parsedFromRaw.postalCode;
-  if (postalCodeCandidate) {
-    payload.postal_code = postalCodeCandidate;
-  }
+  assignIfMissing("postal_code", postalCodeCandidate);
 
   const plusFourCandidate = normalizePlusFour(
     pickFirstString(
@@ -54813,11 +54849,39 @@ function buildFinalCountyRawAddressPayload() {
       parsedFromRaw.plusFour,
     ),
   );
-  if (plusFourCandidate && payload.postal_code) {
-    payload.plus_four_postal_code = plusFourCandidate;
+  if (hasMeaningfulAddressValue(payload.postal_code)) {
+    assignIfMissing("plus_four_postal_code", plusFourCandidate);
+  } else {
+    payload.plus_four_postal_code = null;
   }
 
-  return payload;
+  assignIfMissing("municipality_name", propertyDetail && propertyDetail.Municipality);
+  assignIfMissing("township", parsedFromRaw.township || existing.township);
+  assignIfMissing("range", parsedFromRaw.range || existing.range);
+  assignIfMissing("section", parsedFromRaw.section || existing.section);
+  assignIfMissing("block", parsedFromRaw.block || existing.block);
+  assignIfMissing("lot", parsedFromRaw.lot || existing.lot);
+
+  if (
+    hasMeaningfulAddressValue(payload.state_code) &&
+    !hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    payload.country_code = "US";
+  }
+
+  const completedPayload = ensureRawAddressSchemaDefaults(payload) || payload;
+  if (
+    (completedPayload.latitude == null) !==
+    (completedPayload.longitude == null)
+  ) {
+    completedPayload.latitude = null;
+    completedPayload.longitude = null;
+  }
+  if (!hasMeaningfulAddressValue(completedPayload.postal_code)) {
+    completedPayload.plus_four_postal_code = null;
+  }
+
+  return completedPayload;
 }
 
 function enforceExplicitNullAddressRelationships(directories = []) {
