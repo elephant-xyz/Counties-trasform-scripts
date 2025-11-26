@@ -1271,14 +1271,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
   const personMap = new Map();
-
-  // Collect sale dates to filter out unused persons
-  const saleDates = new Set(sales.map(s => parseDateToISO(s.saleDate)).filter(d => d));
-  saleDates.add("current"); // Always include current owners
-
-  // Only collect persons from dates that match sales or current owners
-  Object.entries(ownersByDate).forEach(([date, arr]) => {
-    if (!saleDates.has(date)) return; // Skip dates that don't match any sale or current
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1311,9 +1304,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  // Only collect companies from dates that match sales or current owners
-  Object.entries(ownersByDate).forEach(([date, arr]) => {
-    if (!saleDates.has(date)) return; // Skip dates that don't match any sale or current
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
