@@ -2497,6 +2497,39 @@ async function main() {
 
       const deedType = mapDeedCodeToType(sale._deed_code);
 
+      // --- Create sales_history_has_person/company relationships ---
+      // These should be created for all sales, regardless of whether there's a deed
+      if (sale._grantor_record_id) {
+        const grantorMeta = ownerToFileMap.get(sale._grantor_record_id);
+        if (grantorMeta) {
+          const relFileName = `relationship_sales_history_${i + 1}_has_${grantorMeta.type}_${grantorMeta.index}_grantor.json`;
+          const relOut = {
+            from: { "/": `./${saleFileName}` },
+            to: { "/": `./${grantorMeta.fileName}` },
+          };
+          await fsp.writeFile(
+            path.join("data", relFileName),
+            JSON.stringify(relOut, null, 2),
+          );
+        }
+      }
+
+      if (sale._grantee_record_id) {
+        const granteeMeta = ownerToFileMap.get(sale._grantee_record_id);
+        if (granteeMeta) {
+          const relFileName = `relationship_sales_history_${i + 1}_has_${granteeMeta.type}_${granteeMeta.index}_grantee.json`;
+          const relOut = {
+            from: { "/": `./${saleFileName}` },
+            to: { "/": `./${granteeMeta.fileName}` },
+          };
+          await fsp.writeFile(
+            path.join("data", relFileName),
+            JSON.stringify(relOut, null, 2),
+          );
+        }
+      }
+      // --- End of sales_history_has_person/company relationships ---
+
       // Only create deed.json and related files/relationships if deedType is not null
       if (deedType !== null) {
         const deedFileName = `deed_${i + 1}.json`;
@@ -2520,39 +2553,6 @@ async function main() {
           ),
           JSON.stringify(relSalesDeed, null, 2),
         );
-
-        // --- Create sales_history_has_person/company relationships ---
-        if (sale._grantor_record_id) {
-          const grantorMeta = ownerToFileMap.get(sale._grantor_record_id);
-          if (grantorMeta) {
-            const relFileName = `relationship_sales_history_${i + 1}_has_${grantorMeta.type}_${grantorMeta.index}_grantor.json`;
-            const relOut = {
-              from: { "/": `./${saleFileName}` },
-              to: { "/": `./${grantorMeta.fileName}` },
-            };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
-          }
-        }
-
-        if (sale._grantee_record_id) {
-          const granteeMeta = ownerToFileMap.get(sale._grantee_record_id);
-          if (granteeMeta) {
-            const relFileName = `relationship_sales_history_${i + 1}_has_${granteeMeta.type}_${granteeMeta.index}_grantee.json`;
-            const relOut = {
-              from: { "/": `./${saleFileName}` },
-              to: { "/": `./${granteeMeta.fileName}` },
-            };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
-          }
-        }
-        // --- End of sales_history_has_person/company relationships ---
-
 
         if (sale._book_page_url) {
           fileIdx += 1;
