@@ -1568,7 +1568,11 @@ let people = [];
 let companies = [];
 
 function isRomanNumeral(val) {
-  return /^[IVXLCDM]+$/i.test(val || "");
+  if (!val) return false;
+  const trimmed = val.trim().toUpperCase();
+  // Only treat common generational suffixes as Roman numerals, not all combinations
+  const validGenerationalSuffixes = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  return validGenerationalSuffixes.includes(trimmed);
 }
 
 function validateSuffixName(suffix) {
