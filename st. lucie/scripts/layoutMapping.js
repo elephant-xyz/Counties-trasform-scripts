@@ -600,8 +600,7 @@ function mapFreeformFeatureToLayout(feature, enums, mapEnumFn) {
   if (hasAll(["GATE", "MECHANICAL"]) || hasAll(["GATE", "AUTO"])) {
     layout.space_type = mapEnumFn("Courtyard", SPACE_TYPE_ENUM);
     if (label) {
-      const gateLabel = `SelfClosingGate`; // Map to "SelfClosingGate" enum
-      layout.decor_elements.push(gateLabel);
+      const gateLabel = `SelfClosingGate`; // Map to "SelfClosingGate" enum - only valid for safety_features
       layout.safety_features.push(gateLabel);
     }
     return layout.space_type ? dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) : null;
