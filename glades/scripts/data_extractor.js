@@ -1530,13 +1530,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             first_name: o.first_name,
             middle_name: o.middle_name,
             last_name: o.last_name,
-            prefix_name: o.prefix_name,
-            suffix_name: o.suffix_name,
+            prefix_name: o.prefix_name || null,
+            suffix_name: o.suffix_name || null,
           });
         else {
           const existing = personMap.get(k);
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
+          if (!existing.prefix_name && o.prefix_name)
+            existing.prefix_name = o.prefix_name;
+          if (!existing.suffix_name && o.suffix_name)
+            existing.suffix_name = o.suffix_name;
         }
       }
     });
@@ -1548,8 +1552,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   first_name: p.first_name ? formatNameForSchema(p.first_name) : null,
   middle_name: p.middle_name ? formatMiddleNameForSchema(p.middle_name) : null,
   last_name: p.last_name ? formatNameForSchema(p.last_name) : null,
-  prefix_name: p.prefix_name,
-  suffix_name: p.suffix_name,
+  prefix_name: p.prefix_name || null,
+  suffix_name: p.suffix_name || null,
   us_citizenship_status: null,
   veteran_status: null,
   }));
