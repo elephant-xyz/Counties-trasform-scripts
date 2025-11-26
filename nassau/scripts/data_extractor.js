@@ -2394,6 +2394,16 @@ function main() {
           console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
           middleName = null;
         }
+        // Check if raw middle name contains slashes or looks like a legal designation
+        else if (rawMiddleName && /\//.test(rawMiddleName)) {
+          console.log(`Skipping raw middle name with slash: ${rawMiddleName}`);
+          middleName = null;
+        }
+        // Reject if it matches common legal designation patterns (even after cleaning)
+        else if (middleName && /^(L\s*E|P\s*R|F\s*B\s*O|ET\s*AL|ETAL|LE|PR|FBO)$/i.test(middleName.trim())) {
+          console.log(`Skipping middle name that is a legal designation: ${middleName}`);
+          middleName = null;
+        }
         // Check if raw middle name contains any digits (before formatName strips them out)
         else if (rawMiddleName && /\d/.test(rawMiddleName)) {
           console.log(`Skipping middle name with digits: ${rawMiddleName}`);
@@ -2782,6 +2792,16 @@ function main() {
           // Check if middle name still contains slashes (legal designations that weren't filtered)
           if (middleName && /\//.test(middleName)) {
             console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
+            middleName = null;
+          }
+          // Check if raw middle name contains slashes or looks like a legal designation
+          else if (rawMiddleName && /\//.test(rawMiddleName)) {
+            console.log(`Skipping raw middle name with slash: ${rawMiddleName}`);
+            middleName = null;
+          }
+          // Reject if it matches common legal designation patterns (even after cleaning)
+          else if (middleName && /^(L\s*E|P\s*R|F\s*B\s*O|ET\s*AL|ETAL|LE|PR|FBO)$/i.test(middleName.trim())) {
+            console.log(`Skipping middle name that is a legal designation: ${middleName}`);
             middleName = null;
           }
           // Check if raw middle name contains any digits (before formatName strips them out)

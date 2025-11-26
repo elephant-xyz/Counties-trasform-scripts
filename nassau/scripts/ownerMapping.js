@@ -253,6 +253,22 @@ function buildPerson(first, last, middle, prefix, suffix) {
     if (!elephantNamePattern.test(titleMiddle)) {
       titleMiddle = null;
     }
+
+    // Additional check: reject middle names that are legal designations or contain slashes
+    // Even after cleaning, ensure no "/" remains (in case cleaning didn't catch it)
+    if (titleMiddle && /\//.test(titleMiddle)) {
+      titleMiddle = null;
+    }
+
+    // Reject if it matches common legal designation patterns
+    if (titleMiddle && /^(L\s*E|P\s*R|F\s*B\s*O|ET\s*AL|ETAL)$/i.test(titleMiddle.trim())) {
+      titleMiddle = null;
+    }
+
+    // Reject single-letter middle names (likely remnants of legal designations like "L" from "L/E")
+    if (titleMiddle && titleMiddle.trim().length === 1) {
+      titleMiddle = null;
+    }
   }
 
   return {
