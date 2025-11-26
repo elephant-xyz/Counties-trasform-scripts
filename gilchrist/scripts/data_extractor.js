@@ -1183,12 +1183,17 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     let fileName = deed.book && deed.page ? `${deed.book}/${deed.page}` : null;
+    // Clean URL by removing invalid characters like backticks
+    let cleanedUrl = s.link || null;
+    if (cleanedUrl) {
+      cleanedUrl = cleanedUrl.replace(/[`]/g, '');
+    }
     const file = {
       document_type: "Title",
       file_format: null,
       ipfs_url: null,
       name: fileName ? `Deed ${fileName}` : "Deed Document",
-      original_url: s.link || null,
+      original_url: cleanedUrl,
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
@@ -1310,6 +1315,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       }
     });
   });
+
+  // Note: Do NOT add owners from "unknown_date_*" keys as they won't have relationships
+  // and will cause "Unused data JSON file detected" errors
 
   // Create person and company files only for owners with relationships
   people = Array.from(relevantPersonMap.values()).map((p) => ({
