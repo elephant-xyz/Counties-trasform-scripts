@@ -175,7 +175,11 @@ function mapFloorMaterial(token) {
   if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
     return "Solid Hardwood";
   }
-  if (upper.includes("VINYL")) return "Sheet Vinyl";
+  // Handle different vinyl types - order matters (check specific types first)
+  if (upper.includes("LUXURY VINYL") || upper.includes("LVP") || upper.includes("VINYL PLANK")) {
+    return "Luxury Vinyl Plank";
+  }
+  if (upper.includes("VINYL") || upper.includes("SHT VINYL")) return "Sheet Vinyl";
   if (upper.includes("TERRAZZO")) return "Terrazzo";
   if (upper.includes("CONCRETE")) return "Polished Concrete";
   if (upper.includes("CLAY") || upper.includes("TILE")) return "Ceramic Tile";
