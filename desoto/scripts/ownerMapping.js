@@ -1,6 +1,7 @@
 // ownerMapping.js
 // Transform input.html into owners/owner_data.json using cheerio only for HTML parsing
 
+
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
