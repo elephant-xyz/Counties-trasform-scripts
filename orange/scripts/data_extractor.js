@@ -5672,6 +5672,20 @@ delete layoutContent.space_type_indexer;
     });
   }
 
+  // Create property ownership relationships for current owners
+  const currentOwnerKeys = ownerKeysByDate.get('current') || new Set();
+  if (currentOwnerKeys.size > 0) {
+    let ownershipIndex = 1;
+    currentOwnerKeys.forEach((ownerKey) => {
+      const ownerFile = ownerKeyToFile.get(ownerKey);
+      if (ownerFile) {
+        const suffix = currentOwnerKeys.size === 1 ? null : ownershipIndex;
+        writeRelationshipFile(propertyFileName, ownerFile, suffix);
+        ownershipIndex++;
+      }
+    });
+  }
+
   // relationship_deed_file_*.json (file → deed)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
     writeRelationshipFile(fileFiles[i], deedFiles[i]);
