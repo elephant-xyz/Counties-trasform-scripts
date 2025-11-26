@@ -6876,6 +6876,7 @@ const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
+  ...RAW_ADDRESS_OUTPUT_FIELDS,
 ]);
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
@@ -13229,54 +13230,6 @@ function ensureAddressOutputFieldPresence(address) {
     Object.prototype.hasOwnProperty.call(result, "unnormalized_address")
   ) {
     delete result.unnormalized_address;
-  }
-
-  const hasNormalizedVariant = shouldTreatAddressAsNormalized(result);
-
-  if (!hasNormalizedVariant && hasUnnormalized) {
-    for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(result, field)) {
-        continue;
-      }
-      const value = result[field];
-      if (value === undefined || value === null) {
-        delete result[field];
-        continue;
-      }
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        if (Number.isFinite(numeric)) {
-          result[field] = numeric;
-        } else {
-          delete result[field];
-        }
-        continue;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        if (trimmed.length) {
-          result[field] = trimmed;
-        } else {
-          delete result[field];
-        }
-        continue;
-      }
-    }
-
-    if (!result.postal_code) {
-      delete result.plus_four_postal_code;
-    }
-
-    if (result.state_code && !result.country_code) {
-      result.country_code = "US";
-    } else if (
-      Object.prototype.hasOwnProperty.call(result, "country_code") &&
-      !hasMeaningfulAddressValue(result.country_code)
-    ) {
-      delete result.country_code;
-    }
-
-    return stripAddressRequestMetadata(result);
   }
 
   const fieldList = NORMALIZED_ADDRESS_FIELDS;
@@ -38966,9 +38919,84 @@ function buildCountyRawOneOfPayload(sources = [], extraCandidates = []) {
     return null;
   }
 
-  return {
+  const rawPayload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw,
   };
+
+  const structuredSources = [];
+  const registerStructuredSource = (source) => {
+    if (!source || typeof source !== "object") {
+      return;
+    }
+    structuredSources.push(source);
+  };
+
+  for (const source of sources) {
+    registerStructuredSource(source);
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
+      registerStructuredSource(source);
+    }
+  }
+
+  const applyFieldValue = (field, candidate) => {
+    if (candidate === undefined || candidate === null) {
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      if (Number.isFinite(numeric)) {
+        rawPayload[field] = numeric;
+      }
+      return;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, candidate);
+    if (sanitized === undefined || sanitized === null) {
+      return;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      if (!trimmed.length) {
+        return;
+      }
+      rawPayload[field] = trimmed;
+      return;
+    }
+    rawPayload[field] = sanitized;
+  };
+
+  for (const source of structuredSources) {
+    if (!source || typeof source !== "object") {
+      continue;
+    }
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (hasMeaningfulAddressValue(rawPayload[field])) {
+        continue;
+      }
+      applyFieldValue(field, source[field]);
+    }
+  }
+
+  if (!rawPayload.postal_code) {
+    rawPayload.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawPayload.state_code) &&
+    !hasMeaningfulAddressValue(rawPayload.country_code)
+  ) {
+    rawPayload.country_code = "US";
+  }
+
+  const surfaced =
+    ensureAddressOutputFieldPresence(rawPayload) || rawPayload;
+  return stripAddressRequestMetadata(surfaced);
 }
 
 function enforceFinalNormalizedCountyAddress(addressPath, options = {}) {
