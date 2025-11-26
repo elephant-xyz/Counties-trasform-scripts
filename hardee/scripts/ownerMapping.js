@@ -122,35 +122,35 @@ const NAME_PREFIXES = new Map(
   ],
 );
 
+// Valid suffix_name values per Elephant schema
+const VALID_SCHEMA_SUFFIXES = new Set([
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+]);
+
 const NAME_SUFFIXES = new Map(
   [
-    ["JR", "Jr"],
-    ["SR", "Sr"],
+    ["JR", "Jr."],
+    ["SR", "Sr."],
     ["II", "II"],
     ["III", "III"],
     ["IV", "IV"],
-    ["V", "V"],
-    ["VI", "VI"],
-    ["VII", "VII"],
-    ["VIII", "VIII"],
-    ["IX", "IX"],
-    ["X", "X"],
     ["CPA", "CPA"],
-    ["ESQ", "Esq"],
-    ["ESQUIRE", "Esq"],
+    ["ESQ", "Esq."],
+    ["ESQUIRE", "Esq."],
     ["MD", "MD"],
     ["DDS", "DDS"],
-    ["DMD", "DMD"],
-    ["DO", "DO"],
     ["DVM", "DVM"],
     ["JD", "JD"],
     ["PHD", "PhD"],
-    ["EDD", "EdD"],
     ["RN", "RN"],
-    ["SRN", "SRN"],
-    ["LPN", "LPN"],
-    ["RPH", "RPh"],
     ["PE", "PE"],
+    ["PMP", "PMP"],
+    ["MBA", "MBA"],
+    ["LLM", "LLM"],
+    ["CFA", "CFA"],
+    ["EMERITUS", "Emeritus"],
+    ["RET", "Ret."],
   ],
 );
 
@@ -333,12 +333,11 @@ function buildPerson({ first, middle, last, prefix, suffix }) {
   }
   if (prefix) person.prefix_name = prefix;
   if (suffix && suffix.length) {
-    // Add periods to Jr and Sr to match schema enum
-    const suffixWithPeriods = suffix.map(s => {
-      if (s === "Jr" || s === "Sr") return s + ".";
-      return s;
-    });
-    person.suffix_name = suffixWithPeriods.join(" ");
+    // Only use the first suffix that is valid per the schema
+    const validSuffix = suffix.find(s => VALID_SCHEMA_SUFFIXES.has(s));
+    if (validSuffix) {
+      person.suffix_name = validSuffix;
+    }
   }
   return person;
 }
