@@ -536,6 +536,16 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
       owners.push(...parsedOwners);
       partInvalids.forEach((item) => invalidCollector.push(item));
     }
+    if (parsedOwners.length === 0) {
+      if (partInvalids.length) {
+        partInvalids.forEach((item) => invalidCollector.push(item));
+      } else {
+        invalidCollector.push({ raw, reason: "unparseable_or_empty" });
+      }
+    } else {
+      owners.push(...parsedOwners);
+      partInvalids.forEach((item) => invalidCollector.push(item));
+    }
   });
   return dedupeOwners(owners);
 }

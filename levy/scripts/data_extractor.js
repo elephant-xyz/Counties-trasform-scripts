@@ -3825,17 +3825,6 @@ const structureItems = (() => {
         (ownerMailingInfo.rawAddresses &&
           ownerMailingInfo.rawAddresses[0]))) ||
     null;
-  const mailingAddressFilename = "mailing_address.json";
-  const mailingAddressPath = `./${mailingAddressFilename}`;
-  const mailingAddressObj = {
-    unnormalized_address: primaryMailingAddress || null,
-    source_http_request: clone(defaultSourceHttpRequest),
-    request_identifier: requestIdentifier,
-    latitude: null,
-    longitude: null,
-  };
-  writeJSON(path.join(dataDir, mailingAddressFilename), mailingAddressObj);
-  const canonicalMailingPath = mailingAddressPath;
 
   const mailingAddressFiles = [];
   ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
@@ -3851,6 +3840,8 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, fileName), mailingObj);
     mailingAddressFiles.push({ path: `./${fileName}` });
   });
+
+  const canonicalMailingPath = mailingAddressFiles.length > 0 ? mailingAddressFiles[0].path : null;
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -3922,7 +3913,9 @@ const structureItems = (() => {
     if (!entity.path) return;
     const targets = [];
     if (entity.mailingPath) targets.push(entity.mailingPath);
-    if (entity.canonicalMailingPath) targets.push(entity.canonicalMailingPath);
+    if (entity.canonicalMailingPath && entity.canonicalMailingPath !== entity.mailingPath) {
+      targets.push(entity.canonicalMailingPath);
+    }
     targets.forEach((targetPath) => {
       if (!targetPath) return;
       const relKey = `${entity.path}|${targetPath}`;
