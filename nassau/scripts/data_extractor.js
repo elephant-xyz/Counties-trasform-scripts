@@ -1634,7 +1634,8 @@ function isValidPersonName(name) {
     return false;
   }
   // Check if name matches the Elephant schema pattern for person names
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Must start with uppercase letter, followed by letters and valid separators
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   return namePattern.test(name.trim());
 }
 
@@ -2375,6 +2376,13 @@ function main() {
         }
       }
 
+      // FINAL VALIDATION: Ensure first and last names match the Elephant schema pattern
+      // This catches any edge cases where invalid names might slip through
+      if (!isValidPersonName(firstName) || !isValidPersonName(lastName)) {
+        console.log(`Skipping person with invalid name pattern after final validation: ${firstName} ${lastName}`);
+        return;
+      }
+
       const person = {
         source_http_request: {
           method: "GET",
@@ -2743,6 +2751,14 @@ function main() {
             middleName = null;
           }
         }
+
+        // FINAL VALIDATION: Ensure first and last names match the Elephant schema pattern
+        // This catches any edge cases where invalid names might slip through
+        if (!isValidPersonName(firstName) || !isValidPersonName(lastName)) {
+          console.log(`Skipping person with invalid name pattern after final validation (ensurePerson): ${firstName} ${lastName}`);
+          return null;
+        }
+
         const personObj = {
           source_http_request: {
             method: "GET",
