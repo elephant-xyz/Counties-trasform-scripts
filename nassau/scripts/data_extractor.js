@@ -2365,7 +2365,8 @@ function main() {
       const parsed = parsePerson(owner.name);
       const firstNameRaw = formatName(parsed.firstName);
       const lastNameRaw = formatName(parsed.lastName);
-      let middleName = formatName(parsed.middleName);
+      const rawMiddleName = parsed.middleName;
+      let middleName = formatName(rawMiddleName);
 
       // Skip creating person if first or last name is invalid after formatting
       if (!firstNameRaw || firstNameRaw.trim() === "" || !lastNameRaw || lastNameRaw.trim() === "") {
@@ -2385,6 +2386,11 @@ function main() {
         // Check if middle name still contains slashes (legal designations that weren't filtered)
         if (middleName && /\//.test(middleName)) {
           console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
+          middleName = null;
+        }
+        // Check if raw middle name contains any digits (before formatName strips them out)
+        else if (rawMiddleName && /\d/.test(rawMiddleName)) {
+          console.log(`Skipping middle name with digits: ${rawMiddleName}`);
           middleName = null;
         }
         // Check if middle name contains digits or special characters after formatting
@@ -2767,6 +2773,11 @@ function main() {
           // Check if middle name still contains slashes (legal designations that weren't filtered)
           if (middleName && /\//.test(middleName)) {
             console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
+            middleName = null;
+          }
+          // Check if raw middle name contains any digits (before formatName strips them out)
+          else if (rawMiddleName && /\d/.test(rawMiddleName)) {
+            console.log(`Skipping middle name with digits: ${rawMiddleName}`);
             middleName = null;
           }
           // Also check if middle name is purely numeric or contains digits/special chars
