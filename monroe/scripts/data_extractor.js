@@ -2472,7 +2472,7 @@ const structureItems = (() => {
   const permitEntries = parsePermitTable($);
   permitEntries.forEach((permit, idx) => {
     const improvementType =
-      mapPermitImprovementType(permit.type) || "Other";
+      mapPermitImprovementType(permit.type) || "GeneralBuilding";
     const improvementStatus =
       mapPermitImprovementStatus(permit.active) || "Unknown";
     const permitIssueDate = toISOFromMDY(permit.issueDate);
