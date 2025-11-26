@@ -2099,36 +2099,39 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
 
-  // First check if we can create any mailing address relationships with current owners
+  // Collect mailing address relationships first, then write everything atomically
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  let hasMailingAddressRelationships = false;
+  const mailingAddressRelationships = [];
 
-  if (owners) {
+  if (owners && mailingAddressRaw) {
     const key = `property_${parcelId}`;
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
-      // Check if at least one owner can be linked
-      for (const owner of currentOwners) {
+      currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
-            hasMailingAddressRelationships = true;
-            break;
+            mailingAddressRelationships.push({
+              type: 'person',
+              index: pIdx
+            });
           }
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
-            hasMailingAddressRelationships = true;
-            break;
+            mailingAddressRelationships.push({
+              type: 'company',
+              index: cIdx
+            });
           }
         }
-      }
+      });
     }
   }
 
-  // Only write mailing address if we can create relationships to it
-  if (hasMailingAddressRelationships) {
+  // Only write mailing address and relationships if we have at least one relationship
+  if (mailingAddressRelationships.length > 0) {
     const mailingAddressOutput = {
       ...appendSourceInfo(seed),
       latitude: null,
@@ -2137,40 +2140,27 @@ function main() {
     };
     writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-    // Create mailing address relationships with current owners
-    const key = `property_${parcelId}`;
-    const record = owners[key];
-    if (record && record.owners_by_date && record.owners_by_date['current']) {
-      const currentOwners = record.owners_by_date['current'];
-      let relCounter = 0;
-      currentOwners.forEach((owner) => {
-        if (owner.type === "person") {
-          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": "./mailing_address.json" },
-              }
-            );
+    // Write the relationships
+    mailingAddressRelationships.forEach((rel, idx) => {
+      const relCounter = idx + 1;
+      if (rel.type === 'person') {
+        writeJSON(
+          path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+          {
+            from: { "/": `./person_${rel.index}.json` },
+            to: { "/": "./mailing_address.json" },
           }
-        } else if (owner.type === "company") {
-          const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": "./mailing_address.json" }
-              }
-            );
+        );
+      } else if (rel.type === 'company') {
+        writeJSON(
+          path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+          {
+            from: { "/": `./company_${rel.index}.json` },
+            to: { "/": "./mailing_address.json" }
           }
-        }
-      });
-    }
+        );
+      }
+    });
   }  
 
 }
