@@ -2148,6 +2148,11 @@ async function main() {
     if (!currentOwnerRecord && currentOwnerName) {
       currentOwnerRecord = ensureOwnerRecordFromName(currentOwnerName);
       registerPropertyRole(currentOwnerRecord, "current");
+      // Add to currentOwnerRecordsList so relationships can be created
+      if (!currentOwnerRecordIds.has(currentOwnerRecord.id)) {
+        currentOwnerRecordIds.add(currentOwnerRecord.id);
+        currentOwnerRecordsList.push(currentOwnerRecord);
+      }
     } else if (currentOwnerRecord && !currentOwnerName) {
       currentOwnerName = currentOwnerRecord.displayName || null;
     }
