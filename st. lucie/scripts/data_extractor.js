@@ -110,6 +110,16 @@ function normalizePersonName(name) {
     parts.push(currentPart);
   }
 
+  // Remove any trailing separators from the parts array
+  while (parts.length > 0 && separators.test(parts[parts.length - 1])) {
+    parts.pop();
+  }
+
+  // Remove any leading separators from the parts array
+  while (parts.length > 0 && separators.test(parts[0])) {
+    parts.shift();
+  }
+
   // Normalize each part: capitalize first letter, lowercase the rest
   const normalized = parts.map((part, index) => {
     if (separators.test(part)) {
