@@ -343,14 +343,6 @@ function run() {
     window_glazing_type: null,
     window_operation_type: null,
     window_screen_material: null,
-    // Schema-required identifiers
-    request_identifier: propertyId || "unknown",
-    source_http_request: {
-      method: "GET",
-      url: propertyId
-        ? `https://www.pbcgov.org/papa/Asps/PropertyDetail.aspx?pcn=${propertyId}`
-        : "https://www.pbcgov.org/papa/",
-    },
   };
 
   const outObj = {};
