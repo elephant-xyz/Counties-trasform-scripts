@@ -1674,6 +1674,10 @@ function findCompanyIndexByName(name) {
   return null;
 }
 
+function isRomanNumeral(val) {
+  return /^[IVXLCDM]+$/i.test(val || "");
+}
+
 function titleCaseName(s) {
   if (!s) return s;
   const trimmed = s.trim();
