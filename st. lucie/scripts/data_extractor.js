@@ -48,7 +48,7 @@ function normalizeOwnerKey(name) {
 }
 
 const COMPANY_NAME_REGEX =
-  /\b(assn|association|bank|church|company|co\b|corp|corporation|enterprises|foundation|group|holdings|inc\b|investments|llc\b|llp\b|ltd\b|management|partners|partnership|properties|realty|solutions|trust)\b/i;
+  /\b(assn|association|bank|church|company|co\b|corp|corporation|enterprises|foundation|group|holdings|inc\b|investments|llc\b|llp\b|ltd\b|management|partners|partnership|properties|realty|solutions|trust|federal|mortgage|loan|loans|credit union|national|financial|insurance|services|agency|authority|commission|department|bureau|administration|government|municipal|state|county|city|district)\b/i;
 
 function guessOwnerType(name) {
   if (!name) return "person";
