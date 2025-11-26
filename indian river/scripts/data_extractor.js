@@ -1724,16 +1724,6 @@ function cleanNameForValidation(name) {
   // Remove extra spaces
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
-  // Remove leading special characters (cannot start with -, ', comma, period, or space)
-  while (/^[\-', .]/.test(cleaned)) {
-    cleaned = cleaned.slice(1);
-  }
-
-  // Remove trailing special characters (cannot end with -, ', comma, period, or space)
-  while (/[\-', .]$/.test(cleaned)) {
-    cleaned = cleaned.slice(0, cleaned.length - 1);
-  }
-
   if (!cleaned) return null;
   return cleaned;
 }
