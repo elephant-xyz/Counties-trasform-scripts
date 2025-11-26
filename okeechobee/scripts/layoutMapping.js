@@ -111,6 +111,14 @@ function main() {
   const parcelId = extractParcelId($);
   const { base, actual } = extractBaseAndActualSF($);
   const layouts = buildDefaultLayoutEntries(base, actual);
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: "Request identifier and parcel id don't match.",
+      path: "property.request_identifier",
+    };
+  }
 
   const outputDir = path.resolve("owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });

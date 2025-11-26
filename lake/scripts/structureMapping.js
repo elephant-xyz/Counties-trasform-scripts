@@ -5,38 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-const EXTERIOR_WALL_MATERIAL_ENUM = new Set([
-  "Brick",
-  "Natural Stone",
-  "Manufactured Stone",
-  "Stucco",
-  "Vinyl Siding",
-  "Wood Siding",
-  "Fiber Cement Siding",
-  "Metal Siding",
-  "Concrete Block",
-  "EIFS",
-  "Log",
-  "Adobe",
-  "Precast Concrete",
-  "Curtain Wall",
-]);
-const PRIMARY_FRAMING_MATERIAL_ENUM = new Set([
-  "Wood Frame",
-  "Steel Frame",
-  "Concrete Block",
-  "Poured Concrete",
-  "Masonry",
-  "Engineered Lumber",
-  "Post and Beam",
-  "Log Construction",
-]);
-
-function ensureEnum(value, allowedSet) {
-  if (!value) return null;
-  return allowedSet.has(value) ? value : null;
-}
-
 function readInputHtml() {
   const inputPath = path.join(process.cwd(), "input.html");
   return fs.readFileSync(inputPath, "utf8");
@@ -125,14 +93,6 @@ function main() {
 
   const exteriorPrimary = mapExteriorWallMaterialPrimary(extWallRaw);
   const primaryFrame = mapPrimaryFramingMaterial(extWallRaw);
-  const exteriorPrimarySanitized = ensureEnum(
-    exteriorPrimary,
-    EXTERIOR_WALL_MATERIAL_ENUM,
-  );
-  const primaryFrameSanitized = ensureEnum(
-    primaryFrame,
-    PRIMARY_FRAMING_MATERIAL_ENUM,
-  );
 
   // Build structure object adhering to schema with nulls for unknowns
   const structure = {
@@ -150,7 +110,7 @@ function main() {
     exterior_wall_insulation_type: "Unknown",
     exterior_wall_insulation_type_primary: "Unknown",
     exterior_wall_insulation_type_secondary: "Unknown",
-    exterior_wall_material_primary: exteriorPrimarySanitized,
+    exterior_wall_material_primary: exteriorPrimary || null,
     exterior_wall_material_secondary: null,
     finished_base_area: null,
     finished_basement_area: null,
@@ -176,7 +136,7 @@ function main() {
     number_of_stories: Number.isFinite(numberOfStories)
       ? numberOfStories
       : null,
-    primary_framing_material: primaryFrameSanitized,
+    primary_framing_material: primaryFrame || null,
     roof_age_years: null,
     roof_condition: null,
     roof_covering_material: null,

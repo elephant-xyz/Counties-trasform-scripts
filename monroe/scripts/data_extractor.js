@@ -644,7 +644,7 @@ function mapDeedType(instr) {
   return "Miscellaneous";
 }
 
-const PROPERTY_USE_CODE_DEFAULTS = {
+const PROPERTY_CLASS_DEFAULTS = {
   ownership_estate_type: "FeeSimple",
   build_status: "Improved",
   structure_form: null,
@@ -652,421 +652,542 @@ const PROPERTY_USE_CODE_DEFAULTS = {
   property_type: "Building",
 };
 
-const PROPERTY_USE_CODE_MAP = Object.create(null);
-const PROPERTY_USE_CODES = [
-  "00000","00100","00101","00102","00200","00201","00202","00300","00400","00600",
-  "00700","00800","00802","00900","01000","01100","01200","01300","01400","01600",
-  "01601","01700","01701","01800","01900","01901","02000","02100","02200","02300",
-  "02400","02500","02600","02700","02800","02900","03000","03200","03300","03400",
-  "03500","03600","03700","03800","03900","04000","04100","04200","04300","04500",
-  "04600","04700","04800","04801","04803","04900","05000","05100","05200","05300",
-  "05400","05500","05600","05700","05900","06000","06100","06200","06500","06600",
-  "06700","06800","06900","07000","07100","07200","07300","07400","07500","07600",
-  "07700","07800","07900","08000","08010","08011","08020","08030","08040","08050",
-  "08090","08200","08300","08400","08500","08600","08700","08701","08710","08800",
-  "08900","09000","09100","09110","09200","09300","09400","09500","09600","09601",
-  "09700","09800","09900"
-];
-
-function addPropertyUseMapping(codes, overrides) {
-  for (const code of codes) {
-    PROPERTY_USE_CODE_MAP[code] = {
-      ...PROPERTY_USE_CODE_DEFAULTS,
-      ...overrides,
-    };
-  }
+function normalizePropertyClassName(value) {
+  return value ? value.trim().replace(/\s+/g, " ").toUpperCase() : "";
 }
 
-addPropertyUseMapping(["00000"], {
-  build_status: "VacantLand",
-  property_usage_type: "Unknown",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["00100", "00101", "00102"], {
-  property_usage_type: "Residential",
-  structure_form: "SingleFamilyDetached",
-});
-
-addPropertyUseMapping(["00200", "00201", "00202"], {
-  property_usage_type: "Residential",
-  property_type: "ManufacturedHome",
-  structure_form: "ManufacturedHousing",
-});
-
-addPropertyUseMapping(["00300"], {
-  property_usage_type: "Residential",
-  structure_form: "MultiFamily5Plus",
-});
-
-addPropertyUseMapping(["00400"], {
-  ownership_estate_type: "Condominium",
-  property_usage_type: "Residential",
-  property_type: "Unit",
-  structure_form: "ApartmentUnit",
-});
-
-addPropertyUseMapping(["00600"], {
-  property_usage_type: "Retirement",
-  structure_form: "MultiFamily5Plus",
-});
-
-addPropertyUseMapping(["00700"], {
-  property_usage_type: "Residential",
-  structure_form: "SingleFamilyDetached",
-});
-
-addPropertyUseMapping(["00800", "00802"], {
-  property_usage_type: "Residential",
-  structure_form: "MultiFamilyLessThan10",
-});
-
-addPropertyUseMapping(["00900"], {
-  build_status: "VacantLand",
-  property_usage_type: "ResidentialCommonElementsAreas",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["01000"], {
-  build_status: "VacantLand",
-  property_usage_type: "Commercial",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["01100", "01200", "02500", "03000"], {
-  property_usage_type: "RetailStore",
-});
-
-addPropertyUseMapping(["01300"], {
-  property_usage_type: "DepartmentStore",
-});
-
-addPropertyUseMapping(["01400"], {
-  property_usage_type: "Supermarket",
-});
-
-addPropertyUseMapping(["01600", "01601"], {
-  property_usage_type: "ShoppingCenterCommunity",
-});
-
-addPropertyUseMapping(["01700", "01800", "01900"], {
-  property_usage_type: "OfficeBuilding",
-});
-
-addPropertyUseMapping(["01701"], {
-  property_usage_type: "GovernmentProperty",
-});
-
-addPropertyUseMapping(["01901"], {
-  property_usage_type: "MedicalOffice",
-});
-
-addPropertyUseMapping(["02000"], {
-  property_usage_type: "TransportationTerminal",
-});
-
-addPropertyUseMapping(["02800"], {
-  property_usage_type: "TransportationTerminal",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["02100", "02200"], {
-  property_usage_type: "Restaurant",
-});
-
-addPropertyUseMapping(["02300", "02400"], {
-  property_usage_type: "FinancialInstitution",
-});
-
-addPropertyUseMapping(["02600"], {
-  property_usage_type: "ServiceStation",
-});
-
-addPropertyUseMapping(["02700"], {
-  property_usage_type: "AutoSalesRepair",
-});
-
-addPropertyUseMapping(["02900"], {
-  property_usage_type: "WholesaleOutlet",
-});
-
-addPropertyUseMapping(["03200"], {
-  property_usage_type: "Theater",
-});
-
-addPropertyUseMapping(["03300", "03400", "03500"], {
-  property_usage_type: "Entertainment",
-});
-
-addPropertyUseMapping(["03600"], {
-  property_usage_type: "Recreational",
-});
-
-addPropertyUseMapping(["03700"], {
-  property_usage_type: "RaceTrack",
-});
-
-addPropertyUseMapping(["03800"], {
-  property_usage_type: "GolfCourse",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["03900"], {
-  property_usage_type: "Hotel",
-});
-
-addPropertyUseMapping(["04000"], {
-  build_status: "VacantLand",
-  property_usage_type: "Industrial",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["04100"], {
-  property_usage_type: "LightManufacturing",
-});
-
-addPropertyUseMapping(["04200"], {
-  property_usage_type: "HeavyManufacturing",
-});
-
-addPropertyUseMapping(["04300"], {
-  property_usage_type: "LumberYard",
-});
-
-addPropertyUseMapping(["04500"], {
-  property_usage_type: "Cannery",
-});
-
-addPropertyUseMapping(["04600"], {
-  property_usage_type: "PackingPlant",
-});
-
-addPropertyUseMapping(["04700"], {
-  property_usage_type: "MineralProcessing",
-});
-
-addPropertyUseMapping(["04800", "04801"], {
-  property_usage_type: "Warehouse",
-});
-
-addPropertyUseMapping(["04803"], {
-  property_usage_type: "Warehouse",
-});
-
-addPropertyUseMapping(["04900"], {
-  property_usage_type: "OpenStorage",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["05000"], {
-  property_usage_type: "Agricultural",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["05100"], {
-  property_usage_type: "DrylandCropland",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["05200"], {
-  property_usage_type: "CroplandClass2",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["05300"], {
-  property_usage_type: "CroplandClass3",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["05400", "05500", "05600", "05700", "05900"], {
-  property_usage_type: "TimberLand",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["06000", "06100", "06200", "06500"], {
-  property_usage_type: "GrazingLand",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["06600"], {
-  property_usage_type: "OrchardGroves",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["06700"], {
-  property_usage_type: "LivestockFacility",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["06800"], {
-  property_usage_type: "LivestockFacility",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["06900"], {
-  property_usage_type: "Ornamentals",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["07000"], {
-  build_status: "VacantLand",
-  property_usage_type: "GovernmentProperty",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["07100"], {
-  property_usage_type: "Church",
-});
-
-addPropertyUseMapping(["07200"], {
-  property_usage_type: "PrivateSchool",
-});
-
-addPropertyUseMapping(["07300"], {
-  property_usage_type: "PrivateHospital",
-});
-
-addPropertyUseMapping(["07400"], {
-  property_usage_type: "HomesForAged",
-  structure_form: "MultiFamily5Plus",
-});
-
-addPropertyUseMapping(["07500"], {
-  property_usage_type: "NonProfitCharity",
-});
-
-addPropertyUseMapping(["07600"], {
-  property_usage_type: "MortuaryCemetery",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["07700"], {
-  property_usage_type: "ClubsLodges",
-});
-
-addPropertyUseMapping(["07800"], {
-  property_usage_type: "SanitariumConvalescentHome",
-});
-
-addPropertyUseMapping(["07900"], {
-  property_usage_type: "CulturalOrganization",
-});
-
-addPropertyUseMapping(["08000"], {
-  build_status: "VacantLand",
-  property_usage_type: "Conservation",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["08010", "08011", "08020", "08030", "08040", "08050", "08090"], {
-  build_status: "VacantLand",
-  property_usage_type: "GovernmentProperty",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["08200"], {
-  property_usage_type: "ForestParkRecreation",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["08300"], {
-  property_usage_type: "PublicSchool",
-});
-
-addPropertyUseMapping(["08400"], {
-  property_usage_type: "GovernmentProperty",
-});
-
-addPropertyUseMapping(["08500"], {
-  property_usage_type: "PublicHospital",
-});
-
-addPropertyUseMapping(["08600"], {
-  property_usage_type: "GovernmentProperty",
-});
-
-addPropertyUseMapping(["08700", "08701"], {
-  property_usage_type: "GovernmentProperty",
-});
-
-addPropertyUseMapping(["08710"], {
-  property_usage_type: "Conservation",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["08800", "08900"], {
-  property_usage_type: "GovernmentProperty",
-});
-
-addPropertyUseMapping(["09000"], {
-  ownership_estate_type: "Leasehold",
-  property_usage_type: "Unknown",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09100"], {
-  property_usage_type: "Utility",
-});
-
-addPropertyUseMapping(["09110"], {
-  property_usage_type: "Railroad",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09200"], {
-  property_usage_type: "MineralProcessing",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09300"], {
-  ownership_estate_type: "SubsurfaceRights",
-  build_status: "VacantLand",
-  property_usage_type: "ReferenceParcel",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09400"], {
-  ownership_estate_type: "RightOfWay",
-  build_status: "VacantLand",
-  property_usage_type: "ReferenceParcel",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09500"], {
-  build_status: "VacantLand",
-  property_usage_type: "RiversLakes",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09600", "09601"], {
-  property_usage_type: "SewageDisposal",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09700"], {
-  property_usage_type: "Recreational",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09800"], {
-  build_status: "VacantLand",
-  property_usage_type: "ReferenceParcel",
-  property_type: "LandParcel",
-});
-
-addPropertyUseMapping(["09900"], {
-  build_status: "VacantLand",
-  property_usage_type: "TransitionalProperty",
-  property_type: "LandParcel",
-});
-
-(function validatePropertyUseMappings() {
-  const missing = PROPERTY_USE_CODES.filter(
-    (code) => !Object.prototype.hasOwnProperty.call(PROPERTY_USE_CODE_MAP, code),
-  );
+const PROPERTY_CLASS_OVERRIDES = {
+  "AFFORDABLE MULTI-FAMILY 10 OR MORE UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamily5Plus",
+  },
+  "AIRPORT, MARINAS, BUS TERM": {
+    property_usage_type: "TransportationTerminal",
+  },
+  "AIRPORT/STRIP": {
+    property_usage_type: "TransportationTerminal",
+    property_type: "LandParcel",
+  },
+  "APIARY/BEES": {
+    property_usage_type: "Agricultural",
+    property_type: "LandParcel",
+  },
+  "AUTO SALES": {
+    property_usage_type: "AutoSalesRepair",
+  },
+  "BLDG & LAND SEPARATE OWNERS": {
+    ownership_estate_type: "Leasehold",
+  },
+  "BOAT SLIPS/RACKS": {
+    property_usage_type: "TransportationTerminal",
+  },
+  "CAMPS": {
+    property_usage_type: "Recreational",
+    property_type: "LandParcel",
+  },
+  "CHURCHES": {
+    property_usage_type: "Church",
+  },
+  "CLUB": {
+    property_usage_type: "ClubsLodges",
+  },
+  "COLLEGES": {
+    property_usage_type: "PrivateSchool",
+  },
+  "COMMERCIAL": {
+    property_usage_type: "Commercial",
+  },
+  "COMPOUNDS": {
+    property_usage_type: "Residential",
+  },
+  "CONDO HEADER": {
+    build_status: "VacantLand",
+    property_usage_type: "ResidentialCommonElementsAreas",
+    property_type: "LandParcel",
+  },
+  "CONDOMINIUM": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Residential",
+    property_type: "Unit",
+    structure_form: "ApartmentUnit",
+  },
+  "CONVEL/REST HOMES": {
+    property_usage_type: "SanitariumConvalescentHome",
+    structure_form: "MultiFamily5Plus",
+  },
+  "COOPERATIVES": {
+    property_usage_type: "Residential",
+    property_type: "Unit",
+    structure_form: "ApartmentUnit",
+  },
+  "COUNTY": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "DEPT STORE": {
+    property_usage_type: "DepartmentStore",
+  },
+  "DRIVE-IN": {
+    property_usage_type: "Entertainment",
+  },
+  "FEDERAL": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "FINANCIAL": {
+    property_usage_type: "FinancialInstitution",
+  },
+  "FLORIST/GREENHOUSE": {
+    property_usage_type: "Ornamentals",
+    property_type: "LandParcel",
+  },
+  "FOOD PROC": {
+    property_usage_type: "Cannery",
+  },
+  "FOREST/PARK/REC AREA": {
+    build_status: "VacantLand",
+    property_usage_type: "ForestParkRecreation",
+    property_type: "LandParcel",
+  },
+  "GOLF COURSE": {
+    property_usage_type: "GolfCourse",
+    property_type: "LandParcel",
+  },
+  "HEAVY MANUFACTURING": {
+    property_usage_type: "HeavyManufacturing",
+  },
+  "HOMES FOR THE AGED": {
+    property_usage_type: "HomesForAged",
+    structure_form: "MultiFamily5Plus",
+  },
+  "HOSPITAL": {
+    property_usage_type: "PublicHospital",
+  },
+  "HOTEL - B&B (11+ ROOMS)": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - FLAG": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - GUEST HOUSE (10 ROOMS OR LESS)": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - LUXURY": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - MOTEL": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL - PRIVATE": {
+    property_usage_type: "Hotel",
+  },
+  "HOTEL CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Hotel",
+    property_type: "Unit",
+  },
+  "LEASEHOLD INTEREST": {
+    ownership_estate_type: "Leasehold",
+    property_usage_type: "Unknown",
+    property_type: "LandParcel",
+  },
+  "LIGHT MANUFACTURING": {
+    property_usage_type: "LightManufacturing",
+  },
+  "LUMBER YARD": {
+    property_usage_type: "LumberYard",
+  },
+  "MILITARY": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "MINERAL PR": {
+    property_usage_type: "MineralProcessing",
+    property_type: "LandParcel",
+  },
+  "MINING": {
+    property_usage_type: "MineralProcessing",
+    property_type: "LandParcel",
+  },
+  "MIXED USE CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Residential",
+    property_type: "Unit",
+  },
+  "MIXED USE RETAIL/AFFORDABLE": {
+    property_usage_type: "ShoppingCenterCommunity",
+  },
+  "MOBILE HOME SUB": {
+    property_usage_type: "Residential",
+    property_type: "LandParcel",
+  },
+  "MOBILE HOME/TRAILER": {
+    property_usage_type: "Residential",
+    property_type: "ManufacturedHome",
+    structure_form: "ManufacturedHousing",
+  },
+  "MORTUARY": {
+    property_usage_type: "MortuaryCemetery",
+    property_type: "LandParcel",
+  },
+  "MULTI FAMILY 10 OR MORE UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamily5Plus",
+  },
+  "MULTI FAMILY LESS THAN 10 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 5 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 6 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 7 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 8 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY 9 UNITS": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY DUPLEX": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY FOURPLEX": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTI-FAMILY TRIPLEX": {
+    property_usage_type: "Residential",
+    structure_form: "MultiFamilyLessThan10",
+  },
+  "MULTISTORY": {
+    property_usage_type: "OfficeBuilding",
+  },
+  "MUNICIPAL": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "NIGHTCLUB": {
+    property_usage_type: "Entertainment",
+  },
+  "NON AGRICULTURE": {
+    build_status: "VacantLand",
+    property_usage_type: "TransitionalProperty",
+    property_type: "LandParcel",
+  },
+  "NOTE": {
+    build_status: "VacantLand",
+    property_usage_type: "ReferenceParcel",
+    property_type: "LandParcel",
+  },
+  "OFFICE CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "OfficeBuilding",
+    property_type: "Unit",
+  },
+  "ONE STORY OFFICE": {
+    property_usage_type: "OfficeBuilding",
+  },
+  "OPEN STORAGE": {
+    property_usage_type: "OpenStorage",
+    property_type: "LandParcel",
+  },
+  "PACKING": {
+    property_usage_type: "PackingPlant",
+  },
+  "PARKING LOT": {
+    property_usage_type: "Commercial",
+    property_type: "LandParcel",
+  },
+  "PRIVATE HOSPITAL": {
+    property_usage_type: "PrivateHospital",
+  },
+  "PRIVATE SCHOOL": {
+    property_usage_type: "PrivateSchool",
+  },
+  "PROF. BLDG": {
+    property_usage_type: "OfficeBuilding",
+  },
+  "PROFESSIONAL BLDG CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "OfficeBuilding",
+    property_type: "Unit",
+  },
+  "PUBLIC SCHOOLS": {
+    property_usage_type: "PublicSchool",
+  },
+  "RACE TRACK": {
+    property_usage_type: "RaceTrack",
+  },
+  "RES WATERFRONT": {
+    property_usage_type: "Residential",
+    structure_form: "SingleFamilyDetached",
+  },
+  "RESIDENTIAL COMMON ELEMENTS": {
+    build_status: "VacantLand",
+    property_usage_type: "ResidentialCommonElementsAreas",
+    property_type: "LandParcel",
+  },
+  "RESTAURANT": {
+    property_usage_type: "Restaurant",
+  },
+  "RESTAURANT CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Restaurant",
+    property_type: "Unit",
+  },
+  "RETAIL-BIG BOX LARGE->20K SF": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-BIG BOX-10K SF TO 20K SF": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-BIG BOX-SMALL-<10K SF": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "RetailStore",
+    property_type: "Unit",
+  },
+  "RETAIL-CONVENIENCE STORE": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-DRUG STORE": {
+    property_usage_type: "RetailStore",
+  },
+  "RETAIL-MULTI TENANT": {
+    property_usage_type: "ShoppingCenterCommunity",
+  },
+  "RETAIL-SINGLE TENANT": {
+    property_usage_type: "RetailStore",
+  },
+  "RIGHT OF WAY": {
+    ownership_estate_type: "RightOfWay",
+    build_status: "VacantLand",
+    property_usage_type: "ReferenceParcel",
+    property_type: "LandParcel",
+  },
+  "RV PARK": {
+    property_usage_type: "Recreational",
+    property_type: "LandParcel",
+  },
+  "SERVICE SHOPS": {
+    property_usage_type: "Commercial",
+  },
+  "SERVICE STATION": {
+    property_usage_type: "ServiceStation",
+  },
+  "SHOPPING CENTER": {
+    property_usage_type: "ShoppingCenterCommunity",
+  },
+  "SINGLE FAMILY RESID": {
+    property_usage_type: "Residential",
+    structure_form: "SingleFamilyDetached",
+  },
+  "STATE": {
+    property_usage_type: "GovernmentProperty",
+  },
+  "STORE COMBO": {
+    property_usage_type: "RetailStore",
+  },
+  "SUBMERGED": {
+    build_status: "VacantLand",
+    property_usage_type: "RiversLakes",
+    property_type: "LandParcel",
+  },
+  "SUBSURFACE RIGHTS": {
+    ownership_estate_type: "SubsurfaceRights",
+    build_status: "VacantLand",
+    property_usage_type: "ReferenceParcel",
+    property_type: "LandParcel",
+  },
+  "SUPER MARKET": {
+    property_usage_type: "Supermarket",
+  },
+  "THEATRE": {
+    property_usage_type: "Theater",
+  },
+  "TIMESHARE": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Residential",
+    property_type: "Unit",
+    structure_form: "ApartmentUnit",
+  },
+  "TOURIST ATTRACTION": {
+    property_usage_type: "Entertainment",
+  },
+  "UTILITY": {
+    property_usage_type: "Utility",
+  },
+  "VACANT EXEMPT": {
+    build_status: "VacantLand",
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+  },
+  "VACANT INDUSTRIAL": {
+    build_status: "VacantLand",
+    property_usage_type: "Industrial",
+    property_type: "LandParcel",
+  },
+  "VACANT INSTITUTIONAL": {
+    build_status: "VacantLand",
+    property_usage_type: "GovernmentProperty",
+    property_type: "LandParcel",
+  },
+  "VACANT RES": {
+    build_status: "VacantLand",
+    property_usage_type: "Residential",
+    property_type: "LandParcel",
+  },
+  "WAREHOUSE": {
+    property_usage_type: "Warehouse",
+  },
+  "WAREHOUSE CONDO": {
+    ownership_estate_type: "Condominium",
+    property_usage_type: "Warehouse",
+    property_type: "Unit",
+  },
+  "WASTELAND": {
+    build_status: "VacantLand",
+    property_usage_type: "Conservation",
+    property_type: "LandParcel",
+  },
+};
+
+const PROPERTY_CLASS_NAMES = [
+  "AFFORDABLE MULTI-FAMILY 10 OR MORE UNITS",
+  "AIRPORT, MARINAS, BUS TERM",
+  "AIRPORT/STRIP",
+  "APIARY/BEES",
+  "AUTO SALES",
+  "BLDG & LAND SEPARATE OWNERS",
+  "BOAT SLIPS/RACKS",
+  "CAMPS",
+  "CHURCHES",
+  "CLUB",
+  "COLLEGES",
+  "COMMERCIAL",
+  "COMPOUNDS",
+  "CONDO HEADER",
+  "CONDOMINIUM",
+  "CONVEL/REST HOMES",
+  "COOPERATIVES",
+  "COUNTY",
+  "DEPT STORE",
+  "DRIVE-IN",
+  "FEDERAL",
+  "FINANCIAL",
+  "FLORIST/GREENHOUSE",
+  "FOOD PROC",
+  "FOREST/PARK/REC AREA",
+  "GOLF COURSE",
+  "HEAVY MANUFACTURING",
+  "HOMES FOR THE AGED",
+  "HOSPITAL",
+  "HOTEL - B&B (11+ ROOMS)",
+  "HOTEL - FLAG",
+  "HOTEL - GUEST HOUSE (10 ROOMS OR LESS)",
+  "HOTEL - LUXURY",
+  "HOTEL - MOTEL",
+  "HOTEL - PRIVATE",
+  "HOTEL CONDO",
+  "LEASEHOLD INTEREST",
+  "LIGHT MANUFACTURING",
+  "LUMBER YARD",
+  "MILITARY",
+  "MINERAL PR",
+  "MINING",
+  "MIXED USE CONDO",
+  "MIXED USE RETAIL/AFFORDABLE",
+  "MOBILE HOME SUB",
+  "MOBILE HOME/TRAILER",
+  "MORTUARY",
+  "MULTI FAMILY 10 OR MORE UNITS",
+  "MULTI FAMILY LESS THAN 10 UNITS",
+  "MULTI-FAMILY 5 UNITS",
+  "MULTI-FAMILY 6 UNITS",
+  "MULTI-FAMILY 7 UNITS",
+  "MULTI-FAMILY 8 UNITS",
+  "MULTI-FAMILY 9 UNITS",
+  "MULTI-FAMILY DUPLEX",
+  "MULTI-FAMILY FOURPLEX",
+  "MULTI-FAMILY TRIPLEX",
+  "MULTISTORY",
+  "MUNICIPAL",
+  "NIGHTCLUB",
+  "NON AGRICULTURE",
+  "NOTE",
+  "OFFICE CONDO",
+  "ONE STORY OFFICE",
+  "OPEN STORAGE",
+  "PACKING",
+  "PARKING LOT",
+  "PRIVATE HOSPITAL",
+  "PRIVATE SCHOOL",
+  "PROF. BLDG",
+  "PROFESSIONAL BLDG CONDO",
+  "PUBLIC SCHOOLS",
+  "RACE TRACK",
+  "RES WATERFRONT",
+  "RESIDENTIAL COMMON ELEMENTS",
+  "RESTAURANT",
+  "RESTAURANT CONDO",
+  "RETAIL-BIG BOX LARGE->20K SF",
+  "RETAIL-BIG BOX-10K SF TO 20K SF",
+  "RETAIL-BIG BOX-SMALL-<10K SF",
+  "RETAIL-CONDO",
+  "RETAIL-CONVENIENCE STORE",
+  "RETAIL-DRUG STORE",
+  "RETAIL-MULTI TENANT",
+  "RETAIL-SINGLE TENANT",
+  "RIGHT OF WAY",
+  "RV PARK",
+  "SERVICE SHOPS",
+  "SERVICE STATION",
+  "SHOPPING CENTER",
+  "SINGLE FAMILY RESID",
+  "STATE",
+  "STORE COMBO",
+  "SUBMERGED",
+  "SUBSURFACE RIGHTS",
+  "SUPER MARKET",
+  "THEATRE",
+  "TIMESHARE",
+  "TOURIST ATTRACTION",
+  "UTILITY",
+  "VACANT EXEMPT",
+  "VACANT INDUSTRIAL",
+  "VACANT INSTITUTIONAL",
+  "VACANT RES",
+  "WAREHOUSE",
+  "WAREHOUSE CONDO",
+  "WASTELAND",
+];
+
+const PROPERTY_CLASS_MAP = Object.create(null);
+for (const [name, overrides] of Object.entries(PROPERTY_CLASS_OVERRIDES)) {
+  const key = normalizePropertyClassName(name);
+  PROPERTY_CLASS_MAP[key] = {
+    ...PROPERTY_CLASS_DEFAULTS,
+    ...overrides,
+  };
+}
+
+(function validatePropertyClassMappings() {
+  const missing = PROPERTY_CLASS_NAMES.filter((name) => {
+    const key = normalizePropertyClassName(name);
+    return !Object.prototype.hasOwnProperty.call(PROPERTY_CLASS_MAP, key);
+  });
   if (missing.length) {
     throw new Error(
-      `Missing property use code mappings for: ${missing.join(", ")}`,
+      `Missing property class mappings for: ${missing.join(", ")}`,
     );
   }
 })();
@@ -1282,9 +1403,10 @@ function parsePropertyUseCode($) {
 }
 
 function mapPropertyUseCode(rawValue) {
-  const defaults = PROPERTY_USE_CODE_DEFAULTS;
+  const defaults = PROPERTY_CLASS_DEFAULTS;
   if (!rawValue) {
     return {
+      class_name: null,
       code: null,
       description: null,
       ...defaults,
@@ -1296,9 +1418,12 @@ function mapPropertyUseCode(rawValue) {
   const description = rawValue
     .replace(/\(\d{4,5}\)\s*$/, "")
     .trim() || null;
+  const normalizedDescription = normalizePropertyClassName(description);
   const mapping =
-    (code && PROPERTY_USE_CODE_MAP[code]) || { ...defaults };
+    (normalizedDescription && PROPERTY_CLASS_MAP[normalizedDescription]) ||
+    { ...defaults };
   return {
+    class_name: description,
     code,
     description,
     ...mapping,
@@ -2050,9 +2175,7 @@ function main() {
                    binfo.type === "TRI/QUADRAPLEX" ? 3 : 1,
   historic_designation: false,
   source_http_request: clone(defaultSourceHttpRequest),
-  request_identifier: requestIdentifier,
-  // ownership_transfer_date: null,
-  // purchase_price_amount: null,
+  request_identifier: requestIdentifier
 };
   if (property.property_type === "LandParcel") {
     property.number_of_units = null;
@@ -3096,7 +3219,7 @@ const structureItems = (() => {
     county_name:
       (unaddr &&
         (unaddr.county_jurisdiction || unaddr.county_name || unaddr.county)) ||
-      "Alachua",
+      "Monroe",
     country_code: "US",
   };
   if (!address.unnormalized_address && addrFromHTML.addrLine1) {
