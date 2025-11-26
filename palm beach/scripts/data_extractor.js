@@ -52886,10 +52886,126 @@ function finalizeAddressOutputs() {
   enforceMinimalRawAddressFile(addressPath);
 }
 
+function emitMinimalRawAddressOverride() {
+  const dataDir = path.join("data");
+  ensureDir(dataDir);
+  const addressPath = path.join(dataDir, "address.json");
+  const existingPayload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+  const seedSource = readJSONIfExists("property_seed.json") || {};
+
+  const joinedLines = Array.isArray(unnormalizedSource.lines)
+    ? unnormalizedSource.lines
+        .map((line) => (typeof line === "string" ? line.trim() : ""))
+        .filter((line) => line && line.length)
+        .join(", ")
+    : null;
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  let normalizedOutput = null;
+  if (
+    existingPayload &&
+    typeof hasNormalizedCountyCoverage === "function" &&
+    typeof buildNormalizedAddressOutputForSchema === "function"
+  ) {
+    const normalizedProbe = { ...existingPayload };
+    if (hasNormalizedCountyCoverage(normalizedProbe)) {
+      normalizedOutput =
+        buildNormalizedAddressOutputForSchema({ ...normalizedProbe }) || null;
+    }
+  }
+
+  if (normalizedOutput) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    if (requestIdentifier !== null && requestIdentifier !== undefined) {
+      normalizedOutput.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "request_identifier",
+      )
+    ) {
+      delete normalizedOutput.request_identifier;
+    }
+    if (sourceHttpRequest) {
+      normalizedOutput.source_http_request = deepClone(sourceHttpRequest);
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "source_http_request",
+      )
+    ) {
+      delete normalizedOutput.source_http_request;
+    }
+    writeJSON(addressPath, normalizedOutput);
+    return;
+  }
+
+  const rawCandidates = flattenCandidateValues(
+    existingPayload && existingPayload.unnormalized_address,
+    existingPayload && existingPayload.full_address,
+    existingPayload && existingPayload.address,
+    unnormalizedSource && unnormalizedSource.unnormalized_address,
+    unnormalizedSource && unnormalizedSource.full_address,
+    unnormalizedSource && unnormalizedSource.site_address,
+    unnormalizedSource && unnormalizedSource.address,
+    joinedLines,
+    seedSource && seedSource.unnormalized_address,
+    seedSource && seedSource.full_address,
+    seedSource && seedSource.situs_address,
+  );
+
+  const resolvedRaw = safeNullIfEmpty(
+    resolveFirstNonEmptyString(rawCandidates),
+  );
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const minimalRawPayload = {
+    unnormalized_address: resolvedRaw,
+  };
+
+  if (requestIdentifier !== null && requestIdentifier !== undefined) {
+    minimalRawPayload.request_identifier = requestIdentifier;
+  }
+
+  if (sourceHttpRequest) {
+    minimalRawPayload.source_http_request = deepClone(sourceHttpRequest);
+  } else if (
+    Object.prototype.hasOwnProperty.call(minimalRawPayload, "source_http_request")
+  ) {
+    delete minimalRawPayload.source_http_request;
+  }
+
+  writeJSON(addressPath, minimalRawPayload);
+}
+
 async function run() {
   await main();
   try {
     finalizeAddressOutputs();
+    emitMinimalRawAddressOverride();
   } catch (error) {
     console.error("Failed to emit canonical county outputs:", error);
     if (!process.exitCode) {
