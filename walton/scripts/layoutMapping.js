@@ -10,8 +10,7 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR =
-  "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Information";
 
 function textTrim(s) {
@@ -72,9 +71,9 @@ function collectBuildings($) {
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) {
-        const combined_map = { ...buildings[buildingCount], ...map };
+        const combined_map = {...buildings[buildingCount], ...map};
         buildings[buildingCount++] = combined_map;
-      }
+      };
     });
   return buildings;
 }
