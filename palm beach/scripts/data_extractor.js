@@ -4,6 +4,7 @@ const cheerio = require("cheerio");
 const { fetch } = require("undici");
 
 const originalWriteFileSync = fs.writeFileSync;
+let addressWriteLocked = false;
 
 function isAddressJsonPath(targetPath) {
   if (typeof targetPath !== "string") return false;
@@ -169,6 +170,9 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
   }
 
   if (isAddressJsonPath(targetPath)) {
+    if (addressWriteLocked) {
+      return;
+    }
     try {
       let preparedPayload = data;
       if (typeof data === "string" || Buffer.isBuffer(data)) {
@@ -7750,6 +7754,137 @@ function hasStrictCountyAddressCoverage(address) {
   return true;
 }
 
+function hasNormalizedCoreFieldCoverage(address) {
+  if (!address || typeof address !== "object") {
+    return false;
+  }
+
+  const surfaced =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...address })
+      : { ...address };
+
+  for (const field of COUNTY_NORMALIZED_CORE_FIELDS) {
+    const value = surfaced[field];
+    if (!hasMeaningfulAddressValue(value)) {
+      return false;
+    }
+    if (typeof value === "string") {
+      surfaced[field] = value.trim();
+    }
+  }
+
+  for (const coordinateField of ADDRESS_COORDINATE_FIELDS) {
+    const numeric = parseCoordinate(surfaced[coordinateField]);
+    if (!Number.isFinite(numeric)) {
+      return false;
+    }
+    surfaced[coordinateField] = numeric;
+  }
+
+  if (!surfaced.postal_code) {
+    surfaced.plus_four_postal_code = null;
+  }
+
+  if (surfaced.state_code && !surfaced.country_code) {
+    surfaced.country_code = "US";
+  }
+
+  Object.assign(address, surfaced);
+  return true;
+}
+
+function writeAddressPayloadDirect(addressPath, payload) {
+  if (!addressPath || !payload || typeof payload !== "object") {
+    return;
+  }
+  try {
+    const serialized = JSON.stringify(payload, null, 2);
+    originalWriteFileSync.call(fs, addressPath, serialized);
+  } catch {
+    // Ignore direct-write failures so upstream callers can continue.
+  }
+}
+
+function emitFinalNormalizedOrRawAddress(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const sourcePayload = readJSONIfExists(addressPath) || {};
+  if (!sourcePayload || typeof sourcePayload !== "object") {
+    return;
+  }
+
+  const working = { ...sourcePayload };
+  const requestIdentifier = Object.prototype.hasOwnProperty.call(
+    working,
+    "request_identifier",
+  )
+    ? safeNullIfEmpty(working.request_identifier)
+    : undefined;
+  const preparedSource =
+    Object.prototype.hasOwnProperty.call(working, "source_http_request") &&
+    working.source_http_request
+      ? prepareSourceHttpRequest(working.source_http_request)
+      : null;
+
+  if (Object.prototype.hasOwnProperty.call(working, "request_identifier")) {
+    delete working.request_identifier;
+  }
+  if (Object.prototype.hasOwnProperty.call(working, "source_http_request")) {
+    delete working.source_http_request;
+  }
+
+  const normalizedCandidate =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...working })
+      : { ...working };
+
+  const hasNormalizedCoverage = hasNormalizedCoreFieldCoverage(normalizedCandidate);
+  if (hasNormalizedCoverage) {
+    const normalizedOutput = {
+      ...normalizedCandidate,
+    };
+    if (Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    if (requestIdentifier !== undefined) {
+      normalizedOutput.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+    if (preparedSource) {
+      normalizedOutput.source_http_request = deepClone(preparedSource);
+    } else if (
+      Object.prototype.hasOwnProperty.call(normalizedOutput, "source_http_request")
+    ) {
+      delete normalizedOutput.source_http_request;
+    }
+    writeAddressPayloadDirect(addressPath, normalizedOutput);
+    addressWriteLocked = true;
+    return;
+  }
+
+  const trimmedRaw =
+    typeof sourcePayload.unnormalized_address === "string"
+      ? sourcePayload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    return;
+  }
+
+  const rawOutput = { unnormalized_address: trimmedRaw };
+  if (requestIdentifier !== undefined) {
+    rawOutput.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+  if (preparedSource) {
+    rawOutput.source_http_request = deepClone(preparedSource);
+  }
+  writeAddressPayloadDirect(addressPath, rawOutput);
+  addressWriteLocked = true;
+}
+
 function buildStrictRawOnlyAddress(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -11541,7 +11676,6 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "county_name",
   "latitude",
   "longitude",
-  ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
 ];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -54339,6 +54473,16 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    emitFinalNormalizedOrRawAddress(addressPath);
+  } catch (error) {
+    console.error("Failed to finalize normalized county address branch:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
@@ -55800,9 +55944,20 @@ async function run() {
       process.exitCode = 1;
     }
   }
+
 }
 
 run().catch((error) => {
   console.error("Fatal error during data extraction:", error);
   process.exitCode = 1;
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    emitFinalNormalizedOrRawAddress(addressPath);
+  } catch (error) {
+    console.error("Failed to finalize normalized county address at exit:", error);
+  }
 });
