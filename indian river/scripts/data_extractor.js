@@ -1707,32 +1707,87 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   // Filter ownersByDate to only include valid ISO date entries (exclude unknown_prior_sale_* entries)
   const validDateEntries = Object.entries(ownersByDate).filter(([k]) => isISODateKey(k));
 
-  // Build unique person map (only from valid ISO date entries)
+  // Step 1: Determine which persons will be referenced
+  // Collect all sale dates that have sales_history records
+  const saleDates = new Set();
+  sales.forEach((s) => {
+    const saleDateISO = parseDateToISO(s.saleDate);
+    if (saleDateISO) saleDates.add(saleDateISO);
+  });
+
+  // Collect persons that will be referenced (on sale dates or current owners with mailing addresses)
+  const referencedPersonKeys = new Set();
+  const mailingAddresses = record.owner_mailing_addresses || [];
+  const hasMailingAddresses = mailingAddresses && mailingAddresses.length > 0;
+
+  // Add persons from sale dates
+  validDateEntries.forEach(([dateKey, arr]) => {
+    if (saleDates.has(dateKey)) {
+      (arr || []).forEach((o) => {
+        if (o.type === "person") {
+          const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+          referencedPersonKeys.add(k);
+        }
+      });
+    }
+  });
+
+  // Add current owners if there are mailing addresses
+  if (hasMailingAddresses && mailingAddresses.some(info => info.type === "person")) {
+    mailingAddresses.forEach((info) => {
+      if (info.type === "person") {
+        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
+        referencedPersonKeys.add(k);
+      }
+    });
+  }
+
+  // Step 2: Build unique person map (only for referenced persons)
   const personMap = new Map();
   validDateEntries.forEach(([, arr]) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k)) {
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-            prefix_name: o.prefix_name,
-            suffix_name: o.suffix_name,
-          });
-        } else {
-          const existing = personMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
-          if (!existing.prefix_name && o.prefix_name)
-            existing.prefix_name = o.prefix_name;
-          if (!existing.suffix_name && o.suffix_name)
-            existing.suffix_name = o.suffix_name;
+        if (referencedPersonKeys.has(k)) {
+          if (!personMap.has(k)) {
+            personMap.set(k, {
+              first_name: o.first_name,
+              middle_name: o.middle_name,
+              last_name: o.last_name,
+              prefix_name: o.prefix_name,
+              suffix_name: o.suffix_name,
+            });
+          } else {
+            const existing = personMap.get(k);
+            if (!existing.middle_name && o.middle_name)
+              existing.middle_name = o.middle_name;
+            if (!existing.prefix_name && o.prefix_name)
+              existing.prefix_name = o.prefix_name;
+            if (!existing.suffix_name && o.suffix_name)
+              existing.suffix_name = o.suffix_name;
+          }
         }
       }
     });
   });
+
+  // Also add mailing address persons if they're not already in the map
+  if (hasMailingAddresses) {
+    mailingAddresses.forEach((info) => {
+      if (info.type === "person") {
+        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
+        if (referencedPersonKeys.has(k) && !personMap.has(k)) {
+          personMap.set(k, {
+            first_name: info.first_name,
+            middle_name: info.middle_name,
+            last_name: info.last_name,
+            prefix_name: info.prefix_name,
+            suffix_name: info.suffix_name,
+          });
+        }
+      }
+    });
+  }
 
   // Create person entities with validation
   people = Array.from(personMap.values()).map((p) => ({
@@ -1751,16 +1806,30 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
 
-  // Create company entities (only from valid ISO date entries)
-  const companyNames = new Set();
-  validDateEntries.forEach(([, arr]) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
-    });
+  // Create company entities (only from valid ISO date entries that will be referenced)
+  const referencedCompanyNames = new Set();
+
+  // Add companies from sale dates
+  validDateEntries.forEach(([dateKey, arr]) => {
+    if (saleDates.has(dateKey)) {
+      (arr || []).forEach((o) => {
+        if (o.type === "company" && (o.name || "").trim()) {
+          referencedCompanyNames.add((o.name || "").trim());
+        }
+      });
+    }
   });
 
-  companies = Array.from(companyNames).map((n) => ({
+  // Add companies from mailing addresses
+  if (hasMailingAddresses) {
+    mailingAddresses.forEach((info) => {
+      if (info.type === "company" && (info.name || "").trim()) {
+        referencedCompanyNames.add((info.name || "").trim());
+      }
+    });
+  }
+
+  companies = Array.from(referencedCompanyNames).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
@@ -1813,7 +1882,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   });
 
   // Write mailing addresses for current owners
-  const mailingAddresses = record.owner_mailing_addresses || [];
   writeMailingAddresses(parcelId, mailingAddresses, propertySeed?.source_http_request);
 }
 
