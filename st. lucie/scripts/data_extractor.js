@@ -2367,8 +2367,16 @@ async function main() {
         lastName = normalizePersonName(lastName);
 
         // Final validation after normalization
-        if (!lastName || lastName.trim().length === 0) {
+        // Ensure lastName is a non-null, non-empty string as required by schema
+        if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
           console.warn(`Skipping person record ${record.id} - last_name normalization failed`);
+          referencedOwnerIds.delete(record.id); // Remove from referenced set
+          continue;
+        }
+
+        // Additional safety check - ensure firstName is also valid
+        if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
+          console.warn(`Skipping person record ${record.id} - first_name validation failed after normalization`);
           referencedOwnerIds.delete(record.id); // Remove from referenced set
           continue;
         }
