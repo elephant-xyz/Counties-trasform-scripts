@@ -11800,13 +11800,17 @@ const NORMALIZED_ADDRESS_STRONG_FIELDS = [
 
 const COUNTY_STRICT_NORMALIZED_FIELDS = [
   ...COUNTY_ADDRESS_ENSURE_FIELDS,
+  ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
 ];
 
 const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [
   ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
 ];
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...COUNTY_ADDRESS_ENSURE_FIELDS];
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [
+  ...COUNTY_ADDRESS_ENSURE_FIELDS,
+  ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
+];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -38830,20 +38834,24 @@ function buildCountyNormalizedOneOfPayload(source, options = {}) {
     normalizedPayload.country_code = defaultCountryCode;
   }
 
-  for (const field of COUNTY_ADDRESS_ENSURE_FIELDS) {
+  for (const field of COUNTY_NORMALIZED_REQUIRED_FIELDS) {
     const value = normalizedPayload[field];
-    if (
-      value === undefined ||
-      value === null ||
-      (typeof value === "string" && !value.trim().length)
-    ) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+      normalizedPayload[field] = value;
+      continue;
+    }
+    if (!hasMeaningfulAddressValue(value)) {
       return null;
     }
-    if (
-      ADDRESS_COORDINATE_FIELDS.includes(field) &&
-      !Number.isFinite(value)
-    ) {
-      return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        return null;
+      }
+      normalizedPayload[field] = trimmed;
     }
   }
 
