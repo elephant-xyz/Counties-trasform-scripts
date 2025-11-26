@@ -270,6 +270,7 @@ function hasCompanyIndicators(tokens, rawString) {
   const lastToken = tokens[tokens.length - 1].toUpperCase();
   if (COMPANY_SUFFIXES.includes(lastToken)) return true;
   if (rawString && /[,]/.test(rawString)) return true;
+  if (rawString && /[\/]/.test(rawString)) return true;
   return false;
 }
 
