@@ -1760,14 +1760,6 @@ function createGeometryClass(geometryInstances) {
   }
 }
 
-function writeParcel(parcelId) {
-  const parcel = {
-    parcel_identifier: parcelId || "",
-    request_identifier: parcelId || null,
-  };
-  writeJSON(path.join("data", "parcel.json"), parcel);
-}
-
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -1781,7 +1773,7 @@ function main() {
   const layoutData = readJSON(path.join("owners", "layout_data.json"));
   const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
   const structureData = readJSON(path.join("owners", "structure_data.json"));
-  const key = `property_${parcelId}`;
+  const key = `property_${parcelId}`;  
   try {
     const seedCsvPath = path.join(".", "input.csv");
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
@@ -1806,7 +1798,6 @@ function main() {
     util = key && utilitiesData[key] ? utilitiesData[key] : null;
   }
 
-  writeParcel(parcelId);
   writeProperty($, parcelId);
   const sales = extractSales($);
   writeSalesDeedsFilesAndRelationships($);
