@@ -157,7 +157,22 @@ function parsePersonNameTokens(name) {
     };
   }
 
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  let tokens = cleaned.split(/\s+/).filter(Boolean);
+
+  // Merge tokens that start with hyphens with the previous token
+  // This handles cases like "Spatafora -King Nicole R" where "-King" should be "Spatafora-King"
+  const mergedTokens = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.startsWith('-') && mergedTokens.length > 0) {
+      // Merge with previous token
+      mergedTokens[mergedTokens.length - 1] += token;
+    } else {
+      mergedTokens.push(token);
+    }
+  }
+  tokens = mergedTokens;
+
   if (tokens.length === 0) {
     return { first_name: null, middle_name: null, last_name: null };
   }
