@@ -1080,7 +1080,7 @@ function createStructureFiles(seed,parcelIdentifier) {
       const structureIndex = struct.structure_index || idx + 1;
 
       // Find the correct building layout file index
-      let buildingLayoutIndex = buildingNumber;
+      let buildingLayoutIndex = null;
       // console.log("BUILDING_NUMBER",buildingNumber)
       if (layoutsData && parcelIdentifier) {
         // console.log(layoutsData)
@@ -1096,14 +1096,17 @@ function createStructureFiles(seed,parcelIdentifier) {
         }
       }
 
-      const relationship = {
-        from: { "/": `./layout_${buildingLayoutIndex}.json` },
-        to: { "/": `./structure_${structureIndex}.json` }
-      };
-      writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-        relationship
-      );
+      // Only create relationship if building layout was found
+      if (buildingLayoutIndex !== null) {
+        const relationship = {
+          from: { "/": `./layout_${buildingLayoutIndex}.json` },
+          to: { "/": `./structure_${structureIndex}.json` }
+        };
+        writeJSON(
+          path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+          relationship
+        );
+      }
     });
   }
 
@@ -1166,7 +1169,7 @@ function createUtilitiesFiles(seed,parcelIdentifier){
       const utilityIndex = util.utility_index || idx + 1;
 
       // Find the correct building layout file index
-      let buildingLayoutIndex = buildingNumber;
+      let buildingLayoutIndex = null;
       if (layoutsData && parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
@@ -1178,14 +1181,17 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         }
       }
 
-      const relationship = {
-        from: { "/": `./layout_${buildingLayoutIndex}.json` },
-        to: { "/": `./utility_${utilityIndex}.json` }
-      };
-      writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-        relationship
-      );
+      // Only create relationship if building layout was found
+      if (buildingLayoutIndex !== null) {
+        const relationship = {
+          from: { "/": `./layout_${buildingLayoutIndex}.json` },
+          to: { "/": `./utility_${utilityIndex}.json` }
+        };
+        writeJSON(
+          path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+          relationship
+        );
+      }
     });
   }
 
