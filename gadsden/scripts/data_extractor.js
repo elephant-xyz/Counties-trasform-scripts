@@ -489,11 +489,23 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  const titleCasedFirst = titleCase(first || "");
+  const titleCasedLast = titleCase(last || "");
+  const titleCasedMiddle = middle ? titleCase(middle) : null;
+
+  // Validate names contain at least one letter and match the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
+
+  if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
+    return null;
+  }
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: titleCasedFirst,
+    last_name: titleCasedLast,
+    middle_name: titleCasedMiddle,
   };
 }
 
