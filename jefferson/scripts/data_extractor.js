@@ -1300,7 +1300,7 @@ function writePersonCompaniesSalesRelationships(
   if (Array.isArray(ownersByDate.current))
     orderedOwnerArrays.push(ownersByDate.current);
   Object.keys(ownersByDate)
-    .filter((ownerKey) => ownerKey !== "current")
+    .filter((ownerKey) => ownerKey !== "current" && !/^unknown_date_/.test(ownerKey))
     .sort()
     .forEach((ownerKey) => {
       const ownersForKey = ownersByDate[ownerKey];
