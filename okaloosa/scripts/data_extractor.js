@@ -2185,7 +2185,7 @@ function main() {
   ensureDir("data");
 
   // Clean up any orphaned files from previous runs that are not part of the current schema
-  // mailing_address.json is not part of the Seed data group schema
+  // mailing_address.json, company files, and person files are not part of the Seed data group schema
   const orphanedFiles = ["mailing_address.json"];
   orphanedFiles.forEach((fileName) => {
     const filePath = path.join("data", fileName);
@@ -2194,6 +2194,28 @@ function main() {
       console.log(`Removed orphaned file: ${fileName}`);
     }
   });
+
+  // Remove company and person files that are not part of the Seed data group
+  try {
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      files.forEach((f) => {
+        // Remove company and person entity files
+        if (/^(company|person)_\d+\.json$/.test(f)) {
+          fs.unlinkSync(path.join(dataDir, f));
+          console.log(`Removed orphaned file: ${f}`);
+        }
+        // Remove relationships to company and person
+        if (/^relationship_(sales_company|sales_person|property_person|property_company)(?:_\d+)?\.json$/.test(f)) {
+          fs.unlinkSync(path.join(dataDir, f));
+          console.log(`Removed orphaned relationship file: ${f}`);
+        }
+      });
+    }
+  } catch (e) {
+    // Ignore errors if data directory doesn't exist yet
+  }
 
   const $ = loadHTML();
 
@@ -2327,7 +2349,7 @@ function main() {
   }
 
   // Final cleanup: Remove any orphaned files that are not part of the Seed data group schema
-  // This ensures mailing_address.json and other orphaned files are removed even if created during execution
+  // This ensures mailing_address.json, company, and person files are removed even if created during execution
   const orphanedFilesCleanup = ["mailing_address.json"];
   orphanedFilesCleanup.forEach((fileName) => {
     const filePath = path.join("data", fileName);
@@ -2336,6 +2358,28 @@ function main() {
       console.log(`Final cleanup: Removed orphaned file: ${fileName}`);
     }
   });
+
+  // Remove company and person files that are not part of the Seed data group (final cleanup)
+  try {
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      files.forEach((f) => {
+        // Remove company and person entity files
+        if (/^(company|person)_\d+\.json$/.test(f)) {
+          fs.unlinkSync(path.join(dataDir, f));
+          console.log(`Final cleanup: Removed orphaned file: ${f}`);
+        }
+        // Remove relationships to company and person
+        if (/^relationship_(sales_company|sales_person|property_person|property_company)(?:_\d+)?\.json$/.test(f)) {
+          fs.unlinkSync(path.join(dataDir, f));
+          console.log(`Final cleanup: Removed orphaned relationship file: ${f}`);
+        }
+      });
+    }
+  } catch (e) {
+    // Ignore errors if data directory doesn't exist
+  }
 }
 
 if (require.main === module) {
