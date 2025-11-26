@@ -1173,6 +1173,12 @@ function writeProperty($, parcelId) {
     zoning: null,
   };
   writeJSON(path.join("data", "property.json"), property);
+
+  // Create parcel.json
+  const parcel = {
+    parcel_identifier: parcelId || "",
+  };
+  writeJSON(path.join("data", "parcel.json"), parcel);
 }
 
 function writeSalesDeedsFilesAndRelationships($) {
