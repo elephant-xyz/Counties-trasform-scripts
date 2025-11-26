@@ -365,7 +365,7 @@ function classifyOwner(raw) {
     last_name: parsed.lastName,
     middle_name: parsed.middleName,
     prefix_name: prefixName ? titleCaseName(prefixName) : null,
-    suffix_name: suffixName || null,
+    suffix_name: suffixName ? titleCaseName(suffixName) : null,
   };
   return { valid: true, owner: person };
 }

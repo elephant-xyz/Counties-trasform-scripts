@@ -1271,7 +1271,7 @@ function buildPersonRecord(owner, parcelId) {
     last_name: last,
     birth_date: null,
     prefix_name: owner.prefix_name ? titleCaseName(owner.prefix_name) : null,
-    suffix_name: owner.suffix_name || null,
+    suffix_name: owner.suffix_name ? titleCaseName(owner.suffix_name) : null,
     us_citizenship_status: null,
     veteran_status: null,
     request_identifier: parcelId,
