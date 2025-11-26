@@ -4131,16 +4131,6 @@ function main() {
   writeJson(path.join(dataDir, "address.json"), addressObj);
 
 
-  //Mailing address file creation
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    latitude: null,
-    longitude: null,
-    unnormalized_address: mailingAddress
-  };
-  writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
-
-
   //TAX FILES CREATION
   const taxData = extractTaxes($);
   if (taxData) {
@@ -4217,6 +4207,17 @@ function main() {
   });
 
   //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE.
+  // Only create mailing_address.json if there are owners to link it to
+  if (currentOwners.length > 0 && mailingAddress) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(seed),
+      latitude: null,
+      longitude: null,
+      unnormalized_address: mailingAddress
+    };
+    writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
+  }
+
   let relIdx=0
   currentOwners.forEach((o) => {
     // console.log("relIdx",relIdx);
