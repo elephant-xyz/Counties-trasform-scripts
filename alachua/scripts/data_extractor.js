@@ -100,6 +100,14 @@ function tokenizeNamePart(part) {
     .filter(Boolean);
 }
 
+function isValidMiddleName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
+}
+
 function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
@@ -125,11 +133,13 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  const middleNameValue = middle ? titleCase(middle) : null;
+
   return {
     type: "person",
     first_name: titleCase(first || ""),
     last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    middle_name: middleNameValue && isValidMiddleName(middleNameValue) ? middleNameValue : null,
   };
 }
 
@@ -1412,7 +1422,7 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+    const middleName = middleRaw && isValidMiddleName(middleRaw) ? middleRaw : null;
     const key =
       firstName || lastName
         ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
