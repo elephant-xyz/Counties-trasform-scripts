@@ -2222,11 +2222,12 @@ function main() {
       };
     writeUtility(parcelId, propertyInfo, layoutContext);
     writeStructure(parcelId, propertyInfo, layoutContext);
-    writePersonCompaniesSalesRelationships(
-      parcelId,
-      salesRecords,
-      propertySeed,
-    );
+    // Seed data group does not include person, company, or sales_history classes
+    // writePersonCompaniesSalesRelationships(
+    //   parcelId,
+    //   salesRecords,
+    //   propertySeed,
+    // );
   }
 
   // Address last
