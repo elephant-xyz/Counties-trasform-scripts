@@ -2935,20 +2935,12 @@ function main() {
     }
   });
 
-  const saleGrantorRelations = [];
-
   Object.keys(previousOwnersByDate).forEach((dateKey) => {
     if (dateKey === "current") return;
     const ownersArr = previousOwnersByDate[dateKey];
     if (!Array.isArray(ownersArr)) return;
     ownersArr.forEach((owner) => {
-      const ownerPath = registerPreviousOwner(owner, dateKey);
-      if (ownerPath && dateKey) {
-        saleGrantorRelations.push({
-          ownerPath,
-          saleDateISO: dateKey,
-        });
-      }
+      registerPreviousOwner(owner, dateKey);
     });
   });
 
@@ -3012,6 +3004,7 @@ function main() {
 
   const saleFileRefs = [];
   const saleOwnerRelations = [];
+  const saleGrantorRelations = [];
   const saleBuyerStatus = new Map();
 
   salesSorted.forEach((s, idx) => {
