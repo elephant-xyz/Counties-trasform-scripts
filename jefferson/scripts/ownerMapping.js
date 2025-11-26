@@ -149,7 +149,7 @@ function normalizeTokenForMatch(token) {
 
 function formatNameValue(value) {
   if (!value) return null;
-  return value
+  const result = value
     .split(/\s+/)
     .map((token) => {
       if (!token) return "";
@@ -169,6 +169,8 @@ function formatNameValue(value) {
     })
     .filter(Boolean)
     .join(" ");
+  // Strip trailing punctuation (commas, periods, etc.) from the final result
+  return result.replace(/[,;.]+$/, "");
 }
 
 function sanitizeOwnerText(raw) {
