@@ -442,28 +442,8 @@ function titleCase(str) {
   return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
-function cleanNameForSchema(name) {
-  if (!name || typeof name !== 'string') return "";
-
-  // Remove trailing separators (-, ', space, comma, period)
-  let cleaned = name.trim().replace(/[\s\-',\.]+$/, '');
-
-  // Remove leading separators
-  cleaned = cleaned.replace(/^[\s\-',\.]+/, '');
-
-  // If the name ends with a separator in the middle (like "Jv-"), remove the separator
-  cleaned = cleaned.replace(/[\-',\.]+$/, '');
-
-  // Ensure proper title case: first letter uppercase, rest lowercase
-  if (cleaned.length > 0) {
-    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase();
-  }
-
-  return cleaned;
-}
-
 const COMPANY_KEYWORDS =
-  /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate|jv[\s\-]?\d*|sfr\b)(\b|\s)/i;
+  /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate)(\b|\s)/i;
 const SUFFIXES_IGNORE =
   /^(jr|sr|ii|iii|iv|v|vi|vii|viii|ix|x|md|phd|esq|esquire)$/i;
 
@@ -507,19 +487,11 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
-  // Clean names to match schema pattern
-  const cleanedFirst = cleanNameForSchema(titleCase(first || ""));
-  const cleanedLast = cleanNameForSchema(titleCase(last || ""));
-  const cleanedMiddle = middle ? cleanNameForSchema(titleCase(middle)) : null;
-
-  // Validate that first and last names are not empty after cleaning
-  if (!cleanedFirst || !cleanedLast) return null;
-
   return {
     type: "person",
-    first_name: cleanedFirst,
-    last_name: cleanedLast,
-    middle_name: cleanedMiddle,
+    first_name: titleCase(first || ""),
+    last_name: titleCase(last || ""),
+    middle_name: middle ? titleCase(middle) : null,
   };
 }
 
@@ -1870,30 +1842,20 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-
-    // Clean and validate names
-    const firstName = cleanNameForSchema(
+    const firstName =
       personData.first_name != null
         ? String(personData.first_name).trim()
-        : ""
-    );
-    const lastName = cleanNameForSchema(
-      personData.last_name != null
-        ? String(personData.last_name).trim()
-        : ""
-    );
+        : "";
+    const lastName =
+      personData.last_name != null ? String(personData.last_name).trim() : "";
     const middleRaw =
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? cleanNameForSchema(middleRaw) : null;
-
-    // Don't create person record if names are invalid after cleaning
-    if (!firstName || !lastName) return null;
-
+    const middleName = middleRaw ? middleRaw : null;
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -1904,8 +1866,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName,
-      last_name: lastName,
+      first_name: firstName || "",
+      last_name: lastName || "",
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
