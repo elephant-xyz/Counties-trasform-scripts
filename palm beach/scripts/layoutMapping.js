@@ -48,6 +48,7 @@ function defaultLayout(space_index, overrides = {}) {
     {
       space_type: null,
       space_index,
+      space_type_index: null,
       story_type: null,
       flooring_material_type: null,
       size_square_feet: null,
@@ -80,8 +81,6 @@ function defaultLayout(space_index, overrides = {}) {
       pool_surface_type: null,
       pool_water_quality: null,
       building_number: null,
-      request_identifier: null,
-      source_http_request: { method: "GET", url: "https://www.pbcgov.org/papa/" },
     },
     overrides,
   );
@@ -105,26 +104,44 @@ function run() {
   // Structural counts for bedrooms/baths
   // Initialize layouts array
   const layouts = [];
-  let space_index = 1;
-  
+  const layoutTypeCounts = new Map();
+
+  function addLayout(layout) {
+    const normalized = { ...layout };
+
+    if (
+      !Number.isInteger(normalized.space_index) ||
+      normalized.space_index <= 0
+    ) {
+      normalized.space_index = layouts.length + 1;
+    }
+
+    const typeKey = normalized.space_type || "Unknown";
+    const nextCount = (layoutTypeCounts.get(typeKey) || 0) + 1;
+    layoutTypeCounts.set(typeKey, nextCount);
+    normalized.space_type_index = `${normalized.space_index}.${nextCount}`;
+
+    layouts.push(normalized);
+  }
+
   // Extract bedroom/bathroom counts from embedded model
   let bedCount = 0;
   let fullBaths = 0;
   let halfBaths = 0;
-  
+
   // Read HTML file
   const inputHTML = fs.readFileSync("input.html", "utf8");
-  
+
   // Helper function to map element names to space types
   function mapElementNameToSpaceType(elementName) {
     if (!elementName) return null;
     const name = elementName.toUpperCase();
-    
+
     // Skip summary elements that shouldn't be individual spaces
     if (name.includes("TOTAL SQUARE FOOTAGE") || name.includes("AREA UNDER AIR")) {
       return null; // Don't create layout items for these summary elements
     }
-    
+
     if (name.includes("FOP") || name.includes("FINISHED OPEN PORCH")) return "Open Porch";
     if (name.includes("BAS") || name.includes("BASE AREA")) return "Living Area";
     if (name.includes("FGR") || name.includes("FINISHED GARAGE")) return "Attached Garage";
@@ -137,10 +154,10 @@ function run() {
     if (name.includes("BEDROOM")) return "Bedroom";
     if (name.includes("BATH")) return "Bathroom";
     if (name.includes("KITCHEN")) return "Kitchen";
-    
+
     return null;
   }
-  
+
   // Parse embedded model from HTML (use greedy match to capture entire model)
   const modelMatch = inputHTML.match(/var model = ({.+});/);
   if (modelMatch) {
@@ -155,18 +172,18 @@ function run() {
           if (/Bath\(s\)|Full Baths/i.test(name) && !/Half/i.test(name)) fullBaths = parseInt(val) || 0;
           if (/Half Bath|Half Baths/i.test(name)) halfBaths = parseInt(val) || 0;
         }
-        
+
         // Extract area-based layout elements (living area, porches, garage, etc.)
         for (const el of model.structuralDetails.StructuralElements) {
           if (el.DetailsSection === "Bottom" && el.BuildingNumber) {
             const buildingNum = parseInt(el.BuildingNumber);
             const spaceType = mapElementNameToSpaceType(el.ElementName);
-            
+
             // Skip elements that shouldn't be individual spaces
             if (!spaceType) {
               continue;
             }
-            
+
             const layoutItem = {
               space_type: spaceType,
               space_index: layouts.length + 1,
@@ -202,15 +219,9 @@ function run() {
               pool_condition: null,
               pool_surface_type: null,
               pool_water_quality: null,
-              request_identifier: propertyId || "unknown",
-              source_http_request: {
-                url: "https://pbcpao.gov/Property/Details",
-                method: "GET",
-                multiValueQueryString: { parcelId: [propertyId || "unknown"] }
-              }
             };
-            
-            layouts.push(layoutItem);
+
+            addLayout(layoutItem);
           }
         }
       }
@@ -218,38 +229,35 @@ function run() {
       console.log("Error parsing model for layout data:", e.message);
     }
   }
-  
+
   console.log(`Extracted bedroom/bathroom counts: ${bedCount} bedrooms, ${fullBaths} full baths, ${halfBaths} half baths`);
 
   // Skip subarea processing to avoid duplication - we're using embedded model data instead
 
   // Bedrooms
   for (let i = 0; i < bedCount; i++) {
-    layouts.push(
+    addLayout(
       defaultLayout(layouts.length + 1, {
         space_type: "Bedroom",
         size_square_feet: null,
-        floor_level: "1st Floor",
       }),
     );
   }
 
   // Full bathrooms
   for (let i = 0; i < fullBaths; i++) {
-    layouts.push(
+    addLayout(
       defaultLayout(layouts.length + 1, {
         space_type: "Full Bathroom",
-        floor_level: "1st Floor",
       }),
     );
   }
 
   // Half bathrooms
   for (let i = 0; i < halfBaths; i++) {
-    layouts.push(
+    addLayout(
       defaultLayout(layouts.length + 1, {
         space_type: "Half Bathroom / Powder Room",
-        floor_level: "1st Floor",
       }),
     );
   }
@@ -265,7 +273,7 @@ function run() {
   layouts.forEach((layout, index) => {
     const layoutIndex = index + 1;
     const layoutFileName = `layout_${layoutIndex}.json`;
-    
+
     // Write individual layout file to data directory only
     fs.writeFileSync(
       path.join(dataDir, layoutFileName),
@@ -273,16 +281,14 @@ function run() {
       "utf8",
     );
 
-    // Create relationship file for each layout
-    const layoutRel = {
-      from: { "/": "./property.json" },
-      to: { "/": `./${layoutFileName}` },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_property_layout_${layoutIndex}.json`),
-      JSON.stringify(layoutRel, null, 2),
-      "utf8",
+    // Relationships are materialized downstream; ensure local stub does not linger.
+    const relationshipPath = path.join(
+      dataDir,
+      `relationship_property_layout_${layoutIndex}.json`,
     );
+    if (fs.existsSync(relationshipPath)) {
+      fs.unlinkSync(relationshipPath);
+    }
   });
 
   console.log(
