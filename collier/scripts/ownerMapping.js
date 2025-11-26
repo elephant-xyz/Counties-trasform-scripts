@@ -129,7 +129,7 @@ function looksLikeCompany(name) {
 const knownSuffixes = new Set([
   "JR", "JR.", "JUNIOR",
   "SR", "SR.", "SENIOR",
-  "II", "III", "IV", "V",
+  "II", "III", "IV",
   "ESQ", "ESQ.",
   "CFA", "CPA", "DDS", "DVM", "MBA", "MD", "PE", "PHD", "PMP", "RN", "LLM",
   "EMERITUS",
@@ -147,7 +147,6 @@ function normalizeSuffix(suffix) {
     "II": "II",
     "III": "III",
     "IV": "IV",
-    "V": "V",
     "ESQ": "Esq.",
     "RET": "Ret.",
   };
