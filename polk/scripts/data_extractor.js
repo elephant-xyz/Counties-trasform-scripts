@@ -3862,12 +3862,13 @@ function main() {
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
 
-  // Owners (persons/companies) - extract first to know if we should write mailing address
+  // Owners (persons only) - extract first to know if we should write mailing address
   const sales = extractSales($);
   const pc = buildPersonsAndCompanies(ownerJSON, parcelId, sales);
 
-  // Only write mailing address if there are persons or companies to link it to
-  const hasOwners = (pc.personCurrentOwners.length > 0 || pc.companyCurrentOwners.length > 0);
+  // Only write mailing address if there are persons to link it to
+  // Note: Companies are not generated as they are not included in this data group
+  const hasOwners = (pc.personCurrentOwners.length > 0);
   const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, hasOwners ? mailingAddress : null);
 
   // Lot
@@ -3944,12 +3945,8 @@ function main() {
     personsWritten.push(idx);
   });
 
-  // Only write companies that are current owners (have property relationships)
-  const companiesWritten = [];
-  pc.companyCurrentOwners.forEach((idx) => {
-    writeJSON(path.join("data", `company_${idx}.json`), pc.companies[idx - 1]);
-    companiesWritten.push(idx);
-  });
+  // NOTE: Company files are NOT generated because the company class is not included in this data group
+  // Only person entities are supported in this data group
 
   // Create property-person relationships for current owners
   pc.personCurrentOwners.forEach((idx, i) =>
@@ -3961,20 +3958,6 @@ function main() {
       {
         from: { "/": `./property.json` },
         to: { "/": `./person_${idx}.json` },
-      }
-    )
-  );
-
-  // Create property-company relationships for current owners
-  pc.companyCurrentOwners.forEach((idx, i) =>
-    writeJSON(
-      path.join(
-        "data",
-        `relationship_property_has_company_${idx}.json`,
-      ),
-      {
-        from: { "/": `./property.json` },
-        to: { "/": `./company_${idx}.json` },
       }
     )
   );
@@ -3992,23 +3975,11 @@ function main() {
         }
       )
     );
-    pc.companyCurrentOwners.forEach((idx, i) =>
-      writeJSON(
-        path.join(
-          "data",
-          `relationship_company_has_mailing_address_${idx}.json`,
-        ),
-        {
-          from: { "/": `./company_${idx}.json` },
-          to: { "/": `./mailing_address.json` },
-        }
-      )
-    );
   }
 
-  // NOTE: We do NOT create sales-person or sales-company relationships
-  // because we only generate person/company entities for current owners (not historical sales).
-  // This prevents "unused file" errors when person/company classes are not in the data group.
+  // NOTE: We do NOT create sales-person relationships
+  // because we only generate person entities for current owners (not historical sales).
+  // Company entities are not generated because the company class is not included in this data group.
 
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
