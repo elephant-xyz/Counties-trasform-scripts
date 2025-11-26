@@ -3317,6 +3317,77 @@ function resolveSourceHttpRequest(...candidates) {
   return null;
 }
 
+function buildStrictNormalizedAddressPayload(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...source })
+      : { ...source };
+
+  const hasStrictCoverage =
+    typeof hasStrictCountyAddressCoverage === "function" &&
+    hasStrictCountyAddressCoverage({ ...normalizedSurface });
+  if (!hasStrictCoverage) {
+    return null;
+  }
+
+  const payload = {};
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(normalizedSurface, field)) {
+      continue;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(normalizedSurface[field]);
+      if (Number.isFinite(numeric)) {
+        payload[field] = numeric;
+      }
+      continue;
+    }
+    const sanitized =
+      typeof normalizeAddressFieldForSchema === "function"
+        ? normalizeAddressFieldForSchema(field, normalizedSurface[field])
+        : normalizedSurface[field];
+    if (sanitized === undefined || sanitized === null) {
+      continue;
+    }
+    payload[field] =
+      typeof sanitized === "string" ? sanitized.trim() : sanitized;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(source.request_identifier);
+  if (requestIdentifier) {
+    payload.request_identifier = requestIdentifier;
+  }
+  const preparedSource = prepareSourceHttpRequest(source.source_http_request);
+  if (preparedSource) {
+    payload.source_http_request = preparedSource;
+  }
+
+  return payload;
+}
+
+function collapseAddressToSingleSchemaVariant(addressPath) {
+  if (!addressPath) return;
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") return;
+
+  const normalizedPayload = buildStrictNormalizedAddressPayload(payload);
+  if (normalizedPayload) {
+    writeAddressPayloadDirect(addressPath, normalizedPayload);
+    return;
+  }
+
+  const rawPayload = buildMinimalRawAddressPayload(payload);
+  if (rawPayload) {
+    writeAddressPayloadDirect(addressPath, rawPayload);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+}
+
 function extractCoordinatesFromHTML(html) {
   const fallback = { latitude: null, longitude: null };
   if (typeof html !== "string" || !html.length) {
@@ -11401,62 +11472,19 @@ function buildMinimalRawAddressPayload(address) {
   }
 
   const minimal = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
   const latitude = parseCoordinate(address.latitude);
-  minimal.latitude = Number.isFinite(latitude) ? latitude : null;
-
   const longitude = parseCoordinate(address.longitude);
-  minimal.longitude = Number.isFinite(longitude) ? longitude : null;
-
-  const assignField = (field) => {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      minimal[field] = minimal[field] ?? null;
-      return;
-    }
-
-    const normalized = normalizeAddressFieldForSchema(field, address[field]);
-
-    if (normalized === undefined || normalized === null) {
-      minimal[field] = null;
-      return;
-    }
-
-    if (typeof normalized === "string") {
-      const trimmed = normalized.trim();
-      minimal[field] = trimmed.length ? trimmed : null;
-      return;
-    }
-
-    if (typeof normalized === "number") {
-      minimal[field] = Number.isFinite(normalized) ? normalized : null;
-      return;
-    }
-
-    minimal[field] = normalized;
-  };
-
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
-    if (field === "latitude" || field === "longitude") {
-      continue;
-    }
-    assignField(field);
-  }
-
-  if (!minimal.postal_code) {
-    minimal.plus_four_postal_code = null;
-  }
-  if (minimal.state_code && !minimal.country_code) {
-    minimal.country_code = "US";
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    minimal.latitude = latitude;
+    minimal.longitude = longitude;
   }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
   if (requestIdentifier) {
     minimal.request_identifier = requestIdentifier;
-  } else if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    minimal.request_identifier = null;
   }
 
   const preparedSource = prepareSourceHttpRequest(
@@ -11464,10 +11492,6 @@ function buildMinimalRawAddressPayload(address) {
   );
   if (preparedSource) {
     minimal.source_http_request = deepClone(preparedSource);
-  } else if (
-    Object.prototype.hasOwnProperty.call(address, "source_http_request")
-  ) {
-    minimal.source_http_request = null;
   }
 
   return minimal;
@@ -55316,6 +55340,7 @@ function enforceCountyRawAddressAndNullRelationships() {
     );
     addressWriteLocked = true;
     enforceExplicitNullAddressRelationships([dataDir, relationshipsDir]);
+    collapseAddressToSingleSchemaVariant(addressPath);
     return;
   }
 
@@ -55332,10 +55357,12 @@ function enforceCountyRawAddressAndNullRelationships() {
       schemaReadyRaw,
     );
     if (submissionReadyRaw) {
+      const minimalRaw =
+        buildMinimalRawAddressPayload(submissionReadyRaw) || submissionReadyRaw;
       originalWriteFileSync.call(
         fs,
         addressPath,
-        `${JSON.stringify(submissionReadyRaw, null, 2)}\n`,
+        `${JSON.stringify(minimalRaw, null, 2)}\n`,
       );
       addressWriteLocked = true;
     } else {
@@ -55346,6 +55373,7 @@ function enforceCountyRawAddressAndNullRelationships() {
   }
 
   enforceExplicitNullAddressRelationships([dataDir, relationshipsDir]);
+  collapseAddressToSingleSchemaVariant(addressPath);
 }
 
 async function run() {
@@ -56870,6 +56898,17 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to enforce final normalized county address output:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    collapseAddressToSingleSchemaVariant(addressPath);
+  } catch (error) {
+    console.error("Failed to collapse address output to a single schema branch:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
