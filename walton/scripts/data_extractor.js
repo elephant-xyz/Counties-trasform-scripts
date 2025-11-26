@@ -999,20 +999,7 @@ function createStructureFiles(seed,parcelIdentifier) {
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-
-  // Check if layouts exist - if not, don't create structure files
-  if (!layoutsData || !parcelIdentifier) {
-    return;
-  }
-
-  const layoutKey = `property_${parcelIdentifier}`;
-  const layouts = layoutsData[layoutKey]?.layouts || [];
-
-  if (layouts.length === 0) {
-    // No layouts exist, don't create structure files
-    return;
-  }
-
+  
   if (structuresData && parcelIdentifier) {
     // console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
@@ -1074,20 +1061,20 @@ function createStructureFiles(seed,parcelIdentifier) {
         window_installation_date: struct?.window_installation_date ?? null
       };
       writeJSON(path.join("data", `structure_${struct.structure_index || idx + 1}.json`), structureOut);
-
+      
       // Create relationship between building layout and structure
       const buildingNumber = struct.building_number || idx + 1;
       const structureIndex = struct.structure_index || idx + 1;
-
+      
       // Find the correct building layout file index
-      let buildingLayoutIndex = null;
+      let buildingLayoutIndex = buildingNumber;
       // console.log("BUILDING_NUMBER",buildingNumber)
       if (layoutsData && parcelIdentifier) {
         // console.log(layoutsData)
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
         // console.log(layouts)
-        const buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         // console.log("BUILDING_LAYOUT", buildingLayout)
@@ -1095,18 +1082,15 @@ function createStructureFiles(seed,parcelIdentifier) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-
-      // Only create relationship if building layout was found
-      if (buildingLayoutIndex !== null) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./structure_${structureIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./structure_${structureIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        relationship
+      );
     });
   }
 
@@ -1122,20 +1106,8 @@ function createUtilitiesFiles(seed,parcelIdentifier){
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-
-  // Check if layouts exist - if not, don't create utility files
-  if (!layoutsData || !parcelIdentifier) {
-    return;
-  }
-
-  const layoutKey = `property_${parcelIdentifier}`;
-  const layouts = layoutsData[layoutKey]?.layouts || [];
-
-  if (layouts.length === 0) {
-    // No layouts exist, don't create utility files
-    return;
-  }
-
+  
+  
   if (utilitiesData && parcelIdentifier) {
     const key = `property_${parcelIdentifier}`;
     const utilities = utilitiesData[key]?.utilities || [];
@@ -1163,35 +1135,32 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         hvac_unit_issues: util?.hvac_unit_issues ?? null
       };
       writeJSON(path.join("data", `utility_${util.utility_index || idx + 1}.json`), utilityOut);
-
+      
       // Create relationship between building layout and utility
       const buildingNumber = util.building_number || idx + 1;
       const utilityIndex = util.utility_index || idx + 1;
-
+      
       // Find the correct building layout file index
-      let buildingLayoutIndex = null;
+      let buildingLayoutIndex = buildingNumber;
       if (layoutsData && parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
-        const buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-
-      // Only create relationship if building layout was found
-      if (buildingLayoutIndex !== null) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./utility_${utilityIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./utility_${utilityIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        relationship
+      );
     });
   }
 
@@ -1586,58 +1555,26 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-
-  // First, determine which persons and companies will have relationships
-  const personsWithRelationships = new Map();
-  const companiesWithRelationships = new Set();
-
-  // Collect persons from current owners (for mailing address relationships)
-  const currentOwners = ownersByDate["current"] || [];
-  currentOwners.forEach((o) => {
-    if (o.type === "person") {
-      const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-      if (!personsWithRelationships.has(k)) {
-        personsWithRelationships.set(k, {
-          first_name: o.first_name,
-          middle_name: o.middle_name,
-          last_name: o.last_name,
-        });
-      } else {
-        const existing = personsWithRelationships.get(k);
-        if (!existing.middle_name && o.middle_name)
-          existing.middle_name = o.middle_name;
-      }
-    } else if (o.type === "company" && (o.name || "").trim()) {
-      companiesWithRelationships.add((o.name || "").trim());
-    }
-  });
-
-  // Collect persons and companies from sale dates
-  sales.forEach((rec) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate.forEach((o) => {
+  const personMap = new Map();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personsWithRelationships.has(k)) {
-          personsWithRelationships.set(k, {
+        if (!personMap.has(k))
+          personMap.set(k, {
             first_name: o.first_name,
             middle_name: o.middle_name,
             last_name: o.last_name,
           });
-        } else {
-          const existing = personsWithRelationships.get(k);
+        else {
+          const existing = personMap.get(k);
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
         }
-      } else if (o.type === "company" && (o.name || "").trim()) {
-        companiesWithRelationships.add((o.name || "").trim());
       }
     });
   });
-
-  // Now create person and company files only for those with relationships
-  people = Array.from(personsWithRelationships.values()).map((p) => ({
+  people = Array.from(personMap.values()).map((p) => ({
     ...appendSourceInfo(seed),
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -1652,8 +1589,14 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-
-  companies = Array.from(companiesWithRelationships).map((n) => ({
+  const companyNames = new Set();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim())
+        companyNames.add((o.name || "").trim());
+    });
+  });
+  companies = Array.from(companyNames).map((n) => ({ 
     ...appendSourceInfo(seed),
     name: n,
     request_identifier: parcelId,
@@ -1661,7 +1604,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
-
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -2079,16 +2021,14 @@ function main() {
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     // writeUtility(parcelId);
     // writeLayout(parcelId);
-
-    // ---------- Layouts (owners/layout_data.json) ----------
-    // IMPORTANT: Create layouts FIRST because structure and utility relationships reference layout files
-    createLayoutFiles(seed,parcelId);
-
-    // ---------- Structures (owners/structure_data.json) ----------
     createStructureFiles(seed,parcelId);
 
     // ---------- Utilities (owners/utilities_data.json) ----------
     createUtilitiesFiles(seed,parcelId);
+
+    // ---------- Layouts (owners/layout_data.json) ----------
+
+    createLayoutFiles(seed,parcelId);
 
   }
 
@@ -2098,69 +2038,50 @@ function main() {
 
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
+  const mailingAddressOutput = {
+    ...appendSourceInfo(seed),
+    latitude: null,
+    longitude: null,
+    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+  };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // Collect mailing address relationships first, then write everything atomically
+  // Create mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  const mailingAddressRelationships = [];
-
-  if (owners && mailingAddressRaw) {
+  if (owners) {
     const key = `property_${parcelId}`;
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
+      let relCounter = 0;
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
-            mailingAddressRelationships.push({
-              type: 'person',
-              index: pIdx
-            });
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./person_${pIdx}.json` },
+                to: { "/": "./mailing_address.json" },
+              }
+            );
           }
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
-            mailingAddressRelationships.push({
-              type: 'company',
-              index: cIdx
-            });
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./company_${cIdx}.json` },
+                to: { "/": "./mailing_address.json" }
+              }
+            );
           }
         }
       });
     }
-  }
-
-  // Only write mailing address and relationships if we have at least one relationship
-  if (mailingAddressRelationships.length > 0) {
-    const mailingAddressOutput = {
-      ...appendSourceInfo(seed),
-      latitude: null,
-      longitude: null,
-      unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-    };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-    // Write the relationships
-    mailingAddressRelationships.forEach((rel, idx) => {
-      const relCounter = idx + 1;
-      if (rel.type === 'person') {
-        writeJSON(
-          path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-          {
-            from: { "/": `./person_${rel.index}.json` },
-            to: { "/": "./mailing_address.json" },
-          }
-        );
-      } else if (rel.type === 'company') {
-        writeJSON(
-          path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-          {
-            from: { "/": `./company_${rel.index}.json` },
-            to: { "/": "./mailing_address.json" }
-          }
-        );
-      }
-    });
   }  
 
 }

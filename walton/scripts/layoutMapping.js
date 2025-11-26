@@ -155,6 +155,13 @@ function buildLayoutsFromBuildings(buildings) {
 
   return layouts;
 }
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
+}
 
 function main() {
   const inputPath = path.resolve("input.html");
@@ -164,6 +171,15 @@ function main() {
     console.log("Parcel ID not found");
     return;
   }
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: "Request identifier and parcel id don't match.",
+      path: "property.request_identifier",
+    };
+  }
+
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);
 
