@@ -67,16 +67,26 @@ function guessOwnerType(name) {
 function normalizePersonName(name) {
   if (!name || typeof name !== 'string') return null;
 
-  const trimmed = name.trim();
+  let trimmed = name.trim();
   if (!trimmed) return null;
 
   // Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
-  const withoutParens = trimmed.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
-  if (!withoutParens) return null;
+  // Use a loop to ensure all parenthetical content is removed
+  let previousLength;
+  do {
+    previousLength = trimmed.length;
+    trimmed = trimmed.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  } while (trimmed.length < previousLength && trimmed.length > 0);
+
+  if (!trimmed) return null;
+
+  // Remove any remaining parentheses that might be unmatched
+  trimmed = trimmed.replace(/[()]/g, '').trim();
+  if (!trimmed) return null;
 
   // First, filter out any characters that are not letters or allowed separators
   // Allowed: letters (a-zA-Z) and separators (space, hyphen, apostrophe, comma, period)
-  const filtered = withoutParens.replace(/[^a-zA-Z \-',.]/g, '').trim();
+  const filtered = trimmed.replace(/[^a-zA-Z \-',.]/g, '').trim();
   if (!filtered) return null;
 
   // Split by separators while keeping them
@@ -2313,7 +2323,7 @@ async function main() {
           birth_date: record.person?.birth_date ?? null,
           first_name: firstName,
           last_name: lastName,
-          middle_name: record.person?.middle_name ?? null,
+          middle_name: normalizePersonName(record.person?.middle_name) ?? null,
           prefix_name: record.person?.prefix_name ?? null,
           suffix_name: record.person?.suffix_name ?? null,
           us_citizenship_status: record.person?.us_citizenship_status ?? null,
