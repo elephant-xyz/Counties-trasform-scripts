@@ -1767,7 +1767,11 @@ async function main() {
     }
     if (landSqft) {
       const n = Number(String(landSqft).replace(/[^0-9.\-]/g, ""));
-      if (isFinite(n)) lotOut.lot_area_sqft = Math.round(n);
+      if (isFinite(n) && n >= 1) {
+        lotOut.lot_area_sqft = Math.round(n);
+      } else {
+        lotOut.lot_area_sqft = null;
+      }
     }
     await fsp.writeFile(
       path.join("data", "lot.json"),
