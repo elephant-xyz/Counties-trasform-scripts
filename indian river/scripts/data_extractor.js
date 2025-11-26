@@ -1680,18 +1680,10 @@ function titleCaseName(s) {
 
 function validateNamePattern(name) {
   if (!name) return null;
-  let trimmed = name.trim();
+  const trimmed = name.trim();
   if (!trimmed) return null;
-
-  // Remove trailing punctuation that doesn't have letters after it
-  // This handles cases like "More'" which would be invalid
-  trimmed = trimmed.replace(/['\-,.\s]+$/, '');
-
-  if (!trimmed) return null;
-
-  // Pattern from Elephant schema: Must start with uppercase letter, followed by lowercase letters,
-  // then optionally (punctuation + letter + lowercase letters) repeating
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  // Pattern: Must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, periods
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (pattern.test(trimmed)) return trimmed;
   return null;
 }
@@ -1733,9 +1725,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     });
   });
   people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? validateNamePattern(titleCaseName(p.first_name)) : null,
+    first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? validateNamePattern(titleCaseName(p.middle_name)) : null,
-    last_name: p.last_name ? validateNamePattern(titleCaseName(p.last_name)) : null,
+    last_name: p.last_name ? titleCaseName(p.last_name) : null,
     birth_date: null,
     prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
     suffix_name: p.suffix_name ? validateSuffixName(p.suffix_name) : null,
