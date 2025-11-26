@@ -89,7 +89,7 @@ function toTitleCase(token) {
   if (!trimmed) return null;
   const upper = trimmed.toUpperCase();
   if (/^(II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|JR|SR|ESQ|CPA|MD|DDS|DMD|DO|PHARMD|MBA|PHD|EDD|DVM)$/.test(upper)) {
-    return upper.replace(/JR|SR/, (m) => (m === "JR" ? "Jr" : "Sr"));
+    return upper.replace(/JR|SR/, (m) => (m === "JR" ? "Jr." : "Sr."));
   }
   return trimmed
     .toLowerCase()
