@@ -175,9 +175,9 @@ function mapFloorMaterial(token) {
   if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
     return "Solid Hardwood";
   }
-  if (upper.includes("VINYL")) return "Vinyl Sheet";
+  if (upper.includes("VINYL")) return "Sheet Vinyl";
   if (upper.includes("TERRAZZO")) return "Terrazzo";
-  if (upper.includes("CONCRETE")) return "Concrete";
+  if (upper.includes("CONCRETE")) return "Polished Concrete";
   if (upper.includes("CLAY") || upper.includes("TILE")) return "Ceramic Tile";
   return null;
 }
