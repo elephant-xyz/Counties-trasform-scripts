@@ -2250,8 +2250,8 @@ async function main() {
     await removeExisting(/^relationship_property_has_company_.*\.json$/);
     await removeExisting(/^relationship_sales_person_.*\.json$/);
     await removeExisting(/^relationship_sales_company_.*\.json$/);
-    await removeExisting(/^relationship_person_.*_has_mailing_address\.json$/);
-    await removeExisting(/^relationship_company_.*_has_mailing_address\.json$/);
+    await removeExisting(/^relationship_person_has_mailing_address_.*\.json$/);
+    await removeExisting(/^relationship_company_has_mailing_address_.*\.json$/);
 
     // First, identify which owner records will be referenced by relationships
     const referencedOwnerIds = new Set();
@@ -2347,30 +2347,49 @@ async function main() {
       }
     }
 
-    // --- Create relationship between latest owner (if person) and mailing address ---
-    // This relationship should only be created if mailingAddressOut was successfully created
-    // and ownerToFileMap is now fully populated.
-    if (currentOwnerRecord  && mailingAddressOut) {
-      const latestOwnerMeta = ownerToFileMap.get(currentOwnerRecord.id);
-      if (latestOwnerMeta) { // Ensure it's a person for this relationship
-        const relFileName = `relationship_${latestOwnerMeta.type}_${latestOwnerMeta.index}_has_mailing_address.json`;
-        const relOut = {
-          from: { "/": `./${latestOwnerMeta.fileName}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        await fsp.writeFile(
-          path.join("data", relFileName),
-          JSON.stringify(relOut, null, 2),
-        );
-        console.log(`Created mailing address relationship: ${relFileName}`);
-      } else {
-        console.log("Warning: Could not find metadata for currentOwnerRecord (or it's not a person) to create mailing address relationship.");
+    // --- Create relationships between ALL current owners and mailing address ---
+    // This relationship should be created for all current owners (both persons and companies)
+    // if mailingAddressOut was successfully created and ownerToFileMap is now fully populated.
+    if (mailingAddressOut && currentOwnerRecordsList.length > 0) {
+      let relPersonMailingCounter = 0;
+      let relCompanyMailingCounter = 0;
+
+      for (const record of currentOwnerRecordsList) {
+        const ownerMeta = ownerToFileMap.get(record.id);
+        if (ownerMeta) {
+          if (ownerMeta.type === "person") {
+            relPersonMailingCounter++;
+            const relFileName = `relationship_person_has_mailing_address_${relPersonMailingCounter}.json`;
+            const relOut = {
+              from: { "/": `./${ownerMeta.fileName}` },
+              to: { "/": "./mailing_address.json" },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+            console.log(`Created mailing address relationship: ${relFileName}`);
+          } else if (ownerMeta.type === "company") {
+            relCompanyMailingCounter++;
+            const relFileName = `relationship_company_has_mailing_address_${relCompanyMailingCounter}.json`;
+            const relOut = {
+              from: { "/": `./${ownerMeta.fileName}` },
+              to: { "/": "./mailing_address.json" },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+            console.log(`Created mailing address relationship: ${relFileName}`);
+          }
+        } else {
+          console.log(`Warning: Could not find metadata for owner record ${record.id} to create mailing address relationship.`);
+        }
       }
     } else {
-      console.log("Mailing address relationship not created. Conditions not met:", {
-        currentOwnerRecord: !!currentOwnerRecord,
-        isPerson: currentOwnerRecord?.type === "person",
-        mailingAddressOut: !!mailingAddressOut
+      console.log("Mailing address relationships not created. Conditions not met:", {
+        mailingAddressOut: !!mailingAddressOut,
+        currentOwnersCount: currentOwnerRecordsList.length
       });
     }
 
