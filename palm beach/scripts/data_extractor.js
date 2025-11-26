@@ -6492,9 +6492,11 @@ const RAW_ADDRESS_TERMINAL_FIELD_SET = new Set(
 );
 
 // Raw variants only retain the minimal schema surface we explicitly whitelist.
-const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set(
-  RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
-);
+const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
+  "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
+]);
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
   "city_name",
@@ -53089,10 +53091,23 @@ function emitMinimalRawAddressOverride() {
     surfacedRaw.request_identifier = null;
   }
 
+  const strictRawPayload =
+    buildStrictRawOnlyAddress(surfacedRaw) ||
+    buildStrictRawOnlyAddress({
+      unnormalized_address: trimmedRaw,
+      request_identifier: surfacedRaw.request_identifier,
+      source_http_request: surfacedRaw.source_http_request,
+    });
+
+  if (!strictRawPayload) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
   originalWriteFileSync.call(
     fs,
     addressPath,
-    JSON.stringify(surfacedRaw, null, 2),
+    JSON.stringify(strictRawPayload, null, 2),
   );
 }
 
