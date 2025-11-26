@@ -1670,62 +1670,63 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     veteran_status: null,
     request_identifier: parcelId,
   }));
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
+  // Person files are not part of the Seed data group - do not generate them
+  // people.forEach((p, idx) => {
+  //   writeJSON(path.join("data", `person_${idx + 1}.json`), p);
+  // });
 
-  // Only create company files for companies that appear on sale dates
-  companies = Array.from(companyNamesUsedInSales).map((n) => ({
-    name: n,
-    request_identifier: parcelId,
-  }));
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
+  // Company files are not part of the Seed data group - do not generate them
+  // companies = Array.from(companyNamesUsedInSales).map((n) => ({
+  //   name: n,
+  //   request_identifier: parcelId,
+  // }));
+  // companies.forEach((c, idx) => {
+  //   writeJSON(path.join("data", `company_${idx + 1}.json`), c);
+  // });
 
-  // Relationships: link sale to owners present on that date (both persons and companies)
-  let relPersonCounter = 0;
-  let relCompanyCounter = 0;
-  sales.forEach((rec, idx) => {
-    const d = parseDateToISO(rec.saleDate);
-    const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-        if (pIdx) {
-          relPersonCounter++;
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_person_${relPersonCounter}.json`,
-            ),
-            {
-              to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
-            },
-          );
-        }
-      });
-    ownersOnDate
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const cIdx = findCompanyIndexByName(o.name);
-        if (cIdx) {
-          relCompanyCounter++;
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_company_${relCompanyCounter}.json`,
-            ),
-            {
-              to: { "/": `./company_${cIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
-            },
-          );
-        }
-      });
-  });
+  // Relationships to person and company are not part of the Seed data group - do not generate them
+  // let relPersonCounter = 0;
+  // let relCompanyCounter = 0;
+  // sales.forEach((rec, idx) => {
+  //   const d = parseDateToISO(rec.saleDate);
+  //   const ownersOnDate = ownersByDate[d] || [];
+  //   ownersOnDate
+  //     .filter((o) => o.type === "person")
+  //     .forEach((o) => {
+  //       const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+  //       if (pIdx) {
+  //         relPersonCounter++;
+  //         writeJSON(
+  //           path.join(
+  //             "data",
+  //             `relationship_sales_person_${relPersonCounter}.json`,
+  //           ),
+  //           {
+  //             to: { "/": `./person_${pIdx}.json` },
+  //             from: { "/": `./sales_${idx + 1}.json` },
+  //           },
+  //         );
+  //       }
+  //     });
+  //   ownersOnDate
+  //     .filter((o) => o.type === "company")
+  //     .forEach((o) => {
+  //       const cIdx = findCompanyIndexByName(o.name);
+  //       if (cIdx) {
+  //         relCompanyCounter++;
+  //         writeJSON(
+  //           path.join(
+  //             "data",
+  //             `relationship_sales_company_${relCompanyCounter}.json`,
+  //           ),
+  //           {
+  //             to: { "/": `./company_${cIdx}.json` },
+  //             from: { "/": `./sales_${idx + 1}.json` },
+  //           },
+  //         );
+  //       }
+  //     });
+  // });
   // Mailing address is not part of the Seed data group schema, so we don't create it
 }
 
