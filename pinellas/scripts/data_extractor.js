@@ -71,14 +71,9 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
 
   const fileMap = {
     lot: "lot.json",
+    utility: "utility.json",
     structure: "structure.json",
   };
-
-  // Remove utility.json if it exists since indexed utility files will be created later
-  const utilityFilePath = path.join(dataDir, "utility.json");
-  if (fs.existsSync(utilityFilePath)) {
-    fs.unlinkSync(utilityFilePath);
-  }
 
   Object.entries(fileMap).forEach(([cls, filename]) => {
     const props = grouped[cls] || {};
@@ -3064,13 +3059,8 @@ function extract() {
   try {
     const salesRows = $("#tblSalesHistory tbody tr");
 
-    // Clean up old sales_history files and their relationships
     fs.readdirSync(dataDir).forEach((file) => {
       if (/^sales_history_\d+\.json$/i.test(file) || /^sales_\d+\.json$/i.test(file)) {
-        fs.unlinkSync(path.join(dataDir, file));
-      }
-      // Also remove relationship files that reference sales_history
-      if (file.startsWith("relationship_property_has_sales_history_")) {
         fs.unlinkSync(path.join(dataDir, file));
       }
     });
@@ -3087,9 +3077,8 @@ function extract() {
       const iso = toISODate(dateTxt);
       const price = parseCurrencyToNumber(priceTxt);
       console.log(granteeRaw,price)
-      // Only create sales records when both date and price are valid
-      // purchase_price_amount is required and must be a number (cannot be null)
-      if (iso && price !== null && typeof price === 'number' && isFinite(price)) {
+      // && price !== null && price > 0
+      if (iso) {
         sales.push({
           ownership_transfer_date: iso,
           purchase_price_amount: price,
@@ -3111,17 +3100,10 @@ function extract() {
       const file = path.join(dataDir, saleFileName);
       // Remove _rawIndex and grantee_text before writing to file
       const { _rawIndex, grantee_text, ...saleData } = s;
-
-      // CRITICAL: Ensure purchase_price_amount is never null - it's required in schema
-      // Only write the file if we have a valid numeric purchase_price_amount
-      if (saleData.purchase_price_amount !== null &&
-          typeof saleData.purchase_price_amount === 'number' &&
-          isFinite(saleData.purchase_price_amount)) {
-        writeJSON(file, saleData);
-        s._file = `./${saleFileName}`; // Keep _file for relationship linking
-        saleFileMap.set(s.ownership_transfer_date, s._file);
-        if (!firstSaleFile) firstSaleFile = s._file;
-      }
+      writeJSON(file, saleData);
+      s._file = `./${saleFileName}`; // Keep _file for relationship linking
+      saleFileMap.set(s.ownership_transfer_date, s._file);
+      if (!firstSaleFile) firstSaleFile = s._file;
     });
 
     const ownerExtraction = extractOwnersFromHtml(
@@ -3317,18 +3299,6 @@ function extract() {
         from: { "/": companyRef },
         to: { "/": "./mailing_address.json" },
       });
-    });
-
-    // Create relationships between property and sales_history
-    sales.forEach((sale, idx) => {
-      if (sale._file) {
-        const saleBase = sale._file.replace("./", "").replace(".json", "");
-        const relFile = `relationship_property_has_sales_history_${idx + 1}.json`;
-        writeJSON(path.join(dataDir, relFile), {
-          from: { "/": "./property.json" },
-          to: { "/": sale._file },
-        });
-      }
     });
   } catch (e) {
     console.error("Error extracting sales/owner data:", e);
@@ -3656,7 +3626,7 @@ function extract() {
 //   try {
 //     const relationshipsToRemove = [
 //       "relationship_property_address.json",
-//       "relationship_property_lot.json",
+//       "relationship_property_lot.json", 
 //       "relationship_property_structure.json",
 //       "relationship_property_utility.json"
 // ];
@@ -3672,44 +3642,6 @@ function extract() {
 //     console.error("Error removing null relationships:", e);
 //   }
 
-  // CRITICAL FIX: Final validation - remove any sales_history files with null purchase_price_amount
-  // This ensures that no invalid sales records are created that would cause validation errors
-  try {
-    const files = fs.readdirSync(dataDir);
-    files.forEach(file => {
-      if (/^sales_history_\d+\.json$/i.test(file)) {
-        const filePath = path.join(dataDir, file);
-        try {
-          const saleData = readJSON(filePath);
-          // Check if purchase_price_amount is null or not a valid number
-          if (!saleData ||
-              saleData.purchase_price_amount === null ||
-              saleData.purchase_price_amount === undefined ||
-              typeof saleData.purchase_price_amount !== 'number' ||
-              !Number.isFinite(saleData.purchase_price_amount)) {
-            console.log(`Removing invalid sales_history file: ${file} (purchase_price_amount: ${saleData?.purchase_price_amount})`);
-            fs.unlinkSync(filePath);
-
-            // Also remove any relationships that reference this file
-            const saleBase = file.replace('.json', '');
-            files.forEach(relFile => {
-              if (relFile.includes(saleBase) && relFile.startsWith('relationship_')) {
-                const relPath = path.join(dataDir, relFile);
-                if (fs.existsSync(relPath)) {
-                  console.log(`Removing relationship file: ${relFile}`);
-                  fs.unlinkSync(relPath);
-                }
-              }
-            });
-          }
-        } catch (e) {
-          console.error(`Error validating ${file}:`, e.message);
-        }
-      }
-    });
-  } catch (e) {
-    console.error("Error in final sales validation:", e);
-  }
 
 }
 
