@@ -126,11 +126,27 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  const titleCasedFirst = titleCase(first || "");
+  const titleCasedLast = titleCase(last || "");
+  const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
+
+  // Validate names match required pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
+
+  // Both first_name and last_name are required and must match pattern
+  if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
+    return null;
+  }
+
+  // Validate middle_name if present - set to null if it doesn't match pattern
+  const titleCasedMiddle = titleCasedMiddleRaw && isValidName(titleCasedMiddleRaw) ? titleCasedMiddleRaw : null;
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: titleCasedFirst,
+    last_name: titleCasedLast,
+    middle_name: titleCasedMiddle,
   };
 }
 
@@ -243,13 +259,16 @@ function parseOwnersFromText(rawText) {
   // Deduplicate by normalized key
   const seen = new Set();
   const deduped = [];
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   owners.forEach((o) => {
     const key = normalizeOwnerKey(o);
     if (!key || seen.has(key)) return;
     seen.add(key);
-    // Nullify empty middle_name
-    if (o.type === "person" && (!o.middle_name || !o.middle_name.trim())) {
-      o.middle_name = null;
+    // Nullify empty or invalid middle_name
+    if (o.type === "person") {
+      if (!o.middle_name || !o.middle_name.trim() || !namePattern.test(o.middle_name)) {
+        o.middle_name = null;
+      }
     }
     deduped.push(o);
   });

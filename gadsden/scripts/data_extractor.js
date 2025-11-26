@@ -491,15 +491,18 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
 
   const titleCasedFirst = titleCase(first || "");
   const titleCasedLast = titleCase(last || "");
-  const titleCasedMiddle = middle ? titleCase(middle) : null;
+  const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
 
   // Validate names contain at least one letter and match the required pattern
-  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
 
   if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
     return null;
   }
+
+  // Validate middle_name if present - set to null if it doesn't match pattern
+  const titleCasedMiddle = titleCasedMiddleRaw && isValidName(titleCasedMiddleRaw) ? titleCasedMiddleRaw : null;
 
   return {
     type: "person",
@@ -609,6 +612,7 @@ function parseOwnersFromText(rawText) {
 
   const seen = new Set();
   const deduped = [];
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   owners.forEach((o) => {
     const key =
       o.type === "company"
@@ -622,8 +626,11 @@ function parseOwnersFromText(rawText) {
             .join("|");
     if (!key || seen.has(key)) return;
     seen.add(key);
-    if (o.type === "person" && (!o.middle_name || !o.middle_name.trim())) {
-      o.middle_name = null;
+    // Nullify empty or invalid middle_name
+    if (o.type === "person") {
+      if (!o.middle_name || !o.middle_name.trim() || !namePattern.test(o.middle_name)) {
+        o.middle_name = null;
+      }
     }
     deduped.push(o);
   });
@@ -2072,16 +2079,19 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+    const middleNameRaw = middleRaw ? middleRaw : null;
 
-    // Validate names match required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+    // Validate names match required pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+    const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
     const isValidName = (name) => name && namePattern.test(name);
 
     // Both first_name and last_name are required and must match pattern
     if (!isValidName(firstName) || !isValidName(lastName)) {
       return null;
     }
+
+    // Validate middle_name if present - set to null if it doesn't match pattern
+    const middleName = middleNameRaw && isValidName(middleNameRaw) ? middleNameRaw : null;
 
     const key =
       firstName || lastName
