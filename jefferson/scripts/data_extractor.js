@@ -1303,11 +1303,25 @@ function writePersonCompaniesSalesRelationships(
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // Build sale dates set to filter historical owners
+  const saleDatesSet = new Set();
+  (saleHistoryMeta || []).forEach((meta) => {
+    if (meta.dateISO) saleDatesSet.add(meta.dateISO);
+  });
+
   const orderedOwnerArrays = [];
   if (Array.isArray(ownersByDate.current))
     orderedOwnerArrays.push(ownersByDate.current);
+
+  // Only include historical owners that have matching sales dates
   Object.keys(ownersByDate)
-    .filter((ownerKey) => ownerKey !== "current" && !/^unknown_date_/.test(ownerKey))
+    .filter((ownerKey) => {
+      if (ownerKey === "current") return false;
+      if (/^unknown_date_/.test(ownerKey)) return false;
+      // Only include if this date has a corresponding sale
+      return saleDatesSet.has(ownerKey);
+    })
     .sort()
     .forEach((ownerKey) => {
       const ownersForKey = ownersByDate[ownerKey];
