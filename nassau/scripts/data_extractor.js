@@ -1554,11 +1554,16 @@ function formatName(name) {
     cleaned = cleaned.replace(pattern, ' ');
   });
 
-  // Remove any content within parentheses first, before removing the parentheses themselves
-  // This handles cases like "Lang (Jtro" where closing paren might be missing
-  cleaned = cleaned.replace(/\([^)]*\)?/g, ' ');  // Remove content in parentheses
-  cleaned = cleaned.replace(/\[[^\]]*\]?/g, ' ');  // Remove content in square brackets
-  cleaned = cleaned.replace(/\{[^}]*\}?/g, ' ');   // Remove content in curly braces
+  // Remove any content within parentheses first
+  // First remove properly closed parentheses
+  cleaned = cleaned.replace(/\([^)]*\)/g, ' ');  // Remove content in properly closed parentheses
+  cleaned = cleaned.replace(/\[[^\]]*\]/g, ' ');  // Remove content in properly closed square brackets
+  cleaned = cleaned.replace(/\{[^}]*\}/g, ' ');   // Remove content in properly closed curly braces
+
+  // Then remove any unclosed parentheses and everything after them until a space or end
+  cleaned = cleaned.replace(/\([^\s)]*(?:\s|$)/g, ' ');  // Remove unclosed opening parens and content
+  cleaned = cleaned.replace(/\[[^\s\]]*(?:\s|$)/g, ' ');  // Remove unclosed opening brackets and content
+  cleaned = cleaned.replace(/\{[^\s}]*(?:\s|$)/g, ' ');   // Remove unclosed opening braces and content
 
   // Then explicitly remove any remaining parentheses and other common unwanted characters
   // Remove all types of parentheses: (), [], {}, and any Unicode variants
