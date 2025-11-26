@@ -287,23 +287,23 @@ function enforceFinalRawAddressSnapshot() {
     seedSource && seedSource.request_identifier,
     seedSource && seedSource.parcel_id,
   );
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
   const finalPayload = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw,
     request_identifier:
       requestIdentifier === undefined
         ? null
         : requestIdentifier === null
-        ? null
-    : requestIdentifier,
-    source_http_request: null,
+          ? null
+          : requestIdentifier,
   };
 
-  if (!finalPayload.postal_code) {
-    finalPayload.plus_four_postal_code = null;
-  }
-  if (finalPayload.state_code && !finalPayload.country_code) {
-    finalPayload.country_code = "US";
+  if (sourceHttpRequest) {
+    finalPayload.source_http_request = deepClone(sourceHttpRequest);
   }
 
   originalWriteFileSync.call(
