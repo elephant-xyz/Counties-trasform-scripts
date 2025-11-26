@@ -253,13 +253,74 @@ function formatPrefix(value) {
 function formatSuffix(value) {
   if (!value) return null;
   const cleaned = value.replace(/[^A-Za-z0-9]/g, "");
-  if (isRomanNumeral(cleaned)) return cleaned.toUpperCase();
-  const upper = cleaned.toUpperCase();
-  if (PERSON_SUFFIXES.has(upper)) {
-    if (upper.length <= 3) return upper.charAt(0) + upper.slice(1).toLowerCase();
-    return upper;
+  if (!cleaned) return null;
+
+  // Valid suffixes according to Elephant schema
+  const validSuffixes = [
+    "Jr.",
+    "Sr.",
+    "II",
+    "III",
+    "IV",
+    "PhD",
+    "MD",
+    "Esq.",
+    "JD",
+    "LLM",
+    "MBA",
+    "RN",
+    "DDS",
+    "DVM",
+    "CFA",
+    "CPA",
+    "PE",
+    "PMP",
+    "Emeritus",
+    "Ret.",
+  ];
+
+  // Check if it's a Roman numeral
+  if (isRomanNumeral(cleaned)) {
+    const upperRoman = cleaned.toUpperCase();
+    if (validSuffixes.includes(upperRoman)) {
+      return upperRoman;
+    }
+    return null;
   }
-  return toNameCase(cleaned);
+
+  // Normalize and check against valid suffixes
+  const normalized = cleaned.replace(/\./g, "").toUpperCase();
+  const suffixMap = {
+    "JR": "Jr.",
+    "SR": "Sr.",
+    "II": "II",
+    "III": "III",
+    "IV": "IV",
+    "PHD": "PhD",
+    "MD": "MD",
+    "ESQ": "Esq.",
+    "ESQUIRE": "Esq.",
+    "JD": "JD",
+    "LLM": "LLM",
+    "MBA": "MBA",
+    "RN": "RN",
+    "DDS": "DDS",
+    "DMD": "DDS",
+    "DVM": "DVM",
+    "CFA": "CFA",
+    "CPA": "CPA",
+    "PE": "PE",
+    "PMP": "PMP",
+    "EMERITUS": "Emeritus",
+    "RET": "Ret.",
+  };
+
+  if (suffixMap[normalized]) {
+    return suffixMap[normalized];
+  }
+
+  // Invalid suffix - return null
+  return null;
 }
 
 function hasCompanyIndicators(tokens, rawString) {
