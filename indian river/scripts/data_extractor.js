@@ -1852,14 +1852,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   const referencedCompanyNames = new Set();
 
   // Add companies from sale dates ONLY (companies that will have sales_history relationships)
-  validDateEntries.forEach(([dateKey, arr]) => {
-    if (saleDates.has(dateKey)) {
-      (arr || []).forEach((o) => {
-        if (o.type === "company" && (o.name || "").trim()) {
-          referencedCompanyNames.add((o.name || "").trim());
-        }
-      });
-    }
+  // Only add companies that are actually in the ownersOnDate for sales to ensure they get relationships
+  sales.forEach((s) => {
+    const saleDateISO = parseDateToISO(s.saleDate);
+    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
+    ownersOnDate.forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim()) {
+        referencedCompanyNames.add((o.name || "").trim());
+      }
+    });
   });
 
   // Add companies from mailing addresses ONLY if they have valid addresses
