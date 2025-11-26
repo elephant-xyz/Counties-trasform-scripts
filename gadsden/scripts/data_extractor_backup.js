@@ -1844,12 +1844,12 @@ function parseSales($) {
     if (!instrumentNumberText) {
       instrumentNumberText = cleanText(instrumentCell.find("span").text());
     }
-    const book = cleanText(textOf($, tds.eq(2)) || "");
-    const page = cleanText(textOf($, tds.eq(3)) || "");
-    const qualification = textOf($, tds.eq(4));
-    const vacantImproved = textOf($, tds.eq(5));
-    const grantor = textOf($, tds.eq(6));
-    const grantee = textOf($, tds.eq(7));
+    const book = cleanText(textOf($, tds.eq(3)) || "");
+    const page = cleanText(textOf($, tds.eq(4)) || "");
+    const qualification = textOf($, tds.eq(5));
+    const vacantImproved = textOf($, tds.eq(6));
+    const grantor = textOf($, tds.eq(7));
+    const grantee = textOf($, tds.eq(8));
     let clerkUrl = null;
     const linkTd = tds.length > 9 ? tds.eq(9) : null;
     if (linkTd && linkTd.find("input").length) {
