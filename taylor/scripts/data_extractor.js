@@ -1260,6 +1260,10 @@ function writeProperty($, parcelId) {
     build_status: propertyMapping?.build_status || null
   };
 
+  if (propertyFields.property_type === null) {
+    throw new Error('Property type cannot be null. Property Usage code not matched with property type mapping!!');
+  }
+
   const years = extractBuildingYears($);
   console.log(years);
   const property = {
