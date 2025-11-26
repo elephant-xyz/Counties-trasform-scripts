@@ -1694,10 +1694,121 @@ function validateNamePattern(name) {
 }
 
 function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
-  // Person and company entities are not part of the Sales_History data group
-  // This function is disabled to prevent creating person/company files
-  // that would be flagged as unused in the Sales_History data group
-  return;
+  const owners = readJSON(path.join("owners", "owner_data.json"));
+  if (!owners) return;
+  const key = `property_${parcelId}`;
+  const record = owners[key];
+  if (!record || !record.owners_by_date) return;
+  const ownersByDate = record.owners_by_date;
+
+  // Build unique person map
+  const personMap = new Map();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "person") {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!personMap.has(k)) {
+          personMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+            prefix_name: o.prefix_name,
+            suffix_name: o.suffix_name,
+          });
+        } else {
+          const existing = personMap.get(k);
+          if (!existing.middle_name && o.middle_name)
+            existing.middle_name = o.middle_name;
+          if (!existing.prefix_name && o.prefix_name)
+            existing.prefix_name = o.prefix_name;
+          if (!existing.suffix_name && o.suffix_name)
+            existing.suffix_name = o.suffix_name;
+        }
+      }
+    });
+  });
+
+  // Create person entities with validation
+  people = Array.from(personMap.values()).map((p) => ({
+    first_name: p.first_name ? titleCaseName(p.first_name) : null,
+    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+    last_name: p.last_name ? titleCaseName(p.last_name) : null,
+    birth_date: null,
+    prefix_name: p.prefix_name,
+    suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
+    us_citizenship_status: null,
+    veteran_status: null,
+    request_identifier: parcelId,
+  }));
+
+  people.forEach((p, idx) => {
+    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
+  });
+
+  // Create company entities
+  const companyNames = new Set();
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim())
+        companyNames.add((o.name || "").trim());
+    });
+  });
+
+  companies = Array.from(companyNames).map((n) => ({
+    name: n,
+    request_identifier: parcelId,
+  }));
+
+  companies.forEach((c, idx) => {
+    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
+  });
+
+  // Create relationships between sales_history and persons/companies
+  sales.forEach((s, idx) => {
+    const saleIdx = idx + 1;
+    const saleDateISO = parseDateToISO(s.saleDate);
+    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
+
+    const linked = new Set();
+
+    // Link persons to sales_history
+    ownersOnDate
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const pIdx = findPersonIndexByName(o.first_name, o.last_name, o.suffix_name);
+        if (pIdx && !linked.has(`person:${pIdx}`)) {
+          linked.add(`person:${pIdx}`);
+          writeJSON(
+            path.join("data", `relationship_sales_history_${saleIdx}_person_${pIdx}.json`),
+            {
+              from: { "/": `./sales_history_${saleIdx}.json` },
+              to: { "/": `./person_${pIdx}.json` },
+            }
+          );
+        }
+      });
+
+    // Link companies to sales_history
+    ownersOnDate
+      .filter((o) => o.type === "company")
+      .forEach((o) => {
+        const cIdx = findCompanyIndexByName(o.name);
+        if (cIdx && !linked.has(`company:${cIdx}`)) {
+          linked.add(`company:${cIdx}`);
+          writeJSON(
+            path.join("data", `relationship_sales_history_${saleIdx}_company_${cIdx}.json`),
+            {
+              from: { "/": `./sales_history_${saleIdx}.json` },
+              to: { "/": `./company_${cIdx}.json` },
+            }
+          );
+        }
+      });
+  });
+
+  // Write mailing addresses for current owners
+  const mailingAddresses = record.owner_mailing_addresses || [];
+  writeMailingAddresses(parcelId, mailingAddresses, propertySeed?.source_http_request);
 }
 
 function writeTaxes($) {
