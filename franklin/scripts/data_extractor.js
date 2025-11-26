@@ -3160,9 +3160,10 @@ function main() {
     const deedFileName = `deed_${deedIndex}.json`;
     writeJSON(path.join("data", deedFileName), deedObj);
 
+    const fileName = ((instAbbr ? instAbbr + " " : "") + (bookPage || "")).trim();
     const fileObj = {
       file_format: null,
-      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
+      name: fileName || null,
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
