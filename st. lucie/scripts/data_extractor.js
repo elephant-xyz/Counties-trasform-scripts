@@ -1823,10 +1823,25 @@ async function main() {
       if (!ownerEntry || typeof ownerEntry !== "object") return null;
       const ownerType = ownerEntry.type === "company" ? "company" : "person";
       if (ownerType === "person") {
+        const firstName = normalizePersonName(ownerEntry.first_name) ?? null;
+        const lastName = normalizePersonName(ownerEntry.last_name) ?? null;
+
+        // Ensure both first_name and last_name are valid non-empty strings
+        // as required by the Elephant person schema (minLength: 1 for both)
+        if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+          // If we don't have a valid last name, skip creating this person record
+          return null;
+        }
+
+        // If we don't have a first name, use a placeholder that matches the schema pattern
+        const validFirstName = (firstName && typeof firstName === 'string' && firstName.trim().length > 0)
+          ? firstName
+          : 'Unknown';
+
         const personData = {
           birth_date: ownerEntry.birth_date ?? null,
-          first_name: normalizePersonName(ownerEntry.first_name) ?? null,
-          last_name: normalizePersonName(ownerEntry.last_name) ?? null,
+          first_name: validFirstName,
+          last_name: lastName,
           middle_name: normalizePersonName(ownerEntry.middle_name) ?? null,
           prefix_name: ownerEntry.prefix_name ?? null,
           suffix_name: ownerEntry.suffix_name ?? null,
@@ -1925,9 +1940,25 @@ async function main() {
         return record;
       }
       const parsed = parsePersonNameTokens(cleaned);
+
+      // Ensure both first_name and last_name are valid non-empty strings
+      // as required by the Elephant person schema (minLength: 1 for both)
+      const firstName = parsed?.first_name;
+      const lastName = parsed?.last_name;
+
+      // If we can't extract a valid last name, don't create the person record
+      if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+        return null;
+      }
+
+      // If we don't have a first name, use a placeholder that matches the schema pattern
+      const validFirstName = (firstName && typeof firstName === 'string' && firstName.trim().length > 0)
+        ? firstName
+        : 'Unknown';
+
       const personData = {
-        first_name: parsed?.first_name ?? null,
-        last_name: parsed?.last_name ?? null,
+        first_name: validFirstName,
+        last_name: lastName,
         middle_name: parsed?.middle_name ?? null,
         // Other fields are null by default in createOwnerRecord
       };
@@ -2234,12 +2265,24 @@ async function main() {
       }
 
       if (record.type === "person") {
+        // Validate that person has required fields before writing
+        const firstName = record.person?.first_name;
+        const lastName = record.person?.last_name;
+
+        // Skip this person if they don't have valid required fields
+        if (!firstName || !lastName ||
+            typeof firstName !== 'string' || typeof lastName !== 'string' ||
+            firstName.trim().length === 0 || lastName.trim().length === 0) {
+          console.warn(`Skipping person record ${record.id} - missing required first_name or last_name`);
+          continue;
+        }
+
         personIdx += 1;
         const personOut = {
           source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
           birth_date: record.person?.birth_date ?? null,
-          first_name: record.person?.first_name ?? null,
-          last_name: record.person?.last_name ?? null,
+          first_name: firstName,
+          last_name: lastName,
           middle_name: record.person?.middle_name ?? null,
           prefix_name: record.person?.prefix_name ?? null,
           suffix_name: record.person?.suffix_name ?? null,
