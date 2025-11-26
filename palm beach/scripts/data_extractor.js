@@ -55181,6 +55181,7 @@ function buildSubmissionReadyRawAddressPayload(payload) {
   }
 
   const submission = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
@@ -55201,37 +55202,31 @@ function buildSubmissionReadyRawAddressPayload(payload) {
     submission.source_http_request = null;
   }
 
-  const latitude = parseCoordinate(payload.latitude);
-  const longitude = parseCoordinate(payload.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    submission.latitude = latitude;
-    submission.longitude = longitude;
-  }
-
-  const copyField = (field) => {
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
-      return;
-    }
-    const value = payload[field];
-    if (!hasMeaningfulAddressValue(value)) {
-      return;
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      submission[field] = trimmed;
-      return;
-    }
-    submission[field] = value;
-  };
-
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(payload[field]);
+      submission[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
-    copyField(field);
+
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      submission[field] = submission[field] ?? null;
+      continue;
+    }
+
+    const value = payload[field];
+    if (!hasMeaningfulAddressValue(value)) {
+      submission[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      submission[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    submission[field] = value;
   }
 
   if (
@@ -55241,11 +55236,8 @@ function buildSubmissionReadyRawAddressPayload(payload) {
     submission.country_code = "US";
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(submission, "plus_four_postal_code") &&
-    !hasMeaningfulAddressValue(submission.postal_code)
-  ) {
-    delete submission.plus_four_postal_code;
+  if (!hasMeaningfulAddressValue(submission.postal_code)) {
+    submission.plus_four_postal_code = null;
   }
 
   return submission;
