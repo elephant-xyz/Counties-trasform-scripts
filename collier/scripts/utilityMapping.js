@@ -72,4 +72,3 @@ function ensureDir(filePath) {
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
   console.log(`Wrote utilities data for property_${parcelId} to ${outPath}`);
 })();
-
