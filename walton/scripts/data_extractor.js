@@ -14,10 +14,8 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-const PARCEL_SELECTOR =
-  "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
-const OVERALL_DETAILS_TABLE_SELECTOR =
-  "#ctlBodyPane_ctl04_ctl01_dynamicSummary_divSummary table tbody tr";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
+const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl04_ctl01_dynamicSummary_divSummary table tbody tr";
 const BUILDING_SECTION_TITLE = "Building Information";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl12_ctl01_grdSales tbody tr";
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl06_ctl01_grdValuation";
@@ -82,9 +80,11 @@ function getParcelId($) {
 
 function extractLegalDescription($) {
   let desc = null;
-  $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
+  $(
+    OVERALL_DETAILS_TABLE_SELECTOR,
+  ).each((i, tr) => {
     let th = textOf($(tr).find("th strong"));
-    if (!th || !th.trim()) {
+    if(!th || !th.trim()) {
       th = textOf($(tr).find("td").first());
     }
     if ((th || "").toLowerCase().includes("description")) {
@@ -96,9 +96,11 @@ function extractLegalDescription($) {
 
 function extractUseCode($) {
   let code = null;
-  $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
+  $(
+    OVERALL_DETAILS_TABLE_SELECTOR,
+  ).each((i, tr) => {
     let th = textOf($(tr).find("th strong"));
-    if (!th || !th.trim()) {
+    if(!th || !th.trim()) {
       th = textOf($(tr).find("td").first());
     }
     if ((th || "").toLowerCase().includes("property use code")) {
@@ -179,9 +181,9 @@ function collectBuildings($) {
           if (label) map[label] = value;
         });
       if (Object.keys(map).length) {
-        const combined_map = { ...buildings[buildingCount], ...map };
+        const combined_map = {...buildings[buildingCount], ...map};
         buildings[buildingCount++] = combined_map;
-      }
+      };
     });
   return buildings;
 }
@@ -199,7 +201,7 @@ function extractBuildingYears($) {
   const buildings = collectBuildings($);
   const yearsActual = [];
   const yearsEffective = [];
-  buildings.forEach((b) => {
+   buildings.forEach((b) => {
     yearsActual.push(toInt(b["Actual Year Built"]));
     yearsEffective.push(toInt(b["Effective Year Built"]));
   });
@@ -212,7 +214,7 @@ function extractBuildingYears($) {
 function extractAreas($) {
   let total = 0;
   const buildings = collectBuildings($);
-  buildings.forEach((b) => {
+   buildings.forEach((b) => {
     total += toInt(b["Total Area"]);
   });
   return total;
@@ -391,7 +393,8 @@ function findPersonIndexByName(first, last) {
   const tf = titleCaseName(first);
   const tl = titleCaseName(last);
   for (let i = 0; i < people.length; i++) {
-    if (people[i].first_name === tf && people[i].last_name === tl) return i + 1;
+    if (people[i].first_name === tf && people[i].last_name === tl)
+      return i + 1;
   }
   return null;
 }
@@ -460,7 +463,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         companyNames.add((o.name || "").trim());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({
+  companies = Array.from(companyNames).map((n) => ({ 
     name: n,
     request_identifier: parcelId,
   }));
@@ -592,8 +595,7 @@ function writeLayout(parcelId) {
   const layouts = readJSON(path.join("owners", "layout_data.json"));
   if (!layouts) return;
   const key = `property_${parcelId}`;
-  const record =
-    layouts[key] && layouts[key].layouts ? layouts[key].layouts : [];
+  const record = (layouts[key] && layouts[key].layouts) ? layouts[key].layouts : [];
   record.forEach((l, idx) => {
     const out = {
       space_type: l.space_type ?? null,
@@ -636,9 +638,11 @@ function writeLayout(parcelId) {
 
 function extractSecTwpRng($) {
   let value = null;
-  $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
+  $(
+    OVERALL_DETAILS_TABLE_SELECTOR,
+  ).each((i, tr) => {
     let th = textOf($(tr).find("th strong"));
-    if (!th || !th.trim()) {
+    if(!th || !th.trim()) {
       th = textOf($(tr).find("td").first());
     }
     if ((th || "").toLowerCase().includes("sec/twp/rng")) {
@@ -748,7 +752,7 @@ function normalizeSuffix(s) {
 }
 
 function isNumeric(value) {
-  return /^-?\d+$/.test(value);
+    return /^-?\d+$/.test(value);
 }
 
 function attemptWriteAddress(unnorm, secTwpRng) {
@@ -760,11 +764,7 @@ function attemptWriteAddress(unnorm, secTwpRng) {
   const fullAddressParts = (full || "").split(",");
   if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
     state_and_pin = fullAddressParts[2].split(/\s+/);
-    if (
-      state_and_pin.length >= 1 &&
-      state_and_pin[state_and_pin.length - 1] &&
-      state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)
-    ) {
+    if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
       zip = state_and_pin[state_and_pin.length - 1].trim();
       city = fullAddressParts[1].trim();
     }

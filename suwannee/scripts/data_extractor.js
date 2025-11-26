@@ -1068,165 +1068,10 @@ function extractProperty($) {
   return property;
 }
 
-function normalizeSuffix(s) {
-  if (!s) return null;
-  const map = {
-    ALY: "Aly",
-    AVE: "Ave",
-    AV: "Ave",
-    BLVD: "Blvd",
-    BND: "Bnd",
-    CIR: "Cir",
-    CIRS: "Cirs",
-    CRK: "Crk",
-    CT: "Ct",
-    CTR: "Ctr",
-    CTRS: "Ctrs",
-    CV: "Cv",
-    CYN: "Cyn",
-    DR: "Dr",
-    DRS: "Drs",
-    EXPY: "Expy",
-    FWY: "Fwy",
-    GRN: "Grn",
-    GRNS: "Grns",
-    GRV: "Grv",
-    GRVS: "Grvs",
-    HWY: "Hwy",
-    HL: "Hl",
-    HLS: "Hls",
-    HOLW: "Holw",
-    JCT: "Jct",
-    JCTS: "Jcts",
-    LN: "Ln",
-    LOOP: "Loop",
-    MALL: "Mall",
-    MDW: "Mdw",
-    MDWS: "Mdws",
-    MEWS: "Mews",
-    ML: "Ml",
-    MNRS: "Mnrs",
-    MT: "Mt",
-    MTN: "Mtn",
-    MTNS: "Mtns",
-    OPAS: "Opas",
-    ORCH: "Orch",
-    OVAL: "Oval",
-    PARK: "Park",
-    PASS: "Pass",
-    PATH: "Path",
-    PIKE: "Pike",
-    PL: "Pl",
-    PLN: "Pln",
-    PLNS: "Plns",
-    PLZ: "Plz",
-    PT: "Pt",
-    PTS: "Pts",
-    PNE: "Pne",
-    PNES: "Pnes",
-    RADL: "Radl",
-    RD: "Rd",
-    RDG: "Rdg",
-    RDGS: "Rdgs",
-    RIV: "Riv",
-    ROW: "Row",
-    RTE: "Rte",
-    RUN: "Run",
-    SHL: "Shl",
-    SHLS: "Shls",
-    SHR: "Shr",
-    SHRS: "Shrs",
-    SMT: "Smt",
-    SQ: "Sq",
-    SQS: "Sqs",
-    ST: "St",
-    STA: "Sta",
-    STRA: "Stra",
-    STRM: "Strm",
-    TER: "Ter",
-    TPKE: "Tpke",
-    TRL: "Trl",
-    TRCE: "Trce",
-    UN: "Un",
-    VIS: "Vis",
-    VLY: "Vly",
-    VLYS: "Vlys",
-    VIA: "Via",
-    VL: "Vl",
-    VLGS: "Vlgs",
-    VWS: "Vws",
-    WALK: "Walk",
-    WALL: "Wall",
-    WAY: "Way",
-  };
-  const key = s.toUpperCase().trim();
-  if (map[key]) return map[key];
-  return null;
-}
 
-function isNumeric(value) {
-    return /^-?\d+$/.test(value);
-}
+const collapseWs = (s) => (s || "").replace(/\s+/g, " ").trim();
 
-function extractAddress($, unnorm) {
-  const full =
-    unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
-  if (!full) return;
-  let city = null;
-  let zip = null;
-  const fullAddressParts = (full || "").split(",");
-  if (fullAddressParts.length >= 3 && fullAddressParts[2]) {
-    state_and_pin = fullAddressParts[2].split(/\s+/);
-    if (state_and_pin.length >= 1 && state_and_pin[state_and_pin.length - 1] && state_and_pin[state_and_pin.length - 1].trim().match(/^\d{5}$/)) {
-      zip = state_and_pin[state_and_pin.length - 1].trim();
-      city = fullAddressParts[1].trim();
-    }
-  }
-  const parts = (fullAddressParts[0] || "").split(/\s+/);
-  let street_number = null;
-  if (parts && parts.length > 1) {
-    street_number_candidate = parts[0];
-    if ((street_number_candidate || "") && isNumeric(street_number_candidate)) {
-      street_number = parts.shift() || null;
-    }
-  }
-  let suffix = null;
-  if (parts && parts.length > 1) {
-    suffix_candidate = parts[parts.length - 1];
-    if (normalizeSuffix(suffix_candidate)) {
-      suffix = parts.pop() || null;
-    }
-  }
-  let street_name = parts.join(" ") || null;
-  if (street_name) {
-    street_name = street_name.replace(/\b(E|N|NE|NW|S|SE|SW|W)\b/g, "");
-  }
-  // const m = full.match(
-  //   /^(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})(?:-(\d{4}))?$/i,
-  // );
-  // if (!m) return;
-  // const [, streetNumber, streetRest, city, state, zip, plus4] = m;
-
-  // let street_name = streetRest.trim();
-  // let route_number = null;
-  // let street_suffix_type = null;
-  // const m2 = streetRest.trim().match(/^([A-Za-z]+)\s+(\d+)$/);
-  // if (m2) {
-  //   street_name = m2[1].toUpperCase();
-  //   route_number = m2[2];
-  //   if (street_name === "HWY" || street_name === "HIGHWAY")
-  //     street_suffix_type = "Hwy";
-  // }
-  const city_name = city ? city.toUpperCase() : null;
-  // const state_code = state.toUpperCase();
-  const postal_code = zip;
-  // const plus_four_postal_code = plus4 || null;
-
-  // Per evaluator expectation, set county_name from input jurisdiction
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  const county_name = inputCounty || null;
-
-  // S/T/R row for township, range, section
+function extractSecTwpRng($) {
   let section = null,
     township = null,
     range = null;
@@ -1256,30 +1101,63 @@ function extractAddress($, unnorm) {
       }
     }
   });
-  const address = {
-    city_name,
-    country_code: "US",
-    county_name,
-    latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-    longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
-    plus_four_postal_code: null,
-    postal_code,
-    state_code: "FL",
-    street_name: street_name,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_number: street_number,
-    street_suffix_type: normalizeSuffix(suffix),
-    unit_identifier: null,
-    route_number: null,
-    township: township || null,
-    range: range || null,
-    section: section || null,
-    block: null,
-    lot: null,
-    municipality_name: null,
-  };
-  return address;
+  return { section, township, range };
+}
+
+function extractAddressText($) {
+  return $('input[name="strSiteAddress"]').attr("value");
+}
+
+function extractOwnerMailingAddress($) {
+  let mailingAddress = null;
+  $("td").each((i, el) => {
+    const txt = collapseWs($(el).text()).toLowerCase();
+    if (txt === "owner") {
+      const valTd = $(el).next("td");
+      if (valTd && valTd.length) {
+        // Prefer bold text within the value cell for owner name
+        const rawCellText = collapseWs(valTd.text());
+        if (rawCellText) {
+          mailingAddress = rawCellText;
+          return;
+        }
+      }
+    }
+  });
+  return mailingAddress;
+}
+
+function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
+  let hasOwnerMailingAddress = false;
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
+  if (!inputCounty) {
+    inputCounty = (unnorm.county_name || "").trim();
+  }
+  const county_name = inputCounty || null;
+  if (mailingAddress) {
+    const mailingAddressObj = {
+      unnormalized_address: mailingAddress,
+    };
+    writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
+    hasOwnerMailingAddress = true;
+  }
+  if (siteAddress) {
+    const addressObj = {
+      county_name,
+      // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+      // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+      township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
+      range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
+      section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
+      unnormalized_address: siteAddress,
+    };
+    writeJson(path.join("data", "address.json"), addressObj);
+    writeJson(path.join("data", "relationship_property_has_address.json"), {
+                to: { "/": `./address.json` },
+                from: { "/": `./property.json` },
+              });
+  }
+  return hasOwnerMailingAddress;
 }
 
 function extractTaxes($) {
@@ -1314,6 +1192,9 @@ function extractTaxes($) {
         }
       }
     });
+    if (!block.taxable) {
+      return null;
+    }
     return block;
   }
 
@@ -1377,7 +1258,11 @@ function mapDeedCode(code) {
   if (u == "QUITCLAIM DEED") return "Quitclaim Deed";
   if (u == "SW") return "Special Warranty Deed";
   if (u == "SPECIAL WARRANTY DEED") return "Special Warranty Deed";
-  return null;
+  return "Miscellaneous";
+}
+
+function isNumeric(value) {
+    return /^-?\d+$/.test(value);
 }
 
 function extractSalesAndDeeds($) {
@@ -1397,12 +1282,14 @@ function extractSalesAndDeeds($) {
       const iso = toIsoDate(date);
       const amt = parseMoney(price);
       let link = null;
+      let book = null;
+      let page = null;
       if (bookPage) {
         const bookPageParts = bookPage.split('/');
         if (bookPageParts.length == 2) {
-          const book = bookPageParts[0].trim();
-          const page = bookPageParts[1].trim();
-          if (book && isNumeric(book) && page && isNumeric(page)) {
+          if (bookPageParts[0].trim() && isNumeric(bookPageParts[0].trim()) && bookPageParts[1].trim() && isNumeric(bookPageParts[1].trim())) {
+            book = bookPageParts[0].trim();
+            page = bookPageParts[1].trim();
             link = `https://www.suwanneepa.com/gis/linkClerk/?ClerkBook=${book}&ClerkPage=${page}&autoSubmit=1`;
           }
         }
@@ -1412,6 +1299,8 @@ function extractSalesAndDeeds($) {
         purchase_price_amount: amt,
         bookPage,
         link,
+        book,
+        page,
         deed: mapDeedCode(deedCode)
       };
       sales.push(saleObj);
@@ -1466,6 +1355,214 @@ function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat) {
   }
   return outputs;
 }
+/**
+ * Minimal Geometry model that mirrors the Elephant Geometry class.
+ */
+class Geometry {
+  constructor({ latitude, longitude, polygon }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(
+        record.parcel_polygon
+      )
+    });
+  }
+}
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (char === '"') {
+      if (insideQuotes && content[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (char === '\r' && content[i + 1] === '\n') {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function coordinatesDepth(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 0;
+  }
+
+  return 1 + coordinatesDepth(value[0]);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+/**
+ * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const headers = rows[0].map((header) => header.trim());
+  const records = rows.slice(1).map((values) =>
+    headers.reduce((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+function createGeometryClass(geometryInstances) {
+  let geomIndex = 1;
+  for(let geom of geometryInstances) {
+    let polygon = [];
+    let geometry = {
+      "latitude": geom.latitude,
+      "longitude": geom.longitude,
+    }
+    if (geom && geom.polygon) {
+      for (const coordinate of geom.polygon.coordinates[0]) {
+        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+      }
+      geometry.polygon = polygon;
+    }
+    writeJson(path.join("data", `geometry_${geomIndex}.json`), geometry);
+    writeJson(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./parcel.json` },
+        to: { "/": `./geometry_${geomIndex}.json` },
+    });
+    geomIndex++;
+  }
+}
 
 function main() {
   try {
@@ -1484,6 +1581,22 @@ function main() {
     const structuresData = readJson(path.join("owners", "structure_data.json"));
     const layoutData = readJson(path.join("owners", "layout_data.json"));
 
+    try {
+      const seedCsvPath = path.join(".", "input.csv");
+      const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+      createGeometryClass(createGeometryInstances(seedCsv));
+    } catch (e) {
+      const latitude = unAddr && unAddr.latitude ? unAddr.latitude : null;
+      const longitude = unAddr && unAddr.longitude ? unAddr.longitude : null;
+      if (latitude && longitude) {
+        const coordinate = new Geometry({
+          latitude: latitude,
+          longitude: longitude
+        });
+        createGeometryClass([coordinate]);
+      }
+    }
+
     // Property
     const property = extractProperty($);
     if (!property.property_type) {
@@ -1497,8 +1610,10 @@ function main() {
     writeJson(path.join(dataDir, "property.json"), property);
 
     // Address
-    const address = extractAddress($, unAddr);
-    writeJson(path.join(dataDir, "address.json"), address);
+    const secTwpRng = extractSecTwpRng($);
+    const addressText = extractAddressText($);
+    const mailingAddress = extractOwnerMailingAddress($);
+    const hasOwnerMailingAddress = attemptWriteAddress(unAddr, secTwpRng, addressText, mailingAddress);
 
     // Taxes
     const taxes = extractTaxes($);
@@ -1517,31 +1632,34 @@ function main() {
       }
       writeJson(path.join(dataDir, `sales_${i + 1}.json`), saleObj);
       if (s.deed) {
-        writeJson(path.join(dataDir, `deed_${i + 1}.json`), {"deed_type": s.deed});
-      } else {
-        writeJson(path.join(dataDir, `deed_${i + 1}.json`), {});
+        let deedObj = {"deed_type": s.deed};
+        if (s.book && s.page) {
+          deedObj.book = s.book;
+          deedObj.page = s.page;
+        }
+        writeJson(path.join(dataDir, `deed_${i + 1}.json`), deedObj);
+        const suffix = `_${i + 1}`;
+        const saleDeedRelName = `relationship_sales_deed${suffix}.json`;
+        const file = {
+          document_type: null,
+          file_format: null,
+          ipfs_url: null,
+          name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
+          original_url: s.link || null,
+        };
+        writeJson(path.join("data", `file_${i + 1}.json`), file);
+        const deedFileRelName = `relationship_deed_file${suffix}.json`;
+        const saleDeedRel = {
+          from: { "/": `./sales_${i + 1}.json` },
+          to: { "/": `./deed_${i + 1}.json` },
+        };
+        writeJson(path.join(dataDir, saleDeedRelName), saleDeedRel);
+        const deedFileRel = {
+          from: { "/": `./deed_${i + 1}.json` },
+          to: { "/": `./file_${i + 1}.json` },
+        };
+        writeJson(path.join(dataDir, deedFileRelName), deedFileRel);
       }
-      const file = {
-        document_type: null,
-        file_format: null,
-        ipfs_url: null,
-        name: s.bookPage ? `Deed ${s.bookPage}` : "Deed Document",
-        original_url: s.link || null,
-      };
-      writeJson(path.join("data", `file_${i + 1}.json`), file);
-      const suffix = i === 0 ? "" : `_${i + 1}`;
-      const saleDeedRelName = `relationship_sales_deed${suffix}.json`;
-      const deedFileRelName = `relationship_deed_file${suffix}.json`;
-      const saleDeedRel = {
-        to: { "/": `./sales_${i + 1}.json` },
-        from: { "/": `./deed_${i + 1}.json` },
-      };
-      writeJson(path.join(dataDir, saleDeedRelName), saleDeedRel);
-      const deedFileRel = {
-        to: { "/": `./deed_${i + 1}.json` },
-        from: { "/": `./file_${i + 1}.json` },
-      };
-      writeJson(path.join(dataDir, deedFileRelName), deedFileRel);
     });
 
     // Owners
@@ -1554,7 +1672,6 @@ function main() {
       parcelDashed,
       parcelFlat,
     );
-
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
@@ -1562,11 +1679,35 @@ function main() {
           to: { "/": `./${ownerFiles.companyFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
+        if (hasOwnerMailingAddress) {
+          writeJson(
+            path.join(
+              "data",
+              `relationship_company_has_mailing_address.json`,
+            ),
+            {
+              from: { "/": `./${ownerFiles.companyFiles[0]}` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
+        }
       } else if (ownerFiles.personFiles.length > 0) {
         writeJson(path.join(dataDir, "relationship_sales_person.json"), {
           to: { "/": `./${ownerFiles.personFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
+        if (hasOwnerMailingAddress) {
+          writeJson(
+            path.join(
+              "data",
+              `relationship_person_has_mailing_address.json`,
+            ),
+            {
+              from: { "/": `./${ownerFiles.personFiles[0]}` },
+              to: { "/": `./mailing_address.json` },
+            },
+          );
+        }
       }
     }
 
@@ -1583,18 +1724,12 @@ function main() {
         break;
       }
     }
-    if (utilEntry) {
-      writeJson(path.join(dataDir, "utility.json"), utilEntry);
-    }
     let structureEntry = null;
     for (const k of utilKeyVariants) {
       if (structuresData[k]) {
         structureEntry = structuresData[k];
         break;
       }
-    }
-    if (structureEntry) {
-      writeJson(path.join(dataDir, "structure.json"), structureEntry);
     }
 
     // Layouts
@@ -1605,10 +1740,91 @@ function main() {
         break;
       }
     }
-    if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
-      layoutEntry.layouts.forEach((lay, i) => {
-        writeJson(path.join(dataDir, `layout_${i + 1}.json`), lay);
-      });
+    if (layoutEntry && layoutEntry["layouts"]) {
+      let idx = 1;
+      let layoutBuildingMap = {};
+      for (const l of layoutEntry["layouts"]) {
+        const layoutOut = {
+          space_type: l.space_type ?? null,
+          space_type_index: l.space_type_index ?? null,
+          flooring_material_type: l.flooring_material_type ?? null,
+          size_square_feet: l.size_square_feet ?? null,
+          has_windows: l.has_windows ?? null,
+          window_design_type: l.window_design_type ?? null,
+          window_material_type: l.window_material_type ?? null,
+          window_treatment_type: l.window_treatment_type ?? null,
+          is_finished: l.is_finished ?? null,
+          furnished: l.furnished ?? null,
+          paint_condition: l.paint_condition ?? null,
+          flooring_wear: l.flooring_wear ?? null,
+          clutter_level: l.clutter_level ?? null,
+          visible_damage: l.visible_damage ?? null,
+          countertop_material: l.countertop_material ?? null,
+          cabinet_style: l.cabinet_style ?? null,
+          fixture_finish_quality: l.fixture_finish_quality ?? null,
+          design_style: l.design_style ?? null,
+          natural_light_quality: l.natural_light_quality ?? null,
+          decor_elements: l.decor_elements ?? null,
+          pool_type: l.pool_type ?? null,
+          pool_equipment: l.pool_equipment ?? null,
+          spa_type: l.spa_type ?? null,
+          safety_features: l.safety_features ?? null,
+          view_type: l.view_type ?? null,
+          lighting_features: l.lighting_features ?? null,
+          condition_issues: l.condition_issues ?? null,
+          is_exterior: l.is_exterior ?? false,
+          pool_condition: l.pool_condition ?? null,
+          pool_surface_type: l.pool_surface_type ?? null,
+          pool_water_quality: l.pool_water_quality ?? null,
+
+          adjustable_area_sq_ft: l.adjustable_area_sq_ft ?? null,
+          area_under_air_sq_ft: l.area_under_air_sq_ft ?? null,
+          bathroom_renovation_date: l.bathroom_renovation_date ?? null,
+          building_number: l.building_number ?? null,
+          kitchen_renovation_date: l.kitchen_renovation_date ?? null,
+          heated_area_sq_ft: l.heated_area_sq_ft ?? null,
+          installation_date: l.installation_date ?? null,
+          livable_area_sq_ft: l.livable_area_sq_ft ?? null,
+          pool_installation_date: l.pool_installation_date ?? null,
+          spa_installation_date: l.spa_installation_date ?? null,
+          story_type: l.story_type ?? null,
+          total_area_sq_ft: l.total_area_sq_ft ?? null,
+        };
+        writeJson(path.join("data", `layout_${idx}.json`), layoutOut);
+        if (l.space_type === "Building") {
+          const building_number = l.building_number;
+          layoutBuildingMap[building_number.toString()] = idx;
+        }
+        if (l.space_type !== "Building") {
+          const building_number = l.building_number;
+          if (building_number) {
+            const building_layout_number = layoutBuildingMap[building_number.toString()];
+            writeJson(path.join("data", `relationship_layout_${building_layout_number}_to_layout_${idx}.json`), {
+              to: { "/": `./layout_${idx}.json` },
+              from: { "/": `./layout_${building_layout_number}.json` },
+            });
+          }
+        }
+        if (utilEntry && l.space_type === "Building") {
+          if (l.building_number && l.building_number.toString() in utilEntry) {
+            writeJson(path.join("data", `utility_${idx}.json`), utilEntry[l.building_number.toString()]);
+            writeJson(path.join("data", `relationship_layout_to_utility_${idx}.json`), {
+                      to: { "/": `./utility_${idx}.json` },
+                      from: { "/": `./layout_${idx}.json` },
+            },);
+          }
+        }
+        if (structureEntry && l.space_type === "Building") {
+          if (l.building_number && l.building_number.toString() in structureEntry) {
+            writeJson(path.join("data", `structure_${idx}.json`), structureEntry[l.building_number.toString()]);
+            writeJson(path.join("data", `relationship_layout_to_structure_${idx}.json`), {
+                      to: { "/": `./structure_${idx}.json` },
+                      from: { "/": `./layout_${idx}.json` },
+            },);
+          }
+        }
+        idx++;
+      }
     }
 
   } catch (e) {
