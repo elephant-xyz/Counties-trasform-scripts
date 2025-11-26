@@ -7907,7 +7907,7 @@ function emitFinalNormalizedOrRawAddress(addressPath) {
     delete working.source_http_request;
   }
 
-  const normalizedCandidate =
+  const normalizedProbe =
     typeof ensureNormalizedAddressSchemaSurface === "function"
       ? ensureNormalizedAddressSchemaSurface({ ...working })
       : { ...working };
@@ -7915,10 +7915,10 @@ function emitFinalNormalizedOrRawAddress(addressPath) {
   const shouldForceRawVariant = forceRawAddressVariantOutput === true;
   const hasNormalizedCoverage =
     !shouldForceRawVariant &&
-    hasNormalizedCoreFieldCoverage(normalizedCandidate);
+    hasMinimalNormalizedAddressCoverage(normalizedProbe);
   if (hasNormalizedCoverage) {
     const normalizedOutput = {
-      ...normalizedCandidate,
+      ...normalizedProbe,
     };
     if (Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")) {
       delete normalizedOutput.unnormalized_address;
