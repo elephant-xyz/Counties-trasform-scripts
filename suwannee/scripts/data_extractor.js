@@ -1301,7 +1301,7 @@ function extractSalesAndDeeds($) {
   return sales;
 }
 
-function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat, hasSales, hasMailingAddress) {
+function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat, hasSales, hasMailingAddress, sales) {
   // owners keyed by dashed id in provided data
   const keyVariants = [`property_${parcelDashed}`, `property_${parcelFlat}`];
   let ownersEntry = null;
@@ -1330,15 +1330,70 @@ function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat, hasSales, has
     return outputs;
   }
 
-  // Deduplicate companies across ALL dates (not just current)
-  const companyNames = new Set();
-  Object.values(ownersEntry.owners_by_date).forEach((arr) => {
-    if (!Array.isArray(arr)) return;
-    arr.forEach((o) => {
+  // Collect owners that will actually be linked via relationships
+  const ownersToCreate = new Set();
+
+  // Add owners from sale dates (if there are sales)
+  if (hasSales && sales && sales.length > 0) {
+    sales.forEach((sale) => {
+      const saleDate = sale.ownership_transfer_date;
+      const ownersOnDate = ownersEntry.owners_by_date[saleDate] || [];
+      ownersOnDate.forEach((o) => {
+        if (o.type === "company" && o.name && o.name.trim()) {
+          ownersToCreate.add(JSON.stringify({ type: "company", name: o.name.trim() }));
+        } else if (o.type === "person" && o.first_name && o.last_name) {
+          ownersToCreate.add(JSON.stringify({
+            type: "person",
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+            birth_date: o.birth_date,
+            prefix_name: o.prefix_name,
+            suffix_name: o.suffix_name,
+            us_citizenship_status: o.us_citizenship_status,
+            veteran_status: o.veteran_status,
+          }));
+        }
+      });
+    });
+  }
+
+  // Add current owners (if there's a mailing address)
+  if (hasMailingAddress) {
+    const currentOwners = ownersEntry.owners_by_date["current"] || [];
+    currentOwners.forEach((o) => {
       if (o.type === "company" && o.name && o.name.trim()) {
-        companyNames.add(o.name.trim());
+        ownersToCreate.add(JSON.stringify({ type: "company", name: o.name.trim() }));
+      } else if (o.type === "person" && o.first_name && o.last_name) {
+        ownersToCreate.add(JSON.stringify({
+          type: "person",
+          first_name: o.first_name,
+          middle_name: o.middle_name,
+          last_name: o.last_name,
+          birth_date: o.birth_date,
+          prefix_name: o.prefix_name,
+          suffix_name: o.suffix_name,
+          us_citizenship_status: o.us_citizenship_status,
+          veteran_status: o.veteran_status,
+        }));
       }
     });
+  }
+
+  // Parse and deduplicate
+  const companyNames = new Set();
+  const personMap = new Map();
+
+  Array.from(ownersToCreate).forEach((jsonStr) => {
+    const owner = JSON.parse(jsonStr);
+    if (owner.type === "company") {
+      companyNames.add(owner.name);
+    } else if (owner.type === "person") {
+      const k = `${(owner.first_name || "").trim().toUpperCase()}|${(owner.last_name || "").trim().toUpperCase()}`;
+      if (!personMap.has(k)) {
+        personMap.set(k, owner);
+      }
+    }
   });
 
   // Create company files
@@ -1349,29 +1404,6 @@ function writeOwners(ownerData, dataDir, parcelDashed, parcelFlat, hasSales, has
     writeJson(file, { name: name });
     outputs.companyFiles.push(path.basename(file));
     outputs.companies.push({ name: name, file: path.basename(file), index: companyIdx });
-  });
-
-  // Deduplicate persons across ALL dates
-  const personMap = new Map();
-  Object.values(ownersEntry.owners_by_date).forEach((arr) => {
-    if (!Array.isArray(arr)) return;
-    arr.forEach((o) => {
-      if (o.type === "person" && o.first_name && o.last_name) {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k)) {
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-            birth_date: o.birth_date,
-            prefix_name: o.prefix_name,
-            suffix_name: o.suffix_name,
-            us_citizenship_status: o.us_citizenship_status,
-            veteran_status: o.veteran_status,
-          });
-        }
-      }
-    });
   });
 
   // Create person files
@@ -1723,7 +1755,8 @@ function main() {
       parcelDashed,
       parcelFlat,
       sales.length > 0,  // hasSales - only create if there are sales
-      mailingAddress && typeof mailingAddress === 'string' && mailingAddress.trim().length > 0  // hasMailingAddress
+      mailingAddress && typeof mailingAddress === 'string' && mailingAddress.trim().length > 0,  // hasMailingAddress
+      sales  // pass sales array to determine which owners to create
     );
 
     // Helper function to find company index by name
