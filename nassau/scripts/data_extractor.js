@@ -1519,7 +1519,9 @@ function formatName(name) {
   // Remove common legal designations that may contain invalid characters
   let cleaned = name.trim();
   const legalDesignations = [
-    /\bL\/E\b/gi,           // Life Estate
+    /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
+    /\s+L\/E\s+/gi,         // Life Estate in middle (with spaces around)
+    /^L\/E\s+/gi,           // Life Estate at start
     /\bET\s+AL\b/gi,        // Et Al
     /\bETAL\b/gi,           // Etal
     /\bLIFE\s+ESTATE\b/gi,  // Life Estate
@@ -1528,7 +1530,7 @@ function formatName(name) {
   ];
 
   legalDesignations.forEach(pattern => {
-    cleaned = cleaned.replace(pattern, '');
+    cleaned = cleaned.replace(pattern, ' ');
   });
 
   // Remove any remaining characters that don't match the person name pattern (except spaces for now)

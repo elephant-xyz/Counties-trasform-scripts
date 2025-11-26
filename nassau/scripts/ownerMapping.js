@@ -17,8 +17,11 @@ function cleanNameString(name) {
 
   // Remove common legal designations that may contain invalid characters
   let cleaned = name.trim();
+  const original = cleaned;
   const legalDesignations = [
-    /\bL\/E\b/gi,           // Life Estate
+    /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
+    /\s+L\/E\s+/gi,         // Life Estate in middle (with spaces around)
+    /^L\/E\s+/gi,           // Life Estate at start
     /\bET\s+AL\b/gi,        // Et Al
     /\bETAL\b/gi,           // Etal
     /\bLIFE\s+ESTATE\b/gi,  // Life Estate
@@ -27,7 +30,7 @@ function cleanNameString(name) {
   ];
 
   legalDesignations.forEach(pattern => {
-    cleaned = cleaned.replace(pattern, '');
+    cleaned = cleaned.replace(pattern, ' ');
   });
 
   // Remove any remaining characters that don't match the person name pattern
@@ -145,8 +148,15 @@ function isCompanyName(name) {
 
 // Parse possible multiple owners joined by '&', ' and ', or '/'
 function splitJointOwners(raw) {
-  const s = normalizeSpace(raw).replace(/&amp;/g, '&').replace(/\s*\([^)]*\)\s*/g, ' ');
+  let s = normalizeSpace(raw).replace(/&amp;/g, '&').replace(/\s*\([^)]*\)\s*/g, ' ');
   if (!s) return [];
+
+  // Remove legal designations that contain "/" before splitting
+  // This prevents "L/E" from being treated as a delimiter
+  s = s.replace(/\s+L\/E\s*$/gi, '');  // Life Estate at end
+  s = s.replace(/\s+L\/E\s+/gi, ' ');  // Life Estate in middle
+  s = s.replace(/^L\/E\s+/gi, '');     // Life Estate at start
+
   // Split on &, ' and ', or / while preserving meaningful tokens
   const parts = s
     .split(/\s*(?:&|\band\b|\/)\s*/i)
@@ -183,11 +193,19 @@ function validateSuffix(suffix) {
 
 // Build a person object using inferred pattern
 function buildPerson(first, last, middle, prefix, suffix) {
+  // Clean and validate each name component
+  const cleanFirst = cleanNameString(first);
+  const cleanLast = cleanNameString(last);
+  const cleanMiddle = middle ? cleanNameString(middle) : null;
+
+  // If cleaning removed all content, return null for that field
+  if (!cleanFirst || !cleanLast) return null;
+
   return {
     type: "person",
-    first_name: titleCase(first),
-    last_name: titleCase(last),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: titleCase(cleanFirst),
+    last_name: titleCase(cleanLast),
+    middle_name: cleanMiddle ? titleCase(cleanMiddle) : null,
     prefix_name: prefix ? validatePrefix(prefix) : null,
     suffix_name: suffix ? validateSuffix(suffix) : null,
   };
@@ -354,9 +372,6 @@ function buildOwnersByDate($) {
         }
         continue;
       }
-      
-      // Debug: Check if it's a person name that failed looksLikePerson
-      console.log(`Debug: '${clean}' failed looksLikePerson check`);
 
       if (/\b(trust|revocable|estate)\b/i.test(clean)) {
         owners.push({ type: "company", name: clean });
