@@ -2129,27 +2129,6 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
 }
 
 
-function extractMailingAddress($) {
-  const addressElement = $('#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress');
-  
-  if (!addressElement.length) return null;
-  
-  const addressText = addressElement.html();
-  if (!addressText || !addressText.trim()) return null;
-  
-  // Split by <br> tags and clean up each line
-  const lines = addressText
-    .split(/<br\s*\/?>/i)
-    .map(line => line.trim())
-    .filter(line => line.length > 0);
-  
-  if (lines.length === 0) return null;
-  
-  // Join lines with proper formatting
-  return lines.join(', ');
-}
-
-
 function main() {
   ensureDir("data");
   const $ = loadHTML();
