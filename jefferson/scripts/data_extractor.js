@@ -1283,6 +1283,13 @@ function titleCaseName(s) {
     .join(" ");
 }
 
+function cleanNameField(s) {
+  if (!s) return s;
+  // Remove trailing punctuation that would violate the name pattern
+  // Pattern allows punctuation only when followed by more letters
+  return s.replace(/[,.\-'\s]+$/, '').trim();
+}
+
 function writePersonCompaniesSalesRelationships(
   parcelId,
   sales,
@@ -1339,10 +1346,10 @@ function writePersonCompaniesSalesRelationships(
     });
   });
   people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
+    first_name: p.first_name ? cleanNameField(titleCaseName(p.first_name)) : null,
+    middle_name: p.middle_name ? cleanNameField(titleCaseName(p.middle_name)) : null,
+    last_name: p.last_name ? cleanNameField(titleCaseName(p.last_name)) : null,
+    prefix_name: p.prefix_name ? cleanNameField(titleCaseName(p.prefix_name)) : null,
     suffix_name: p.suffix_name || null,
     birth_date: null,
     us_citizenship_status: null,
