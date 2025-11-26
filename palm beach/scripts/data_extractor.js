@@ -54586,6 +54586,291 @@ function enforceAddressOneOfCompliance(addressPath, options = {}) {
   writeJSON(addressPath, strictRaw);
 }
 
+function cleanAddressText(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return String(value)
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s+/g, ", ")
+    .trim();
+}
+
+function pickFirstString(...candidates) {
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) {
+      continue;
+    }
+    const cleaned = cleanAddressText(candidate);
+    if (cleaned) {
+      return cleaned;
+    }
+  }
+  return null;
+}
+
+function normalizePostalCode(value) {
+  const cleaned = cleanAddressText(value);
+  if (!cleaned) return null;
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length === 5) return digits;
+  if (digits.length === 9) return digits.slice(0, 5);
+  return null;
+}
+
+function normalizePlusFour(value) {
+  const cleaned = cleanAddressText(value);
+  if (!cleaned) return null;
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length === 4) return digits;
+  if (digits.length === 9) return digits.slice(5);
+  return null;
+}
+
+function parseCityStatePostalFromLine(line) {
+  const cleaned = cleanAddressText(line);
+  if (!cleaned) return {};
+  const match = cleaned.match(/([A-Za-z]{2})\s+(\d{5})(?:[-\s]?(\d{4}))?$/);
+  if (!match) return {};
+  const citySegment = cleanAddressText(cleaned.slice(0, match.index));
+  return {
+    cityName: citySegment || null,
+    stateCode: match[1] ? match[1].toUpperCase() : null,
+    postalCode: match[2] || null,
+    plusFour: match[3] || null,
+  };
+}
+
+function parseCityStatePostalFromRaw(raw) {
+  const cleaned = cleanAddressText(raw);
+  if (!cleaned) return {};
+  const match = cleaned.match(/,\s*([^,]+?),\s*([A-Za-z]{2})\s+(\d{5})(?:[-\s]?(\d{4}))?/);
+  if (!match) return {};
+  return {
+    cityName: cleanAddressText(match[1]) || null,
+    stateCode: match[2] ? match[2].toUpperCase() : null,
+    postalCode: match[3] || null,
+    plusFour: match[4] || null,
+  };
+}
+
+function formatCityName(value) {
+  const cleaned = cleanAddressText(value);
+  return cleaned ? cleaned.toUpperCase() : null;
+}
+
+function extractPropertyModel() {
+  const html = readTextIfExists("input.html");
+  if (!html) return null;
+  const match = html.match(/var\s+model\s*=\s*(\{[\s\S]*?\});/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function composePropertyDetailCandidates(detail) {
+  if (!detail || typeof detail !== "object") {
+    return [];
+  }
+  const candidates = [];
+  const location = cleanAddressText(detail.Location || detail.location);
+  if (location) {
+    candidates.push(location);
+  }
+  const line1 = cleanAddressText(detail.AddressLine1 || detail.addressLine1);
+  const line2 = cleanAddressText(detail.AddressLine2 || detail.addressLine2);
+  const line3 = cleanAddressText(detail.AddressLine3 || detail.addressLine3);
+  const collapsed = [line1, line2, line3].filter(Boolean).join(", ");
+  if (collapsed) {
+    candidates.push(collapsed);
+  }
+  if (line1 && line3) {
+    candidates.push(`${line1}, ${line3}`);
+  }
+  return candidates.filter(Boolean);
+}
+
+function buildFinalCountyRawAddressPayload() {
+  const dataDir = path.join("data");
+  const addressPath = path.join(dataDir, "address.json");
+  const existing = readJSONIfExists(addressPath) || {};
+  const unnormalized = readJSONIfExists("unnormalized_address.json") || {};
+  const seed = readJSONIfExists("property_seed.json") || {};
+  const propertyModel = extractPropertyModel();
+  const propertyDetail =
+    propertyModel && typeof propertyModel === "object"
+      ? propertyModel.propertyDetail || propertyModel.property_detail
+      : null;
+
+  const rawCandidates = [];
+  const pushCandidate = (candidate) => {
+    const cleaned = cleanAddressText(candidate);
+    if (cleaned) {
+      rawCandidates.push(cleaned);
+    }
+  };
+
+  [
+    existing.unnormalized_address,
+    existing.full_address,
+    existing.address,
+    unnormalized.unnormalized_address,
+    unnormalized.full_address,
+    unnormalized.site_address,
+    unnormalized.address,
+    seed.full_address,
+    seed.situs_address,
+  ].forEach(pushCandidate);
+
+  composePropertyDetailCandidates(propertyDetail).forEach(pushCandidate);
+
+  const unnormalizedAddress =
+    rawCandidates.find((candidate) => candidate && candidate.length) || null;
+  if (!unnormalizedAddress) {
+    return null;
+  }
+
+  const parsedFromLine3 = parseCityStatePostalFromLine(
+    propertyDetail && (propertyDetail.AddressLine3 || propertyDetail.addressLine3),
+  );
+  const parsedFromRaw = parseCityStatePostalFromRaw(unnormalizedAddress);
+
+  const payload = { unnormalized_address: unnormalizedAddress };
+
+  const requestIdentifier = pickFirstString(
+    existing.request_identifier,
+    unnormalized.request_identifier,
+    seed.request_identifier,
+    seed.parcel_id,
+  );
+  if (requestIdentifier) {
+    payload.request_identifier = requestIdentifier;
+  }
+
+  const countyCandidate = titleCaseCounty(
+    pickFirstString(
+      existing.county_name,
+      unnormalized.county_name,
+      unnormalized.county_jurisdiction,
+      seed.county_name,
+      "Palm Beach",
+    ),
+  );
+  if (countyCandidate) {
+    payload.county_name = countyCandidate;
+  }
+
+  const cityName = formatCityName(
+    pickFirstString(
+      existing.city_name,
+      unnormalized.city_name,
+      parsedFromLine3.cityName,
+      parsedFromRaw.cityName,
+      propertyDetail && (propertyDetail.Municipality || propertyDetail.municipality),
+    ),
+  );
+  if (cityName) {
+    payload.city_name = cityName;
+  }
+
+  const stateCodeCandidate = pickFirstString(
+    existing.state_code,
+    unnormalized.state_code,
+    parsedFromLine3.stateCode,
+    parsedFromRaw.stateCode,
+    "FL",
+  );
+  if (stateCodeCandidate) {
+    payload.state_code = stateCodeCandidate.toUpperCase();
+    payload.country_code = "US";
+  }
+
+  const postalCodeCandidate =
+    normalizePostalCode(
+      pickFirstString(
+        existing.postal_code,
+        unnormalized.postal_code,
+        parsedFromLine3.postalCode,
+        parsedFromRaw.postalCode,
+      ),
+    ) ||
+    parsedFromLine3.postalCode ||
+    parsedFromRaw.postalCode;
+  if (postalCodeCandidate) {
+    payload.postal_code = postalCodeCandidate;
+  }
+
+  const plusFourCandidate = normalizePlusFour(
+    pickFirstString(
+      existing.plus_four_postal_code,
+      unnormalized.plus_four_postal_code,
+      parsedFromLine3.plusFour,
+      parsedFromRaw.plusFour,
+    ),
+  );
+  if (plusFourCandidate && payload.postal_code) {
+    payload.plus_four_postal_code = plusFourCandidate;
+  }
+
+  return payload;
+}
+
+function enforceExplicitNullAddressRelationships(directories = []) {
+  if (!Array.isArray(directories) || !directories.length) {
+    return;
+  }
+
+  for (const directoryPath of directories) {
+    if (!directoryPath) continue;
+    ensureDir(directoryPath);
+    let entries = [];
+    try {
+      entries = fs.readdirSync(directoryPath);
+    } catch {
+      entries = [];
+    }
+    for (const entry of entries) {
+      if (!entry.endsWith(".json")) {
+        continue;
+      }
+      const baseName = entry.slice(0, -5);
+      const normalizedBase = baseName.replace(/_\d+$/, "");
+      if (
+        RELATIONSHIP_AUTOGENERATED_BASENAMES.has(baseName) ||
+        RELATIONSHIP_AUTOGENERATED_BASENAMES.has(normalizedBase)
+      ) {
+        removeFileIfExists(path.join(directoryPath, entry));
+      }
+    }
+  }
+
+  enforceAutogeneratedRelationshipNulls(directories);
+}
+
+function enforceCountyRawAddressAndNullRelationships() {
+  const dataDir = path.join("data");
+  const relationshipsDir = path.join("relationships");
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+  const addressPath = path.join(dataDir, "address.json");
+  const payload = buildFinalCountyRawAddressPayload();
+  if (payload) {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
+  } else {
+    removeFileIfExists(addressPath);
+  }
+  enforceExplicitNullAddressRelationships([dataDir, relationshipsDir]);
+}
+
 async function run() {
   await main();
   try {
@@ -54602,6 +54887,14 @@ async function run() {
     emitFinalNormalizedOrRawAddress(addressPath);
   } catch (error) {
     console.error("Failed to finalize normalized county address branch:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+  try {
+    enforceCountyRawAddressAndNullRelationships();
+  } catch (error) {
+    console.error("Failed to enforce raw address output and null relationships:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
@@ -56114,27 +56407,8 @@ run().catch((error) => {
 
 process.on("exit", () => {
   try {
-    const dataDir = path.join("data");
-    const relationshipsDir = path.join("relationships");
-    const addressPath = path.join(dataDir, "address.json");
-    emitFinalNormalizedOrRawAddress(addressPath);
-    const extraRawCandidates =
-      ADDRESS_FALLBACK_CONTEXT &&
-      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
-        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
-        : [];
-    enforceFinalRawCountyAddressSurface(addressPath, {
-      unnormalizedPath: "unnormalized_address.json",
-      seedPath: "property_seed.json",
-      extraRawCandidates,
-      relationshipDirectories: [dataDir, relationshipsDir],
-    });
-    enforceFinalNormalizedCountyAddress(addressPath, {
-      defaultCountyName: titleCaseCounty("Palm Beach"),
-      defaultStateCode: "FL",
-      defaultCountryCode: "US",
-    });
+    enforceCountyRawAddressAndNullRelationships();
   } catch (error) {
-    console.error("Failed to finalize normalized county address at exit:", error);
+    console.error("Failed to finalize raw county address at exit:", error);
   }
 });
