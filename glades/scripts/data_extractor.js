@@ -2093,8 +2093,8 @@ function writeMailingAddressAndRelationships($, parcelId) {
   return;
 }
 
-function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
-  const full =
+function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
+  let full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
 
   // Use location address from HTML as fallback
@@ -2156,7 +2156,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
   // const plus_four_postal_code = plus4 || null;
 
   // Per evaluator expectation, set county_name from input jurisdiction
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
+  const inputCounty = unnorm ? (unnorm.county_jurisdiction || "").trim() : "";
   const county_name = inputCounty || "Glades" || null;
   const address = {
       ...appendSourceInfo(seed),
@@ -2171,8 +2171,8 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
   //Geometry creation
   const geometry = {
     ...appendSourceInfo(seed),
-    latitude: unnorm.latitude || null,
-    longitude: unnorm.longitude || null
+    latitude: unnorm ? (unnorm.latitude || null) : null,
+    longitude: unnorm ? (unnorm.longitude || null) : null
   };
   writeJSON(path.join("data", "geometry.json"), geometry);
 
@@ -2226,7 +2226,7 @@ function main() {
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
-  attemptWriteAddressAndGeometry(unnormalized, secTwpRng);
+  attemptWriteAddressAndGeometry(unnormalized, secTwpRng, $);
 
   const acreage = extractAcreage($);
   // console.log("Acreage:", acreage);
