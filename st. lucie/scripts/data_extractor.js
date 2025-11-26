@@ -2261,9 +2261,10 @@ async function main() {
       referencedOwnerIds.add(currentOwnerRecord.id);
     }
 
-    // 2. Companies with property roles
+    // 2. Companies with property roles (only companies get property relationships, not persons)
     for (const [recordId, roles] of ownerPropertyRoles.entries()) {
       const record = ownerRecords.get(recordId);
+      // Only add companies, not persons, since only companies get property_has_company relationships
       if (record && record.type === "company" && roles && roles.size > 0) {
         referencedOwnerIds.add(recordId);
       }
