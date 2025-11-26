@@ -692,8 +692,6 @@ function createDefaultLayout(
 
 function extractLayouts($, parcelId) {
   const allLayouts = [];
-  // A separate array to hold relationship objects
-  const allRelationships = [];
   const spaceTypeCounters = {}; // Counter for each space_type across the property
   const buildingTypeIndexCounters = {};
   const floorTypeIndexCounters = {};
@@ -847,9 +845,6 @@ function extractLayouts($, parcelId) {
     buildingLayout.is_finished = true; // Buildings are generally considered "finished"
     allLayouts.push(buildingLayout);
 
-    // Store space_index for relationships
-    const buildingSpaceIndex = buildingLayout.space_index;
-
     if (hasFloorInformation) {
       for (let floorNum = 1; floorNum <= totalStories; floorNum++) {
         const floorSpaceTypeIndex = `${buildingSpaceTypeIndex}.${floorNum}`;
@@ -865,21 +860,6 @@ function extractLayouts($, parcelId) {
         floorLayout.is_finished = true; // Floors are generally considered "finished"
         allLayouts.push(floorLayout);
 
-        // Add relationship: Building has Floor
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: floorLayout.space_index,
-          },
-          type: "layout_has_layout" // Relationship type
-        });
-
         // Add rooms to the current floor
         for (let i = 0; i < bedrooms; i++) {
           const roomSpaceTypeIndex = nextFloorTypeIndex(b, floorNum, "Bedroom");
@@ -894,20 +874,6 @@ function extractLayouts($, parcelId) {
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
           allLayouts.push(roomLayout);
-          // Relationship: Floor has Bedroom
-          allRelationships.push({
-            from: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: floorLayout.space_index,
-            },
-            to: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: roomLayout.space_index,
-            },
-            type: "layout_has_layout"
-          });
         }
         for (let i = 0; i < fullBaths; i++) {
           const roomSpaceTypeIndex = nextFloorTypeIndex(b, floorNum, "Full Bathroom");
@@ -922,20 +888,6 @@ function extractLayouts($, parcelId) {
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
           allLayouts.push(roomLayout);
-          // Relationship: Floor has Full Bathroom
-          allRelationships.push({
-            from: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: floorLayout.space_index,
-            },
-            to: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: roomLayout.space_index,
-            },
-            type: "layout_has_layout"
-          });
         }
         for (let i = 0; i < halfBaths; i++) {
           const roomSpaceTypeIndex = nextFloorTypeIndex(b, floorNum, "Half Bathroom / Powder Room");
@@ -950,20 +902,6 @@ function extractLayouts($, parcelId) {
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
           allLayouts.push(roomLayout);
-          // Relationship: Floor has Half Bathroom
-          allRelationships.push({
-            from: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: floorLayout.space_index,
-            },
-            to: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: roomLayout.space_index,
-            },
-            type: "layout_has_layout"
-          });
         }
       }
     } else {
@@ -981,20 +919,6 @@ function extractLayouts($, parcelId) {
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
         allLayouts.push(roomLayout);
-        // Relationship: Building has Bedroom
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: roomLayout.space_index,
-          },
-          type: "layout_has_layout"
-        });
       }
       for (let i = 0; i < fullBaths; i++) {
         const roomSpaceTypeIndex = nextBuildingTypeIndex(b, "Full Bathroom");
@@ -1009,20 +933,6 @@ function extractLayouts($, parcelId) {
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
         allLayouts.push(roomLayout);
-        // Relationship: Building has Full Bathroom
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: roomLayout.space_index,
-          },
-          type: "layout_has_layout"
-        });
       }
       for (let i = 0; i < halfBaths; i++) {
         const roomSpaceTypeIndex = nextBuildingTypeIndex(b, "Half Bathroom / Powder Room");
@@ -1037,20 +947,6 @@ function extractLayouts($, parcelId) {
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
         allLayouts.push(roomLayout);
-        // Relationship: Building has Half Bathroom
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: roomLayout.space_index,
-          },
-          type: "layout_has_layout"
-        });
       }
     }
   }
@@ -1409,20 +1305,20 @@ function extractLayouts($, parcelId) {
     }
   });
 
-  return { layouts: allLayouts, relationships: allRelationships };
+  return { layouts: allLayouts };
 }
 
 function main() {
   const inputPath = path.join(process.cwd(), "input.html");
   const $ = loadHtml(inputPath);
   const parcelId = getParcelId($);
-  const { layouts, relationships } = extractLayouts($, parcelId); // Get both layouts and relationships
+  const { layouts } = extractLayouts($, parcelId);
 
   const outputDir = path.join(process.cwd(), "owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
   const output = {};
-  output[`property_${parcelId}`] = { layouts, relationships }; // Include relationships in the output
+  output[`property_${parcelId}`] = { layouts };
 
   const outPath = path.join(outputDir, "layout_data.json");
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
