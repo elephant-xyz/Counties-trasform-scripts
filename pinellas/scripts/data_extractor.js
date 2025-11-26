@@ -3106,10 +3106,17 @@ function extract() {
       const file = path.join(dataDir, saleFileName);
       // Remove _rawIndex and grantee_text before writing to file
       const { _rawIndex, grantee_text, ...saleData } = s;
-      writeJSON(file, saleData);
-      s._file = `./${saleFileName}`; // Keep _file for relationship linking
-      saleFileMap.set(s.ownership_transfer_date, s._file);
-      if (!firstSaleFile) firstSaleFile = s._file;
+
+      // CRITICAL: Ensure purchase_price_amount is never null - it's required in schema
+      // Only write the file if we have a valid numeric purchase_price_amount
+      if (saleData.purchase_price_amount !== null &&
+          typeof saleData.purchase_price_amount === 'number' &&
+          isFinite(saleData.purchase_price_amount)) {
+        writeJSON(file, saleData);
+        s._file = `./${saleFileName}`; // Keep _file for relationship linking
+        saleFileMap.set(s.ownership_transfer_date, s._file);
+        if (!firstSaleFile) firstSaleFile = s._file;
+      }
     });
 
     const ownerExtraction = extractOwnersFromHtml(
