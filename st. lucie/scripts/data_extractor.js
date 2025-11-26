@@ -70,9 +70,13 @@ function normalizePersonName(name) {
   const trimmed = name.trim();
   if (!trimmed) return null;
 
+  // Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
+  const withoutParens = trimmed.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  if (!withoutParens) return null;
+
   // First, filter out any characters that are not letters or allowed separators
   // Allowed: letters (a-zA-Z) and separators (space, hyphen, apostrophe, comma, period)
-  const filtered = trimmed.replace(/[^a-zA-Z \-',.]/g, '').trim();
+  const filtered = withoutParens.replace(/[^a-zA-Z \-',.]/g, '').trim();
   if (!filtered) return null;
 
   // Split by separators while keeping them
