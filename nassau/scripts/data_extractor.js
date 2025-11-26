@@ -1514,130 +1514,10 @@ function validatePersonName(value, fieldName) {
 }
 
 function formatName(name) {
-  // Convert to string if it's a number or other type
-  if (typeof name === 'number') {
-    name = String(name);
-  }
-
-  if (!name || typeof name !== 'string' || name.trim() === "") return null;
-
-  // Reject names that start with a digit (e.g., "1st", "2nd", "3rd")
-  if (/^\d/.test(name.trim())) {
-    console.log(`Rejecting name that starts with a digit: ${name}`);
-    return null;
-  }
-
-  // Remove all digits from the name early to prevent them from appearing in the output
-  name = name.replace(/\d/g, '');
-
-  // Check if the name contains percentage signs or looks like an ownership interest designation
-  if (/%/.test(name) || /INT$/i.test(name.trim())) {
-    console.log(`Rejecting name that looks like ownership interest: ${name}`);
-    return null;
-  }
-
-  // Check if the name is just "L/E" or similar legal designation by itself
-  const trimmedName = name.trim().toUpperCase();
-  if (trimmedName === 'L/E' || trimmedName === 'LE' || trimmedName === 'LIFE ESTATE' ||
-      trimmedName === 'P/R' || trimmedName === 'PR' ||
-      trimmedName === 'ET AL' || trimmedName === 'ETAL' || trimmedName === 'TRUSTEE' ||
-      trimmedName === 'TTE' || trimmedName === 'F/B/O' || trimmedName === 'FBO' ||
-      trimmedName === 'F L/E' || trimmedName === 'F L E' || trimmedName === 'F LE') {
-    return null;
-  }
-
-  // Check if this looks like a property/condo reference (e.g., "MARILYN/KETCH COURTYARD I")
-  // Pattern: WORD/WORD followed by more uppercase words and possibly roman numerals
-  if (/\b[A-Z]+\/[A-Z]+(?:\s+[A-Z]+)+(?:\s+[IVX]+)?\b/i.test(name.trim())) {
-    console.log(`Rejecting property/condo reference: ${name}`);
-    return null;
-  }
-
-  // First, replace forward slashes with spaces (e.g., "Baez/Delgado" becomes "Baez Delgado", "B L/E" becomes "B L E")
-  // This must be done before other cleaning to handle compound surnames and legal designations
-  let cleaned = name.trim().replace(/\//g, ' ');
-
-  // Remove common legal designations that may contain invalid characters
-  // Note: patterns are for AFTER slash replacement (e.g., "L E" not "L/E")
-  // Apply these patterns iteratively to handle compound designations like "Henry L E Etal"
-  cleaned = cleaned.trim();
-  const legalDesignations = [
-    /\bL\s*E\b/gi,          // Life Estate (now without slash: "L E" or "LE")
-    /\bLE\b/gi,             // Life Estate abbreviation
-    /\bP\s*R\b/gi,          // Personal Representative (now without slash: "P R" or "PR")
-    /\bPR\b/gi,             // Personal Representative abbreviation
-    /\bF\s*B\s*O\b/gi,      // For Benefit Of (now without slashes: "F B O" or "FBO")
-    /\bFBO\b/gi,            // For Benefit Of abbreviation
-    /\bET\s+AL\b/gi,        // Et Al
-    /\bETAL\b/gi,           // Etal (case insensitive, so matches "Etal", "ETAL", "etal")
-    /\bLIFE\s+ESTATE\b/gi,  // Life Estate
-    /\bTRUSTEE\b/gi,        // Trustee
-    /\bTTE\b/gi,            // Trustee abbreviation
-  ];
-
-  // Apply legal designation removal multiple times to handle compound designations
-  let prevCleaned = '';
-  let iterations = 0;
-  const maxIterations = 5;
-  while (cleaned !== prevCleaned && iterations < maxIterations) {
-    prevCleaned = cleaned;
-    legalDesignations.forEach(pattern => {
-      cleaned = cleaned.replace(pattern, ' ');
-    });
-    cleaned = cleaned.trim().replace(/\s+/g, ' ');
-    iterations++;
-  }
-
-  // Remove any content within parentheses first
-  // First remove properly closed parentheses
-  cleaned = cleaned.replace(/\([^)]*\)/g, ' ');  // Remove content in properly closed parentheses
-  cleaned = cleaned.replace(/\[[^\]]*\]/g, ' ');  // Remove content in properly closed square brackets
-  cleaned = cleaned.replace(/\{[^}]*\}/g, ' ');   // Remove content in properly closed curly braces
-
-  // Then remove any unclosed parentheses and everything after them until a space or end
-  cleaned = cleaned.replace(/\([^\s)]*(?:\s|$)/g, ' ');  // Remove unclosed opening parens and content
-  cleaned = cleaned.replace(/\[[^\s\]]*(?:\s|$)/g, ' ');  // Remove unclosed opening brackets and content
-  cleaned = cleaned.replace(/\{[^\s}]*(?:\s|$)/g, ' ');   // Remove unclosed opening braces and content
-
-  // Then explicitly remove any remaining parentheses and other common unwanted characters
-  // Remove all types of parentheses: (), [], {}, and any Unicode variants
-  cleaned = cleaned.replace(/[()[\]{}]/g, '');
-
-  // Remove any remaining characters that don't match the person name pattern (except spaces for now)
-  // Allow: letters, spaces, hyphens, apostrophes, commas, periods
-  cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
-
-  // Remove trailing punctuation (hyphens, apostrophes, commas, periods at the end)
-  // The Elephant schema requires that separators must be followed by letters
-  cleaned = cleaned.replace(/[\-',.]+$/g, '');
-
-  // Also remove leading punctuation
-  cleaned = cleaned.replace(/^[\-',.]+/g, '');
-
-  // After cleaning, check if we have a valid name left
-  cleaned = cleaned.trim().replace(/\s+/g, " ");
-  if (!cleaned || cleaned.length === 0) {
-    return null;
-  }
-
-  // Normalize spacing
-  const normalizedSpacing = cleaned.toLowerCase();
+  if (!name || name.trim() === "") return null;
+  const normalizedSpacing = name.trim().toLowerCase().replace(/\s+/g, " ");
   const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
   const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
-
-  // Final validation: check if the result matches the Elephant schema pattern
-  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$ (capital letter followed by letters, spaces, hyphens, apostrophes, commas, periods)
-  const elephantNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!elephantNamePattern.test(sanitized)) {
-    return null;
-  }
-
-  // Reject single-letter names (like "F" which might be left after removing "L/E" from "F L/E")
-  if (sanitized.length === 1) {
-    console.log(`Rejecting single-letter name: ${sanitized} (original: ${name})`);
-    return null;
-  }
-
   return sanitized;
 }
 
@@ -1652,26 +1532,10 @@ function validateSuffix(suffix) {
   return validSuffixes.find(s => s.toLowerCase() === suffix.toLowerCase()) || null;
 }
 
-function isValidPersonName(name) {
-  if (!name || typeof name !== 'string' || name.trim() === '') {
-    return false;
-  }
-  // Check if name matches the Elephant schema pattern for person names
-  // Must start with uppercase letter, followed by letters and valid separators
-  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
-  return namePattern.test(name.trim());
-}
-
 function parsePerson(name) {
   if (!name) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-
+  
   let tokens = name.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-
-  // Filter out tokens that are purely numeric or start with digits (like "1ST", "2ND")
-  tokens = tokens.filter(token => !/^\d/.test(token));
-
-  // After filtering, ensure we still have at least 2 tokens for first and last name
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
 
   // Extract prefix
@@ -1708,38 +1572,29 @@ function parsePerson(name) {
 
 function extractOwnerInfo(ownershipHtml) {
   if (!ownershipHtml) return [];
-
+  
   // Remove content within <p></p> tags (addresses)
   const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-
+  
   // Split by <br> tags to get individual owner lines
   const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
     .map(line => line.replace(/<[^>]*>/g, '').trim())
     .filter(line => line.length > 0);
-
+  
   const owners = [];
   const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
-
-  // Legal designations that should be filtered out entirely (not treated as person names)
-  const legalDesignationOnly = /^(L\/E|P\/R|PR|F\/B\/O|FBO|ET\s+AL|ETAL|LIFE\s+ESTATE|TRUSTEE|TTE)$/i;
-
+  
   for (const line of ownerLines) {
     let cleanName = line.trim();
     if (cleanName && cleanName.length > 2) {
       // Decode HTML entities like &amp; to &
       cleanName = cleanName.replace(/&amp;/g, '&');
-
+      
       // Split by & to handle multiple owners on same line
       const namesParts = cleanName.split(/\s*&\s*/);
-
+      
       for (const namePart of namesParts) {
         const trimmedName = namePart.trim();
-
-        // Skip if this is only a legal designation without an actual name
-        if (legalDesignationOnly.test(trimmedName)) {
-          continue;
-        }
-
         if (trimmedName && trimmedName.length > 2) {
           const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
           owners.push({ name: trimmedName, type: ownerType });
@@ -1747,7 +1602,7 @@ function extractOwnerInfo(ownershipHtml) {
       }
     }
   }
-
+  
   return owners;
 }
 
@@ -1892,9 +1747,27 @@ function extractExtraFeatures($, parcelIdentifier, seed) {
     }
   });
 
-  // Structure and utility data from extra features are not written as separate files
-  // Instead, they should be merged into the existing structure/utility files created from structure_data.json and utilities_data.json
-  // The structures and utilities are properly linked to layouts (buildings) in the main flow
+  if (hasStructureData) {
+    writeJSON(path.join("data", "propertyStructure.json"), structureData);
+    writeJSON(
+      path.join("data", "relationship_property_has_structure.json"),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": "./propertyStructure.json" },
+      }
+    );
+  }
+
+  if (hasUtilityData) {
+    writeJSON(path.join("data", "propertyUtility.json"), utilityData);
+    writeJSON(
+      path.join("data", "relationship_property_has_utility.json"),
+      {
+        from: { "/": "./property.json" },
+        to: { "/": "./propertyUtility.json" },
+      }
+    );
+  }
 }
 
 function main() {
@@ -2350,7 +2223,7 @@ function main() {
   let companyCounter = 0;
   const initialPersonFiles = [];
   const initialCompanyFiles = [];
-
+  
   // Create owner objects for each owner
   ownerInfo.forEach((owner, index) => {
     if (owner.type === 'Company') {
@@ -2371,67 +2244,13 @@ function main() {
       const parsed = parsePerson(owner.name);
       const firstNameRaw = formatName(parsed.firstName);
       const lastNameRaw = formatName(parsed.lastName);
-      const rawMiddleName = parsed.middleName;
-      let middleName = formatName(rawMiddleName);
-
-      // Skip creating person if first or last name is invalid after formatting
-      if (!firstNameRaw || firstNameRaw.trim() === "" || !lastNameRaw || lastNameRaw.trim() === "") {
-        console.log(`Skipping invalid person name: ${owner.name} (firstName: ${firstNameRaw}, lastName: ${lastNameRaw})`);
-        return;
-      }
-
-      // Validate that names match the required pattern
-      if (!isValidPersonName(firstNameRaw) || !isValidPersonName(lastNameRaw)) {
-        console.log(`Skipping person with invalid name pattern: ${owner.name} (firstName: ${firstNameRaw}, lastName: ${lastNameRaw})`);
-        return;
-      }
-
+      let middleName = formatName(parsed.middleName);
       const firstName = validatePersonName(firstNameRaw, 'first_name');
       const lastName = validatePersonName(lastNameRaw, 'last_name');
       if (middleName != null) {
-        // Check if middle name still contains slashes (legal designations that weren't filtered)
-        if (middleName && /\//.test(middleName)) {
-          console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
-          middleName = null;
-        }
-        // Check if raw middle name contains slashes or looks like a legal designation
-        else if (rawMiddleName && /\//.test(rawMiddleName)) {
-          console.log(`Skipping raw middle name with slash: ${rawMiddleName}`);
-          middleName = null;
-        }
-        // Reject if it matches common legal designation patterns (even after cleaning)
-        else if (middleName && /^(L\s*E|P\s*R|F\s*B\s*O|ET\s*AL|ETAL|LE|PR|FBO)$/i.test(middleName.trim())) {
-          console.log(`Skipping middle name that is a legal designation: ${middleName}`);
-          middleName = null;
-        }
-        // Check if raw middle name contains any digits (before formatName strips them out)
-        else if (rawMiddleName && /\d/.test(rawMiddleName)) {
-          console.log(`Skipping middle name with digits: ${rawMiddleName}`);
-          middleName = null;
-        }
-        // Check if middle name contains digits or special characters after formatting
-        else if (middleName && /[\d%&$#@!]/.test(middleName)) {
-          console.log(`Skipping middle name with invalid characters: ${middleName}`);
-          middleName = null;
-        }
-        // Reject single-letter middle names (likely remnants of legal designations)
-        else if (middleName && middleName.length === 1) {
-          console.log(`Skipping single-letter middle name: ${middleName}`);
-          middleName = null;
-        } else if (isValidPersonName(middleName)) {
-          middleName = validatePersonName(middleName, 'middle_name');
-        } else {
-          middleName = null;
-        }
+        middleName = validatePersonName(middleName, 'middle_name');
       }
-
-      // FINAL VALIDATION: Ensure first and last names match the Elephant schema pattern
-      // This catches any edge cases where invalid names might slip through
-      if (!isValidPersonName(firstName) || !isValidPersonName(lastName)) {
-        console.log(`Skipping person with invalid name pattern after final validation: ${firstName} ${lastName}`);
-        return;
-      }
-
+      
       const person = {
         source_http_request: {
           method: "GET",
@@ -2453,29 +2272,27 @@ function main() {
       initialPersonFiles.push(personFileName);
     }
   });
-
+  
+  const mailingAddress = {
+    source_http_request: {
+      method: "GET",
+      url: seed.source_http_request.url
+    },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
+    // county_name: null,
+    unnormalized_address: mailingAddr,
+    longitude: null,
+    latitude: null
+  };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+  
   // Track if relationships were created for initial owners
   let initialRelationshipsCreated = false;
-  let mailingAddressCreated = false;
-
-  // Only create mailing_address.json if we have owners to link to it
-  if ((personCounter > 0 || companyCounter > 0) && mailingAddr) {
-    const mailingAddress = {
-      source_http_request: {
-        method: "GET",
-        url: seed.source_http_request.url
-      },
-      request_identifier: parcelIdentifier || seed.parcel_id || "",
-      // county_name: null,
-      unnormalized_address: mailingAddr,
-      longitude: null,
-      latitude: null
-    };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-    mailingAddressCreated = true;
+  
+  // Create relationships between owners and mailing address
+  if (personCounter > 0 || companyCounter > 0) {
     initialRelationshipsCreated = true;
-
-    // Create relationships between owners and mailing address
+    
     for (let i = 1; i <= personCounter; i++) {
       const rel = {
         from: { "/": `./person_${i}.json` },
@@ -2486,7 +2303,7 @@ function main() {
         rel,
       );
     }
-
+    
     for (let i = 1; i <= companyCounter; i++) {
       const rel = {
         from: { "/": `./company_${i}.json` },
@@ -2695,12 +2512,9 @@ function main() {
     const deedFileName = `deed_${deedIndex}.json`;
     writeJSON(path.join("data", deedFileName), deedObj);
 
-    const constructedName = (instAbbr ? instAbbr + " " : "") + (bookPage || "");
-    const fileName = constructedName.trim() || null;
-
     const fileObj = {
       file_format: null,
-      name: fileName,
+      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
@@ -2746,96 +2560,16 @@ function main() {
 
 
     function ensurePerson(owner) {
-      // Ensure owner properties are strings, convert numbers to strings
-      const rawFirstName = typeof owner.first_name === 'number' ? String(owner.first_name) : owner.first_name;
-      const rawLastName = typeof owner.last_name === 'number' ? String(owner.last_name) : owner.last_name;
-      const rawMiddleName = typeof owner.middle_name === 'number' ? String(owner.middle_name) : owner.middle_name;
-
-      // Early validation: reject if first or last name starts with a digit
-      if (!rawFirstName || !rawLastName) {
-        console.log(`Skipping person with missing name from owner_data: ${rawFirstName} ${rawLastName}`);
-        return null;
-      }
-
-      if (/^\d/.test(String(rawFirstName).trim()) || /^\d/.test(String(rawLastName).trim())) {
-        console.log(`Skipping person with name starting with digit from owner_data: ${rawFirstName} ${rawLastName}`);
-        return null;
-      }
-
-      const key = `${rawFirstName}|${rawMiddleName || ""}|${rawLastName}`;
+      const key = `${owner.first_name}|${owner.middle_name || ""}|${owner.last_name}`;
       if (!personIndexByKey.has(key)) {
-        const firstNameRaw = formatName(rawFirstName);
-        const lastNameRaw = formatName(rawLastName);
-        let middleName = formatName(rawMiddleName);
-
-        // Skip if names are invalid after formatting
-        if (!firstNameRaw || !lastNameRaw) {
-          console.log(`Skipping invalid person from owner_data: ${rawFirstName} ${rawLastName}`);
-          return null;
-        }
-
-        // Check if names are purely numeric (even after conversion to string)
-        if (/^\d+$/.test(rawFirstName) || /^\d+$/.test(rawLastName)) {
-          console.log(`Skipping person with numeric name from owner_data: ${rawFirstName} ${rawLastName}`);
-          return null;
-        }
-
-        // Validate that names match the required pattern
-        if (!isValidPersonName(firstNameRaw) || !isValidPersonName(lastNameRaw)) {
-          console.log(`Skipping person with invalid name pattern from owner_data: ${firstNameRaw} ${lastNameRaw}`);
-          return null;
-        }
-
+        const firstNameRaw = formatName(owner.first_name);
+        const lastNameRaw = formatName(owner.last_name);
+        let middleName = formatName(owner.middle_name);
         const firstName = validatePersonName(firstNameRaw, 'first_name');
         const lastName = validatePersonName(lastNameRaw, 'last_name');
         if (middleName != null) {
-          // Check if middle name still contains slashes (legal designations that weren't filtered)
-          if (middleName && /\//.test(middleName)) {
-            console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
-            middleName = null;
-          }
-          // Check if raw middle name contains slashes or looks like a legal designation
-          else if (rawMiddleName && /\//.test(rawMiddleName)) {
-            console.log(`Skipping raw middle name with slash: ${rawMiddleName}`);
-            middleName = null;
-          }
-          // Reject if it matches common legal designation patterns (even after cleaning)
-          else if (middleName && /^(L\s*E|P\s*R|F\s*B\s*O|ET\s*AL|ETAL|LE|PR|FBO)$/i.test(middleName.trim())) {
-            console.log(`Skipping middle name that is a legal designation: ${middleName}`);
-            middleName = null;
-          }
-          // Check if raw middle name contains any digits (before formatName strips them out)
-          else if (rawMiddleName && /\d/.test(rawMiddleName)) {
-            console.log(`Skipping middle name with digits: ${rawMiddleName}`);
-            middleName = null;
-          }
-          // Also check if middle name is purely numeric or contains digits/special chars
-          else if (rawMiddleName && /^\d+$/.test(rawMiddleName)) {
-            console.log(`Skipping numeric middle name: ${rawMiddleName}`);
-            middleName = null;
-          } else if (middleName && /[\d%&$#@!]/.test(middleName)) {
-            // Check if formatted middle name still contains digits or special characters
-            console.log(`Skipping middle name with invalid characters: ${middleName}`);
-            middleName = null;
-          }
-          // Reject single-letter middle names (likely remnants of legal designations)
-          else if (middleName && middleName.length === 1) {
-            console.log(`Skipping single-letter middle name: ${middleName}`);
-            middleName = null;
-          } else if (isValidPersonName(middleName)) {
-            middleName = validatePersonName(middleName, 'middle_name');
-          } else {
-            middleName = null;
-          }
+          middleName = validatePersonName(middleName, 'middle_name');
         }
-
-        // FINAL VALIDATION: Ensure first and last names match the Elephant schema pattern
-        // This catches any edge cases where invalid names might slip through
-        if (!isValidPersonName(firstName) || !isValidPersonName(lastName)) {
-          console.log(`Skipping person with invalid name pattern after final validation (ensurePerson): ${firstName} ${lastName}`);
-          return null;
-        }
-
         const personObj = {
           source_http_request: {
             method: "GET",
@@ -2885,34 +2619,30 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          if (personFile) {
-            const rel = {
-              from: { "/": `./${sref.salesFileName}` },
-              to: { "/": `./${personFile}` },
-            };
-            writeJSON(
-              path.join(
-                "data",
-                `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
-              ),
-              rel,
-            );
-          }
+          const rel = {
+            from: { "/": `./${sref.salesFileName}` },
+            to: { "/": `./${personFile}` },
+          };
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
+            ),
+            rel,
+          );
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
-          if (companyFile) {
-            const rel = {
-              from: { "/": `./${sref.salesFileName}` },
-              to: { "/": `./${companyFile}` },
-            };
-            writeJSON(
-              path.join(
-                "data",
-                `relationship_sales_history_${sref.index}_has_company_${j + 1}.json`,
-              ),
-              rel,
-            );
-          }
+          const rel = {
+            from: { "/": `./${sref.salesFileName}` },
+            to: { "/": `./${companyFile}` },
+          };
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_sales_history_${sref.index}_has_company_${j + 1}.json`,
+            ),
+            rel,
+          );
         }
       });
     });
@@ -2950,57 +2680,34 @@ function main() {
     }
     
 
-
+    
     // Create person-mailing address relationships for current owners only if not already created
     if (!initialRelationshipsCreated) {
       const currentOwners = ownersByDate["current"] || [];
 
-      // Create mailing_address.json if we have current owners and it wasn't created before
-      if (currentOwners.length > 0 && !mailingAddressCreated && mailingAddr) {
-        const mailingAddress = {
-          source_http_request: {
-            method: "GET",
-            url: seed.source_http_request.url
-          },
-          request_identifier: parcelIdentifier || seed.parcel_id || "",
-          unnormalized_address: mailingAddr,
-          longitude: null,
-          latitude: null
-        };
-        writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-        mailingAddressCreated = true;
-      }
-
-      // Only create relationships if mailing_address.json exists
-      if (mailingAddressCreated) {
-        currentOwners.forEach((owner, j) => {
-          if (owner.type === "person") {
-            const personFile = ensurePerson(owner);
-            if (personFile) {
-              const rel = {
-                from: { "/": `./${personFile}` },
-                to: { "/": `./mailing_address.json` },
-              };
-              writeJSON(
-                path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-                rel,
-              );
-            }
-          } else if (owner.type === "company") {
-            const companyFile = ensureCompany(owner);
-            if (companyFile) {
-              const rel = {
-                from: { "/": `./${companyFile}` },
-                to: { "/": `./mailing_address.json` },
-              };
-              writeJSON(
-                path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
-                rel,
-              );
-            }
-          }
-        });
-      }
+      currentOwners.forEach((owner, j) => {
+        if (owner.type === "person") {
+          const personFile = ensurePerson(owner);
+          const rel = {
+            from: { "/": `./${personFile}` },
+            to: { "/": `./mailing_address.json` },
+          };
+          writeJSON(
+            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
+            rel,
+          );
+        } else if (owner.type === "company") {
+          const companyFile = ensureCompany(owner);
+          const rel = {
+            from: { "/": `./${companyFile}` },
+            to: { "/": `./mailing_address.json` },
+          };
+          writeJSON(
+            path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
+            rel,
+          );
+        }
+      });
     }
   }
 

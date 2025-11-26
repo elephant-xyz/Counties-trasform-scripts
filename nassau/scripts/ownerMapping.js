@@ -11,70 +11,9 @@ function normalizeSpace(str) {
   return (str || "").replace(/\s+/g, " ").trim();
 }
 
-// Utility: clean name by removing legal designations and invalid characters
-function cleanNameString(name) {
-  if (!name) return null;
-
-  // Remove common legal designations that may contain invalid characters
-  let cleaned = name.trim();
-  const original = cleaned;
-
-  // First pass: Remove slashes and common legal designation patterns
-  // Replace forward slashes with spaces first (e.g., "B L/E" becomes "B L E")
-  cleaned = cleaned.replace(/\//g, ' ');
-
-  const legalDesignations = [
-    /\bL\s*E\b/gi,          // Life Estate (now without slash: "L E" or "LE")
-    /\bLE\b/gi,             // Life Estate abbreviation
-    /\bP\s*R\b/gi,          // Personal Representative (now without slash: "P R" or "PR")
-    /\bPR\b/gi,             // Personal Representative abbreviation
-    /\bF\s*B\s*O\b/gi,      // For Benefit Of (now without slashes)
-    /\bFBO\b/gi,            // For Benefit Of abbreviation
-    /\bET\s+AL\b/gi,        // Et Al
-    /\bETAL\b/gi,           // Etal
-    /\bLIFE\s+ESTATE\b/gi,  // Life Estate
-    /\bTRUSTEE\b/gi,        // Trustee
-    /\bTTE\b/gi,            // Trustee abbreviation
-  ];
-
-  legalDesignations.forEach(pattern => {
-    cleaned = cleaned.replace(pattern, ' ');
-  });
-
-  // Remove any content within parentheses first
-  // First remove properly closed parentheses
-  cleaned = cleaned.replace(/\([^)]*\)/g, ' ');  // Remove content in properly closed parentheses
-  cleaned = cleaned.replace(/\[[^\]]*\]/g, ' ');  // Remove content in properly closed square brackets
-  cleaned = cleaned.replace(/\{[^}]*\}/g, ' ');   // Remove content in properly closed curly braces
-
-  // Then remove any unclosed parentheses and everything after them until a space or end
-  cleaned = cleaned.replace(/\([^\s)]*(?:\s|$)/g, ' ');  // Remove unclosed opening parens and content
-  cleaned = cleaned.replace(/\[[^\s\]]*(?:\s|$)/g, ' ');  // Remove unclosed opening brackets and content
-  cleaned = cleaned.replace(/\{[^\s}]*(?:\s|$)/g, ' ');   // Remove unclosed opening braces and content
-
-  // Then explicitly remove any remaining parentheses and other common unwanted characters
-  // Remove all types of parentheses: (), [], {}, and any Unicode variants
-  cleaned = cleaned.replace(/[()[\]{}]/g, '');
-
-  // Remove any remaining characters that don't match the person name pattern
-  // Allow: letters, spaces, hyphens, apostrophes, commas, periods
-  cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
-
-  // Remove trailing punctuation (hyphens, apostrophes, commas, periods at the end)
-  // The Elephant schema requires that separators must be followed by letters
-  cleaned = cleaned.replace(/[\-',.]+$/g, '');
-
-  // Also remove leading punctuation
-  cleaned = cleaned.replace(/^[\-',.]+/g, '');
-
-  return cleaned.trim().replace(/\s+/g, ' ');
-}
-
 // Utility: title-case words conservatively (keep all-caps acronyms)
 function titleCase(str) {
-  // First clean the string
-  const cleaned = cleanNameString(str);
-  return (cleaned || "")
+  return (str || "")
     .toLowerCase()
     .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
 }
@@ -176,29 +115,11 @@ function isCompanyName(name) {
   return false;
 }
 
-// Parse possible multiple owners joined by '&', ' and ', or '/'
+// Parse possible multiple owners joined by '&' or ' and '
 function splitJointOwners(raw) {
-  let s = normalizeSpace(raw).replace(/&amp;/g, '&').replace(/\s*\([^)]*\)\s*/g, ' ');
+  const s = normalizeSpace(raw).replace(/&amp;/g, '&').replace(/\s*\([^)]*\)\s*/g, ' ');
   if (!s) return [];
-
-  // Remove legal designations that contain "/" before splitting
-  // This prevents "L/E" from being treated as a delimiter
-  s = s.replace(/\s+L\/E\s*$/gi, '');  // Life Estate at end
-  s = s.replace(/\s+L\/E\s+/gi, ' ');  // Life Estate in middle
-  s = s.replace(/^L\/E\s+/gi, '');     // Life Estate at start
-
-  // Filter out property/condo references that contain slashes
-  // Pattern: name/PROPERTY NAME (e.g., "MARILYN/KETCH COURTYARD I")
-  // These are property references, not person names
-  s = s.replace(/\b[A-Z]+\/[A-Z]+(?:\s+[A-Z]+)*(?:\s+[IVX]+)?\b/g, '');
-
-  // Replace "/" with space when it appears between name parts (compound surnames like "BAEZ/DELGADO")
-  // Only do this for simple two-word patterns that look like surnames
-  // Pattern: Single word / Single word (not followed by more uppercase words)
-  s = s.replace(/\b([A-Z][a-z]+)\s*\/\s*([A-Z][a-z]+)(?!\s+[A-Z])/g, '$1 $2');
-
-  // Split on &, ' and ' while preserving meaningful tokens
-  // Note: We removed "/" from the split pattern since we now treat it as part of compound names
+  // Split on & or ' and ' while preserving meaningful tokens
   const parts = s
     .split(/\s*(?:&|\band\b)\s*/i)
     .map((p) => normalizeSpace(p))
@@ -234,48 +155,11 @@ function validateSuffix(suffix) {
 
 // Build a person object using inferred pattern
 function buildPerson(first, last, middle, prefix, suffix) {
-  // Clean and validate each name component
-  const cleanFirst = cleanNameString(first);
-  const cleanLast = cleanNameString(last);
-  const cleanMiddle = middle ? cleanNameString(middle) : null;
-
-  // If cleaning removed all content, return null for that field
-  if (!cleanFirst || !cleanLast) return null;
-
-  // Title case the names
-  const titleFirst = titleCase(cleanFirst);
-  const titleLast = titleCase(cleanLast);
-  let titleMiddle = cleanMiddle ? titleCase(cleanMiddle) : null;
-
-  // Validate middle name against Elephant schema pattern - if invalid, set to null
-  if (titleMiddle) {
-    const elephantNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-    if (!elephantNamePattern.test(titleMiddle)) {
-      titleMiddle = null;
-    }
-
-    // Additional check: reject middle names that are legal designations or contain slashes
-    // Even after cleaning, ensure no "/" remains (in case cleaning didn't catch it)
-    if (titleMiddle && /\//.test(titleMiddle)) {
-      titleMiddle = null;
-    }
-
-    // Reject if it matches common legal designation patterns
-    if (titleMiddle && /^(L\s*E|P\s*R|F\s*B\s*O|ET\s*AL|ETAL)$/i.test(titleMiddle.trim())) {
-      titleMiddle = null;
-    }
-
-    // Reject single-letter middle names (likely remnants of legal designations like "L" from "L/E")
-    if (titleMiddle && titleMiddle.trim().length === 1) {
-      titleMiddle = null;
-    }
-  }
-
   return {
     type: "person",
-    first_name: titleFirst,
-    last_name: titleLast,
-    middle_name: titleMiddle,
+    first_name: titleCase(first),
+    last_name: titleCase(last),
+    middle_name: middle ? titleCase(middle) : null,
     prefix_name: prefix ? validatePrefix(prefix) : null,
     suffix_name: suffix ? validateSuffix(suffix) : null,
   };
@@ -442,6 +326,9 @@ function buildOwnersByDate($) {
         }
         continue;
       }
+      
+      // Debug: Check if it's a person name that failed looksLikePerson
+      console.log(`Debug: '${clean}' failed looksLikePerson check`);
 
       if (/\b(trust|revocable|estate)\b/i.test(clean)) {
         owners.push({ type: "company", name: clean });
