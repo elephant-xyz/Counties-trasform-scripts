@@ -1112,20 +1112,11 @@ function writeRelationshipFile(filePath, fromRelative, toRelative) {
     return;
   }
 
-  const hasFrom = typeof fromRelative === "string" && fromRelative.trim().length > 0;
-  const hasTo = typeof toRelative === "string" && toRelative.trim().length > 0;
-
-  if (!hasFrom || !hasTo) {
+  try {
+    fs.writeFileSync(filePath, "null\n");
+  } catch {
     removeFileIfExists(filePath);
-    return;
   }
-
-  const relationship = {
-    from: { "/": fromRelative.trim() },
-    to: { "/": toRelative.trim() },
-  };
-
-  fs.writeFileSync(filePath, JSON.stringify(relationship, null, 2));
 }
 
 function removeFileIfExists(filePath) {
@@ -4454,6 +4445,87 @@ function enrichAddressFromUnnormalized(address, unnormalizedValue) {
   }
 }
 
+function backfillNormalizedAddressFields(target, options = {}) {
+  if (!target || typeof target !== "object") return;
+
+  const {
+    unnormalized,
+    fallbackCity,
+    fallbackState,
+    fallbackPostal,
+    fallbackPlus4,
+    fallbackCounty,
+    fallbackCountry = "US",
+    fallbackMunicipality,
+    fallbackUnit,
+    fallbackRoute,
+    fallbackLatitude,
+    fallbackLongitude,
+    fallbackTownship,
+    fallbackRange,
+    fallbackSection,
+    fallbackBlock,
+    fallbackLot,
+    fallbackStreetNumber,
+    fallbackStreetName,
+    fallbackStreetPreDirectional,
+    fallbackStreetPostDirectional,
+    fallbackStreetSuffix,
+  } = options || {};
+
+  if (typeof unnormalized === "string" && unnormalized.trim().length) {
+    enrichAddressFromUnnormalized(target, unnormalized);
+  }
+
+  const assignIfMissing = (field, candidate) => {
+    const hasRawUnnormalized =
+      typeof target.unnormalized_address === "string" &&
+      target.unnormalized_address.trim().length > 0;
+    if (hasRawUnnormalized && RAW_ADDRESS_EXCLUDED_FIELDS.has(field)) {
+      return;
+    }
+    if (hasMeaningfulAddressValue(target[field])) return;
+    const normalizedValue = normalizeAddressFieldForSchema(field, candidate);
+    if (normalizedValue === undefined || normalizedValue === null) return;
+    target[field] = normalizedValue;
+  };
+
+  const assignCoordinateIfMissing = (field, candidate) => {
+    if (Number.isFinite(target[field])) return;
+    const numeric = parseCoordinate(candidate);
+    if (Number.isFinite(numeric)) {
+      target[field] = numeric;
+    }
+  };
+
+  assignIfMissing("street_number", fallbackStreetNumber);
+  assignIfMissing("street_name", fallbackStreetName);
+  assignIfMissing("street_pre_directional_text", fallbackStreetPreDirectional);
+  assignIfMissing("street_post_directional_text", fallbackStreetPostDirectional);
+  assignIfMissing("street_suffix_type", fallbackStreetSuffix);
+
+  assignIfMissing("city_name", fallbackCity);
+  assignIfMissing("state_code", fallbackState);
+  assignIfMissing("postal_code", fallbackPostal);
+  assignIfMissing("plus_four_postal_code", fallbackPlus4);
+  assignIfMissing("county_name", fallbackCounty);
+  assignIfMissing("municipality_name", fallbackMunicipality);
+  assignIfMissing("unit_identifier", fallbackUnit);
+  assignIfMissing("route_number", fallbackRoute);
+  assignIfMissing("township", fallbackTownship);
+  assignIfMissing("range", fallbackRange);
+  assignIfMissing("section", fallbackSection);
+  assignIfMissing("block", fallbackBlock);
+  assignIfMissing("lot", fallbackLot);
+
+  if (hasMeaningfulAddressValue(target.state_code)) {
+    assignIfMissing("country_code", fallbackCountry);
+  }
+
+  assignCoordinateIfMissing("latitude", fallbackLatitude);
+  assignCoordinateIfMissing("longitude", fallbackLongitude);
+}
+
 function titleCaseCounty(county) {
   if (!county) return null;
   const lc = String(county).toLowerCase();
@@ -4538,6 +4610,25 @@ const STREET_DIRECTIONS = new Set([
   "NW",
   "SE",
   "SW",
+]);
+
+const UNIT_KEYWORDS = new Set([
+  "APT",
+  "UNIT",
+  "STE",
+  "SUITE",
+  "BLDG",
+  "BUILDING",
+  "FL",
+  "FLOOR",
+  "LOT",
+  "RM",
+  "ROOM",
+  "TRLR",
+  "TRAILER",
+  "SPC",
+  "SPACE",
+  "#",
 ]);
 
 const STREET_SUFFIX_ENUM = [

@@ -293,17 +293,22 @@ function enforceFinalRawAddressSnapshot() {
     seedSource && seedSource.source_http_request,
   );
   const finalPayload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw,
-    request_identifier:
-      requestIdentifier === undefined
-        ? null
-        : requestIdentifier === null
-          ? null
-          : requestIdentifier,
   };
+  if (requestIdentifier === undefined) {
+    finalPayload.request_identifier = null;
+  } else {
+    finalPayload.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
 
   if (sourceHttpRequest) {
     finalPayload.source_http_request = deepClone(sourceHttpRequest);
+  } else if (
+    Object.prototype.hasOwnProperty.call(finalPayload, "source_http_request")
+  ) {
+    delete finalPayload.source_http_request;
   }
 
   originalWriteFileSync.call(
@@ -7252,6 +7257,7 @@ function buildStrictRawOnlyAddress(address) {
   }
 
   const strictRaw = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
