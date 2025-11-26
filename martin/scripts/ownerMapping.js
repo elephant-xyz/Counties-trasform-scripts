@@ -317,45 +317,13 @@ function toISODate(s) {
 
 // Build owners_by_date map sorted chronologically, plus current
 function buildOwnersByDate() {
-  const invalid_owners = [];
-
   const current = getCurrentOwners();
-  invalid_owners.push(...current.invalids);
-
-  const hist = getHistoricalOwners();
-  invalid_owners.push(...hist.invalids);
-
-  const map = new Map();
-  for (const entry of hist.entries) {
-    let key = entry.date;
-    if (!key) {
-      let idx = 1;
-      while (map.has(`unknown_date_${idx}`)) idx++;
-      key = `unknown_date_${idx}`;
-    }
-    const arr = map.get(key) || [];
-    for (const o of entry.owners) arr.push(o);
-    map.set(key, dedupeOwners(arr));
-  }
-
-  const keys = Array.from(map.keys());
-  const dateKeys = keys.filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
-  const unknownKeys = keys
-    .filter((k) => /^unknown_date_\d+$/.test(k))
-    .sort((a, b) => {
-      const ia = parseInt(a.replace(/\D/g, ""), 10);
-      const ib = parseInt(b.replace(/\D/g, ""), 10);
-      return ia - ib;
-    });
-
-  const ordered = {};
-  for (const k of [...dateKeys, ...unknownKeys]) {
-    ordered[k] = map.get(k) || [];
-  }
-
-  ordered["current"] = current.owners;
-
-  return { owners_by_date: ordered, invalid_owners: invalid_owners };
+  return {
+    owners_by_date: {
+      current: current.owners,
+    },
+    invalid_owners: current.invalids,
+  };
 }
 
 // Compose final object
