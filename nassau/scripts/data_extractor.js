@@ -1537,7 +1537,8 @@ function formatName(name) {
   const trimmedName = name.trim().toUpperCase();
   if (trimmedName === 'L/E' || trimmedName === 'LE' || trimmedName === 'LIFE ESTATE' ||
       trimmedName === 'ET AL' || trimmedName === 'ETAL' || trimmedName === 'TRUSTEE' ||
-      trimmedName === 'TTE' || trimmedName === 'F/B/O' || trimmedName === 'FBO') {
+      trimmedName === 'TTE' || trimmedName === 'F/B/O' || trimmedName === 'FBO' ||
+      trimmedName === 'F L/E' || trimmedName === 'F L E' || trimmedName === 'F LE') {
     return null;
   }
 
@@ -1622,6 +1623,12 @@ function formatName(name) {
   // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$ (capital letter followed by letters, spaces, hyphens, apostrophes, commas, periods)
   const elephantNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!elephantNamePattern.test(sanitized)) {
+    return null;
+  }
+
+  // Reject single-letter names (like "F" which might be left after removing "L/E" from "F L/E")
+  if (sanitized.length === 1) {
+    console.log(`Rejecting single-letter name: ${sanitized} (original: ${name})`);
     return null;
   }
 
@@ -2375,9 +2382,19 @@ function main() {
       const firstName = validatePersonName(firstNameRaw, 'first_name');
       const lastName = validatePersonName(lastNameRaw, 'last_name');
       if (middleName != null) {
+        // Check if middle name still contains slashes (legal designations that weren't filtered)
+        if (middleName && /\//.test(middleName)) {
+          console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
+          middleName = null;
+        }
         // Check if middle name contains digits or special characters after formatting
-        if (middleName && /[\d%&$#@!]/.test(middleName)) {
+        else if (middleName && /[\d%&$#@!]/.test(middleName)) {
           console.log(`Skipping middle name with invalid characters: ${middleName}`);
+          middleName = null;
+        }
+        // Reject single-letter middle names (likely remnants of legal designations)
+        else if (middleName && middleName.length === 1) {
+          console.log(`Skipping single-letter middle name: ${middleName}`);
           middleName = null;
         } else if (isValidPersonName(middleName)) {
           middleName = validatePersonName(middleName, 'middle_name');
@@ -2747,13 +2764,23 @@ function main() {
         const firstName = validatePersonName(firstNameRaw, 'first_name');
         const lastName = validatePersonName(lastNameRaw, 'last_name');
         if (middleName != null) {
+          // Check if middle name still contains slashes (legal designations that weren't filtered)
+          if (middleName && /\//.test(middleName)) {
+            console.log(`Skipping middle name with slash (likely legal designation): ${middleName}`);
+            middleName = null;
+          }
           // Also check if middle name is purely numeric or contains digits/special chars
-          if (rawMiddleName && /^\d+$/.test(rawMiddleName)) {
+          else if (rawMiddleName && /^\d+$/.test(rawMiddleName)) {
             console.log(`Skipping numeric middle name: ${rawMiddleName}`);
             middleName = null;
           } else if (middleName && /[\d%&$#@!]/.test(middleName)) {
             // Check if formatted middle name still contains digits or special characters
             console.log(`Skipping middle name with invalid characters: ${middleName}`);
+            middleName = null;
+          }
+          // Reject single-letter middle names (likely remnants of legal designations)
+          else if (middleName && middleName.length === 1) {
+            console.log(`Skipping single-letter middle name: ${middleName}`);
             middleName = null;
           } else if (isValidPersonName(middleName)) {
             middleName = validatePersonName(middleName, 'middle_name');
