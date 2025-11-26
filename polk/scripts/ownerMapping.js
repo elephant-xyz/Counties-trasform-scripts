@@ -203,7 +203,7 @@ function parsePersonName(raw) {
   let nameWithoutSuffix = s;
   const suffixMatch = s.match(suffixRegex);
   if (suffixMatch) {
-    const rawSuffix = toTitleCase(suffixMatch[1]);
+    const rawSuffix = suffixMatch[1].toUpperCase();
     suffixName = suffixFormatMap[rawSuffix] || rawSuffix; // Apply formatting from map
     // Remove the matched suffix from the name string
     nameWithoutSuffix = s.replace(suffixMatch[0], "").trim();
