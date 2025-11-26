@@ -6247,13 +6247,6 @@ const RAW_ADDRESS_REQUIRED_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_MINIMAL_ADDRESS_FIELDS = [
-  "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
-];
-const RAW_MINIMAL_ADDRESS_FIELD_SET = new Set(RAW_MINIMAL_ADDRESS_FIELDS);
-
 const STRUCTURED_ADDRESS_STRICT_FIELDS = [
   "street_number",
   "street_name",
@@ -6314,6 +6307,14 @@ const ADDRESS_SCHEMA_FIELDS = [
 ];
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+
+const RAW_MINIMAL_ADDRESS_FIELDS = [
+  "unnormalized_address",
+  ...RAW_ADDRESS_OUTPUT_FIELDS,
+  "request_identifier",
+  "source_http_request",
+];
+const RAW_MINIMAL_ADDRESS_FIELD_SET = new Set(RAW_MINIMAL_ADDRESS_FIELDS);
 
 const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   RAW_ADDRESS_OUTPUT_FIELDS.reduce((acc, field) => {
@@ -6439,6 +6440,7 @@ const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
 const RAW_ADDRESS_TERMINAL_FIELD_WHITELIST = Object.freeze([
   "unnormalized_address",
+  ...RAW_ADDRESS_OUTPUT_FIELDS,
   "request_identifier",
   "source_http_request",
 ]);
