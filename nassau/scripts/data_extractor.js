@@ -1529,29 +1529,23 @@ function formatName(name) {
     return null;
   }
 
-  // First, replace forward slashes with spaces (e.g., "Baez/Delgado" becomes "Baez Delgado")
-  // This must be done before other cleaning to handle compound surnames
+  // First, replace forward slashes with spaces (e.g., "Baez/Delgado" becomes "Baez Delgado", "B L/E" becomes "B L E")
+  // This must be done before other cleaning to handle compound surnames and legal designations
   let cleaned = name.trim().replace(/\//g, ' ');
 
   // Remove common legal designations that may contain invalid characters
+  // Note: patterns are for AFTER slash replacement (e.g., "L E" not "L/E")
   cleaned = cleaned.trim();
   const legalDesignations = [
-    /^L\/E$/gi,             // Life Estate by itself
-    /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
-    /\s+L\/E\s+/gi,         // Life Estate in middle (with spaces around)
-    /^L\/E\s+/gi,           // Life Estate at start
-    /^F\/B\/O$/gi,          // For Benefit Of by itself
-    /\s+F\/B\/O\s*$/gi,     // For Benefit Of at end
-    /\s+F\/B\/O\s+/gi,      // For Benefit Of in middle
-    /^F\/B\/O\s+/gi,        // For Benefit Of at start
+    /\bL\s*E\b/gi,          // Life Estate (now without slash: "L E" or "LE")
+    /\bLE\b/gi,             // Life Estate abbreviation
+    /\bF\s*B\s*O\b/gi,      // For Benefit Of (now without slashes: "F B O" or "FBO")
     /\bFBO\b/gi,            // For Benefit Of abbreviation
     /\bET\s+AL\b/gi,        // Et Al
     /\bETAL\b/gi,           // Etal
     /\bLIFE\s+ESTATE\b/gi,  // Life Estate
     /\bTRUSTEE\b/gi,        // Trustee
     /\bTTE\b/gi,            // Trustee abbreviation
-    /\bL\/E\b/gi,           // Life Estate abbreviation (word boundary)
-    /L\/E/gi,               // Life Estate abbreviation (anywhere)
   ];
 
   legalDesignations.forEach(pattern => {

@@ -18,14 +18,15 @@ function cleanNameString(name) {
   // Remove common legal designations that may contain invalid characters
   let cleaned = name.trim();
   const original = cleaned;
+
+  // First pass: Remove slashes and common legal designation patterns
+  // Replace forward slashes with spaces first (e.g., "B L/E" becomes "B L E")
+  cleaned = cleaned.replace(/\//g, ' ');
+
   const legalDesignations = [
-    /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
-    /\s+L\/E\s+/gi,         // Life Estate in middle (with spaces around)
-    /^L\/E\s+/gi,           // Life Estate at start
-    /^F\/B\/O$/gi,          // For Benefit Of by itself
-    /\s+F\/B\/O\s*$/gi,     // For Benefit Of at end
-    /\s+F\/B\/O\s+/gi,      // For Benefit Of in middle
-    /^F\/B\/O\s+/gi,        // For Benefit Of at start
+    /\bL\s*E\b/gi,          // Life Estate (now without slash: "L E" or "LE")
+    /\bLE\b/gi,             // Life Estate abbreviation
+    /\bF\s*B\s*O\b/gi,      // For Benefit Of (now without slashes)
     /\bFBO\b/gi,            // For Benefit Of abbreviation
     /\bET\s+AL\b/gi,        // Et Al
     /\bETAL\b/gi,           // Etal
