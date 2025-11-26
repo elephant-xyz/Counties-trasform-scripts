@@ -2865,6 +2865,7 @@ const structureItems = (() => {
       return "Carport";
     if (typeCode === "EUF" || (desc.includes("ELEV") && desc.includes("UNFIN")))
       return "Storage Room";
+    if (desc.includes("UTIL") && desc.includes("UNFIN")) return "Storage Room";
     if (typeCode === "FLA" || desc.includes("FLOOR LIV") || typeCode === "BAS")
       return "Living Area";
     if (typeCode === "LLF" || (desc.includes("LOW") && desc.includes("LEV") && desc.includes("FIN")))

@@ -266,6 +266,7 @@ function mapSubAreaSpaceType(subArea) {
     return "Carport";
   if (typeCode === "EUF" || (desc.includes("ELEV") && desc.includes("UNFIN")))
     return "Storage Room";
+  if (desc.includes("UTIL") && desc.includes("UNFIN")) return "Storage Room";
   if (typeCode === "FLA" || desc.includes("FLOOR LIV")) return "Living Area";
   if (typeCode === "BAS" || desc.includes("BASE AREA")) return "Living Area";
   if (typeCode === "LLF" || (desc.includes("LOW") && desc.includes("LEV") && desc.includes("FIN")))
