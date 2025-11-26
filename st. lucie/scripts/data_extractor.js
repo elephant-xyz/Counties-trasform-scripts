@@ -2345,14 +2345,31 @@ async function main() {
 
       if (record.type === "person") {
         // Validate that person has required fields before writing
-        const firstName = record.person?.first_name;
-        const lastName = record.person?.last_name;
+        let firstName = record.person?.first_name;
+        let lastName = record.person?.last_name;
 
-        // Skip this person if they don't have valid required fields
-        if (!firstName || !lastName ||
-            typeof firstName !== 'string' || typeof lastName !== 'string' ||
-            firstName.trim().length === 0 || lastName.trim().length === 0) {
-          console.warn(`Skipping person record ${record.id} - missing required first_name or last_name`);
+        // Ensure first_name and last_name are valid non-null strings
+        // If lastName is invalid, skip this person entirely
+        if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+          console.warn(`Skipping person record ${record.id} - missing or invalid last_name`);
+          referencedOwnerIds.delete(record.id); // Remove from referenced set
+          continue;
+        }
+
+        // If firstName is invalid, use 'Unknown' as a fallback
+        if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
+          firstName = 'Unknown';
+          console.warn(`Using 'Unknown' for person record ${record.id} - missing or invalid first_name`);
+        }
+
+        // Normalize the names to ensure they match the schema pattern
+        firstName = normalizePersonName(firstName) || 'Unknown';
+        lastName = normalizePersonName(lastName);
+
+        // Final validation after normalization
+        if (!lastName || lastName.trim().length === 0) {
+          console.warn(`Skipping person record ${record.id} - last_name normalization failed`);
+          referencedOwnerIds.delete(record.id); // Remove from referenced set
           continue;
         }
 
