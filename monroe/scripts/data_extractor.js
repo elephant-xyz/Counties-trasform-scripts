@@ -3285,21 +3285,7 @@ const structureItems = (() => {
     });
   }
 
-  const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
+  // Mailing addresses are not part of the Elephant schema, so we don't generate them
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -3325,22 +3311,6 @@ const structureItems = (() => {
   const currentOwnerEntities = [];
   currentOwners.forEach((owner, idx) => {
     if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-    }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
 
     if (owner.type === "person") {
       const normalizedPerson = normalizeOwner(owner, ownersByDate);
@@ -3349,7 +3319,6 @@ const structureItems = (() => {
         currentOwnerEntities.push({
           type: "person",
           path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
         });
       }
     } else if (owner.type === "company") {
@@ -3358,25 +3327,9 @@ const structureItems = (() => {
         currentOwnerEntities.push({
           type: "company",
           path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
         });
       }
     }
-  });
-
-  const mailingRelationshipKeys = new Set();
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path || !entity.mailingPath) return;
-    const relKey = `${entity.path}|${entity.mailingPath}`;
-    if (mailingRelationshipKeys.has(relKey)) return;
-    mailingRelationshipKeys.add(relKey);
-    const relFilename = makeRelationshipFilename(entity.path, entity.mailingPath);
-    if (!relFilename) return;
-    const relObj = {
-      from: { "/": entity.path },
-      to: { "/": entity.mailingPath },
-    };
-    writeJSON(path.join(dataDir, relFilename), relObj);
   });
 
   const work = parseValuationsWorking($);
