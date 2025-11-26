@@ -3315,30 +3315,6 @@ const structureItems = (() => {
     }
   }
 
-  const currentOwnerEntities = [];
-  currentOwners.forEach((owner, idx) => {
-    if (!owner || !owner.type) return;
-
-    if (owner.type === "person") {
-      const normalizedPerson = normalizeOwner(owner, ownersByDate);
-      const personPath = createPersonRecord(normalizedPerson);
-      if (personPath) {
-        currentOwnerEntities.push({
-          type: "person",
-          path: personPath,
-        });
-      }
-    } else if (owner.type === "company") {
-      const companyPath = createCompanyRecord(owner.name || "");
-      if (companyPath) {
-        currentOwnerEntities.push({
-          type: "company",
-          path: companyPath,
-        });
-      }
-    }
-  });
-
   const work = parseValuationsWorking($);
   if (work) {
     const tax = {
@@ -3521,6 +3497,34 @@ const structureItems = (() => {
   }
 
   const latestSaleRef = saleFileRefs.length ? saleFileRefs[0] : null;
+
+  // Only create person/company records for current owners if there are sales to link them to
+  const currentOwnerEntities = [];
+  if (latestSaleRef && !saleBuyerStatus.get(latestSaleRef.salesPath)) {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+  }
+
   if (
     latestSaleRef &&
     latestSaleRef.salesPath &&
