@@ -16740,17 +16740,13 @@ function preferNormalizedAddressOutput(addressFilePath) {
     return;
   }
 
-  const trimmedUnnormalized =
-    typeof payload.unnormalized_address === "string"
-      ? payload.unnormalized_address.trim()
-      : "";
-  const hasRawVariant = trimmedUnnormalized.length > 0;
-
-  if (hasRawVariant) {
-    return;
-  }
-
-  const hasNormalizedCoverage = hasNormalizedCountyCoverage(payload);
+  const normalizedProbe =
+    typeof hasNormalizedCountyCoverage === "function"
+      ? { ...payload }
+      : null;
+  const hasNormalizedCoverage = normalizedProbe
+    ? hasNormalizedCountyCoverage(normalizedProbe)
+    : false;
 
   if (!hasNormalizedCoverage) {
     return;
@@ -16758,8 +16754,8 @@ function preferNormalizedAddressOutput(addressFilePath) {
   const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    const rawValue = Object.prototype.hasOwnProperty.call(payload, field)
-      ? payload[field]
+    const rawValue = Object.prototype.hasOwnProperty.call(normalizedProbe, field)
+      ? normalizedProbe[field]
       : null;
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
@@ -16783,6 +16779,10 @@ function preferNormalizedAddressOutput(addressFilePath) {
     normalizedOutput.country_code = "US";
   }
 
+  if (Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")) {
+    delete normalizedOutput.unnormalized_address;
+  }
+
   const resolvedRequestIdentifier = safeNullIfEmpty(
     payload.request_identifier,
   );
@@ -16795,16 +16795,6 @@ function preferNormalizedAddressOutput(addressFilePath) {
   );
   if (preparedSource) {
     normalizedOutput.source_http_request = deepClone(preparedSource);
-  }
-
-  if (
-    hasRawVariant &&
-    Object.prototype.hasOwnProperty.call(
-      normalizedOutput,
-      "unnormalized_address",
-    )
-  ) {
-    delete normalizedOutput.unnormalized_address;
   }
 
   writeJSON(addressFilePath, normalizedOutput);
@@ -29452,6 +29442,31 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
     assignFieldIfMissing("lot", lotBlock.lot);
   }
 
+  let hasStrictNormalizedSurface = false;
+  if (typeof hasNormalizedCountyCoverage === "function") {
+    const hadForcedRawVariant =
+      Object.prototype.hasOwnProperty.call(working, "__force_raw_variant") &&
+      working.__force_raw_variant === true;
+    if (hadForcedRawVariant) {
+      delete working.__force_raw_variant;
+    }
+    hasStrictNormalizedSurface = hasNormalizedCountyCoverage(working);
+    if (!hasStrictNormalizedSurface && hadForcedRawVariant) {
+      working.__force_raw_variant = true;
+    }
+  }
+  if (hasStrictNormalizedSurface) {
+    forceRawAddressVariantOutput = false;
+    if (Object.prototype.hasOwnProperty.call(working, "__force_raw_variant")) {
+      delete working.__force_raw_variant;
+      mutated = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(working, "unnormalized_address")) {
+      delete working.unnormalized_address;
+      mutated = true;
+    }
+  }
+
   if (mutated) {
     writeJSON(addressFilePath, working);
   }
@@ -38953,6 +38968,40 @@ function buildCountyRawOneOfPayload(sources = [], extraCandidates = []) {
   return {
     unnormalized_address: resolvedRaw,
   };
+}
+
+function enforceFinalNormalizedCountyAddress(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const normalizedCandidate =
+    buildCountyNormalizedOneOfPayload(payload, options) || null;
+  if (!normalizedCandidate) {
+    return;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      normalizedCandidate,
+      "unnormalized_address",
+    )
+  ) {
+    delete normalizedCandidate.unnormalized_address;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    normalizedCandidate.request_identifier = safeNullIfEmpty(
+      payload.request_identifier,
+    );
+  }
+
+  writeJSON(addressPath, normalizedCandidate);
 }
 
 function enforceCountyAddressSchemaOneOf(addressPath, options = {}) {
@@ -56041,6 +56090,21 @@ async function run() {
     }
   }
 
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceFinalNormalizedCountyAddress(addressPath, {
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error("Failed to enforce final normalized county address output:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
 }
 
 run().catch((error) => {
@@ -56064,6 +56128,11 @@ process.on("exit", () => {
       seedPath: "property_seed.json",
       extraRawCandidates,
       relationshipDirectories: [dataDir, relationshipsDir],
+    });
+    enforceFinalNormalizedCountyAddress(addressPath, {
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
     });
   } catch (error) {
     console.error("Failed to finalize normalized county address at exit:", error);
