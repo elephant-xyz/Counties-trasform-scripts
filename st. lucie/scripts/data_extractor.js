@@ -2153,7 +2153,8 @@ async function main() {
     }
 
     // --- Mailing Address File Creation ---
-    if (mailingAddressText) {
+    // Only create mailing address file if there are current owners to link it to
+    if (mailingAddressText && currentOwnerRecordsList.length > 0) {
       // No need to break down, just store the full text in unnormalized_address
       mailingAddressOut = {
         source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
@@ -2184,6 +2185,8 @@ async function main() {
         JSON.stringify(mailingAddressOut, null, 2),
       );
       console.log("mailing_address.json created.");
+    } else if (mailingAddressText) {
+      console.log("Mailing address text found but no current owners to link it to. Skipping mailing_address.json creation.");
     }
 
 
