@@ -22,6 +22,15 @@ function parseNumeric(text) {
   return Number.isFinite(value) ? value : null;
 }
 
+function formatYearToISODate(year) {
+  if (!year) return null;
+  const yearNum = parseInt(year, 10);
+  if (isNaN(yearNum) || yearNum < 1000 || yearNum > new Date().getFullYear() + 10) {
+    return null;
+  }
+  return `${yearNum}-01-01`;
+}
+
 function parseExtraFeatures($) {
   const features = [];
 
@@ -832,7 +841,7 @@ function extractLayouts($, parcelId) {
     buildingLayout.total_area_sq_ft = grossArea;
     buildingLayout.livable_area_sq_ft = finishedArea;
     buildingLayout.built_year = yearBuilt;
-    buildingLayout.installation_date = yearBuilt ? `${yearBuilt}-01-01` : null;
+    buildingLayout.installation_date = formatYearToISODate(yearBuilt);
     buildingLayout.is_finished = true; // Buildings are generally considered "finished"
     allLayouts.push(buildingLayout);
 
@@ -1064,7 +1073,7 @@ function extractLayouts($, parcelId) {
       let safetyFeatures = []; // Temporarily an array
       let viewType = null;
       let sizeSquareFeet = null;
-      let installationDate = yearBuiltSFYI ? `${yearBuiltSFYI}-01-01` : null;
+      let installationDate = formatYearToISODate(yearBuiltSFYI);
 
       if (!isNaN(units) && units !== "") {
         sizeSquareFeet = parseInt(units, 10);
