@@ -2409,6 +2409,9 @@ async function main() {
     }
 
 
+    // Track which companies already have property relationships
+    const companiesWithPropertyRelationships = new Set();
+
     const propertyRelCounters = { person: 0, company: 0 };
     for (const [recordId, roles] of ownerPropertyRoles.entries()) {
       const meta = ownerToFileMap.get(recordId);
@@ -2427,6 +2430,29 @@ async function main() {
             path.join("data", relFileName),
             JSON.stringify(relOut, null, 2),
           );
+          companiesWithPropertyRelationships.add(recordId);
+        }
+      }
+    }
+
+    // Ensure ALL current owner companies have property_has_company relationships
+    // This prevents unused company files
+    for (const record of currentOwnerRecordsList) {
+      if (record.type === "company") {
+        const meta = ownerToFileMap.get(record.id);
+        if (meta && !companiesWithPropertyRelationships.has(record.id)) {
+          propertyRelCounters.company += 1;
+          const relFileName = `relationship_property_has_company_${propertyRelCounters.company}_current.json`;
+          const relOut = {
+            from: { "/": "./property.json" },
+            to: { "/": `./${meta.fileName}` },
+          };
+          await fsp.writeFile(
+            path.join("data", relFileName),
+            JSON.stringify(relOut, null, 2),
+          );
+          companiesWithPropertyRelationships.add(record.id);
+          console.log(`Created property_has_company relationship for current owner: ${relFileName}`);
         }
       }
     }
