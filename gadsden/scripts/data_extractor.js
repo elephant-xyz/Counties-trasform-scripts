@@ -471,7 +471,10 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Strip trailing periods before processing
   const stripTrailingPeriod = (str) => {
     if (!str) return str;
-    return str.replace(/\.$/, '');
+    const stripped = str.replace(/\.$/, '');
+    // If the result is empty or contains no letters, return null
+    if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
+    return stripped;
   };
 
   // Extract suffix from tokens - check last token(s)
@@ -511,9 +514,9 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Check last token for suffix
   if (workingTokens.length > 2) {
     const lastToken = workingTokens[workingTokens.length - 1];
-    const stripped = stripTrailingPeriod(lastToken).toLowerCase();
-    if (suffixMap[stripped]) {
-      suffix = suffixMap[stripped];
+    const stripped = stripTrailingPeriod(lastToken);
+    if (stripped && suffixMap[stripped.toLowerCase()]) {
+      suffix = suffixMap[stripped.toLowerCase()];
       workingTokens.pop();
     }
   }
@@ -643,11 +646,14 @@ function parseOwnersFromText(rawText) {
       // Check if last token is a suffix before trying to split multiple persons
       const stripTrailingPeriod = (str) => {
         if (!str) return str;
-        return str.replace(/\.$/, '');
+        const stripped = str.replace(/\.$/, '');
+        // If the result is empty or contains no letters, return null
+        if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
+        return stripped;
       };
       const lastToken = tokens[tokens.length - 1];
-      const lastTokenStripped = stripTrailingPeriod(lastToken).toLowerCase();
-      const isLastTokenSuffix = SUFFIXES_IGNORE.test(lastTokenStripped);
+      const lastTokenStripped = stripTrailingPeriod(lastToken);
+      const isLastTokenSuffix = lastTokenStripped && SUFFIXES_IGNORE.test(lastTokenStripped.toLowerCase());
 
       if (andParts.length === 1 && tokens.length >= 4 && !isLastTokenSuffix) {
         const multi = splitMultiplePersonsWithSharedLast(tokens);
@@ -2161,7 +2167,10 @@ function main() {
     // Strip trailing periods before processing (handles abbreviations like "C.")
     const stripTrailingPeriod = (str) => {
       if (!str) return str;
-      return str.replace(/\.$/, '');
+      const stripped = str.replace(/\.$/, '');
+      // If the result is empty or contains no letters, return null
+      if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
+      return stripped;
     };
 
     const firstNameRaw =
