@@ -4223,7 +4223,6 @@ function buildPropertyJson() {
     };
   }
 
-  const addr = parseAddress();
   const rawPropertyAddress = (general.propertyLocationRaw ||
     addrSeed.full_address ||
     "")
@@ -4232,45 +4231,19 @@ function buildPropertyJson() {
     .replace(/\s+/g, " ")
     .trim();
 
-  // addr.unnormalized_address = rawPropertyAddress || null;
-  // Extract latitude and longitude from addrSeed if available
-  addr.latitude = addrSeed.latitude || null;
-  addr.longitude = addrSeed.longitude || null;
-
-  const propertyAddressKeys = new Set([
-    "street_number",
-    "street_pre_directional_text",
-    "street_name",
-    "street_suffix_type",
-    "street_post_directional_text",
-    "unit_identifier",
-    "city_name",
-    "municipality_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "country_code",
-    "county_name",
-    "latitude",
-    "longitude",
-    "request_identifier",
-    "source_http_request",
-    "route_number",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-  ]);
-  Object.keys(addr).forEach((key) => {
-    if (!propertyAddressKeys.has(key)) {
-      addr[key] = null;
-    }
-  });
-  addr.country_code = rawPropertyAddress ? "US" : addr.country_code || "US";
-  addr.county_name = addrSeed.county_jurisdiction || null;
-  addr.request_identifier = propSeed.request_identifier || null;
-  addr.source_http_request = propSeed.source_http_request || null;
+  // Use unnormalized_address approach since source provides full_address
+  const addr = {
+    unnormalized_address: rawPropertyAddress || null,
+    latitude: addrSeed.latitude || null,
+    longitude: addrSeed.longitude || null,
+    county_name: addrSeed.county_jurisdiction || null,
+    country_code: "US",
+    township: null,
+    range: null,
+    section: null,
+    request_identifier: propSeed.request_identifier || null,
+    source_http_request: propSeed.source_http_request || null,
+  };
 
   function buildMailingAddress(lines) {
     if (!Array.isArray(lines) || !lines.length) return null;
@@ -4474,6 +4447,12 @@ function buildPropertyJson() {
     if (property[k] === undefined) delete property[k];
   });
   writeJSON(path.join(dataDir, "property.json"), property);
+
+  // Create property_has_address relationship
+  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  });
   const propertyTypeValue = property.property_type || null;
   const isLandProperty =
     propertyTypeValue === "LandParcel" ||
