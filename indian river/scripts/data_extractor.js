@@ -1715,11 +1715,14 @@ function cleanNameForValidation(name) {
   if (!trimmed) return null;
 
   // Remove invalid characters: keep only letters, spaces, hyphens, apostrophes, commas, periods
-  // Split on semicolon and take only the first part (handles cases like "M;swearingen")
+  // Split on semicolon and take only the first part (handles cases like "M;swearingen" or "Zuleica Marie;norris Tony")
   let cleaned = trimmed.split(';')[0].trim();
 
-  // Remove any other invalid characters
+  // Remove any other invalid characters (anything not letter, space, hyphen, apostrophe, comma, period)
   cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  // Remove extra spaces
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
   if (!cleaned) return null;
   return cleaned;
@@ -1832,17 +1835,24 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   }
 
   // Create person entities with validation
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.first_name))) : null,
-    middle_name: p.middle_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.middle_name))) : null,
-    last_name: p.last_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.last_name))) : null,
-    birth_date: null,
-    prefix_name: p.prefix_name,
-    suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
+  people = Array.from(personMap.values()).map((p) => {
+    // Clean and validate names, ensuring semicolons and invalid chars are removed
+    const cleanedFirstName = p.first_name ? cleanNameForValidation(p.first_name) : null;
+    const cleanedMiddleName = p.middle_name ? cleanNameForValidation(p.middle_name) : null;
+    const cleanedLastName = p.last_name ? cleanNameForValidation(p.last_name) : null;
+
+    return {
+      first_name: cleanedFirstName ? validateNamePattern(titleCaseName(cleanedFirstName)) : null,
+      middle_name: cleanedMiddleName ? validateNamePattern(titleCaseName(cleanedMiddleName)) : null,
+      last_name: cleanedLastName ? validateNamePattern(titleCaseName(cleanedLastName)) : null,
+      birth_date: null,
+      prefix_name: p.prefix_name,
+      suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
+      us_citizenship_status: null,
+      veteran_status: null,
+      request_identifier: parcelId,
+    };
+  });
 
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
