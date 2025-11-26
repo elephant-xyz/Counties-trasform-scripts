@@ -2097,10 +2097,15 @@ function main() {
         ? String(personData.middle_name).trim()
         : "";
 
-    // Strip trailing periods from all name parts
-    const firstName = stripTrailingPeriod(firstNameRaw);
-    const lastName = stripTrailingPeriod(lastNameRaw);
-    const middleNameRaw = middleRaw ? stripTrailingPeriod(middleRaw) : null;
+    // Strip trailing periods from all name parts, then apply titleCase
+    const firstNameStripped = stripTrailingPeriod(firstNameRaw);
+    const lastNameStripped = stripTrailingPeriod(lastNameRaw);
+    const middleStripped = middleRaw ? stripTrailingPeriod(middleRaw) : null;
+
+    // Apply titleCase to ensure proper formatting (handles cases like "I.a" -> "Ia")
+    const firstName = firstNameStripped ? titleCase(firstNameStripped) : "";
+    const lastName = lastNameStripped ? titleCase(lastNameStripped) : "";
+    const middleNameRaw = middleStripped ? titleCase(middleStripped) : null;
 
     // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
     const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
@@ -2116,7 +2121,7 @@ function main() {
 
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${(middleRaw || "").toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
