@@ -1271,15 +1271,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
   const personMap = new Map();
-  // Only create person files for owners that have relationships:
-  // - Owners on specific sale dates (YYYY-MM-DD format)
-  // - Current owners
-  // Skip "unknown_date_*" entries as they won't have relationships
-  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
-    // Only include persons from real dates or "current", skip "unknown_date_*"
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) && dateKey !== "current") {
-      return;
-    }
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1312,13 +1304,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  // Only create company files for companies that have relationships
-  // Skip "unknown_date_*" entries as they won't have relationships
-  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
-    // Only include companies from real dates or "current", skip "unknown_date_*"
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) && dateKey !== "current") {
-      return;
-    }
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
