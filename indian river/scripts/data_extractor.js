@@ -1597,6 +1597,90 @@ function isRomanNumeral(val) {
   return validGenerationalSuffixes.includes(trimmed);
 }
 
+function validatePrefixName(prefix) {
+  if (!prefix) return null;
+  const trimmed = prefix.trim();
+  if (!trimmed) return null;
+
+  const validPrefixes = [
+    "Mr.",
+    "Mrs.",
+    "Ms.",
+    "Miss",
+    "Mx.",
+    "Dr.",
+    "Prof.",
+    "Rev.",
+    "Fr.",
+    "Sr.",
+    "Br.",
+    "Capt.",
+    "Col.",
+    "Maj.",
+    "Lt.",
+    "Sgt.",
+    "Hon.",
+    "Judge",
+    "Rabbi",
+    "Imam",
+    "Sheikh",
+    "Sir",
+    "Dame",
+  ];
+
+  // Check exact match
+  if (validPrefixes.includes(trimmed)) return trimmed;
+
+  // Check case-insensitive match
+  for (const valid of validPrefixes) {
+    if (valid.toUpperCase() === trimmed.toUpperCase()) return valid;
+  }
+
+  // Check for common variations and map to valid prefixes
+  const normalized = trimmed.replace(/\./g, "").toUpperCase();
+  const prefixMap = {
+    "MR": "Mr.",
+    "MRS": "Mrs.",
+    "MS": "Ms.",
+    "MISS": "Miss",
+    "MX": "Mx.",
+    "DR": "Dr.",
+    "PROF": "Prof.",
+    "PROFESSOR": "Prof.",
+    "REV": "Rev.",
+    "REVEREND": "Rev.",
+    "FR": "Fr.",
+    "FATHER": "Fr.",
+    "SR": "Sr.",
+    "SISTER": "Sr.",
+    "BR": "Br.",
+    "BROTHER": "Br.",
+    "CAPT": "Capt.",
+    "CAPTAIN": "Capt.",
+    "COL": "Col.",
+    "COLONEL": "Col.",
+    "MAJ": "Maj.",
+    "MAJOR": "Maj.",
+    "LT": "Lt.",
+    "LIEUTENANT": "Lt.",
+    "SGT": "Sgt.",
+    "SERGEANT": "Sgt.",
+    "HON": "Hon.",
+    "HONORABLE": "Hon.",
+    "JUDGE": "Judge",
+    "RABBI": "Rabbi",
+    "IMAM": "Imam",
+    "SHEIKH": "Sheikh",
+    "SIR": "Sir",
+    "DAME": "Dame",
+  };
+
+  if (prefixMap[normalized]) return prefixMap[normalized];
+
+  // Invalid prefix - return null
+  return null;
+}
+
 function validateSuffixName(suffix) {
   if (!suffix) return null;
   const trimmed = suffix.trim();
@@ -1799,7 +1883,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
               first_name: o.first_name,
               middle_name: o.middle_name,
               last_name: o.last_name,
-              prefix_name: o.prefix_name,
+              prefix_name: validatePrefixName(o.prefix_name),
               suffix_name: validateSuffixName(o.suffix_name),
             });
           } else {
@@ -1807,7 +1891,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
             if (!existing.middle_name && o.middle_name)
               existing.middle_name = o.middle_name;
             if (!existing.prefix_name && o.prefix_name)
-              existing.prefix_name = o.prefix_name;
+              existing.prefix_name = validatePrefixName(o.prefix_name);
             if (!existing.suffix_name && o.suffix_name)
               existing.suffix_name = validateSuffixName(o.suffix_name);
           }
@@ -1826,7 +1910,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
             first_name: info.first_name,
             middle_name: info.middle_name,
             last_name: info.last_name,
-            prefix_name: info.prefix_name,
+            prefix_name: validatePrefixName(info.prefix_name),
             suffix_name: validateSuffixName(info.suffix_name),
           });
         }
@@ -1846,7 +1930,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
       middle_name: cleanedMiddleName ? validateNamePattern(titleCaseName(cleanedMiddleName)) : null,
       last_name: cleanedLastName ? validateNamePattern(titleCaseName(cleanedLastName)) : null,
       birth_date: null,
-      prefix_name: p.prefix_name,
+      prefix_name: validatePrefixName(p.prefix_name), // Validate prefix
       suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
       us_citizenship_status: null,
       veteran_status: null,
