@@ -25,7 +25,9 @@ function parseNumeric(text) {
 function formatYearToISODate(year) {
   if (!year) return null;
   const yearNum = parseInt(year, 10);
-  if (isNaN(yearNum) || yearNum < 1000 || yearNum > new Date().getFullYear() + 10) {
+  // Only accept years between 1800 and current year + 10 for property data
+  // This prevents values like 290 (which are measurements, not years) from being treated as dates
+  if (isNaN(yearNum) || yearNum < 1800 || yearNum > new Date().getFullYear() + 10) {
     return null;
   }
   return `${yearNum}-01-01`;
