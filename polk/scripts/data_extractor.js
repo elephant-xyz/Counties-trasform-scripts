@@ -3999,9 +3999,56 @@ function main() {
     }
   });
 
-  pc.companies.forEach((c, i) =>
-    writeJSON(path.join("data", `company_${i + 1}.json`), c),
-  );
+  // Track which companies will have valid relationships
+  const companiesWithValidRelationships = new Set();
+
+  // Current owners will have property relationships
+  pc.companyCurrentOwners.forEach((idx) => {
+    companiesWithValidRelationships.add(idx);
+  });
+
+  // Check which companies match sales grantees
+  const companyNameToIndex = new Map();
+  pc.companies.forEach((c, i) => {
+    const nm = (c.name || "").trim().toUpperCase();
+    if (nm) companyNameToIndex.set(nm, i + 1);
+  });
+
+  sales.forEach((s) => {
+    const g = normalizeNameForMatch(s.grantee);
+    if (g && companyNameToIndex.has(g)) {
+      companiesWithValidRelationships.add(companyNameToIndex.get(g));
+    }
+  });
+
+  // Check which companies match by date in ownerJSON
+  if (ownerJSON && ownerJSON[`property_${parcelId}`] && ownerJSON[`property_${parcelId}`].owners_by_date) {
+    const ownersByDate = ownerJSON[`property_${parcelId}`].owners_by_date;
+    Object.entries(ownersByDate).forEach(([dateKey, owners]) => {
+      if (dateKey === "current") return;
+      const saleIdx = sales.findIndex(s => s.ownership_transfer_date === dateKey);
+      if (saleIdx >= 0) {
+        (owners || []).forEach((owner) => {
+          if (owner.type === "company") {
+            const name = (owner.name || "").trim();
+            const companyIdx = pc.companyIndexByName.get(name);
+            if (companyIdx) {
+              companiesWithValidRelationships.add(companyIdx);
+            }
+          }
+        });
+      }
+    });
+  }
+
+  // Now write only the companies that have valid relationships
+  const companiesWritten = [];
+  pc.companies.forEach((c, i) => {
+    if (companiesWithValidRelationships.has(i + 1)) {
+      writeJSON(path.join("data", `company_${i + 1}.json`), c);
+      companiesWritten.push(i + 1);
+    }
+  });
 
   // Create property-person relationships for current owners
   pc.personCurrentOwners.forEach((idx, i) =>
