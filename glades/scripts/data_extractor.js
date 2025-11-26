@@ -1519,6 +1519,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const ownersByDate = record.owners_by_date;
   // console.log("ownersByDate",ownersByDate);
 
+  // Only create person/company files if there are sales to link them to
+  if (!sales || sales.length === 0) {
+    // No sales means no relationships can be created, so don't create person/company files
+    return;
+  }
+
   //Person processing and mapping creation.
   // Only include persons from dated entries or "current", skip those only in unknown_date
   const personMap = new Map();
@@ -1579,7 +1585,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     });
   });
   // console.log("companyNames",companyNames);
-  companies = Array.from(companyNames).map((n) => ({ 
+  companies = Array.from(companyNames).map((n) => ({
     ...appendSourceInfo(seed),
     name: n
   }));
