@@ -114,9 +114,9 @@ function parsePersonNameTokens(name) {
   let cleaned = textClean(name);
   if (!cleaned) return null;
 
-  // Remove common descriptors like (EST), (TR), etc.
-  // This regex looks for words in parentheses that are common legal/estate terms
-  cleaned = cleaned.replace(/\s*\((EST|TR|ET AL|JR|SR|II|III|IV)\)\s*/gi, ' ').trim();
+  // Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
+  // This handles cases like "(lf Est)", "(EST)", "(TR)", etc.
+  cleaned = cleaned.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
   // Also remove common suffixes that might be mistaken for middle names or part of the last name
   cleaned = cleaned.replace(/,?\s*(JR|SR|II|III|IV)\.?$/i, '').trim();
 
