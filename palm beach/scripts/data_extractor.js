@@ -53057,23 +53057,42 @@ function emitMinimalRawAddressOverride() {
     unnormalized_address: trimmedRaw,
   };
 
+  let normalizedIdentifier;
   if (
     Object.prototype.hasOwnProperty.call(
       minimalRawPayload,
       "request_identifier",
     )
   ) {
-    const normalizedIdentifier = safeNullIfEmpty(
+    normalizedIdentifier = safeNullIfEmpty(
       minimalRawPayload.request_identifier,
     );
     leanRawPayload.request_identifier =
       normalizedIdentifier === undefined ? null : normalizedIdentifier;
   }
 
+  const surfacedRaw =
+    ensureRawAddressFieldCoverage(leanRawPayload) ||
+    ensureRawAddressSchemaDefaults(leanRawPayload);
+
+  if (!surfacedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (normalizedIdentifier !== undefined) {
+    surfacedRaw.request_identifier =
+      normalizedIdentifier === null ? null : normalizedIdentifier;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(surfacedRaw, "request_identifier")
+  ) {
+    surfacedRaw.request_identifier = null;
+  }
+
   originalWriteFileSync.call(
     fs,
     addressPath,
-    JSON.stringify(leanRawPayload, null, 2),
+    JSON.stringify(surfacedRaw, null, 2),
   );
 }
 
