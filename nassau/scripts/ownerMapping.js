@@ -38,7 +38,14 @@ function cleanNameString(name) {
     cleaned = cleaned.replace(pattern, ' ');
   });
 
-  // Explicitly remove parentheses and other common unwanted characters
+  // Remove any content within parentheses first, before removing the parentheses themselves
+  // This handles cases like "Lang (Jtro" where closing paren might be missing
+  cleaned = cleaned.replace(/\([^)]*\)?/g, ' ');  // Remove content in parentheses
+  cleaned = cleaned.replace(/\[[^\]]*\]?/g, ' ');  // Remove content in square brackets
+  cleaned = cleaned.replace(/\{[^}]*\}?/g, ' ');   // Remove content in curly braces
+
+  // Then explicitly remove any remaining parentheses and other common unwanted characters
+  // Remove all types of parentheses: (), [], {}, and any Unicode variants
   cleaned = cleaned.replace(/[()[\]{}]/g, '');
 
   // Remove any remaining characters that don't match the person name pattern
