@@ -2088,81 +2088,9 @@ function isCompanyName(name) {
 }
 
 function writeMailingAddressAndRelationships($, parcelId) {
-  const mailingAddress = extractOwnerMailingAddress($);
-  if (!mailingAddress) return;
-
-  // Create mailing_address.json
-  const mailingAddressObj = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddress,
-    latitude: null,
-    longitude: null
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
-
-  // Extract owners from HTML if not already populated by writePersonCompaniesSalesRelationships
-  const ownerNames = extractOwnerNamesFromHTML($);
-
-  // If no people/companies were created from owner_data.json, create them from HTML
-  if ((!people || people.length === 0) && (!companies || companies.length === 0) && ownerNames.length > 0) {
-    ownerNames.forEach((ownerName, idx) => {
-      const ownerIndex = idx + 1;
-
-      if (isCompanyName(ownerName)) {
-        // Create company
-        const company = {
-          ...appendSourceInfo(seed),
-          name: ownerName
-        };
-        writeJSON(path.join("data", `company_${ownerIndex}.json`), company);
-
-        // Create relationship
-        const relationship = {
-          from: { "/": `./company_${ownerIndex}.json` },
-          to: { "/": "./mailing_address.json" }
-        };
-        writeJSON(
-          path.join("data", `relationship_company_${ownerIndex}_has_mailing_address.json`),
-          relationship
-        );
-
-        // Add to global companies array
-        if (!companies) companies = [];
-        companies.push(company);
-      }
-      // For person names, we'd need to parse first/last names which is complex
-      // For now, we'll treat them as companies if they don't match person name patterns
-    });
-  } else {
-    // Use existing people and companies arrays
-    if (people && people.length > 0) {
-      people.forEach((person, idx) => {
-        const personIdx = idx + 1;
-        const relationship = {
-          from: { "/": `./person_${personIdx}.json` },
-          to: { "/": "./mailing_address.json" }
-        };
-        writeJSON(
-          path.join("data", `relationship_person_${personIdx}_has_mailing_address.json`),
-          relationship
-        );
-      });
-    }
-
-    if (companies && companies.length > 0) {
-      companies.forEach((company, idx) => {
-        const companyIdx = idx + 1;
-        const relationship = {
-          from: { "/": `./company_${companyIdx}.json` },
-          to: { "/": "./mailing_address.json" }
-        };
-        writeJSON(
-          path.join("data", `relationship_company_${companyIdx}_has_mailing_address.json`),
-          relationship
-        );
-      });
-    }
-  }
+  // Removed mailing_address.json generation as it's not a valid Elephant class
+  // Mailing addresses should be handled differently or not stored separately
+  return;
 }
 
 function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
@@ -2299,9 +2227,6 @@ function main() {
   // Address last
   const secTwpRng = extractSecTwpRng($);
   attemptWriteAddressAndGeometry(unnormalized, secTwpRng);
-
-  // Extract and write mailing address with relationships to owners
-  writeMailingAddressAndRelationships($, parcelId);
 
   const acreage = extractAcreage($);
   // console.log("Acreage:", acreage);
