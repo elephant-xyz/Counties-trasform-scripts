@@ -2348,33 +2348,34 @@ const specificDocumentTypeMap = {
     };
 
     const assignUtilities = () => {
-      if (utilityRecords.length) {
-        if (!buildingLayoutRecords.length) {
-          utilityRecords.forEach((record) =>
-            createPropertyRelationship("utility", record.index),
-          );
-        } else if (buildingLayoutRecords.length === 1) {
-          const layoutIdx = buildingLayoutRecords[0].index;
-          utilityRecords.forEach((record) =>
-            createLayoutToUtilityRelationship(layoutIdx, record.index),
-          );
+      if (!utilityRecords.length) return;
+      if (!buildingLayoutRecords.length) {
+        utilityRecords.forEach((record) =>
+          createPropertyRelationship("utility", record.index),
+        );
+        return;
+      }
+      if (buildingLayoutRecords.length === 1) {
+        const layoutIdx = buildingLayoutRecords[0].index;
+        utilityRecords.forEach((record) =>
+          createLayoutToUtilityRelationship(layoutIdx, record.index),
+        );
+      } else {
+        if (utilityRecords.length === 1) {
+          createPropertyRelationship("utility", utilityRecords[0].index);
         } else {
-          if (utilityRecords.length === 1) {
-            createPropertyRelationship("utility", utilityRecords[0].index);
-          } else {
-            const assignCount = Math.min(
-              buildingLayoutRecords.length,
-              utilityRecords.length,
+          const assignCount = Math.min(
+            buildingLayoutRecords.length,
+            utilityRecords.length,
+          );
+          for (let i = 0; i < assignCount; i += 1) {
+            createLayoutToUtilityRelationship(
+              buildingLayoutRecords[i].index,
+              utilityRecords[i].index,
             );
-            for (let i = 0; i < assignCount; i += 1) {
-              createLayoutToUtilityRelationship(
-                buildingLayoutRecords[i].index,
-                utilityRecords[i].index,
-              );
-            }
-            for (let i = assignCount; i < utilityRecords.length; i += 1) {
-              createPropertyRelationship("utility", utilityRecords[i].index);
-            }
+          }
+          for (let i = assignCount; i < utilityRecords.length; i += 1) {
+            createPropertyRelationship("utility", utilityRecords[i].index);
           }
         }
       }
