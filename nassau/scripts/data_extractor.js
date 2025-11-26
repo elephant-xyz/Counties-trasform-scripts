@@ -2679,9 +2679,12 @@ function main() {
     const deedFileName = `deed_${deedIndex}.json`;
     writeJSON(path.join("data", deedFileName), deedObj);
 
+    const constructedName = (instAbbr ? instAbbr + " " : "") + (bookPage || "");
+    const fileName = constructedName.trim() || null;
+
     const fileObj = {
       file_format: null,
-      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
+      name: fileName,
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
