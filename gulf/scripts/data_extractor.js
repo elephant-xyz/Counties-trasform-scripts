@@ -1270,9 +1270,24 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // First, determine which dates we'll actually use
+  const usedDates = new Set();
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    if (d && ownersByDate[d]) {
+      usedDates.add(d);
+    }
+  });
+  if (hasOwnerMailingAddress && ownersByDate["current"]) {
+    usedDates.add("current");
+  }
+
+  // Collect only persons and companies from used dates
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
+  usedDates.forEach((dateKey) => {
+    const arr = ownersByDate[dateKey] || [];
+    arr.forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
         if (!personMap.has(k))
@@ -1289,6 +1304,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       }
     });
   });
+
   people = Array.from(personMap.values()).map((p) => ({
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -1303,14 +1319,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
+
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
+  usedDates.forEach((dateKey) => {
+    const arr = ownersByDate[dateKey] || [];
+    arr.forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({ 
+
+  companies = Array.from(companyNames).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
@@ -1521,10 +1540,13 @@ function extractOwnerMailingAddress($) {
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  if (!inputCounty) {
-    inputCounty = (unnorm.county_name || "").trim();
+  let inputCounty = "";
+  if (unnorm) {
+    inputCounty = (unnorm.county_jurisdiction || "").trim();
+    if (!inputCounty) {
+      inputCounty = (unnorm.county_name || "").trim();
     }
+  }
   const county_name = inputCounty || null;
   if (mailingAddress) {
     const mailingAddressObj = {
