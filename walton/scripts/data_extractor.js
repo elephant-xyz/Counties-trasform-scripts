@@ -2079,14 +2079,16 @@ function main() {
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     // writeUtility(parcelId);
     // writeLayout(parcelId);
+
+    // ---------- Layouts (owners/layout_data.json) ----------
+    // IMPORTANT: Create layouts FIRST because structure and utility relationships reference layout files
+    createLayoutFiles(seed,parcelId);
+
+    // ---------- Structures (owners/structure_data.json) ----------
     createStructureFiles(seed,parcelId);
 
     // ---------- Utilities (owners/utilities_data.json) ----------
     createUtilitiesFiles(seed,parcelId);
-
-    // ---------- Layouts (owners/layout_data.json) ----------
-
-    createLayoutFiles(seed,parcelId);
 
   }
 
