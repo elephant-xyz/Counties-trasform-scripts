@@ -1514,7 +1514,12 @@ function validatePersonName(value, fieldName) {
 }
 
 function formatName(name) {
-  if (!name || name.trim() === "") return null;
+  // Convert to string if it's a number or other type
+  if (typeof name === 'number') {
+    name = String(name);
+  }
+
+  if (!name || typeof name !== 'string' || name.trim() === "") return null;
 
   // Remove common legal designations that may contain invalid characters
   let cleaned = name.trim();
@@ -2615,15 +2620,26 @@ function main() {
 
 
     function ensurePerson(owner) {
-      const key = `${owner.first_name}|${owner.middle_name || ""}|${owner.last_name}`;
+      // Ensure owner properties are strings, convert numbers to strings
+      const rawFirstName = typeof owner.first_name === 'number' ? String(owner.first_name) : owner.first_name;
+      const rawLastName = typeof owner.last_name === 'number' ? String(owner.last_name) : owner.last_name;
+      const rawMiddleName = typeof owner.middle_name === 'number' ? String(owner.middle_name) : owner.middle_name;
+
+      const key = `${rawFirstName}|${rawMiddleName || ""}|${rawLastName}`;
       if (!personIndexByKey.has(key)) {
-        const firstNameRaw = formatName(owner.first_name);
-        const lastNameRaw = formatName(owner.last_name);
-        let middleName = formatName(owner.middle_name);
+        const firstNameRaw = formatName(rawFirstName);
+        const lastNameRaw = formatName(rawLastName);
+        let middleName = formatName(rawMiddleName);
 
         // Skip if names are invalid after formatting
         if (!firstNameRaw || !lastNameRaw) {
-          console.log(`Skipping invalid person from owner_data: ${owner.first_name} ${owner.last_name}`);
+          console.log(`Skipping invalid person from owner_data: ${rawFirstName} ${rawLastName}`);
+          return null;
+        }
+
+        // Check if names are purely numeric (even after conversion to string)
+        if (/^\d+$/.test(rawFirstName) || /^\d+$/.test(rawLastName)) {
+          console.log(`Skipping person with numeric name from owner_data: ${rawFirstName} ${rawLastName}`);
           return null;
         }
 
@@ -2636,7 +2652,11 @@ function main() {
         const firstName = validatePersonName(firstNameRaw, 'first_name');
         const lastName = validatePersonName(lastNameRaw, 'last_name');
         if (middleName != null) {
-          if (isValidPersonName(middleName)) {
+          // Also check if middle name is purely numeric
+          if (rawMiddleName && /^\d+$/.test(rawMiddleName)) {
+            console.log(`Skipping numeric middle name: ${rawMiddleName}`);
+            middleName = null;
+          } else if (isValidPersonName(middleName)) {
             middleName = validatePersonName(middleName, 'middle_name');
           } else {
             middleName = null;
