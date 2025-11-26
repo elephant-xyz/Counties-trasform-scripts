@@ -1791,9 +1791,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
 
   // Create person entities with validation
   people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
+    first_name: p.first_name ? validateNamePattern(titleCaseName(p.first_name)) : null,
+    middle_name: p.middle_name ? validateNamePattern(titleCaseName(p.middle_name)) : null,
+    last_name: p.last_name ? validateNamePattern(titleCaseName(p.last_name)) : null,
     birth_date: null,
     prefix_name: p.prefix_name,
     suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
