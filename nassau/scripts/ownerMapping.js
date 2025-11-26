@@ -177,9 +177,15 @@ function splitJointOwners(raw) {
   s = s.replace(/\s+L\/E\s+/gi, ' ');  // Life Estate in middle
   s = s.replace(/^L\/E\s+/gi, '');     // Life Estate at start
 
-  // Split on &, ' and ', or / while preserving meaningful tokens
+  // Replace "/" with space when it appears between name parts (compound surnames like "BAEZ/DELGADO")
+  // This prevents splitting compound surnames into separate owners
+  // Pattern: word followed by "/" followed by word (both looking like name parts)
+  s = s.replace(/([A-Za-z]+)\s*\/\s*([A-Za-z]+)/g, '$1 $2');
+
+  // Split on &, ' and ' while preserving meaningful tokens
+  // Note: We removed "/" from the split pattern since we now treat it as part of compound names
   const parts = s
-    .split(/\s*(?:&|\band\b|\/)\s*/i)
+    .split(/\s*(?:&|\band\b)\s*/i)
     .map((p) => normalizeSpace(p))
     .filter(Boolean);
   return parts.length ? parts : [s];

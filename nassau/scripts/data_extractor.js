@@ -1529,8 +1529,12 @@ function formatName(name) {
     return null;
   }
 
+  // First, replace forward slashes with spaces (e.g., "Baez/Delgado" becomes "Baez Delgado")
+  // This must be done before other cleaning to handle compound surnames
+  let cleaned = name.trim().replace(/\//g, ' ');
+
   // Remove common legal designations that may contain invalid characters
-  let cleaned = name.trim();
+  cleaned = cleaned.trim();
   const legalDesignations = [
     /^L\/E$/gi,             // Life Estate by itself
     /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
