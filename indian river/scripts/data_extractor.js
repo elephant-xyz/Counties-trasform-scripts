@@ -1770,8 +1770,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     if (saleDates.has(dateKey)) {
       (arr || []).forEach((o) => {
         if (o.type === "person") {
-          const normalizedSuffix = normalizeSuffixForCompare(o.suffix_name);
-          const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}|${normalizedSuffix}`;
+          const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
           referencedPersonKeys.add(k);
         }
       });
@@ -1782,8 +1781,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   if (hasMailingAddresses && mailingAddresses.some(info => info.type === "person")) {
     mailingAddresses.forEach((info) => {
       if (info.type === "person") {
-        const normalizedSuffix = normalizeSuffixForCompare(info.suffix_name);
-        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}|${normalizedSuffix}`;
+        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
         referencedPersonKeys.add(k);
       }
     });
@@ -1794,8 +1792,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   validDateEntries.forEach(([, arr]) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
-        const normalizedSuffix = normalizeSuffixForCompare(o.suffix_name);
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}|${normalizedSuffix}`;
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
         if (referencedPersonKeys.has(k)) {
           if (!personMap.has(k)) {
             personMap.set(k, {
@@ -1823,8 +1820,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   if (hasMailingAddresses) {
     mailingAddresses.forEach((info) => {
       if (info.type === "person") {
-        const normalizedSuffix = normalizeSuffixForCompare(info.suffix_name);
-        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}|${normalizedSuffix}`;
+        const k = `${(info.first_name || "").trim().toUpperCase()}|${(info.last_name || "").trim().toUpperCase()}`;
         if (referencedPersonKeys.has(k) && !personMap.has(k)) {
           personMap.set(k, {
             first_name: info.first_name,
