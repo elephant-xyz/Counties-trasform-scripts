@@ -2248,8 +2248,8 @@ async function main() {
     await removeExisting(/^person_.*\.json$/);
     await removeExisting(/^company_.*\.json$/);
     await removeExisting(/^relationship_property_has_company_.*\.json$/);
-    await removeExisting(/^relationship_sales_history_.*_has_person_.*\.json$/);
-    await removeExisting(/^relationship_sales_history_.*_has_company_.*\.json$/);
+    await removeExisting(/^relationship_sales_person_.*\.json$/);
+    await removeExisting(/^relationship_sales_company_.*\.json$/);
     await removeExisting(/^relationship_person_.*_has_mailing_address\.json$/);
     await removeExisting(/^relationship_company_.*_has_mailing_address\.json$/);
 
@@ -2401,8 +2401,8 @@ async function main() {
     await removeExisting(/^file_.*\.json$/);
     await removeExisting(/^relationship_sales_history_.*_to_deed_.*\.json$/);
     await removeExisting(/^relationship_deed_.*_to_file_.*\.json$/);
-    await removeExisting(/^relationship_sales_history_person_.*\.json$/);
-    await removeExisting(/^relationship_sales_history_company_.*\.json$/);
+    await removeExisting(/^relationship_sales_person_.*\.json$/);
+    await removeExisting(/^relationship_sales_company_.*\.json$/);
     // await removeExisting(/^relationship_property_has_sales_history_.*\.json$/); // Removed this line
 
     const ALLOWED_DEED_TYPES = [
@@ -2578,7 +2578,7 @@ async function main() {
         if (grantorMeta) {
           if (grantorMeta.type === "person") {
             relSalesPersonCounter++;
-            const relFileName = `relationship_sales_history_person_${relSalesPersonCounter}.json`;
+            const relFileName = `relationship_sales_person_${relSalesPersonCounter}.json`;
             const relOut = {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${grantorMeta.fileName}` },
@@ -2589,7 +2589,7 @@ async function main() {
             );
           } else if (grantorMeta.type === "company") {
             relSalesCompanyCounter++;
-            const relFileName = `relationship_sales_history_company_${relSalesCompanyCounter}.json`;
+            const relFileName = `relationship_sales_company_${relSalesCompanyCounter}.json`;
             const relOut = {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${grantorMeta.fileName}` },
@@ -2607,7 +2607,7 @@ async function main() {
         if (granteeMeta) {
           if (granteeMeta.type === "person") {
             relSalesPersonCounter++;
-            const relFileName = `relationship_sales_history_person_${relSalesPersonCounter}.json`;
+            const relFileName = `relationship_sales_person_${relSalesPersonCounter}.json`;
             const relOut = {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${granteeMeta.fileName}` },
@@ -2618,7 +2618,7 @@ async function main() {
             );
           } else if (granteeMeta.type === "company") {
             relSalesCompanyCounter++;
-            const relFileName = `relationship_sales_history_company_${relSalesCompanyCounter}.json`;
+            const relFileName = `relationship_sales_company_${relSalesCompanyCounter}.json`;
             const relOut = {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${granteeMeta.fileName}` },
