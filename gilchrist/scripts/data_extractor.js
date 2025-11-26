@@ -1249,6 +1249,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
 
+  // Clean up old person/company/relationship files to avoid accumulation
+  try {
+    fs.readdirSync("data").forEach((f) => {
+      if (/^(person_|company_)\d+\.json$/.test(f) ||
+          /^relationship_(sales_person|sales_company|person_has_mailing_address|company_has_mailing_address)_\d+\.json$/.test(f)) {
+        fs.unlinkSync(path.join("data", f));
+      }
+    });
+  } catch (e) {}
+
   // Collect owners who will have relationships
   const relevantPersonMap = new Map();
   const relevantCompanySet = new Set();
@@ -1276,9 +1286,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     });
   }
 
-  // Add owners from sales dates (grantees/buyers)
+  // Add owners from sales dates (grantees/buyers) - only for dates that match actual sales
   sales.forEach((rec) => {
     const d = parseDateToISO(rec.saleDate);
+    if (!d) return; // Skip if date parsing fails
     const ownersOnDate = ownersByDate[d] || [];
     ownersOnDate.forEach((o) => {
       if (o.type === "person") {
