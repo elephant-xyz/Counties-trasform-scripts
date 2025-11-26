@@ -2325,6 +2325,17 @@ function main() {
       }
     }
   }
+
+  // Final cleanup: Remove any orphaned files that are not part of the Seed data group schema
+  // This ensures mailing_address.json and other orphaned files are removed even if created during execution
+  const orphanedFilesCleanup = ["mailing_address.json"];
+  orphanedFilesCleanup.forEach((fileName) => {
+    const filePath = path.join("data", fileName);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`Final cleanup: Removed orphaned file: ${fileName}`);
+    }
+  });
 }
 
 if (require.main === module) {
