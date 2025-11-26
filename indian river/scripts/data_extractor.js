@@ -1678,6 +1678,16 @@ function titleCaseName(s) {
     .join(" ");
 }
 
+function validateNamePattern(name) {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Pattern: Must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, periods
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (pattern.test(trimmed)) return trimmed;
+  return null;
+}
+
 function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
@@ -1714,7 +1724,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   });
   people = Array.from(personMap.values()).map((p) => ({
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+    middle_name: p.middle_name ? validateNamePattern(titleCaseName(p.middle_name)) : null,
     last_name: p.last_name ? titleCaseName(p.last_name) : null,
     birth_date: null,
     prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
