@@ -2881,27 +2881,6 @@ function main() {
           url: seed.source_http_request.url
         },
     request_identifier: parcelIdentifier || seed.parcel_id || "",
-    // street_number: street_number || null,
-    // street_name: street_name || null,
-    // street_suffix_type: street_suffix_type || null,
-    // street_pre_directional_text: pre_dir || null,
-    // street_post_directional_text: post_dir || null,
-    // unit_identifier: null,
-    // city_name: (cityUpper || "").toUpperCase() || null,
-    // state_code: "FL",
-    // postal_code: postal_code || null,
-    // plus_four_postal_code: plus_four_postal_code || null,
-    // country_code: "US",
-    county_name: "Franklin",
-    latitude: unAddr.latitude ?? null,
-    longitude: unAddr.longitude ?? null,
-    // route_number: null,
-    township: townshipText || null,
-    range: rangeText || null,
-    section: sectionText || null,
-    // block: null,
-    // lot: lotNumber || null,
-    // municipality_name: null,
     unnormalized_address: addressValue
   };
   writeJSON(path.join("data", "address.json"), address);
