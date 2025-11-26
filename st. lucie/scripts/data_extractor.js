@@ -2145,9 +2145,10 @@ async function main() {
     await removeExisting(/^person_.*\.json$/);
     await removeExisting(/^company_.*\.json$/);
     await removeExisting(/^relationship_property_has_company_.*\.json$/);
-    await removeExisting(/^relationship_sales_history_.*_has_person_.*\.json$/); 
-    await removeExisting(/^relationship_sales_history_.*_has_company_.*\.json$/); 
-    await removeExisting(/^relationship_person_.*_has_mailing_address\.json$/); 
+    await removeExisting(/^relationship_sales_history_.*_has_person_.*\.json$/);
+    await removeExisting(/^relationship_sales_history_.*_has_company_.*\.json$/);
+    await removeExisting(/^relationship_person_.*_has_mailing_address\.json$/);
+    await removeExisting(/^relationship_company_.*_has_mailing_address\.json$/); 
 
     const ownerToFileMap = new Map();
     let personIdx = 0;
@@ -2443,30 +2444,28 @@ async function main() {
         );
 
         // --- Create sales_history_has_person/company relationships ---
-        // if (sale._grantor_record_id) {
-        //   const grantorMeta = ownerToFileMap.get(sale._grantor_record_id);
-        //   if (grantorMeta) {
-        //     const relFileName = `relationship_sales_history_${i + 1}_has_${grantorMeta.type}_${grantorMeta.index}.json`; // Removed _grantor from filename
-        //     const relOut = {
-        //       from: { "/": `./${saleFileName}` },
-        //       to: { "/": `./${grantorMeta.fileName}` },
-        //       // type: `sales_history_has_${grantorMeta.type}`, // Removed 'type' property
-        //     };
-        //     await fsp.writeFile(
-        //       path.join("data", relFileName),
-        //       JSON.stringify(relOut, null, 2),
-        //     );
-        //   }
-        // }
+        if (sale._grantor_record_id) {
+          const grantorMeta = ownerToFileMap.get(sale._grantor_record_id);
+          if (grantorMeta) {
+            const relFileName = `relationship_sales_history_${i + 1}_has_${grantorMeta.type}_${grantorMeta.index}_grantor.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${grantorMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          }
+        }
 
         if (sale._grantee_record_id) {
           const granteeMeta = ownerToFileMap.get(sale._grantee_record_id);
           if (granteeMeta) {
-            const relFileName = `relationship_sales_history_${i + 1}_has_${granteeMeta.type}_${granteeMeta.index}.json`;
+            const relFileName = `relationship_sales_history_${i + 1}_has_${granteeMeta.type}_${granteeMeta.index}_grantee.json`;
             const relOut = {
               from: { "/": `./${saleFileName}` },
               to: { "/": `./${granteeMeta.fileName}` },
-              // type: `sales_history_has_${granteeMeta.type}`, // Removed 'type' property
             };
             await fsp.writeFile(
               path.join("data", relFileName),
