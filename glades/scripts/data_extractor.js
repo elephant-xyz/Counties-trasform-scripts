@@ -1519,20 +1519,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const ownersByDate = record.owners_by_date;
   // console.log("ownersByDate",ownersByDate);
 
-  // Only create person/company files if there are sales to link them to
-  if (!sales || sales.length === 0) {
-    // No sales means no relationships can be created, so don't create person/company files
-    return;
-  }
-
   //Person processing and mapping creation.
-  // Only include persons from dated entries or "current", skip those only in unknown_date
   const personMap = new Map();
-  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
-    // Skip owners under "unknown_date" keys since they can't be linked to any sale
-    if (/^unknown_date_\d+$/.test(dateKey)) {
-      return;
-    }
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1568,24 +1557,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  // Update global people array to match the files we actually wrote
-  people = validPeople;
 
   //Company processing and mapping creation.
-  // Only include companies from dated entries or "current", skip those only in unknown_date
   const companyNames = new Set();
-  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
-    // Skip owners under "unknown_date" keys since they can't be linked to any sale
-    if (/^unknown_date_\d+$/.test(dateKey)) {
-      return;
-    }
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim());
     });
   });
   // console.log("companyNames",companyNames);
-  companies = Array.from(companyNames).map((n) => ({
+  companies = Array.from(companyNames).map((n) => ({ 
     ...appendSourceInfo(seed),
     name: n
   }));
@@ -2052,55 +2034,8 @@ function extractLocationAddress($) {
   return street || null;
 }
 
-function extractOwnerMailingAddress($) {
-  // Extract mailing address from owner information section
-  const mailingAddressSpan = $("#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress");
-  if (!mailingAddressSpan.length) return null;
-
-  const addressHtml = mailingAddressSpan.html();
-  if (!addressHtml) return null;
-
-  // Replace <br> tags with commas and clean up whitespace
-  const addressText = addressHtml
-    .replace(/<br\s*\/?>/gi, ', ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/,\s*$/, '') // Remove trailing comma
-    .trim();
-
-  return addressText || null;
-}
-
-function extractOwnerNamesFromHTML($) {
-  const owners = [];
-
-  // Extract owner names from the owner section
-  $("#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lnkSearch").each((_, el) => {
-    const name = $(el).text().trim();
-    if (name) owners.push(name);
-  });
-
-  return owners;
-}
-
-function isCompanyName(name) {
-  const companyKeywords = [
-    'INC', 'LLC', 'CORP', 'CORPORATION', 'COMPANY', 'CO', 'LTD', 'LIMITED',
-    'LP', 'LLP', 'TRUST', 'PARTNERSHIP', 'ASSOCIATES', 'GROUP', 'HOLDINGS'
-  ];
-
-  const upperName = name.toUpperCase();
-  return companyKeywords.some(keyword => upperName.includes(keyword));
-}
-
-function writeMailingAddressAndRelationships($, parcelId) {
-  // Removed mailing_address.json generation as it's not a valid Elephant class
-  // Mailing addresses should be handled differently or not stored separately
-  return;
-}
-
-function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
-  let full =
+function attemptWriteAddressAndGeometry(unnorm, secTwpRng) {
+  const full =
     unnorm && unnorm.full_address ? unnorm.full_address.trim() : null;
 
   // Use location address from HTML as fallback
@@ -2109,7 +2044,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
     full = extractLocationAddress($);
     console.log(full)
 
-  }
+  }    
   // if (!full || full.length < 10) return;
   // let city = null;
   // let zip = null;
@@ -2162,7 +2097,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
   // const plus_four_postal_code = plus4 || null;
 
   // Per evaluator expectation, set county_name from input jurisdiction
-  const inputCounty = unnorm ? (unnorm.county_jurisdiction || "").trim() : "";
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
   const county_name = inputCounty || "Glades" || null;
   const address = {
       ...appendSourceInfo(seed),
@@ -2177,11 +2112,11 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
   //Geometry creation
   const geometry = {
     ...appendSourceInfo(seed),
-    latitude: unnorm ? (unnorm.latitude || null) : null,
-    longitude: unnorm ? (unnorm.longitude || null) : null
+    latitude: unnorm.latitude || null,
+    longitude: unnorm.longitude || null
   };
   writeJSON(path.join("data", "geometry.json"), geometry);
-
+  
   // Create relationship between address and geometry
   const relAddressGeometry = {
     from: { "/": "./address.json" },
@@ -2189,6 +2124,27 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
   };
   writeJSON(path.join("data", "relationship_address_has_geometry.json"), relAddressGeometry);
 
+}
+
+
+function extractMailingAddress($) {
+  const addressElement = $('#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress');
+  
+  if (!addressElement.length) return null;
+  
+  const addressText = addressElement.html();
+  if (!addressText || !addressText.trim()) return null;
+  
+  // Split by <br> tags and clean up each line
+  const lines = addressText
+    .split(/<br\s*\/?>/i)
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+  
+  if (lines.length === 0) return null;
+  
+  // Join lines with proper formatting
+  return lines.join(', ');
 }
 
 
@@ -2232,8 +2188,55 @@ function main() {
 
   // Address last
   const secTwpRng = extractSecTwpRng($);
-  attemptWriteAddressAndGeometry(unnormalized, secTwpRng, $);
+  attemptWriteAddressAndGeometry(unnormalized, secTwpRng);
 
+  //Mailing Address
+  const mailingAddressRaw = extractMailingAddress($)
+  console.log("MAILING--",mailingAddressRaw);
+  const mailingAddressOutput = {
+    ...appendSourceInfo(seed),
+    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+  };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+  // Create mailing address relationships with current owners
+  const owners = readJSON(path.join("owners", "owner_data.json"));
+  if (owners) {
+    const key = `property_${parcelId}`;
+    const record = owners[key];
+    if (record && record.owners_by_date && record.owners_by_date['current']) {
+      const currentOwners = record.owners_by_date['current'];
+      let relCounter = 0;
+      currentOwners.forEach((owner) => {
+        if (owner.type === "person") {
+          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+          if (pIdx) {
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./person_${pIdx}.json` },
+                to: { "/": "./mailing_address.json" },
+              }
+            );
+          }
+        } else if (owner.type === "company") {
+          const cIdx = findCompanyIndexByName(owner.name);
+          if (cIdx) {
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./company_${cIdx}.json` },
+                to: { "/": "./mailing_address.json" }
+              }
+            );
+          }
+        }
+      });
+    }
+  }
+  
   const acreage = extractAcreage($);
   // console.log("Acreage:", acreage);
   
