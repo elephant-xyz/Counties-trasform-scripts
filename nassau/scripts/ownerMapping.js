@@ -58,6 +58,13 @@ function cleanNameString(name) {
   // Allow: letters, spaces, hyphens, apostrophes, commas, periods
   cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
 
+  // Remove trailing punctuation (hyphens, apostrophes, commas, periods at the end)
+  // The Elephant schema requires that separators must be followed by letters
+  cleaned = cleaned.replace(/[\-',.]+$/g, '');
+
+  // Also remove leading punctuation
+  cleaned = cleaned.replace(/^[\-',.]+/g, '');
+
   return cleaned.trim().replace(/\s+/g, ' ');
 }
 
