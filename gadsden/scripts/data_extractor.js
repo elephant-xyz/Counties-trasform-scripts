@@ -2079,17 +2079,28 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-    const firstName =
+
+    // Strip trailing periods before processing (handles abbreviations like "C.")
+    const stripTrailingPeriod = (str) => {
+      if (!str) return str;
+      return str.replace(/\.$/, '');
+    };
+
+    const firstNameRaw =
       personData.first_name != null
         ? String(personData.first_name).trim()
         : "";
-    const lastName =
+    const lastNameRaw =
       personData.last_name != null ? String(personData.last_name).trim() : "";
     const middleRaw =
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleNameRaw = middleRaw ? middleRaw : null;
+
+    // Strip trailing periods from all name parts
+    const firstName = stripTrailingPeriod(firstNameRaw);
+    const lastName = stripTrailingPeriod(lastNameRaw);
+    const middleNameRaw = middleRaw ? stripTrailingPeriod(middleRaw) : null;
 
     // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
     const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
