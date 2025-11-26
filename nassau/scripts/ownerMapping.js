@@ -22,6 +22,11 @@ function cleanNameString(name) {
     /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
     /\s+L\/E\s+/gi,         // Life Estate in middle (with spaces around)
     /^L\/E\s+/gi,           // Life Estate at start
+    /^F\/B\/O$/gi,          // For Benefit Of by itself
+    /\s+F\/B\/O\s*$/gi,     // For Benefit Of at end
+    /\s+F\/B\/O\s+/gi,      // For Benefit Of in middle
+    /^F\/B\/O\s+/gi,        // For Benefit Of at start
+    /\bFBO\b/gi,            // For Benefit Of abbreviation
     /\bET\s+AL\b/gi,        // Et Al
     /\bETAL\b/gi,           // Etal
     /\bLIFE\s+ESTATE\b/gi,  // Life Estate

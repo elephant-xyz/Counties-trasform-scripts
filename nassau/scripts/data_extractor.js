@@ -1525,7 +1525,7 @@ function formatName(name) {
   const trimmedName = name.trim().toUpperCase();
   if (trimmedName === 'L/E' || trimmedName === 'LE' || trimmedName === 'LIFE ESTATE' ||
       trimmedName === 'ET AL' || trimmedName === 'ETAL' || trimmedName === 'TRUSTEE' ||
-      trimmedName === 'TTE') {
+      trimmedName === 'TTE' || trimmedName === 'F/B/O' || trimmedName === 'FBO') {
     return null;
   }
 
@@ -1536,6 +1536,11 @@ function formatName(name) {
     /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
     /\s+L\/E\s+/gi,         // Life Estate in middle (with spaces around)
     /^L\/E\s+/gi,           // Life Estate at start
+    /^F\/B\/O$/gi,          // For Benefit Of by itself
+    /\s+F\/B\/O\s*$/gi,     // For Benefit Of at end
+    /\s+F\/B\/O\s+/gi,      // For Benefit Of in middle
+    /^F\/B\/O\s+/gi,        // For Benefit Of at start
+    /\bFBO\b/gi,            // For Benefit Of abbreviation
     /\bET\s+AL\b/gi,        // Et Al
     /\bETAL\b/gi,           // Etal
     /\bLIFE\s+ESTATE\b/gi,  // Life Estate
@@ -1647,7 +1652,7 @@ function extractOwnerInfo(ownershipHtml) {
   const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
 
   // Legal designations that should be filtered out entirely (not treated as person names)
-  const legalDesignationOnly = /^(L\/E|ET\s+AL|ETAL|LIFE\s+ESTATE|TRUSTEE|TTE)$/i;
+  const legalDesignationOnly = /^(L\/E|F\/B\/O|FBO|ET\s+AL|ETAL|LIFE\s+ESTATE|TRUSTEE|TTE)$/i;
 
   for (const line of ownerLines) {
     let cleanName = line.trim();
