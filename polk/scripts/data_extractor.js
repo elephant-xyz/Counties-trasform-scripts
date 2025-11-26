@@ -3894,7 +3894,7 @@ function main() {
       ownership_transfer_date: s.ownership_transfer_date || null,
       purchase_price_amount: s.purchase_price_amount ?? null,
     };
-    writeJSON(path.join("data", `sales_${idx + 1}.json`), saleOut);
+    writeJSON(path.join("data", `sales_history_${idx + 1}.json`), saleOut);
     let deed = { deed_type: s.instrumentType };
     if (s.book) {
       deed.book = s.book;
@@ -3923,11 +3923,11 @@ function main() {
     );
 
     const relSalesDeed = {
-      from: { "/": `./sales_${idx + 1}.json` },
+      from: { "/": `./sales_history_${idx + 1}.json` },
       to: { "/": `./deed_${idx + 1}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_deed_${idx + 1}.json`),
+      path.join("data", `relationship_sales_history_deed_${idx + 1}.json`),
       relSalesDeed,
     );
   });
@@ -4089,10 +4089,10 @@ function main() {
     if (companyNameToPath.has(g)) {
       const rel = {
         to: { "/": companyNameToPath.get(g) },
-        from: { "/": `./sales_${idx + 1}.json` },
+        from: { "/": `./sales_history_${idx + 1}.json` },
       };
       writeJSON(
-        path.join("data", `relationship_sales_company_${idx + 1}.json`),
+        path.join("data", `relationship_sales_history_company_${idx + 1}.json`),
         rel,
       );
       salesLinked.add(idx + 1);
@@ -4114,10 +4114,10 @@ function main() {
       if (toPath) {
         const rel = {
           to: { "/": toPath },
-          from: { "/": `./sales_${idx + 1}.json` },
+          from: { "/": `./sales_history_${idx + 1}.json` },
         };
         writeJSON(
-          path.join("data", `relationship_sales_person_${idx + 1}.json`),
+          path.join("data", `relationship_sales_history_person_${idx + 1}.json`),
           rel,
         );
         salesLinked.add(idx + 1);
@@ -4159,15 +4159,15 @@ function main() {
 
           if (personIdx) {
             // Check if this relationship already exists
-            const relPath = path.join("data", `relationship_sales_person_${relCounter}.json`);
+            const relPath = path.join("data", `relationship_sales_history_person_${relCounter}.json`);
             const relExists = fs.existsSync(relPath) ||
                             Array.from({length: sales.length}, (_, i) => i + 1)
                               .some(i => {
-                                const existingRelPath = path.join("data", `relationship_sales_person_${i}.json`);
+                                const existingRelPath = path.join("data", `relationship_sales_history_person_${i}.json`);
                                 if (fs.existsSync(existingRelPath)) {
                                   const existingRel = readJSON(existingRelPath);
                                   return existingRel &&
-                                         existingRel.from && existingRel.from["/"] === `./sales_${saleIdx}.json` &&
+                                         existingRel.from && existingRel.from["/"] === `./sales_history_${saleIdx}.json` &&
                                          existingRel.to && existingRel.to["/"] === `./person_${personIdx}.json`;
                                 }
                                 return false;
@@ -4176,10 +4176,10 @@ function main() {
             if (!relExists) {
               const rel = {
                 to: { "/": `./person_${personIdx}.json` },
-                from: { "/": `./sales_${saleIdx}.json` },
+                from: { "/": `./sales_history_${saleIdx}.json` },
               };
               writeJSON(
-                path.join("data", `relationship_sales_person_${relCounter}.json`),
+                path.join("data", `relationship_sales_history_person_${relCounter}.json`),
                 rel,
               );
               relCounter++;
@@ -4190,15 +4190,15 @@ function main() {
           const companyIdx = pc.companyIndexByName.get(name);
 
           if (companyIdx) {
-            const relPath = path.join("data", `relationship_sales_company_${relCounter}.json`);
+            const relPath = path.join("data", `relationship_sales_history_company_${relCounter}.json`);
             const relExists = fs.existsSync(relPath) ||
                             Array.from({length: sales.length}, (_, i) => i + 1)
                               .some(i => {
-                                const existingRelPath = path.join("data", `relationship_sales_company_${i}.json`);
+                                const existingRelPath = path.join("data", `relationship_sales_history_company_${i}.json`);
                                 if (fs.existsSync(existingRelPath)) {
                                   const existingRel = readJSON(existingRelPath);
                                   return existingRel &&
-                                         existingRel.from && existingRel.from["/"] === `./sales_${saleIdx}.json` &&
+                                         existingRel.from && existingRel.from["/"] === `./sales_history_${saleIdx}.json` &&
                                          existingRel.to && existingRel.to["/"] === `./company_${companyIdx}.json`;
                                 }
                                 return false;
@@ -4207,10 +4207,10 @@ function main() {
             if (!relExists) {
               const rel = {
                 to: { "/": `./company_${companyIdx}.json` },
-                from: { "/": `./sales_${saleIdx}.json` },
+                from: { "/": `./sales_history_${saleIdx}.json` },
               };
               writeJSON(
-                path.join("data", `relationship_sales_company_${relCounter}.json`),
+                path.join("data", `relationship_sales_history_company_${relCounter}.json`),
                 rel,
               );
               relCounter++;
