@@ -1738,16 +1738,32 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  const companyNames = new Set();
-  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
-    // Skip unknown_prior_sale_* entries as they represent historical owners without linkable sale dates
-    if (dateKey.startsWith("unknown_prior_sale_")) return;
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
-    });
+  // First, determine which companies will actually be linked to sales
+  const companyNamesToLink = new Set();
+
+  // Collect companies from sales that match a date
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "company" && (o.name || "").trim())
+      .forEach((o) => {
+        companyNamesToLink.add((o.name || "").trim());
+      });
   });
-  companies = Array.from(companyNames).map((n) => ({
+
+  // Collect companies from current owners if there are sales
+  const currentOwners = ownersByDate["current"] || [];
+  if (currentOwners.length > 0 && sales.length > 0) {
+    currentOwners
+      .filter((o) => o.type === "company" && (o.name || "").trim())
+      .forEach((o) => {
+        companyNamesToLink.add((o.name || "").trim());
+      });
+  }
+
+  // Now create company files only for companies that will be linked
+  companies = Array.from(companyNamesToLink).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
@@ -1811,7 +1827,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   });
 
   // Link current owners who haven't been linked to any sale yet
-  const currentOwners = ownersByDate["current"] || [];
   if (currentOwners.length > 0 && sales.length > 0) {
     // Link to the most recent sale (first in the list)
     const mostRecentSaleIndex = 1;
