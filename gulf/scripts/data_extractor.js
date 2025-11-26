@@ -1270,20 +1270,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-
-  // Collect valid dates: dates that match sales, plus "current"
-  const validDates = new Set();
-  sales.forEach((rec) => {
-    const d = parseDateToISO(rec.saleDate);
-    validDates.add(d);
-  });
-  validDates.add("current");
-
   const personMap = new Map();
-  Object.entries(ownersByDate).forEach(([date, arr]) => {
-    // Only process owners for valid dates
-    if (!validDates.has(date)) return;
-
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1316,16 +1304,13 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  Object.entries(ownersByDate).forEach(([date, arr]) => {
-    // Only process owners for valid dates
-    if (!validDates.has(date)) return;
-
+  Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({
+  companies = Array.from(companyNames).map((n) => ({ 
     name: n,
     request_identifier: parcelId,
   }));
@@ -1536,13 +1521,10 @@ function extractOwnerMailingAddress($) {
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
-  let inputCounty = "";
-  if (unnorm) {
-    inputCounty = (unnorm.county_jurisdiction || "").trim();
-    if (!inputCounty) {
-      inputCounty = (unnorm.county_name || "").trim();
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
+  if (!inputCounty) {
+    inputCounty = (unnorm.county_name || "").trim();
     }
-  }
   const county_name = inputCounty || null;
   if (mailingAddress) {
     const mailingAddressObj = {
