@@ -2347,13 +2347,14 @@ async function main() {
       }
     }
 
-    // --- Create relationship between latest owner (if person) and mailing address ---
+    // --- Create relationship between latest owner (person or company) and mailing address ---
     // This relationship should only be created if mailingAddressOut was successfully created
     // and ownerToFileMap is now fully populated.
     if (currentOwnerRecord  && mailingAddressOut) {
       const latestOwnerMeta = ownerToFileMap.get(currentOwnerRecord.id);
-      if (latestOwnerMeta) { // Ensure it's a person for this relationship
-        const relFileName = `relationship_${latestOwnerMeta.type}_${latestOwnerMeta.index}_has_mailing_address.json`;
+      if (latestOwnerMeta) {
+        // Use correct relationship filename pattern: relationship_{type}_has_mailing_address_{index}.json
+        const relFileName = `relationship_${latestOwnerMeta.type}_has_mailing_address_${latestOwnerMeta.index}.json`;
         const relOut = {
           from: { "/": `./${latestOwnerMeta.fileName}` },
           to: { "/": "./mailing_address.json" },
@@ -2364,12 +2365,12 @@ async function main() {
         );
         console.log(`Created mailing address relationship: ${relFileName}`);
       } else {
-        console.log("Warning: Could not find metadata for currentOwnerRecord (or it's not a person) to create mailing address relationship.");
+        console.log("Warning: Could not find metadata for currentOwnerRecord to create mailing address relationship.");
       }
     } else {
       console.log("Mailing address relationship not created. Conditions not met:", {
         currentOwnerRecord: !!currentOwnerRecord,
-        isPerson: currentOwnerRecord?.type === "person",
+        ownerType: currentOwnerRecord?.type,
         mailingAddressOut: !!mailingAddressOut
       });
     }
