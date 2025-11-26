@@ -1520,6 +1520,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   // console.log("ownersByDate",ownersByDate);
 
   //Person processing and mapping creation.
+  // Only include persons from dated entries or "current", skip those only in unknown_date
   const personMap = new Map();
   Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
     // Skip owners under "unknown_date" keys since they can't be linked to any sale
@@ -1565,6 +1566,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   people = validPeople;
 
   //Company processing and mapping creation.
+  // Only include companies from dated entries or "current", skip those only in unknown_date
   const companyNames = new Set();
   Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
     // Skip owners under "unknown_date" keys since they can't be linked to any sale
