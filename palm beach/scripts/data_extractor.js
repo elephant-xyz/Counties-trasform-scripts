@@ -11806,6 +11806,13 @@ const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [
   ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
 ];
 
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [
+  ...new Set([
+    ...COUNTY_ADDRESS_ENSURE_FIELDS,
+    ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
+  ]),
+];
+
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
@@ -55021,7 +55028,7 @@ function buildNormalizedCountyAddressPayload(addressSource) {
     ? ensureNormalizedAddressSchemaSurface({ ...addressSource })
     : { ...addressSource };
 
-  for (const field of COUNTY_ADDRESS_ENSURE_FIELDS) {
+  for (const field of COUNTY_NORMALIZED_REQUIRED_FIELDS) {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(normalizedProbe[field]);
       if (!Number.isFinite(numeric)) {
@@ -55031,13 +55038,14 @@ function buildNormalizedCountyAddressPayload(addressSource) {
       continue;
     }
 
-    if (!hasMeaningfulAddressValue(normalizedProbe[field])) {
+    let value = normalizedProbe[field];
+    if (typeof value === "string") {
+      value = value.trim();
+    }
+    if (!hasMeaningfulAddressValue(value)) {
       return null;
     }
-
-    if (typeof normalizedProbe[field] === "string") {
-      normalizedProbe[field] = normalizedProbe[field].trim();
-    }
+    normalizedProbe[field] = value;
   }
 
   if (
