@@ -5467,18 +5467,22 @@ delete layoutContent.space_type_indexer;
       }
     };
 
-    Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
-      console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
-      const ownersArray = Array.isArray(entry)
-        ? entry
-        : entry && typeof entry === "object" && entry.type
-        ? [entry]
-        : [];
-      ownersArray.forEach((owner) => {
-        const ownerKey = pushOwner(owner);
-        if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
+    // Only process owners from ownersByDate if there's a mailing address file to link them to
+    // Otherwise, they'll be unused files. Buyers are processed separately during sales processing.
+    if (mailingAddressFile) {
+      Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
+        console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
+        const ownersArray = Array.isArray(entry)
+          ? entry
+          : entry && typeof entry === "object" && entry.type
+          ? [entry]
+          : [];
+        ownersArray.forEach((owner) => {
+          const ownerKey = pushOwner(owner);
+          if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
+        });
       });
-    });
+    }
   }
 
   // sales_history_*.json, deed_*.json, file_*.json + relationships + buyer processing
