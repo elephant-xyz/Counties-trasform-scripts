@@ -2212,13 +2212,17 @@ async function main() {
       }
     }
 
-    // 3. Grantors and grantees from sales
+    // 3. Grantors and grantees from sales (only if they will have relationships)
     for (const sale of sales) {
-      if (sale._grantor_record_id) {
-        referencedOwnerIds.add(sale._grantor_record_id);
-      }
-      if (sale._grantee_record_id) {
-        referencedOwnerIds.add(sale._grantee_record_id);
+      // Check if this sale will have a valid deed type (and thus relationships)
+      const deedType = mapDeedCodeToType(sale._deed_code);
+      if (deedType !== null) {
+        if (sale._grantor_record_id) {
+          referencedOwnerIds.add(sale._grantor_record_id);
+        }
+        if (sale._grantee_record_id) {
+          referencedOwnerIds.add(sale._grantee_record_id);
+        }
       }
     }
 
