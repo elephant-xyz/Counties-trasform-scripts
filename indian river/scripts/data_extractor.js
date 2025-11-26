@@ -1813,7 +1813,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   // Create company entities (only from valid ISO date entries that will be referenced)
   const referencedCompanyNames = new Set();
 
-  // Add companies from sale dates
+  // Add companies from sale dates ONLY (companies that will have sales_history relationships)
   validDateEntries.forEach(([dateKey, arr]) => {
     if (saleDates.has(dateKey)) {
       (arr || []).forEach((o) => {
@@ -1824,11 +1824,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     }
   });
 
-  // Add companies from mailing addresses
+  // Add companies from mailing addresses ONLY if they have valid addresses
   if (hasMailingAddresses) {
     mailingAddresses.forEach((info) => {
       if (info.type === "company" && (info.name || "").trim()) {
-        referencedCompanyNames.add((info.name || "").trim());
+        // Check if this company has valid addresses before adding
+        const addresses = (info.addresses || [])
+          .map((a) => (a || "").split(/\r?\n/).map((part) => part.trim()).filter(Boolean).join(", ").trim())
+          .filter((addr) => addr && addr.length);
+        if (addresses.length > 0) {
+          referencedCompanyNames.add((info.name || "").trim());
+        }
       }
     });
   }
