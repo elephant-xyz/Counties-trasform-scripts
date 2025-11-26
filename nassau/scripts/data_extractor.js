@@ -1521,9 +1521,18 @@ function formatName(name) {
 
   if (!name || typeof name !== 'string' || name.trim() === "") return null;
 
+  // Check if the name is just "L/E" or similar legal designation by itself
+  const trimmedName = name.trim().toUpperCase();
+  if (trimmedName === 'L/E' || trimmedName === 'LE' || trimmedName === 'LIFE ESTATE' ||
+      trimmedName === 'ET AL' || trimmedName === 'ETAL' || trimmedName === 'TRUSTEE' ||
+      trimmedName === 'TTE') {
+    return null;
+  }
+
   // Remove common legal designations that may contain invalid characters
   let cleaned = name.trim();
   const legalDesignations = [
+    /^L\/E$/gi,             // Life Estate by itself
     /\s+L\/E\s*$/gi,        // Life Estate at end (with space before)
     /\s+L\/E\s+/gi,         // Life Estate in middle (with spaces around)
     /^L\/E\s+/gi,           // Life Estate at start
