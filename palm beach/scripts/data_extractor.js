@@ -146,7 +146,9 @@ function finalizeAddressWritePayload(rawPayload) {
     buildLeanRawAddressOutput(finalRawOutput) || finalRawOutput;
   const terminalRawOutput =
     enforceRawTerminalSurface(minimalRawOutput) || minimalRawOutput;
-  return terminalRawOutput;
+  const strictRawOutput =
+    buildStrictRawOnlyAddress(terminalRawOutput) || terminalRawOutput;
+  return strictRawOutput;
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -2490,6 +2492,11 @@ function sanitizeAddressPayloadForWrite(payload) {
         );
       }
       return rawSurface;
+    }
+
+    const strictRaw = buildStrictRawOnlyAddress(rawSurface);
+    if (strictRaw) {
+      return strictRaw;
     }
 
     return stripAddressRequestMetadata(rawSurface);
@@ -7078,7 +7085,30 @@ function enforceAddressSchemaOneOfSurface(addressPath, options = {}) {
     surfaced.source_http_request = null;
   }
 
-  const finalPayload = { ...surfaced };
+  let finalPayload =
+    buildStrictRawOnlyAddress(surfaced) ||
+    buildMinimalRawAddressForSchema(surfaced) || {
+      unnormalized_address: resolvedRaw,
+    };
+
+  if (
+    requestIdentifier !== undefined &&
+    !Object.prototype.hasOwnProperty.call(finalPayload, "request_identifier")
+  ) {
+    finalPayload.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+
+  if (
+    sourceCandidate &&
+    !Object.prototype.hasOwnProperty.call(finalPayload, "source_http_request")
+  ) {
+    const prepared = prepareSourceHttpRequest(sourceCandidate);
+    if (prepared) {
+      finalPayload.source_http_request = deepClone(prepared);
+    }
+  }
+
   fs.writeFileSync(addressPath, JSON.stringify(finalPayload, null, 2));
 }
 
@@ -52494,7 +52524,10 @@ function buildRawAddressPayloadFromSources(rawValue, options = {}) {
   const hasStructuredCoverage = structuredFieldProbe.some((field) =>
     hasMeaningfulAddressValue(payload[field]),
   );
-  if (hasStructuredCoverage) {
+  if (
+    hasStructuredCoverage &&
+    hasStrictNormalizedAddressCoverage({ ...payload })
+  ) {
     payload.__preserve_structured_fields = true;
   }
 
