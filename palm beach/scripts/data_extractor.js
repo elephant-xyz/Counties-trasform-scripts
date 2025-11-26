@@ -53287,7 +53287,7 @@ function buildNormalizedAddressCandidate(addressPayload) {
     return null;
   }
 
-  const normalizedOutput =
+  let normalizedOutput =
     typeof buildNormalizedAddressOutputForSchema === "function"
       ? buildNormalizedAddressOutputForSchema({ ...normalizedSurface })
       : { ...normalizedSurface };
@@ -53297,6 +53297,14 @@ function buildNormalizedAddressCandidate(addressPayload) {
     Array.isArray(normalizedOutput)
   ) {
     return null;
+  }
+
+  if (typeof hasStrictCountyAddressCoverage === "function") {
+    const strictProbe = { ...normalizedOutput };
+    if (!hasStrictCountyAddressCoverage(strictProbe)) {
+      return null;
+    }
+    normalizedOutput = strictProbe;
   }
 
   if (!hasStrictNormalizedAddressCoverage(normalizedOutput)) {
