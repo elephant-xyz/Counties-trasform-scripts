@@ -2907,13 +2907,17 @@ function main() {
         });
       }
     } else if (owner.type === "company") {
-      const companyPath = createCompanyRecord(owner.name || "");
-      if (companyPath) {
-        currentOwnerEntities.push({
-          type: "company",
-          path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-        });
+      // Only create company records for current owners if they have a mailing address
+      // Companies without mailing addresses will only be created if they're buyers in sales transactions
+      if (mailingRecord && mailingRecord.path) {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+            mailingPath: mailingRecord.path,
+          });
+        }
       }
     }
   });
