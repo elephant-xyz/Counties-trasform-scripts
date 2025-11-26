@@ -2192,76 +2192,8 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   attemptWriteAddressAndGeometry(unnormalized, secTwpRng);
 
-  //Mailing Address
-  const mailingAddressRaw = extractMailingAddress($)
-  console.log("MAILING--",mailingAddressRaw);
-
-  // Only create mailing address if we have owners to link it to
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (owners) {
-    const key = `property_${parcelId}`;
-    const record = owners[key];
-    if (record && record.owners_by_date && record.owners_by_date['current']) {
-      const currentOwners = record.owners_by_date['current'];
-      let hasRelationships = false;
-
-      // Check if any relationships can be created
-      for (const owner of currentOwners) {
-        if (owner.type === "person") {
-          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            hasRelationships = true;
-            break;
-          }
-        } else if (owner.type === "company") {
-          const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            hasRelationships = true;
-            break;
-          }
-        }
-      }
-
-      // Only write mailing address and relationships if we found valid owners
-      if (hasRelationships) {
-        const mailingAddressOutput = {
-          ...appendSourceInfo(seed),
-          unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-        };
-        writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-        // Create mailing address relationships with current owners
-        let relCounter = 0;
-        currentOwners.forEach((owner) => {
-          if (owner.type === "person") {
-            const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-            if (pIdx) {
-              relCounter++;
-              writeJSON(
-                path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-                {
-                  from: { "/": `./person_${pIdx}.json` },
-                  to: { "/": "./mailing_address.json" },
-                }
-              );
-            }
-          } else if (owner.type === "company") {
-            const cIdx = findCompanyIndexByName(owner.name);
-            if (cIdx) {
-              relCounter++;
-              writeJSON(
-                path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-                {
-                  from: { "/": `./company_${cIdx}.json` },
-                  to: { "/": "./mailing_address.json" }
-                }
-              );
-            }
-          }
-        });
-      }
-    }
-  }
+  // Note: Mailing address extraction has been removed as there is no "mailing_address" class in the Elephant schema.
+  // The available address classes are "address" and "unnormalized_address", neither of which support mailing addresses separately.
   
   const acreage = extractAcreage($);
   // console.log("Acreage:", acreage);
