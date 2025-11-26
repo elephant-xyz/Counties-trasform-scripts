@@ -29037,6 +29037,180 @@ consumePostDirectional();
   return result;
 }
 
+function hydrateCountyAddressFields(addressFilePath, options = {}) {
+  if (!addressFilePath || !fs.existsSync(addressFilePath)) {
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressFilePath);
+  } catch {
+    return;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const working = { ...payload };
+  let mutated = false;
+
+  const assignFieldIfMissing = (field, value) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (hasMeaningfulAddressValue(working[field])) {
+      return;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      if (!Number.isFinite(numeric)) {
+        return;
+      }
+      working[field] = numeric;
+      mutated = true;
+      return;
+    }
+
+    const sanitized = sanitizeAddressFieldValue(field, value);
+    if (sanitized === undefined || sanitized === null) {
+      return;
+    }
+    working[field] = sanitized;
+    mutated = true;
+    console.log("[hydrateCountyAddressFields] assigned", field, sanitized);
+  };
+
+  const streetCandidates = collectNonEmptyStrings(
+    options.streetCandidates || [],
+  );
+  console.log(
+    "[hydrateCountyAddressFields] street candidates",
+    streetCandidates,
+  );
+  for (const candidate of streetCandidates) {
+    const normalized = normalizeFullAddressString(candidate);
+    if (!normalized) continue;
+    const parsed = parseLocationAddress(normalized);
+    console.log("[hydrateCountyAddressFields] parsed", normalized, parsed);
+    if (!parsed || !parsed.streetName || !parsed.streetNumber) {
+      continue;
+    }
+    assignFieldIfMissing("street_number", parsed.streetNumber);
+    assignFieldIfMissing("street_name", parsed.streetName);
+    assignFieldIfMissing("street_pre_directional_text", parsed.streetPreDirectional);
+    assignFieldIfMissing("street_post_directional_text", parsed.streetPostDirectional);
+    assignFieldIfMissing("street_suffix_type", parsed.streetSuffix);
+    assignFieldIfMissing("unit_identifier", parsed.unitIdentifier);
+    assignFieldIfMissing("route_number", parsed.routeNumber);
+    break;
+  }
+
+  if (!hasMeaningfulAddressValue(working.unit_identifier)) {
+    const unitValue = extractUnitIdentifierFromAddressLines(
+      collectNonEmptyStrings(
+        options.unitCandidates || [],
+        streetCandidates,
+      ),
+    );
+    assignFieldIfMissing("unit_identifier", unitValue);
+  }
+
+  const localityCandidates = collectNonEmptyStrings(
+    options.localityCandidates || [],
+    options.unnormalizedCandidates || [],
+  );
+  for (const candidate of localityCandidates) {
+    const parsed = parseCityStateZip(candidate);
+    console.log("[hydrateCountyAddressFields] locality", candidate, parsed);
+    if (!parsed) continue;
+    assignFieldIfMissing("city_name", parsed.city);
+    assignFieldIfMissing("state_code", parsed.state);
+    assignFieldIfMissing("postal_code", parsed.postal);
+    assignFieldIfMissing("plus_four_postal_code", parsed.plus4);
+  }
+
+  if (options.municipalityName) {
+    assignFieldIfMissing("municipality_name", options.municipalityName);
+  }
+
+  const countyFallback = options.defaultCountyName
+    ? titleCaseCounty(options.defaultCountyName)
+    : null;
+  assignFieldIfMissing("county_name", countyFallback || "Palm Beach");
+
+  if (options.defaultStateCode) {
+    assignFieldIfMissing("state_code", options.defaultStateCode);
+  }
+
+  if (
+    hasMeaningfulAddressValue(working.state_code) &&
+    !hasMeaningfulAddressValue(working.country_code)
+  ) {
+    assignFieldIfMissing("country_code", options.defaultCountryCode || "US");
+  }
+
+  const coordinateCandidates = Array.isArray(options.coordinateCandidates)
+    ? options.coordinateCandidates
+    : [];
+  for (const candidate of coordinateCandidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const latitude = parseCoordinate(candidate.latitude);
+    const longitude = parseCoordinate(candidate.longitude);
+    console.log(
+      "[hydrateCountyAddressFields] coordinateCandidate",
+      candidate,
+      latitude,
+      longitude,
+    );
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      assignFieldIfMissing("latitude", latitude);
+      assignFieldIfMissing("longitude", longitude);
+      break;
+    }
+  }
+
+  const parcelIdentifiers = collectNonEmptyStrings(
+    options.parcelIdentifiers || [],
+  );
+  for (const identifier of parcelIdentifiers) {
+    const grid = parseGridFromPcn(identifier);
+    if (!grid) continue;
+    assignFieldIfMissing("township", grid.township);
+    assignFieldIfMissing("range", grid.range);
+    assignFieldIfMissing("section", grid.section);
+    assignFieldIfMissing("block", grid.block);
+    assignFieldIfMissing("lot", grid.lot);
+    if (
+      hasMeaningfulAddressValue(working.township) &&
+      hasMeaningfulAddressValue(working.range) &&
+      hasMeaningfulAddressValue(working.section)
+    ) {
+      break;
+    }
+  }
+
+  if (options.legalDescription) {
+    const gridFromLegal = extractGridComponentsFromLegalDescription(
+      options.legalDescription,
+    );
+    if (gridFromLegal) {
+      assignFieldIfMissing("township", gridFromLegal.township);
+      assignFieldIfMissing("range", gridFromLegal.range);
+      assignFieldIfMissing("section", gridFromLegal.section);
+    }
+    const lotBlock = extractLotAndBlock(options.legalDescription);
+    assignFieldIfMissing("block", lotBlock.block);
+    assignFieldIfMissing("lot", lotBlock.lot);
+  }
+
+  if (mutated) {
+    writeJSON(addressFilePath, working);
+  }
+}
+
 function deriveNormalizedAddressFieldsFromRaw(raw) {
   const normalized = normalizeWhitespace(raw);
   if (!normalized) return null;
@@ -43621,6 +43795,74 @@ async function main() {
   require("./utilityMapping.js");
 
   console.log("All mapping scripts completed successfully");
+  console.log(
+    "[hydrateCountyAddressFields] before hydrate",
+    readJSON(finalAddressPath),
+  );
+  hydrateCountyAddressFields(finalAddressPath, {
+    streetCandidates: [
+      siteLocationLine,
+      addressLine1,
+      addressLine2,
+      combinedModelAddress,
+      fullAddr,
+      fullAddrInput,
+      unnormalizedAddressCandidate,
+    ],
+    unitCandidates: [
+      addressLine1,
+      addressLine2,
+      combinedModelAddress,
+      siteLocationLine,
+    ],
+    localityCandidates: [
+      addressLine3,
+      combinedModelAddress,
+      municipality,
+      normalizedMunicipality,
+      resolvedCity,
+      fullAddr,
+      fullAddrInput,
+      unnormalizedAddressCandidate,
+    ],
+    unnormalizedCandidates: [
+      unnormalizedAddressCandidate,
+      fullAddr,
+      fullAddrInput,
+      combinedModelAddress,
+      siteLocationLine,
+    ],
+    parcelIdentifiers: [
+      parcelId,
+      pcnHyphen,
+      modelDetail && modelDetail.PCN,
+      modelDetail && modelDetail.FormattedPCN,
+      seed && seed.parcel_id,
+    ],
+    legalDescription: legalDesc,
+    coordinateCandidates: [
+      { latitude: initialLatitude, longitude: initialLongitude },
+      htmlCoordinates,
+      parcelCentroid,
+    ],
+    municipalityName:
+      normalizedMunicipality
+        ? toTitleCase(normalizedMunicipality)
+        : municipality || null,
+    defaultCountyName:
+      formattedCountyName ||
+      countyName ||
+      fallbackCountyName,
+    defaultStateCode:
+      resolvedStateUpper ||
+      inferredStateCode ||
+      fallbackStateCode,
+    defaultCountryCode: "US",
+  });
+  console.log(
+    "[hydrateCountyAddressFields] after hydrate",
+    readJSON(finalAddressPath),
+  );
   stripDisallowedRawAddressFields(finalAddressPath);
   hardenCountyAddressSurface(finalAddressPath);
   finalizeCountyAddressOneOfSurface(finalAddressPath);
