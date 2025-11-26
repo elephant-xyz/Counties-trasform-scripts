@@ -449,7 +449,24 @@ const SUFFIXES_IGNORE =
 
 function isCompanyName(txt) {
   if (!txt) return false;
-  return COMPANY_KEYWORDS.test(txt);
+  if (COMPANY_KEYWORDS.test(txt)) return true;
+
+  // Check for abbreviated company codes like "SFR JV-2", "ABC-123", etc.
+  // Pattern: short uppercase abbreviation followed by alphanumeric codes
+  if (/^[A-Z]{2,5}[\s\-]+[A-Z0-9\-]+$/i.test(txt.trim())) return true;
+
+  // Check if it looks like a company code (e.g., "SFR JV-2")
+  const tokens = txt.trim().split(/\s+/);
+  if (tokens.length === 2) {
+    const first = tokens[0];
+    const second = tokens[1];
+    // If first token is short uppercase abbreviation and second contains numbers/hyphens
+    if (first.length <= 4 && first === first.toUpperCase() && /[0-9\-]/.test(second)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function tokenizeNamePart(part) {
@@ -3087,11 +3104,6 @@ function main() {
       saleGrantorRelations.push({
         ownerPath,
         saleDateISO: iso,
-      });
-      // Also create a direct relationship from this sale to the grantor (seller)
-      saleOwnerRelations.push({
-        fromPath: salesPath,
-        toPath: ownerPath,
       });
     });
 

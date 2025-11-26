@@ -144,6 +144,18 @@ function mapExteriorMaterial(token) {
   return null;
 }
 
+function mapExteriorAccentMaterial(token) {
+  const upper = token.toUpperCase();
+  if (upper.includes("BRICK")) return "Brick Accent";
+  if (upper.includes("STONE")) return "Stone Accent";
+  if (upper.includes("WOOD")) return "Wood Trim";
+  if (upper.includes("METAL") || upper.includes("ALUMIN")) return "Metal Trim";
+  if (upper.includes("STUCCO")) return "Stucco Accent";
+  if (upper.includes("VINYL")) return "Vinyl Accent";
+  if (upper.includes("BLOCK") || upper.includes("DECORAT")) return "Decorative Block";
+  return null;
+}
+
 function mapInteriorMaterial(token) {
   const upper = token.toUpperCase();
   if (upper.includes("DRYWALL")) return "Drywall";
@@ -314,9 +326,10 @@ function parseBuildingSummaries($) {
 function buildStructureForBuilding(building, requestIdentifier) {
   const { left, right } = building;
 
-  const exteriorVals = dedupe(
-    splitTokens(left["exterior walls"]).map(mapExteriorMaterial),
-  );
+  const exteriorTokens = splitTokens(left["exterior walls"]);
+  const exteriorPrimary = exteriorTokens[0] ? mapExteriorMaterial(exteriorTokens[0]) : null;
+  const exteriorSecondary = exteriorTokens[1] ? mapExteriorAccentMaterial(exteriorTokens[1]) : null;
+
   const interiorVals = dedupe(
     splitTokens(left["interior walls"]).map(mapInteriorMaterial),
   );
@@ -334,8 +347,8 @@ function buildStructureForBuilding(building, requestIdentifier) {
   const stories = parseFloatSafe(right["stories"]);
 
   return {
-    exterior_wall_material_primary: exteriorVals[0] || null,
-    exterior_wall_material_secondary: exteriorVals[1] || null,
+    exterior_wall_material_primary: exteriorPrimary,
+    exterior_wall_material_secondary: exteriorSecondary,
     interior_wall_surface_material_primary: interiorVals[0] || null,
     interior_wall_surface_material_secondary: interiorVals[1] || null,
     flooring_material_primary: floorVals[0] || null,
