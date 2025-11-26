@@ -2194,13 +2194,45 @@ async function main() {
     await removeExisting(/^relationship_sales_history_.*_has_person_.*\.json$/);
     await removeExisting(/^relationship_sales_history_.*_has_company_.*\.json$/);
     await removeExisting(/^relationship_person_.*_has_mailing_address\.json$/);
-    await removeExisting(/^relationship_company_.*_has_mailing_address\.json$/); 
+    await removeExisting(/^relationship_company_.*_has_mailing_address\.json$/);
 
+    // First, identify which owner records will be referenced by relationships
+    const referencedOwnerIds = new Set();
+
+    // 1. Current owner with mailing address
+    if (currentOwnerRecord && mailingAddressOut) {
+      referencedOwnerIds.add(currentOwnerRecord.id);
+    }
+
+    // 2. Companies with property roles
+    for (const [recordId, roles] of ownerPropertyRoles.entries()) {
+      const record = ownerRecords.get(recordId);
+      if (record && record.type === "company" && roles && roles.size > 0) {
+        referencedOwnerIds.add(recordId);
+      }
+    }
+
+    // 3. Grantors and grantees from sales
+    for (const sale of sales) {
+      if (sale._grantor_record_id) {
+        referencedOwnerIds.add(sale._grantor_record_id);
+      }
+      if (sale._grantee_record_id) {
+        referencedOwnerIds.add(sale._grantee_record_id);
+      }
+    }
+
+    // Now, only create files for referenced owners
     const ownerToFileMap = new Map();
     let personIdx = 0;
     let companyIdx = 0;
 
     for (const record of ownerRecords.values()) {
+      // Skip owners that have no relationships
+      if (!referencedOwnerIds.has(record.id)) {
+        continue;
+      }
+
       if (record.type === "person") {
         personIdx += 1;
         const personOut = {
