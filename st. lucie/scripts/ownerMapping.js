@@ -150,8 +150,13 @@ function parsePersonName(raw, propertyId) {
   const original = norm(raw);
   if (!original) return null;
 
-  // 1. Strip legal designations first
-  const { cleanedName: nameWithoutDesignations, removedDesignations } = stripLegalDesignations(original);
+  // 1. Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
+  // This handles cases like "(lf Est)", "(EST)", "(TR)", etc.
+  const withoutParens = original.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  if (!withoutParens) return null; // If only parentheses content was present
+
+  // 2. Strip legal designations
+  const { cleanedName: nameWithoutDesignations, removedDesignations } = stripLegalDesignations(withoutParens);
   const workingName = norm(nameWithoutDesignations);
   if (!workingName) return null; // If only designations were present
 
@@ -159,7 +164,7 @@ function parsePersonName(raw, propertyId) {
   let suffix = null;
   let nameTokens = workingName.split(/\s+/).filter(Boolean);
 
-  // 2. Extract Prefix (if present at the beginning)
+  // 3. Extract Prefix (if present at the beginning)
   if (nameTokens.length > 1) {
     const firstToken = nameTokens[0];
     const matchedPrefix = getMatchingPrefix(firstToken);
@@ -169,7 +174,7 @@ function parsePersonName(raw, propertyId) {
     }
   }
 
-  // 3. Extract Suffix (if present at the end)
+  // 4. Extract Suffix (if present at the end)
   if (nameTokens.length > 1) {
     const lastToken = nameTokens[nameTokens.length - 1];
     const matchedSuffix = getMatchingSuffix(lastToken);
@@ -179,7 +184,7 @@ function parsePersonName(raw, propertyId) {
     }
   }
 
-  // 4. Parse the remaining name tokens
+  // 5. Parse the remaining name tokens
   let first = null;
   let last = null;
   let middle = null;
