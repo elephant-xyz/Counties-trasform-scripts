@@ -1557,6 +1557,62 @@ function writePersonCompaniesSalesRelationships(
       }
     });
   }
+
+  // Ensure all persons have at least one relationship (fallback for unused persons)
+  const usedPersonIndices = new Set();
+
+  // Collect all person indices that have relationships
+  if (fs.existsSync("data")) {
+    const dataFiles = fs.readdirSync("data");
+    dataFiles.forEach((file) => {
+      if (file.startsWith("relationship_") && file.endsWith(".json")) {
+        try {
+          const relContent = readJSON(path.join("data", file));
+          if (relContent && relContent.from && relContent.from["/"]){
+            const fromMatch = relContent.from["/"].match(/person_(\d+)\.json/);
+            if (fromMatch) usedPersonIndices.add(parseInt(fromMatch[1], 10));
+          }
+          if (relContent && relContent.to && relContent.to["/"]){
+            const toMatch = relContent.to["/"].match(/person_(\d+)\.json/);
+            if (toMatch) usedPersonIndices.add(parseInt(toMatch[1], 10));
+          }
+        } catch (e) {
+          // Ignore read errors for individual files
+        }
+      }
+    });
+  }
+
+  // Create fallback relationships for unused persons
+  people.forEach((person, idx) => {
+    const personIndex = idx + 1;
+    if (usedPersonIndices.has(personIndex)) {
+      return; // Person already has relationships
+    }
+
+    // Link unused person to the latest sale history (if available)
+    if (latestSaleMeta && latestSaleMeta.saleHistoryFile) {
+      const relFile = relationshipFileName(
+        latestSaleMeta.saleHistoryFile,
+        `person_${personIndex}.json`,
+      );
+      writeJSON(path.join("data", relFile), {
+        from: { "/": `./${latestSaleMeta.saleHistoryFile}` },
+        to: { "/": `./person_${personIndex}.json` },
+      });
+    } else if (saleHistoryMeta && saleHistoryMeta.length > 0) {
+      // If no latest sale, use the first sale
+      const firstSale = saleHistoryMeta[0];
+      const relFile = relationshipFileName(
+        firstSale.saleHistoryFile,
+        `person_${personIndex}.json`,
+      );
+      writeJSON(path.join("data", relFile), {
+        from: { "/": `./${firstSale.saleHistoryFile}` },
+        to: { "/": `./person_${personIndex}.json` },
+      });
+    }
+  });
 }
 
 function writeTaxes($) {
