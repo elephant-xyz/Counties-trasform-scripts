@@ -1251,6 +1251,68 @@ function collapseAddressRecordToMinimalRaw(addressPath) {
   }
 }
 
+function enforceStrictRawSubmissionSurface(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedProbe =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+  const hasStrictNormalizedCoverage =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...normalizedProbe });
+  if (hasStrictNormalizedCoverage) {
+    return;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const minimal = { unnormalized_address: rawValue };
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+    if (requestIdentifier !== undefined && requestIdentifier !== null) {
+      minimal.request_identifier = requestIdentifier;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request") &&
+    payload.source_http_request &&
+    typeof payload.source_http_request === "object"
+  ) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    if (prepared) {
+      minimal.source_http_request = deepClone(prepared);
+    }
+  }
+
+  try {
+    addressWriteLocked = true;
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(minimal, null, 2)}\n`,
+    );
+  } finally {
+    addressWriteLocked = false;
+  }
+}
+
 function buildRawOnlyAddressPayload(addressPath, options = {}) {
   if (!addressPath) return null;
   const {
@@ -57748,6 +57810,16 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceStrictRawSubmissionSurface(addressPath);
+  } catch (error) {
+    console.error("Failed to collapse address to strict raw submission surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
@@ -59479,6 +59551,16 @@ process.on("exit", () => {
       });
     } catch (error) {
       console.error("Failed to enforce explicit final county address branch at exit:", error);
+    }
+    try {
+      const dataDir = path.join("data");
+      const addressPath = path.join(dataDir, "address.json");
+      enforceStrictRawSubmissionSurface(addressPath);
+    } catch (error) {
+      console.error(
+        "Failed to enforce strict raw submission surface at exit:",
+        error,
+      );
     }
     return;
   }
