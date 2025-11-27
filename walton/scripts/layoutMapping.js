@@ -172,8 +172,12 @@ function main() {
     return;
   }
   const propertySeed = readJSON("property_seed.json");
-  if (propertySeed && propertySeed.request_identifier && propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
-    console.log("Warning: Request identifier and parcel id don't match.");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: "Request identifier and parcel id don't match.",
+      path: "property.request_identifier",
+    };
   }
 
   const buildings = collectBuildings($);
