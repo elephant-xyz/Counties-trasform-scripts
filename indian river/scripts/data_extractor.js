@@ -1323,8 +1323,7 @@ function clearExistingMailingAddressFiles() {
 function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
   clearExistingMailingAddressFiles();
   if (!ownerMailingData || !ownerMailingData.length) return;
-  const uniqueAddressMap = new Map();
-  let addressCounter = 0;
+
   const normalizeAddress = (addr) =>
     (addr || "")
       .split(/\r?\n/)
@@ -1333,51 +1332,78 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
       .join(", ")
       .trim();
 
-  ownerMailingData.forEach((info) => {
-    const addresses = (info.addresses || []).map((a) => normalizeAddress(a));
-    addresses
-      .filter((addr) => addr && addr.length)
-      .forEach((addr) => {
-        if (!uniqueAddressMap.has(addr)) {
-          addressCounter++;
-          uniqueAddressMap.set(addr, {
-            index: addressCounter,
-            raw: addr,
-          });
-          const mailingAddress = {
-            unnormalized_address: addr,
-            latitude: null,
-            longitude: null,
-            source_http_request: sourceHttpRequest || null,
-            request_identifier: parcelId || null,
-          };
-          writeJSON(
-            path.join("data", `mailing_address_${addressCounter}.json`),
-            mailingAddress,
-          );
-        }
-      });
-  });
-
-  if (uniqueAddressMap.size === 0) return;
-
-  const personMailRelCount = new Map();
-  const companyMailRelCount = new Map();
+  // First pass: identify which addresses will have valid relationships
+  const addressesToCreate = new Map(); // Map<normalized_address, Set<{type, index}>>
 
   ownerMailingData.forEach((info) => {
     const addresses = (info.addresses || [])
       .map((a) => normalizeAddress(a))
-      .filter((addr) => addr && uniqueAddressMap.has(addr));
+      .filter((addr) => addr && addr.length);
+
     if (!addresses.length) return;
+
     if (info.type === "person") {
       const personIdx = findPersonIndexByName(
         info.first_name,
         info.last_name,
         info.suffix_name,
       );
-      if (!personIdx) return;
+      if (!personIdx) return; // Skip if person not found
+
       addresses.forEach((addr) => {
-        const { index } = uniqueAddressMap.get(addr);
+        if (!addressesToCreate.has(addr)) {
+          addressesToCreate.set(addr, new Set());
+        }
+        addressesToCreate.get(addr).add({ type: "person", index: personIdx });
+      });
+    } else if (info.type === "company") {
+      const companyIdx = findCompanyIndexByName(info.name);
+      if (!companyIdx) return; // Skip if company not found
+
+      addresses.forEach((addr) => {
+        if (!addressesToCreate.has(addr)) {
+          addressesToCreate.set(addr, new Set());
+        }
+        addressesToCreate.get(addr).add({ type: "company", index: companyIdx });
+      });
+    }
+  });
+
+  if (addressesToCreate.size === 0) return;
+
+  // Second pass: create mailing_address files only for addresses with valid relationships
+  const uniqueAddressMap = new Map();
+  let addressCounter = 0;
+
+  addressesToCreate.forEach((owners, addr) => {
+    addressCounter++;
+    uniqueAddressMap.set(addr, {
+      index: addressCounter,
+      raw: addr,
+    });
+    const mailingAddress = {
+      unnormalized_address: addr,
+      latitude: null,
+      longitude: null,
+      source_http_request: sourceHttpRequest || null,
+      request_identifier: parcelId || null,
+    };
+    writeJSON(
+      path.join("data", `mailing_address_${addressCounter}.json`),
+      mailingAddress,
+    );
+  });
+
+  // Third pass: create relationships
+  const personMailRelCount = new Map();
+  const companyMailRelCount = new Map();
+
+  addressesToCreate.forEach((owners, addr) => {
+    const { index } = uniqueAddressMap.get(addr);
+
+    owners.forEach((owner) => {
+      if (owner.type === "person") {
+        const personIdx = owner.index;
         const count = (personMailRelCount.get(personIdx) || 0) + 1;
         personMailRelCount.set(personIdx, count);
         const suffix = count > 1 ? `_${count}` : "";
@@ -1386,12 +1412,8 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
           to: { "/": `./mailing_address_${index}.json` },
           from: { "/": `./person_${personIdx}.json` },
         });
-      });
-    } else if (info.type === "company") {
-      const companyIdx = findCompanyIndexByName(info.name);
-      if (!companyIdx) return;
-      addresses.forEach((addr) => {
-        const { index } = uniqueAddressMap.get(addr);
+      } else if (owner.type === "company") {
+        const companyIdx = owner.index;
         const count = (companyMailRelCount.get(companyIdx) || 0) + 1;
         companyMailRelCount.set(companyIdx, count);
         const suffix = count > 1 ? `_${count}` : "";
@@ -1400,8 +1422,8 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
           to: { "/": `./mailing_address_${index}.json` },
           from: { "/": `./company_${companyIdx}.json` },
         });
-      });
-    }
+      }
+    });
   });
 }
 
@@ -1674,10 +1696,6 @@ function findCompanyIndexByName(name) {
   return null;
 }
 
-function isRomanNumeral(val) {
-  return /^[IVXLCDM]+$/i.test(val || "");
-}
-
 function titleCaseName(s) {
   if (!s) return s;
   const trimmed = s.trim();
@@ -1689,6 +1707,22 @@ function titleCaseName(s) {
       part.replace(/(^|[-'])[a-z]/g, (m) => m.toUpperCase()),
     )
     .join(" ");
+}
+
+function cleanNameForValidation(name) {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Remove invalid characters: keep only letters, spaces, hyphens, apostrophes, commas, periods
+  // Split on semicolon and take only the first part (handles cases like "M;swearingen")
+  let cleaned = trimmed.split(';')[0].trim();
+
+  // Remove any other invalid characters
+  cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  if (!cleaned) return null;
+  return cleaned;
 }
 
 function validateNamePattern(name) {
@@ -1799,9 +1833,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
 
   // Create person entities with validation
   people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? validateNamePattern(titleCaseName(p.first_name)) : null,
-    middle_name: p.middle_name ? validateNamePattern(titleCaseName(p.middle_name)) : null,
-    last_name: p.last_name ? validateNamePattern(titleCaseName(p.last_name)) : null,
+    first_name: p.first_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.first_name))) : null,
+    middle_name: p.middle_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.middle_name))) : null,
+    last_name: p.last_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.last_name))) : null,
     birth_date: null,
     prefix_name: p.prefix_name,
     suffix_name: validateSuffixName(p.suffix_name), // Validate suffix

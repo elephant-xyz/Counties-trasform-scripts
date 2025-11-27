@@ -173,6 +173,12 @@ const NOISE_TOKEN_SET = new Set([
   "ETUXOR",
   "AKA",
   "A/K/A",
+  "FKA",
+  "F/K/A",
+  "NKA",
+  "N/K/A",
+  "DBA",
+  "D/B/A",
   "FBO",
   "C/O",
   "UA",
@@ -212,6 +218,12 @@ function sanitizeRawOwner(raw) {
   s = s.replace(/\bET\s+UXOR\b/gi, " ");
   s = s.replace(/\bA\/K\/A\b/gi, " ");
   s = s.replace(/\bAKA\b/gi, " ");
+  s = s.replace(/\bF\/K\/A\b/gi, " ");
+  s = s.replace(/\bFKA\b/gi, " ");
+  s = s.replace(/\bN\/K\/A\b/gi, " ");
+  s = s.replace(/\bNKA\b/gi, " ");
+  s = s.replace(/\bD\/B\/A\b/gi, " ");
+  s = s.replace(/\bDBA\b/gi, " ");
   s = s.replace(/\bU\/A\b/gi, " ");
   s = s.replace(/\bU\/D\/T\b/gi, " ");
   s = s.replace(/\bFBO\b/gi, " ");

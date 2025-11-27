@@ -111,9 +111,9 @@ function splitTokens(raw) {
 
 function mapExteriorMaterial(token) {
   const upper = token.toUpperCase();
-  if (upper.includes("ALUMIN")) return "Aluminum Siding";
+  if (upper.includes("ALUMIN")) return "Metal Siding";
   if (upper.includes("BRICK")) return "Brick";
-  if (upper.includes("STONE")) return "Stone";
+  if (upper.includes("STONE")) return "Natural Stone";
   if (upper.includes("CONCRETE BLOCK") || upper.startsWith("CB")) {
     return "Concrete Block";
   }
@@ -124,8 +124,8 @@ function mapExteriorMaterial(token) {
   if (upper.includes("WOOD") || upper.includes("SIDING")) {
     return "Wood Siding";
   }
-  if (upper.includes("PRECAST")) return "Precast Concrete Panel";
-  if (upper.includes("TILE")) return "Tile";
+  if (upper.includes("PRECAST")) return "Precast Concrete";
+  if (upper.includes("TILE")) return null;
   return null;
 }
 
@@ -175,9 +175,13 @@ function mapFloorMaterial(token) {
   if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
     return "Solid Hardwood";
   }
-  if (upper.includes("VINYL")) return "Vinyl Sheet";
+  // Handle different vinyl types - order matters (check specific types first)
+  if (upper.includes("LUXURY VINYL") || upper.includes("LVP") || upper.includes("VINYL PLANK")) {
+    return "Luxury Vinyl Plank";
+  }
+  if (upper.includes("VINYL") || upper.includes("SHT VINYL")) return "Sheet Vinyl";
   if (upper.includes("TERRAZZO")) return "Terrazzo";
-  if (upper.includes("CONCRETE")) return "Concrete";
+  if (upper.includes("CONCRETE")) return "Polished Concrete";
   if (upper.includes("CLAY") || upper.includes("TILE")) return "Ceramic Tile";
   return null;
 }
