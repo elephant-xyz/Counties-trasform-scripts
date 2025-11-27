@@ -176,6 +176,23 @@ function mapFloorMaterial(token) {
   return null;
 }
 
+function mapFloorMaterialSecondary(token) {
+  // Valid values for flooring_material_secondary enum
+  const upper = token.toUpperCase();
+  if (upper.includes("CARPET")) return "Carpet";
+  if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
+    return "Solid Hardwood";
+  }
+  if (upper.includes("ENGINEERED")) return "Engineered Hardwood";
+  if (upper.includes("LAMINATE")) return "Laminate";
+  if (upper.includes("VINYL")) return "Luxury Vinyl Plank";
+  if (upper.includes("CLAY") || upper.includes("TILE")) return "Ceramic Tile";
+  if (upper.includes("AREA RUG") || upper.includes("RUG")) return "Area Rugs";
+  if (upper.includes("TRANSITION")) return "Transition Strips";
+  // TERRAZZO and other materials not in secondary enum are not mapped
+  return null;
+}
+
 function dedupe(values) {
   const out = [];
   values.forEach((val) => {
@@ -234,9 +251,10 @@ function buildStructureForBuilding(building, requestIdentifier) {
     "Decorative Panels", "Feature Wall Material"
   ]);
 
-  const floorVals = dedupe(
-    splitTokens(left["floor cover"]).map(mapFloorMaterial),
-  );
+  const floorTokens = splitTokens(left["floor cover"]);
+  const floorPrimary = floorTokens[0] ? mapFloorMaterial(floorTokens[0]) : null;
+  const floorSecondary = floorTokens[1] ? mapFloorMaterialSecondary(floorTokens[1]) : null;
+
   const frameVals = dedupe(
     splitTokens(left["frame"]).map(mapFrameMaterial),
   );
@@ -257,8 +275,8 @@ function buildStructureForBuilding(building, requestIdentifier) {
     exterior_wall_material_secondary: exteriorSecondary,
     interior_wall_surface_material_primary: interiorVals[0] || null,
     interior_wall_surface_material_secondary: (interiorVals[1] && validSecondaryInterior.has(interiorVals[1])) ? interiorVals[1] : null,
-    flooring_material_primary: floorVals[0] || null,
-    flooring_material_secondary: floorVals[1] || null,
+    flooring_material_primary: floorPrimary,
+    flooring_material_secondary: floorSecondary,
     roof_covering_material: roofCover,
     roof_material_type: roofMaterialType,
     roof_design_type: roofDesign,
