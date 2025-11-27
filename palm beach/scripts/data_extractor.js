@@ -2684,17 +2684,30 @@ function enforceStrictRawOnlyAddressPayload(addressPath, options = {}) {
     return false;
   }
 
-  const fallbackPaths = Array.isArray(options.fallbackPaths)
-    ? options.fallbackPaths.filter((entry) => typeof entry === "string" && entry.trim().length)
+  const {
+    fallbackPaths = [],
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const normalizedFallbackPaths = Array.isArray(fallbackPaths)
+    ? fallbackPaths.filter(
+        (entry) => typeof entry === "string" && entry.trim().length,
+      )
     : [];
+
   const fallbackSources = [];
-  for (const fallbackPath of fallbackPaths) {
+  for (const fallbackPath of normalizedFallbackPaths) {
     try {
-      if (fallbackPath && fs.existsSync(fallbackPath)) {
-        const fallbackPayload = readJSONIfExists(fallbackPath);
-        if (fallbackPayload && typeof fallbackPayload === "object") {
-          fallbackSources.push(fallbackPayload);
-        }
+      if (!fallbackPath || !fs.existsSync(fallbackPath)) {
+        continue;
+      }
+      const fallbackPayload = readJSONIfExists(fallbackPath);
+      if (fallbackPayload && typeof fallbackPayload === "object") {
+        fallbackSources.push(fallbackPayload);
       }
     } catch {
       // Ignore malformed fallback payloads so we can continue collapsing the raw output.
@@ -2707,71 +2720,71 @@ function enforceStrictRawOnlyAddressPayload(addressPath, options = {}) {
     gatherRawAddressCandidatesFromSource(fallbackSource, rawCandidates);
   }
 
-  const rawValue =
-    safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates)) ||
-    safeNullIfEmpty(payload.unnormalized_address);
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString(rawCandidates),
+  );
   if (!rawValue) {
     removeFileIfExists(addressPath);
     return false;
   }
 
-  const strictRaw = { unnormalized_address: rawValue };
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    payload && payload.request_identifier,
+    ...fallbackSources.map((source) => source && source.request_identifier),
+    ...(Array.isArray(requestIdentifierCandidates)
+      ? requestIdentifierCandidates
+      : []),
+  );
 
-  const assignRequestIdentifierFrom = (source) => {
-    if (!source || typeof source !== "object") {
-      return false;
-    }
-    if (!Object.prototype.hasOwnProperty.call(source, "request_identifier")) {
-      return false;
-    }
-    const normalizedIdentifier = safeNullIfEmpty(source.request_identifier);
-    if (normalizedIdentifier === undefined || normalizedIdentifier === null) {
-      return false;
-    }
-    strictRaw.request_identifier = normalizedIdentifier;
-    return true;
-  };
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    payload && payload.source_http_request,
+    ...fallbackSources.map((source) => source && source.source_http_request),
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
+      : []),
+  );
 
-  if (!assignRequestIdentifierFrom(payload)) {
-    for (const fallbackSource of fallbackSources) {
-      if (assignRequestIdentifierFrom(fallbackSource)) {
-        break;
-      }
-    }
+  const minimalPayload =
+    buildMinimalRawAddressForSchema(
+      {
+        ...payload,
+        unnormalized_address: rawValue,
+      },
+      fallbackSources,
+      {
+        defaultCountyName,
+        defaultStateCode,
+        defaultCountryCode,
+        requestIdentifier,
+        sourceHttpRequest,
+      },
+    ) || null;
+
+  if (!minimalPayload) {
+    removeFileIfExists(addressPath);
+    return false;
   }
 
-  const assignSourceRequestFrom = (source) => {
-    if (!source || typeof source !== "object") {
-      return false;
-    }
-    if (!Object.prototype.hasOwnProperty.call(source, "source_http_request")) {
-      return false;
-    }
-    const prepared = prepareSourceHttpRequest(source.source_http_request);
-    if (!prepared) {
-      return false;
-    }
-    strictRaw.source_http_request = deepClone(prepared);
-    return true;
-  };
-
-  if (!assignSourceRequestFrom(payload)) {
-    for (const fallbackSource of fallbackSources) {
-      if (assignSourceRequestFrom(fallbackSource)) {
-        break;
-      }
-    }
+  if (!minimalPayload.postal_code) {
+    minimalPayload.plus_four_postal_code = null;
+  }
+  if (
+    minimalPayload.state_code &&
+    !minimalPayload.country_code
+  ) {
+    minimalPayload.country_code = defaultCountryCode || "US";
   }
 
   try {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(strictRaw, null, 2)}\n`,
+      `${JSON.stringify(minimalPayload, null, 2)}\n`,
     );
   } catch {
-    writeJSON(addressPath, strictRaw);
+    writeJSON(addressPath, minimalPayload);
   }
+
   forceRawAddressVariantOutput = true;
   return true;
 }
@@ -57075,6 +57088,9 @@ async function run() {
     const addressPath = path.join(dataDir, "address.json");
     enforceStrictRawOnlyAddressPayload(addressPath, {
       fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
     });
   } catch (error) {
     console.error("Failed to enforce strict raw-only address payload:", error);
@@ -58791,6 +58807,9 @@ process.on("exit", () => {
     try {
       enforceStrictRawOnlyAddressPayload(path.join("data", "address.json"), {
         fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+        defaultCountyName: titleCaseCounty("Palm Beach"),
+        defaultStateCode: "FL",
+        defaultCountryCode: "US",
       });
     } catch (error) {
       console.error("Failed to persist strict raw address payload at exit:", error);
@@ -58836,6 +58855,9 @@ process.on("exit", () => {
   try {
     enforceStrictRawOnlyAddressPayload(path.join("data", "address.json"), {
       fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
     });
   } catch (error) {
     console.error("Failed to persist strict raw address payload at exit:", error);
