@@ -2432,20 +2432,6 @@ function main() {
   }
 
   const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -2468,25 +2454,10 @@ function main() {
     }
   }
 
+  // First, create owner entities to see if we have any valid owners
   const currentOwnerEntities = [];
   currentOwners.forEach((owner, idx) => {
     if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-    }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
 
     if (owner.type === "person") {
       const normalizedPerson = normalizeOwner(owner, ownersByDate);
@@ -2495,7 +2466,7 @@ function main() {
         currentOwnerEntities.push({
           type: "person",
           path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
+          mailingAddressIndex: idx,
         });
       }
     } else if (owner.type === "company") {
@@ -2504,11 +2475,52 @@ function main() {
         currentOwnerEntities.push({
           type: "company",
           path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
+          mailingAddressIndex: idx,
         });
       }
     }
   });
+
+  // Only create mailing address files if we have valid owner entities
+  const mailingAddressFiles = [];
+  if (currentOwnerEntities.length > 0) {
+    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+      if (!addr) return;
+      const fileName = `mailing_address_${idx + 1}.json`;
+      const mailingObj = {
+        unnormalized_address: addr,
+        latitude: null,
+        longitude: null,
+        source_http_request: clone(defaultSourceHttpRequest),
+        request_identifier: requestIdentifier,
+      };
+      writeJSON(path.join(dataDir, fileName), mailingObj);
+      mailingAddressFiles.push({ path: `./${fileName}` });
+    });
+
+    // Now assign mailing addresses to owner entities
+    currentOwnerEntities.forEach((entity) => {
+      const idx = entity.mailingAddressIndex;
+      let mailingIdx = null;
+      if (
+        ownerMailingInfo.rawAddresses[idx] != null &&
+        mailingAddressFiles.length
+      ) {
+        const rawAddr = ownerMailingInfo.rawAddresses[idx];
+        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
+        if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+      }
+      if (mailingIdx == null && mailingAddressFiles.length) {
+        mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
+      }
+      const mailingRecord =
+        mailingIdx != null && mailingIdx >= 0
+          ? mailingAddressFiles[mailingIdx]
+          : null;
+      entity.mailingPath = mailingRecord ? mailingRecord.path : null;
+      delete entity.mailingAddressIndex;
+    });
+  }
 
   const mailingRelationshipKeys = new Set();
   currentOwnerEntities.forEach((entity) => {
@@ -2516,8 +2528,27 @@ function main() {
     const relKey = `${entity.path}|${entity.mailingPath}`;
     if (mailingRelationshipKeys.has(relKey)) return;
     mailingRelationshipKeys.add(relKey);
-    const relFilename = makeRelationshipFilename(entity.path, entity.mailingPath);
-    if (!relFilename) return;
+
+    // Extract entity type and index from path (e.g., "./person_1.json" -> "person", "1")
+    const fromBase = relationshipBaseName(entity.path);
+    if (!fromBase) return;
+
+    // Determine entity type (person or company)
+    let entityType = null;
+    let entityIndex = null;
+    if (fromBase.startsWith('person_')) {
+      entityType = 'person';
+      entityIndex = fromBase.replace('person_', '');
+    } else if (fromBase.startsWith('company_')) {
+      entityType = 'company';
+      entityIndex = fromBase.replace('company_', '');
+    }
+
+    if (!entityType || !entityIndex) return;
+
+    // Create relationship filename without mailing_address index
+    const relFilename = `relationship_${entityType}_${entityIndex}_has_mailing_address.json`;
+
     const relObj = {
       from: { "/": entity.path },
       to: { "/": entity.mailingPath },
