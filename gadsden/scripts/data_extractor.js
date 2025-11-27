@@ -478,18 +478,13 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   };
 
   // Extract suffix from tokens - check last token(s)
+  // Only include suffixes that are valid according to the Elephant schema
   const suffixMap = {
     'jr': 'Jr.',
     'sr': 'Sr.',
     'ii': 'II',
     'iii': 'III',
     'iv': 'IV',
-    'v': 'V',
-    'vi': 'VI',
-    'vii': 'VII',
-    'viii': 'VIII',
-    'ix': 'IX',
-    'x': 'X',
     'md': 'MD',
     'phd': 'PhD',
     'esq': 'Esq.',
@@ -1595,17 +1590,6 @@ function parseBuildingInfo($) {
       }
     }
   }
-  if (txt.includes("ELECTR")) return "Electrical";
-  if (txt.includes("PLUMB")) return "Plumbing";
-  if (txt.includes("PAVE")) return "SiteDevelopment";
-  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
-  if (txt.includes("DECK")) return "BuildingAddition";
-  if (txt.includes("SIGN")) return "GeneralBuilding";
-  if (txt.includes("DEMOL")) return "Demolition";
-  if (txt.includes("IRRIG")) return "LandscapeIrrigation";
-  if (txt.includes("SOLAR")) return "Solar";
-  return "GeneralBuilding";
-}
 
   const hvac =
     getValue(rightMap, ["hvac", "cooling type", "cooling", "air conditioning"]) ||
