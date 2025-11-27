@@ -52634,6 +52634,100 @@ function enforceStrictNormalizedCoverageOrForceRaw(addressPath, options = {}) {
   writeJSON(addressPath, rawPayload);
 }
 
+function enforceCountyAddressOneOfResolution(addressPath, options = {}) {
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    extraRawCandidates = [],
+  } = options || {};
+
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+  const normalizedCandidate = buildCountyNormalizedOneOfPayload(payload, {
+    defaultCountyName,
+    defaultStateCode,
+    defaultCountryCode,
+  });
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    payload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+  );
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    payload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  if (normalizedCandidate) {
+    if (requestIdentifier !== undefined && requestIdentifier !== null) {
+      normalizedCandidate.request_identifier = requestIdentifier;
+    }
+    if (sourceHttpRequest) {
+      const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+      if (prepared) {
+        normalizedCandidate.source_http_request = deepClone(prepared);
+      }
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "source_http_request",
+      )
+    ) {
+      normalizedCandidate.source_http_request = null;
+    }
+    writeSchemaAlignedAddress(addressPath, normalizedCandidate);
+    forceRawAddressVariantOutput = false;
+    return;
+  }
+
+  const rawCandidate = buildCountyRawOneOfPayload(
+    [payload, unnormalizedSource, seedSource],
+    extraRawCandidates,
+  );
+  if (!rawCandidate) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (requestIdentifier !== undefined && requestIdentifier !== null) {
+    rawCandidate.request_identifier = requestIdentifier;
+  }
+  if (sourceHttpRequest) {
+    const preparedSource = prepareSourceHttpRequest(sourceHttpRequest);
+    if (preparedSource) {
+      rawCandidate.source_http_request = deepClone(preparedSource);
+    }
+  }
+
+  if (!rawCandidate.postal_code) {
+    rawCandidate.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawCandidate.state_code) &&
+    !hasMeaningfulAddressValue(rawCandidate.country_code)
+  ) {
+    rawCandidate.country_code = defaultCountryCode || "US";
+  }
+
+  writeSchemaAlignedAddress(addressPath, rawCandidate);
+  forceRawAddressVariantOutput = true;
+}
+
 function buildFinalCountyAddressPayload(options = {}) {
   const {
     existingAddress = null,
@@ -56636,6 +56730,28 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const extraRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    enforceCountyAddressOneOfResolution(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates,
+    });
+  } catch (error) {
+    console.error("Failed to enforce deterministic county address oneOf:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
@@ -58255,7 +58371,7 @@ run().catch((error) => {
 });
 
 process.on("exit", () => {
-  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT) {
+  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput) {
     try {
       enforceCountyRawAddressAndNullRelationships();
     } catch (error) {
