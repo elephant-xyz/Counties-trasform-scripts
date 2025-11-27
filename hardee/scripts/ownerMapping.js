@@ -89,7 +89,7 @@ function toTitleCase(token) {
   if (!trimmed) return null;
   const upper = trimmed.toUpperCase();
   if (/^(II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|JR|SR|ESQ|CPA|MD|DDS|DMD|DO|PHARMD|MBA|PHD|EDD|DVM)$/.test(upper)) {
-    return upper.replace(/JR|SR/, (m) => (m === "JR" ? "Jr" : "Sr"));
+    return upper.replace(/JR|SR/, (m) => (m === "JR" ? "Jr." : "Sr."));
   }
   return trimmed
     .toLowerCase()
@@ -122,35 +122,35 @@ const NAME_PREFIXES = new Map(
   ],
 );
 
+// Valid suffix_name values per Elephant schema
+const VALID_SCHEMA_SUFFIXES = new Set([
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+]);
+
 const NAME_SUFFIXES = new Map(
   [
-    ["JR", "Jr"],
-    ["SR", "Sr"],
+    ["JR", "Jr."],
+    ["SR", "Sr."],
     ["II", "II"],
     ["III", "III"],
     ["IV", "IV"],
-    ["V", "V"],
-    ["VI", "VI"],
-    ["VII", "VII"],
-    ["VIII", "VIII"],
-    ["IX", "IX"],
-    ["X", "X"],
     ["CPA", "CPA"],
-    ["ESQ", "Esq"],
-    ["ESQUIRE", "Esq"],
+    ["ESQ", "Esq."],
+    ["ESQUIRE", "Esq."],
     ["MD", "MD"],
     ["DDS", "DDS"],
-    ["DMD", "DMD"],
-    ["DO", "DO"],
     ["DVM", "DVM"],
     ["JD", "JD"],
     ["PHD", "PhD"],
-    ["EDD", "EdD"],
     ["RN", "RN"],
-    ["SRN", "SRN"],
-    ["LPN", "LPN"],
-    ["RPH", "RPh"],
     ["PE", "PE"],
+    ["PMP", "PMP"],
+    ["MBA", "MBA"],
+    ["LLM", "LLM"],
+    ["CFA", "CFA"],
+    ["EMERITUS", "Emeritus"],
+    ["RET", "Ret."],
   ],
 );
 
@@ -319,11 +319,12 @@ function buildPerson({ first, middle, last, prefix, suffix }) {
   if (!first || !last) return null;
   const person = {
     type: "person",
-    first_name: toTitleCase(first),
-    last_name: toTitleCase(last),
+    first_name: toTitleCase(cleanInvalidCharsFromName(first)),
+    last_name: toTitleCase(cleanInvalidCharsFromName(last)),
   };
   if (middle) {
-    const normalizedMiddle = middle
+    const cleanedMiddle = cleanInvalidCharsFromName(middle);
+    const normalizedMiddle = cleanedMiddle
       .split(/\s+/)
       .map((m) => toTitleCase(m))
       .filter(Boolean)
@@ -331,7 +332,13 @@ function buildPerson({ first, middle, last, prefix, suffix }) {
     if (normalizedMiddle) person.middle_name = normalizedMiddle;
   }
   if (prefix) person.prefix_name = prefix;
-  if (suffix && suffix.length) person.suffix_name = suffix.join(" ");
+  if (suffix && suffix.length) {
+    // Only use the first suffix that is valid per the schema
+    const validSuffix = suffix.find(s => VALID_SCHEMA_SUFFIXES.has(s));
+    if (validSuffix) {
+      person.suffix_name = validSuffix;
+    }
+  }
   return person;
 }
 
@@ -352,6 +359,23 @@ function scorePersonCandidate(candidate, fallbackLast) {
   if (candidate.orientation === "last_first") score += 0.5;
   if (person.first_name && /^[A-Z]$/.test(person.first_name)) score -= 2;
   if (person.last_name && /^[A-Z]$/.test(person.last_name)) score -= 1;
+
+  // Heavily penalize if first_name is a known suffix or prefix
+  if (person.first_name) {
+    const normalizedFirst = normalizeAffixToken(person.first_name);
+    if (NAME_SUFFIXES.has(normalizedFirst) || NAME_PREFIXES.has(normalizedFirst)) {
+      score -= 10;
+    }
+  }
+
+  // Penalize if last_name is a known suffix or prefix
+  if (person.last_name) {
+    const normalizedLast = normalizeAffixToken(person.last_name);
+    if (NAME_SUFFIXES.has(normalizedLast) || NAME_PREFIXES.has(normalizedLast)) {
+      score -= 10;
+    }
+  }
+
   return { score, person };
 }
 
@@ -435,8 +459,21 @@ function classifyOwner(raw, fallbackLastName = null) {
     (token) => !PERSON_NOISE_TOKENS.has(normalizeAffixToken(token)),
   );
 
+  // Check if position 2 (index 1) is a suffix in patterns like "LAST SR FIRST MIDDLE"
+  let extractedSuffix = [];
+  if (tokens.length >= 3) {
+    const secondToken = normalizeAffixToken(tokens[1]);
+    if (NAME_SUFFIXES.has(secondToken)) {
+      extractedSuffix.push(NAME_SUFFIXES.get(secondToken));
+      tokens = [tokens[0], ...tokens.slice(2)];
+    }
+  }
+
   const { prefix, suffixParts, tokens: remainingTokens } =
     extractPrefixSuffixTokens(tokens);
+
+  // Combine extracted middle suffix with any trailing suffixes
+  const allSuffixes = [...extractedSuffix, ...suffixParts];
 
   if (remainingTokens.length === 0) {
     return { valid: false, reason: "empty_after_affix_removal", raw: base };
@@ -451,7 +488,7 @@ function classifyOwner(raw, fallbackLastName = null) {
       middle: null,
       last: fallbackLastName,
       prefix,
-      suffix: suffixParts,
+      suffix: allSuffixes,
     });
     if (person) return { valid: true, owner: person };
     return { valid: false, reason: "single_token_parse_failed", raw: base };
@@ -459,11 +496,11 @@ function classifyOwner(raw, fallbackLastName = null) {
 
   const candidateA = createPersonCandidateFromTokens(remainingTokens, "first_last", {
     prefix,
-    suffixParts,
+    suffixParts: allSuffixes,
   });
   const candidateB = createPersonCandidateFromTokens(remainingTokens, "last_first", {
     prefix,
-    suffixParts,
+    suffixParts: allSuffixes,
   });
 
   const scoredA = scorePersonCandidate(candidateA, fallbackLastName);
@@ -494,7 +531,7 @@ function classifyOwner(raw, fallbackLastName = null) {
       middle: remainingTokens.slice(1).join(" ") || null,
       last: fallbackLastName,
       prefix,
-      suffix: suffixParts,
+      suffix: allSuffixes,
     });
     if (fallbackPerson) return { valid: true, owner: fallbackPerson };
   }
