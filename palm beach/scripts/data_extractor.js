@@ -2621,11 +2621,49 @@ function enforceAddressTerminalVariant(addressPath, options = {}) {
 }
 
 function reduceRawAddressToMinimalSurface(address) {
-  return buildMinimalRawAddressForSchema(address);
+  return buildRawOnlyAddressSurface(address);
 }
 
 function collapseAddressToRawOnlySurface(address) {
   return reduceRawAddressToMinimalSurface(address);
+}
+
+function enforceRawOnlyAddressFile(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return false;
+  }
+
+  const payload = readJSONIfExists(addressPath) || null;
+  const rawValue =
+    payload &&
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  if (!rawValue.length) {
+    return false;
+  }
+
+  const rawSurface = buildRawOnlyAddressSurface({
+    ...payload,
+    unnormalized_address: rawValue,
+  });
+  if (!rawSurface) {
+    removeFileIfExists(addressPath);
+    forceRawAddressVariantOutput = true;
+    return true;
+  }
+
+  try {
+    const serialized = `${JSON.stringify(rawSurface, null, 2)}\n`;
+    originalWriteFileSync.call(fs, addressPath, serialized);
+  } catch {
+    writeJSON(addressPath, rawSurface);
+  }
+
+  forceRawAddressVariantOutput = true;
+  return true;
 }
 
 function enforceRawTerminalSurface(address) {
@@ -7457,7 +7495,7 @@ const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
-  ...RAW_ADDRESS_OUTPUT_FIELDS,
+  ...RAW_ONLY_ADDRESS_FIELDS,
 ]);
 
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
@@ -56909,6 +56947,16 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceRawOnlyAddressFile(addressPath);
+  } catch (error) {
+    console.error("Failed to enforce raw-only county address surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
@@ -58610,6 +58658,11 @@ process.on("exit", () => {
     } catch (error) {
       console.error("Failed to enforce county address schema floor at exit:", error);
     }
+    try {
+      enforceRawOnlyAddressFile(path.join("data", "address.json"));
+    } catch (error) {
+      console.error("Failed to enforce raw-only address surface at exit:", error);
+    }
     return;
   }
 
@@ -58642,5 +58695,10 @@ process.on("exit", () => {
     });
   } catch (error) {
     console.error("Failed to enforce county address schema floor at exit:", error);
+  }
+  try {
+    enforceRawOnlyAddressFile(path.join("data", "address.json"));
+  } catch (error) {
+    console.error("Failed to enforce raw-only address surface at exit:", error);
   }
 });
