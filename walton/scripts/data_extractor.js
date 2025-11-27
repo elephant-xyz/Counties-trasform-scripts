@@ -1068,14 +1068,13 @@ function createStructureFiles(seed,parcelIdentifier) {
       
       // Find the correct building layout file index
       let buildingLayoutIndex = buildingNumber;
-      let buildingLayout = null;
       // console.log("BUILDING_NUMBER",buildingNumber)
       if (layoutsData && parcelIdentifier) {
         // console.log(layoutsData)
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
         // console.log(layouts)
-        buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         // console.log("BUILDING_LAYOUT", buildingLayout)
@@ -1083,18 +1082,15 @@ function createStructureFiles(seed,parcelIdentifier) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-
-      // Only create relationship if the layout exists
-      if (buildingLayout) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./structure_${structureIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./structure_${structureIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        relationship
+      );
     });
   }
 
@@ -1146,29 +1142,25 @@ function createUtilitiesFiles(seed,parcelIdentifier){
       
       // Find the correct building layout file index
       let buildingLayoutIndex = buildingNumber;
-      let buildingLayout = null;
       if (layoutsData && parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
-        buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
         }
       }
-
-      // Only create relationship if the layout exists
-      if (buildingLayout) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./utility_${utilityIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./utility_${utilityIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        relationship
+      );
     });
   }
 
