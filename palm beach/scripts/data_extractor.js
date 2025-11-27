@@ -11747,6 +11747,14 @@ const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 
+const STRICT_NORMALIZED_ADDRESS_FIELDS = Array.from(
+  new Set([
+    ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
+    ...NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS,
+    ...NORMALIZED_ADDRESS_COORDINATE_FIELDS,
+  ]),
+);
+
 // County schema expects the complete strict set when emitting a normalized
 // address. Reuse the same list everywhere so we never drift from the schema.
 const COUNTY_NORMALIZED_STRICT_FIELDS = [...COUNTY_STRICT_NORMALIZED_FIELDS];
@@ -12112,6 +12120,60 @@ function hasCompleteNormalizedAddress(address) {
   }
 
   return true;
+}
+
+function hasStrictNonEmptyNormalizedCoverage(address) {
+  if (!address || typeof address !== "object") {
+    return false;
+  }
+
+  for (const field of STRICT_NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      return false;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      continue;
+    }
+
+    if (!hasMeaningfulAddressValue(address[field])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function coerceStrictNormalizedAddressPayload(address) {
+  if (!hasStrictNonEmptyNormalizedCoverage(address)) {
+    return null;
+  }
+
+  const normalized = {};
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    const value = address[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      if (!Number.isFinite(numeric)) {
+        return null;
+      }
+      normalized[field] = numeric;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      normalized[field] = value.trim();
+      continue;
+    }
+
+    normalized[field] = value;
+  }
+
+  return normalized;
 }
 
 function isNormalizedAddressVariantValid(address) {
@@ -36038,6 +36100,64 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
   writeJSON(addressPath, rawOutput);
 }
 
+function enforceRawPreferredAddressVariant(addressPath, options = {}) {
+  if (!addressPath) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+  } = options || {};
+
+  const payload = readJSONIfExists(addressPath);
+  const workingPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : null;
+
+  if (workingPayload && hasStrictNonEmptyNormalizedCoverage(workingPayload)) {
+    const normalizedPayload =
+      coerceStrictNormalizedAddressPayload(workingPayload);
+    if (normalizedPayload) {
+      ensureDir(path.dirname(addressPath));
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(normalizedPayload, null, 2)}\n`,
+      );
+      addressWriteLocked = true;
+      return;
+    }
+  }
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || {};
+  const seedSource = readJSONIfExists(seedPath) || {};
+
+  const rawCandidates = [];
+  gatherRawAddressCandidatesFromSource(workingPayload, rawCandidates);
+  gatherRawAddressCandidatesFromSource(unnormalizedSource, rawCandidates);
+  gatherRawAddressCandidatesFromSource(seedSource, rawCandidates);
+
+  const fallbackRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!fallbackRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawPayload = {
+    unnormalized_address: fallbackRaw,
+  };
+
+  ensureDir(path.dirname(addressPath));
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(rawPayload, null, 2)}\n`,
+  );
+  addressWriteLocked = true;
+}
+
 function buildAddressLineFromFields(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -55591,6 +55711,19 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceRawPreferredAddressVariant(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+    });
+  } catch (error) {
+    console.error("Failed to enforce raw-preferred county address variant:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
@@ -57131,5 +57264,15 @@ process.on("exit", () => {
     });
   } catch (error) {
     console.error("Failed to enforce address schema compliance at exit:", error);
+  }
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceRawPreferredAddressVariant(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+    });
+  } catch (error) {
+    console.error("Failed to enforce raw-preferred address variant at exit:", error);
   }
 });
