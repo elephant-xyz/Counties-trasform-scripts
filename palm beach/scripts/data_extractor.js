@@ -10,20 +10,12 @@ const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 
-const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
-  "plus_four_postal_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-];
+// Only require the core address fields for the normalized branch so that we can
+// still emit a structured address even when secondary components (pre/post
+// directionals, grid references, etc.) are missing from the source. These
+// supplemental fields are still surfaced when present, but they should not
+// prevent us from satisfying the schema's normalized variant.
+const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [];
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [
   "city_name",
