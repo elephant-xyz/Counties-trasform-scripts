@@ -1350,23 +1350,60 @@ function enforceStrictRawSubmissionSurface(addressPath) {
     return;
   }
 
-  const minimal = { unnormalized_address: rawValue };
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
-    if (requestIdentifier !== undefined && requestIdentifier !== null) {
-      minimal.request_identifier = requestIdentifier;
-    }
+  const normalizedSeed = {
+    ...payload,
+    unnormalized_address: rawValue,
+  };
+
+  const defaultCountyName = hasMeaningfulAddressValue(payload.county_name)
+    ? payload.county_name
+    : null;
+  const defaultStateCode = hasMeaningfulAddressValue(payload.state_code)
+    ? payload.state_code
+    : null;
+  const defaultCountryCode = hasMeaningfulAddressValue(payload.country_code)
+    ? payload.country_code
+    : defaultStateCode
+      ? "US"
+      : "US";
+
+  const sourceCandidates = [payload].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const minimalPayload =
+    buildMinimalRawAddressForSchema(
+      normalizedSeed,
+      sourceCandidates,
+      {
+        defaultCountyName,
+        defaultStateCode,
+        defaultCountryCode,
+        requestIdentifier: payload.request_identifier,
+        sourceHttpRequest: payload.source_http_request,
+      },
+    ) ||
+    buildMinimalRawAddressForSchema({
+      unnormalized_address: rawValue,
+      request_identifier:
+        payload && Object.prototype.hasOwnProperty.call(payload, "request_identifier")
+          ? payload.request_identifier
+          : null,
+      source_http_request:
+        payload && Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+          ? payload.source_http_request
+          : null,
+    });
+
+  if (!minimalPayload) {
+    removeFileIfExists(addressPath);
+    return;
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(payload, "source_http_request") &&
-    payload.source_http_request &&
-    typeof payload.source_http_request === "object"
+    Object.prototype.hasOwnProperty.call(minimalPayload, "__force_raw_variant")
   ) {
-    const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    if (prepared) {
-      minimal.source_http_request = deepClone(prepared);
-    }
+    delete minimalPayload.__force_raw_variant;
   }
 
   try {
@@ -1374,7 +1411,7 @@ function enforceStrictRawSubmissionSurface(addressPath) {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(minimal, null, 2)}\n`,
+      `${JSON.stringify(minimalPayload, null, 2)}\n`,
     );
   } finally {
     addressWriteLocked = false;
