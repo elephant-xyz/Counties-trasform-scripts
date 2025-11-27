@@ -2666,6 +2666,116 @@ function enforceRawOnlyAddressFile(addressPath) {
   return true;
 }
 
+function enforceStrictRawOnlyAddressPayload(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return false;
+  }
+
+  let payload;
+  try {
+    payload = readJSON(addressPath);
+  } catch {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  const fallbackPaths = Array.isArray(options.fallbackPaths)
+    ? options.fallbackPaths.filter((entry) => typeof entry === "string" && entry.trim().length)
+    : [];
+  const fallbackSources = [];
+  for (const fallbackPath of fallbackPaths) {
+    try {
+      if (fallbackPath && fs.existsSync(fallbackPath)) {
+        const fallbackPayload = readJSONIfExists(fallbackPath);
+        if (fallbackPayload && typeof fallbackPayload === "object") {
+          fallbackSources.push(fallbackPayload);
+        }
+      }
+    } catch {
+      // Ignore malformed fallback payloads so we can continue collapsing the raw output.
+    }
+  }
+
+  const rawCandidates = [];
+  gatherRawAddressCandidatesFromSource(payload, rawCandidates);
+  for (const fallbackSource of fallbackSources) {
+    gatherRawAddressCandidatesFromSource(fallbackSource, rawCandidates);
+  }
+
+  const rawValue =
+    safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates)) ||
+    safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  const strictRaw = { unnormalized_address: rawValue };
+
+  const assignRequestIdentifierFrom = (source) => {
+    if (!source || typeof source !== "object") {
+      return false;
+    }
+    if (!Object.prototype.hasOwnProperty.call(source, "request_identifier")) {
+      return false;
+    }
+    const normalizedIdentifier = safeNullIfEmpty(source.request_identifier);
+    if (normalizedIdentifier === undefined || normalizedIdentifier === null) {
+      return false;
+    }
+    strictRaw.request_identifier = normalizedIdentifier;
+    return true;
+  };
+
+  if (!assignRequestIdentifierFrom(payload)) {
+    for (const fallbackSource of fallbackSources) {
+      if (assignRequestIdentifierFrom(fallbackSource)) {
+        break;
+      }
+    }
+  }
+
+  const assignSourceRequestFrom = (source) => {
+    if (!source || typeof source !== "object") {
+      return false;
+    }
+    if (!Object.prototype.hasOwnProperty.call(source, "source_http_request")) {
+      return false;
+    }
+    const prepared = prepareSourceHttpRequest(source.source_http_request);
+    if (!prepared) {
+      return false;
+    }
+    strictRaw.source_http_request = deepClone(prepared);
+    return true;
+  };
+
+  if (!assignSourceRequestFrom(payload)) {
+    for (const fallbackSource of fallbackSources) {
+      if (assignSourceRequestFrom(fallbackSource)) {
+        break;
+      }
+    }
+  }
+
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(strictRaw, null, 2)}\n`,
+    );
+  } catch {
+    writeJSON(addressPath, strictRaw);
+  }
+  forceRawAddressVariantOutput = true;
+  return true;
+}
+
 function enforceRawTerminalSurface(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -56960,6 +57070,18 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceStrictRawOnlyAddressPayload(addressPath, {
+      fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+    });
+  } catch (error) {
+    console.error("Failed to enforce strict raw-only address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
@@ -58666,6 +58788,13 @@ process.on("exit", () => {
     } catch (error) {
       console.error("Failed to enforce raw-only address surface at exit:", error);
     }
+    try {
+      enforceStrictRawOnlyAddressPayload(path.join("data", "address.json"), {
+        fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+      });
+    } catch (error) {
+      console.error("Failed to persist strict raw address payload at exit:", error);
+    }
     return;
   }
 
@@ -58703,5 +58832,12 @@ process.on("exit", () => {
     enforceRawOnlyAddressFile(path.join("data", "address.json"));
   } catch (error) {
     console.error("Failed to enforce raw-only address surface at exit:", error);
+  }
+  try {
+    enforceStrictRawOnlyAddressPayload(path.join("data", "address.json"), {
+      fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+    });
+  } catch (error) {
+    console.error("Failed to persist strict raw address payload at exit:", error);
   }
 });
