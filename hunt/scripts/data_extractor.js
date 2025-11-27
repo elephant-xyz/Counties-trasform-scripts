@@ -1967,8 +1967,6 @@ function main() {
   }
 
   // Write owner information if available
-  let ownerPersonIdCounter = 1;
-
   if (owner && owner.owner_name) {
     const ownerIsCompany = isCompanyName(owner.owner_name);
 
@@ -2028,12 +2026,28 @@ function main() {
       if (ownerPersons.length > 0) {
         // Use the first person extracted (typically there should be only one owner name)
         const ownerPerson = ownerPersons[0];
-        const ownerPersonFileName = `owner_person_${ownerPersonIdCounter}.json`;
-        writeJson(path.join("data", ownerPersonFileName), ownerPerson);
+        const personKey = `${ownerPerson.first_name}|${ownerPerson.middle_name}|${ownerPerson.last_name}|${ownerPerson.suffix_name}`;
+
+        // Check if this person already exists in grantees
+        let ownerPersonId = granteesToPersonId.get(personKey);
+        let ownerPersonFileName;
+
+        if (!ownerPersonId) {
+          // Person doesn't exist, create new person file
+          ownerPersonId = personIdCounter;
+          ownerPersonFileName = `person_${personIdCounter}.json`;
+          writeJson(path.join("data", ownerPersonFileName), ownerPerson);
+          granteesToPersonId.set(personKey, personIdCounter);
+          granteesToPersonId.set(owner.owner_name, personIdCounter);
+          personIdCounter++;
+        } else {
+          // Person already exists, use existing person file
+          ownerPersonFileName = `person_${ownerPersonId}.json`;
+        }
 
         // Create relationship from person to property (lexicon-compliant: person_owns_property)
         writeJson(
-          path.join("data", `relationship_person_${ownerPersonIdCounter}_owns_property.json`),
+          path.join("data", `relationship_person_${ownerPersonId}_owns_property.json`),
           {
             from: { "/": `./${ownerPersonFileName}` },
             to: { "/": "./property.json" }
@@ -2048,7 +2062,7 @@ function main() {
 
             // Create relationship from person to mailing address (lexicon-compliant: person_has_mailing_address)
             writeJson(
-              path.join("data", `relationship_person_${ownerPersonIdCounter}_has_mailing_address.json`),
+              path.join("data", `relationship_person_${ownerPersonId}_has_mailing_address.json`),
               {
                 from: { "/": `./${ownerPersonFileName}` },
                 to: { "/": "./mailing_address.json" }
@@ -2056,8 +2070,6 @@ function main() {
             );
           }
         }
-
-        ownerPersonIdCounter++;
       }
     }
   }
