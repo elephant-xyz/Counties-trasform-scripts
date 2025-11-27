@@ -55642,7 +55642,7 @@ function projectStrictCountyNormalizedAddressCandidate(source) {
     return null;
   }
 
-  const hasRequiredCoverage = COUNTY_ADDRESS_ENSURE_FIELDS.every((field) => {
+  const hasRequiredCoverage = COUNTY_NORMALIZED_REQUIRED_FIELDS.every((field) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       return true;
     }
