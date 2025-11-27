@@ -11582,30 +11582,17 @@ function buildMinimalRawAddressPayload(address) {
     return null;
   }
 
-  const minimal = {
-    unnormalized_address: trimmedUnnormalized,
-  };
+  const surfaced =
+    ensureRawVariantFieldSurface({
+      ...address,
+      unnormalized_address: trimmedUnnormalized,
+    }) || null;
 
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    minimal.latitude = latitude;
-    minimal.longitude = longitude;
+  if (!surfaced || typeof surfaced !== "object") {
+    return null;
   }
 
-  const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-  if (requestIdentifier) {
-    minimal.request_identifier = requestIdentifier;
-  }
-
-  const preparedSource = prepareSourceHttpRequest(
-    address.source_http_request,
-  );
-  if (preparedSource) {
-    minimal.source_http_request = deepClone(preparedSource);
-  }
-
-  return minimal;
+  return surfaced;
 }
 
 function buildStrictRawAddressOneOfPayload(address) {
@@ -55651,11 +55638,35 @@ function enforceCountyAddressSchemaVariant(addressPath, options = {}) {
       unnormalized_address: trimmedRaw,
     };
 
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    rawSource && rawSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+  if (requestIdentifier !== undefined && requestIdentifier !== null) {
+    rawPayload.request_identifier = requestIdentifier;
+  }
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    rawSource && rawSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+  if (sourceHttpRequest) {
+    rawPayload.source_http_request = sourceHttpRequest;
+  }
+
+  const schemaReadyRaw =
+    buildMinimalRawAddressPayload(rawPayload) ||
+    ensureRawVariantFieldSurface(rawPayload) ||
+    rawPayload;
+
   ensureDir(path.dirname(addressPath));
   originalWriteFileSync.call(
     fs,
     addressPath,
-    `${JSON.stringify(rawPayload, null, 2)}\n`,
+    `${JSON.stringify(schemaReadyRaw, null, 2)}\n`,
   );
   addressWriteLocked = true;
 }
