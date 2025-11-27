@@ -55283,33 +55283,40 @@ function projectStrictCountyNormalizedAddressCandidate(source) {
   if (!source || typeof source !== "object") {
     return null;
   }
-  const latitude = parseCoordinate(source.latitude);
-  const longitude = parseCoordinate(source.longitude);
+  const normalizedSurface = ensureNormalizedAddressSchemaSurface
+    ? ensureNormalizedAddressSchemaSurface({ ...source })
+    : { ...source };
+
+  const latitude = parseCoordinate(normalizedSurface.latitude);
+  const longitude = parseCoordinate(normalizedSurface.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return null;
   }
 
-  for (const field of COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS) {
-    const value = normalizeAddressFieldValue(source[field]);
-    if (value === null || value === undefined) {
-      return null;
+  const hasRequiredCoverage = COUNTY_ADDRESS_ENSURE_FIELDS.every((field) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      return true;
     }
+    return hasMeaningfulAddressValue(normalizedSurface[field]);
+  });
+  if (!hasRequiredCoverage) {
+    return null;
   }
 
-  const normalized = { latitude, longitude };
-  for (const field of COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS) {
-    const value = normalizeAddressFieldValue(source[field]);
-    if (value !== null && value !== undefined) {
-      normalized[field] = value;
-    }
+  normalizedSurface.latitude = latitude;
+  normalizedSurface.longitude = longitude;
+
+  if (!normalizedSurface.postal_code) {
+    normalizedSurface.plus_four_postal_code = null;
   }
-  for (const field of COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS) {
-    const value = normalizeAddressFieldValue(source[field]);
-    if (value !== null && value !== undefined) {
-      normalized[field] = value;
-    }
+  if (
+    hasMeaningfulAddressValue(normalizedSurface.state_code) &&
+    !hasMeaningfulAddressValue(normalizedSurface.country_code)
+  ) {
+    normalizedSurface.country_code = "US";
   }
-  return normalized;
+
+  return normalizedSurface;
 }
 
 function buildStrictCountyNormalizedAddressCandidate(sources = []) {
