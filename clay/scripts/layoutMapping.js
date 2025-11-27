@@ -148,6 +148,14 @@ function buildLayoutsFromBuildings(buildings, parcelId) {
   
   return layouts;
 }
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
+}
+
 
 function main() {
   const inputPath = path.resolve("input.html");
@@ -156,6 +164,7 @@ function main() {
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings, parcelId);
+  const propertySeed = readJSON("property_seed.json");
   if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
     throw {
       type: "error",
