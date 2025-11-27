@@ -12985,20 +12985,7 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "county_name",
 ];
 
-const NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS = [
-  "latitude",
-  "longitude",
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-];
+const NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS = ["latitude", "longitude"];
 
 const COUNTY_NORMALIZED_CORE_FIELDS = [
   "street_number",
@@ -13026,12 +13013,7 @@ const NORMALIZED_ADDRESS_STRONG_FIELDS = [
   "block",
 ];
 
-const COUNTY_STRICT_NORMALIZED_FIELDS = Array.from(
-  new Set([
-    ...COUNTY_ADDRESS_ENSURE_FIELDS,
-    ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
-  ]),
-);
+const COUNTY_STRICT_NORMALIZED_FIELDS = [...COUNTY_ADDRESS_ENSURE_FIELDS];
 
 const COUNTY_OPTIONAL_NORMALIZED_FIELDS = [
   ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
@@ -13039,9 +13021,7 @@ const COUNTY_OPTIONAL_NORMALIZED_FIELDS = [
 
 const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [];
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = Array.from(
-  new Set([...COUNTY_STRICT_NORMALIZED_FIELDS]),
-);
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...COUNTY_STRICT_NORMALIZED_FIELDS];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
