@@ -1061,41 +1061,36 @@ function createStructureFiles(seed,parcelIdentifier) {
         window_installation_date: struct?.window_installation_date ?? null
       };
       writeJSON(path.join("data", `structure_${struct.structure_index || idx + 1}.json`), structureOut);
-
+      
       // Create relationship between building layout and structure
       const buildingNumber = struct.building_number || idx + 1;
       const structureIndex = struct.structure_index || idx + 1;
-
+      
       // Find the correct building layout file index
-      let buildingLayoutIndex = null;
-      let buildingLayoutExists = false;
+      let buildingLayoutIndex = buildingNumber;
       // console.log("BUILDING_NUMBER",buildingNumber)
       if (layoutsData && parcelIdentifier) {
         // console.log(layoutsData)
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
         // console.log(layouts)
-        const buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         // console.log("BUILDING_LAYOUT", buildingLayout)
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
-          buildingLayoutExists = true;
         }
       }
-
-      // Only create relationship if layout file will exist
-      if (buildingLayoutExists && buildingLayoutIndex !== null) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./structure_${structureIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./structure_${structureIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        relationship
+      );
     });
   }
 
@@ -1140,37 +1135,32 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         hvac_unit_issues: util?.hvac_unit_issues ?? null
       };
       writeJSON(path.join("data", `utility_${util.utility_index || idx + 1}.json`), utilityOut);
-
+      
       // Create relationship between building layout and utility
       const buildingNumber = util.building_number || idx + 1;
       const utilityIndex = util.utility_index || idx + 1;
-
+      
       // Find the correct building layout file index
-      let buildingLayoutIndex = null;
-      let buildingLayoutExists = false;
+      let buildingLayoutIndex = buildingNumber;
       if (layoutsData && parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
-        const buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
-          buildingLayoutExists = true;
         }
       }
-
-      // Only create relationship if layout file will exist
-      if (buildingLayoutExists && buildingLayoutIndex !== null) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./utility_${utilityIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./utility_${utilityIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        relationship
+      );
     });
   }
 
