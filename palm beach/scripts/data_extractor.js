@@ -54,6 +54,13 @@ function finalizeAddressWritePayload(rawPayload) {
     return null;
   }
 
+  const preserveStructuredFields =
+    Object.prototype.hasOwnProperty.call(completed, "__preserve_structured_fields") &&
+    completed.__preserve_structured_fields === true;
+  if (preserveStructuredFields) {
+    delete completed.__preserve_structured_fields;
+  }
+
   const forceRawVariant =
     Object.prototype.hasOwnProperty.call(completed, "__force_raw_variant") &&
     completed.__force_raw_variant === true;
@@ -75,7 +82,10 @@ function finalizeAddressWritePayload(rawPayload) {
     Number.isFinite(parseCoordinate(normalizedProbe.latitude)) &&
     Number.isFinite(parseCoordinate(normalizedProbe.longitude));
   const shouldAttemptNormalized =
-    !forceRawVariant && normalizedCoverage && hasCoordinatePair;
+    !forceRawVariant &&
+    !preserveStructuredFields &&
+    normalizedCoverage &&
+    hasCoordinatePair;
 
   const requestIdentifier = safeNullIfEmpty(completed.request_identifier);
   const preparedSource = prepareSourceHttpRequest(
@@ -114,6 +124,27 @@ function finalizeAddressWritePayload(rawPayload) {
 
   if (!rawValue.length) {
     return null;
+  }
+
+  if (preserveStructuredFields) {
+    const structuredRaw = { ...completed };
+    if (requestIdentifier !== null && requestIdentifier !== undefined) {
+      structuredRaw.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(structuredRaw, "request_identifier")
+    ) {
+      structuredRaw.request_identifier = null;
+    }
+
+    if (preparedSource) {
+      structuredRaw.source_http_request = deepClone(preparedSource);
+    } else if (
+      Object.prototype.hasOwnProperty.call(structuredRaw, "source_http_request")
+    ) {
+      structuredRaw.source_http_request = null;
+    }
+
+    return stripAddressRequestMetadata(structuredRaw);
   }
 
   let rawOutput =
@@ -3360,20 +3391,24 @@ function sanitizeAddressPayloadForWrite(payload) {
 
   if (trimmedUnnormalized.length) {
     const rawSurface = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
       unnormalized_address: trimmedUnnormalized,
     };
 
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
       const value = normalizedCandidate[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        rawSurface[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
       if (value === undefined || value === null) {
+        rawSurface[field] = null;
         continue;
       }
       if (typeof value === "string") {
         const trimmedValue = value.trim();
-        if (!trimmedValue.length) {
-          continue;
-        }
-        rawSurface[field] = trimmedValue;
+        rawSurface[field] = trimmedValue.length ? trimmedValue : null;
         continue;
       }
       rawSurface[field] = value;
@@ -3414,6 +3449,7 @@ function sanitizeAddressPayloadForWrite(payload) {
     }
 
     if (preserveStructuredFields) {
+      rawSurface.__preserve_structured_fields = true;
       if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
         console.error(
           "rawSurface with structured fields",
@@ -3553,17 +3589,30 @@ function writeJSON(p, obj) {
     obj &&
     typeof obj === "object";
 
+  const wantsStructuredPreservation =
+    isAddressFile &&
+    obj &&
+    typeof obj === "object" &&
+    obj.__preserve_structured_fields === true;
+
   if (isAddressFile) {
-    payload = sanitizeAddressPayloadForWrite(obj);
-    if (payload && typeof payload === "object") {
-      const completed =
-        ensureAddressOutputFieldPresence(payload) || payload;
-      if (completed && typeof completed === "object") {
-        const schemaVariant =
-          selectAddressVariantForSchema(completed) || completed;
-        const pruned =
-          pruneRawAddressFieldsForOutput(schemaVariant) || schemaVariant;
-        payload = stripAddressRequestMetadata(pruned);
+    const sanitized = sanitizeAddressPayloadForWrite(obj);
+    if (sanitized && typeof sanitized === "object") {
+      if (wantsStructuredPreservation) {
+        sanitized.__preserve_structured_fields = true;
+        payload = sanitized;
+      } else {
+        const completed =
+          ensureAddressOutputFieldPresence(sanitized) || sanitized;
+        if (completed && typeof completed === "object") {
+          const schemaVariant =
+            selectAddressVariantForSchema(completed) || completed;
+          const pruned =
+            pruneRawAddressFieldsForOutput(schemaVariant) || schemaVariant;
+          payload = stripAddressRequestMetadata(pruned);
+        } else {
+          payload = sanitized;
+        }
       }
     }
   }
@@ -7554,7 +7603,25 @@ function buildRawOnlyAddressSurface(address) {
     return null;
   }
 
-  const rawOutput = { unnormalized_address: trimmedRaw };
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+
+    const value = address[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOutput[field] = Number.isFinite(numeric) ? numeric : rawOutput[field];
+      continue;
+    }
+
+    const sanitized = sanitizeAddressFieldValue(field, value);
+    rawOutput[field] = sanitized === undefined ? rawOutput[field] : sanitized;
+  }
+
+  rawOutput.unnormalized_address = trimmedRaw;
 
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
     const requestIdentifier = safeNullIfEmpty(address.request_identifier);
@@ -7572,11 +7639,11 @@ function buildRawOnlyAddressSurface(address) {
     }
   }
 
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    rawOutput.latitude = latitude;
-    rawOutput.longitude = longitude;
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true
+  ) {
+    rawOutput.__force_raw_variant = true;
   }
 
   return rawOutput;
@@ -12766,6 +12833,40 @@ function hasRawAddressRequiredValues(address) {
   }
 
   return true;
+}
+
+function hasStructuredRawAddressCoverage(address) {
+  if (!address || typeof address !== "object") {
+    return false;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string" &&
+    address.unnormalized_address.trim();
+  if (!rawValue || !rawValue.length) {
+    return false;
+  }
+
+  const surface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...address })
+      : { ...address };
+
+  const latitude = parseCoordinate(surface.latitude);
+  const longitude = parseCoordinate(surface.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return false;
+  }
+
+  const hasStreetCore =
+    hasMeaningfulAddressValue(surface.street_number) &&
+    hasMeaningfulAddressValue(surface.street_name);
+  const hasLocalityCore =
+    hasMeaningfulAddressValue(surface.city_name) &&
+    hasMeaningfulAddressValue(surface.state_code) &&
+    hasMeaningfulAddressValue(surface.postal_code);
+
+  return hasStreetCore && hasLocalityCore;
 }
 
 const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
@@ -30193,6 +30294,45 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
     assignFieldIfMissing("lot", lotBlock.lot);
   }
 
+  const hasStreetCore =
+    hasMeaningfulAddressValue(working.street_number) &&
+    hasMeaningfulAddressValue(working.street_name);
+  const hasLocalityCore =
+    hasMeaningfulAddressValue(working.city_name) &&
+    hasMeaningfulAddressValue(working.state_code) &&
+    hasMeaningfulAddressValue(working.postal_code);
+  const normalizedLatitude = parseCoordinate(working.latitude);
+  const normalizedLongitude = parseCoordinate(working.longitude);
+  const hasCoordinatePair =
+    Number.isFinite(normalizedLatitude) && Number.isFinite(normalizedLongitude);
+  if (Number.isFinite(normalizedLatitude)) {
+    working.latitude = normalizedLatitude;
+  }
+  if (Number.isFinite(normalizedLongitude)) {
+    working.longitude = normalizedLongitude;
+  }
+  if (hasStreetCore && hasLocalityCore && hasCoordinatePair) {
+    working.__preserve_structured_fields = true;
+    const snapshotPath = path.join(
+      path.dirname(addressFilePath),
+      "address_structured_snapshot.json",
+    );
+    try {
+      fs.writeFileSync(
+        snapshotPath,
+        `${JSON.stringify(
+          {
+            ...working,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    } catch (error) {
+      console.error("Failed to persist structured address snapshot:", error);
+    }
+  }
+
   let hasStrictNormalizedSurface = false;
   if (typeof hasNormalizedCountyCoverage === "function") {
     const hadForcedRawVariant =
@@ -45205,6 +45345,23 @@ async function main() {
     typeof hasNormalizedCountyCoverage === "function" &&
     hasNormalizedCountyCoverage({ ...normalizedAddressSnapshot });
 
+  if (
+    !canEmitStrictNormalizedVariant &&
+    normalizedAddressSnapshot &&
+    hasStructuredRawAddressCoverage({ ...normalizedAddressSnapshot }) &&
+    typeof normalizedAddressSnapshot.unnormalized_address === "string" &&
+    normalizedAddressSnapshot.unnormalized_address.trim().length
+  ) {
+    writeJSON(finalAddressPath, {
+      ...normalizedAddressSnapshot,
+      __preserve_structured_fields: true,
+      __force_raw_variant: true,
+    });
+    forceRawAddressVariantOutput = true;
+    enforceAutogeneratedRelationshipNulls([dataDir, relationshipsDir]);
+    return;
+  }
+
   if (canEmitStrictNormalizedVariant) {
     enforceFinalNormalizedAddressPayload(finalAddressPath, {
       unnormalizedPath: "unnormalized_address.json",
@@ -55122,9 +55279,29 @@ function buildRawAddressPayloadFromSources(rawValue, options = {}) {
   const hasStructuredCoverage = structuredFieldProbe.some((field) =>
     hasMeaningfulAddressValue(payload[field]),
   );
+
+  const hasStreetCore =
+    hasMeaningfulAddressValue(payload.street_number) &&
+    hasMeaningfulAddressValue(payload.street_name);
+  const hasLocalityCore =
+    hasMeaningfulAddressValue(payload.city_name) &&
+    hasMeaningfulAddressValue(payload.state_code) &&
+    hasMeaningfulAddressValue(payload.postal_code);
+  const normalizedLatitude = parseCoordinate(payload.latitude);
+  const normalizedLongitude = parseCoordinate(payload.longitude);
+  const hasCoordinatePair =
+    Number.isFinite(normalizedLatitude) && Number.isFinite(normalizedLongitude);
+  if (Number.isFinite(normalizedLatitude)) {
+    payload.latitude = normalizedLatitude;
+  }
+  if (Number.isFinite(normalizedLongitude)) {
+    payload.longitude = normalizedLongitude;
+  }
+
   if (
-    hasStructuredCoverage &&
-    hasStrictNormalizedAddressCoverage({ ...payload })
+    (hasStreetCore && hasLocalityCore && hasCoordinatePair) ||
+    (hasStructuredCoverage &&
+      hasStrictNormalizedAddressCoverage({ ...payload }))
   ) {
     payload.__preserve_structured_fields = true;
   }
@@ -55544,6 +55721,25 @@ function enforceExplicitFinalCountyAddressBranch(addressPath, options = {}) {
     unnormalizedSource,
     seedSource,
   ]);
+
+  if (
+    hasStructuredRawAddressCoverage({ ...existingPayload }) &&
+    typeof existingPayload.unnormalized_address === "string" &&
+    existingPayload.unnormalized_address.trim().length
+  ) {
+    writeJSON(addressPath, {
+      ...existingPayload,
+      __preserve_structured_fields: true,
+      __force_raw_variant: true,
+    });
+    if (
+      Array.isArray(options.relationshipDirectories) &&
+      options.relationshipDirectories.length
+    ) {
+      enforceAutogeneratedRelationshipNulls(options.relationshipDirectories);
+    }
+    return;
+  }
 
   const requestIdentifier = resolveRequestIdentifierCandidate(
     existingPayload && existingPayload.request_identifier,
@@ -57275,6 +57471,39 @@ async function run() {
       }
     }
     console.log("Normalized county address detected; skipping raw finalizers.");
+    return;
+  }
+
+  const structuredSnapshotPath = path.join(
+    dataDir,
+    "address_structured_snapshot.json",
+  );
+  const structuredSnapshot = readJSONIfExists(structuredSnapshotPath) || null;
+  const structuredCoverageSource =
+    structuredSnapshot || normalizedAddressOutput;
+
+  const hasStructuredRawAddress =
+    structuredCoverageSource &&
+    typeof structuredCoverageSource === "object" &&
+    hasStructuredRawAddressCoverage({ ...structuredCoverageSource });
+
+  if (hasStructuredRawAddress) {
+    try {
+      enforceAutogeneratedRelationshipNulls([dataDir, relationshipsDir]);
+    } catch (error) {
+      console.error(
+        "Failed to persist structured raw address before finalizers:",
+        error,
+      );
+      if (!process.exitCode) {
+        process.exitCode = 1;
+      }
+    }
+    console.log(
+      structuredSnapshot
+        ? "Structured raw address snapshot detected; skipping raw finalizers."
+        : "Structured raw address detected; skipping raw finalizers.",
+    );
     return;
   }
   try {
@@ -59105,6 +59334,64 @@ run().catch((error) => {
 });
 
 process.on("exit", () => {
+  try {
+    const snapshotPath = path.join("data", "address_structured_snapshot.json");
+    const snapshotPayload = readJSONIfExists(snapshotPath);
+    if (
+      snapshotPayload &&
+      hasStructuredRawAddressCoverage({ ...snapshotPayload }) &&
+      typeof snapshotPayload.unnormalized_address === "string" &&
+      snapshotPayload.unnormalized_address.trim().length
+    ) {
+      try {
+        const outputPayload = { ...snapshotPayload };
+        if (
+          Object.prototype.hasOwnProperty.call(
+            outputPayload,
+            "__preserve_structured_fields",
+          )
+        ) {
+          delete outputPayload.__preserve_structured_fields;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            outputPayload,
+            "__force_raw_variant",
+          )
+        ) {
+          delete outputPayload.__force_raw_variant;
+        }
+        const serialized = `${JSON.stringify(
+          outputPayload,
+          null,
+          2,
+        )}\n`;
+        originalWriteFileSync.call(
+          fs,
+          path.join("data", "address.json"),
+          serialized,
+        );
+      } catch (error) {
+        console.error(
+          "Failed to rewrite address from structured snapshot:",
+          error,
+        );
+      }
+      try {
+        enforceAutogeneratedRelationshipNulls([
+          path.join("data"),
+          path.join("relationships"),
+        ]);
+      } catch (error) {
+        console.error("Failed to enforce null relationships for structured snapshot:", error);
+      }
+      removeFileIfExists(snapshotPath);
+      return;
+    }
+  } catch (error) {
+    console.error("Failed to restore structured address snapshot:", error);
+  }
+
   try {
     const dataDir = path.join("data");
     const relationshipsDir = path.join("relationships");
