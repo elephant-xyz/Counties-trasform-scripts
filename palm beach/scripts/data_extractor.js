@@ -10,22 +10,26 @@ const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 
-// Only require the core address fields for the normalized branch so that we can
-// still emit a structured address even when secondary components (pre/post
-// directionals, grid references, etc.) are missing from the source. These
-// supplemental fields are still surfaced when present, but they should not
-// prevent us from satisfying the schema's normalized variant.
-const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [];
-
-const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-  "lot",
+// The County schema's address.oneOf treats the fully normalized branch as valid
+// only when every structured component (directionals, grid refs, unit/route,
+// etc.) is present alongside the coordinates. Without that coverage the payload
+// must fall back to the raw branch that just carries unnormalized_address.
+// Requiring the complete structured surface ahead of time keeps us from
+// emitting half-populated normalized objects that fail validation.
+const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
+  "plus_four_postal_code",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
 ];
+
+const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
 
 function isAddressJsonPath(targetPath) {
   if (typeof targetPath !== "string") return false;
