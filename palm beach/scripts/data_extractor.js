@@ -679,12 +679,20 @@ function rebuildNormalizedAddressPayload(options = {}) {
       )
     : null;
 
+  const normalizedCandidate = { ...normalizedPayload };
+  if (
+    typeof hasNormalizedCountyCoverage === "function" &&
+    !hasNormalizedCountyCoverage(normalizedCandidate)
+  ) {
+    return;
+  }
+
   addressWriteLocked = true;
   try {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(normalizedPayload, null, 2)}\n`,
+      `${JSON.stringify(normalizedCandidate, null, 2)}\n`,
     );
   } finally {
     addressWriteLocked = false;
