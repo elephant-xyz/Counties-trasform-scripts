@@ -2955,6 +2955,205 @@ function resolveSourceHttpRequestCandidate(...candidates) {
   return resolved || null;
 }
 
+function resolveRawAddressStringFromSource(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const candidateKeys = [
+    "unnormalized_address",
+    "full_address",
+    "site_address",
+    "location_address",
+    "mail_address",
+    "address",
+  ];
+
+  for (const key of candidateKeys) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) {
+      continue;
+    }
+    const value = source[key];
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      return trimmed;
+    }
+  }
+
+  if (Array.isArray(source.lines)) {
+    for (const line of source.lines) {
+      if (typeof line !== "string") continue;
+      const trimmed = line.trim();
+      if (trimmed.length) {
+        return trimmed;
+      }
+    }
+  }
+
+  if (typeof composeFallbackUnnormalizedAddressFromFields === "function") {
+    const fallback = composeFallbackUnnormalizedAddressFromFields(source);
+    if (typeof fallback === "string") {
+      const trimmed = fallback.trim();
+      if (trimmed.length) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function resolveRawAddressStringFromSources(sources = []) {
+  if (!Array.isArray(sources)) {
+    return null;
+  }
+  for (const source of sources) {
+    const resolved = resolveRawAddressStringFromSource(source);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return null;
+}
+
+function enforceAddressOneOfBaseline(addressPath, options = {}) {
+  if (!addressPath) {
+    return;
+  }
+
+  const {
+    rawFallbackPaths = [],
+    extraRawCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const payload = readJSONIfExists(addressPath) || {};
+  const fallbackSources = [];
+  if (payload && typeof payload === "object") {
+    fallbackSources.push(payload);
+  }
+
+  if (Array.isArray(rawFallbackPaths)) {
+    for (const fallbackPath of rawFallbackPaths) {
+      if (!fallbackPath) continue;
+      const source = readJSONIfExists(fallbackPath);
+      if (source && typeof source === "object") {
+        fallbackSources.push(source);
+      }
+    }
+  }
+
+  const normalizedProbe = payload && typeof payload === "object"
+    ? ensureAddressOutputFieldPresence({ ...payload }) || { ...payload }
+    : {};
+
+  let normalizedCandidate = null;
+  if (
+    normalizedProbe &&
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...normalizedProbe }) &&
+    typeof buildNormalizedAddressOutputForSchema === "function"
+  ) {
+    normalizedCandidate =
+      buildNormalizedAddressOutputForSchema({ ...normalizedProbe }) || null;
+  }
+
+  const combinedRequestIdentifierCandidates = [
+    payload && payload.request_identifier,
+    ...requestIdentifierCandidates,
+  ];
+  for (const source of fallbackSources) {
+    combinedRequestIdentifierCandidates.push(
+      source && source.request_identifier,
+    );
+  }
+
+  const combinedSourceHttpRequestCandidates = [
+    payload && payload.source_http_request,
+    ...sourceHttpRequestCandidates,
+  ];
+  for (const source of fallbackSources) {
+    combinedSourceHttpRequestCandidates.push(
+      source && source.source_http_request,
+    );
+  }
+
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    ...combinedRequestIdentifierCandidates,
+  );
+  const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    ...combinedSourceHttpRequestCandidates,
+  );
+
+  if (normalizedCandidate) {
+    if (resolvedRequestIdentifier !== undefined) {
+      normalizedCandidate.request_identifier = resolvedRequestIdentifier;
+    }
+    if (resolvedSourceHttpRequest) {
+      normalizedCandidate.source_http_request =
+        prepareSourceHttpRequest(resolvedSourceHttpRequest) ||
+        resolvedSourceHttpRequest;
+    }
+    if (writeSchemaAlignedAddress(addressPath, normalizedCandidate)) {
+      return;
+    }
+  }
+
+  const extraSources =
+    Array.isArray(extraRawCandidates) && extraRawCandidates.length
+      ? extraRawCandidates
+          .map((candidate) =>
+            typeof candidate === "string"
+              ? { unnormalized_address: candidate }
+              : candidate,
+          )
+          .filter((candidate) => candidate && typeof candidate === "object")
+      : [];
+
+  let rawString =
+    resolveRawAddressStringFromSources(fallbackSources) ||
+    resolveRawAddressStringFromSources(extraSources);
+
+  if (
+    !rawString &&
+    payload &&
+    typeof composeFallbackUnnormalizedAddressFromFields === "function"
+  ) {
+    const fallback = composeFallbackUnnormalizedAddressFromFields(payload);
+    if (typeof fallback === "string" && fallback.trim().length) {
+      rawString = fallback.trim();
+    }
+  }
+
+  if (!rawString) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawPayload = {
+    unnormalized_address: rawString,
+  };
+
+  if (resolvedRequestIdentifier !== undefined) {
+    rawPayload.request_identifier = resolvedRequestIdentifier;
+  }
+  if (resolvedSourceHttpRequest) {
+    rawPayload.source_http_request =
+      prepareSourceHttpRequest(resolvedSourceHttpRequest) ||
+      resolvedSourceHttpRequest;
+  }
+
+  if (writeSchemaAlignedAddress(addressPath, rawPayload)) {
+    return;
+  }
+
+  writeJSON(addressPath, rawPayload);
+}
+
 function buildRawAddressOneOfPayload(
   rawValue,
   requestIdentifier,
@@ -57244,6 +57443,27 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to enforce explicit final county address branch:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceAddressOneOfBaseline(addressPath, {
+      rawFallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+    });
+    ensureNullRelationshipPlaceholders(
+      dataDir,
+      Array.from(RELATIONSHIP_AUTOGENERATED_BASENAMES),
+    );
+    ensureNullRelationshipPlaceholders(
+      relationshipsDir,
+      Array.from(RELATIONSHIP_AUTOGENERATED_BASENAMES),
+    );
+  } catch (error) {
+    console.error("Failed to enforce baseline address oneOf output:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
