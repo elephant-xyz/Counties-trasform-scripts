@@ -2412,25 +2412,33 @@ function enforceAddressTerminalVariant(addressPath, options = {}) {
       hasMeaningfulAddressValue(normalizedCandidate[field]),
     );
 
-  let hasCoordinatePair = false;
+  let hasStructuredCoverage = false;
   if (normalizedCandidate) {
-    hasCoordinatePair = ADDRESS_COORDINATE_FIELDS.every((field) => {
-      const numeric = parseCoordinate(normalizedCandidate[field]);
-      if (!Number.isFinite(numeric)) {
-        normalizedCandidate[field] = null;
-        return false;
-      }
-      normalizedCandidate[field] = numeric;
-      return true;
-    });
+    hasStructuredCoverage = NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS.every(
+      (field) => {
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(normalizedCandidate[field]);
+          if (!Number.isFinite(numeric)) {
+            return false;
+          }
+          normalizedCandidate[field] = numeric;
+          return true;
+        }
+        const sanitized =
+          typeof sanitizeAddressFieldValue === "function"
+            ? sanitizeAddressFieldValue(field, normalizedCandidate[field])
+            : normalizedCandidate[field];
+        if (!hasMeaningfulAddressValue(sanitized)) {
+          return false;
+        }
+        normalizedCandidate[field] =
+          typeof sanitized === "string" ? sanitized.trim() : sanitized;
+        return true;
+      },
+    );
   }
 
-  if (hasRequiredStrings && hasCoordinatePair) {
-    for (const field of NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
-        normalizedCandidate[field] = null;
-      }
-    }
+  if (hasRequiredStrings && hasStructuredCoverage) {
 
     if (!normalizedCandidate.postal_code) {
       normalizedCandidate.plus_four_postal_code = null;
@@ -8703,7 +8711,7 @@ function hasStrictCountyAddressCoverage(address) {
 
   const strictSurface = { ...normalizedSurface };
 
-  const hasAllRequiredFields = COUNTY_ADDRESS_ENSURE_FIELDS.every((field) => {
+  const hasAllRequiredFields = COUNTY_NORMALIZED_REQUIRED_FIELDS.every((field) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(strictSurface[field]);
       if (!Number.isFinite(numeric)) {
@@ -8716,6 +8724,14 @@ function hasStrictCountyAddressCoverage(address) {
     const sanitized = sanitizeAddressFieldValue(field, strictSurface[field]);
     if (!hasMeaningfulAddressValue(sanitized)) {
       return false;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      if (!trimmed.length) {
+        return false;
+      }
+      strictSurface[field] = trimmed;
+      return true;
     }
     strictSurface[field] = sanitized;
     return true;
@@ -12841,9 +12857,10 @@ function hasStructuredRawAddressCoverage(address) {
   }
 
   const rawValue =
-    typeof address.unnormalized_address === "string" &&
-    address.unnormalized_address.trim();
-  if (!rawValue || !rawValue.length) {
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
     return false;
   }
 
@@ -12852,21 +12869,7 @@ function hasStructuredRawAddressCoverage(address) {
       ? ensureNormalizedAddressSchemaSurface({ ...address })
       : { ...address };
 
-  const latitude = parseCoordinate(surface.latitude);
-  const longitude = parseCoordinate(surface.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return false;
-  }
-
-  const hasStreetCore =
-    hasMeaningfulAddressValue(surface.street_number) &&
-    hasMeaningfulAddressValue(surface.street_name);
-  const hasLocalityCore =
-    hasMeaningfulAddressValue(surface.city_name) &&
-    hasMeaningfulAddressValue(surface.state_code) &&
-    hasMeaningfulAddressValue(surface.postal_code);
-
-  return hasStreetCore && hasLocalityCore;
+  return hasStrictCountyAddressCoverage(surface);
 }
 
 const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
