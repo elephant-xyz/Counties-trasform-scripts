@@ -999,10 +999,17 @@ function createStructureFiles(seed,parcelIdentifier) {
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-  
+
   if (structuresData && parcelIdentifier) {
     // console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
+    const layouts = layoutsData?.[key]?.layouts || [];
+
+    // Skip creating structures if there are no layouts (e.g., vacant land)
+    if (layouts.length === 0) {
+      return;
+    }
+
     const structures = structuresData[key]?.structures || [];
     structures.forEach((struct, idx) => {
       const structureOut = {
@@ -1106,10 +1113,17 @@ function createUtilitiesFiles(seed,parcelIdentifier){
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-  
-  
+
+
   if (utilitiesData && parcelIdentifier) {
     const key = `property_${parcelIdentifier}`;
+    const layouts = layoutsData?.[key]?.layouts || [];
+
+    // Skip creating utilities if there are no layouts (e.g., vacant land)
+    if (layouts.length === 0) {
+      return;
+    }
+
     const utilities = utilitiesData[key]?.utilities || [];
     utilities.forEach((util, idx) => {
       const utilityOut = {
