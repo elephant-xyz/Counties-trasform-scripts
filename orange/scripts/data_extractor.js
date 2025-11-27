@@ -2407,6 +2407,15 @@ function textNormalize(value) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
+function normalizeCompanyName(name) {
+  if (!name) return "";
+  // Normalize whitespace
+  let normalized = name.replace(/\s+/g, " ").trim();
+  // Remove trailing punctuation (commas, periods, etc.)
+  normalized = normalized.replace(/[,\.;:]+$/g, "");
+  return normalized.trim();
+}
+
 function toNumber(value) {
   if (value == null) return null;
   const clean = String(value).replace(/[^0-9.\-]/g, "");
@@ -5454,7 +5463,7 @@ delete layoutContent.space_type_indexer;
       } else if (ownerType === "company") {
         const rawName = owner.name || owner.company_name || owner.organization_name;
         if (!rawName) return;
-        const normalized = rawName.replace(/\s+/g, " ").trim();
+        const normalized = normalizeCompanyName(rawName);
         if (!normalized) return;
         const key = `company:${normalized.toLowerCase()}`;
         if (seenOwners.has(key)) return;
@@ -5528,13 +5537,19 @@ delete layoutContent.space_type_indexer;
           // Create buyer key similar to owner key creation
           let buyerKey = null;
           if (buyer.type === "company") {
-            const normalized = buyer.name.replace(/\s+/g, " ").trim();
+            const normalized = normalizeCompanyName(buyer.name);
             buyerKey = `company:${normalized.toLowerCase()}`;
           } else {
-            const parts = [buyer.first_name, buyer.middle_name, buyer.last_name]
+            // Use pipe separator to match owner key format (line 5434-5437)
+            const first = properCaseName(buyer.first_name || null);
+            const last = properCaseName(buyer.last_name || null);
+            const middle = buyer.middle_name || null;
+            const prefixName = buyer.prefix_name || null;
+            const suffixName = buyer.suffix_name || null;
+            const parts = [first, middle, last, prefixName, suffixName]
               .map((part) => (part || "").trim().toLowerCase())
               .filter(Boolean);
-            buyerKey = `person:${parts.join(" ")}`;
+            buyerKey = `person:${parts.join("|")}`;
           }
 
           if (buyerKey) {
@@ -5544,17 +5559,13 @@ delete layoutContent.space_type_indexer;
             // Add to global owner tracking for file creation
             if (!seenOwners.has(buyerKey)) {
               if (buyer.type === "company") {
+                const normalized = normalizeCompanyName(buyer.name);
                 seenOwners.set(buyerKey, {
                   type: "company",
-                  payload: { name: buyer.name },
+                  payload: { name: normalized },
                 });
               } else {
-                const first = properCaseName(buyer.first_name || null);
-                const last = properCaseName(buyer.last_name || null);
-                const middle = buyer.middle_name ? buyer.middle_name : null;
-                const prefixName = buyer.prefix_name ? buyer.prefix_name : null;
-                const suffixName = buyer.suffix_name ? buyer.suffix_name : null;
-
+                // Reuse the variables defined above for key creation
                 seenOwners.set(buyerKey, {
                   type: "person",
                   payload: {
