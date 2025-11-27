@@ -13193,6 +13193,14 @@ function hasRobustNormalizedAddress(address) {
     normalized.country_code = "US";
   }
 
+  const hasStrictCountyFields =
+    typeof hasStrictCountyAddressCoverage === "function"
+      ? hasStrictCountyAddressCoverage(normalized)
+      : true;
+  if (!hasStrictCountyFields) {
+    return false;
+  }
+
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(normalized, field)) {
       normalized[field] = null;
