@@ -9420,8 +9420,8 @@ function buildNormalizedAddressOutputForSchema(source) {
     normalized.country_code = "US";
   }
 
-  const hasStrictCountyCoverage = COUNTY_ADDRESS_ENSURE_FIELDS.every((field) =>
-    hasMeaningfulAddressValue(normalized[field]),
+  const hasStrictCountyCoverage = COUNTY_NORMALIZED_REQUIRED_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(normalized[field]),
   );
   if (!hasStrictCountyCoverage) {
     return null;
@@ -12304,7 +12304,12 @@ const COUNTY_STRICT_NORMALIZED_FIELDS = [
 
 const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [];
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...COUNTY_ADDRESS_ENSURE_FIELDS];
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = Array.from(
+  new Set([
+    ...COUNTY_ADDRESS_ENSURE_FIELDS,
+    ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
+  ]),
+);
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -13883,20 +13888,7 @@ function shouldTreatAddressAsNormalized(address) {
     return false;
   }
 
-  const surface = ensureNormalizedAddressSchemaSurface
-    ? ensureNormalizedAddressSchemaSurface({ ...address })
-    : { ...address };
-
-  const hasRequiredStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(surface[field]),
-  );
-  if (!hasRequiredStrings) {
-    return false;
-  }
-
-  return NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((field) =>
-    Number.isFinite(parseCoordinate(surface[field])),
-  );
+  return hasNormalizedCountyCoverage(address);
 }
 
 function resolveCoordinateFromCandidates(candidates = []) {
