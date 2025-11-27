@@ -7,7 +7,33 @@ const originalWriteFileSync = fs.writeFileSync;
 let addressWriteLocked = false;
 let forceRawAddressVariantOutput = false;
 const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
+const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
+
+const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
+  "plus_four_postal_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+];
+
+const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
+  "lot",
+];
 
 function isAddressJsonPath(targetPath) {
   if (typeof targetPath !== "string") return false;
@@ -55340,6 +55366,195 @@ function finalizeAddressOutputs() {
   });
 }
 
+function normalizeAddressFieldValue(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+    return String(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  return null;
+}
+
+function projectStrictCountyNormalizedAddressCandidate(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const latitude = parseCoordinate(source.latitude);
+  const longitude = parseCoordinate(source.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  for (const field of COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS) {
+    const value = normalizeAddressFieldValue(source[field]);
+    if (value === null || value === undefined) {
+      return null;
+    }
+  }
+
+  const normalized = { latitude, longitude };
+  for (const field of COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS) {
+    const value = normalizeAddressFieldValue(source[field]);
+    if (value !== null && value !== undefined) {
+      normalized[field] = value;
+    }
+  }
+  for (const field of COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS) {
+    const value = normalizeAddressFieldValue(source[field]);
+    if (value !== null && value !== undefined) {
+      normalized[field] = value;
+    }
+  }
+  return normalized;
+}
+
+function buildStrictCountyNormalizedAddressCandidate(sources = []) {
+  if (!Array.isArray(sources)) {
+    return null;
+  }
+  for (const source of sources) {
+    const candidate = projectStrictCountyNormalizedAddressCandidate(source);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function enforceExplicitFinalCountyAddressBranch(addressPath, options = {}) {
+  if (!addressPath) {
+    return;
+  }
+  const existingPayload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+  const seedSource = readJSONIfExists("property_seed.json") || {};
+  const fallbackContext =
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+      : [];
+  const extraRawCandidates =
+    Array.isArray(options.extraRawCandidates) && options.extraRawCandidates.length
+      ? options.extraRawCandidates
+      : [];
+  const normalizedCandidate = buildStrictCountyNormalizedAddressCandidate([
+    existingPayload,
+    unnormalizedSource,
+    seedSource,
+  ]);
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const preparedSourceRequest = prepareSourceHttpRequest(
+    resolveSourceHttpRequestCandidate(
+      existingPayload && existingPayload.source_http_request,
+      unnormalizedSource && unnormalizedSource.source_http_request,
+      seedSource && seedSource.source_http_request,
+    ),
+  );
+
+  if (normalizedCandidate) {
+    if (Object.prototype.hasOwnProperty.call(normalizedCandidate, "unnormalized_address")) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    if (requestIdentifier) {
+      normalizedCandidate.request_identifier = requestIdentifier;
+    } else if (
+      Object.prototype.hasOwnProperty.call(normalizedCandidate, "request_identifier")
+    ) {
+      delete normalizedCandidate.request_identifier;
+    }
+    if (preparedSourceRequest) {
+      normalizedCandidate.source_http_request = deepClone(preparedSourceRequest);
+    } else if (
+      Object.prototype.hasOwnProperty.call(normalizedCandidate, "source_http_request")
+    ) {
+      delete normalizedCandidate.source_http_request;
+    }
+    ensureDir(path.dirname(addressPath));
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(normalizedCandidate, null, 2)}\n`,
+    );
+    if (
+      Array.isArray(options.relationshipDirectories) &&
+      options.relationshipDirectories.length
+    ) {
+      enforceAutogeneratedRelationshipNulls(options.relationshipDirectories);
+    }
+    return;
+  }
+
+  const fallbackRawCandidates = [
+    ...fallbackContext,
+    ...extraRawCandidates,
+  ];
+
+  const rawCandidates = flattenCandidateValues(
+    existingPayload && existingPayload.unnormalized_address,
+    existingPayload && existingPayload.full_address,
+    existingPayload && existingPayload.address,
+    composeFallbackUnnormalizedAddressFromFields
+      ? composeFallbackUnnormalizedAddressFromFields(existingPayload)
+      : null,
+    unnormalizedSource && unnormalizedSource.unnormalized_address,
+    unnormalizedSource && unnormalizedSource.full_address,
+    unnormalizedSource && unnormalizedSource.site_address,
+    unnormalizedSource && unnormalizedSource.address,
+    seedSource && seedSource.unnormalized_address,
+    seedSource && seedSource.full_address,
+    seedSource && seedSource.situs_address,
+    ...(Array.isArray(fallbackRawCandidates) ? fallbackRawCandidates : []),
+  );
+
+  const resolvedRaw = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    if (
+      Array.isArray(options.relationshipDirectories) &&
+      options.relationshipDirectories.length
+    ) {
+      enforceAutogeneratedRelationshipNulls(options.relationshipDirectories);
+    }
+    return;
+  }
+
+  const rawPayload = { unnormalized_address: resolvedRaw };
+  if (requestIdentifier) {
+    rawPayload.request_identifier = requestIdentifier;
+  }
+  if (preparedSourceRequest) {
+    rawPayload.source_http_request = deepClone(preparedSourceRequest);
+  }
+
+  ensureDir(path.dirname(addressPath));
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(rawPayload, null, 2)}\n`,
+  );
+  if (
+    Array.isArray(options.relationshipDirectories) &&
+    options.relationshipDirectories.length
+  ) {
+    enforceAutogeneratedRelationshipNulls(options.relationshipDirectories);
+  }
+}
+
 function emitMinimalRawAddressOverride() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -57098,6 +57313,18 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    enforceExplicitFinalCountyAddressBranch(path.join(dataDir, "address.json"), {
+      relationshipDirectories: [dataDir, relationshipsDir],
+    });
+  } catch (error) {
+    console.error("Failed to enforce explicit final county address branch:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
@@ -58735,6 +58962,19 @@ run().catch((error) => {
 });
 
 process.on("exit", () => {
+  if (SKIP_LEGACY_ADDRESS_FINALIZERS) {
+    try {
+      const dataDir = path.join("data");
+      const relationshipsDir = path.join("relationships");
+      enforceExplicitFinalCountyAddressBranch(path.join(dataDir, "address.json"), {
+        relationshipDirectories: [dataDir, relationshipsDir],
+      });
+    } catch (error) {
+      console.error("Failed to enforce explicit final county address branch at exit:", error);
+    }
+    return;
+  }
+
   if (FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput) {
     try {
       enforceCountyRawAddressAndNullRelationships();
