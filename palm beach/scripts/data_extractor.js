@@ -12614,6 +12614,18 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
   return finalized;
 }
 
+const COUNTY_ADDRESS_ENSURE_FIELDS = [
+  "street_number",
+  "street_name",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
+  "latitude",
+  "longitude",
+];
+
 const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [
   "plus_four_postal_code",
   "street_post_directional_text",
@@ -12625,18 +12637,6 @@ const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [
   "range",
   "section",
   "block",
-];
-
-const COUNTY_ADDRESS_ENSURE_FIELDS = [
-  "street_number",
-  "street_name",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-  "latitude",
-  "longitude",
 ];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -12690,8 +12690,9 @@ const NORMALIZED_ADDRESS_STRONG_FIELDS = [
   "block",
 ];
 
-const COUNTY_STRICT_NORMALIZED_FIELDS = [
-  ...COUNTY_ADDRESS_ENSURE_FIELDS,
+const COUNTY_STRICT_NORMALIZED_FIELDS = [...COUNTY_ADDRESS_ENSURE_FIELDS];
+
+const COUNTY_OPTIONAL_NORMALIZED_FIELDS = [
   ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
 ];
 
