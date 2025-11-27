@@ -7260,18 +7260,25 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 );
 
 const RAW_ONLY_ADDRESS_FIELDS = Object.freeze([
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "latitude",
   "longitude",
   "city_name",
+  "municipality_name",
   "state_code",
   "postal_code",
   "plus_four_postal_code",
   "country_code",
   "county_name",
-  "municipality_name",
-  "section",
   "township",
   "range",
+  "section",
   "block",
   "lot",
 ]);
@@ -7295,50 +7302,46 @@ function buildRawOnlyAddressSurface(address) {
   };
 
   for (const field of RAW_ONLY_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
-    }
-    const value = address[field];
-    if (value === undefined || value === null) {
-      continue;
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      rawOutput[field] = trimmed;
-      continue;
-    }
+    let value = Object.prototype.hasOwnProperty.call(address, field)
+      ? address[field]
+      : null;
+
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
-      if (Number.isFinite(numeric)) {
-        rawOutput[field] = numeric;
-      }
+      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
       continue;
     }
-    rawOutput[field] = value;
-  }
 
-  if (
-    Object.prototype.hasOwnProperty.call(rawOutput, "latitude") ||
-    Object.prototype.hasOwnProperty.call(rawOutput, "longitude")
-  ) {
-    const numericLat = parseCoordinate(rawOutput.latitude);
-    const numericLon = parseCoordinate(rawOutput.longitude);
-    if (Number.isFinite(numericLat) && Number.isFinite(numericLon)) {
-      rawOutput.latitude = numericLat;
-      rawOutput.longitude = numericLon;
-    } else {
-      rawOutput.latitude = null;
-      rawOutput.longitude = null;
+    if (value === undefined || value === null) {
+      rawOutput[field] = null;
+      continue;
     }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOutput[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    if (typeof value === "number") {
+      rawOutput[field] = Number.isFinite(value) ? value : null;
+      continue;
+    }
+
+    const normalized = normalizeAddressFieldForSchema(field, value);
+    if (normalized === undefined || normalized === null) {
+      rawOutput[field] = null;
+      continue;
+    }
+    if (typeof normalized === "string") {
+      const trimmedNormalized = normalized.trim();
+      rawOutput[field] = trimmedNormalized.length ? trimmedNormalized : null;
+      continue;
+    }
+    rawOutput[field] = normalized;
   }
 
-  if (
-    !rawOutput.postal_code &&
-    Object.prototype.hasOwnProperty.call(rawOutput, "plus_four_postal_code")
-  ) {
+  if (!rawOutput.postal_code) {
     rawOutput.plus_four_postal_code = null;
   }
 
