@@ -170,8 +170,8 @@ function mapFloorMaterial(token) {
     return "Solid Hardwood";
   }
   if (upper.includes("VINYL")) return "Luxury Vinyl Plank";
-  if (upper.includes("TERRAZZO")) return "MAPPING NOT AVAILABLE";
-  if (upper.includes("CONCRETE")) return "MAPPING NOT AVAILABLE";
+  if (upper.includes("TERRAZZO")) return "Terrazzo";
+  if (upper.includes("CONCRETE")) return "Polished Concrete";
   if (upper.includes("CLAY") || upper.includes("TILE")) return "Ceramic Tile";
   return null;
 }
