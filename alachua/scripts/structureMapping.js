@@ -127,7 +127,7 @@ function mapInteriorMaterial(token) {
   const upper = token.toUpperCase();
   if (upper.includes("DRYWALL")) return "Drywall";
   if (upper.includes("PLASTER")) return "Plaster";
-  if (upper.includes("MASON")) return "Masonry";
+  if (upper.includes("MASON")) return "Exposed Block";
   if (upper.includes("N/A") || upper.includes("NONE")) return null;
   return null;
 }
@@ -226,6 +226,14 @@ function buildStructureForBuilding(building, requestIdentifier) {
   const interiorVals = dedupe(
     splitTokens(left["interior walls"]).map(mapInteriorMaterial),
   );
+
+  // Valid values for interior_wall_surface_material_secondary (decorative accents only)
+  const validSecondaryInterior = new Set([
+    "Wainscoting", "Chair Rail", "Crown Molding", "Baseboards", "Wood Trim",
+    "Stone Accent", "Tile Accent", "Metal Accent", "Glass Insert",
+    "Decorative Panels", "Feature Wall Material"
+  ]);
+
   const floorVals = dedupe(
     splitTokens(left["floor cover"]).map(mapFloorMaterial),
   );
@@ -248,7 +256,7 @@ function buildStructureForBuilding(building, requestIdentifier) {
     exterior_wall_material_primary: exteriorPrimary,
     exterior_wall_material_secondary: exteriorSecondary,
     interior_wall_surface_material_primary: interiorVals[0] || null,
-    interior_wall_surface_material_secondary: interiorVals[1] || null,
+    interior_wall_surface_material_secondary: (interiorVals[1] && validSecondaryInterior.has(interiorVals[1])) ? interiorVals[1] : null,
     flooring_material_primary: floorVals[0] || null,
     flooring_material_secondary: floorVals[1] || null,
     roof_covering_material: roofCover,
