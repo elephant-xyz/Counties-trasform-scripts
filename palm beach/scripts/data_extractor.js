@@ -7972,86 +7972,8 @@ function writeAddressPayloadDirect(addressPath, payload) {
   }
 }
 
-function emitFinalNormalizedOrRawAddress(addressPath) {
-  if (!addressPath || !fs.existsSync(addressPath)) {
-    return;
-  }
-
-  const sourcePayload = readJSONIfExists(addressPath) || {};
-  if (!sourcePayload || typeof sourcePayload !== "object") {
-    return;
-  }
-
-  const working = { ...sourcePayload };
-  const requestIdentifier = Object.prototype.hasOwnProperty.call(
-    working,
-    "request_identifier",
-  )
-    ? safeNullIfEmpty(working.request_identifier)
-    : undefined;
-  const preparedSource =
-    Object.prototype.hasOwnProperty.call(working, "source_http_request") &&
-    working.source_http_request
-      ? prepareSourceHttpRequest(working.source_http_request)
-      : null;
-
-  if (Object.prototype.hasOwnProperty.call(working, "request_identifier")) {
-    delete working.request_identifier;
-  }
-  if (Object.prototype.hasOwnProperty.call(working, "source_http_request")) {
-    delete working.source_http_request;
-  }
-
-  const normalizedProbe =
-    typeof ensureNormalizedAddressSchemaSurface === "function"
-      ? ensureNormalizedAddressSchemaSurface({ ...working })
-      : { ...working };
-
-  const shouldForceRawVariant = forceRawAddressVariantOutput === true;
-  const hasNormalizedCoverage =
-    !shouldForceRawVariant &&
-    hasMinimalNormalizedAddressCoverage(normalizedProbe);
-  if (hasNormalizedCoverage) {
-    const normalizedOutput = {
-      ...normalizedProbe,
-    };
-    if (Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")) {
-      delete normalizedOutput.unnormalized_address;
-    }
-    if (requestIdentifier !== undefined) {
-      normalizedOutput.request_identifier =
-        requestIdentifier === null ? null : requestIdentifier;
-    }
-    if (preparedSource) {
-      normalizedOutput.source_http_request = deepClone(preparedSource);
-    } else if (
-      Object.prototype.hasOwnProperty.call(normalizedOutput, "source_http_request")
-    ) {
-      delete normalizedOutput.source_http_request;
-    }
-    writeAddressPayloadDirect(addressPath, normalizedOutput);
-    addressWriteLocked = true;
-    return;
-  }
-
-  const trimmedRaw =
-    typeof sourcePayload.unnormalized_address === "string"
-      ? sourcePayload.unnormalized_address.trim()
-      : "";
-  if (!trimmedRaw.length) {
-    return;
-  }
-
-  const rawOutput = { unnormalized_address: trimmedRaw };
-  if (requestIdentifier !== undefined) {
-    rawOutput.request_identifier =
-      requestIdentifier === null ? null : requestIdentifier;
-  }
-  if (preparedSource) {
-    rawOutput.source_http_request = deepClone(preparedSource);
-  }
-  writeAddressPayloadDirect(addressPath, rawOutput);
-  addressWriteLocked = true;
+function emitFinalNormalizedOrRawAddress(addressPath, options = {}) {
+  enforceCountyAddressSchemaVariant(addressPath, options);
 }
 
 function buildStrictRawOnlyAddress(address) {
@@ -36223,61 +36145,7 @@ function enforceRawOrNormalizedAddressOutput(addressPath, options = {}) {
 }
 
 function enforceRawPreferredAddressVariant(addressPath, options = {}) {
-  if (!addressPath) {
-    return;
-  }
-
-  const {
-    unnormalizedPath = "unnormalized_address.json",
-    seedPath = "property_seed.json",
-  } = options || {};
-
-  const payload = readJSONIfExists(addressPath);
-  const workingPayload =
-    payload && typeof payload === "object" && !Array.isArray(payload)
-      ? payload
-      : null;
-
-  if (workingPayload && hasStrictNonEmptyNormalizedCoverage(workingPayload)) {
-    const normalizedPayload =
-      coerceStrictNormalizedAddressPayload(workingPayload);
-    if (normalizedPayload) {
-      ensureDir(path.dirname(addressPath));
-      originalWriteFileSync.call(
-        fs,
-        addressPath,
-        `${JSON.stringify(normalizedPayload, null, 2)}\n`,
-      );
-      addressWriteLocked = true;
-      return;
-    }
-  }
-
-  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || {};
-  const seedSource = readJSONIfExists(seedPath) || {};
-
-  const rawCandidates = [];
-  gatherRawAddressCandidatesFromSource(workingPayload, rawCandidates);
-  gatherRawAddressCandidatesFromSource(unnormalizedSource, rawCandidates);
-  gatherRawAddressCandidatesFromSource(seedSource, rawCandidates);
-
-  const fallbackRaw = resolveFirstNonEmptyString(rawCandidates);
-  if (!fallbackRaw) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const rawPayload = {
-    unnormalized_address: fallbackRaw,
-  };
-
-  ensureDir(path.dirname(addressPath));
-  originalWriteFileSync.call(
-    fs,
-    addressPath,
-    `${JSON.stringify(rawPayload, null, 2)}\n`,
-  );
-  addressWriteLocked = true;
+  enforceCountyAddressSchemaVariant(addressPath, options);
 }
 
 function buildAddressLineFromFields(address) {
@@ -55557,6 +55425,174 @@ function attachAddressMetadataForSchema(payload, metadataSources = []) {
   return payload;
 }
 
+function stripAddressMetadataFields(address) {
+  if (!address || typeof address !== "object") {
+    return null;
+  }
+  const sanitized = { ...address };
+  for (const metaField of [
+    "request_identifier",
+    "source_http_request",
+    "__force_raw_variant",
+    "__force_normalized_variant",
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(sanitized, metaField)) {
+      delete sanitized[metaField];
+    }
+  }
+  return sanitized;
+}
+
+function gatherRawAddressCandidatesFromSource(source, bucket = []) {
+  if (!source || typeof source !== "object" || !Array.isArray(bucket)) {
+    return;
+  }
+
+  const candidateKeys = [
+    "unnormalized_address",
+    "full_address",
+    "site_address",
+    "address",
+    "mail_address",
+    "raw_address",
+    "location_address",
+    "situs_address",
+  ];
+
+  for (const key of candidateKeys) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) {
+      continue;
+    }
+    const value = source[key];
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      bucket.push(trimmed);
+    }
+  }
+}
+
+function resolveNormalizedAddressCandidate(sources = []) {
+  if (typeof buildNormalizedAddressOutputForSchema !== "function") {
+    return null;
+  }
+
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const candidate = buildNormalizedAddressOutputForSchema({ ...source });
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function enforceCountyAddressSchemaVariant(addressPath, options = {}) {
+  if (!addressPath) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    extraRawCandidates = [],
+  } = options || {};
+
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  const rawSource =
+    unnormalizedPath && fs.existsSync(unnormalizedPath)
+      ? readJSONIfExists(unnormalizedPath) || null
+      : null;
+  const seedSource =
+    seedPath && fs.existsSync(seedPath)
+      ? readJSONIfExists(seedPath) || null
+      : null;
+
+  const normalizedSources = [existingPayload, rawSource, seedSource];
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    normalizedSources.push(...ADDRESS_FALLBACK_CONTEXT.fieldSources);
+  }
+
+  const normalizedCandidate = resolveNormalizedAddressCandidate(
+    normalizedSources,
+  );
+
+  if (normalizedCandidate) {
+    const sanitized = stripAddressMetadataFields(normalizedCandidate) || normalizedCandidate;
+    if (
+      sanitized &&
+      typeof sanitized === "object" &&
+      Object.prototype.hasOwnProperty.call(sanitized, "unnormalized_address")
+    ) {
+      delete sanitized.unnormalized_address;
+    }
+
+    ensureDir(path.dirname(addressPath));
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(sanitized, null, 2)}\n`,
+    );
+    addressWriteLocked = true;
+    return;
+  }
+
+  const rawQueue = [];
+  gatherRawAddressCandidatesFromSource(existingPayload, rawQueue);
+  gatherRawAddressCandidatesFromSource(rawSource, rawQueue);
+  gatherRawAddressCandidatesFromSource(seedSource, rawQueue);
+
+  if (Array.isArray(extraRawCandidates)) {
+    for (const candidate of extraRawCandidates) {
+      if (typeof candidate !== "string") continue;
+      const trimmed = candidate.trim();
+      if (trimmed.length) {
+        rawQueue.push(trimmed);
+      }
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    for (const candidate of ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) {
+      if (typeof candidate !== "string") continue;
+      const trimmed = candidate.trim();
+      if (trimmed.length) {
+        rawQueue.push(trimmed);
+      }
+    }
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawQueue);
+  const trimmedRaw = typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
+  if (!trimmedRaw.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawPayload =
+    stripAddressMetadataFields({ unnormalized_address: trimmedRaw }) || {
+      unnormalized_address: trimmedRaw,
+    };
+
+  ensureDir(path.dirname(addressPath));
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(rawPayload, null, 2)}\n`,
+  );
+  addressWriteLocked = true;
+}
+
 function enforceCountyRawAddressAndNullRelationships() {
   const dataDir = path.join("data");
   const relationshipsDir = path.join("relationships");
@@ -55618,229 +55654,16 @@ function enforceCountyRawAddressAndNullRelationships() {
   collapseAddressToSingleSchemaVariant(addressPath);
 }
 
-function enforceRawAddressMinimalPayload(addressPath) {
-  if (!addressPath || !fs.existsSync(addressPath)) {
-    return;
-  }
-
-  const payload = readJSONIfExists(addressPath);
-  if (!payload || typeof payload !== "object") {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const normalizedOutput =
-    typeof buildNormalizedAddressOutputForSchema === "function"
-      ? buildNormalizedAddressOutputForSchema({ ...payload })
-      : null;
-  if (normalizedOutput) {
-    if (
-      Object.prototype.hasOwnProperty.call(
-        normalizedOutput,
-        "unnormalized_address",
-      )
-    ) {
-      delete normalizedOutput.unnormalized_address;
-    }
-    if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-      const normalizedIdentifier = safeNullIfEmpty(
-        payload.request_identifier,
-      );
-      if (normalizedIdentifier !== undefined) {
-        normalizedOutput.request_identifier =
-          normalizedIdentifier === null ? null : normalizedIdentifier;
-      }
-    }
-    const preparedSource = prepareSourceHttpRequest(
-      payload.source_http_request,
-    );
-    if (preparedSource) {
-      normalizedOutput.source_http_request = deepClone(preparedSource);
-    } else if (
-      Object.prototype.hasOwnProperty.call(
-        normalizedOutput,
-        "source_http_request",
-      )
-    ) {
-      delete normalizedOutput.source_http_request;
-    }
-    originalWriteFileSync.call(
-      fs,
-      addressPath,
-      `${JSON.stringify(normalizedOutput, null, 2)}\n`,
-    );
-    addressWriteLocked = true;
-    return;
-  }
-
-  const trimmedRaw =
-    typeof payload.unnormalized_address === "string"
-      ? payload.unnormalized_address.trim()
-      : "";
-  if (!trimmedRaw.length) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const minimalRaw = {
-    unnormalized_address: trimmedRaw,
-  };
-
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    const normalizedIdentifier = safeNullIfEmpty(
-      payload.request_identifier,
-    );
-    if (normalizedIdentifier !== undefined) {
-      minimalRaw.request_identifier =
-        normalizedIdentifier === null ? null : normalizedIdentifier;
-    }
-  }
-
-  const preparedSource = prepareSourceHttpRequest(
-    payload.source_http_request,
-  );
-  if (preparedSource) {
-    minimalRaw.source_http_request = deepClone(preparedSource);
-  }
-
-  originalWriteFileSync.call(
-    fs,
-    addressPath,
-    `${JSON.stringify(minimalRaw, null, 2)}\n`,
-  );
-  addressWriteLocked = true;
+function enforceRawAddressMinimalPayload(addressPath, options = {}) {
+  enforceCountyAddressSchemaVariant(addressPath, options);
 }
 
 function enforceAddressOneOfStrictCompliance(addressPath, options = {}) {
-  if (!addressPath) return;
-
-  const {
-    unnormalizedPath = "unnormalized_address.json",
-    seedPath = "property_seed.json",
-  } = options;
-
-  const existingPayload = readJSONIfExists(addressPath) || null;
-  const rawSource = unnormalizedPath ? readJSONIfExists(unnormalizedPath) || null : null;
-  const seedSource = seedPath ? readJSONIfExists(seedPath) || null : null;
-  const metadataSources = [existingPayload, rawSource, seedSource].filter(
-    (source) => source && typeof source === "object",
-  );
-
-  const normalizedCandidate =
-    existingPayload && buildNormalizedAddressOutputForSchema({ ...existingPayload });
-
-  if (normalizedCandidate) {
-    if (
-      Object.prototype.hasOwnProperty.call(
-        normalizedCandidate,
-        "unnormalized_address",
-      )
-    ) {
-      delete normalizedCandidate.unnormalized_address;
-    }
-    attachAddressMetadataForSchema(normalizedCandidate, metadataSources);
-    ensureDir(path.dirname(addressPath));
-    originalWriteFileSync.call(
-      fs,
-      addressPath,
-      `${JSON.stringify(normalizedCandidate, null, 2)}\n`,
-    );
-    addressWriteLocked = true;
-    return;
-  }
-
-  const rawCandidates = [
-    existingPayload && existingPayload.unnormalized_address,
-    rawSource && rawSource.unnormalized_address,
-    rawSource && rawSource.full_address,
-    rawSource && rawSource.site_address,
-    rawSource && rawSource.address,
-    rawSource && rawSource.mail_address,
-    rawSource && rawSource.raw_address,
-    rawSource && rawSource.location_address,
-    seedSource && seedSource.unnormalized_address,
-  ];
-
-  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
-  const trimmedRaw =
-    typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
-
-  if (!trimmedRaw.length) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const rawOutput = { unnormalized_address: trimmedRaw };
-  attachAddressMetadataForSchema(rawOutput, metadataSources);
-  ensureDir(path.dirname(addressPath));
-  originalWriteFileSync.call(
-    fs,
-    addressPath,
-    `${JSON.stringify(rawOutput, null, 2)}\n`,
-  );
-  addressWriteLocked = true;
+  enforceCountyAddressSchemaVariant(addressPath, options);
 }
 
 function enforceFinalRawOrNormalizedAddress(addressPath, options = {}) {
-  if (!addressPath) return;
-
-  const {
-    unnormalizedPath = "unnormalized_address.json",
-    seedPath = "property_seed.json",
-  } = options || {};
-
-  const existingPayload = readJSONIfExists(addressPath) || null;
-  const rawSource =
-    unnormalizedPath && fs.existsSync(unnormalizedPath)
-      ? readJSONIfExists(unnormalizedPath) || null
-      : null;
-  const seedSource =
-    seedPath && fs.existsSync(seedPath) ? readJSONIfExists(seedPath) || null : null;
-  const metadataSources = [existingPayload, rawSource, seedSource].filter(
-    (source) => source && typeof source === "object",
-  );
-
-  if (existingPayload && typeof buildNormalizedAddressOutputForSchema === "function") {
-    const normalizedCandidate =
-      buildNormalizedAddressOutputForSchema({ ...existingPayload }) || null;
-    if (
-      normalizedCandidate &&
-      typeof hasStrictNonEmptyNormalizedCoverage === "function" &&
-      hasStrictNonEmptyNormalizedCoverage({ ...normalizedCandidate })
-    ) {
-      attachAddressMetadataForSchema(normalizedCandidate, metadataSources);
-      ensureDir(path.dirname(addressPath));
-      originalWriteFileSync.call(
-        fs,
-        addressPath,
-        `${JSON.stringify(normalizedCandidate, null, 2)}\n`,
-      );
-      addressWriteLocked = true;
-      return;
-    }
-  }
-
-  const rawCandidates = [];
-  gatherRawAddressCandidatesFromSource(existingPayload, rawCandidates);
-  gatherRawAddressCandidatesFromSource(rawSource, rawCandidates);
-  gatherRawAddressCandidatesFromSource(seedSource, rawCandidates);
-
-  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
-  const trimmedRaw = typeof resolvedRaw === "string" ? resolvedRaw.trim() : "";
-  if (!trimmedRaw.length) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const rawPayload = { unnormalized_address: trimmedRaw };
-  attachAddressMetadataForSchema(rawPayload, metadataSources);
-  ensureDir(path.dirname(addressPath));
-  originalWriteFileSync.call(
-    fs,
-    addressPath,
-    `${JSON.stringify(rawPayload, null, 2)}\n`,
-  );
-  addressWriteLocked = true;
+  enforceCountyAddressSchemaVariant(addressPath, options);
 }
 
 async function run() {
