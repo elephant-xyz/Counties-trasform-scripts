@@ -420,6 +420,15 @@ function cleanText(text) {
   return (text || "").replace(/\s+/g, " ").trim();
 }
 
+function cleanConsecutiveSpecialChars(str) {
+  if (!str) return "";
+  // Replace consecutive special characters with single space
+  let cleaned = str.replace(/[\s\-',.][\s\-',.]+/g, " ");
+  // Remove leading/trailing special characters
+  cleaned = cleaned.replace(/^[\s\-',.]+/, "").replace(/[\s\-',.]+$/, "");
+  return cleaned.trim();
+}
+
 function titleCase(str) {
   if (!str) return "";
 
@@ -560,6 +569,11 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = workingTokens[1] || null;
     last = fallbackLastName;
   }
+
+  // Clean consecutive special characters first
+  first = first ? cleanConsecutiveSpecialChars(first) : null;
+  last = last ? cleanConsecutiveSpecialChars(last) : null;
+  middle = middle ? cleanConsecutiveSpecialChars(middle) : null;
 
   first = stripTrailingPeriod(first);
   last = stripTrailingPeriod(last);
@@ -2179,10 +2193,15 @@ function main() {
         ? String(personData.middle_name).trim()
         : "";
 
+    // Clean consecutive special characters first
+    const firstNameCleaned = cleanConsecutiveSpecialChars(firstNameRaw);
+    const lastNameCleaned = cleanConsecutiveSpecialChars(lastNameRaw);
+    const middleCleaned = middleRaw ? cleanConsecutiveSpecialChars(middleRaw) : null;
+
     // Strip trailing periods from all name parts, then apply titleCase
-    const firstNameStripped = stripTrailingPeriod(firstNameRaw);
-    const lastNameStripped = stripTrailingPeriod(lastNameRaw);
-    const middleStripped = middleRaw ? stripTrailingPeriod(middleRaw) : null;
+    const firstNameStripped = stripTrailingPeriod(firstNameCleaned);
+    const lastNameStripped = stripTrailingPeriod(lastNameCleaned);
+    const middleStripped = middleCleaned ? stripTrailingPeriod(middleCleaned) : null;
 
     // Apply titleCase to ensure proper formatting (handles cases like "I.a" -> "Ia")
     const firstName = firstNameStripped ? titleCase(firstNameStripped) : "";
