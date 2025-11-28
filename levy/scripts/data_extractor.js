@@ -4080,31 +4080,6 @@ const structureItems = (() => {
     }
   }
 
-  // First, create current owner entities if available
-  const currentOwnerEntities = [];
-  currentOwners.forEach((owner, idx) => {
-    if (!owner || !owner.type) return;
-
-    if (owner.type === "person") {
-      const normalizedPerson = normalizeOwner(owner, ownersByDate);
-      const personPath = createPersonRecord(normalizedPerson);
-      if (personPath) {
-        currentOwnerEntities.push({
-          type: "person",
-          path: personPath,
-        });
-      }
-    } else if (owner.type === "company") {
-      const companyPath = createCompanyRecord(owner.name || "");
-      if (companyPath) {
-        currentOwnerEntities.push({
-          type: "company",
-          path: companyPath,
-        });
-      }
-    }
-  });
-
   // Note: mailing_address.json creation removed as it's not part of the expected schema for this data group
 
   const work = parseValuationsWorking($);
@@ -4145,7 +4120,36 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, `tax_${rec.year}.json`), tax);
   });
 
+  // Parse sales first to determine if we should create current owner entities
   const sales = parseSales($);
+
+  // Only create current owner entities if there are sales to link them to
+  // (mailing_address.json creation was removed as it's not part of the expected schema for this data group)
+  const currentOwnerEntities = [];
+  if (sales && sales.length > 0) {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+  }
   const salesSorted = sales.sort(
     (a, b) => new Date(toISOFromMDY(b.date)) - new Date(toISOFromMDY(a.date)),
   );
