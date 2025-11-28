@@ -1209,22 +1209,27 @@ const NAME_PREFIX_MAP = new Map([
 ]);
 
 const NAME_SUFFIX_MAP = new Map([
-  ["jr", "Jr"],
-  ["sr", "Sr"],
+  ["jr", "Jr."],
+  ["sr", "Sr."],
   ["ii", "II"],
   ["iii", "III"],
   ["iv", "IV"],
-  ["v", "V"],
-  ["vi", "VI"],
   ["md", "MD"],
   ["phd", "PhD"],
+  ["esq", "Esq."],
+  ["esquire", "Esq."],
+  ["jd", "JD"],
+  ["llm", "LLM"],
+  ["mba", "MBA"],
+  ["rn", "RN"],
   ["dds", "DDS"],
   ["dvm", "DVM"],
+  ["cfa", "CFA"],
   ["cpa", "CPA"],
   ["pe", "PE"],
-  ["esq", "Esq"],
-  ["esquire", "Esq"],
-  ["ret", "Ret"],
+  ["pmp", "PMP"],
+  ["emeritus", "Emeritus"],
+  ["ret", "Ret."],
 ]);
 
 const SURNAME_PARTICLES = new Set([
