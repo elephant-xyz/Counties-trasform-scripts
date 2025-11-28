@@ -2140,35 +2140,17 @@ function emitCanonicalAddressPayload(addressPath) {
     return;
   }
 
-  const canonicalRaw = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+  const canonicalRawSeed = {
     unnormalized_address: resolvedRaw.trim(),
+    request_identifier: requestIdentifier,
   };
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    const resolved = resolveAddressFieldValueFromSources(
-      field,
-      addressSources,
-    );
-    canonicalRaw[field] = resolved === undefined ? null : resolved;
-  }
-
-  if (!canonicalRaw.postal_code) {
-    canonicalRaw.plus_four_postal_code = null;
-  }
-
-  if (
-    hasMeaningfulAddressValue(canonicalRaw.state_code) &&
-    !hasMeaningfulAddressValue(canonicalRaw.country_code)
-  ) {
-    canonicalRaw.country_code = "US";
-  }
-
-  canonicalRaw.request_identifier = requestIdentifier;
-
   if (sourceHttpRequest) {
-    canonicalRaw.source_http_request = deepClone(sourceHttpRequest);
+    canonicalRawSeed.source_http_request = deepClone(sourceHttpRequest);
   }
+
+  const canonicalRaw =
+    buildSchemaCompliantRawAddress(canonicalRawSeed) || canonicalRawSeed;
 
   try {
     originalWriteFileSync.call(
@@ -58858,13 +58840,16 @@ async function run() {
     }
 
     try {
-      addressWriteLocked = true;
-      originalWriteFileSync.call(
-        fs,
+      structuredRawWriteSucceeded = writeSchemaAlignedAddress(
         addressPath,
-        `${JSON.stringify(rawSnapshotPayload, null, 2)}\n`,
+        {
+          ...rawSnapshotPayload,
+          __force_raw_variant: true,
+        },
       );
-      structuredRawWriteSucceeded = true;
+      if (!structuredRawWriteSucceeded) {
+        removeFileIfExists(addressPath);
+      }
     } catch (error) {
       console.error(
         "Failed to emit structured raw county address snapshot:",
@@ -58873,8 +58858,6 @@ async function run() {
       if (!process.exitCode) {
         process.exitCode = 1;
       }
-    } finally {
-      addressWriteLocked = false;
     }
 
     if (structuredRawWriteSucceeded) {
