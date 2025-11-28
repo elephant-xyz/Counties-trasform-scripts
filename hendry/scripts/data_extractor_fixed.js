@@ -2020,9 +2020,9 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  // Also add sale parties
+  // Also add sale parties (only grantees, not grantors, since only grantees get linked to relationships)
   salePartyCache.forEach((parties) => {
-    [...parties.grantors, ...parties.grantees].forEach((party) => {
+    (parties.grantees || []).forEach((party) => {
       if (party.type === "person") addPersonOwner(party);
       else if (party.type === "company") addCompanyOwner(party);
     });
