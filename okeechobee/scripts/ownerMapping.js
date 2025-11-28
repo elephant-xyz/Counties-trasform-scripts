@@ -12,6 +12,174 @@ const $ = cheerio.load(html);
 // Helper: normalize a string's whitespace
 const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
 
+// Allowed prefix/suffix values per Elephant Person schema
+const PERSON_PREFIX_MAP = {
+  MR: "Mr.",
+  MRS: "Mrs.",
+  MS: "Ms.",
+  MISS: "Miss",
+  MX: "Mx.",
+  DR: "Dr.",
+  PROF: "Prof.",
+  REV: "Rev.",
+  FR: "Fr.",
+  SR: "Sr.",
+  BR: "Br.",
+  CAPT: "Capt.",
+  COL: "Col.",
+  MAJ: "Maj.",
+  LT: "Lt.",
+  SGT: "Sgt.",
+  HON: "Hon.",
+  JUDGE: "Judge",
+  RABBI: "Rabbi",
+  IMAM: "Imam",
+  SHEIKH: "Sheikh",
+  SIR: "Sir",
+  DAME: "Dame",
+};
+
+// Broad company indicators (short + long forms)
+const COMPANY_INDICATOR_PATTERNS = [
+  /\binc\b/i,
+  /\binc\.\b/i,
+  /\bincorporated\b/i,
+  /\bcorp\b/i,
+  /\bcorp\.\b/i,
+  /\bcorporation\b/i,
+  /\bco\b/i,
+  /\bco\.\b/i,
+  /\bcompany\b/i,
+  /\bltd\b/i,
+  /\bltd\.\b/i,
+  /\blimited\b/i,
+  /\bllc\b/i,
+  /\bl\.l\.c\.?\b/i,
+  /\blc\b/i,
+  /\bl\.c\.?\b/i,
+  /\blimited liability company\b/i,
+  /\bplc\b/i,
+  /\bp\.l\.c\.?\b/i,
+  /\bpllc\b/i,
+  /\bp\.l\.l\.c\.?\b/i,
+  /\bprofessional limited liability company\b/i,
+  /\blp\b/i,
+  /\bl\.p\.?\b/i,
+  /\blimited partnership\b/i,
+  /\bllp\b/i,
+  /\bl\.l\.p\.?\b/i,
+  /\blimited liability partnership\b/i,
+  /\blpa\b/i,
+  /\bl\.p\.a\.?\b/i,
+  /\bpa\b/i,
+  /\bp\.a\.?\b/i,
+  /\bprofessional association\b/i,
+  /\bpc\b/i,
+  /\bp\.c\.?\b/i,
+  /\bprofessional corporation\b/i,
+  /\bna\b/i,
+  /\bn\.?a\.?\b/i,
+  /\bnational association\b/i,
+  /\bfsb\b/i,
+  /\bf\.s\.b\.?\b/i,
+  /\bfederal savings\b/i,
+  /\bbank\b/i,
+  /\bcredit union\b/i,
+  /\btrust\b/i,
+  /\btrustees?\b/i,
+  /\btr\b/i,
+  /\bfoundation\b/i,
+  /\bministr(?:y|ies)\b/i,
+  /\balliance\b/i,
+  /\bsolutions?\b/i,
+  /\bservices?\b/i,
+  /\bassociates?\b/i,
+  /\bassoc\b/i,
+  /\bassn\b/i,
+  /\bassociation\b/i,
+  /\bholdings?\b/i,
+  /\bpartners?\b/i,
+  /\bpartnership\b/i,
+  /\bproperties\b/i,
+  /\bproperty\b/i,
+  /\benterprises?\b/i,
+  /\benterprise\b/i,
+  /\bmanagement\b/i,
+  /\bmgmt\b/i,
+  /\binvestments?\b/i,
+  /\bgroup\b/i,
+  /\bdevelopment\b/i,
+  /\bdevelopers?\b/i,
+  /\brealty\b/i,
+  /\bmortgage\b/i,
+  /\bhomes\b/i,
+  /\bapartments?\b/i,
+  /\bcondominiums?\b/i,
+  /\bhoa\b/i,
+  /\bhomeowners association\b/i,
+  /\butility\b/i,
+  /\butilities\b/i,
+];
+
+const PERSON_SUFFIX_MAP = {
+  JR: "Jr.",
+  JRQ: "Jr.", // fallback for variants with extra chars stripped
+  SR: "Sr.",
+  II: "II",
+  III: "III",
+  IV: "IV",
+  PHD: "PhD",
+  MD: "MD",
+  ESQ: "Esq.",
+  JD: "JD",
+  LLM: "LLM",
+  MBA: "MBA",
+  RN: "RN",
+  DDS: "DDS",
+  DVM: "DVM",
+  CFA: "CFA",
+  CPA: "CPA",
+  PE: "PE",
+  PMP: "PMP",
+  EMERITUS: "Emeritus",
+  RET: "Ret.",
+};
+
+const normalizeTokenForAffix = (token) =>
+  (token || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+
+function mapPrefix(token) {
+  const normTok = normalizeTokenForAffix(token);
+  return PERSON_PREFIX_MAP[normTok] || null;
+}
+
+function mapSuffix(token) {
+  const normTok = normalizeTokenForAffix(token);
+  return PERSON_SUFFIX_MAP[normTok] || null;
+}
+
+// Separate function to pull prefix/suffix tokens from a token array
+function extractAffixes(parts) {
+  const tokens = [...parts];
+  let prefix = null;
+  if (tokens.length) {
+    const maybe = mapPrefix(tokens[0]);
+    if (maybe) {
+      prefix = maybe;
+      tokens.shift();
+    }
+  }
+  let suffix = null;
+  if (tokens.length) {
+    const maybe = mapSuffix(tokens[tokens.length - 1]);
+    if (maybe) {
+      suffix = maybe;
+      tokens.pop();
+    }
+  }
+  return { prefix, suffix, coreParts: tokens };
+}
+
 // Helper: extract visible text including <br> as newlines
 function textWithBreaks($el) {
   const parts = [];
@@ -57,16 +225,11 @@ function extractPropertyId($) {
 
 // Heuristic: detect company names
 function isCompanyName(name) {
-  const n = (name || "").toLowerCase();
-  // direct boundary checks for common suffixes/patterns
-  if (
-    /\b(inc|inc\.|corp|corp\.|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
-      n,
-    )
-  ) {
-    return true;
-  }
-  return false;
+  const lowered = (name || "").toLowerCase();
+  const compact = lowered.replace(/[.,]/g, " ");
+  return COMPANY_INDICATOR_PATTERNS.some(
+    (re) => re.test(lowered) || re.test(compact),
+  );
 }
 
 // Normalize for deduplication
@@ -122,8 +285,11 @@ function buildPersonFromSingleName(s) {
   const out = [];
   const cleaned = s.replace(/\s{2,}/g, " ");
   const parts = cleaned.split(/\s+/).filter(Boolean);
-  
-  if (parts.length < 2) {
+
+  const { prefix, suffix, coreParts } = extractAffixes(parts);
+  const usableParts = coreParts;
+
+  if (usableParts.length < 2) {
     // Single word cannot be confidently parsed as person -> treat as company fallback
     out.push({ type: "company", name: cleaned });
     return out;
@@ -133,27 +299,40 @@ function buildPersonFromSingleName(s) {
   if (/,/.test(cleaned)) {
     const [last, rest] = cleaned.split(",", 2).map((x) => norm(x));
     const restParts = (rest || "").split(/\s+/).filter(Boolean);
+    let lastParts = last.split(/\s+/).filter(Boolean);
+    const { suffix: suffixFromLast, coreParts: lastCoreParts } =
+      extractAffixes(lastParts);
+    lastParts = lastCoreParts;
+    const detectedPrefix = restParts.length ? mapPrefix(restParts[0]) : null;
+    if (detectedPrefix) restParts.shift();
     const first = restParts.shift() || "";
     const middle = restParts.length ? norm(restParts.join(" ")) : null;
     out.push({
       type: "person",
       first_name: formatNameToPattern(first),
-      last_name: formatNameToPattern(last),
+      last_name: formatNameToPattern(
+        lastParts.length ? lastParts.join(" ") : last,
+      ),
       ...(middle ? { middle_name: formatNameToPattern(middle) } : {}),
+      prefix_name: detectedPrefix || prefix || null,
+      suffix_name: suffixFromLast || suffix || null,
     });
     return out;
   }
   
   // Handle "LASTNAME FIRSTNAME" pattern (common in property records)
-  if (parts.length === 2) {
+  if (usableParts.length === 2) {
     // Check if first part looks like a last name (all caps typically)
-    const [part1, part2] = parts;
+    const [part1, part2] = usableParts;
     if (part1 === part1.toUpperCase() && part2 === part2.toUpperCase()) {
       // Both are uppercase, assume LASTNAME FIRSTNAME
       out.push({
         type: "person",
         first_name: formatNameToPattern(part2),
         last_name: formatNameToPattern(part1),
+        middle_name: null,
+        prefix_name: prefix || null,
+        suffix_name: suffix || null,
       });
     } else {
       // Normal FIRSTNAME LASTNAME
@@ -161,15 +340,18 @@ function buildPersonFromSingleName(s) {
         type: "person",
         first_name: formatNameToPattern(part1),
         last_name: formatNameToPattern(part2),
+        middle_name: null,
+        prefix_name: prefix || null,
+        suffix_name: suffix || null,
       });
     }
     return out;
   }
   
   // Handle multiple parts - assume first is first name, last is last name, middle are middle names
-  const first = parts[0];
-  const last = parts[parts.length - 1];
-  const middleParts = parts.slice(1, -1).filter(Boolean);
+  const first = usableParts[0];
+  const last = usableParts[usableParts.length - 1];
+  const middleParts = usableParts.slice(1, -1).filter(Boolean);
   const middle = middleParts.length ? norm(middleParts.join(" ")) : null;
   
   out.push({
@@ -177,6 +359,8 @@ function buildPersonFromSingleName(s) {
     first_name: formatNameToPattern(first),
     last_name: formatNameToPattern(last),
     ...(middle ? { middle_name: formatNameToPattern(middle) } : {}),
+    prefix_name: prefix || null,
+    suffix_name: suffix || null,
   });
   return out;
 }
@@ -299,6 +483,8 @@ rawCandidates.forEach((raw) => {
         return;
       }
       if (!("middle_name" in o)) o.middle_name = null;
+      if (!("prefix_name" in o)) o.prefix_name = null;
+      if (!("suffix_name" in o)) o.suffix_name = null;
     } else if (o.type === "company") {
       if (!o.name) {
         invalidOwners.push({ raw: raw, reason: "company_missing_name" });
