@@ -2920,7 +2920,7 @@ function main() {
     ? readJSON(structurePath)
     : null;
 
-  const parcelNumber = input.parcelNumber || propSeed.parcel_id;
+  const parcelNumber = propSeed.parcel_id;
   const requestIdentifier =
     (propSeed && propSeed.request_identifier) ||
     (parcelNumber && String(parcelNumber).trim()) ||
