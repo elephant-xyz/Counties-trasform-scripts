@@ -49213,6 +49213,204 @@ async function main() {
     }
   }
 
+  enforceNormalizedOrMinimalRawAddress(finalAddressPath, {
+    unnormalizedPath: "unnormalized_address.json",
+    seedPath: "property_seed.json",
+    defaultCountyName:
+      formattedCountyName || countyName || fallbackCountyName || "Palm Beach",
+    defaultStateCode:
+      resolvedStateUpper || inferredStateCode || fallbackStateCode || "FL",
+    defaultCountryCode: "US",
+    extraRawCandidates: [
+      ...(Array.isArray(finalUnnormalizedCandidates)
+        ? finalUnnormalizedCandidates
+        : []),
+      ...(postProcessRawOptions &&
+      Array.isArray(postProcessRawOptions.unnormalizedCandidates)
+        ? postProcessRawOptions.unnormalizedCandidates
+        : []),
+      ...(ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : []),
+      unnormalizedAddressCandidate,
+      fullAddr,
+      fullAddrInput,
+      siteLocationLine,
+      combinedModelAddress,
+      addressLineCombined,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ],
+    requestIdentifierCandidates: [
+      ...(postProcessRawOptions &&
+      Array.isArray(postProcessRawOptions.requestIdentifierCandidates)
+        ? postProcessRawOptions.requestIdentifierCandidates
+        : []),
+      ...(ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : []),
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      ...(postProcessRawOptions &&
+      Array.isArray(postProcessRawOptions.sourceHttpRequestCandidates)
+        ? postProcessRawOptions.sourceHttpRequestCandidates
+        : []),
+      ...(ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+        : []),
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+  });
+
+}
+
+function enforceNormalizedOrMinimalRawAddress(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const {
+    unnormalizedPath = null,
+    seedPath = null,
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    extraRawCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const normalizedOptions = {
+    defaultCountyName,
+    defaultStateCode,
+    defaultCountryCode,
+  };
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath);
+  const seedSource = readJSONIfExists(seedPath);
+
+  const normalizedCandidate =
+    buildCountyNormalizedOneOfPayload(payload, normalizedOptions) ||
+    buildCountyNormalizedOneOfPayload(unnormalizedSource, normalizedOptions) ||
+    buildCountyNormalizedOneOfPayload(seedSource, normalizedOptions);
+
+  const normalizedRequestIdentifierCandidates = Array.isArray(
+    requestIdentifierCandidates,
+  )
+    ? requestIdentifierCandidates
+    : [requestIdentifierCandidates];
+  const normalizedSourceHttpCandidates = Array.isArray(
+    sourceHttpRequestCandidates,
+  )
+    ? sourceHttpRequestCandidates
+    : [sourceHttpRequestCandidates];
+
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    payload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    ...normalizedRequestIdentifierCandidates,
+  );
+
+  const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    payload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+    ...normalizedSourceHttpCandidates,
+  );
+
+  if (normalizedCandidate) {
+    const normalizedOutput = { ...normalizedCandidate };
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    if (resolvedRequestIdentifier !== undefined) {
+      normalizedOutput.request_identifier =
+        resolvedRequestIdentifier != null ? resolvedRequestIdentifier : null;
+    }
+    if (resolvedSourceHttpRequest) {
+      normalizedOutput.source_http_request = deepClone(
+        prepareSourceHttpRequest(resolvedSourceHttpRequest),
+      );
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "source_http_request",
+      )
+    ) {
+      normalizedOutput.source_http_request = null;
+    }
+    writeJSON(addressPath, normalizedOutput);
+    return;
+  }
+
+  const normalizedExtraRawCandidates = Array.isArray(extraRawCandidates)
+    ? extraRawCandidates
+    : [extraRawCandidates];
+
+  const rawCandidates = collectNonEmptyStrings(
+    payload.unnormalized_address,
+    payload.full_address,
+    payload.address,
+    payload.site_address,
+    normalizedExtraRawCandidates,
+    unnormalizedSource && [
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+      unnormalizedSource.address,
+      unnormalizedSource.site_address,
+    ],
+    seedSource && [
+      seedSource.unnormalized_address,
+      seedSource.full_address,
+      seedSource.address,
+      seedSource.site_address,
+    ],
+  );
+
+  if (!rawCandidates.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOutput = {
+    unnormalized_address: rawCandidates[0],
+  };
+
+  if (resolvedRequestIdentifier !== undefined) {
+    rawOutput.request_identifier =
+      resolvedRequestIdentifier != null ? resolvedRequestIdentifier : null;
+  }
+
+  if (resolvedSourceHttpRequest) {
+    rawOutput.source_http_request = deepClone(
+      prepareSourceHttpRequest(resolvedSourceHttpRequest),
+    );
+  }
+
+  const serializedRaw = `${JSON.stringify(rawOutput, null, 2)}\n`;
+  try {
+    originalWriteFileSync.call(fs, addressPath, serializedRaw);
+  } catch (error) {
+    console.error("Failed to persist minimal raw address payload:", error);
+  }
 }
 
 async function finalizeCountyAddressOneOfSelection(addressFilePath, options = {}) {
@@ -63759,6 +63957,43 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to enforce final county address submission variant:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const fallbackRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    const fallbackRequestIdentifiers =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : [];
+    const fallbackSourceRequests =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+        : [];
+    enforceNormalizedOrMinimalRawAddress(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates: fallbackRawCandidates,
+      requestIdentifierCandidates: fallbackRequestIdentifiers,
+      sourceHttpRequestCandidates: fallbackSourceRequests,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal raw address variant on exit:",
       error,
     );
   }
