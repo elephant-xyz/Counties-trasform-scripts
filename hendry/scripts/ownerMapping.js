@@ -367,13 +367,17 @@ function classifyOwner(raw) {
     };
   }
 
+  const validatedSuffix = validateSuffix(suffix);
+  // Extra defensive check: ensure suffix is either null or in VALID_SUFFIXES
+  const finalSuffix = (validatedSuffix && VALID_SUFFIXES.has(validatedSuffix)) ? validatedSuffix : null;
+
   const person = {
     type: "person",
     first_name: first,
     last_name: last,
     middle_name: middle ? middle : null,
     prefix_name: prefix || null,
-    suffix_name: validateSuffix(suffix),
+    suffix_name: finalSuffix,
   };
   return { valid: true, owner: person };
 }

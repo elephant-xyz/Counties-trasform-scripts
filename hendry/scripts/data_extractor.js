@@ -2050,18 +2050,24 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
-    suffix_name: validateSuffix(p.suffix_name),
-    mailing_address: p.mailing_address || null,
-    birth_date: null,
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
+  people = Array.from(personMap.values()).map((p) => {
+    const validatedSuffix = validateSuffix(p.suffix_name);
+    // Extra defensive check: ensure suffix is either null or in VALID_SUFFIXES
+    const finalSuffix = (validatedSuffix && VALID_SUFFIXES.has(validatedSuffix)) ? validatedSuffix : null;
+
+    return {
+      first_name: p.first_name ? titleCaseName(p.first_name) : null,
+      middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+      last_name: p.last_name ? titleCaseName(p.last_name) : null,
+      prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
+      suffix_name: finalSuffix,
+      mailing_address: p.mailing_address || null,
+      birth_date: null,
+      us_citizenship_status: null,
+      veteran_status: null,
+      request_identifier: parcelId,
+    };
+  });
   personIndexByKey = new Map();
   people.forEach((p, idx) => {
     const idxOneBased = idx + 1;
