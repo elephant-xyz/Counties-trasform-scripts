@@ -59821,31 +59821,26 @@ function coerceFinalAddressPayload(addressPath, options = {}) {
     rawOutput.request_identifier = requestIdentifier;
   }
 
-  rawOutput.__force_raw_variant = true;
+  const paddedRawOutput =
+    ensureRawAddressFieldCompleteness({
+      ...rawOutput,
+      __force_raw_variant: true,
+    }) ||
+    buildStrictRawOnlyAddress({
+      ...rawOutput,
+      __force_raw_variant: true,
+    }) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...rawOutput,
+    };
 
-  const rawWhitelist = new Set([
-    "unnormalized_address",
-    "latitude",
-    "longitude",
-    "city_name",
-    "municipality_name",
-    "county_name",
-    "state_code",
-    "country_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "request_identifier",
-    "__force_raw_variant",
-  ]);
-  Object.keys(rawOutput).forEach((key) => {
-    if (!rawWhitelist.has(key)) {
-      delete rawOutput[key];
-    }
-  });
   if (
-    Object.prototype.hasOwnProperty.call(rawOutput, "__force_raw_variant")
+    Object.prototype.hasOwnProperty.call(
+      paddedRawOutput,
+      "__force_raw_variant",
+    )
   ) {
-    delete rawOutput.__force_raw_variant;
+    delete paddedRawOutput.__force_raw_variant;
   }
 
   ensureDir(path.dirname(addressPath));
@@ -59854,7 +59849,7 @@ function coerceFinalAddressPayload(addressPath, options = {}) {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(rawOutput, null, 2)}\n`,
+      `${JSON.stringify(paddedRawOutput, null, 2)}\n`,
     );
   } finally {
     addressWriteLocked = false;
