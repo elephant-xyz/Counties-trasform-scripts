@@ -70,7 +70,7 @@ const deedCodeMap = {
   REL: "Release",
   ASSG: "Assignment",
   LEAS: "Lease",
-  TR: "Trust",
+  TR: "Trustee's Deed",
   WILL: "Will",
   PROB: "Probate",
   JUDG: "Judgment",
