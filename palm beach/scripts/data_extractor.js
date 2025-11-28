@@ -5516,6 +5516,196 @@ function enforceRawAddressSchemaRequirements(addressPath, options = {}) {
   }
 }
 
+function enforceMinimalCountyAddressOneOf(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const {
+    unnormalizedPath = null,
+    seedPath = null,
+    extraRawCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const rawSource =
+    unnormalizedPath && fs.existsSync(unnormalizedPath)
+      ? readJSONIfExists(unnormalizedPath)
+      : null;
+  const seedSource =
+    seedPath && fs.existsSync(seedPath) ? readJSONIfExists(seedPath) : null;
+
+  const normalizedCandidate =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...payload })
+      ? buildNormalizedAddressOutputForSchema({ ...payload })
+      : null;
+
+  if (normalizedCandidate) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+      normalizedCandidate.request_identifier,
+      payload && payload.request_identifier,
+      rawSource && rawSource.request_identifier,
+      seedSource && seedSource.request_identifier,
+      seedSource && seedSource.parcel_id,
+      ...(Array.isArray(requestIdentifierCandidates)
+        ? requestIdentifierCandidates
+        : []),
+    );
+    if (resolvedRequestIdentifier !== undefined) {
+      normalizedCandidate.request_identifier =
+        resolvedRequestIdentifier === null ? null : resolvedRequestIdentifier;
+    }
+    const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+      normalizedCandidate.source_http_request,
+      payload && payload.source_http_request,
+      rawSource && rawSource.source_http_request,
+      seedSource && seedSource.source_http_request,
+      ...(Array.isArray(sourceHttpRequestCandidates)
+        ? sourceHttpRequestCandidates
+        : []),
+    );
+    if (resolvedSourceRequest) {
+      normalizedCandidate.source_http_request = deepClone(
+        prepareSourceHttpRequest(resolvedSourceRequest) ||
+          resolvedSourceRequest,
+      );
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "source_http_request",
+      )
+    ) {
+      delete normalizedCandidate.source_http_request;
+    }
+    writeAddressJSONBypass(addressPath, normalizedCandidate);
+    return;
+  }
+
+  const rawCandidates = [];
+  gatherRawAddressCandidatesFromSource(payload, rawCandidates);
+  gatherRawAddressCandidatesFromSource(rawSource, rawCandidates);
+  gatherRawAddressCandidatesFromSource(seedSource, rawCandidates);
+  if (Array.isArray(extraRawCandidates)) {
+    for (const candidate of extraRawCandidates) {
+      if (typeof candidate !== "string") continue;
+      const trimmed = candidate.trim();
+      if (trimmed.length) {
+        rawCandidates.push(trimmed);
+      }
+    }
+  }
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const resolveField = (field, ...aliases) => {
+    const queue = [];
+    const pushCandidate = (value) => {
+      if (value === undefined || value === null) return;
+      queue.push(value);
+    };
+    const sources = [payload, rawSource, seedSource];
+    for (const source of sources) {
+      if (!source || typeof source !== "object") continue;
+      if (Object.prototype.hasOwnProperty.call(source, field)) {
+        pushCandidate(source[field]);
+      }
+      for (const alias of aliases) {
+        if (!alias) continue;
+        if (Object.prototype.hasOwnProperty.call(source, alias)) {
+          pushCandidate(source[alias]);
+        }
+      }
+    }
+    return resolveFieldFromCandidates(field, queue);
+  };
+
+  const resolvedCountry =
+    resolveField("country_code") || defaultCountryCode || null;
+  const resolvedState = resolveField("state_code");
+  const resolvedPostal = resolveField("postal_code");
+  const resolvedPlus4 = resolveField("plus_four_postal_code");
+  const resolvedCounty =
+    resolveField("county_name", "county_jurisdiction") || null;
+  const resolvedCity = resolveField("city_name");
+  const resolvedMunicipality = resolveField("municipality_name");
+
+  const latCandidate = resolveField("latitude");
+  const lonCandidate = resolveField("longitude");
+  const numericLatitude = parseCoordinate(latCandidate);
+  const numericLongitude = parseCoordinate(lonCandidate);
+  const hasCoordinatePair =
+    Number.isFinite(numericLatitude) && Number.isFinite(numericLongitude);
+
+  const rawPayload = {
+    unnormalized_address: resolvedRaw,
+    county_name: resolvedCounty,
+    city_name: resolvedCity || resolvedMunicipality || null,
+    municipality_name: resolvedMunicipality || null,
+    state_code: resolvedState || null,
+    postal_code: resolvedPostal || null,
+    plus_four_postal_code: resolvedPlus4 || null,
+    country_code: resolvedCountry,
+    latitude: hasCoordinatePair ? numericLatitude : null,
+    longitude: hasCoordinatePair ? numericLongitude : null,
+  };
+
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    payload && payload.request_identifier,
+    rawSource && rawSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+    ...(Array.isArray(requestIdentifierCandidates)
+      ? requestIdentifierCandidates
+      : []),
+  );
+  rawPayload.request_identifier =
+    resolvedRequestIdentifier === undefined
+      ? null
+      : resolvedRequestIdentifier;
+
+  const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+    payload && payload.source_http_request,
+    rawSource && rawSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
+      : []),
+  );
+  if (resolvedSourceRequest) {
+    rawPayload.source_http_request = deepClone(
+      prepareSourceHttpRequest(resolvedSourceRequest) || resolvedSourceRequest,
+    );
+  }
+
+  for (const key of Object.keys(rawPayload)) {
+    if (rawPayload[key] === undefined) {
+      rawPayload[key] = null;
+    }
+  }
+
+  writeAddressJSONBypass(addressPath, rawPayload);
+}
+
 function buildStrictNormalizedAddressPayload(source) {
   if (!source || typeof source !== "object") {
     return null;
@@ -62229,6 +62419,41 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to enforce raw address schema requirements at exit:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const extraRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    const requestIdentifierCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+        : [];
+    const sourceHttpRequestCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+        : [];
+    enforceMinimalCountyAddressOneOf(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      extraRawCandidates,
+      requestIdentifierCandidates,
+      sourceHttpRequestCandidates,
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal county address oneOf selection:",
       error,
     );
   }
