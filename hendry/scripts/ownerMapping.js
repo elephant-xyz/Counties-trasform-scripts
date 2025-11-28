@@ -296,6 +296,10 @@ function classifyOwner(raw) {
   if (!cleaned) {
     return { valid: false, reason: "empty_after_clean", raw };
   }
+  // Filter out placeholder patterns like **Multiple Buyers**, **Multiple Sellers**, **None**, etc.
+  if (/\*\*/.test(cleaned) || /\*\*.*\*\*/.test(raw || "")) {
+    return { valid: false, reason: "placeholder_pattern", raw: cleaned };
+  }
   if (isCompanyName(cleaned)) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
