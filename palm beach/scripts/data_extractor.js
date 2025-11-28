@@ -14766,8 +14766,58 @@ function ensureCountyRawRequiredFieldSurface(address) {
     }
   }
 
+  const normalizedFieldBlueprint =
+    Array.isArray(COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT) &&
+    COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT.length
+      ? COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT
+      : NORMALIZED_ADDRESS_FIELDS;
+
+  for (const field of normalizedFieldBlueprint) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+      continue;
+    }
+
+    const value = address[field];
+    if (value === undefined) {
+      address[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      address[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    address[field] = value === null ? null : value;
+  }
+
+  if (!address.postal_code) {
+    address.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(address.state_code) &&
+    !hasMeaningfulAddressValue(address.country_code)
+  ) {
+    address.country_code = "US";
+  }
+
+  const allowedRawFields =
+    RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET &&
+    RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET.size
+      ? RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET
+      : RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS;
+
   for (const key of Object.keys(address)) {
-    if (RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS.has(key)) {
+    if (allowedRawFields.has(key)) {
       continue;
     }
     delete address[key];
