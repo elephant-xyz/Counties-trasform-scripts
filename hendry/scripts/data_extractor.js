@@ -1952,79 +1952,28 @@ function writePersonCompaniesSalesRelationships(
     });
   };
 
-  // First, collect sale parties to know who will be referenced
-  const salePartyCache = sales.map((rec) => {
-    const grantors = parseSaleParties(rec.grantor || "");
-    const grantees = parseSaleParties(rec.grantee || "");
-    return { grantors, grantees };
-  });
-
-  // Determine which owners will actually be linked to relationships
-  const referencedOwnersSet = new Set();
-
-  // Add current owners (for mailing address relationships)
-  const currentOwners = Array.isArray(ownersByDate.current) ? ownersByDate.current : [];
-  currentOwners.forEach((o) => {
-    if (o.type === "person") {
-      const key = buildPersonKey(o.first_name, o.middle_name || null, o.last_name, o.suffix_name || null);
-      referencedOwnersSet.add(`person:${key}`);
-    } else if (o.type === "company") {
-      const key = buildCompanyKey(o.name);
-      referencedOwnersSet.add(`company:${key}`);
-    }
-  });
-
-  // Add owners from sales dates that match actual sales
-  sales.forEach((rec) => {
-    const dateKey = parseDateToISO(rec.saleDate);
-    const ownersOnDate = (dateKey && ownersByDate[dateKey]) || [];
-    ownersOnDate.forEach((o) => {
-      if (o.type === "person") {
-        const key = buildPersonKey(o.first_name, o.middle_name || null, o.last_name, o.suffix_name || null);
-        referencedOwnersSet.add(`person:${key}`);
-      } else if (o.type === "company") {
-        const key = buildCompanyKey(o.name);
-        referencedOwnersSet.add(`company:${key}`);
-      }
-    });
-  });
-
-  // Add grantors and grantees from sale parties
-  salePartyCache.forEach((parties) => {
-    [...parties.grantors, ...parties.grantees].forEach((party) => {
-      if (party.type === "person") {
-        const key = buildPersonKey(party.first_name, party.middle_name || null, party.last_name, party.suffix_name || null);
-        referencedOwnersSet.add(`person:${key}`);
-      } else if (party.type === "company") {
-        const key = buildCompanyKey(party.name);
-        referencedOwnersSet.add(`company:${key}`);
-      }
-    });
-  });
-
-  // Now collect only the owners that will be referenced
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
-        const key = buildPersonKey(o.first_name, o.middle_name || null, o.last_name, o.suffix_name || null);
-        if (referencedOwnersSet.has(`person:${key}`)) {
-          addPersonOwner(o);
-        }
+        addPersonOwner(o);
       } else if (o.type === "company") {
-        const key = buildCompanyKey(o.name);
-        if (referencedOwnersSet.has(`company:${key}`)) {
-          addCompanyOwner(o);
-        }
+        addCompanyOwner(o);
       }
     });
   });
 
-  // Also add sale parties
-  salePartyCache.forEach((parties) => {
-    [...parties.grantors, ...parties.grantees].forEach((party) => {
+  const salePartyCache = sales.map((rec) => {
+    const grantors = parseSaleParties(rec.grantor || "");
+    const grantees = parseSaleParties(rec.grantee || "");
+    grantors.forEach((party) => {
       if (party.type === "person") addPersonOwner(party);
       else if (party.type === "company") addCompanyOwner(party);
     });
+    grantees.forEach((party) => {
+      if (party.type === "person") addPersonOwner(party);
+      else if (party.type === "company") addCompanyOwner(party);
+    });
+    return { grantors, grantees };
   });
 
   people = Array.from(personMap.values()).map((p) => ({
@@ -2067,7 +2016,9 @@ function writePersonCompaniesSalesRelationships(
     writeJSON(path.join("data", `company_${idxOneBased}.json`), companyRecord);
   });
 
-  // currentOwners already defined above, no need to redefine
+  const currentOwners = Array.isArray(ownersByDate.current)
+    ? ownersByDate.current
+    : [];
   const mailingPath = path.join("data", "mailing_address.json");
   if (fs.existsSync(mailingPath)) fs.unlinkSync(mailingPath);
 
@@ -2165,17 +2116,12 @@ function writePersonCompaniesSalesRelationships(
 
     const saleParties = salePartyCache[idx] || { grantors: [], grantees: [] };
     let targetParties = saleParties.grantees;
-    // If no grantees, first try current sale's grantors, then fall back to previous sales
     if (!targetParties || targetParties.length === 0) {
-      if (saleParties.grantors && saleParties.grantors.length > 0) {
-        targetParties = saleParties.grantors;
-      } else {
-        for (let prev = idx - 1; prev >= 0; prev--) {
-          const prevGrantors = (salePartyCache[prev] || {}).grantors || [];
-          if (prevGrantors.length) {
-            targetParties = prevGrantors;
-            break;
-          }
+      for (let prev = idx - 1; prev >= 0; prev--) {
+        const prevGrantors = (salePartyCache[prev] || {}).grantors || [];
+        if (prevGrantors.length) {
+          targetParties = prevGrantors;
+          break;
         }
       }
     }
