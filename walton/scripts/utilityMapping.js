@@ -78,44 +78,35 @@ function collectBuildings($) {
   return buildings;
 }
 
-function mapCoolingSystem(detail) {
-  const d = (detail || "").toUpperCase();
-  if (d.includes("CENTRAL")) return "CentralAir";
-  if (d.includes("PACKAGE") || d.includes("PACKAGED")) return "PackagedSystem";
-  if (d.includes("WINDOW")) return "WindowAirConditioner";
-  if (d.includes("FAN")) return "CeilingFan";
-  if (d.includes("DUCTLESS") || d.includes("MINI SPLIT")) return "Ductless";
-  if (d.includes("GEOTHERMAL")) return "GeothermalCooling";
-  if (d.includes("WALL")) return "WallUnit";
-  return null;
-}
+function inferHVAC(buildings) {
+  let cooling_system_type = null;
+  let heating_system_type = null;
 
-function mapHeatingSystem(detail) {
-  const d = (detail || "").toUpperCase();
-  if (d.includes("CENTRAL") || d.includes("AIR DUCTED")) return "Central";
-  if (d.includes("HEAT PUMP") || d.includes("HP")) return "HeatPump";
-  if (d.includes("ELECTRIC")) return "Electric";
-  if (d.includes("GAS")) return "Gas";
-  if (d.includes("OIL")) return "Oil";
-  if (d.includes("RADIANT")) return "Radiant";
-  if (d.includes("FURNACE")) return "GasFurnace";
-  if (d.includes("BASEBOARD")) return "Baseboard";
-  return null;
-}
+  buildings.forEach((b) => {
+    const ac = (b["Air Conditioning"] || "").toUpperCase();
+    const heat = (b["Heat"] || "").toUpperCase();
+    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
+    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
+      heating_system_type = "Central";
+  });
 
-function defaultUtility({
-  building_number = null,
-  utility_index = 1,
-  cooling_system_type = null,
-  heating_system_type = null,
-  request_identifier = null,
-}) {
+  if (cooling_system_type === "CentralAir") {
+    hvac_system_configuration = "SplitSystem";
+    hvac_equipment_component = "CondenserAndAirHandler";
+    hvac_condensing_unit_present = "Yes";
+  }
+
   return {
-    request_identifier,
-    building_number,
-    utility_index,
     cooling_system_type,
-    heating_system_type,
+    heating_system_type
+  };
+}
+
+function buildUtilityRecord($, buildings) {
+  const hvac = inferHVAC(buildings);
+  const rec = {
+    cooling_system_type: hvac.cooling_system_type,
+    heating_system_type: hvac.heating_system_type,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -155,58 +146,25 @@ function defaultUtility({
     water_heater_model: null,
     well_installation_date: null,
   };
-}
 
-function buildUtilityRecords(parcelId, buildings) {
-  const utilities = [];
-
-  buildings.forEach((building, idx) => {
-    const buildingNumber = idx + 1;
-    const cooling_system_type = mapCoolingSystem(building["Air Conditioning"]);
-    const heating_system_type = mapHeatingSystem(building["Heat"]);
-    utilities.push(
-      defaultUtility({
-        building_number: buildingNumber,
-        utility_index: buildingNumber,
-        cooling_system_type,
-        heating_system_type,
-        request_identifier: parcelId
-          ? `${parcelId}_utility_${buildingNumber}`
-          : null,
-      }),
-    );
-  });
-
-  if (!utilities.length) {
-    utilities.push(
-      defaultUtility({
-        utility_index: 1,
-        request_identifier: parcelId ? `${parcelId}_utility_1` : null,
-      }),
-    );
-  }
-
-  return utilities;
+  return rec;
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) {
-    console.log("Parcel ID not found");
-    return;
-  }
+  if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const utilities = buildUtilityRecords(parcelId, buildings);
+  const utilitiesRecord = buildUtilityRecord($, buildings);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = { utilities };
+  outObj[`property_${parcelId}`] = utilitiesRecord;
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
-  console.log(`Wrote ${outPath} with ${utilities.length} utility entries`);
+  console.log(`Wrote ${outPath}`);
 }
 
 if (require.main === module) {

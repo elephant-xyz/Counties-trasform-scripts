@@ -87,11 +87,10 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, building_number = null, space_type_index = null) {
+function defaultLayout(space_type, idx) {
   return {
     space_type,
-    space_type_index: space_type_index ?? null,
-    building_number,
+    space_index: idx,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -129,57 +128,29 @@ function defaultLayout(space_type, building_number = null, space_type_index = nu
 }
 
 function buildLayoutsFromBuildings(buildings) {
-  const layouts = [];
-
-  buildings.forEach((building, idx) => {
-    const buildingNumber = idx + 1;
-    const buildingSpaceTypeIndex = `${buildingNumber}`;
-    layouts.push(defaultLayout("Building", buildingNumber, buildingSpaceTypeIndex));
-
-    const bathrooms = Math.max(toInt(building["Bathrooms"]), 0);
-    const bedrooms = Math.max(toInt(building["Bedrooms"]), 0);
-    const spaceCounters = {};
-
-    function addSpaces(count, spaceType) {
-      const counterKey = spaceType;
-      for (let i = 0; i < count; i++) {
-        spaceCounters[counterKey] = (spaceCounters[counterKey] || 0) + 1;
-        const typeIndex = `${buildingNumber}.${spaceCounters[counterKey]}`;
-        layouts.push(defaultLayout(spaceType, buildingNumber, typeIndex));
-      }
-    }
-
-    addSpaces(bathrooms, "Full Bathroom");
-    addSpaces(bedrooms, "Bedroom");
+  // Sum across all buildings
+  let totalBeds = 0;
+  let totalBaths = 0;
+  buildings.forEach((b) => {
+    totalBeds += toInt(b["Bedrooms"]);
+    totalBaths += toInt(b["Bathrooms"]);
   });
-
-  return layouts;
-}
-function readJSON(p) {
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf8"));
-  } catch (e) {
-    return null;
+  const layouts = [];
+  let idx = 1;
+  for (let i = 0; i < totalBeds; i++) {
+    layouts.push(defaultLayout("Bedroom", idx++));
   }
+  for (let i = 0; i < totalBaths; i++) {
+    layouts.push(defaultLayout("Full Bathroom", idx++));
+  }
+  return layouts;
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) {
-    console.log("Parcel ID not found");
-    return;
-  }
-  const propertySeed = readJSON("property_seed.json");
-  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
-    throw {
-      type: "error",
-      message: "Request identifier and parcel id don't match.",
-      path: "property.request_identifier",
-    };
-  }
-
+  if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);
 
