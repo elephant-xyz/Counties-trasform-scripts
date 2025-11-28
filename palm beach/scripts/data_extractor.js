@@ -9612,9 +9612,26 @@ function stripNormalizedFieldsFromRawPayload(address) {
   }
 
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      delete address[field];
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+      continue;
     }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (hasMeaningfulAddressValue(address[field])) {
+      if (typeof address[field] === "string") {
+        const trimmed = address[field].trim();
+        address[field] = trimmed.length ? trimmed : null;
+      }
+      continue;
+    }
+
+    address[field] = null;
   }
 
   return address;
@@ -14811,6 +14828,24 @@ function ensureCountyRawRequiredFieldSurface(address) {
     unnormalized_address: trimmedRaw,
   };
 
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      rawPayload[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (hasMeaningfulAddressValue(address[field])) {
+      rawPayload[field] =
+        typeof address[field] === "string"
+          ? address[field].trim()
+          : address[field];
+      continue;
+    }
+
+    rawPayload[field] = null;
+  }
+
   if (
     Object.prototype.hasOwnProperty.call(address, "request_identifier")
   ) {
@@ -14839,6 +14874,85 @@ function ensureCountyRawRequiredFieldSurface(address) {
   });
   Object.assign(address, rawPayload);
   return address;
+}
+
+function enforceRawAddressNormalizedFieldPresence(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    typeof payload.unnormalized_address !== "string"
+  ) {
+    return;
+  }
+
+  const trimmedRaw = payload.unnormalized_address.trim();
+  if (!trimmedRaw.length) {
+    return;
+  }
+
+  const unnormalizedSource = readJSONIfExists("unnormalized_address.json");
+  const seedSource = readJSONIfExists("property_seed.json");
+  const hydratedPayload = { ...payload, unnormalized_address: trimmedRaw };
+
+  const sources = [payload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const hydrateFieldFromSources = (field) => {
+    if (hasMeaningfulAddressValue(hydratedPayload[field])) {
+      return;
+    }
+    for (const source of sources) {
+      let candidate = source[field];
+      if (
+        field === "county_name" &&
+        !hasMeaningfulAddressValue(candidate) &&
+        hasMeaningfulAddressValue(source.county_jurisdiction)
+      ) {
+        candidate = source.county_jurisdiction;
+      }
+      if (!hasMeaningfulAddressValue(candidate)) {
+        continue;
+      }
+      hydratedPayload[field] = candidate;
+      return;
+    }
+  };
+
+  NORMALIZED_ADDRESS_FIELDS.forEach(hydrateFieldFromSources);
+
+  const derivedFromRaw = deriveNormalizedAddressFieldsFromRaw(trimmedRaw) || {};
+  for (const [field, value] of Object.entries(derivedFromRaw)) {
+    if (hasMeaningfulAddressValue(hydratedPayload[field])) {
+      continue;
+    }
+    if (!hasMeaningfulAddressValue(value)) {
+      continue;
+    }
+    hydratedPayload[field] = value;
+  }
+
+  const paddedPayload =
+    ensureCountyRawRequiredFieldSurface(hydratedPayload) || null;
+  if (!paddedPayload) {
+    return;
+  }
+
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(paddedPayload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error("Failed to enforce raw address field presence:", error);
+  }
 }
 
 function enforceFinalCountyAddressSurface(addressPath) {
@@ -62927,6 +63041,17 @@ async function run() {
   try {
     const dataDir = path.join("data");
     const addressPath = path.join(dataDir, "address.json");
+    enforceRawAddressNormalizedFieldPresence(addressPath);
+  } catch (error) {
+    console.error("Failed to ensure raw address field coverage:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
     const existingPayload = readJSONIfExists(addressPath);
     const paddedPayload =
       ensureRawAddressFieldCompleteness(existingPayload) || null;
@@ -64216,5 +64341,15 @@ process.on("exit", () => {
     persistAddressPayload(rawOutput);
   } catch (error) {
     console.error("Failed to enforce terminal address variant:", error);
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    enforceRawAddressNormalizedFieldPresence(addressPath);
+  } catch (error) {
+    console.error("Failed to enforce final raw address schema surface:", error);
   }
 });
