@@ -9496,14 +9496,25 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// County schema requires the raw branch to retain the same structured surface
-// as the normalized variant (the properties must exist even when null) so that
-// the oneOf check can differentiate between the two shapes. Keep the entire
-// normalized surface available when emitting a raw payload so we do not strip
-// required keys while still preferring unnormalized text when structured data
-// is incomplete.
+// Raw variants should only keep the minimal locality surface plus coordinates
+// so they continue to satisfy the oneOf branch that accepts unnormalized
+// values. Keeping this list centralized ensures every raw-focused helper
+// projects the exact same field set.
+const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
+  "city_name",
+  "county_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "municipality_name",
+]);
+const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
+  RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
+);
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
-  ...RAW_ADDRESS_OUTPUT_FIELDS,
+  ...RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
+  ...RAW_ONLY_ADDRESS_FIELDS,
 ]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
@@ -9524,26 +9535,11 @@ const RAW_VARIANT_PRESERVED_FIELD_SET = new Set(RAW_VARIANT_PRESERVED_FIELDS);
 
 const RAW_ADDRESS_TERMINAL_FIELD_WHITELIST = Object.freeze([
   "unnormalized_address",
-  ...RAW_ADDRESS_OUTPUT_FIELDS,
-  "request_identifier",
-  "source_http_request",
+  ...RAW_VARIANT_OUTPUT_ALLOWLIST,
+  ...RAW_VARIANT_METADATA_FIELDS,
 ]);
 const RAW_ADDRESS_TERMINAL_FIELD_SET = new Set(
   RAW_ADDRESS_TERMINAL_FIELD_WHITELIST,
-);
-
-// Raw variants only retain the minimal schema surface we explicitly whitelist.
-const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
-  "city_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "municipality_name",
-]);
-const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
-  RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
 
 const RAW_ADDRESS_SURFACE_FIELDS = [
@@ -14296,8 +14292,7 @@ const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [
 ];
 
 const COUNTY_RAW_REQUIRED_FIELD_SET = new Set([
-  ...COUNTY_ADDRESS_ENSURE_FIELDS,
-  ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
+  ...RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 ]);
 
 function ensureCountyRawRequiredFieldSurface(address) {
@@ -14403,8 +14398,12 @@ function ensureCountyRawRequiredFieldSurface(address) {
       address.longitude = resolved.longitude;
       return true;
     }
-    address.latitude = null;
-    address.longitude = null;
+    if (Object.prototype.hasOwnProperty.call(address, "latitude")) {
+      delete address.latitude;
+    }
+    if (Object.prototype.hasOwnProperty.call(address, "longitude")) {
+      delete address.longitude;
+    }
     return false;
   };
 
@@ -14450,6 +14449,8 @@ function ensureCountyRawRequiredFieldSurface(address) {
 
     address[field] = null;
   });
+
+  resolveCoordinateFallback();
 
   if (!hasMeaningfulAddressValue(address.county_name)) {
     address.county_name = titleCaseCounty
@@ -62825,10 +62826,7 @@ process.on("exit", () => {
 });
 
 const COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT = Array.from(
-  new Set([
-    ...COUNTY_ADDRESS_ENSURE_FIELDS,
-    ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
-  ]),
+  new Set([...RAW_VARIANT_MINIMAL_SURFACE_FIELDS]),
 );
 
 function normalizeCityForSchema(city) {
