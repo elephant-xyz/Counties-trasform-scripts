@@ -1121,6 +1121,37 @@ function titleCaseName(s) {
     .join(" ");
 }
 
+function validateSuffixName(suffix) {
+  if (!suffix) return null;
+  const validSuffixes = [
+    "Jr.",
+    "Sr.",
+    "II",
+    "III",
+    "IV",
+    "PhD",
+    "MD",
+    "Esq.",
+    "JD",
+    "LLM",
+    "MBA",
+    "RN",
+    "DDS",
+    "DVM",
+    "CFA",
+    "CPA",
+    "PE",
+    "PMP",
+    "Emeritus",
+    "Ret.",
+  ];
+  const trimmed = String(suffix).trim();
+  if (validSuffixes.includes(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}
+
 function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
@@ -1140,7 +1171,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
             middle_name: o.middle_name,
             last_name: o.last_name,
             prefix_name: o.prefix_name || null,
-            suffix_name: o.suffix_name || null,
+            suffix_name: validateSuffixName(o.suffix_name),
           });
         } else {
           const existing = personMap.get(k);
@@ -1148,8 +1179,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
             existing.middle_name = o.middle_name;
           if (!existing.prefix_name && o.prefix_name)
             existing.prefix_name = o.prefix_name;
-          if (!existing.suffix_name && o.suffix_name)
-            existing.suffix_name = o.suffix_name;
+          if (!existing.suffix_name && o.suffix_name) {
+            const validated = validateSuffixName(o.suffix_name);
+            if (validated) existing.suffix_name = validated;
+          }
         }
       }
     });
@@ -1164,7 +1197,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
       last_name: p.last_name ? titleCaseName(p.last_name) : null,
       birth_date: null,
       prefix_name: p.prefix_name || null,
-      suffix_name: p.suffix_name || null,
+      suffix_name: validateSuffixName(p.suffix_name),
       us_citizenship_status: null,
       veteran_status: null,
       request_identifier: parcelId,
@@ -1557,12 +1590,6 @@ function writeUtilities(parcelId) {
       isExtraFeature: isExtra,
     });
   });
-
-  // Maintain backwards compatibility by writing utility.json when only one record exists.
-  if (utilities.length === 1 && fileRefs[0]) {
-    const single = readJSON(path.join("data", fileRefs[0])) || {};
-    writeJSON(path.join("data", "utility.json"), single);
-  }
 
   return { files: fileRefs, buildingIndexMap, meta };
 }
