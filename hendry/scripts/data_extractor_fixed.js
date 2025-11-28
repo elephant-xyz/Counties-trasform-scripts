@@ -1998,10 +1998,10 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  // Add only grantees (buyers) from sale parties, not grantors (sellers)
+  // Add grantees (buyers) and grantors (sellers) from sale parties
   salePartyCache.forEach((parties) => {
-    const targetParties = parties.grantees || [];
-    targetParties.forEach((party) => {
+    const allParties = [...(parties.grantees || []), ...(parties.grantors || [])];
+    allParties.forEach((party) => {
       if (party.type === "person") {
         const key = buildPersonKey(party.first_name, party.middle_name || null, party.last_name, party.suffix_name || null);
         referencedOwnersSet.add(`person:${key}`);
@@ -2029,9 +2029,9 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  // Also add sale parties (only grantees, not grantors, since only grantees get linked to relationships)
+  // Also add sale parties (both grantees and grantors)
   salePartyCache.forEach((parties) => {
-    (parties.grantees || []).forEach((party) => {
+    [...(parties.grantees || []), ...(parties.grantors || [])].forEach((party) => {
       if (party.type === "person") addPersonOwner(party);
       else if (party.type === "company") addCompanyOwner(party);
     });
@@ -2184,12 +2184,9 @@ function writePersonCompaniesSalesRelationships(
     });
 
     const saleParties = salePartyCache[idx] || { grantors: [], grantees: [] };
-    let targetParties = saleParties.grantees;
-    // Only link grantees (buyers) to sales, not grantors (sellers)
-    // If there are no grantees, don't create relationships for this sale
-    if (targetParties && targetParties.length > 0) {
-      targetParties.forEach(addRelationshipForOwner);
-    }
+    // Link both grantees (buyers) and grantors (sellers) to sales
+    const allParties = [...(saleParties.grantees || []), ...(saleParties.grantors || [])];
+    allParties.forEach(addRelationshipForOwner);
   });
 
   // Remove unused person and company files
