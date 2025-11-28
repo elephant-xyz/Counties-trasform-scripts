@@ -2684,6 +2684,15 @@ function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
 
+  // Remove mailing_address.json if it exists from previous runs
+  // (not part of the County data group schema)
+  const mailingAddressPath = path.join(dataDir, "mailing_address.json");
+  if (fs.existsSync(mailingAddressPath)) {
+    try {
+      fs.unlinkSync(mailingAddressPath);
+    } catch {}
+  }
+
   const html = readText("input.html");
   const $ = cheerio.load(html);
 
