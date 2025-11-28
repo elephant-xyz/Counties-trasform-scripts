@@ -13,20 +13,18 @@ const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
 
-// The County schema's address.oneOf treats the fully normalized branch as valid
-// when the core structured components (street/city/state/postal/county) and
-// coordinate pair are present. Supplemental pieces (directionals, grid refs,
-// unit/route metadata) are optional; forcing them caused us to emit partially
-// populated normalized payloads that could never satisfy the schema. If that
-// core surface is missing, we must fall back to the raw branch that just
-// carries unnormalized_address.
 const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
+  "latitude",
+  "longitude",
+  "street_number",
+  "street_name",
   "street_suffix_type",
-  "unit_identifier",
-  "route_number",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
   "township",
   "range",
   "section",
@@ -46,6 +44,19 @@ const MINIMAL_RAW_ADDRESS_FIELDS = [
   "latitude",
   "longitude",
 ];
+
+function hasStrictCountyNormalizedSchemaCoverage(address) {
+  if (!address || typeof address !== "object") {
+    return false;
+  }
+
+  return COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS.every((field) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      return Number.isFinite(parseCoordinate(address[field]));
+    }
+    return hasMeaningfulAddressValue(address[field]);
+  });
+}
 
 function isAddressJsonPath(targetPath) {
   if (typeof targetPath !== "string") return false;
@@ -195,6 +206,13 @@ function finalizeAddressWritePayload(rawPayload) {
     normalizedOutput = buildNormalizedAddressOutputForSchema(normalizedProbe);
   }
 
+  if (
+    normalizedOutput &&
+    !hasStrictCountyNormalizedSchemaCoverage(normalizedOutput)
+  ) {
+    normalizedOutput = null;
+  }
+
   if (normalizedOutput) {
     if (
       Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")
@@ -316,11 +334,15 @@ function finalizeAddressWritePayload(rawPayload) {
   const canonicalRaw =
     buildSchemaCompliantRawAddress(schemaAlignedRaw) || null;
   if (canonicalRaw) {
-    ensureCountyRawRequiredFieldSurface(canonicalRaw);
-    return canonicalRaw;
+    const cleanedCanonical =
+      stripNormalizedFieldsFromRawPayload(canonicalRaw) || canonicalRaw;
+    ensureCountyRawRequiredFieldSurface(cleanedCanonical);
+    return cleanedCanonical;
   }
-  ensureCountyRawRequiredFieldSurface(schemaAlignedRaw);
-  return schemaAlignedRaw;
+  const cleanedSchemaAligned =
+    stripNormalizedFieldsFromRawPayload(schemaAlignedRaw) || schemaAlignedRaw;
+  ensureCountyRawRequiredFieldSurface(cleanedSchemaAligned);
+  return cleanedSchemaAligned;
 }
 
 function writeSchemaAlignedAddress(addressPath, payload) {
@@ -9396,6 +9418,20 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+function stripNormalizedFieldsFromRawPayload(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      delete address[field];
+    }
+  }
+
+  return address;
+}
+
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
@@ -14795,6 +14831,10 @@ function hasNormalizedCountyCoverage(address) {
   );
 
   if (!hasAllStrictFields) {
+    return false;
+  }
+
+  if (!hasStrictCountyNormalizedSchemaCoverage(strictNormalized)) {
     return false;
   }
 
@@ -57904,6 +57944,10 @@ function projectStrictCountyNormalizedAddressCandidate(source) {
     !hasMeaningfulAddressValue(normalizedSurface.country_code)
   ) {
     normalizedSurface.country_code = "US";
+  }
+
+  if (!hasStrictCountyNormalizedSchemaCoverage(normalizedSurface)) {
+    return null;
   }
 
   return normalizedSurface;
