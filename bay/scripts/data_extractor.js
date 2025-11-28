@@ -2679,6 +2679,13 @@ function main() {
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: "Request identifier and parcel id don't match.",
+      path: "property.request_identifier",
+    };
+  }
   const requestIdentifier =
     (propertySeed && propertySeed.request_identifier) ||
     (unnormalized && unnormalized.request_identifier) ||
