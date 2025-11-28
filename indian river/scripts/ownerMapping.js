@@ -173,6 +173,12 @@ const NOISE_TOKEN_SET = new Set([
   "ETUXOR",
   "AKA",
   "A/K/A",
+  "FKA",
+  "F/K/A",
+  "NKA",
+  "N/K/A",
+  "DBA",
+  "D/B/A",
   "FBO",
   "C/O",
   "UA",
@@ -212,6 +218,12 @@ function sanitizeRawOwner(raw) {
   s = s.replace(/\bET\s+UXOR\b/gi, " ");
   s = s.replace(/\bA\/K\/A\b/gi, " ");
   s = s.replace(/\bAKA\b/gi, " ");
+  s = s.replace(/\bF\/K\/A\b/gi, " ");
+  s = s.replace(/\bFKA\b/gi, " ");
+  s = s.replace(/\bN\/K\/A\b/gi, " ");
+  s = s.replace(/\bNKA\b/gi, " ");
+  s = s.replace(/\bD\/B\/A\b/gi, " ");
+  s = s.replace(/\bDBA\b/gi, " ");
   s = s.replace(/\bU\/A\b/gi, " ");
   s = s.replace(/\bU\/D\/T\b/gi, " ");
   s = s.replace(/\bFBO\b/gi, " ");
@@ -234,7 +246,11 @@ function tokenizeOwner(raw) {
 }
 
 function isRomanNumeral(str) {
-  return /^[IVXLCDM]+$/i.test(str || "");
+  if (!str) return false;
+  const upper = str.trim().toUpperCase();
+  // Only treat common generational suffixes as Roman numerals, not all combinations
+  const validGenerationalSuffixes = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  return validGenerationalSuffixes.includes(upper);
 }
 
 function toNameCase(str) {
@@ -513,16 +529,6 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
           name: formatCompanyName(raw),
         });
       }
-    }
-    if (parsedOwners.length === 0) {
-      if (partInvalids.length) {
-        partInvalids.forEach((item) => invalidCollector.push(item));
-      } else {
-        invalidCollector.push({ raw, reason: "unparseable_or_empty" });
-      }
-    } else {
-      owners.push(...parsedOwners);
-      partInvalids.forEach((item) => invalidCollector.push(item));
     }
     if (parsedOwners.length === 0) {
       if (partInvalids.length) {
