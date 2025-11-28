@@ -149,7 +149,7 @@ function mapRoofDesign(val) {
   if (upper.includes("GABLE")) return "Gable";
   if (upper.includes("HIP")) return "Hip";
   if (upper.includes("REINF")) return "Flat";
-  if (upper.includes("RIGID")) return "Other";
+  if (upper.includes("RIGID")) return null;
   if (upper.includes("N/A")) return null;
   return null;
 }
