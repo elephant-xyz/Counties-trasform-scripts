@@ -1219,8 +1219,14 @@ const VALID_SUFFIXES = new Set([
 // Validate and normalize suffix to match Elephant schema
 function validateSuffix(suffix) {
   if (!suffix) return null;
-  // If the suffix is valid, return it; otherwise return null
-  return VALID_SUFFIXES.has(suffix) ? suffix : null;
+  // First check if it's already valid
+  if (VALID_SUFFIXES.has(suffix)) return suffix;
+  // Try to normalize through the map (handles cases like "Jr" → "Jr.")
+  const normalized = (suffix || "").replace(/\./g, "").toLowerCase();
+  const canonical = NAME_SUFFIX_MAP.get(normalized);
+  if (canonical && VALID_SUFFIXES.has(canonical)) return canonical;
+  // If not valid or normalizable, return null
+  return null;
 }
 
 const SURNAME_PARTICLES = new Set([
