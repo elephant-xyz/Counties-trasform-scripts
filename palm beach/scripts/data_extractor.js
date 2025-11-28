@@ -123,27 +123,6 @@ function finalizeAddressWritePayload(rawPayload) {
     return null;
   }
 
-  if (preserveStructuredFields) {
-    const structuredRaw = { ...completed };
-    if (requestIdentifier !== null && requestIdentifier !== undefined) {
-      structuredRaw.request_identifier = requestIdentifier;
-    } else if (
-      Object.prototype.hasOwnProperty.call(structuredRaw, "request_identifier")
-    ) {
-      structuredRaw.request_identifier = null;
-    }
-
-    if (preparedSource) {
-      structuredRaw.source_http_request = deepClone(preparedSource);
-    } else if (
-      Object.prototype.hasOwnProperty.call(structuredRaw, "source_http_request")
-    ) {
-      structuredRaw.source_http_request = null;
-    }
-
-    return stripAddressRequestMetadata(structuredRaw);
-  }
-
   let rawOutput =
     buildRawAddressOutputForSchema(rawValue, completed) || null;
 
@@ -55776,17 +55755,8 @@ function buildRawAddressPayloadFromSources(rawValue, options = {}) {
     hasMeaningfulAddressValue(payload[field]),
   );
 
-  const hasStreetCore =
-    hasMeaningfulAddressValue(payload.street_number) &&
-    hasMeaningfulAddressValue(payload.street_name);
-  const hasLocalityCore =
-    hasMeaningfulAddressValue(payload.city_name) &&
-    hasMeaningfulAddressValue(payload.state_code) &&
-    hasMeaningfulAddressValue(payload.postal_code);
   const normalizedLatitude = parseCoordinate(payload.latitude);
   const normalizedLongitude = parseCoordinate(payload.longitude);
-  const hasCoordinatePair =
-    Number.isFinite(normalizedLatitude) && Number.isFinite(normalizedLongitude);
   if (Number.isFinite(normalizedLatitude)) {
     payload.latitude = normalizedLatitude;
   }
@@ -55795,9 +55765,8 @@ function buildRawAddressPayloadFromSources(rawValue, options = {}) {
   }
 
   if (
-    (hasStreetCore && hasLocalityCore && hasCoordinatePair) ||
-    (hasStructuredCoverage &&
-      hasStrictNormalizedAddressCoverage({ ...payload }))
+    hasStructuredCoverage &&
+    hasStrictNormalizedAddressCoverage({ ...payload })
   ) {
     payload.__preserve_structured_fields = true;
   }
