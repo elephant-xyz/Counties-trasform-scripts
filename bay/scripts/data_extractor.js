@@ -2088,18 +2088,23 @@ function createPersonFromRaw(raw, parcelId) {
     veteran_status: null,
     request_identifier: parcelId,
   };
+
+  // If no cleaned name, return null to indicate we can't create a valid person
   if (!cleaned) {
-    return {
-      first_name: null,
-      middle_name: null,
-      last_name: null,
-      ...baseFields,
-    };
+    return null;
   }
+
   if (cleaned.includes(",")) {
     const [lastRaw, restRaw] = cleaned.split(",", 2);
     const restParts = restRaw.trim().split(/\s+/).filter(Boolean);
     const first = restParts[0] ? titleCaseName(restParts[0]) : null;
+    const last = lastRaw ? titleCaseName(lastRaw) : null;
+
+    // Both first and last name are required for a valid person
+    if (!first || !last) {
+      return null;
+    }
+
     let middle = null;
     if (restParts.length > 1) {
       middle = titleCaseName(restParts.slice(1).join(" "));
@@ -2107,19 +2112,18 @@ function createPersonFromRaw(raw, parcelId) {
     return {
       first_name: first,
       middle_name: middle,
-      last_name: lastRaw ? titleCaseName(lastRaw) : null,
+      last_name: last,
       ...baseFields,
     };
   }
+
   const parts = cleaned.split(/\s+/).filter(Boolean);
+
+  // Single word names should be treated as companies, not persons
   if (parts.length === 1) {
-    return {
-      first_name: titleCaseName(parts[0]),
-      middle_name: null,
-      last_name: null,
-      ...baseFields,
-    };
+    return null;
   }
+
   if (parts.length === 2) {
     return {
       first_name: titleCaseName(parts[1]),
@@ -2128,6 +2132,7 @@ function createPersonFromRaw(raw, parcelId) {
       ...baseFields,
     };
   }
+
   const first = titleCaseName(parts[1]);
   const last = titleCaseName(parts[0]);
   const middle = titleCaseName(parts.slice(2).join(" "));
@@ -2160,6 +2165,17 @@ function ensureOwnerRefFromRaw(raw, parcelId) {
   const ownerType = guessOwnerTypeFromRaw(raw);
   if (ownerType === "person") {
     const personObj = createPersonFromRaw(raw, parcelId);
+    // If createPersonFromRaw returns null, treat as company instead
+    if (!personObj) {
+      const companyObj = createCompanyFromRaw(raw, parcelId);
+      companies.push(companyObj);
+      const idx = companies.length;
+      writeJSON(path.join("data", `company_${idx}.json`), companyObj);
+      registerCompanyNameVariants(companyObj, idx);
+      registerVariantRefs(variants, "company", idx);
+      if (canonicalKey) registerCanonicalKey(canonicalKey, "company", idx);
+      return { type: "company", index: idx };
+    }
     people.push(personObj);
     const idx = people.length;
     writeJSON(path.join("data", `person_${idx}.json`), personObj);
@@ -2274,7 +2290,12 @@ function writePersonCompaniesSalesRelationships(
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        // Only include persons with valid first and last names
+        const firstName = (o.first_name || "").trim();
+        const lastName = (o.last_name || "").trim();
+        if (!firstName || !lastName) return;
+
+        const k = `${firstName.toUpperCase()}|${lastName.toUpperCase()}`;
         if (!personMap.has(k))
           personMap.set(k, {
             first_name: o.first_name,
@@ -2289,17 +2310,19 @@ function writePersonCompaniesSalesRelationships(
       }
     });
   });
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    birth_date: null,
-    prefix_name: null,
-    suffix_name: null,
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
+  people = Array.from(personMap.values())
+    .filter((p) => p.first_name && p.last_name) // Filter out any persons without both names
+    .map((p) => ({
+      first_name: titleCaseName(p.first_name),
+      middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+      last_name: titleCaseName(p.last_name),
+      birth_date: null,
+      prefix_name: null,
+      suffix_name: null,
+      us_citizenship_status: null,
+      veteran_status: null,
+      request_identifier: parcelId,
+    }));
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
