@@ -1989,32 +1989,22 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  // Add only target parties (grantees, or fallback to grantors) from sales
+  // Add only target parties (grantees only - not grantors) from sales
   salePartyCache.forEach((parties, idx) => {
     let targetParties = parties.grantees;
-    if (!targetParties || targetParties.length === 0) {
-      if (parties.grantors && parties.grantors.length > 0) {
-        targetParties = parties.grantors;
-      } else {
-        // Fall back to previous sales' grantors
-        for (let prev = idx - 1; prev >= 0; prev--) {
-          const prevGrantors = (salePartyCache[prev] || {}).grantors || [];
-          if (prevGrantors.length) {
-            targetParties = prevGrantors;
-            break;
-          }
+    // Only add grantees (buyers), not grantors (sellers)
+    // If there are no grantees, don't create person records for this sale
+    if (targetParties && targetParties.length > 0) {
+      targetParties.forEach((party) => {
+        if (party.type === "person") {
+          const key = buildPersonKey(party.first_name, party.middle_name || null, party.last_name, party.suffix_name || null);
+          referencedOwnersSet.add(`person:${key}`);
+        } else if (party.type === "company") {
+          const key = buildCompanyKey(party.name);
+          referencedOwnersSet.add(`company:${key}`);
         }
-      }
+      });
     }
-    (targetParties || []).forEach((party) => {
-      if (party.type === "person") {
-        const key = buildPersonKey(party.first_name, party.middle_name || null, party.last_name, party.suffix_name || null);
-        referencedOwnersSet.add(`person:${key}`);
-      } else if (party.type === "company") {
-        const key = buildCompanyKey(party.name);
-        referencedOwnersSet.add(`company:${key}`);
-      }
-    });
   });
 
   // Now collect only the owners that will be referenced
@@ -2172,21 +2162,11 @@ function writePersonCompaniesSalesRelationships(
 
     const saleParties = salePartyCache[idx] || { grantors: [], grantees: [] };
     let targetParties = saleParties.grantees;
-    // If no grantees, first try current sale's grantors, then fall back to previous sales
-    if (!targetParties || targetParties.length === 0) {
-      if (saleParties.grantors && saleParties.grantors.length > 0) {
-        targetParties = saleParties.grantors;
-      } else {
-        for (let prev = idx - 1; prev >= 0; prev--) {
-          const prevGrantors = (salePartyCache[prev] || {}).grantors || [];
-          if (prevGrantors.length) {
-            targetParties = prevGrantors;
-            break;
-          }
-        }
-      }
+    // Only link grantees (buyers) to sales, not grantors (sellers)
+    // If there are no grantees, don't create relationships for this sale
+    if (targetParties && targetParties.length > 0) {
+      targetParties.forEach(addRelationshipForOwner);
     }
-    (targetParties || []).forEach(addRelationshipForOwner);
   });
 }
 
