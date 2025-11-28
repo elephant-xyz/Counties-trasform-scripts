@@ -8244,53 +8244,43 @@ function buildRawOnlyAddressSurface(address) {
     return null;
   }
 
-  const rawOutput = preferMinimalSurface
-    ? {}
-    : { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  const rawOutput = {
+    unnormalized_address: trimmedRaw,
+  };
 
-  rawOutput.unnormalized_address = trimmedRaw;
+  const assignAllowedField = (field, value) => {
+    if (!RAW_VARIANT_ALLOWED_FIELD_SET.has(field)) {
+      return;
+    }
 
-  if (!preferMinimalSurface) {
-    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      if (Number.isFinite(numeric)) {
+        rawOutput[field] = numeric;
+      }
+      return;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length) {
+        rawOutput[field] = trimmed;
+      }
+      return;
+    }
+
+    if (value !== undefined && value !== null) {
+      rawOutput[field] = value;
+    }
+  };
+
+  if (!preferMinimalSurface && RAW_VARIANT_OUTPUT_ALLOWLIST.length) {
+    for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
       if (!Object.prototype.hasOwnProperty.call(address, field)) {
         continue;
       }
-
-      const value = address[field];
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        rawOutput[field] = Number.isFinite(numeric) ? numeric : rawOutput[field];
-        continue;
-      }
-
-      const sanitized = sanitizeAddressFieldValue(field, value);
-      rawOutput[field] = sanitized === undefined ? rawOutput[field] : sanitized;
+      assignAllowedField(field, address[field]);
     }
-
-    if (
-      Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
-      address.source_http_request
-    ) {
-      const prepared = prepareSourceHttpRequest(address.source_http_request);
-      if (prepared) {
-        rawOutput.source_http_request = deepClone(prepared);
-      }
-    }
-
-    if (
-      Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
-      address.__force_raw_variant === true
-    ) {
-      rawOutput.__force_raw_variant = true;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-      const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-      rawOutput.request_identifier =
-        requestIdentifier === undefined ? null : requestIdentifier;
-    }
-
-    return rawOutput;
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
@@ -8300,10 +8290,24 @@ function buildRawOnlyAddressSurface(address) {
   }
 
   if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
+    address.source_http_request
+  ) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      rawOutput.source_http_request = deepClone(prepared);
+    }
+  }
+
+  if (
     Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
     address.__force_raw_variant === true
   ) {
     rawOutput.__force_raw_variant = true;
+  }
+
+  if (preferMinimalSurface) {
+    rawOutput[RAW_MINIMAL_SURFACE_FLAG] = true;
   }
 
   return rawOutput;
