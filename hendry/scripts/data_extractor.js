@@ -2319,7 +2319,7 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
   removeMatchingDataFiles(/^relationship_layout_\d+_has_layout_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_layout_\d+\.json$/);
 
-  if (propertyType === "LandParcel" || buildingEntries.length === 0) {
+  if (buildingEntries.length === 0) {
     return { buildingLayouts: [] };
   }
 
