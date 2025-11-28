@@ -40597,6 +40597,63 @@ function buildCountyRawOneOfPayload(sources = [], extraCandidates = []) {
   return buildSchemaCompliantRawAddress(rawPayload);
 }
 
+function enforceCountyAddressOneOfCompliance(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedReady =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...payload });
+
+  if (normalizedReady) {
+    const normalizedOutput = { ...payload };
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    if (!writeSchemaAlignedAddress(addressPath, normalizedOutput)) {
+      removeFileIfExists(addressPath);
+    }
+    return;
+  }
+
+  const rawSources = [
+    payload,
+    ...(Array.isArray(options.rawSources)
+      ? options.rawSources.filter(
+          (source) => source && typeof source === "object",
+        )
+      : []),
+  ];
+
+  const rawOutput = buildCountyRawOneOfPayload(
+    rawSources,
+    Array.isArray(options.extraRawCandidates)
+      ? options.extraRawCandidates
+      : [],
+  );
+
+  if (rawOutput) {
+    if (!writeSchemaAlignedAddress(addressPath, rawOutput)) {
+      removeFileIfExists(addressPath);
+    }
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 function enforceFinalNormalizedCountyAddress(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -58639,6 +58696,12 @@ async function run() {
       fallbackRawCandidates.push(trimmed);
     }
   }
+
+  enforceCountyAddressOneOfCompliance(addressPath, {
+    rawSources: [unnormalizedInput, seedInput],
+    extraRawCandidates: fallbackRawCandidates,
+  });
+
   const fallbackRequestIdentifierCandidates = [];
   if (seedInput && seedInput.request_identifier) {
     fallbackRequestIdentifierCandidates.push(seedInput.request_identifier);
