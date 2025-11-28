@@ -64069,3 +64069,137 @@ process.on("exit", () => {
     console.error("Failed to pad raw address surface at exit:", error);
   }
 });
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    if (!fs.existsSync(addressPath)) {
+      return;
+    }
+
+    const payload = readJSONIfExists(addressPath);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    const unnormalizedSource =
+      readJSONIfExists("unnormalized_address.json") || null;
+    const seedSource = readJSONIfExists("property_seed.json") || null;
+    const normalizationOptions = {
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    };
+
+    const normalizedCandidate =
+      buildCountyNormalizedOneOfPayload(payload, normalizationOptions) ||
+      buildCountyNormalizedOneOfPayload(unnormalizedSource, normalizationOptions) ||
+      buildCountyNormalizedOneOfPayload(seedSource, normalizationOptions) ||
+      null;
+
+    const requestIdentifier = resolveRequestIdentifierCandidate(
+      payload.request_identifier,
+      normalizedCandidate && normalizedCandidate.request_identifier,
+      unnormalizedSource && unnormalizedSource.request_identifier,
+      seedSource && seedSource.request_identifier,
+      seedSource && seedSource.parcel_id,
+    );
+    const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+      payload.source_http_request,
+      normalizedCandidate && normalizedCandidate.source_http_request,
+      unnormalizedSource && unnormalizedSource.source_http_request,
+      seedSource && seedSource.source_http_request,
+    );
+
+    const persistAddressPayload = (value) => {
+      if (!value) {
+        removeFileIfExists(addressPath);
+        return;
+      }
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(value, null, 2)}\n`,
+      );
+    };
+
+    if (normalizedCandidate) {
+      const normalizedOutput = { ...normalizedCandidate };
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+      if (requestIdentifier !== undefined) {
+        normalizedOutput.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "request_identifier",
+        )
+      ) {
+        normalizedOutput.request_identifier = safeNullIfEmpty(
+          normalizedOutput.request_identifier,
+        );
+      }
+      if (sourceHttpRequest) {
+        const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+        if (prepared) {
+          normalizedOutput.source_http_request = deepClone(prepared);
+        }
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "source_http_request",
+        )
+      ) {
+        delete normalizedOutput.source_http_request;
+      }
+      persistAddressPayload(normalizedOutput);
+      return;
+    }
+
+    const rawCandidates = [
+      payload.unnormalized_address,
+      payload.full_address,
+      payload.site_address,
+      payload.address,
+      unnormalizedSource && unnormalizedSource.unnormalized_address,
+      unnormalizedSource && unnormalizedSource.full_address,
+      seedSource && seedSource.unnormalized_address,
+      seedSource && seedSource.full_address,
+    ];
+
+    const rawString = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
+    if (!rawString) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    const rawOutput = {
+      unnormalized_address: rawString,
+    };
+
+    if (requestIdentifier !== undefined) {
+      rawOutput.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+
+    if (sourceHttpRequest) {
+      const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+      if (prepared) {
+        rawOutput.source_http_request = deepClone(prepared);
+      }
+    }
+
+    persistAddressPayload(rawOutput);
+  } catch (error) {
+    console.error("Failed to enforce terminal address variant:", error);
+  }
+});
