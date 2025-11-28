@@ -663,14 +663,7 @@ function main() {
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
 
-  const propertySeed = readJSON("property_seed.json");
-  if (propertySeed.request_identifier != parcelId) {
-    throw {
-      type: "error",
-      message: `Request identifier and parcel id don't match.`,
-      path: "property.request_identifier",
-    };
-  }
+  
   
   if (!parcelId) throw new Error("Parcel ID not found");
   const { perBuilding: subAreasByIndex, fallbackCodes } =
