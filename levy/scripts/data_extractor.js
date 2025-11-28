@@ -4129,10 +4129,36 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, `tax_${rec.year}.json`), tax);
   });
 
-  // Parse sales - person/company entities will be created only if they appear
-  // in the sales history or owners_by_date with a matching sale date.
-  // This prevents orphaned person/company files that are not referenced by any relationship.
+  // Parse sales first to determine if we should create current owner entities
   const sales = parseSales($);
+
+  // Only create current owner entities if there are sales to link them to
+  // (mailing_address.json creation was removed as it's not part of the expected schema for this data group)
+  const currentOwnerEntities = [];
+  if (sales && sales.length > 0) {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+  }
   const salesSorted = sales.sort(
     (a, b) => new Date(toISOFromMDY(b.date)) - new Date(toISOFromMDY(a.date)),
   );
@@ -4338,6 +4364,15 @@ const structureItems = (() => {
         }
       });
     });
+  }
+
+  const latestSaleRef = saleFileRefs.length ? saleFileRefs[0] : null;
+  if (latestSaleRef && latestSaleRef.salesPath) {
+    currentOwnerEntities.forEach((entity) => {
+      if (!entity.path) return;
+      addSaleOwnerRelation(latestSaleRef.salesPath, entity.path);
+    });
+  }
 
   const saleOwnerRelationshipKeys = new Set();
   saleOwnerRelations.forEach((entry) => {
