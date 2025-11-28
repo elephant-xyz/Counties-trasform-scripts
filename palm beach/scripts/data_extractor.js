@@ -3374,7 +3374,7 @@ function ensureRawAddressFieldCompleteness(address) {
     rawPayload.country_code = "US";
   }
 
-  return rawPayload;
+  return ensureCountyRawRequiredFieldSurface({ ...rawPayload }) || rawPayload;
 }
 
 function enforceRawAddressStructuredSurface(addressPath) {
@@ -56430,20 +56430,32 @@ function enforceMinimalRawAddressOutput(addressPath) {
     return;
   }
 
-  const minimal = { unnormalized_address: rawValue };
   const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedPayload = {
+    ...payload,
+    unnormalized_address: rawValue,
+  };
+
   if (requestIdentifier !== undefined) {
-    minimal.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
-  } else {
-    minimal.request_identifier = null;
+    preparedPayload.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(
+      preparedPayload,
+      "request_identifier",
+    )
+  ) {
+    preparedPayload.request_identifier = null;
   }
+
+  const paddedPayload =
+    ensureCountyRawRequiredFieldSurface(preparedPayload) || preparedPayload;
 
   try {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(minimal, null, 2)}\n`,
+      `${JSON.stringify(paddedPayload, null, 2)}\n`,
     );
   } catch (error) {
     console.error("Failed to enforce minimal raw address output:", error);
@@ -63996,5 +64008,64 @@ process.on("exit", () => {
       "Failed to enforce minimal raw address variant on exit:",
       error,
     );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const payload = readJSONIfExists(addressPath);
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      typeof payload.unnormalized_address !== "string" ||
+      !payload.unnormalized_address.trim().length
+    ) {
+      return;
+    }
+
+    rehydrateRawAddressPayloadOnDisk(addressPath, {
+      rawFallbackPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+
+    const hydratedPayload = readJSONIfExists(addressPath);
+    if (
+      !hydratedPayload ||
+      typeof hydratedPayload !== "object" ||
+      Array.isArray(hydratedPayload)
+    ) {
+      return;
+    }
+
+    const normalizedRequestIdentifier = safeNullIfEmpty(
+      hydratedPayload.request_identifier,
+    );
+    if (normalizedRequestIdentifier === undefined) {
+      hydratedPayload.request_identifier = null;
+    } else if (normalizedRequestIdentifier !== null) {
+      hydratedPayload.request_identifier = normalizedRequestIdentifier;
+    } else {
+      hydratedPayload.request_identifier = null;
+    }
+
+    const paddedPayload =
+      ensureCountyRawRequiredFieldSurface({
+        ...hydratedPayload,
+        unnormalized_address: hydratedPayload.unnormalized_address.trim(),
+      }) || hydratedPayload;
+
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(paddedPayload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error("Failed to pad raw address surface at exit:", error);
   }
 });
