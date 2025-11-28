@@ -2029,8 +2029,11 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  // Also add sale parties (both grantees and grantors)
-  salePartyCache.forEach((parties) => {
+  // Also add sale parties (both grantees and grantors) - but only for sales that have files
+  salePartyCache.forEach((parties, idx) => {
+    const saleFile = saleFiles ? saleFiles[idx] : null;
+    if (!saleFile) return; // Skip if this sale doesn't have a file
+
     [...(parties.grantees || []), ...(parties.grantors || [])].forEach((party) => {
       if (party.type === "person") addPersonOwner(party);
       else if (party.type === "company") addCompanyOwner(party);
