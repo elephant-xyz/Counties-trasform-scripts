@@ -5332,6 +5332,190 @@ function resolveSourceHttpRequest(...candidates) {
   return null;
 }
 
+function enforceRawAddressSchemaRequirements(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const working = { ...payload };
+  let mutated = false;
+
+  const {
+    seedPath = null,
+    unnormalizedPath = null,
+    inputHtml = null,
+    inputHtmlPath = null,
+    coordinateCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    unnormalizedCandidates = [],
+  } = options || {};
+
+  const seedSource =
+    seedPath && fs.existsSync(seedPath) ? readJSONIfExists(seedPath) : null;
+  const rawSource =
+    unnormalizedPath && fs.existsSync(unnormalizedPath)
+      ? readJSONIfExists(unnormalizedPath)
+      : null;
+
+  const ensureStringField = (field, candidates) => {
+    if (hasMeaningfulAddressValue(working[field])) {
+      return;
+    }
+    const resolved = resolveFirstNonEmptyString(
+      Array.isArray(candidates) ? candidates : [],
+    );
+    if (resolved == null) {
+      return;
+    }
+    working[field] = resolved;
+    mutated = true;
+  };
+
+  const hasRawVariant =
+    typeof working.unnormalized_address === "string" &&
+    working.unnormalized_address.trim().length > 0;
+
+  if (hasRawVariant) {
+    ensureStringField("unnormalized_address", [
+      working.unnormalized_address,
+      ...(Array.isArray(unnormalizedCandidates)
+        ? unnormalizedCandidates
+        : []),
+      rawSource && rawSource.unnormalized_address,
+      rawSource && rawSource.full_address,
+      rawSource && rawSource.site_address,
+    ]);
+  }
+
+  ensureStringField("request_identifier", [
+    working.request_identifier,
+    ...(Array.isArray(requestIdentifierCandidates)
+      ? requestIdentifierCandidates
+      : []),
+    rawSource && rawSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  ]);
+
+  const resolvedSource =
+    resolveSourceHttpRequest(
+      working.source_http_request,
+      ...(Array.isArray(sourceHttpRequestCandidates)
+        ? sourceHttpRequestCandidates
+        : []),
+      rawSource && rawSource.source_http_request,
+      seedSource && seedSource.source_http_request,
+    ) || null;
+
+  if (resolvedSource) {
+    const nextSource = deepClone(resolvedSource);
+    const existingSource =
+      working.source_http_request && JSON.stringify(working.source_http_request);
+    const serializedNext = JSON.stringify(nextSource);
+    if (existingSource !== serializedNext) {
+      working.source_http_request = nextSource;
+      mutated = true;
+    }
+  }
+
+  const coordinateQueue = [];
+  const enqueueCoordinate = (candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      return;
+    }
+    const latitude = parseCoordinate(candidate.latitude);
+    const longitude = parseCoordinate(candidate.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      coordinateQueue.push({ latitude, longitude });
+    }
+  };
+
+  enqueueCoordinate({ latitude: working.latitude, longitude: working.longitude });
+
+  if (Array.isArray(coordinateCandidates)) {
+    for (const candidate of coordinateCandidates) {
+      enqueueCoordinate(candidate);
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+  ) {
+    for (const candidate of ADDRESS_FALLBACK_CONTEXT.coordinateCandidates) {
+      enqueueCoordinate(candidate);
+    }
+  }
+
+  if (rawSource) {
+    enqueueCoordinate({
+      latitude: rawSource.latitude,
+      longitude: rawSource.longitude,
+    });
+  }
+
+  if (seedSource) {
+    enqueueCoordinate({
+      latitude: seedSource.latitude,
+      longitude: seedSource.longitude,
+    });
+  }
+
+  const htmlString =
+    typeof inputHtml === "string"
+      ? inputHtml
+      : inputHtmlPath
+        ? readTextIfExists(inputHtmlPath)
+        : null;
+  if (htmlString) {
+    enqueueCoordinate(extractCoordinatesFromHTML(htmlString));
+  }
+
+  const resolvedCoordinate = coordinateQueue.find(
+    (candidate) =>
+      Number.isFinite(candidate.latitude) &&
+      Number.isFinite(candidate.longitude),
+  );
+
+  const currentLatitude = parseCoordinate(working.latitude);
+  const currentLongitude = parseCoordinate(working.longitude);
+
+  if (
+    resolvedCoordinate &&
+    (!Number.isFinite(currentLatitude) || !Number.isFinite(currentLongitude))
+  ) {
+    working.latitude = resolvedCoordinate.latitude;
+    working.longitude = resolvedCoordinate.longitude;
+    mutated = true;
+  } else {
+    if (Number.isFinite(currentLatitude)) {
+      working.latitude = currentLatitude;
+    }
+    if (Number.isFinite(currentLongitude)) {
+      working.longitude = currentLongitude;
+    }
+  }
+
+  if (
+    (working.latitude == null && working.longitude != null) ||
+    (working.latitude != null && working.longitude == null)
+  ) {
+    working.latitude = null;
+    working.longitude = null;
+    mutated = true;
+  }
+
+  if (mutated) {
+    writeAddressJSONBypass(addressPath, working);
+  }
+}
+
 function buildStrictNormalizedAddressPayload(source) {
   if (!source || typeof source !== "object") {
     return null;
@@ -61231,6 +61415,55 @@ async function run() {
     }
   }
 
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const coordinateCandidates = [];
+    if (
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+    ) {
+      coordinateCandidates.push(
+        ...ADDRESS_FALLBACK_CONTEXT.coordinateCandidates,
+      );
+    }
+    const htmlContent = readTextIfExists("input.html") || null;
+    if (htmlContent) {
+      coordinateCandidates.push(extractCoordinatesFromHTML(htmlContent));
+    }
+    enforceRawAddressSchemaRequirements(addressPath, {
+      seedPath: "property_seed.json",
+      unnormalizedPath: "unnormalized_address.json",
+      inputHtml: htmlContent,
+      coordinateCandidates,
+      requestIdentifierCandidates: [
+        ...fallbackRequestIdentifierCandidates,
+        seedInput && seedInput.request_identifier,
+        seedInput && seedInput.parcel_id,
+        unnormalizedInput && unnormalizedInput.request_identifier,
+      ].filter(Boolean),
+      sourceHttpRequestCandidates: [
+        ...fallbackSourceHttpRequestCandidates,
+        seedInput && seedInput.source_http_request,
+        unnormalizedInput && unnormalizedInput.source_http_request,
+      ].filter(Boolean),
+      unnormalizedCandidates: [
+        ...fallbackRawCandidates,
+        ...(Array.isArray(finalUnnormalizedCandidates)
+          ? finalUnnormalizedCandidates
+          : []),
+        unnormalizedInput && unnormalizedInput.full_address,
+        unnormalizedInput && unnormalizedInput.site_address,
+        unnormalizedInput && unnormalizedInput.address,
+      ].filter(Boolean),
+    });
+  } catch (error) {
+    console.error("Failed to enforce raw address schema requirements:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
   FINAL_ADDRESS_REBUILD_CONTEXT = {
     addressPath: finalAddressPath,
     streetCandidates: [
@@ -61944,6 +62177,37 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to enforce minimal raw address override during exit:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const coordinateCandidates = [];
+    if (
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates)
+    ) {
+      coordinateCandidates.push(
+        ...ADDRESS_FALLBACK_CONTEXT.coordinateCandidates,
+      );
+    }
+    const htmlContent = readTextIfExists("input.html") || null;
+    if (htmlContent) {
+      coordinateCandidates.push(extractCoordinatesFromHTML(htmlContent));
+    }
+    enforceRawAddressSchemaRequirements(addressPath, {
+      seedPath: "property_seed.json",
+      unnormalizedPath: "unnormalized_address.json",
+      inputHtml: htmlContent,
+      coordinateCandidates,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce raw address schema requirements at exit:",
       error,
     );
   }
