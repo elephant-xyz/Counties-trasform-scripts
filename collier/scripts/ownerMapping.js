@@ -127,29 +127,11 @@ function looksLikeCompany(name) {
 
 // Known suffix values
 const knownSuffixes = new Set([
-  "JR",
-  "JR.",
-  "JUNIOR",
-  "SR",
-  "SR.",
-  "SENIOR",
-  "II",
-  "III",
-  "IV",
-  "V",
-  "ESQ",
-  "ESQ.",
-  "CFA",
-  "CPA",
-  "DDS",
-  "DVM",
-  "MBA",
-  "MD",
-  "PE",
-  "PHD",
-  "PMP",
-  "RN",
-  "LLM",
+  "JR", "JR.", "JUNIOR",
+  "SR", "SR.", "SENIOR",
+  "II", "III", "IV",
+  "ESQ", "ESQ.",
+  "CFA", "CPA", "DDS", "DVM", "MBA", "MD", "PE", "PHD", "PMP", "RN", "LLM",
   "EMERITUS",
   "RET",
   "RET.",
@@ -159,16 +141,15 @@ const knownSuffixes = new Set([
 function normalizeSuffix(suffix) {
   const upper = suffix.toUpperCase().replace(/\./g, "");
   const map = {
-    JR: "Jr.",
-    JUNIOR: "Jr.",
-    SR: "Sr.",
-    SENIOR: "Sr.",
-    II: "II",
-    III: "III",
-    IV: "IV",
-    V: "V",
-    ESQ: "Esq.",
-    RET: "Ret.",
+    "JR": "Jr.",
+    "JUNIOR": "Jr.",
+    "SR": "Sr.",
+    "SENIOR": "Sr.",
+    "II": "II",
+    "III": "III",
+    "IV": "IV",
+    "ESQ": "Esq.",
+    "RET": "Ret.",
   };
   return map[upper] || suffix;
 }
@@ -279,7 +260,49 @@ function classifyOwner(raw) {
       return { valid: true, owners: persons };
     }
 
+    // Check if there's " & " separator (with spaces) indicating multiple people with same last name
+    // e.g., "LAST, FIRST & FIRST2"
     const firstMiddleTokens = firstMiddle.split(/\s+/).filter(Boolean);
+    const ampersandIndex = firstMiddleTokens.findIndex(t => t === "&");
+    if (ampersandIndex > 0 && ampersandIndex < firstMiddleTokens.length - 1) {
+      // Split by "&"
+      const beforeAmp = firstMiddleTokens.slice(0, ampersandIndex);
+      const afterAmp = firstMiddleTokens.slice(ampersandIndex + 1);
+
+      const persons = [];
+
+      // Parse first person (before &)
+      if (beforeAmp.length > 0) {
+        const firstName1 = titleCase(beforeAmp[0]);
+        const middleName1 = beforeAmp.length > 1
+          ? beforeAmp.slice(1).map(titleCase).join(" ")
+          : null;
+        persons.push({
+          type: "person",
+          first_name: firstName1,
+          last_name: lastName,
+          middle_name: middleName1,
+          suffix_name: suffixName,
+        });
+      }
+
+      // Parse second person (after &)
+      if (afterAmp.length > 0) {
+        const firstName2 = titleCase(afterAmp[0]);
+        const middleName2 = afterAmp.length > 1
+          ? afterAmp.slice(1).map(titleCase).join(" ")
+          : null;
+        persons.push({
+          type: "person",
+          first_name: firstName2,
+          last_name: lastName,
+          middle_name: middleName2,
+          suffix_name: suffixName,
+        });
+      }
+
+      return { valid: true, owners: persons };
+    }
 
     if (firstMiddleTokens.length === 0) {
       return { valid: false, reason: "no_first_name", raw: text };
