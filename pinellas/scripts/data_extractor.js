@@ -3079,18 +3079,14 @@ function extract() {
       console.log(granteeRaw,price)
       // && price !== null && price > 0
       if (iso) {
-        const saleObj = {
+        sales.push({
           ownership_transfer_date: iso,
+          purchase_price_amount: price,
           request_identifier: requestIdentifier, // Include request_identifier for each sale
           source_http_request: source_http_request, // Include the full source_http_request object
           _rawIndex: i, // Internal use for sorting
           grantee_text: granteeRaw,
-        };
-        // Only add purchase_price_amount if price is not null (schema requires number type, not null)
-        if (price != null) {
-          saleObj.purchase_price_amount = price;
-        }
-        sales.push(saleObj);
+        });
       }
     });
     console.log("SALES END------",sales)
