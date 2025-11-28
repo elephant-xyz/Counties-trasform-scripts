@@ -1787,6 +1787,89 @@ function collapseAddressRecordToMinimalRaw(addressPath) {
   }
 }
 
+function reduceAddressFileToLeanRaw(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const {
+    fallbackRawCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+  } = options || {};
+
+  const candidateRawValues = [
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "",
+    ...(
+      Array.isArray(fallbackRawCandidates)
+        ? fallbackRawCandidates
+        : []
+    ),
+  ]
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => value.length);
+
+  const trimmedRaw =
+    candidateRawValues.length > 0 ? candidateRawValues[0] : null;
+
+  if (!trimmedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const leanPayload = {
+    unnormalized_address: trimmedRaw,
+  };
+
+  const identifierCandidates = [
+    safeNullIfEmpty(payload.request_identifier),
+    ...(
+      Array.isArray(requestIdentifierCandidates)
+        ? requestIdentifierCandidates
+        : []
+    ),
+  ].filter((candidate) => typeof candidate === "string" && candidate.trim().length);
+
+  if (identifierCandidates.length) {
+    leanPayload.request_identifier = identifierCandidates[0].trim();
+  }
+
+  const resolvedSource = resolveSourceHttpRequestCandidate(
+    payload.source_http_request,
+    ...(
+      Array.isArray(sourceHttpRequestCandidates)
+        ? sourceHttpRequestCandidates
+        : []
+    ),
+  );
+
+  if (resolvedSource && typeof resolvedSource === "object") {
+    const prepared = prepareSourceHttpRequest(resolvedSource);
+    if (prepared) {
+      leanPayload.source_http_request = deepClone(prepared);
+    }
+  }
+
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(leanPayload, null, 2)}\n`,
+    );
+  } catch {
+    writeJSON(addressPath, leanPayload);
+  }
+}
+
 function enforceStrictRawSubmissionSurface(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -60185,10 +60268,31 @@ async function run() {
           process.exitCode = 1;
         }
       }
+      try {
+        enforceRawOnlyAddressFile(addressPath);
+        enforceStrictRawOnlyAddressPayload(addressPath, {
+          fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+          defaultCountyName: titleCaseCounty("Palm Beach"),
+          defaultStateCode: "FL",
+          defaultCountryCode: "US",
+          requestIdentifierCandidates: fallbackRequestIdentifierCandidates,
+          sourceHttpRequestCandidates: fallbackSourceHttpRequestCandidates,
+        });
+        reduceAddressFileToLeanRaw(addressPath, {
+          fallbackRawCandidates: fallbackRawCandidates,
+          requestIdentifierCandidates: fallbackRequestIdentifierCandidates,
+          sourceHttpRequestCandidates: fallbackSourceHttpRequestCandidates,
+        });
+      } catch (error) {
+        console.error("Failed to enforce raw-only address payload:", error);
+        if (!process.exitCode) {
+          process.exitCode = 1;
+        }
+      }
       console.log(
         structuredSnapshot
-          ? "Structured raw address snapshot satisfied county schema; skipping raw finalizers."
-          : "Existing address payload satisfied county raw schema; skipping raw finalizers.",
+          ? "Structured raw address snapshot satisfied county schema after enforcing raw-only surface."
+          : "Existing address payload satisfied county raw schema after enforcing raw-only surface.",
       );
       return;
     }
@@ -60214,10 +60318,31 @@ async function run() {
         process.exitCode = 1;
       }
     }
+    try {
+      enforceRawOnlyAddressFile(addressPath);
+      enforceStrictRawOnlyAddressPayload(addressPath, {
+        fallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+        defaultCountyName: titleCaseCounty("Palm Beach"),
+        defaultStateCode: "FL",
+        defaultCountryCode: "US",
+        requestIdentifierCandidates: fallbackRequestIdentifierCandidates,
+        sourceHttpRequestCandidates: fallbackSourceHttpRequestCandidates,
+      });
+      reduceAddressFileToLeanRaw(addressPath, {
+        fallbackRawCandidates: fallbackRawCandidates,
+        requestIdentifierCandidates: fallbackRequestIdentifierCandidates,
+        sourceHttpRequestCandidates: fallbackSourceHttpRequestCandidates,
+      });
+    } catch (error) {
+      console.error("Failed to enforce raw-only address payload:", error);
+      if (!process.exitCode) {
+        process.exitCode = 1;
+      }
+    }
     console.log(
       structuredSnapshot
-        ? "Structured raw address snapshot detected; skipping raw finalizers."
-        : "Structured raw address detected; skipping raw finalizers.",
+        ? "Structured raw address snapshot detected; enforced raw-only surface."
+        : "Structured raw address detected; enforced raw-only surface.",
     );
     return;
   }
@@ -63096,8 +63221,18 @@ process.on("exit", () => {
   try {
     const dataDir = path.join("data");
     const addressPath = path.join(dataDir, "address.json");
+    const existingPayload = readJSONIfExists(addressPath);
+    if (!existingPayload || typeof existingPayload !== "object") {
+      return;
+    }
+    const hasStrictNormalizedCoverage =
+      typeof hasNormalizedCountyCoverage === "function" &&
+      hasNormalizedCountyCoverage({ ...existingPayload });
+    if (!hasStrictNormalizedCoverage) {
+      return;
+    }
     const paddedPayload =
-      ensureRawAddressFieldCompleteness(readJSONIfExists(addressPath)) || null;
+      ensureRawAddressFieldCompleteness(existingPayload) || null;
     if (paddedPayload) {
       originalWriteFileSync.call(
         fs,
@@ -63107,5 +63242,50 @@ process.on("exit", () => {
     }
   } catch (error) {
     console.error("Failed to pad raw address fields at exit:", error);
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const existingPayload = readJSONIfExists(addressPath);
+    if (!existingPayload || typeof existingPayload !== "object") {
+      return;
+    }
+    const hasStrictNormalizedCoverage =
+      typeof hasNormalizedCountyCoverage === "function" &&
+      hasNormalizedCountyCoverage({ ...existingPayload });
+    if (hasStrictNormalizedCoverage) {
+      return;
+    }
+    const unnormalizedSource =
+      readJSONIfExists("unnormalized_address.json") || null;
+    const seedSource = readJSONIfExists("property_seed.json") || null;
+    const fallbackRawCandidates = [
+      existingPayload && existingPayload.unnormalized_address,
+      unnormalizedSource && unnormalizedSource.unnormalized_address,
+      unnormalizedSource && unnormalizedSource.full_address,
+      seedSource && seedSource.unnormalized_address,
+      seedSource && seedSource.full_address,
+    ].filter((value) => typeof value === "string" && value.trim().length);
+    const requestIdentifierCandidates = [
+      existingPayload && existingPayload.request_identifier,
+      unnormalizedSource && unnormalizedSource.request_identifier,
+      seedSource && seedSource.request_identifier,
+      seedSource && seedSource.parcel_id,
+    ].filter((value) => typeof value === "string" && value.trim().length);
+    const sourceHttpRequestCandidates = [
+      existingPayload && existingPayload.source_http_request,
+      unnormalizedSource && unnormalizedSource.source_http_request,
+      seedSource && seedSource.source_http_request,
+    ].filter((value) => value && typeof value === "object");
+    reduceAddressFileToLeanRaw(addressPath, {
+      fallbackRawCandidates,
+      requestIdentifierCandidates,
+      sourceHttpRequestCandidates,
+    });
+  } catch (error) {
+    console.error("Failed to persist lean raw county address:", error);
   }
 });
