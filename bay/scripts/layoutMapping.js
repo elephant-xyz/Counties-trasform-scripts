@@ -20,6 +20,7 @@ function readJSON(p) {
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Buildings";
+const EXTRA_FEATURES_SECTION_TITLE = "Extra Features";
 
 function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();
@@ -86,91 +87,103 @@ function collectBuildings($) {
   return buildings;
 }
 
-function toInt(val) {
-  if (!val) {
-    return null;
-  }
-  const n = Number(
-    String(val || "")
-      .replace(/[,]/g, "")
-      .trim(),
-  );
-  return Number.isFinite(n) ? Math.round(n) : 0;
+function toNumber(val) {
+  if (val == null) return null;
+  const num = Number(String(val).replace(/[,]/g, "").trim());
+  return Number.isFinite(num) ? num : null;
 }
 
-function defaultLayout(space_type, building_number, space_index, heated_area_sq_ft, total_area_sq_ft, is_finished) {
+function toInteger(val) {
+  if (val == null) return null;
+  const num = Number(String(val).replace(/[,]/g, "").trim());
+  if (!Number.isFinite(num)) return null;
+  return Math.round(num);
+}
+
+function buildBuildingModels(buildings) {
+  return buildings.map((b, idx) => {
+    const bedrooms = toInteger(b["Bedrooms"]);
+    const bathsRaw = b["Bathrooms"] != null ? b["Bathrooms"] : b["Baths"];
+    const bathsValue = bathsRaw != null ? Number(String(bathsRaw).replace(/[,]/g, "").trim()) : null;
+    const floors = toInteger(b["Stories"]);
+    const rooms = [];
+    if (bedrooms && bedrooms > 0) {
+      rooms.push({ type: "Bedroom", count: bedrooms });
+    }
+    if (bathsValue && bathsValue > 0) {
+      const fullBaths = Math.floor(bathsValue);
+      const hasHalf = bathsValue - fullBaths >= 0.5;
+      if (fullBaths > 0) {
+        rooms.push({ type: "Full Bathroom", count: fullBaths });
+      }
+      if (hasHalf) {
+        rooms.push({ type: "Half Bathroom", count: 1 });
+      }
+    }
+    rooms.push({ type: "Kitchen", count: 1 });
+    return {
+      building_number: idx + 1,
+      total_area_sq_ft: toNumber(b["Total Area"]),
+      livable_area_sq_ft: toNumber(b["Heated Area"]),
+      floor_count: floors || 0,
+      rooms: rooms.filter((r) => r.count && r.count > 0),
+    };
+  });
+}
+
+function parseDimensions(text) {
+  if (!text) return { length: null, width: null, height: null };
+  const parts = text
+    .split("x")
+    .map((part) => {
+      const cleaned = part.replace(/[^0-9.]/g, "").trim();
+      if (!cleaned) return null;
+      const num = Number(cleaned);
+      return Number.isFinite(num) ? num : null;
+    });
+  while (parts.length < 3) parts.push(null);
   return {
-    building_number: building_number,
-    space_type: space_type,
-    space_index: space_index,
-    flooring_material_type: null,
-    size_square_feet: null,
-    has_windows: null,
-    window_design_type: null,
-    window_material_type: null,
-    window_treatment_type: null,
-    is_finished: is_finished,
-    furnished: null,
-    paint_condition: null,
-    flooring_wear: null,
-    clutter_level: null,
-    visible_damage: null,
-    countertop_material: null,
-    cabinet_style: null,
-    fixture_finish_quality: null,
-    design_style: null,
-    natural_light_quality: null,
-    decor_elements: null,
-    pool_type: null,
-    pool_equipment: null,
-    spa_type: null,
-    safety_features: null,
-    view_type: null,
-    lighting_features: null,
-    condition_issues: null,
-    is_exterior: false,
-    pool_condition: null,
-    pool_surface_type: null,
-    pool_water_quality: null,
-    adjustable_area_sq_ft: null,
-    area_under_air_sq_ft: null,
-    bathroom_renovation_date: null,
-    kitchen_renovation_date: null,
-    heated_area_sq_ft: heated_area_sq_ft,
-    installation_date: null,
-    livable_area_sq_ft: null,
-    pool_installation_date: null,
-    spa_installation_date: null,
-    story_type: null,
-    total_area_sq_ft: total_area_sq_ft,
+    length: parts[0],
+    width: parts[1],
+    height: parts[2],
   };
 }
 
-function buildLayoutsFromBuildings(buildings) {
-  let lIdx = 1;
-  const layouts = [];
-  buildings.forEach((b, bIdx) => {
-    const numberOfBeds = toInt(b["Bedrooms"]);
-    const numberOfBaths = toInt(b["Baths"]);
-    const numberOfFloors = toInt(b["Stories"]);
-    layouts.push(defaultLayout("Building", (bIdx + 1), (bIdx + 1), toInt(b["Heated Area"]), toInt(b["Total Area"]), true));
-    if (numberOfBeds) {
-      for (let i = 0; i < numberOfBeds; i++) {
-        layouts.push(defaultLayout("Bedroom", (bIdx + 1), (i + 1), null, null, true));
-      }
-    }
-    if (numberOfBaths) {
-      for (let i = 0; i < numberOfBaths; i++) {
-        layouts.push(defaultLayout("Full Bathroom", (bIdx + 1), (i + 1), null, null, true));
-      }
-    }
-    if (numberOfFloors) {
-      for (let i = 0; i < numberOfFloors; i++) {
-        layouts.push(defaultLayout("Floor", (bIdx + 1), (i + 1), null, null, true));
-      }
-    }
+function collectExtraFeatures($) {
+  const features = [];
+  const section = $("section")
+    .filter(
+      (_, s) =>
+        textTrim($(s).find(".module-header .title").first().text()) ===
+        EXTRA_FEATURES_SECTION_TITLE,
+    )
+    .first();
+  if (!section.length) return features;
+  const table = section.find("table.tabular-data").first();
+  if (!table.length) return features;
+  table.find("tbody tr").each((_, tr) => {
+    const $tr = $(tr);
+    const th = $tr.find("th").first();
+    const tds = $tr.find("td");
+    if (!th.length || tds.length < 4) return;
+    const code = textTrim(
+      th.clone().children().remove().end().text(),
+    );
+    const description = textTrim($(tds[0]).text());
+    const dimensionsRaw = textTrim($(tds[1]).text());
+    const units = toNumber($(tds[2]).text());
+    const effectiveYear = textTrim($(tds[3]).text());
+    const dims = parseDimensions(dimensionsRaw);
+    if (!code && !description) return;
+    features.push({
+      code: code || null,
+      description: description || null,
+      units: units,
+      dimensions: dims,
+      effective_year_built: effectiveYear || null,
+    });
   });
-  return layouts;
+  return features;
 }
 
 function main() {
@@ -178,24 +191,21 @@ function main() {
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
 
-  const propertySeed = readJSON("property_seed.json");
-  if (propertySeed.request_identifier != parcelId.replaceAll("-","")) {
-    throw {
-      type: "error",
-      message: `Request identifier and parcel id don't match.`,
-      path: "property.request_identifier",
-    };
-  }
+  readJSON("property_seed.json");
   
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const layouts = buildLayoutsFromBuildings(buildings);
+  const buildingModels = buildBuildingModels(buildings);
+  const extraFeatures = collectExtraFeatures($);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "layout_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = { layouts };
+  outObj[`property_${parcelId}`] = {
+    buildings: buildingModels,
+    extra_features: extraFeatures,
+  };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
