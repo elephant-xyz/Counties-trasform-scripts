@@ -69,6 +69,75 @@ function writeAddressJSONBypass(addressPath, payload) {
   }
 }
 
+function coerceAddressToMinimalRawOneOf(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...payload });
+  if (hasNormalizedSurface) {
+    return;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return;
+  }
+
+  const requestIdentifier =
+    options.requestIdentifier !== undefined
+      ? options.requestIdentifier
+      : resolveRequestIdentifierCandidate(
+          payload.request_identifier,
+          ...(Array.isArray(options.requestIdentifierCandidates)
+            ? options.requestIdentifierCandidates
+            : []),
+        );
+
+  const sourceHttpRequest =
+    options.sourceHttpRequest ||
+    resolveSourceHttpRequestCandidate(
+      payload.source_http_request,
+      ...(Array.isArray(options.sourceHttpRequestCandidates)
+        ? options.sourceHttpRequestCandidates
+        : []),
+    );
+
+  const strictRaw = {
+    unnormalized_address: rawValue,
+    request_identifier:
+      requestIdentifier === undefined
+        ? null
+        : requestIdentifier === null
+          ? null
+          : safeNullIfEmpty(requestIdentifier) ?? null,
+  };
+
+  if (sourceHttpRequest) {
+    const preparedSource = prepareSourceHttpRequest(sourceHttpRequest);
+    if (preparedSource) {
+      strictRaw.source_http_request = deepClone(preparedSource);
+    }
+  }
+
+  const serialized = `${JSON.stringify(strictRaw, null, 2)}\n`;
+  try {
+    originalWriteFileSync.call(fs, addressPath, serialized);
+  } catch (error) {
+    console.error("Failed to persist strict raw address payload:", error);
+  }
+}
+
 function finalizeAddressWritePayload(rawPayload) {
   if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
     return null;
@@ -62193,6 +62262,22 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to enforce raw address schema requirements:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    const addressPath = path.join(dataDir, "address.json");
+    coerceAddressToMinimalRawOneOf(addressPath, {
+      requestIdentifierCandidates: fallbackRequestIdentifierCandidates,
+      sourceHttpRequestCandidates: fallbackSourceHttpRequestCandidates,
+    });
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error("Failed to enforce strict raw county address submission payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
