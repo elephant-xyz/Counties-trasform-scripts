@@ -30816,6 +30816,10 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
 
   const working = { ...payload };
   let mutated = false;
+  const snapshotPath = path.join(
+    path.dirname(addressFilePath),
+    "address_structured_snapshot.json",
+  );
 
   const assignFieldIfMissing = (field, value) => {
     if (value === undefined || value === null) {
@@ -30967,48 +30971,14 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
     assignFieldIfMissing("lot", lotBlock.lot);
   }
 
-  const hasStreetCore =
-    hasMeaningfulAddressValue(working.street_number) &&
-    hasMeaningfulAddressValue(working.street_name);
-  const hasLocalityCore =
-    hasMeaningfulAddressValue(working.city_name) &&
-    hasMeaningfulAddressValue(working.state_code) &&
-    hasMeaningfulAddressValue(working.postal_code);
   const normalizedLatitude = parseCoordinate(working.latitude);
   const normalizedLongitude = parseCoordinate(working.longitude);
-  const hasCoordinatePair =
-    Number.isFinite(normalizedLatitude) && Number.isFinite(normalizedLongitude);
   if (Number.isFinite(normalizedLatitude)) {
     working.latitude = normalizedLatitude;
   }
   if (Number.isFinite(normalizedLongitude)) {
     working.longitude = normalizedLongitude;
   }
-  if (hasStreetCore && hasLocalityCore && hasCoordinatePair) {
-    working.__preserve_structured_fields = true;
-    const snapshotPayload = { ...working };
-    if (
-      Object.prototype.hasOwnProperty.call(
-        snapshotPayload,
-        "unnormalized_address",
-      )
-    ) {
-      delete snapshotPayload.unnormalized_address;
-    }
-    const snapshotPath = path.join(
-      path.dirname(addressFilePath),
-      "address_structured_snapshot.json",
-    );
-    try {
-      fs.writeFileSync(
-        snapshotPath,
-        `${JSON.stringify(snapshotPayload, null, 2)}\n`,
-      );
-    } catch (error) {
-      console.error("Failed to persist structured address snapshot:", error);
-    }
-  }
-
   let hasStrictNormalizedSurface = false;
   if (typeof hasNormalizedCountyCoverage === "function") {
     const hadForcedRawVariant =
@@ -31023,6 +30993,24 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
     }
   }
   if (hasStrictNormalizedSurface) {
+    working.__preserve_structured_fields = true;
+    const snapshotPayload = { ...working };
+    if (
+      Object.prototype.hasOwnProperty.call(
+        snapshotPayload,
+        "unnormalized_address",
+      )
+    ) {
+      delete snapshotPayload.unnormalized_address;
+    }
+    try {
+      fs.writeFileSync(
+        snapshotPath,
+        `${JSON.stringify(snapshotPayload, null, 2)}\n`,
+      );
+    } catch (error) {
+      console.error("Failed to persist structured address snapshot:", error);
+    }
     forceRawAddressVariantOutput = false;
     if (Object.prototype.hasOwnProperty.call(working, "__force_raw_variant")) {
       delete working.__force_raw_variant;
@@ -31032,6 +31020,17 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
       delete working.unnormalized_address;
       mutated = true;
     }
+  } else {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        working,
+        "__preserve_structured_fields",
+      )
+    ) {
+      delete working.__preserve_structured_fields;
+      mutated = true;
+    }
+    removeFileIfExists(snapshotPath);
   }
 
   if (mutated) {
