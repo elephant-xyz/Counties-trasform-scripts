@@ -441,7 +441,24 @@ function tokenizeNamePart(part) {
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(token => {
+      // Remove continuation markers from tokens (e.g., "GERARDO-CONT" -> "GERARDO")
+      return token.replace(/[\-]*(cont|continued)[\-]*$/i, '').trim();
+    })
+    .filter(token => {
+      if (!token) return false;
+      // Filter out standalone continuation markers
+      const upperToken = token.toUpperCase();
+      if (upperToken === 'CONT' || upperToken === '-CONT-' || upperToken === 'CONTINUED') {
+        return false;
+      }
+      // Filter out tokens that are only hyphens or special characters
+      if (/^[\-]+$/.test(token)) {
+        return false;
+      }
+      return true;
+    });
 }
 
 function buildPersonFromTokens(tokens, fallbackLastName) {
@@ -2784,12 +2801,46 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    // Validate middle_name against the pattern: must start with uppercase letter
-    const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-    const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
+    // Validate names against the pattern: must start with uppercase letter
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+    // Validate and clean first_name
+    let validFirstName = firstName;
+    if (validFirstName && !namePattern.test(validFirstName)) {
+      // Try to clean it by removing leading/trailing hyphens and special chars
+      validFirstName = validFirstName.replace(/^[\-]+|[\-]+$/g, '').trim();
+      // If still invalid after cleaning, set to null
+      if (!validFirstName || !namePattern.test(validFirstName)) {
+        validFirstName = null;
+      }
+    }
+
+    // Validate and clean last_name
+    let validLastName = lastName;
+    if (validLastName && !namePattern.test(validLastName)) {
+      // Try to clean it by removing leading/trailing hyphens and special chars
+      validLastName = validLastName.replace(/^[\-]+|[\-]+$/g, '').trim();
+      // If still invalid after cleaning, set to null
+      if (!validLastName || !namePattern.test(validLastName)) {
+        validLastName = null;
+      }
+    }
+
+    // Skip if both first and last names are invalid
+    if (!validFirstName && !validLastName) {
+      return null;
+    }
+
+    // Set default empty string if name is null but we have at least one valid name
+    const finalFirstName = validFirstName || "";
+    const finalLastName = validLastName || "";
+
+    // Validate middle_name against the pattern
+    const middleName = middleRaw && namePattern.test(middleRaw) ? middleRaw : null;
+
     const key =
-      firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+      finalFirstName || finalLastName
+        ? `${finalFirstName.toLowerCase()}|${middleRaw.toLowerCase()}|${finalLastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2800,8 +2851,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: finalFirstName,
+      last_name: finalLastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
