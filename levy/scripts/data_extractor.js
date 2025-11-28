@@ -4027,42 +4027,23 @@ const structureItems = (() => {
     }
   }
 
-  const mailingAddressFiles = [];
-  const mailingAddressCache = new Map();
-
-  const getOrCreateMailingAddress = (addr) => {
-    if (!addr) return null;
-    if (mailingAddressCache.has(addr)) {
-      return mailingAddressCache.get(addr);
-    }
-    const fileIndex = mailingAddressFiles.length + 1;
-    const fileName = `mailing_address_${fileIndex}.json`;
-    const filePath = `./${fileName}`;
+  // Create a single mailing_address.json file if there's a primary mailing address
+  let hasMailingAddress = false;
+  if (primaryMailingAddress) {
     const mailingObj = {
-      unnormalized_address: addr,
+      unnormalized_address: primaryMailingAddress,
       latitude: null,
       longitude: null,
       source_http_request: clone(defaultSourceHttpRequest),
       request_identifier: requestIdentifier,
     };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: filePath });
-    mailingAddressCache.set(addr, filePath);
-    return filePath;
-  };
+    writeJSON(path.join(dataDir, "mailing_address.json"), mailingObj);
+    hasMailingAddress = true;
+  }
 
   const currentOwnerEntities = [];
   currentOwners.forEach((owner, idx) => {
     if (!owner || !owner.type) return;
-    let mailingPath = null;
-    if (ownerMailingInfo.rawAddresses[idx] != null) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      mailingPath = getOrCreateMailingAddress(rawAddr);
-    } else if (ownerMailingInfo.uniqueAddresses.length > 0) {
-      const fallbackIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
-      const fallbackAddr = ownerMailingInfo.uniqueAddresses[fallbackIdx];
-      mailingPath = getOrCreateMailingAddress(fallbackAddr);
-    }
 
     if (owner.type === "person") {
       const normalizedPerson = normalizeOwner(owner, ownersByDate);
@@ -4071,7 +4052,6 @@ const structureItems = (() => {
         currentOwnerEntities.push({
           type: "person",
           path: personPath,
-          mailingPath: mailingPath,
         });
       }
     } else if (owner.type === "company") {
@@ -4080,27 +4060,36 @@ const structureItems = (() => {
         currentOwnerEntities.push({
           type: "company",
           path: companyPath,
-          mailingPath: mailingPath,
         });
       }
     }
   });
 
-  const mailingRelationshipKeys = new Set();
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path) return;
-    if (!entity.mailingPath) return;
-    const relKey = `${entity.path}|${entity.mailingPath}`;
-    if (mailingRelationshipKeys.has(relKey)) return;
-    mailingRelationshipKeys.add(relKey);
-    const relFilename = makeRelationshipFilename(entity.path, entity.mailingPath);
-    if (!relFilename) return;
-    const relObj = {
-      from: { "/": entity.path },
-      to: { "/": entity.mailingPath },
-    };
-    writeJSON(path.join(dataDir, relFilename), relObj);
-  });
+  // Create relationships from person/company to mailing_address
+  if (hasMailingAddress) {
+    let personRelCounter = 0;
+    let companyRelCounter = 0;
+    currentOwnerEntities.forEach((entity) => {
+      if (!entity.path) return;
+      if (entity.type === "person") {
+        personRelCounter++;
+        const relFilename = `relationship_person_has_mailing_address_${personRelCounter}.json`;
+        const relObj = {
+          from: { "/": entity.path },
+          to: { "/": "./mailing_address.json" },
+        };
+        writeJSON(path.join(dataDir, relFilename), relObj);
+      } else if (entity.type === "company") {
+        companyRelCounter++;
+        const relFilename = `relationship_company_has_mailing_address_${companyRelCounter}.json`;
+        const relObj = {
+          from: { "/": entity.path },
+          to: { "/": "./mailing_address.json" },
+        };
+        writeJSON(path.join(dataDir, relFilename), relObj);
+      }
+    });
+  }
 
   const work = parseValuationsWorking($);
   if (work) {
