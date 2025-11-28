@@ -1777,10 +1777,10 @@ function writeSalesDeedsFilesAndRelationships(
     saleFiles.push(saleFile);
 
     const deedFile = `deed_${idx}.json`;
-    const deedType = mapInstrumentToDeedType(s.instrument);
+    const deedType = mapInstrumentToDeedType(s.instrument) || "Miscellaneous";
     const deed = {};
     if (parcelId) deed.request_identifier = parcelId;
-    if (deedType) deed.deed_type = deedType;
+    deed.deed_type = deedType;
     if (sourceHttp) deed.source_http_request = sourceHttp;
     const bookPageText = s.bookPage
       ? s.bookPage.split("\n")[0].trim()
