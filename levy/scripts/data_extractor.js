@@ -4071,26 +4071,32 @@ const structureItems = (() => {
 
   // Create relationships from person/company to mailing_address
   if (hasMailingAddress) {
-    let personRelCounter = 0;
-    let companyRelCounter = 0;
     currentOwnerEntities.forEach((entity) => {
       if (!entity.path) return;
       if (entity.type === "person") {
-        personRelCounter++;
-        const relFilename = `relationship_person_has_mailing_address_${personRelCounter}.json`;
-        const relObj = {
-          from: { "/": entity.path },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(path.join(dataDir, relFilename), relObj);
+        // Extract person index from path like "./person_1.json"
+        const match = entity.path.match(/person_(\d+)\.json/);
+        if (match) {
+          const personIdx = match[1];
+          const relFilename = `relationship_person_${personIdx}_has_mailing_address.json`;
+          const relObj = {
+            from: { "/": entity.path },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJSON(path.join(dataDir, relFilename), relObj);
+        }
       } else if (entity.type === "company") {
-        companyRelCounter++;
-        const relFilename = `relationship_company_has_mailing_address_${companyRelCounter}.json`;
-        const relObj = {
-          from: { "/": entity.path },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(path.join(dataDir, relFilename), relObj);
+        // Extract company index from path like "./company_1.json"
+        const match = entity.path.match(/company_(\d+)\.json/);
+        if (match) {
+          const companyIdx = match[1];
+          const relFilename = `relationship_company_${companyIdx}_has_mailing_address.json`;
+          const relObj = {
+            from: { "/": entity.path },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJSON(path.join(dataDir, relFilename), relObj);
+        }
       }
     });
   }
