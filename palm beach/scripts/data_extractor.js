@@ -3304,33 +3304,77 @@ function ensureRawAddressFieldCompleteness(address) {
     return address;
   }
 
-  const normalizedSurface =
-    ensureNormalizedAddressSchemaSurface({ ...address }) || {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    };
+  if (shouldTreatAddressAsNormalized(address)) {
+    if (!address.postal_code) {
+      address.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(address.state_code) &&
+      !hasMeaningfulAddressValue(address.country_code)
+    ) {
+      address.country_code = "US";
+    }
+    return address;
+  }
 
-  const completed = {
-    ...normalizedSurface,
-    ...address,
+  const rawPayload = {
     unnormalized_address: rawValue,
   };
 
-  if (!completed.postal_code) {
-    completed.plus_four_postal_code = null;
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const identifier = safeNullIfEmpty(address.request_identifier);
+    if (identifier === undefined) {
+      rawPayload.request_identifier = null;
+    } else if (identifier !== null) {
+      rawPayload.request_identifier = identifier;
+    }
   }
 
-  if (completed.state_code && !completed.country_code) {
-    completed.country_code = "US";
+  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
+  if (preparedSource) {
+    rawPayload.source_http_request = deepClone(preparedSource);
   }
 
-  if (process.env.DEBUG_PAD_RAW_ADDRESS === "1") {
-    console.log(
-      "[ensureRawAddressFieldCompleteness] keys",
-      Object.keys(completed),
-    );
+  const assignMeaningfulField = (field, value) => {
+    if (!hasMeaningfulAddressValue(value)) {
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) {
+        return;
+      }
+      rawPayload[field] = trimmed;
+      return;
+    }
+    rawPayload[field] = value;
+  };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+    assignMeaningfulField(field, address[field]);
   }
 
-  return completed;
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    rawPayload.latitude = latitude;
+    rawPayload.longitude = longitude;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawPayload.state_code) &&
+    !hasMeaningfulAddressValue(rawPayload.country_code)
+  ) {
+    rawPayload.country_code = "US";
+  }
+
+  return rawPayload;
 }
 
 function enforceRawAddressStructuredSurface(addressPath) {
