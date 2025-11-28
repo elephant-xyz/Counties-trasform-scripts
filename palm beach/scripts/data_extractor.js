@@ -14735,6 +14735,69 @@ function ensureCountyRawRequiredFieldSurface(address) {
     return address;
   }
 
+  const normalizedSnapshotBase =
+    typeof ensureAddressOutputFieldPresence === "function"
+      ? ensureAddressOutputFieldPresence({ ...address })
+      : { ...address };
+  const normalizedSnapshot =
+    normalizedSnapshotBase && typeof normalizedSnapshotBase === "object"
+      ? normalizedSnapshotBase
+      : { ...address };
+
+  const hasNormalizedSurface =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage(normalizedSnapshot);
+
+  if (hasNormalizedSurface) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedSnapshot,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedSnapshot.unnormalized_address;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedSnapshot,
+        "request_identifier",
+      )
+    ) {
+      const normalizedIdentifier = safeNullIfEmpty(
+        normalizedSnapshot.request_identifier,
+      );
+      if (normalizedIdentifier === undefined) {
+        delete normalizedSnapshot.request_identifier;
+      } else {
+        normalizedSnapshot.request_identifier =
+          normalizedIdentifier === null ? null : normalizedIdentifier;
+      }
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedSnapshot,
+        "source_http_request",
+      )
+    ) {
+      const preparedSource = prepareSourceHttpRequest(
+        normalizedSnapshot.source_http_request,
+      );
+      if (preparedSource) {
+        normalizedSnapshot.source_http_request = deepClone(preparedSource);
+      } else {
+        delete normalizedSnapshot.source_http_request;
+      }
+    }
+
+    Object.keys(address).forEach((key) => {
+      delete address[key];
+    });
+    Object.assign(address, normalizedSnapshot);
+    return address;
+  }
+
   const trimmedRaw =
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
@@ -14744,85 +14807,37 @@ function ensureCountyRawRequiredFieldSurface(address) {
     return address;
   }
 
-  address.unnormalized_address = trimmedRaw;
+  const rawPayload = {
+    unnormalized_address: trimmedRaw,
+  };
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const normalizedRequestId = safeNullIfEmpty(address.request_identifier);
-    if (normalizedRequestId === undefined) {
-      delete address.request_identifier;
-    } else {
-      address.request_identifier = normalizedRequestId;
+  if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier")
+  ) {
+    const normalizedIdentifier = safeNullIfEmpty(
+      address.request_identifier,
+    );
+    if (normalizedIdentifier !== undefined) {
+      rawPayload.request_identifier =
+        normalizedIdentifier === null ? null : normalizedIdentifier;
     }
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+  if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request")
+  ) {
     const preparedSource = prepareSourceHttpRequest(
       address.source_http_request,
     );
     if (preparedSource) {
-      address.source_http_request = deepClone(preparedSource);
-    } else {
-      delete address.source_http_request;
+      rawPayload.source_http_request = deepClone(preparedSource);
     }
   }
 
-  const normalizedFieldBlueprint =
-    Array.isArray(COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT) &&
-    COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT.length
-      ? COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT
-      : NORMALIZED_ADDRESS_FIELDS;
-
-  for (const field of normalizedFieldBlueprint) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      address[field] = null;
-      continue;
-    }
-
-    const value = address[field];
-    if (value === undefined) {
-      address[field] = null;
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      address[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      address[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-
-    address[field] = value === null ? null : value;
-  }
-
-  if (!address.postal_code) {
-    address.plus_four_postal_code = null;
-  }
-
-  if (
-    hasMeaningfulAddressValue(address.state_code) &&
-    !hasMeaningfulAddressValue(address.country_code)
-  ) {
-    address.country_code = "US";
-  }
-
-  const allowedRawFields =
-    RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET &&
-    RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET.size
-      ? RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET
-      : RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS;
-
-  for (const key of Object.keys(address)) {
-    if (allowedRawFields.has(key)) {
-      continue;
-    }
+  Object.keys(address).forEach((key) => {
     delete address[key];
-  }
-
+  });
+  Object.assign(address, rawPayload);
   return address;
 }
 
