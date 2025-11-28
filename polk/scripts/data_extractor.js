@@ -3358,7 +3358,7 @@ function extractSales($) {
   return sales;
 }
 
-function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
+function buildPersonsAndCompanies(ownerJSON, parcelId) {
   const res = {
     persons: [],
     companies: [],
@@ -3372,14 +3372,6 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
   const obj = ownerJSON[key];
   if (!obj || !obj.owners_by_date) return res;
 
-  // Build a set of sale dates to know which historical owners to include
-  const saleDates = new Set();
-  sales.forEach((s) => {
-    if (s.ownership_transfer_date) {
-      saleDates.add(s.ownership_transfer_date);
-    }
-  });
-
   // Current owners first
   const current = obj.owners_by_date["current"] || [];
   current.forEach((o) => {
@@ -3387,7 +3379,6 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
       const firstName = toTitleCase(o.first_name); // Apply title case
       const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
-      const suffixName = o.suffix_name || null;
       const personKey = `${firstName}|${middleName || ""}|${lastName}`;
       if (!res.personIndexByKey.has(personKey)) {
         res.persons.push({
@@ -3396,7 +3387,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
           last_name: lastName,
           middle_name: middleName,
           prefix_name: null,
-          suffix_name: suffixName,
+          suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
         });
@@ -3413,18 +3404,14 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
     }
   });
 
-  // Historical owners - ONLY include those that match sale dates
+  // Historical owners
   Object.entries(obj.owners_by_date).forEach(([dt, owners]) => {
     if (dt === "current") return;
-    // Only process historical owners if they have a matching sale date
-    if (!saleDates.has(dt)) return;
-
     (owners || []).forEach((o) => {
       if (o.type === "person") {
         const firstName = toTitleCase(o.first_name); // Apply title case
         const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
-        const suffixName = o.suffix_name || null;
         const personKey = `${firstName}|${middleName || ""}|${lastName}`;
         if (!res.personIndexByKey.has(personKey)) {
           res.persons.push({
@@ -3433,7 +3420,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId, sales) {
             last_name: lastName,
             middle_name: middleName,
             prefix_name: null,
-            suffix_name: suffixName,
+            suffix_name: null,
             us_citizenship_status: null,
             veteran_status: null,
           });
@@ -3568,7 +3555,7 @@ function parseAddressSection($, headingText) {
 
 function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
-  let inputCounty = (unnorm.county_jurisdiction || "").trim();
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
@@ -3861,15 +3848,7 @@ function main() {
 
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-
-  // Owners (persons only) - extract first to know if we should write mailing address
-  const sales = extractSales($);
-  const pc = buildPersonsAndCompanies(ownerJSON, parcelId, sales);
-
-  // Only write mailing address if there are persons to link it to
-  // Note: Companies are not generated as they are not included in this data group
-  const hasOwners = (pc.personCurrentOwners.length > 0);
-  const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, hasOwners ? mailingAddress : null);
+  const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, mailingAddress);
 
   // Lot
   const lot = extractLot($);
@@ -3889,13 +3868,14 @@ function main() {
     }
   });
 
-  // Sales (already extracted above)
+  // Sales
+  const sales = extractSales($);
   sales.forEach((s, idx) => {
     const saleOut = {
       ownership_transfer_date: s.ownership_transfer_date || null,
       purchase_price_amount: s.purchase_price_amount ?? null,
     };
-    writeJSON(path.join("data", `sales_history_${idx + 1}.json`), saleOut);
+    writeJSON(path.join("data", `sales_${idx + 1}.json`), saleOut);
     let deed = { deed_type: s.instrumentType };
     if (s.book) {
       deed.book = s.book;
@@ -3924,44 +3904,23 @@ function main() {
     );
 
     const relSalesDeed = {
-      from: { "/": `./sales_history_${idx + 1}.json` },
+      from: { "/": `./sales_${idx + 1}.json` },
       to: { "/": `./deed_${idx + 1}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_history_deed_${idx + 1}.json`),
+      path.join("data", `relationship_sales_deed_${idx + 1}.json`),
       relSalesDeed,
     );
   });
 
-  // Owners (persons/companies) - already extracted above
-  // CRITICAL FIX: Only create person/company files for CURRENT owners (those linked to property)
-  // Do NOT create entities for historical owners that are only linked to sales history
-  // This is because sales_history data group may not include person/company classes
-
-  // Only write persons that are current owners (have property relationships)
-  const personsWritten = [];
-  pc.personCurrentOwners.forEach((idx) => {
-    writeJSON(path.join("data", `person_${idx}.json`), pc.persons[idx - 1]);
-    personsWritten.push(idx);
-  });
-
-  // NOTE: Company files are NOT generated because the company class is not included in this data group
-  // Only person entities are supported in this data group
-
-  // Create property-person relationships for current owners
-  pc.personCurrentOwners.forEach((idx, i) =>
-    writeJSON(
-      path.join(
-        "data",
-        `relationship_property_has_person_${idx}.json`,
-      ),
-      {
-        from: { "/": `./property.json` },
-        to: { "/": `./person_${idx}.json` },
-      }
-    )
+  // Owners (persons/companies)
+  const pc = buildPersonsAndCompanies(ownerJSON, parcelId);
+  pc.persons.forEach((p, i) =>
+    writeJSON(path.join("data", `person_${i + 1}.json`), p),
   );
-
+  pc.companies.forEach((c, i) =>
+    writeJSON(path.join("data", `company_${i + 1}.json`), c),
+  );
   if (hasOwnerMailingAddress) {
     pc.personCurrentOwners.forEach((idx, i) =>
       writeJSON(
@@ -3975,12 +3934,81 @@ function main() {
         }
       )
     );
+    pc.companyCurrentOwners.forEach((idx, i) =>
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_company_has_mailing_address_${idx}.json`,
+        ),
+        {
+          from: { "/": `./company_${idx}.json` },
+          to: { "/": `./mailing_address.json` },
+        }
+      )
+    );
   }
 
-  // NOTE: We do NOT create sales-person relationships
-  // because we only generate person entities for current owners (not historical sales).
-  // Company entities are not generated because the company class is not included in this data group.
+  // Relationships person/company -> sales
+  const personNameToPath = new Map();
+  pc.persons.forEach((p, i) => {
+    const nameVariants = [];
+    const f = (p.first_name || "").trim();
+    const m = (p.middle_name || "").trim();
+    const l = (p.last_name || "").trim();
+    if (f && l) {
+      // Use the capitalized names for matching
+      nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
+      nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
+      nameVariants.push(`${l} ${f}`.toUpperCase());
+    }
+    const pth = `./person_${i + 1}.json`;
+    nameVariants.forEach((v) => personNameToPath.set(v, pth));
+  });
+  const companyNameToPath = new Map();
+  pc.companies.forEach((c, i) => {
+    const nm = (c.name || "").trim().toUpperCase();
+    if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
+  });
 
+  sales.forEach((s, idx) => {
+    const g = normalizeNameForMatch(s.grantee);
+    if (!g) return;
+    if (companyNameToPath.has(g)) {
+      const rel = {
+        to: { "/": companyNameToPath.get(g) },
+        from: { "/": `./sales_${idx + 1}.json` },
+      };
+      writeJSON(
+        path.join("data", `relationship_sales_company_${idx + 1}.json`),
+        rel,
+      );
+    } else {
+      // try direct or swapped person match
+      let toPath = null;
+      if (personNameToPath.has(g)) {
+        toPath = personNameToPath.get(g);
+      } else {
+        const parts = g.split(/\s+/);
+        if (parts.length >= 2) {
+          const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
+            .toUpperCase()
+            .trim();
+          if (personNameToPath.has(swapped))
+            toPath = personNameToPath.get(swapped);
+        }
+      }
+      if (toPath) {
+        const rel = {
+          to: { "/": toPath },
+          from: { "/": `./sales_${idx + 1}.json` },
+        };
+        writeJSON(
+          path.join("data", `relationship_sales_person_${idx + 1}.json`),
+          rel,
+        );
+      }
+    }
+  });
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     const lset =

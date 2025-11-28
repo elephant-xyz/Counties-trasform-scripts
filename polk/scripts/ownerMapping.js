@@ -94,7 +94,7 @@ const propertyId = extractPropertyId($);
 
 // Company detection keywords (case-insensitive)
 const companyKeywords = [
-  "inc", "llc", "ltd", "corp", "co", "lp", "lllp", "pllc", "plc", "pc", // Common legal entities
+  "inc", "llc", "ltd", "corp", "co", "lp", "pllc", "plc", "pc", // Common legal entities
   "foundation", "alliance", "solutions", "services", "trust", "associates",
   "association", "partners", "group", "holdings", "management", "properties",
   "realty", "development", "partnership", "syndicate", "capital", "investments",
@@ -106,8 +106,8 @@ const companyKeywords = [
   "fraternity", "sorority", "union", "guild", "coalition", "consortium",
   "network", "forum", "council", "committee",
   // Specific legal forms, often with periods
-  "inc.", "llc.", "ltd.", "corp.", "co.", "lp.", "lllp.", "pllc.", "plc.", "pc.",
-  "p.a.", "p.c.", "s.c.", "l.l.p.", "l.l.c.", "l.l.l.p.", "p.l.l.c.", "p.l.c.", "p.s.",
+  "inc.", "llc.", "ltd.", "corp.", "co.", "lp.", "pllc.", "plc.", "pc.",
+  "p.a.", "p.c.", "s.c.", "l.l.p.", "l.l.c.", "p.l.l.c.", "p.l.c.", "p.s.",
   // Common trust/estate indicators
   " tr ", "tr.", "trustee", "executor", "administrator", "guardian", "conservator",
   "receiver", "liquidator", "assignee", "successor", "nominee", "agent",
@@ -203,7 +203,7 @@ function parsePersonName(raw) {
   let nameWithoutSuffix = s;
   const suffixMatch = s.match(suffixRegex);
   if (suffixMatch) {
-    const rawSuffix = suffixMatch[1].toUpperCase();
+    const rawSuffix = toTitleCase(suffixMatch[1]);
     suffixName = suffixFormatMap[rawSuffix] || rawSuffix; // Apply formatting from map
     // Remove the matched suffix from the name string
     nameWithoutSuffix = s.replace(suffixMatch[0], "").trim();
