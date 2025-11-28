@@ -2046,10 +2046,17 @@ function emitCanonicalAddressPayload(addressPath) {
     "address_structured_snapshot.json",
   );
   const structuredSnapshot = readJSONIfExists(structuredSnapshotPath);
+  const fallbackFieldSources = Array.isArray(
+    ADDRESS_FALLBACK_CONTEXT.fieldSources,
+  )
+    ? ADDRESS_FALLBACK_CONTEXT.fieldSources.filter(
+        (source) => source && typeof source === "object",
+      )
+    : [];
   const addressSources =
     structuredSnapshot && typeof structuredSnapshot === "object"
-      ? [structuredSnapshot, ...baseSources]
-      : baseSources;
+      ? [structuredSnapshot, ...baseSources, ...fallbackFieldSources]
+      : [...baseSources, ...fallbackFieldSources];
 
   const requestIdentifier =
     safeNullIfEmpty(payload.request_identifier) ||
@@ -2144,6 +2151,16 @@ function emitCanonicalAddressPayload(addressPath) {
     unnormalized_address: resolvedRaw.trim(),
     request_identifier: requestIdentifier,
   };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    const resolvedValue = resolveAddressFieldValueFromSources(
+      field,
+      addressSources,
+    );
+    if (resolvedValue !== null && resolvedValue !== undefined) {
+      canonicalRawSeed[field] = resolvedValue;
+    }
+  }
 
   if (sourceHttpRequest) {
     canonicalRawSeed.source_http_request = deepClone(sourceHttpRequest);
@@ -2412,27 +2429,50 @@ function buildSchemaCompliantRawAddress(payload) {
     return null;
   }
 
-  const submission = {
-    unnormalized_address: rawValue,
-  };
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
 
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
-    submission.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
+  const hydratedPayload =
+    ensureRawAddressSchemaDefaults({
+      ...payload,
+      unnormalized_address: rawValue,
+    }) || null;
+
+  if (!hydratedPayload) {
+    return null;
+  }
+
+  hydratedPayload.request_identifier =
+    requestIdentifier === undefined ? null : requestIdentifier;
+
+  if (preparedSource) {
+    hydratedPayload.source_http_request = deepClone(preparedSource);
+  } else if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+  ) {
+    hydratedPayload.source_http_request = null;
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(payload, "source_http_request") &&
-    payload.source_http_request
+    (hydratedPayload.latitude == null && hydratedPayload.longitude != null) ||
+    (hydratedPayload.latitude != null && hydratedPayload.longitude == null)
   ) {
-    const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    if (prepared) {
-      submission.source_http_request = deepClone(prepared);
-    }
+    hydratedPayload.latitude = null;
+    hydratedPayload.longitude = null;
   }
 
-  return submission;
+  if (!hydratedPayload.postal_code) {
+    hydratedPayload.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(hydratedPayload.state_code) &&
+    !hasMeaningfulAddressValue(hydratedPayload.country_code)
+  ) {
+    hydratedPayload.country_code = "US";
+  }
+
+  return hydratedPayload;
 }
 
 function buildMinimalRawAddressSurface(address) {
@@ -8407,14 +8447,15 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// County address schema's raw branch (the unnormalized variant of the oneOf)
-// only permits the raw string plus request metadata. Surfacing partially
-// structured fields here causes the payload to be validated against the
-// normalized branch, which then fails because the additional fields are
-// incomplete. Restrict the raw allowlist to only the metadata we know is
-// accepted so that we emit a clean raw-only payload whenever we cannot
-// satisfy the strict normalized requirements.
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([]);
+// County schema requires the raw branch to retain the same structured surface
+// as the normalized variant (the properties must exist even when null) so that
+// the oneOf check can differentiate between the two shapes. Keep the entire
+// normalized surface available when emitting a raw payload so we do not strip
+// required keys while still preferring unnormalized text when structured data
+// is incomplete.
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
+  ...RAW_ADDRESS_OUTPUT_FIELDS,
+]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
