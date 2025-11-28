@@ -268,11 +268,14 @@ function writeSchemaAlignedAddress(addressPath, payload) {
     return false;
   }
 
+  const schemaReadyPayload =
+    ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
+
   try {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(finalizedPayload, null, 2)}\n`,
+      `${JSON.stringify(schemaReadyPayload, null, 2)}\n`,
     );
     return true;
   } catch {
@@ -1348,7 +1351,9 @@ function emitFinalCountyAddress(addressPath, options = {}) {
     leanRaw.source_http_request = expandedRaw.source_http_request;
   }
 
-  writeAddressPayload(addressPath, leanRaw);
+  const schemaAlignedRaw =
+    ensureRawAddressFieldCompleteness(leanRaw) || leanRaw;
+  writeAddressPayload(addressPath, schemaAlignedRaw);
 }
 
 function enforceAddressTerminalSurface(addressPath) {
@@ -2925,38 +2930,30 @@ function stripAddressRequestMetadata(address) {
 
   if (preferMinimalRawSurface) {
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      if (COUNTY_RAW_REQUIRED_FIELD_SET.has(field)) {
-        if (!Object.prototype.hasOwnProperty.call(surfaced, field)) {
-          surfaced[field] = null;
-        }
-        continue;
-      }
-
       if (!Object.prototype.hasOwnProperty.call(surfaced, field)) {
+        surfaced[field] = null;
         continue;
       }
-
       const value = surfaced[field];
-      if (value === undefined || value === null) {
-        if (COUNTY_RAW_REQUIRED_FIELD_SET.has(field)) {
-          surfaced[field] = null;
-        } else {
-          delete surfaced[field];
-        }
+      if (value === undefined) {
+        surfaced[field] = null;
         continue;
       }
       if (typeof value === "string") {
         const trimmed = value.trim();
-        if (!trimmed.length) {
-          if (COUNTY_RAW_REQUIRED_FIELD_SET.has(field)) {
-            surfaced[field] = null;
-          } else {
-            delete surfaced[field];
-          }
-          continue;
-        }
-        surfaced[field] = trimmed;
+        surfaced[field] = trimmed.length ? trimmed : null;
+        continue;
       }
+      if (
+        ADDRESS_COORDINATE_FIELDS.includes(field) &&
+        value != null &&
+        !Number.isFinite(value)
+      ) {
+        const numeric = parseCoordinate(value);
+        surfaced[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
+      surfaced[field] = value === null ? null : value;
     }
   }
 
@@ -2970,6 +2967,49 @@ function stripAddressRequestMetadata(address) {
   }
 
   return buildMinimalRawAddressSurface(surfaced);
+}
+
+function ensureRawAddressFieldCompleteness(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+
+  if (!rawValue.length) {
+    return address;
+  }
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface({ ...address }) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    };
+
+  const completed = {
+    ...normalizedSurface,
+    ...address,
+    unnormalized_address: rawValue,
+  };
+
+  if (!completed.postal_code) {
+    completed.plus_four_postal_code = null;
+  }
+
+  if (completed.state_code && !completed.country_code) {
+    completed.country_code = "US";
+  }
+
+  if (process.env.DEBUG_PAD_RAW_ADDRESS === "1") {
+    console.log(
+      "[ensureRawAddressFieldCompleteness] keys",
+      Object.keys(completed),
+    );
+  }
+
+  return completed;
 }
 
 function enforceRawAddressStructuredSurface(addressPath) {
@@ -4937,11 +4977,18 @@ function writeJSON(p, obj) {
           const pruned =
             pruneRawAddressFieldsForOutput(schemaVariant) || schemaVariant;
           payload = stripAddressRequestMetadata(pruned);
+          if (payload && typeof payload === "object") {
+            payload = ensureRawAddressFieldCompleteness(payload);
+          }
         } else {
           payload = sanitized;
         }
       }
     }
+  }
+
+  if (isAddressFile && payload && typeof payload === "object") {
+    payload = ensureRawAddressFieldCompleteness(payload);
   }
 
   fs.writeFileSync(p, JSON.stringify(payload, null, 2));
@@ -9313,6 +9360,7 @@ function buildRawOnlyAddressSurface(address) {
   }
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
   };
 
@@ -9416,6 +9464,7 @@ function ensureRawVariantFieldSurface(address) {
   }
 
   const surfaced = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
@@ -9496,10 +9545,12 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// Raw variants should only keep the minimal locality surface plus coordinates
-// so they continue to satisfy the oneOf branch that accepts unnormalized
-// values. Keeping this list centralized ensures every raw-focused helper
-// projects the exact same field set.
+// County's raw address branch still requires the normalized field surface to
+// exist (even when the values are null) so controllers that collapse to the
+// raw variant must continue to emit every normalized field alongside the raw
+// string. The minimal surface list below is still used when we explicitly ask
+// for the leanest possible payload, but the general allowlist mirrors the
+// normalized schema to keep oneOf validation happy.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
   "city_name",
   "county_name",
@@ -9513,8 +9564,7 @@ const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
-  ...RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
-  ...RAW_ONLY_ADDRESS_FIELDS,
+  ...NORMALIZED_ADDRESS_FIELDS,
 ]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
@@ -62089,6 +62139,25 @@ async function run() {
     propertyDetail: modelDetail || null,
   };
 
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const existingPayload = readJSONIfExists(addressPath);
+    const paddedPayload =
+      ensureRawAddressFieldCompleteness(existingPayload) || null;
+    if (paddedPayload) {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(paddedPayload, null, 2)}\n`,
+      );
+    }
+  } catch (error) {
+    console.error("Failed to pad raw address surface before exit:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
 }
 
 run().catch((error) => {
@@ -63017,5 +63086,23 @@ process.on("exit", () => {
       "Failed to persist simplified raw county address payload:",
       error,
     );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const paddedPayload =
+      ensureRawAddressFieldCompleteness(readJSONIfExists(addressPath)) || null;
+    if (paddedPayload) {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(paddedPayload, null, 2)}\n`,
+      );
+    }
+  } catch (error) {
+    console.error("Failed to pad raw address fields at exit:", error);
   }
 });
