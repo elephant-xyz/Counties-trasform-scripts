@@ -4054,10 +4054,11 @@ const structureItems = (() => {
     }
   });
 
-  // Create mailing_address.json only if there are current owners AND a primary mailing address
+  // Create mailing_address.json only if there are current owners with valid paths AND a primary mailing address
   // This prevents creating an unused mailing_address.json file
   let hasMailingAddress = false;
-  if (primaryMailingAddress && currentOwnerEntities.length > 0) {
+  const hasValidOwnerEntities = currentOwnerEntities.some(entity => entity && entity.path);
+  if (primaryMailingAddress && hasValidOwnerEntities) {
     const mailingObj = {
       unnormalized_address: primaryMailingAddress,
       latitude: null,
