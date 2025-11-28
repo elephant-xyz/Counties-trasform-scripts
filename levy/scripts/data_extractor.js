@@ -4027,9 +4027,35 @@ const structureItems = (() => {
     }
   }
 
-  // Create a single mailing_address.json file if there's a primary mailing address
+  // First, create current owner entities if available
+  const currentOwnerEntities = [];
+  currentOwners.forEach((owner, idx) => {
+    if (!owner || !owner.type) return;
+
+    if (owner.type === "person") {
+      const normalizedPerson = normalizeOwner(owner, ownersByDate);
+      const personPath = createPersonRecord(normalizedPerson);
+      if (personPath) {
+        currentOwnerEntities.push({
+          type: "person",
+          path: personPath,
+        });
+      }
+    } else if (owner.type === "company") {
+      const companyPath = createCompanyRecord(owner.name || "");
+      if (companyPath) {
+        currentOwnerEntities.push({
+          type: "company",
+          path: companyPath,
+        });
+      }
+    }
+  });
+
+  // Create mailing_address.json only if there are current owners AND a primary mailing address
+  // This prevents creating an unused mailing_address.json file
   let hasMailingAddress = false;
-  if (primaryMailingAddress) {
+  if (primaryMailingAddress && currentOwnerEntities.length > 0) {
     const mailingObj = {
       unnormalized_address: primaryMailingAddress,
       latitude: null,
@@ -4039,34 +4065,6 @@ const structureItems = (() => {
     };
     writeJSON(path.join(dataDir, "mailing_address.json"), mailingObj);
     hasMailingAddress = true;
-  }
-
-  const currentOwnerEntities = [];
-  // Only create current owner entities if there's a mailing address to link them to
-  // This prevents creating orphaned person/company files
-  if (hasMailingAddress) {
-    currentOwners.forEach((owner, idx) => {
-      if (!owner || !owner.type) return;
-
-      if (owner.type === "person") {
-        const normalizedPerson = normalizeOwner(owner, ownersByDate);
-        const personPath = createPersonRecord(normalizedPerson);
-        if (personPath) {
-          currentOwnerEntities.push({
-            type: "person",
-            path: personPath,
-          });
-        }
-      } else if (owner.type === "company") {
-        const companyPath = createCompanyRecord(owner.name || "");
-        if (companyPath) {
-          currentOwnerEntities.push({
-            type: "company",
-            path: companyPath,
-          });
-        }
-      }
-    });
   }
 
   // Create relationships from person/company to mailing_address
