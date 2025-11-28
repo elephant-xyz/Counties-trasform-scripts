@@ -635,12 +635,6 @@ function enforceFinalRawAddressSnapshot() {
     seedSource && seedSource.request_identifier,
     seedSource && seedSource.parcel_id,
   );
-  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
-    existingPayload && existingPayload.source_http_request,
-    unnormalizedSource && unnormalizedSource.source_http_request,
-    seedSource && seedSource.source_http_request,
-  );
-
   const candidateSources = [existingPayload, unnormalizedSource, seedSource];
   let normalizedCandidate = null;
   for (const source of candidateSources) {
@@ -57225,12 +57219,6 @@ function emitMinimalRawAddressOverride() {
     seedSource && seedSource.parcel_id,
   );
 
-  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
-    existingPayload && existingPayload.source_http_request,
-    unnormalizedSource && unnormalizedSource.source_http_request,
-    seedSource && seedSource.source_http_request,
-  );
-
   let normalizedOutput = null;
   if (
     existingPayload &&
@@ -57263,9 +57251,7 @@ function emitMinimalRawAddressOverride() {
     ) {
       delete normalizedOutput.request_identifier;
     }
-    if (sourceHttpRequest) {
-      normalizedOutput.source_http_request = deepClone(sourceHttpRequest);
-    } else if (
+    if (
       Object.prototype.hasOwnProperty.call(
         normalizedOutput,
         "source_http_request",
@@ -57299,81 +57285,15 @@ function emitMinimalRawAddressOverride() {
     return;
   }
 
-  const minimalRawPayload = {
+  const rawPayload = {
     unnormalized_address: resolvedRaw,
   };
 
   if (requestIdentifier !== null && requestIdentifier !== undefined) {
-    minimalRawPayload.request_identifier = requestIdentifier;
+    rawPayload.request_identifier = requestIdentifier;
   }
 
-  if (sourceHttpRequest) {
-    minimalRawPayload.source_http_request = deepClone(sourceHttpRequest);
-  } else if (
-    Object.prototype.hasOwnProperty.call(minimalRawPayload, "source_http_request")
-  ) {
-    delete minimalRawPayload.source_http_request;
-  }
-
-  const trimmedRaw =
-    typeof minimalRawPayload.unnormalized_address === "string"
-      ? minimalRawPayload.unnormalized_address.trim()
-      : "";
-  if (!trimmedRaw.length) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const leanRawPayload = {
-    unnormalized_address: trimmedRaw,
-  };
-
-  let normalizedIdentifier;
-  if (
-    Object.prototype.hasOwnProperty.call(
-      minimalRawPayload,
-      "request_identifier",
-    )
-  ) {
-    normalizedIdentifier = safeNullIfEmpty(
-      minimalRawPayload.request_identifier,
-    );
-    leanRawPayload.request_identifier =
-      normalizedIdentifier === undefined ? null : normalizedIdentifier;
-  }
-
-  const surfacedRaw =
-    ensureRawAddressFieldCoverage(leanRawPayload) ||
-    ensureRawAddressSchemaDefaults(leanRawPayload);
-
-  if (!surfacedRaw) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  if (normalizedIdentifier !== undefined) {
-    surfacedRaw.request_identifier =
-      normalizedIdentifier === null ? null : normalizedIdentifier;
-  } else if (
-    !Object.prototype.hasOwnProperty.call(surfacedRaw, "request_identifier")
-  ) {
-    surfacedRaw.request_identifier = null;
-  }
-
-  const strictRawPayload =
-    buildStrictRawOnlyAddress(surfacedRaw) ||
-    buildStrictRawOnlyAddress({
-      unnormalized_address: trimmedRaw,
-      request_identifier: surfacedRaw.request_identifier,
-      source_http_request: surfacedRaw.source_http_request,
-    });
-
-  if (!strictRawPayload) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  writeAddressPayload(addressPath, strictRawPayload);
+  writeAddressJSONBypass(addressPath, rawPayload);
 }
 
 function enforceAddressOneOfCompliance(addressPath, options = {}) {
@@ -62017,3 +61937,14 @@ function finalizeExitCleanup() {
 }
 
 process.on("exit", finalizeExitCleanup);
+
+process.on("exit", () => {
+  try {
+    emitMinimalRawAddressOverride();
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal raw address override during exit:",
+      error,
+    );
+  }
+});
