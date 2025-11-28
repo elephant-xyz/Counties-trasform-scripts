@@ -449,7 +449,24 @@ const SUFFIXES_IGNORE =
 
 function isCompanyName(txt) {
   if (!txt) return false;
-  return COMPANY_KEYWORDS.test(txt);
+  if (COMPANY_KEYWORDS.test(txt)) return true;
+
+  // Check for abbreviated company codes like "SFR JV-2", "ABC-123", etc.
+  // Pattern: short uppercase abbreviation followed by alphanumeric codes
+  if (/^[A-Z]{2,5}[\s\-]+[A-Z0-9\-]+$/i.test(txt.trim())) return true;
+
+  // Check if it looks like a company code (e.g., "SFR JV-2")
+  const tokens = txt.trim().split(/\s+/);
+  if (tokens.length === 2) {
+    const first = tokens[0];
+    const second = tokens[1];
+    // If first token is short uppercase abbreviation and second contains numbers/hyphens
+    if (first.length <= 4 && first === first.toUpperCase() && /[0-9\-]/.test(second)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function tokenizeNamePart(part) {
@@ -1852,7 +1869,9 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+    // Validate middle_name matches pattern ^[A-Z][a-zA-Z\s\-',.]*$ or set to null
+    const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+    const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
     const key =
       firstName || lastName
         ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
@@ -2806,20 +2825,6 @@ function main() {
   }
 
   const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -2844,6 +2849,48 @@ function main() {
         currentOwners = latestOwners;
       }
     }
+  }
+
+  // Create mailing address files only if we have current owners who will use them
+  const mailingAddressFiles = [];
+  const usedMailingIndices = new Set();
+
+  // First pass: determine which mailing addresses will be used
+  if (currentOwners.length > 0) {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+      let mailingIdx = null;
+      if (ownerMailingInfo.rawAddresses[idx] != null) {
+        const rawAddr = ownerMailingInfo.rawAddresses[idx];
+        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
+        if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+      }
+      if (mailingIdx == null && ownerMailingInfo.uniqueAddresses.length) {
+        mailingIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+      }
+      if (mailingIdx != null && mailingIdx >= 0) {
+        usedMailingIndices.add(mailingIdx);
+      }
+    });
+
+    // Second pass: create only the mailing address files that will be used
+    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+      if (!addr) return;
+      const fileName = `mailing_address_${idx + 1}.json`;
+      mailingAddressFiles[idx] = { path: `./${fileName}` };
+
+      // Only write the file if this mailing address will be used
+      if (usedMailingIndices.has(idx)) {
+        const mailingObj = {
+          unnormalized_address: addr,
+          latitude: null,
+          longitude: null,
+          source_http_request: clone(defaultSourceHttpRequest),
+          request_identifier: requestIdentifier,
+        };
+        writeJSON(path.join(dataDir, fileName), mailingObj);
+      }
+    });
   }
 
   const currentOwnerEntities = [];
@@ -3087,6 +3134,11 @@ function main() {
       saleGrantorRelations.push({
         ownerPath,
         saleDateISO: iso,
+      });
+      // Also create a direct relationship from this sale to the grantor (seller)
+      saleOwnerRelations.push({
+        fromPath: salesPath,
+        toPath: ownerPath,
       });
     });
 
