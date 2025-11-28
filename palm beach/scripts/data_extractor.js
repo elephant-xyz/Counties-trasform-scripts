@@ -2027,6 +2027,71 @@ function emitCanonicalAddressPayload(addressPath) {
     readJSONIfExists("property_seed.json"),
   ].filter((source) => source && typeof source === "object");
 
+  const requestIdentifier =
+    safeNullIfEmpty(payload.request_identifier) ||
+    safeNullIfEmpty(
+      fallbackSources
+        .map((source) => source.request_identifier)
+        .find((value) => safeNullIfEmpty(value)),
+    ) ||
+    null;
+
+  const sourceHttpRequest =
+    prepareSourceHttpRequest(payload.source_http_request) ||
+    prepareSourceHttpRequest(
+      fallbackSources
+        .map((source) => source.source_http_request)
+        .find((value) => value),
+    ) ||
+    null;
+
+  let normalizedCandidate = null;
+  if (typeof buildStrictCountyNormalizedAddressCandidate === "function") {
+    normalizedCandidate = buildStrictCountyNormalizedAddressCandidate(
+      fallbackSources,
+    );
+  }
+
+  if (normalizedCandidate) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    normalizedCandidate.request_identifier = requestIdentifier;
+    if (sourceHttpRequest) {
+      normalizedCandidate.source_http_request = deepClone(sourceHttpRequest);
+    } else if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "source_http_request",
+      )
+    ) {
+      const prepared = prepareSourceHttpRequest(
+        normalizedCandidate.source_http_request,
+      );
+      if (prepared) {
+        normalizedCandidate.source_http_request = deepClone(prepared);
+      } else {
+        delete normalizedCandidate.source_http_request;
+      }
+    }
+
+    try {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(normalizedCandidate, null, 2)}\n`,
+      );
+    } catch {
+      writeJSON(addressPath, normalizedCandidate);
+    }
+    return;
+  }
+
   const rawCandidates = [];
   const enqueueRaw = (value) => {
     const sanitized = safeNullIfEmpty(value);
@@ -2051,30 +2116,11 @@ function emitCanonicalAddressPayload(addressPath) {
     return;
   }
 
-  const requestIdentifier =
-    safeNullIfEmpty(payload.request_identifier) ||
-    safeNullIfEmpty(
-      fallbackSources
-        .map((source) => source.request_identifier)
-        .find((value) => safeNullIfEmpty(value)),
-    ) ||
-    null;
-
-  const sourceHttpRequest =
-    prepareSourceHttpRequest(payload.source_http_request) ||
-    prepareSourceHttpRequest(
-      fallbackSources
-        .map((source) => source.source_http_request)
-        .find((value) => value),
-    ) ||
-    null;
-
   const canonicalRaw = {
     unnormalized_address: resolvedRaw.trim(),
   };
 
-  canonicalRaw.request_identifier =
-    requestIdentifier === undefined ? null : requestIdentifier;
+  canonicalRaw.request_identifier = requestIdentifier;
 
   if (sourceHttpRequest) {
     canonicalRaw.source_http_request = deepClone(sourceHttpRequest);
