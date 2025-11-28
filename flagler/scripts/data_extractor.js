@@ -3107,6 +3107,11 @@ function main() {
         ownerPath,
         saleDateISO: iso,
       });
+      // Also create a direct relationship from this sale to the grantor (seller)
+      saleOwnerRelations.push({
+        fromPath: salesPath,
+        toPath: ownerPath,
+      });
     });
 
     if (iso) {
