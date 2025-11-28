@@ -4006,21 +4006,6 @@ const structureItems = (() => {
           ownerMailingInfo.rawAddresses[0]))) ||
     null;
 
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
-
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
       ? ownersEntry.owners_by_date
@@ -4042,25 +4027,42 @@ const structureItems = (() => {
     }
   }
 
+  const mailingAddressFiles = [];
+  const mailingAddressCache = new Map();
+
+  const getOrCreateMailingAddress = (addr) => {
+    if (!addr) return null;
+    if (mailingAddressCache.has(addr)) {
+      return mailingAddressCache.get(addr);
+    }
+    const fileIndex = mailingAddressFiles.length + 1;
+    const fileName = `mailing_address_${fileIndex}.json`;
+    const filePath = `./${fileName}`;
+    const mailingObj = {
+      unnormalized_address: addr,
+      latitude: null,
+      longitude: null,
+      source_http_request: clone(defaultSourceHttpRequest),
+      request_identifier: requestIdentifier,
+    };
+    writeJSON(path.join(dataDir, fileName), mailingObj);
+    mailingAddressFiles.push({ path: filePath });
+    mailingAddressCache.set(addr, filePath);
+    return filePath;
+  };
+
   const currentOwnerEntities = [];
   currentOwners.forEach((owner, idx) => {
     if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
+    let mailingPath = null;
+    if (ownerMailingInfo.rawAddresses[idx] != null) {
       const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+      mailingPath = getOrCreateMailingAddress(rawAddr);
+    } else if (ownerMailingInfo.uniqueAddresses.length > 0) {
+      const fallbackIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+      const fallbackAddr = ownerMailingInfo.uniqueAddresses[fallbackIdx];
+      mailingPath = getOrCreateMailingAddress(fallbackAddr);
     }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
 
     if (owner.type === "person") {
       const normalizedPerson = normalizeOwner(owner, ownersByDate);
@@ -4069,7 +4071,7 @@ const structureItems = (() => {
         currentOwnerEntities.push({
           type: "person",
           path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
+          mailingPath: mailingPath,
         });
       }
     } else if (owner.type === "company") {
@@ -4078,7 +4080,7 @@ const structureItems = (() => {
         currentOwnerEntities.push({
           type: "company",
           path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
+          mailingPath: mailingPath,
         });
       }
     }
