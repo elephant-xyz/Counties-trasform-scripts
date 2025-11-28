@@ -71,6 +71,7 @@ const deedCodeMap = {
   ASSG: "Assignment",
   LEAS: "Lease",
   TR: "Trustee's Deed",
+  TRUST: "Trustee's Deed",
   WILL: "Will",
   PROB: "Probate",
   JUDG: "Judgment",
