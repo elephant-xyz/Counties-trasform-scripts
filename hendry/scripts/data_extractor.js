@@ -1891,6 +1891,9 @@ function writePersonCompaniesSalesRelationships(
   removeMatchingDataFiles(/^relationship_company_\d+_mailing_address_company_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_person_\d+_mailing_address\.json$/);
   removeMatchingDataFiles(/^relationship_company_\d+_mailing_address\.json$/);
+  removeMatchingDataFiles(/^person_\d+\.json$/);
+  removeMatchingDataFiles(/^company_\d+\.json$/);
+  removeMatchingDataFiles(/^mailing_address\.json$/);
   const personMap = new Map();
   const companyMap = new Map();
 
