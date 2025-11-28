@@ -1790,12 +1790,22 @@ function writeSalesDeedsFilesAndRelationships(
 
     const fileFile = `file_${idx}.json`;
     let fileName = s.bookPage ? s.bookPage.split("\n")[0] : null;
+    // URL-encode the link to handle spaces and other special characters
+    let encodedUrl = null;
+    if (s.link) {
+      try {
+        // Replace spaces with %20 and encode the URL properly
+        encodedUrl = s.link.replace(/ /g, '%20');
+      } catch (e) {
+        encodedUrl = s.link;
+      }
+    }
     const file = {
       document_type: null,
       file_format: null,
       ipfs_url: null,
       name: fileName ? `Deed ${fileName}` : "Deed Document",
-      original_url: s.link || null,
+      original_url: encodedUrl,
     };
     writeJSON(path.join("data", fileFile), file);
 
