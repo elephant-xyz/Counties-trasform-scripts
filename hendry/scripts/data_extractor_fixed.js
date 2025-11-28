@@ -1233,6 +1233,21 @@ const NAME_SUFFIX_MAP = new Map([
   ["ret", "Ret."],
 ]);
 
+// Valid suffix values according to Elephant schema
+const VALID_SUFFIXES = new Set([
+  "Jr.", "Sr.", "II", "III", "IV",
+  "PhD", "MD", "Esq.", "JD", "LLM", "MBA",
+  "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP",
+  "Emeritus", "Ret."
+]);
+
+// Validate and normalize suffix to match Elephant schema
+function validateSuffix(suffix) {
+  if (!suffix) return null;
+  // If the suffix is valid, return it; otherwise return null
+  return VALID_SUFFIXES.has(suffix) ? suffix : null;
+}
+
 const SURNAME_PARTICLES = new Set([
   "da",
   "das",
@@ -1421,7 +1436,7 @@ function classifyOwner(raw) {
     last_name: last,
     middle_name: middle ? middle : null,
     prefix_name: prefix || null,
-    suffix_name: suffix || null,
+    suffix_name: validateSuffix(suffix),
   };
   return { valid: true, owner: person };
 }
@@ -1919,7 +1934,7 @@ function writePersonCompaniesSalesRelationships(
       if (!existing.prefix_name && owner.prefix_name)
         existing.prefix_name = owner.prefix_name;
       if (!existing.suffix_name && owner.suffix_name)
-        existing.suffix_name = owner.suffix_name;
+        existing.suffix_name = validateSuffix(owner.suffix_name);
       if (
         (!existing.mailing_address || !existing.mailing_address.trim()) &&
         owner.mailing_address
@@ -1933,7 +1948,7 @@ function writePersonCompaniesSalesRelationships(
       middle_name: owner.middle_name || null,
       last_name: owner.last_name,
       prefix_name: owner.prefix_name || null,
-      suffix_name: owner.suffix_name || null,
+      suffix_name: validateSuffix(owner.suffix_name),
       mailing_address: owner.mailing_address || null,
     });
   };
@@ -2043,7 +2058,7 @@ function writePersonCompaniesSalesRelationships(
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
     last_name: p.last_name ? titleCaseName(p.last_name) : null,
     prefix_name: p.prefix_name ? titleCaseName(p.prefix_name) : null,
-    suffix_name: p.suffix_name || null,
+    suffix_name: validateSuffix(p.suffix_name),
     mailing_address: p.mailing_address || null,
     birth_date: null,
     us_citizenship_status: null,
@@ -2177,7 +2192,7 @@ function writePersonCompaniesSalesRelationships(
           first_name: o.first_name,
           middle_name: o.middle_name || null,
           last_name: o.last_name,
-          suffix_name: o.suffix_name || null,
+          suffix_name: validateSuffix(o.suffix_name),
         });
       } else if (o.type === "company") {
         addRelationshipForOwner({ type: "company", name: o.name });
