@@ -266,8 +266,13 @@ function mapSubAreaSpaceType(subArea) {
     return "Carport";
   if (typeCode === "EUF" || (desc.includes("ELEV") && desc.includes("UNFIN")))
     return "Storage Room";
+  if (desc.includes("UTIL") && desc.includes("UNFIN")) return "Storage Room";
   if (typeCode === "FLA" || desc.includes("FLOOR LIV")) return "Living Area";
   if (typeCode === "BAS" || desc.includes("BASE AREA")) return "Living Area";
+  if (typeCode === "LLF" || (desc.includes("LOW") && desc.includes("LEV") && desc.includes("FIN")))
+    return "Basement";
+  if (typeCode.includes("GAR") && typeCode.includes("FIN")) return "Attached Garage";
+  if (typeCode === "GBF" || (desc.includes("GAR") && desc.includes("FIN") && desc.includes("BLOCK"))) return "Attached Garage";
   if (desc.includes("OP PR") || desc.includes("PRCH")) return "Open Porch";
   if (typeCode === "FOP" || desc.includes("OPEN PORCH")) return "Open Porch";
   if (desc.includes("SCREEN") && desc.includes("PORCH")) return "Screened Porch";
@@ -277,7 +282,7 @@ function mapSubAreaSpaceType(subArea) {
   if (desc.includes("PATIO")) return "Patio";
   if (desc.includes("GAZEBO")) return "Gazebo";
   if (desc.includes("STORAGE")) return "Storage Room";
-  if (desc.includes("GARAGE")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
+  if (desc.includes("GARAGE") || typeCode.includes("GAR") || desc.startsWith("GAR ")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
   if (desc.includes("CARPORT")) return "Carport";
   if (desc.includes("POOL")) return "Pool Area";
   if (desc.includes("LANAI")) return "Lanai";
@@ -348,11 +353,10 @@ function buildLayoutData($) {
 
     (building.sub_areas || []).forEach((subArea) => {
       const mapped = mapSubAreaSpaceType(subArea);
-      const label =
-        mapped ||
-        titleCase(subArea.description || subArea.type || "Sub Area");
+      // Use "Living Area" as a safe fallback for unmapped sub-areas
+      const spaceType = mapped || "Living Area";
       layouts.push({
-        space_type: label,
+        space_type: spaceType,
         floor_number: floorCount === 1 ? 1 : null,
         floor_level: null,
         size_square_feet: subArea.square_feet || null,
