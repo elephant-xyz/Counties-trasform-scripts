@@ -1343,9 +1343,12 @@ function writeMailingAddresses(parcelId, ownerMailingData, sourceHttpRequest) {
     if (!addresses.length) return;
 
     if (info.type === "person") {
+      // Clean names before lookup to match how they were cleaned during person creation
+      const cleanedFirstName = info.first_name ? cleanNameForValidation(info.first_name) : null;
+      const cleanedLastName = info.last_name ? cleanNameForValidation(info.last_name) : null;
       const personIdx = findPersonIndexByName(
-        info.first_name,
-        info.last_name,
+        cleanedFirstName,
+        cleanedLastName,
         info.suffix_name,
       );
       if (!personIdx) return; // Skip if person not found
@@ -1597,6 +1600,90 @@ function isRomanNumeral(val) {
   return validGenerationalSuffixes.includes(trimmed);
 }
 
+function validatePrefixName(prefix) {
+  if (!prefix) return null;
+  const trimmed = prefix.trim();
+  if (!trimmed) return null;
+
+  const validPrefixes = [
+    "Mr.",
+    "Mrs.",
+    "Ms.",
+    "Miss",
+    "Mx.",
+    "Dr.",
+    "Prof.",
+    "Rev.",
+    "Fr.",
+    "Sr.",
+    "Br.",
+    "Capt.",
+    "Col.",
+    "Maj.",
+    "Lt.",
+    "Sgt.",
+    "Hon.",
+    "Judge",
+    "Rabbi",
+    "Imam",
+    "Sheikh",
+    "Sir",
+    "Dame",
+  ];
+
+  // Check exact match
+  if (validPrefixes.includes(trimmed)) return trimmed;
+
+  // Check case-insensitive match
+  for (const valid of validPrefixes) {
+    if (valid.toUpperCase() === trimmed.toUpperCase()) return valid;
+  }
+
+  // Check for common variations and map to valid prefixes
+  const normalized = trimmed.replace(/\./g, "").toUpperCase();
+  const prefixMap = {
+    "MR": "Mr.",
+    "MRS": "Mrs.",
+    "MS": "Ms.",
+    "MISS": "Miss",
+    "MX": "Mx.",
+    "DR": "Dr.",
+    "PROF": "Prof.",
+    "PROFESSOR": "Prof.",
+    "REV": "Rev.",
+    "REVEREND": "Rev.",
+    "FR": "Fr.",
+    "FATHER": "Fr.",
+    "SR": "Sr.",
+    "SISTER": "Sr.",
+    "BR": "Br.",
+    "BROTHER": "Br.",
+    "CAPT": "Capt.",
+    "CAPTAIN": "Capt.",
+    "COL": "Col.",
+    "COLONEL": "Col.",
+    "MAJ": "Maj.",
+    "MAJOR": "Maj.",
+    "LT": "Lt.",
+    "LIEUTENANT": "Lt.",
+    "SGT": "Sgt.",
+    "SERGEANT": "Sgt.",
+    "HON": "Hon.",
+    "HONORABLE": "Hon.",
+    "JUDGE": "Judge",
+    "RABBI": "Rabbi",
+    "IMAM": "Imam",
+    "SHEIKH": "Sheikh",
+    "SIR": "Sir",
+    "DAME": "Dame",
+  };
+
+  if (prefixMap[normalized]) return prefixMap[normalized];
+
+  // Invalid prefix - return null
+  return null;
+}
+
 function validateSuffixName(suffix) {
   if (!suffix) return null;
   const trimmed = suffix.trim();
@@ -1715,11 +1802,14 @@ function cleanNameForValidation(name) {
   if (!trimmed) return null;
 
   // Remove invalid characters: keep only letters, spaces, hyphens, apostrophes, commas, periods
-  // Split on semicolon and take only the first part (handles cases like "M;swearingen")
+  // Split on semicolon and take only the first part (handles cases like "M;swearingen" or "Zuleica Marie;norris Tony")
   let cleaned = trimmed.split(';')[0].trim();
 
-  // Remove any other invalid characters
+  // Remove any other invalid characters (anything not letter, space, hyphen, apostrophe, comma, period)
   cleaned = cleaned.replace(/[^a-zA-Z\s\-',.]/g, '');
+
+  // Remove extra spaces
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
   if (!cleaned) return null;
   return cleaned;
@@ -1796,17 +1886,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
               first_name: o.first_name,
               middle_name: o.middle_name,
               last_name: o.last_name,
-              prefix_name: o.prefix_name,
-              suffix_name: o.suffix_name,
+              prefix_name: validatePrefixName(o.prefix_name),
+              suffix_name: validateSuffixName(o.suffix_name),
             });
           } else {
             const existing = personMap.get(k);
             if (!existing.middle_name && o.middle_name)
               existing.middle_name = o.middle_name;
             if (!existing.prefix_name && o.prefix_name)
-              existing.prefix_name = o.prefix_name;
+              existing.prefix_name = validatePrefixName(o.prefix_name);
             if (!existing.suffix_name && o.suffix_name)
-              existing.suffix_name = o.suffix_name;
+              existing.suffix_name = validateSuffixName(o.suffix_name);
           }
         }
       }
@@ -1823,8 +1913,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
             first_name: info.first_name,
             middle_name: info.middle_name,
             last_name: info.last_name,
-            prefix_name: info.prefix_name,
-            suffix_name: info.suffix_name,
+            prefix_name: validatePrefixName(info.prefix_name),
+            suffix_name: validateSuffixName(info.suffix_name),
           });
         }
       }
@@ -1832,17 +1922,24 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   }
 
   // Create person entities with validation
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.first_name))) : null,
-    middle_name: p.middle_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.middle_name))) : null,
-    last_name: p.last_name ? validateNamePattern(titleCaseName(cleanNameForValidation(p.last_name))) : null,
-    birth_date: null,
-    prefix_name: p.prefix_name,
-    suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
+  people = Array.from(personMap.values()).map((p) => {
+    // Clean and validate names, ensuring semicolons and invalid chars are removed
+    const cleanedFirstName = p.first_name ? cleanNameForValidation(p.first_name) : null;
+    const cleanedMiddleName = p.middle_name ? cleanNameForValidation(p.middle_name) : null;
+    const cleanedLastName = p.last_name ? cleanNameForValidation(p.last_name) : null;
+
+    return {
+      first_name: cleanedFirstName ? validateNamePattern(titleCaseName(cleanedFirstName)) : null,
+      middle_name: cleanedMiddleName ? validateNamePattern(titleCaseName(cleanedMiddleName)) : null,
+      last_name: cleanedLastName ? validateNamePattern(titleCaseName(cleanedLastName)) : null,
+      birth_date: null,
+      prefix_name: validatePrefixName(p.prefix_name), // Validate prefix
+      suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
+      us_citizenship_status: null,
+      veteran_status: null,
+      request_identifier: parcelId,
+    };
+  });
 
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
@@ -1852,14 +1949,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   const referencedCompanyNames = new Set();
 
   // Add companies from sale dates ONLY (companies that will have sales_history relationships)
-  validDateEntries.forEach(([dateKey, arr]) => {
-    if (saleDates.has(dateKey)) {
-      (arr || []).forEach((o) => {
-        if (o.type === "company" && (o.name || "").trim()) {
-          referencedCompanyNames.add((o.name || "").trim());
-        }
-      });
-    }
+  // Only add companies that are actually in the ownersOnDate for sales to ensure they get relationships
+  sales.forEach((s) => {
+    const saleDateISO = parseDateToISO(s.saleDate);
+    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
+    ownersOnDate.forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim()) {
+        referencedCompanyNames.add((o.name || "").trim());
+      }
+    });
   });
 
   // Add companies from mailing addresses ONLY if they have valid addresses
@@ -1898,7 +1996,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     ownersOnDate
       .filter((o) => o.type === "person")
       .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name, o.suffix_name);
+        // Clean names before lookup to match how they were cleaned during person creation
+        const cleanedFirstName = o.first_name ? cleanNameForValidation(o.first_name) : null;
+        const cleanedLastName = o.last_name ? cleanNameForValidation(o.last_name) : null;
+        const pIdx = findPersonIndexByName(cleanedFirstName, cleanedLastName, o.suffix_name);
         if (pIdx && !linked.has(`person:${pIdx}`)) {
           linked.add(`person:${pIdx}`);
           writeJSON(
