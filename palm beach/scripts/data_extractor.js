@@ -2188,9 +2188,17 @@ function stripAddressRequestMetadata(address) {
 
   if (preferMinimalRawSurface) {
     for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (COUNTY_RAW_REQUIRED_FIELD_SET.has(field)) {
+        if (!Object.prototype.hasOwnProperty.call(surfaced, field)) {
+          surfaced[field] = null;
+        }
+        continue;
+      }
+
       if (!Object.prototype.hasOwnProperty.call(surfaced, field)) {
         continue;
       }
+
       const value = surfaced[field];
       if (value === undefined || value === null) {
         delete surfaced[field];
@@ -12953,6 +12961,11 @@ const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [
   "section",
   "block",
 ];
+
+const COUNTY_RAW_REQUIRED_FIELD_SET = new Set([
+  ...COUNTY_ADDRESS_ENSURE_FIELDS,
+  ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
+]);
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
