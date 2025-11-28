@@ -2068,6 +2068,10 @@ function writePersonCompaniesSalesRelationships(
     writeJSON(path.join("data", `company_${idxOneBased}.json`), companyRecord);
   });
 
+  // Track which person and company indices are actually used in relationships
+  const usedPersonIdx = new Set();
+  const usedCompanyIdx = new Set();
+
   // currentOwners already defined above, no need to redefine
   const mailingPath = path.join("data", "mailing_address.json");
   if (fs.existsSync(mailingPath)) fs.unlinkSync(mailingPath);
@@ -2097,18 +2101,22 @@ function writePersonCompaniesSalesRelationships(
             owner.middle_name || null,
             owner.suffix_name || null,
           );
-          if (pIdx)
+          if (pIdx) {
             writeRelationship(
               `person_${pIdx}.json`,
               path.basename(mailingPath),
             );
+            usedPersonIdx.add(pIdx);
+          }
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx)
+          if (cIdx) {
             writeRelationship(
               `company_${cIdx}.json`,
               path.basename(mailingPath),
             );
+            usedCompanyIdx.add(cIdx);
+          }
         }
       });
     }
@@ -2133,6 +2141,7 @@ function writePersonCompaniesSalesRelationships(
           if (!linkedTargets.has(relKey)) {
             linkedTargets.add(relKey);
             writeRelationship(saleFile, `person_${pIdx}.json`);
+            usedPersonIdx.add(pIdx);
           }
         }
       } else if (owner.type === "company") {
@@ -2143,6 +2152,7 @@ function writePersonCompaniesSalesRelationships(
           if (!linkedTargets.has(relKey)) {
             linkedTargets.add(relKey);
             writeRelationship(saleFile, `company_${cIdx}.json`);
+            usedCompanyIdx.add(cIdx);
           }
         }
       }
@@ -2170,6 +2180,27 @@ function writePersonCompaniesSalesRelationships(
     // If there are no grantees, don't create relationships for this sale
     if (targetParties && targetParties.length > 0) {
       targetParties.forEach(addRelationshipForOwner);
+    }
+  });
+
+  // Remove unused person and company files
+  people.forEach((p, idx) => {
+    const idxOneBased = idx + 1;
+    if (!usedPersonIdx.has(idxOneBased)) {
+      const filePath = path.join("data", `person_${idxOneBased}.json`);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+  });
+
+  companies.forEach((c, idx) => {
+    const idxOneBased = idx + 1;
+    if (!usedCompanyIdx.has(idxOneBased)) {
+      const filePath = path.join("data", `company_${idxOneBased}.json`);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
     }
   });
 }
