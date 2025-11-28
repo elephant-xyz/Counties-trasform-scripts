@@ -4005,17 +4005,6 @@ const structureItems = (() => {
         (ownerMailingInfo.rawAddresses &&
           ownerMailingInfo.rawAddresses[0]))) ||
     null;
-  const mailingAddressFilename = "mailing_address.json";
-  const mailingAddressPath = `./${mailingAddressFilename}`;
-  const mailingAddressObj = {
-    unnormalized_address: primaryMailingAddress || null,
-    source_http_request: clone(defaultSourceHttpRequest),
-    request_identifier: requestIdentifier,
-    latitude: null,
-    longitude: null,
-  };
-  writeJSON(path.join(dataDir, mailingAddressFilename), mailingAddressObj);
-  const canonicalMailingPath = mailingAddressPath;
 
   const mailingAddressFiles = [];
   ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
@@ -4081,7 +4070,6 @@ const structureItems = (() => {
           type: "person",
           path: personPath,
           mailingPath: mailingRecord ? mailingRecord.path : null,
-          canonicalMailingPath,
         });
       }
     } else if (owner.type === "company") {
@@ -4091,7 +4079,6 @@ const structureItems = (() => {
           type: "company",
           path: companyPath,
           mailingPath: mailingRecord ? mailingRecord.path : null,
-          canonicalMailingPath,
         });
       }
     }
@@ -4100,22 +4087,17 @@ const structureItems = (() => {
   const mailingRelationshipKeys = new Set();
   currentOwnerEntities.forEach((entity) => {
     if (!entity.path) return;
-    const targets = [];
-    if (entity.mailingPath) targets.push(entity.mailingPath);
-    if (entity.canonicalMailingPath) targets.push(entity.canonicalMailingPath);
-    targets.forEach((targetPath) => {
-      if (!targetPath) return;
-      const relKey = `${entity.path}|${targetPath}`;
-      if (mailingRelationshipKeys.has(relKey)) return;
-      mailingRelationshipKeys.add(relKey);
-      const relFilename = makeRelationshipFilename(entity.path, targetPath);
-      if (!relFilename) return;
-      const relObj = {
-        from: { "/": entity.path },
-        to: { "/": targetPath },
-      };
-      writeJSON(path.join(dataDir, relFilename), relObj);
-    });
+    if (!entity.mailingPath) return;
+    const relKey = `${entity.path}|${entity.mailingPath}`;
+    if (mailingRelationshipKeys.has(relKey)) return;
+    mailingRelationshipKeys.add(relKey);
+    const relFilename = makeRelationshipFilename(entity.path, entity.mailingPath);
+    if (!relFilename) return;
+    const relObj = {
+      from: { "/": entity.path },
+      to: { "/": entity.mailingPath },
+    };
+    writeJSON(path.join(dataDir, relFilename), relObj);
   });
 
   const work = parseValuationsWorking($);
