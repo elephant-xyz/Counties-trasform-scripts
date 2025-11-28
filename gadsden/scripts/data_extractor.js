@@ -420,15 +420,6 @@ function cleanText(text) {
   return (text || "").replace(/\s+/g, " ").trim();
 }
 
-function cleanConsecutiveSpecialChars(str) {
-  if (!str) return "";
-  // Replace consecutive special characters with single space
-  let cleaned = str.replace(/[\s\-',.][\s\-',.]+/g, " ");
-  // Remove leading/trailing special characters
-  cleaned = cleaned.replace(/^[\s\-',.]+/, "").replace(/[\s\-',.]+$/, "");
-  return cleaned.trim();
-}
-
 function titleCase(str) {
   if (!str) return "";
 
@@ -487,13 +478,18 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   };
 
   // Extract suffix from tokens - check last token(s)
-  // Only include suffixes that are valid according to the Elephant schema
   const suffixMap = {
     'jr': 'Jr.',
     'sr': 'Sr.',
     'ii': 'II',
     'iii': 'III',
     'iv': 'IV',
+    'v': 'V',
+    'vi': 'VI',
+    'vii': 'VII',
+    'viii': 'VIII',
+    'ix': 'IX',
+    'x': 'X',
     'md': 'MD',
     'phd': 'PhD',
     'esq': 'Esq.',
@@ -569,11 +565,6 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = workingTokens[1] || null;
     last = fallbackLastName;
   }
-
-  // Clean consecutive special characters first
-  first = first ? cleanConsecutiveSpecialChars(first) : null;
-  last = last ? cleanConsecutiveSpecialChars(last) : null;
-  middle = middle ? cleanConsecutiveSpecialChars(middle) : null;
 
   first = stripTrailingPeriod(first);
   last = stripTrailingPeriod(last);
@@ -1604,6 +1595,17 @@ function parseBuildingInfo($) {
       }
     }
   }
+  if (txt.includes("ELECTR")) return "Electrical";
+  if (txt.includes("PLUMB")) return "Plumbing";
+  if (txt.includes("PAVE")) return "SiteDevelopment";
+  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
+  if (txt.includes("DECK")) return "BuildingAddition";
+  if (txt.includes("SIGN")) return "GeneralBuilding";
+  if (txt.includes("DEMOL")) return "Demolition";
+  if (txt.includes("IRRIG")) return "LandscapeIrrigation";
+  if (txt.includes("SOLAR")) return "Solar";
+  return "GeneralBuilding";
+}
 
   const hvac =
     getValue(rightMap, ["hvac", "cooling type", "cooling", "air conditioning"]) ||
@@ -2193,15 +2195,10 @@ function main() {
         ? String(personData.middle_name).trim()
         : "";
 
-    // Clean consecutive special characters first
-    const firstNameCleaned = cleanConsecutiveSpecialChars(firstNameRaw);
-    const lastNameCleaned = cleanConsecutiveSpecialChars(lastNameRaw);
-    const middleCleaned = middleRaw ? cleanConsecutiveSpecialChars(middleRaw) : null;
-
     // Strip trailing periods from all name parts, then apply titleCase
-    const firstNameStripped = stripTrailingPeriod(firstNameCleaned);
-    const lastNameStripped = stripTrailingPeriod(lastNameCleaned);
-    const middleStripped = middleCleaned ? stripTrailingPeriod(middleCleaned) : null;
+    const firstNameStripped = stripTrailingPeriod(firstNameRaw);
+    const lastNameStripped = stripTrailingPeriod(lastNameRaw);
+    const middleStripped = middleRaw ? stripTrailingPeriod(middleRaw) : null;
 
     // Apply titleCase to ensure proper formatting (handles cases like "I.a" -> "Ia")
     const firstName = firstNameStripped ? titleCase(firstNameStripped) : "";
