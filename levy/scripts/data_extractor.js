@@ -4132,33 +4132,7 @@ const structureItems = (() => {
   // Parse sales first to determine if we should create current owner entities
   const sales = parseSales($);
 
-  // Only create current owner entities if there are sales to link them to
-  // (mailing_address.json creation was removed as it's not part of the expected schema for this data group)
-  const currentOwnerEntities = [];
-  if (sales && sales.length > 0) {
-    currentOwners.forEach((owner, idx) => {
-      if (!owner || !owner.type) return;
-
-      if (owner.type === "person") {
-        const normalizedPerson = normalizeOwner(owner, ownersByDate);
-        const personPath = createPersonRecord(normalizedPerson);
-        if (personPath) {
-          currentOwnerEntities.push({
-            type: "person",
-            path: personPath,
-          });
-        }
-      } else if (owner.type === "company") {
-        const companyPath = createCompanyRecord(owner.name || "");
-        if (companyPath) {
-          currentOwnerEntities.push({
-            type: "company",
-            path: companyPath,
-          });
-        }
-      }
-    });
-  }
+  // Note: currentOwnerEntities will be created later, only if we have a valid sale to link them to
   const salesSorted = sales.sort(
     (a, b) => new Date(toISOFromMDY(b.date)) - new Date(toISOFromMDY(a.date)),
   );
@@ -4367,7 +4341,35 @@ const structureItems = (() => {
   }
 
   const latestSaleRef = saleFileRefs.length ? saleFileRefs[0] : null;
+
+  // Only create current owner entities if we have a valid sale to link them to
+  const currentOwnerEntities = [];
   if (latestSaleRef && latestSaleRef.salesPath) {
+    // Create person/company records for current owners
+    currentOwners.forEach((owner) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+
+    // Link current owner entities to the latest sale
     currentOwnerEntities.forEach((entity) => {
       if (!entity.path) return;
       addSaleOwnerRelation(latestSaleRef.salesPath, entity.path);
