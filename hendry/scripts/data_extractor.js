@@ -28,7 +28,6 @@ const deedCodeMap = {
   SD: "Sheriff's Deed",
   "SHRF'S DEED": "Sheriff's Deed",
   TD: "Tax Deed",
-  TR: "Trustee's Deed",
   TRD: "Trustee's Deed",
   "TRUSTEE DEED": "Trustee's Deed",
   PRD: "Personal Representative Deed",
@@ -55,6 +54,32 @@ const deedCodeMap = {
   VPD: "Vacation of Plat Deed",
   AOC: "Assignment of Contract",
   ROC: "Release of Contract",
+  LC: "Land Contract",
+  MTG: "Mortgage",
+  LIS: "Lis Pendens",
+  EASE: "Easement",
+  AGMT: "Agreement",
+  AFF: "Affidavit",
+  ORD: "Order",
+  CERT: "Certificate",
+  RES: "Resolution",
+  DECL: "Declaration",
+  COV: "Covenant",
+  SUB: "Subordination",
+  MOD: "Modification",
+  REL: "Release",
+  ASSG: "Assignment",
+  LEAS: "Lease",
+  TR: "Trust",
+  WILL: "Will",
+  PROB: "Probate",
+  JUDG: "Judgment",
+  LIEN: "Lien",
+  SAT: "Satisfaction",
+  PART: "Partition",
+  EXCH: "Exchange",
+  CONV: "Conveyance",
+  OTH: "Other",
 };
 
 const propertyTypeMapping = [
@@ -1973,22 +1998,18 @@ function writePersonCompaniesSalesRelationships(
     });
   });
 
-  // Add only target parties (grantees only - not grantors) from sales
-  salePartyCache.forEach((parties, idx) => {
-    let targetParties = parties.grantees;
-    // Only add grantees (buyers), not grantors (sellers)
-    // If there are no grantees, don't create person records for this sale
-    if (targetParties && targetParties.length > 0) {
-      targetParties.forEach((party) => {
-        if (party.type === "person") {
-          const key = buildPersonKey(party.first_name, party.middle_name || null, party.last_name, party.suffix_name || null);
-          referencedOwnersSet.add(`person:${key}`);
-        } else if (party.type === "company") {
-          const key = buildCompanyKey(party.name);
-          referencedOwnersSet.add(`company:${key}`);
-        }
-      });
-    }
+  // Add only grantees (buyers) from sale parties, not grantors (sellers)
+  salePartyCache.forEach((parties) => {
+    const targetParties = parties.grantees || [];
+    targetParties.forEach((party) => {
+      if (party.type === "person") {
+        const key = buildPersonKey(party.first_name, party.middle_name || null, party.last_name, party.suffix_name || null);
+        referencedOwnersSet.add(`person:${key}`);
+      } else if (party.type === "company") {
+        const key = buildCompanyKey(party.name);
+        referencedOwnersSet.add(`company:${key}`);
+      }
+    });
   });
 
   // Now collect only the owners that will be referenced
@@ -2005,6 +2026,14 @@ function writePersonCompaniesSalesRelationships(
           addCompanyOwner(o);
         }
       }
+    });
+  });
+
+  // Also add sale parties (only grantees, not grantors, since only grantees get linked to relationships)
+  salePartyCache.forEach((parties) => {
+    (parties.grantees || []).forEach((party) => {
+      if (party.type === "person") addPersonOwner(party);
+      else if (party.type === "company") addCompanyOwner(party);
     });
   });
 
