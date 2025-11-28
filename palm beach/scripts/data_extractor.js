@@ -62,7 +62,7 @@ function writeAddressJSONBypass(addressPath, payload) {
     payload;
   const serialized = `${JSON.stringify(preparedPayload, null, 2)}\n`;
   try {
-    originalWriteFileSync.call(fs, addressPath, serialized);
+    fs.writeFileSync(addressPath, serialized);
   } catch (error) {
     console.error("Failed to bypass address writer:", error);
     throw error;
@@ -4009,7 +4009,7 @@ function enforceRawOnlyAddressFile(addressPath) {
 
   try {
     const serialized = `${JSON.stringify(rawSurface, null, 2)}\n`;
-    originalWriteFileSync.call(fs, addressPath, serialized);
+    fs.writeFileSync(addressPath, serialized);
   } catch {
     writeJSON(addressPath, rawSurface);
   }
