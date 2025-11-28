@@ -4054,47 +4054,7 @@ const structureItems = (() => {
     }
   });
 
-  // Create mailing_address.json only if there are current owners with valid paths AND a primary mailing address
-  // This prevents creating an unused mailing_address.json file
-  let hasMailingAddress = false;
-  const hasValidOwnerEntities = currentOwnerEntities.some(entity => entity && entity.path);
-  if (primaryMailingAddress && hasValidOwnerEntities) {
-    const mailingObj = {
-      unnormalized_address: primaryMailingAddress,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, "mailing_address.json"), mailingObj);
-    hasMailingAddress = true;
-  }
-
-  // Create relationships from person/company to mailing_address
-  if (hasMailingAddress) {
-    let personRelCounter = 0;
-    let companyRelCounter = 0;
-    currentOwnerEntities.forEach((entity) => {
-      if (!entity.path) return;
-      if (entity.type === "person") {
-        personRelCounter++;
-        const relFilename = `relationship_person_has_mailing_address_${personRelCounter}.json`;
-        const relObj = {
-          from: { "/": entity.path },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(path.join(dataDir, relFilename), relObj);
-      } else if (entity.type === "company") {
-        companyRelCounter++;
-        const relFilename = `relationship_company_has_mailing_address_${companyRelCounter}.json`;
-        const relObj = {
-          from: { "/": entity.path },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJSON(path.join(dataDir, relFilename), relObj);
-      }
-    });
-  }
+  // Note: mailing_address.json creation removed as it's not part of the expected schema for this data group
 
   const work = parseValuationsWorking($);
   if (work) {
