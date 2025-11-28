@@ -14342,6 +14342,7 @@ const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [
 ];
 
 const COUNTY_RAW_REQUIRED_FIELD_SET = new Set([
+  ...NORMALIZED_ADDRESS_FIELDS,
   ...RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 ]);
 
@@ -62894,8 +62895,10 @@ process.on("exit", () => {
   }
 });
 
+// Ensure the raw branch always emits the full normalized field surface so the
+// address.oneOf can match the raw variant without tripping over missing keys.
 const COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT = Array.from(
-  new Set([...RAW_VARIANT_MINIMAL_SURFACE_FIELDS]),
+  new Set([...NORMALIZED_ADDRESS_FIELDS, ...RAW_VARIANT_MINIMAL_SURFACE_FIELDS]),
 );
 
 function normalizeCityForSchema(city) {
