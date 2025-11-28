@@ -8964,6 +8964,11 @@ function buildRawOnlyAddressSurface(address) {
       return;
     }
 
+    if (value === null) {
+      rawOutput[field] = null;
+      return;
+    }
+
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
       if (Number.isFinite(numeric)) {
@@ -8985,12 +8990,28 @@ function buildRawOnlyAddressSurface(address) {
     }
   };
 
-  if (!preferMinimalSurface && RAW_VARIANT_OUTPUT_ALLOWLIST.length) {
-    for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
-      if (!Object.prototype.hasOwnProperty.call(address, field)) {
+  const rawRequiredFieldSet =
+    typeof COUNTY_RAW_REQUIRED_FIELD_SET === "object" &&
+    COUNTY_RAW_REQUIRED_FIELD_SET !== null
+      ? COUNTY_RAW_REQUIRED_FIELD_SET
+      : new Set();
+
+  const fieldsToProject =
+    preferMinimalSurface && rawRequiredFieldSet.size
+      ? RAW_VARIANT_OUTPUT_ALLOWLIST.filter((field) =>
+          rawRequiredFieldSet.has(field),
+        )
+      : RAW_VARIANT_OUTPUT_ALLOWLIST;
+
+  if (fieldsToProject.length) {
+    for (const field of fieldsToProject) {
+      if (Object.prototype.hasOwnProperty.call(address, field)) {
+        assignAllowedField(field, address[field]);
         continue;
       }
-      assignAllowedField(field, address[field]);
+      if (preferMinimalSurface && rawRequiredFieldSet.has(field)) {
+        rawOutput[field] = null;
+      }
     }
   }
 
