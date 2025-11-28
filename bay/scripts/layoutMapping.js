@@ -117,7 +117,7 @@ function buildBuildingModels(buildings) {
         rooms.push({ type: "Full Bathroom", count: fullBaths });
       }
       if (hasHalf) {
-        rooms.push({ type: "Half Bathroom", count: 1 });
+        rooms.push({ type: "Half Bathroom / Powder Room", count: 1 });
       }
     }
     rooms.push({ type: "Kitchen", count: 1 });
