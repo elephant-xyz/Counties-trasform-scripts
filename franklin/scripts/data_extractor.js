@@ -2295,28 +2295,25 @@ function extractMailingAddress(ownershipHtml) {
 
 const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
 
-
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
-    console.log(`${fieldName} cannot be null or empty`);
+    throw new Error(`${fieldName} cannot be null or empty`);
   }
   return value;
 }
 
-
-
 function validateStringNotNull(value, fieldName) {
   validateNotNull(value, fieldName);
   if (typeof value !== "string") {
-    console.log(`${fieldName} must be a string`);
+    throw new Error(`${fieldName} must be a string`);
   }
   return value;
 }
 
 function validatePersonName(value, fieldName) {
   const str = validateStringNotNull(value, fieldName);
-  if (str && !PERSON_NAME_PATTERN.test(str)) {
-    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+  if (!PERSON_NAME_PATTERN.test(str)) {
+    throw new Error(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
   }
   return str;
 }
@@ -3575,7 +3572,7 @@ function main() {
         livable_area_sq_ft: layout.livable_area_sq_ft ?? null,
         heated_area_sq_ft:   layout.heated_area_sq_ft ?? null,
         area_under_air_sq_ft: layout.area_under_air_sq_ft ?? null,
-        space_type_index: layout.space_type_index || (idx + 1),
+        space_type_index: String(layout.space_type_index || (idx + 1)),
         flooring_material_type: layout.flooring_material_type ?? null,
         size_square_feet: layout.size_square_feet ?? null,
         floor_level: layout.floor_level ?? null,
