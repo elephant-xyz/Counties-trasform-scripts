@@ -1819,8 +1819,9 @@ function validateNamePattern(name) {
   if (!name) return null;
   const trimmed = name.trim();
   if (!trimmed) return null;
-  // Pattern: Must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, periods
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Pattern matches Elephant schema: uppercase first letter, followed by lowercase letters,
+  // then optionally: separator (space, hyphen, apostrophe, comma, period) + any letter + lowercase letters
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   if (pattern.test(trimmed)) return trimmed;
   return null;
 }

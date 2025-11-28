@@ -436,6 +436,15 @@ function classifyOwnerPart(rawPart, options = {}) {
   let middleTokens;
   if (surnameFirst) {
     last = toNameCase(mutableTokens.shift());
+    // In surname-first format, check if the next token is a Roman numeral (generational suffix)
+    // e.g., "KULAVIC II BERNARD M" -> last=KULAVIC, suffix=II, first=BERNARD
+    if (mutableTokens.length && isRomanNumeral(mutableTokens[0])) {
+      const romanSuffix = formatSuffix(mutableTokens.shift());
+      // Add to suffix (combine if we already have one from the end)
+      if (romanSuffix) {
+        suffix = suffix ? `${romanSuffix} ${suffix}` : romanSuffix;
+      }
+    }
     first = toNameCase(mutableTokens.shift());
     middleTokens = mutableTokens.map((t) => toNameCase(t));
   } else {
