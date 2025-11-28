@@ -98,23 +98,33 @@ function collapseAddressToMinimalRaw(addressPath) {
     return;
   }
 
-  const minimal = { unnormalized_address: rawValue };
+  const baseline = {
+    ...payload,
+    unnormalized_address: rawValue,
+  };
+  const schemaAligned =
+    ensureRawAddressSchemaDefaults(baseline) ||
+    composeMinimalRawAddress(baseline);
+  if (!schemaAligned) {
+    removeFileIfExists(addressPath);
+    return;
+  }
 
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
     const identifier = safeNullIfEmpty(payload.request_identifier);
-    minimal.request_identifier =
+    schemaAligned.request_identifier =
       identifier === undefined ? null : identifier;
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    minimal.source_http_request = prepared ? deepClone(prepared) : null;
+    schemaAligned.source_http_request = prepared ? deepClone(prepared) : null;
   }
 
   originalWriteFileSync.call(
     fs,
     addressPath,
-    `${JSON.stringify(minimal, null, 2)}\n`,
+    `${JSON.stringify(schemaAligned, null, 2)}\n`,
   );
 }
 
