@@ -14,11 +14,12 @@ let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
 
 // The County schema's address.oneOf treats the fully normalized branch as valid
-// only when every structured component (directionals, grid refs, unit/route,
-// etc.) is present alongside the coordinates. Without that coverage the payload
-// must fall back to the raw branch that just carries unnormalized_address.
-// Requiring the complete structured surface ahead of time keeps us from
-// emitting half-populated normalized objects that fail validation.
+// when the core structured components (street/city/state/postal/county) and
+// coordinate pair are present. Supplemental pieces (directionals, grid refs,
+// unit/route metadata) are optional; forcing them caused us to emit partially
+// populated normalized payloads that could never satisfy the schema. If that
+// core surface is missing, we must fall back to the raw branch that just
+// carries unnormalized_address.
 const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
   "plus_four_postal_code",
   "street_post_directional_text",
@@ -11684,14 +11685,12 @@ function buildNormalizedAddressOutputForSchema(source) {
   for (const supplementalField of COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS) {
     const value = normalized[supplementalField];
     if (!hasMeaningfulAddressValue(value)) {
-      return null;
+      normalized[supplementalField] = null;
+      continue;
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
-      if (!trimmed.length) {
-        return null;
-      }
-      normalized[supplementalField] = trimmed;
+      normalized[supplementalField] = trimmed.length ? trimmed : null;
     }
   }
 
@@ -14720,10 +14719,7 @@ const NORMALIZED_ADDRESS_STRONG_FIELDS = [
   "block",
 ];
 
-const COUNTY_STRICT_NORMALIZED_FIELDS = [
-  ...COUNTY_ADDRESS_ENSURE_FIELDS,
-  ...COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS,
-];
+const COUNTY_STRICT_NORMALIZED_FIELDS = [...COUNTY_ADDRESS_ENSURE_FIELDS];
 
 const COUNTY_OPTIONAL_NORMALIZED_FIELDS = [];
 
