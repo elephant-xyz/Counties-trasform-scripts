@@ -1967,9 +1967,13 @@ function writePersonCompaniesSalesRelationships(
   // Determine which owners will actually be linked to relationships
   const referencedOwnersSet = new Set();
 
-  // Add current owners (for mailing address relationships)
+  // Add current owners (for mailing address relationships) - only if they have mailing addresses
   const currentOwners = Array.isArray(ownersByDate.current) ? ownersByDate.current : [];
   currentOwners.forEach((o) => {
+    // Only add current owners if they have mailing addresses, since relationships are only created for owners with mailing addresses
+    if (!o.mailing_address || !o.mailing_address.trim()) {
+      return;
+    }
     if (o.type === "person") {
       const key = buildPersonKey(o.first_name, o.middle_name || null, o.last_name, o.suffix_name || null);
       referencedOwnersSet.add(`person:${key}`);
