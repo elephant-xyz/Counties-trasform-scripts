@@ -257,11 +257,6 @@ function finalizeAddressWritePayload(rawPayload) {
     return null;
   }
 
-  if (!preserveStructuredFields) {
-    minimalRaw.__raw_minimal_surface = true;
-    minimalRaw[RAW_MINIMAL_SURFACE_FLAG] = true;
-  }
-
   if (RAW_ADDRESS_EXCLUDED_FIELDS && RAW_ADDRESS_EXCLUDED_FIELDS.size) {
     for (const field of RAW_ADDRESS_EXCLUDED_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(minimalRaw, field)) {
@@ -1895,9 +1890,16 @@ function reduceAddressFileToLeanRaw(addressPath, options = {}) {
     return;
   }
 
-  const leanPayload = {
-    unnormalized_address: trimmedRaw,
-  };
+  const leanPayload =
+    buildRawOnlyAddressSurface({
+      ...payload,
+      unnormalized_address: trimmedRaw,
+    }) || null;
+
+  if (!leanPayload) {
+    removeFileIfExists(addressPath);
+    return;
+  }
 
   const identifierCandidates = [
     safeNullIfEmpty(payload.request_identifier),
@@ -10807,9 +10809,6 @@ function buildStrictRawOnlyAddress(address) {
     strictRaw.latitude = null;
     strictRaw.longitude = null;
   }
-
-  strictRaw.__raw_minimal_surface = true;
-  strictRaw[RAW_MINIMAL_SURFACE_FLAG] = true;
 
   return strictRaw;
 }
