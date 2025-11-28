@@ -93,7 +93,7 @@ function mapExteriorMaterial(token) {
   const upper = token.toUpperCase();
   if (upper.includes("ALUMIN")) return "Metal Siding";
   if (upper.includes("BRICK")) return "Brick";
-  if (upper.includes("STONE")) return "Stone";
+  if (upper.includes("STONE")) return "Natural Stone";
   if (upper.includes("CONCRETE BLOCK") || upper.startsWith("CB")) {
     return "Concrete Block";
   }
@@ -105,7 +105,6 @@ function mapExteriorMaterial(token) {
     return "Wood Siding";
   }
   if (upper.includes("PRECAST")) return "Precast Concrete";
-  if (upper.includes("TILE")) return "MAPPING NOT AVAILABLE";
   return null;
 }
 
@@ -237,8 +236,26 @@ function buildStructureForBuilding(building, requestIdentifier) {
   const { left, right } = building;
 
   const exteriorTokens = splitTokens(left["exterior walls"]);
-  const exteriorPrimary = exteriorTokens[0] ? mapExteriorMaterial(exteriorTokens[0]) : null;
-  const exteriorSecondary = exteriorTokens[1] ? mapExteriorMaterialSecondary(exteriorTokens[1]) : null;
+  let exteriorPrimary = null;
+  let exteriorSecondary = null;
+
+  // Try to find a valid primary material from all tokens
+  for (let i = 0; i < exteriorTokens.length; i++) {
+    const mapped = mapExteriorMaterial(exteriorTokens[i]);
+    if (mapped) {
+      exteriorPrimary = mapped;
+      break;
+    }
+  }
+
+  // Map secondary material from remaining tokens
+  for (let i = 0; i < exteriorTokens.length; i++) {
+    const mapped = mapExteriorMaterialSecondary(exteriorTokens[i]);
+    if (mapped && exteriorTokens[i] !== exteriorTokens[0]) {
+      exteriorSecondary = mapped;
+      break;
+    }
+  }
 
   const interiorVals = dedupe(
     splitTokens(left["interior walls"]).map(mapInteriorMaterial),
