@@ -56,6 +56,9 @@ const deedCodeMap = {
   VPD: "Vacation of Plat Deed",
   AOC: "Assignment of Contract",
   ROC: "Release of Contract",
+  DC: "Miscellaneous",
+  IC: "Miscellaneous",
+  MS: "Miscellaneous",
 };
 
 const propertyTypeMapping = [
