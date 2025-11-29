@@ -193,10 +193,11 @@ function mapInteriorFloorValue(value) {
   if (upper.includes("CARPET")) return "Carpet";
   if (upper.includes("HARDWOOD")) return "Solid Hardwood";
   if (upper.includes("VINYL")) return "Sheet Vinyl";
-  if (upper.includes("TILE")) return "Ceramic Tile";
+  if (upper.includes("TILE") && !upper.includes("CONCRETE")) return "Ceramic Tile";
   if (upper.includes("LAMINATE")) return "Laminate";
   if (upper.includes("SLATE")) return "Natural Stone Tile";
   if (upper.includes("MARBLE")) return "Natural Stone Tile";
+  // Handle all concrete variations (Finished Concrete, Concrete, Polished Concrete, etc.)
   if (upper.includes("CONCRETE")) return "Polished Concrete";
   return null;
 }
