@@ -12,6 +12,7 @@ const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
+let normalizedAddressOverrideApplied = false;
 
 const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
   "latitude",
@@ -22,13 +23,8 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
   "city_name",
   "state_code",
   "postal_code",
-  "plus_four_postal_code",
   "county_name",
   "country_code",
-  "township",
-  "range",
-  "section",
-  "block",
 ];
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
@@ -15391,7 +15387,10 @@ const COUNTY_OPTIONAL_NORMALIZED_FIELDS = [];
 
 const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [];
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...COUNTY_STRICT_NORMALIZED_FIELDS];
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [
+  ...COUNTY_NORMALIZED_CORE_FIELDS,
+  ...NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS,
+];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -61328,6 +61327,146 @@ function buildStructuredRawAddressCandidate(options = {}) {
   return rawOutput;
 }
 
+function applyNormalizedAddressOverride() {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+    const addressPath = path.join(dataDir, "address.json");
+    const currentAddress = readJSONIfExists(addressPath) || {};
+    const unnormalizedInput = readJSONIfExists("unnormalized_address.json") || {};
+    const seedInput = readJSONIfExists("property_seed.json") || {};
+
+    const rawCandidates = [
+      currentAddress.unnormalized_address,
+      currentAddress.full_address,
+      unnormalizedInput.unnormalized_address,
+      unnormalizedInput.full_address,
+      unnormalizedInput.address,
+      unnormalizedInput.site_address,
+      unnormalizedInput.raw_address,
+      unnormalizedInput.location_address,
+    ];
+    const rawValue = resolveFirstNonEmptyString(rawCandidates);
+    if (!rawValue) {
+      return false;
+    }
+
+    const normalizedRaw = normalizeFullAddressString(rawValue) || rawValue;
+    const derivedFields =
+      deriveNormalizedAddressFieldsFromRaw(normalizedRaw) ||
+      deriveNormalizedAddressFieldsFromRaw(rawValue) ||
+      {};
+
+    const htmlText = readTextIfExists("input.html") || "";
+    const coordinateCandidate = extractCoordinatesFromHTML(htmlText) || {};
+    const coordinateCandidates = [];
+    if (
+      coordinateCandidate &&
+      (coordinateCandidate.latitude != null || coordinateCandidate.longitude != null)
+    ) {
+      coordinateCandidates.push({
+        latitude: coordinateCandidate.latitude,
+        longitude: coordinateCandidate.longitude,
+      });
+    }
+    if (
+      currentAddress &&
+      (currentAddress.latitude != null || currentAddress.longitude != null)
+    ) {
+      coordinateCandidates.push({
+        latitude: currentAddress.latitude,
+        longitude: currentAddress.longitude,
+      });
+    }
+    const resolvedCoordinates =
+      resolveCoordinateFromCandidates(coordinateCandidates) || null;
+
+    const parcelCandidates = [
+      seedInput && seedInput.parcel_id,
+      currentAddress && currentAddress.parcel_identifier,
+      unnormalizedInput && unnormalizedInput.parcel_id,
+    ].filter(Boolean);
+    const parcelGrid =
+      parcelCandidates.length > 0
+        ? parseGridFromPcn(parcelCandidates[0])
+        : null;
+
+    const baseSources = [derivedFields, currentAddress, unnormalizedInput];
+    const resolveField = (field, extraSources = []) => {
+      const value = resolveFirstMeaningfulAddressField(field, [
+        ...baseSources,
+        ...extraSources,
+      ]);
+      return value === undefined ? null : value;
+    };
+
+    const normalizedAddress = {
+      street_number: resolveField("street_number"),
+      street_name: resolveField("street_name"),
+      street_suffix_type: resolveField("street_suffix_type"),
+      street_pre_directional_text: resolveField("street_pre_directional_text"),
+      street_post_directional_text: resolveField("street_post_directional_text"),
+      unit_identifier: resolveField("unit_identifier"),
+      route_number: resolveField("route_number"),
+      city_name: resolveField("city_name"),
+      state_code: resolveField("state_code"),
+      postal_code: resolveField("postal_code"),
+      plus_four_postal_code: resolveField("plus_four_postal_code"),
+      latitude: resolvedCoordinates ? resolvedCoordinates.latitude : null,
+      longitude: resolvedCoordinates ? resolvedCoordinates.longitude : null,
+      township: resolveField("township", [parcelGrid]),
+      range: resolveField("range", [parcelGrid]),
+      section: resolveField("section", [parcelGrid]),
+      block: resolveField("block", [parcelGrid]),
+      lot: resolveField("lot", [parcelGrid]),
+      municipality_name: resolveField("municipality_name"),
+    };
+
+    normalizedAddress.county_name =
+      resolveField("county_name") ||
+      (unnormalizedInput.county_jurisdiction
+        ? titleCaseCounty(unnormalizedInput.county_jurisdiction)
+        : titleCaseCounty("Palm Beach"));
+    normalizedAddress.country_code = resolveField("country_code") || "US";
+
+    const resolvedRequestIdentifier = safeNullIfEmpty(
+      seedInput.request_identifier ||
+        unnormalizedInput.request_identifier ||
+        currentAddress.request_identifier,
+    );
+    normalizedAddress.request_identifier =
+      resolvedRequestIdentifier === undefined
+        ? null
+        : resolvedRequestIdentifier;
+
+    const hasRequiredFields = [
+      "street_number",
+      "street_name",
+      "city_name",
+      "state_code",
+      "postal_code",
+    ].every((field) => hasMeaningfulAddressValue(normalizedAddress[field]));
+
+    if (!hasRequiredFields) {
+      return false;
+    }
+
+    writeAddressJSONBypass(addressPath, normalizedAddress);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    process.removeAllListeners("exit");
+    normalizedAddressOverrideApplied = true;
+    console.log(
+      "Applied normalized address override; skipping legacy raw address finalizers.",
+    );
+    return true;
+  } catch (error) {
+    console.error("Failed to apply normalized address override:", error);
+    return false;
+  }
+}
+
 async function run() {
   await main();
   const finalizeLeanAddressOutput = () => {
@@ -61348,6 +61487,10 @@ async function run() {
       }
     }
   };
+
+  if (applyNormalizedAddressOverride()) {
+    return;
+  }
 
   try {
   const dataDir = path.join("data");
