@@ -1178,6 +1178,8 @@ function clearExistingSalesHistoryFiles() {
       if (
         /^sales_history_\d+\.json$/.test(f) ||
         /^sales_\d+\.json$/.test(f) ||
+        /^deed_\d+\.json$/.test(f) ||
+        /^file_\d+\.json$/.test(f) ||
         /^relationship_deed_file_\d+\.json$/.test(f) ||
         /^relationship_sales_deed_\d+\.json$/.test(f) ||
         /^relationship_sales_person_\d+\.json$/.test(f) ||
@@ -1941,97 +1943,20 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
     };
   });
 
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
+  // NOTE: Person, Company, and Mailing Address entities are not part of the Sales_History data group
+  // Therefore, we do not create these files or their relationships in this script.
+  // The Sales_History data group only includes: file, property, and sales_history classes.
 
-  // Create company entities (only from valid ISO date entries that will be referenced)
-  const referencedCompanyNames = new Set();
+  // people.forEach((p, idx) => {
+  //   writeJSON(path.join("data", `person_${idx + 1}.json`), p);
+  // });
 
-  // Add companies from sale dates ONLY (companies that will have sales_history relationships)
-  // Only add companies that are actually in the ownersOnDate for sales to ensure they get relationships
-  sales.forEach((s) => {
-    const saleDateISO = parseDateToISO(s.saleDate);
-    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
-    ownersOnDate.forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim()) {
-        referencedCompanyNames.add((o.name || "").trim());
-      }
-    });
-  });
+  // companies.forEach((c, idx) => {
+  //   writeJSON(path.join("data", `company_${idx + 1}.json`), c);
+  // });
 
-  // Add companies from mailing addresses ONLY if they have valid addresses
-  if (hasMailingAddresses) {
-    mailingAddresses.forEach((info) => {
-      if (info.type === "company" && (info.name || "").trim()) {
-        // Check if this company has valid addresses before adding
-        const addresses = (info.addresses || [])
-          .map((a) => (a || "").split(/\r?\n/).map((part) => part.trim()).filter(Boolean).join(", ").trim())
-          .filter((addr) => addr && addr.length);
-        if (addresses.length > 0) {
-          referencedCompanyNames.add((info.name || "").trim());
-        }
-      }
-    });
-  }
-
-  companies = Array.from(referencedCompanyNames).map((n) => ({
-    name: n,
-    request_identifier: parcelId,
-  }));
-
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
-
-  // Create relationships between sales_history and persons/companies
-  sales.forEach((s, idx) => {
-    const saleIdx = idx + 1;
-    const saleDateISO = parseDateToISO(s.saleDate);
-    const ownersOnDate = (saleDateISO && ownersByDate[saleDateISO]) || [];
-
-    const linked = new Set();
-
-    // Link persons to sales_history
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        // Clean names before lookup to match how they were cleaned during person creation
-        const cleanedFirstName = o.first_name ? cleanNameForValidation(o.first_name) : null;
-        const cleanedLastName = o.last_name ? cleanNameForValidation(o.last_name) : null;
-        const pIdx = findPersonIndexByName(cleanedFirstName, cleanedLastName, o.suffix_name);
-        if (pIdx && !linked.has(`person:${pIdx}`)) {
-          linked.add(`person:${pIdx}`);
-          writeJSON(
-            path.join("data", `relationship_sales_history_${saleIdx}_person_${pIdx}.json`),
-            {
-              from: { "/": `./sales_history_${saleIdx}.json` },
-              to: { "/": `./person_${pIdx}.json` },
-            }
-          );
-        }
-      });
-
-    // Link companies to sales_history
-    ownersOnDate
-      .filter((o) => o.type === "company")
-      .forEach((o) => {
-        const cIdx = findCompanyIndexByName(o.name);
-        if (cIdx && !linked.has(`company:${cIdx}`)) {
-          linked.add(`company:${cIdx}`);
-          writeJSON(
-            path.join("data", `relationship_sales_history_${saleIdx}_company_${cIdx}.json`),
-            {
-              from: { "/": `./sales_history_${saleIdx}.json` },
-              to: { "/": `./company_${cIdx}.json` },
-            }
-          );
-        }
-      });
-  });
-
-  // Write mailing addresses for current owners
-  writeMailingAddresses(parcelId, mailingAddresses, propertySeed?.source_http_request);
+  // Relationships to person/company are not created as they are not part of this data group
+  // writeMailingAddresses(parcelId, mailingAddresses, propertySeed?.source_http_request);
 }
 
 function writeTaxes($) {
