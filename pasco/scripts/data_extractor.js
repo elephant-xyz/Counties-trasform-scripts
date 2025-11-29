@@ -2126,6 +2126,9 @@ function main() {
   writeJSON("address.json", address);
 
   // MAILING ADDRESS
+  // Note: Only create mailing address if we will have owners to link it to
+  // This is determined later when we check for ownersData
+  let mailingAddressData = null;
   const mailingAddressEl = $("#lblMailingAddress");
   if (mailingAddressEl && mailingAddressEl.length) {
     const rawHtml = mailingAddressEl.html() || "";
@@ -2144,7 +2147,7 @@ function main() {
       const unnormalizedMailing =
         addressParts.length > 0 ? addressParts.join(", ") : null;
       if (unnormalizedMailing) {
-        const mailingAddress = {
+        mailingAddressData = {
           source_http_request:
             (propSeed && propSeed.source_http_request) ||
             (addrSeed && addrSeed.source_http_request) ||
@@ -2154,8 +2157,7 @@ function main() {
           latitude: null,
           longitude: null,
         };
-        writeJSON("mailing_address.json", mailingAddress);
-        mailingAddressFile = "mailing_address.json";
+        // Don't write yet - only write if we have owners to link it to
       }
     }
   }
@@ -2456,12 +2458,14 @@ function main() {
       }
     }
 
-    const mailingAddressFileName =
-      mailingAddressFile ||
-      (fs.existsSync(path.join(DATA_DIR, "mailing_address.json"))
-        ? "mailing_address.json"
-        : null);
-    if (mailingAddressFileName) {
+    // Only create mailing address file if we have mailing data and current owners
+    let mailingAddressFileName = null;
+    if (mailingAddressData && currentOwners.length > 0) {
+      writeJSON("mailing_address.json", mailingAddressData);
+      mailingAddressFileName = "mailing_address.json";
+      mailingAddressFile = "mailing_address.json";
+
+      // Create relationships to mailing address
       for (const owner of currentOwners) {
         if (owner.type === "person") {
           const fname = personFileByOwner.get(owner);
