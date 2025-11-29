@@ -103,7 +103,9 @@ function writeAddressJSONBypass(addressPath, payload) {
   ) {
     delete finalizedPayload.__force_raw_variant;
   }
-  const serialized = `${JSON.stringify(finalizedPayload, null, 2)}\n`;
+  const ensuredPayload =
+    ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
+  const serialized = `${JSON.stringify(ensuredPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
   } catch (error) {
@@ -10084,20 +10086,7 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
 ];
 
 const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "latitude",
-  "longitude",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
 const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
