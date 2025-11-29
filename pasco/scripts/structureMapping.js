@@ -93,23 +93,23 @@ const EXTERIOR_WALL_CODE_MAP = {
 
 const INTERIOR_FLOOR_CODE_MAP = {
   "01": "Sheet Vinyl",
-  "02": "Concrete",
-  "03": "Concrete",
+  "02": "Polished Concrete",
+  "03": "Polished Concrete",
   "04": "Ceramic Tile",
   "05": "Ceramic Tile",
   "06": "Ceramic Tile",
   "07": "Sheet Vinyl",
   "08": "Solid Hardwood",
-  "09": "Stone",
+  "09": "Natural Stone Tile",
   "10": "Ceramic Tile",
   "11": "Solid Hardwood",
   "12": "Solid Hardwood",
   "13": "Carpet",
   "14": "Ceramic Tile",
-  "15": "Stone",
-  "16": "Concrete",
-  "17": "Stone",
-  "18": "Stone",
+  "15": "Natural Stone Tile",
+  "16": "Polished Concrete",
+  "17": "Natural Stone Tile",
+  "18": "Natural Stone Tile",
   "19": "Ceramic Tile",
   "20": "Laminate",
 };
@@ -195,9 +195,9 @@ function mapInteriorFloorValue(value) {
   if (upper.includes("VINYL")) return "Sheet Vinyl";
   if (upper.includes("TILE")) return "Ceramic Tile";
   if (upper.includes("LAMINATE")) return "Laminate";
-  if (upper.includes("SLATE")) return "Stone";
-  if (upper.includes("MARBLE")) return "Stone";
-  if (upper.includes("CONCRETE")) return "Concrete";
+  if (upper.includes("SLATE")) return "Natural Stone Tile";
+  if (upper.includes("MARBLE")) return "Natural Stone Tile";
+  if (upper.includes("CONCRETE")) return "Polished Concrete";
   return null;
 }
 
