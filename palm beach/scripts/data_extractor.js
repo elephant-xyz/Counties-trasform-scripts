@@ -43107,6 +43107,10 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
+    relationships: {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -52820,7 +52824,6 @@ function buildMinimalRawAddressForSchema(
   }
 
   const minimal = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
@@ -52838,33 +52841,25 @@ function buildMinimalRawAddressForSchema(
       : []),
   ];
 
+  const supplementalFields = Array.isArray(RAW_VARIANT_MINIMAL_SURFACE_FIELDS)
+    ? RAW_VARIANT_MINIMAL_SURFACE_FIELDS
+    : [];
+
   const assignFieldFromSources = (field) => {
     for (const source of sources) {
       if (!Object.prototype.hasOwnProperty.call(source, field)) {
         continue;
       }
-      const candidate = source[field];
+      const candidate = sanitizeAddressFieldValue(field, source[field]);
       if (candidate === undefined) {
         continue;
       }
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(candidate);
-        if (Number.isFinite(numeric)) {
-          minimal[field] = numeric;
-          return;
-        }
-        continue;
-      }
-      const sanitized = sanitizeAddressFieldValue(field, candidate);
-      if (sanitized === undefined) {
-        continue;
-      }
-      if (typeof sanitized === "string") {
-        const trimmed = sanitized.trim();
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
         minimal[field] = trimmed.length ? trimmed : null;
         return;
       }
-      minimal[field] = sanitized === null ? null : sanitized;
+      minimal[field] = candidate === null ? null : candidate;
       return;
     }
     if (!Object.prototype.hasOwnProperty.call(minimal, field)) {
@@ -52872,12 +52867,13 @@ function buildMinimalRawAddressForSchema(
     }
   };
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    assignFieldFromSources(field);
-  }
+  supplementalFields.forEach(assignFieldFromSources);
 
   const applyDefault = (field, value) => {
-    if (!value || hasMeaningfulAddressValue(minimal[field])) {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (hasMeaningfulAddressValue(minimal[field])) {
       return;
     }
     const normalized = sanitizeAddressFieldValue(field, value);
@@ -52894,14 +52890,11 @@ function buildMinimalRawAddressForSchema(
   applyDefault("state_code", options.defaultStateCode);
   applyDefault("country_code", options.defaultCountryCode);
 
-  if (
-    !(Number.isFinite(minimal.latitude) && Number.isFinite(minimal.longitude))
-  ) {
-    minimal.latitude = null;
-    minimal.longitude = null;
-  }
-
   if (!minimal.postal_code) {
+    minimal.plus_four_postal_code = null;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(minimal, "plus_four_postal_code")
+  ) {
     minimal.plus_four_postal_code = null;
   }
 
