@@ -3209,16 +3209,8 @@ function stripAddressRequestMetadata(address) {
     delete working.unnormalized_address;
   }
 
-  const hasRequestIdentifier = Object.prototype.hasOwnProperty.call(
-    working,
-    "request_identifier",
-  );
-  const requestIdentifier = hasRequestIdentifier
-    ? safeNullIfEmpty(working.request_identifier)
-    : undefined;
-  if (hasRequestIdentifier) {
-    working.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
+  if (Object.prototype.hasOwnProperty.call(working, "request_identifier")) {
+    delete working.request_identifier;
   }
 
   if (Object.prototype.hasOwnProperty.call(working, "source_http_request")) {
@@ -3237,15 +3229,6 @@ function stripAddressRequestMetadata(address) {
 
     if (Object.prototype.hasOwnProperty.call(normalizedSurface, "unnormalized_address")) {
       delete normalizedSurface.unnormalized_address;
-    }
-
-    if (requestIdentifier !== undefined) {
-      normalizedSurface.request_identifier = requestIdentifier;
-    } else if (
-      Object.prototype.hasOwnProperty.call(normalizedSurface, "request_identifier") &&
-      normalizedSurface.request_identifier === undefined
-    ) {
-      normalizedSurface.request_identifier = null;
     }
 
     return normalizedSurface;
@@ -3293,11 +3276,6 @@ function stripAddressRequestMetadata(address) {
       }
       surfaced[field] = value === null ? null : value;
     }
-  }
-
-  if (hasRequestIdentifier) {
-    surfaced.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
   }
 
   if (preferMinimalRawSurface) {
@@ -9973,19 +9951,11 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "source_http_request",
 ];
 // County's raw address branch still requires the normalized field surface to
-// exist (even when the values are null) so controllers that collapse to the
-// raw variant must continue to emit every normalized field alongside the raw
-// string. The minimal surface list below is still used when we explicitly ask
-// for the leanest possible payload, but the general allowlist mirrors the
-// normalized schema to keep oneOf validation happy.
+// exist (even when the values are null). To keep the oneOf branch valid we
+// mirror the normalized field list even for the so-called "minimal" surface
+// so downstream consumers always see every nullable key.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
-  "city_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "municipality_name",
+  ...NORMALIZED_ADDRESS_FIELDS,
 ]);
 const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
@@ -53158,6 +53128,7 @@ function buildMinimalRawAddressForSchema(
   }
 
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
