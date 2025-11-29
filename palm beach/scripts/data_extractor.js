@@ -501,11 +501,14 @@ function finalizeAddressWritePayload(rawPayload) {
     return null;
   }
 
+  const minimalRawOutput =
+    pruneAddressToMinimalRawFields({ ...leanRawOutput }) || leanRawOutput;
+
   if (forceRawVariant) {
-    leanRawOutput.__force_raw_variant = true;
+    minimalRawOutput.__force_raw_variant = true;
   }
 
-  return leanRawOutput;
+  return minimalRawOutput;
 }
 
 function writeSchemaAlignedAddress(addressPath, payload) {
