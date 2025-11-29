@@ -10249,6 +10249,7 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
   }
 
   const lean = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
   };
 
@@ -10271,6 +10272,13 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
   }
   if (Number.isFinite(longitude)) {
     lean.longitude = longitude;
+  }
+  if (
+    (lean.latitude == null && lean.longitude != null) ||
+    (lean.latitude != null && lean.longitude == null)
+  ) {
+    lean.latitude = null;
+    lean.longitude = null;
   }
 
   const copyField = (field) => {
@@ -10299,6 +10307,9 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
     (field) => !coordinateFields.has(field),
   ).forEach(copyField);
 
+  if (!lean.postal_code) {
+    lean.plus_four_postal_code = null;
+  }
   if (lean.state_code && !lean.country_code) {
     lean.country_code = "US";
   }
@@ -10312,12 +10323,12 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
   const normalizedRequestIdentifier = safeNullIfEmpty(
     requestIdentifierOverride,
   );
-  if (normalizedRequestIdentifier !== undefined) {
-    lean.request_identifier =
-      normalizedRequestIdentifier === null
+  lean.request_identifier =
+    normalizedRequestIdentifier === undefined
+      ? null
+      : normalizedRequestIdentifier === null
         ? null
         : normalizedRequestIdentifier;
-  }
 
   const sourceHttpRequestOverride = Object.prototype.hasOwnProperty.call(
     overrides,
@@ -10328,10 +10339,7 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
   const preparedSource = prepareSourceHttpRequest(sourceHttpRequestOverride);
   if (preparedSource) {
     lean.source_http_request = deepClone(preparedSource);
-  } else if (
-    sourceHttpRequestOverride === null ||
-    Object.prototype.hasOwnProperty.call(source, "source_http_request")
-  ) {
+  } else {
     lean.source_http_request = null;
   }
 
