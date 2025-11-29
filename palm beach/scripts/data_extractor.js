@@ -19,11 +19,21 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
   "longitude",
   "street_number",
   "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "city_name",
   "state_code",
   "postal_code",
+  "plus_four_postal_code",
   "country_code",
   "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
 ];
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
@@ -15134,27 +15144,26 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
 const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "street_number",
   "street_name",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-  "latitude",
-  "longitude",
-];
-
-const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [
-  "plus_four_postal_code",
-  "street_post_directional_text",
   "street_pre_directional_text",
+  "street_post_directional_text",
   "street_suffix_type",
   "unit_identifier",
   "route_number",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
   "township",
   "range",
   "section",
   "block",
+  "latitude",
+  "longitude",
 ];
+
+const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [];
 
 const COUNTY_RAW_REQUIRED_FIELD_SET = new Set([
   ...RAW_ADDRESS_ALLOWED_FIELDS,
@@ -15575,11 +15584,21 @@ const NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS = ["latitude", "longitude"];
 const COUNTY_NORMALIZED_CORE_FIELDS = [
   "street_number",
   "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "city_name",
   "state_code",
   "postal_code",
+  "plus_four_postal_code",
   "country_code",
   "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
   "latitude",
   "longitude",
 ];
