@@ -423,8 +423,37 @@ function enforceFinalLeanAddressOutput(addressPath, options = {}) {
     );
   }
 
-  if (!writeSchemaAlignedAddress(addressPath, { ...leanRaw })) {
-    removeFileIfExists(addressPath);
+  const schemaAlignedRaw =
+    ensureCountyRawRequiredFieldSurface({ ...leanRaw }) || { ...leanRaw };
+
+  if (
+    !Object.prototype.hasOwnProperty.call(schemaAlignedRaw, "request_identifier")
+  ) {
+    schemaAlignedRaw.request_identifier = null;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(schemaAlignedRaw, "source_http_request")
+  ) {
+    schemaAlignedRaw.source_http_request = null;
+  }
+
+  if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
+    console.error(
+      "[enforceFinalLeanAddressOutput] padded raw payload",
+      JSON.stringify(schemaAlignedRaw, null, 2),
+    );
+  }
+
+  addressWriteLocked = true;
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(schemaAlignedRaw, null, 2)}\n`,
+    );
+  } finally {
+    addressWriteLocked = false;
   }
 }
 
@@ -63883,9 +63912,125 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error("Fatal error during data extraction:", error);
-  process.exitCode = 1;
+run()
+  .catch((error) => {
+    console.error("Fatal error during data extraction:", error);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    try {
+      const addressPath = path.join("data", "address.json");
+      const payload = readJSONIfExists(addressPath);
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        Array.isArray(payload) ||
+        typeof payload.unnormalized_address !== "string"
+      ) {
+        return;
+      }
+      const trimmedRaw = payload.unnormalized_address.trim();
+      if (!trimmedRaw.length) {
+        return;
+      }
+      const paddedPayload =
+        ensureCountyRawRequiredFieldSurface({
+          ...payload,
+          unnormalized_address: trimmedRaw,
+        }) || {
+          ...payload,
+          unnormalized_address: trimmedRaw,
+        };
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          paddedPayload,
+          "request_identifier",
+        )
+      ) {
+        paddedPayload.request_identifier = null;
+      }
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          paddedPayload,
+          "source_http_request",
+        )
+      ) {
+        paddedPayload.source_http_request = null;
+      }
+      addressWriteLocked = true;
+      try {
+        originalWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(paddedPayload, null, 2)}\n`,
+        );
+      } finally {
+        addressWriteLocked = false;
+      }
+    } catch (error) {
+      console.error("Failed to enforce terminal raw address surface:", error);
+      if (!process.exitCode) {
+        process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    const payload = readJSONIfExists(addressPath);
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      typeof payload.unnormalized_address !== "string"
+    ) {
+      return;
+    }
+    const trimmedRaw = payload.unnormalized_address.trim();
+    if (!trimmedRaw.length) {
+      return;
+    }
+    const paddedPayload =
+      ensureCountyRawRequiredFieldSurface({
+        ...payload,
+        unnormalized_address: trimmedRaw,
+      }) || {
+        ...payload,
+        unnormalized_address: trimmedRaw,
+      };
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        paddedPayload,
+        "request_identifier",
+      )
+    ) {
+      paddedPayload.request_identifier = null;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        paddedPayload,
+        "source_http_request",
+      )
+    ) {
+      paddedPayload.source_http_request = null;
+    }
+    addressWriteLocked = true;
+    try {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(paddedPayload, null, 2)}\n`,
+      );
+    } finally {
+      addressWriteLocked = false;
+    }
+  } catch (error) {
+    console.error("Failed to enforce raw address schema surface at exit:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
 });
 
 process.on("exit", () => {
@@ -65871,10 +66016,32 @@ process.on("exit", () => {
       removeFileIfExists(addressPath);
       return;
     }
+    const paddedStrictRaw =
+      ensureCountyRawRequiredFieldSurface({
+        ...strictRaw,
+      }) || { ...strictRaw };
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        paddedStrictRaw,
+        "request_identifier",
+      )
+    ) {
+      paddedStrictRaw.request_identifier = null;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        paddedStrictRaw,
+        "source_http_request",
+      )
+    ) {
+      paddedStrictRaw.source_http_request = null;
+    }
+
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(strictRaw, null, 2)}\n`,
+      `${JSON.stringify(paddedStrictRaw, null, 2)}\n`,
     );
   } catch (error) {
     console.error(
