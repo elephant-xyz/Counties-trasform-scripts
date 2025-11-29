@@ -65830,47 +65830,81 @@ process.on("exit", () => {
   try {
     const dataDir = path.join("data");
     const addressPath = path.join(dataDir, "address.json");
-    const payload = readJSONIfExists(addressPath);
-    if (
-      !payload ||
-      typeof payload !== "object" ||
-      Array.isArray(payload)
-    ) {
+    if (!fs.existsSync(addressPath)) {
       return;
     }
-    const rawValue =
+
+    const payload = readJSONIfExists(addressPath);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    const normalizedCandidate =
+      hasStrictCountyNormalizedSchemaCoverage(payload) &&
+      buildCountyNormalizedOneOfPayload(payload, {
+        defaultCountyName: titleCaseCounty("Palm Beach"),
+        defaultStateCode: "FL",
+        defaultCountryCode: "US",
+      });
+
+    if (normalizedCandidate) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedCandidate.unnormalized_address;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "request_identifier",
+        )
+      ) {
+        delete normalizedCandidate.request_identifier;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "source_http_request",
+        )
+      ) {
+        delete normalizedCandidate.source_http_request;
+      }
+
+      addressWriteLocked = true;
+      try {
+        originalWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(normalizedCandidate, null, 2)}\n`,
+        );
+      } finally {
+        addressWriteLocked = false;
+      }
+      return;
+    }
+
+    const unnormalizedInput = readJSONIfExists("unnormalized_address.json") || null;
+    const rawValue = resolveFirstNonEmptyString([
       typeof payload.unnormalized_address === "string"
-        ? payload.unnormalized_address.trim()
-        : "";
-    if (!rawValue.length) {
+        ? payload.unnormalized_address
+        : null,
+      unnormalizedInput && unnormalizedInput.unnormalized_address,
+      unnormalizedInput && unnormalizedInput.full_address,
+      unnormalizedInput && unnormalizedInput.address,
+      unnormalizedInput && unnormalizedInput.site_address,
+    ]);
+    if (!rawValue) {
+      removeFileIfExists(addressPath);
       return;
     }
 
     const submissionPayload = {
-      unnormalized_address: rawValue,
-      request_identifier: Object.prototype.hasOwnProperty.call(
-        payload,
-        "request_identifier",
-      )
-        ? safeNullIfEmpty(payload.request_identifier) ?? null
-        : null,
-      source_http_request: null,
+      unnormalized_address: rawValue.trim(),
     };
-
-    if (
-      Object.prototype.hasOwnProperty.call(
-        payload,
-        "source_http_request",
-      ) &&
-      payload.source_http_request
-    ) {
-      const preparedSource = prepareSourceHttpRequest(
-        payload.source_http_request,
-      );
-      if (preparedSource) {
-        submissionPayload.source_http_request = deepClone(preparedSource);
-      }
-    }
 
     addressWriteLocked = true;
     try {
