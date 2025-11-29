@@ -1924,9 +1924,30 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
   // Create person entities with validation
   people = Array.from(personMap.values()).map((p) => {
     // Clean and validate names, ensuring semicolons and invalid chars are removed
-    const cleanedFirstName = p.first_name ? cleanNameForValidation(p.first_name) : null;
-    const cleanedMiddleName = p.middle_name ? cleanNameForValidation(p.middle_name) : null;
+    let cleanedFirstName = p.first_name ? cleanNameForValidation(p.first_name) : null;
+    let cleanedMiddleName = p.middle_name ? cleanNameForValidation(p.middle_name) : null;
     const cleanedLastName = p.last_name ? cleanNameForValidation(p.last_name) : null;
+    let suffixName = validateSuffixName(p.suffix_name);
+
+    // Handle case where first_name is actually a Roman numeral suffix
+    if (cleanedFirstName && isRomanNumeral(cleanedFirstName)) {
+      // If first name is a Roman numeral, move it to suffix if suffix is empty
+      if (!suffixName) {
+        suffixName = validateSuffixName(cleanedFirstName);
+      }
+      // Set first_name to null since it was actually a suffix
+      cleanedFirstName = null;
+    }
+
+    // Handle case where middle_name is actually a Roman numeral suffix
+    if (cleanedMiddleName && isRomanNumeral(cleanedMiddleName)) {
+      // If middle name is a Roman numeral, move it to suffix if suffix is empty
+      if (!suffixName) {
+        suffixName = validateSuffixName(cleanedMiddleName);
+      }
+      // Set middle_name to null since it was actually a suffix
+      cleanedMiddleName = null;
+    }
 
     return {
       first_name: cleanedFirstName ? validateNamePattern(titleCaseName(cleanedFirstName)) : null,
@@ -1934,7 +1955,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, propertySeed) {
       last_name: cleanedLastName ? validateNamePattern(titleCaseName(cleanedLastName)) : null,
       birth_date: null,
       prefix_name: validatePrefixName(p.prefix_name), // Validate prefix
-      suffix_name: validateSuffixName(p.suffix_name), // Validate suffix
+      suffix_name: suffixName, // Use the potentially updated suffix
       us_citizenship_status: null,
       veteran_status: null,
       request_identifier: parcelId,
