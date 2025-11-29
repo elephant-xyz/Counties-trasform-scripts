@@ -301,11 +301,35 @@ function mapStructuralFrameValue(value) {
 
   const interiorSurfacePrimary = mapInteriorWallValue(intWall1);
   const flooringPrimary = mapInteriorFloorValue(floor1);
-  const flooringSecondary =
+  let flooringSecondary =
     mapInteriorFloorValue(floor2) ||
     (floor2 && floor2.toLowerCase() !== "none"
       ? mapInteriorFloorValue(floor2)
       : null);
+
+  // flooring_material_secondary has restricted enum - convert invalid values
+  const VALID_SECONDARY_FLOORING = [
+    "Solid Hardwood",
+    "Engineered Hardwood",
+    "Laminate",
+    "Luxury Vinyl Plank",
+    "Ceramic Tile",
+    "Carpet",
+    "Area Rugs",
+    "Transition Strips",
+    null
+  ];
+
+  if (flooringSecondary && !VALID_SECONDARY_FLOORING.includes(flooringSecondary)) {
+    // Map invalid values to closest valid enum or null
+    if (flooringSecondary === "Polished Concrete" || flooringSecondary === "Natural Stone Tile" || flooringSecondary === "Porcelain Tile") {
+      flooringSecondary = "Ceramic Tile";
+    } else if (flooringSecondary === "Sheet Vinyl") {
+      flooringSecondary = "Luxury Vinyl Plank";
+    } else {
+      flooringSecondary = null;
+    }
+  }
 
   const roofDesign = mapRoofStructureValue(roofStruct);
   const roofCoverMapping = mapRoofCoverValue(roofCover);
