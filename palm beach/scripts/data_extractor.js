@@ -19,12 +19,21 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
   "longitude",
   "street_number",
   "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
   "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "city_name",
   "state_code",
   "postal_code",
-  "county_name",
+  "plus_four_postal_code",
   "country_code",
+  "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
 ];
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
@@ -15365,11 +15374,21 @@ const NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS = ["latitude", "longitude"];
 const COUNTY_NORMALIZED_CORE_FIELDS = [
   "street_number",
   "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "city_name",
   "state_code",
   "postal_code",
+  "plus_four_postal_code",
   "country_code",
   "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
 ];
 
 const NORMALIZED_ADDRESS_STRONG_FIELDS = [
@@ -61448,15 +61467,10 @@ function applyNormalizedAddressOverride() {
         ? null
         : resolvedRequestIdentifier;
 
-    const hasRequiredFields = [
-      "street_number",
-      "street_name",
-      "city_name",
-      "state_code",
-      "postal_code",
-    ].every((field) => hasMeaningfulAddressValue(normalizedAddress[field]));
-
-    if (!hasRequiredFields) {
+    const hasStrictCoverage = hasStrictCountyNormalizedSchemaCoverage({
+      ...normalizedAddress,
+    });
+    if (!hasStrictCoverage) {
       return false;
     }
 
