@@ -6712,25 +6712,7 @@ function emitPropertyAddressRelationships() {
   try {
     const dataDir = path.join("data");
     const relationshipsDir = path.join("relationships");
-    const propertyPath = path.join(dataDir, "property.json");
-    const addressPath = path.join(dataDir, "address.json");
-
-    if (!fs.existsSync(propertyPath) || !fs.existsSync(addressPath)) {
-      return;
-    }
-
-    const propertyRef = "./property.json";
-    const addressRef = "./address.json";
-    const targets = [
-      path.join(dataDir, "property_has_address.json"),
-      path.join(dataDir, "relationship_property_has_address.json"),
-      path.join(relationshipsDir, "property_has_address.json"),
-      path.join(relationshipsDir, "relationship_property_has_address.json"),
-    ];
-
-    for (const target of targets) {
-      writeRelationshipFile(target, propertyRef, addressRef);
-    }
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
   } catch (error) {
     console.error("Failed to emit property/address relationships:", error);
     if (!process.exitCode) {
@@ -66162,6 +66144,74 @@ function buildLeanCountyRawAddressPayload() {
   const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || null;
   const seedSource = readJSONIfExists("property_seed.json") || null;
 
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingAddress && existingAddress.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+  const normalizedRequestIdentifier = safeNullIfEmpty(requestIdentifier);
+
+  const sourceHttpRequestCandidate = resolveSourceHttpRequestCandidate(
+    existingAddress && existingAddress.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+  const preparedSource = sourceHttpRequestCandidate
+    ? prepareSourceHttpRequest(sourceHttpRequestCandidate)
+    : null;
+
+  if (
+    existingAddress &&
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...existingAddress })
+  ) {
+    const normalizedSurface = ensureNormalizedAddressSchemaSurface
+      ? ensureNormalizedAddressSchemaSurface({ ...existingAddress })
+      : { ...existingAddress };
+
+    if (
+      normalizedSurface &&
+      typeof normalizedSurface === "object" &&
+      Object.prototype.hasOwnProperty.call(
+        normalizedSurface,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedSurface.unnormalized_address;
+    }
+
+    if (normalizedSurface && typeof normalizedSurface === "object") {
+      if (normalizedRequestIdentifier !== undefined) {
+        normalizedSurface.request_identifier =
+          normalizedRequestIdentifier === null
+            ? null
+            : normalizedRequestIdentifier;
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedSurface,
+          "request_identifier",
+        )
+      ) {
+        normalizedSurface.request_identifier =
+          safeNullIfEmpty(normalizedSurface.request_identifier) ?? null;
+      }
+
+      if (preparedSource) {
+        normalizedSurface.source_http_request = deepClone(preparedSource);
+      } else if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedSurface,
+          "source_http_request",
+        )
+      ) {
+        delete normalizedSurface.source_http_request;
+      }
+    }
+
+    return normalizedSurface;
+  }
+
   const rawCandidates = [];
   gatherRawAddressCandidatesFromSource(existingAddress, rawCandidates);
   gatherRawAddressCandidatesFromSource(unnormalizedSource, rawCandidates);
@@ -66172,114 +66222,14 @@ function buildLeanCountyRawAddressPayload() {
     return null;
   }
 
-  const payload = {
+  return {
     unnormalized_address: resolvedRaw,
+    request_identifier:
+      normalizedRequestIdentifier === undefined
+        ? null
+        : normalizedRequestIdentifier,
+    source_http_request: preparedSource ? deepClone(preparedSource) : null,
   };
-
-  const requestIdentifier = resolveRequestIdentifierCandidate(
-    existingAddress && existingAddress.request_identifier,
-    unnormalizedSource && unnormalizedSource.request_identifier,
-    seedSource && seedSource.request_identifier,
-    seedSource && seedSource.parcel_id,
-  );
-  const normalizedRequestIdentifier = safeNullIfEmpty(requestIdentifier);
-  payload.request_identifier =
-    normalizedRequestIdentifier === undefined
-      ? null
-      : normalizedRequestIdentifier;
-
-  const sourceHttpRequestCandidate = resolveSourceHttpRequestCandidate(
-    existingAddress && existingAddress.source_http_request,
-    unnormalizedSource && unnormalizedSource.source_http_request,
-    seedSource && seedSource.source_http_request,
-  );
-  const preparedSource = sourceHttpRequestCandidate
-    ? prepareSourceHttpRequest(sourceHttpRequestCandidate)
-    : null;
-  payload.source_http_request = preparedSource
-    ? deepClone(preparedSource)
-    : null;
-
-  const countyCandidate = resolveFirstNonEmptyString(
-    [
-      existingAddress && existingAddress.county_name,
-      unnormalizedSource && unnormalizedSource.county_name,
-      unnormalizedSource && unnormalizedSource.county_jurisdiction,
-      seedSource && seedSource.county_name,
-      "Palm Beach",
-    ].filter((value) => typeof value === "string"),
-  );
-  payload.county_name = titleCaseCounty(countyCandidate || "Palm Beach");
-
-  const stateCandidate = resolveFirstNonEmptyString(
-    [
-      existingAddress && existingAddress.state_code,
-      unnormalizedSource && unnormalizedSource.state_code,
-      seedSource && seedSource.state_code,
-      "FL",
-    ].filter((value) => typeof value === "string"),
-  );
-  payload.state_code = stateCandidate
-    ? stateCandidate.toUpperCase()
-    : "FL";
-
-  const countryCandidate = resolveFirstNonEmptyString(
-    [
-      existingAddress && existingAddress.country_code,
-      unnormalizedSource && unnormalizedSource.country_code,
-      "US",
-    ].filter((value) => typeof value === "string"),
-  );
-  payload.country_code = countryCandidate
-    ? countryCandidate.toUpperCase()
-    : "US";
-
-  const optionalFields = RAW_FALLBACK_COPY_FIELDS.filter(
-    (field) =>
-      !["county_name", "state_code", "country_code"].includes(field),
-  );
-
-  const copyOptionalField = (field) => {
-    if (hasMeaningfulAddressValue(payload[field])) {
-      return;
-    }
-    const candidates = [
-      existingAddress && existingAddress[field],
-      unnormalizedSource && unnormalizedSource[field],
-      seedSource && seedSource[field],
-    ];
-    const resolvedValue = resolveFieldFromCandidates(field, candidates);
-    if (resolvedValue === null || resolvedValue === undefined) {
-      return;
-    }
-    payload[field] =
-      typeof resolvedValue === "string"
-        ? resolvedValue.trim()
-        : resolvedValue;
-  };
-
-  optionalFields.forEach(copyOptionalField);
-
-  const latitude = resolveFirstCoordinate([
-    existingAddress && existingAddress.latitude,
-    unnormalizedSource && unnormalizedSource.latitude,
-    seedSource && seedSource.latitude,
-  ]);
-  const longitude = resolveFirstCoordinate([
-    existingAddress && existingAddress.longitude,
-    unnormalizedSource && unnormalizedSource.longitude,
-    seedSource && seedSource.longitude,
-  ]);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    payload.latitude = latitude;
-    payload.longitude = longitude;
-  }
-
-  if (!hasMeaningfulAddressValue(payload.postal_code)) {
-    delete payload.plus_four_postal_code;
-  }
-
-  return payload;
 }
 
 function persistLeanCountyRawAddress() {
