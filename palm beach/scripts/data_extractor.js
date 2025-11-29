@@ -10058,15 +10058,6 @@ function stripNormalizedFieldsFromRawPayload(address) {
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "latitude",
-  "longitude",
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
   "city_name",
   "municipality_name",
   "county_name",
@@ -35721,10 +35712,6 @@ function ensureRawAddressSchemaDefaults(address) {
   if (preparedSource) {
     rawSurface.source_http_request = deepClone(preparedSource);
   }
-
-  backfillNormalizedAddressFields(rawSurface, {
-    unnormalized: trimmedUnnormalized,
-  });
 
   if (
     (rawSurface.latitude == null && rawSurface.longitude != null) ||
@@ -67686,6 +67673,64 @@ function buildStrictRawAddressSnapshot(options = {}) {
 
   if (resolvedSourceHttpRequest) {
     strictRaw.source_http_request = deepClone(resolvedSourceHttpRequest);
+  }
+
+  const minimalRawFields = [
+    "city_name",
+    "municipality_name",
+    "county_name",
+    "state_code",
+    "country_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+  ];
+
+  const assignMinimalField = (field) => {
+    const resolved = resolveFirstMeaningfulAddressField(field, fieldSources);
+    if (resolved === undefined || resolved === null) {
+      return;
+    }
+    if (typeof resolved === "string") {
+      const trimmed = resolved.trim();
+      if (!trimmed.length) return;
+      strictRaw[field] = trimmed;
+      return;
+    }
+    strictRaw[field] = resolved;
+  };
+
+  minimalRawFields.forEach(assignMinimalField);
+
+  const derivedFromRaw = deriveNormalizedAddressFieldsFromRaw(resolvedRaw);
+  if (derivedFromRaw && typeof derivedFromRaw === "object") {
+    for (const field of minimalRawFields) {
+      if (hasMeaningfulAddressValue(strictRaw[field])) {
+        continue;
+      }
+      const derivedValue = derivedFromRaw[field];
+      if (derivedValue === undefined || derivedValue === null) {
+        continue;
+      }
+      if (typeof derivedValue === "string") {
+        const trimmed = derivedValue.trim();
+        if (!trimmed.length) continue;
+        strictRaw[field] = trimmed;
+        continue;
+      }
+      strictRaw[field] = derivedValue;
+    }
+  }
+
+  if (
+    hasMeaningfulAddressValue(strictRaw.state_code) &&
+    !hasMeaningfulAddressValue(strictRaw.country_code)
+  ) {
+    strictRaw.country_code = "US";
   }
 
   return pruneAddressToMinimalRawFields(strictRaw);
