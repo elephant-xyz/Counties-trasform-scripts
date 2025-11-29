@@ -52676,6 +52676,18 @@ function enforceAddressFinalOneOfPayload(addressPath, options = {}) {
     rawOutput.source_http_request = null;
   }
 
+  const minimalRawFieldSet = new Set([
+    "unnormalized_address",
+    "request_identifier",
+    "source_http_request",
+    ...RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS,
+  ]);
+  for (const key of Object.keys(rawOutput)) {
+    if (!minimalRawFieldSet.has(key)) {
+      delete rawOutput[key];
+    }
+  }
+
   writeJSON(addressPath, rawOutput);
 }
 
