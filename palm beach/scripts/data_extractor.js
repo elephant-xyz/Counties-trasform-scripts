@@ -15115,44 +15115,33 @@ function ensureCountyRawRequiredFieldSurface(address) {
     return address;
   }
 
-  const rawPayload = {
+  const rawSeed = {
+    ...address,
     unnormalized_address: trimmedRaw,
   };
 
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    rawPayload.latitude = latitude;
-    rawPayload.longitude = longitude;
+  const hydratedRaw =
+    ensureRawAddressSchemaDefaults(rawSeed) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedRaw,
+    };
+
+  if (
+    !Object.prototype.hasOwnProperty.call(hydratedRaw, "request_identifier")
+  ) {
+    hydratedRaw.request_identifier = null;
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(address, "request_identifier")
+    !Object.prototype.hasOwnProperty.call(hydratedRaw, "source_http_request")
   ) {
-    const normalizedIdentifier = safeNullIfEmpty(
-      address.request_identifier,
-    );
-    if (normalizedIdentifier !== undefined) {
-      rawPayload.request_identifier =
-        normalizedIdentifier === null ? null : normalizedIdentifier;
-    }
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(address, "source_http_request")
-  ) {
-    const preparedSource = prepareSourceHttpRequest(
-      address.source_http_request,
-    );
-    if (preparedSource) {
-      rawPayload.source_http_request = deepClone(preparedSource);
-    }
+    hydratedRaw.source_http_request = null;
   }
 
   Object.keys(address).forEach((key) => {
     delete address[key];
   });
-  Object.assign(address, rawPayload);
+  Object.assign(address, hydratedRaw);
   return address;
 }
 
