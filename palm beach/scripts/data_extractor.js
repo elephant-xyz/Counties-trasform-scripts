@@ -3778,9 +3778,84 @@ function buildStrictRawOneOfPayload(rawValue, options = {}) {
     return null;
   }
 
+  const {
+    fieldSources = [],
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const resolvedSources = [];
+  if (Array.isArray(fieldSources)) {
+    for (const source of fieldSources) {
+      if (source && typeof source === "object") {
+        resolvedSources.push(source);
+      }
+    }
+  }
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+  ) {
+    for (const source of ADDRESS_FALLBACK_CONTEXT.fieldSources) {
+      if (source && typeof source === "object") {
+        resolvedSources.push(source);
+      }
+    }
+  }
+
+  const resolveFieldValue = (field) => {
+    for (const source of resolvedSources) {
+      if (!source || typeof source !== "object") continue;
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      const sanitized = sanitizeAddressFieldValue(field, source[field]);
+      if (sanitized !== undefined && sanitized !== null) {
+        return sanitized;
+      }
+    }
+
+    if (field === "county_name" && defaultCountyName) {
+      return sanitizeAddressFieldValue(
+        field,
+        titleCaseCounty(defaultCountyName),
+      );
+    }
+    if (field === "state_code" && defaultStateCode) {
+      return sanitizeAddressFieldValue(field, defaultStateCode);
+    }
+    if (field === "country_code") {
+      const fallbackCountry =
+        defaultCountryCode || "US";
+      return sanitizeAddressFieldValue(field, fallbackCountry);
+    }
+    return null;
+  };
+
   const rawPayload = {
     unnormalized_address: trimmed,
   };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    rawPayload[field] = resolveFieldValue(field);
+  }
+
+  if (!rawPayload.postal_code) {
+    rawPayload.plus_four_postal_code = null;
+  }
+
+  const hasLatitude = Number.isFinite(rawPayload.latitude);
+  const hasLongitude = Number.isFinite(rawPayload.longitude);
+  if (!hasLatitude || !hasLongitude) {
+    rawPayload.latitude = null;
+    rawPayload.longitude = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawPayload.state_code) &&
+    !hasMeaningfulAddressValue(rawPayload.country_code)
+  ) {
+    rawPayload.country_code = defaultCountryCode || "US";
+  }
 
   if (Object.prototype.hasOwnProperty.call(options, "requestIdentifier")) {
     const normalizedIdentifier = safeNullIfEmpty(options.requestIdentifier);
@@ -66805,6 +66880,14 @@ function finalizeSimpleCountyAddressOutput(addressPath, options = {}) {
         ? { requestIdentifier: normalizedRequestIdentifier }
         : {}),
       preparedSourceHttpRequest: preparedSource,
+      fieldSources: [
+        payload,
+        unnormalizedSource,
+        seedSource,
+      ],
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
     }) || null;
 
   if (rawOutput) {
