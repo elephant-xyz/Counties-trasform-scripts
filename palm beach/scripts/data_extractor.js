@@ -67591,6 +67591,64 @@ function enforceNullPropertyAddressRelationships(propertyPath) {
   }
 }
 
+function enforceMinimalRawAddressSnapshot(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options;
+
+  const existingAddress = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const fallbackSources = [];
+  for (const source of [existingAddress, unnormalizedSource, seedSource]) {
+    if (source && typeof source === "object") {
+      fallbackSources.push(source);
+    }
+  }
+
+  const leanRaw =
+    buildLeanRawAddressPayloadFromSources(fallbackSources, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) || null;
+
+  const rawValue =
+    leanRaw && typeof leanRaw.unnormalized_address === "string"
+      ? leanRaw.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return false;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingAddress && existingAddress.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const minimalRaw = {
+    unnormalized_address: rawValue,
+    request_identifier:
+      requestIdentifier === undefined
+        ? null
+        : requestIdentifier === null
+          ? null
+          : requestIdentifier,
+    __force_raw_variant: true,
+  };
+
+  writeAddressJSONBypass(addressPath, minimalRaw);
+  return true;
+}
+
 process.on("exit", () => {
   try {
     const dataDir = path.join("data");
@@ -67748,6 +67806,29 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to persist strict county address payload at exit:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    const enforced = enforceMinimalRawAddressSnapshot({
+      addressPath: path.join(dataDir, "address.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+    if (enforced) {
+      overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    }
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal raw address snapshot:",
       error,
     );
   }
