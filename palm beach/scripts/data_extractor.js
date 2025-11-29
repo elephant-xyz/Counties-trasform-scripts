@@ -61430,14 +61430,25 @@ function applyNormalizedAddressOverride() {
         ? null
         : resolvedRequestIdentifier;
 
-    const hasStrictCoverage = hasStrictCountyNormalizedSchemaCoverage({
-      ...normalizedAddress,
-    });
-    if (!hasStrictCoverage) {
+    const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+      currentAddress && currentAddress.source_http_request,
+      unnormalizedInput && unnormalizedInput.source_http_request,
+      seedInput && seedInput.source_http_request,
+    );
+    if (resolvedSourceHttpRequest) {
+      const preparedSource = prepareSourceHttpRequest(resolvedSourceHttpRequest);
+      if (preparedSource) {
+        normalizedAddress.source_http_request = deepClone(preparedSource);
+      }
+    }
+
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...normalizedAddress }) || null;
+    if (!normalizedOutput) {
       return false;
     }
 
-    writeAddressJSONBypass(addressPath, normalizedAddress);
+    writeAddressJSONBypass(addressPath, normalizedOutput);
     overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
     process.removeAllListeners("exit");
     normalizedAddressOverrideApplied = true;
