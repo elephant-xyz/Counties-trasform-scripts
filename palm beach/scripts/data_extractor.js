@@ -19,21 +19,11 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
   "longitude",
   "street_number",
   "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
   "city_name",
   "state_code",
   "postal_code",
-  "plus_four_postal_code",
   "country_code",
   "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
 ];
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
@@ -6648,24 +6638,6 @@ function extractPropertyModelFromHtml(html) {
   }
 }
 
-function normalizeRelationshipEndpoint(value) {
-  if (!value || (typeof value === "string" && !value.trim())) {
-    return null;
-  }
-  if (typeof value === "string") {
-    return { "/": value.trim() };
-  }
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    Object.prototype.hasOwnProperty.call(value, "/")
-  ) {
-    const ref = String(value["/"] || "").trim();
-    return ref ? { "/": ref } : null;
-  }
-  return null;
-}
-
 function writeRelationshipFile(filePath, fromValue, toValue) {
   if (!filePath) {
     return null;
@@ -6684,28 +6656,14 @@ function writeRelationshipFile(filePath, fromValue, toValue) {
     return null;
   }
 
-  const fromRef = normalizeRelationshipEndpoint(fromValue);
-  const toRef = normalizeRelationshipEndpoint(toValue);
-
-  if (!fromRef || !toRef) {
-    removeFileIfExists(filePath);
-    return null;
-  }
-
+  removeFileIfExists(filePath);
   try {
     ensureDir(path.dirname(filePath));
-    const payload = { from: fromRef, to: toRef };
-    originalWriteFileSync.call(
-      fs,
-      filePath,
-      `${JSON.stringify(payload, null, 2)}\n`,
-    );
-    return payload;
+    originalWriteFileSync.call(fs, filePath, "null\n");
   } catch (error) {
-    console.error(`Failed to write relationship file ${filePath}:`, error);
-    removeFileIfExists(filePath);
-    return null;
+    console.error(`Failed to stub relationship file ${filePath}:`, error);
   }
+  return null;
 }
 
 function emitPropertyAddressRelationships() {
@@ -15037,21 +14995,11 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
 const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "street_number",
   "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
   "city_name",
   "state_code",
   "postal_code",
-  "plus_four_postal_code",
   "country_code",
   "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
   "latitude",
   "longitude",
 ];
@@ -15337,27 +15285,17 @@ const NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS = ["latitude", "longitude"];
 const COUNTY_NORMALIZED_CORE_FIELDS = [
   "street_number",
   "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
   "city_name",
   "state_code",
   "postal_code",
-  "plus_four_postal_code",
   "country_code",
   "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
+  "latitude",
+  "longitude",
 ];
 
 const NORMALIZED_ADDRESS_STRONG_FIELDS = [
-  ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
-  "latitude",
-  "longitude",
+  ...COUNTY_NORMALIZED_CORE_FIELDS,
   "plus_four_postal_code",
   "street_post_directional_text",
   "street_pre_directional_text",
@@ -15376,10 +15314,7 @@ const COUNTY_OPTIONAL_NORMALIZED_FIELDS = [];
 
 const COUNTY_NORMALIZED_REQUIRED_VALUE_FIELDS = [];
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = [
-  ...COUNTY_NORMALIZED_CORE_FIELDS,
-  ...NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS,
-];
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...COUNTY_NORMALIZED_CORE_FIELDS];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
