@@ -9908,36 +9908,46 @@ function stripNormalizedFieldsFromRawPayload(address) {
     return address;
   }
 
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      address[field] = null;
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(address[field]);
-      address[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (hasMeaningfulAddressValue(address[field])) {
-      if (typeof address[field] === "string") {
-        const trimmed = address[field].trim();
-        address[field] = trimmed.length ? trimmed : null;
-      }
-      continue;
-    }
-
-    address[field] = null;
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return address;
   }
 
-  for (const key of Object.keys(address)) {
-    if (key === "unnormalized_address") continue;
-    if (key === "request_identifier" || key === "source_http_request") continue;
-    if (RAW_ADDRESS_OUTPUT_FIELD_SET.has(key)) continue;
+  const sanitized = {
+    unnormalized_address: rawValue,
+  };
+
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    sanitized.latitude = latitude;
+    sanitized.longitude = longitude;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const requestIdentifier = safeNullIfEmpty(address.request_identifier);
+    if (requestIdentifier !== undefined) {
+      sanitized.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      sanitized.source_http_request = deepClone(prepared);
+    } else if (address.source_http_request === null) {
+      sanitized.source_http_request = null;
+    }
+  }
+
+  Object.keys(address).forEach((key) => {
     delete address[key];
-  }
-
+  });
+  Object.assign(address, sanitized);
   return address;
 }
 
@@ -15144,22 +15154,11 @@ function ensureCountyRawRequiredFieldSurface(address) {
     unnormalized_address: trimmedRaw,
   };
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(address[field]);
-      rawPayload[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (hasMeaningfulAddressValue(address[field])) {
-      rawPayload[field] =
-        typeof address[field] === "string"
-          ? address[field].trim()
-          : address[field];
-      continue;
-    }
-
-    rawPayload[field] = null;
+  const latitude = parseCoordinate(address.latitude);
+  const longitude = parseCoordinate(address.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    rawPayload.latitude = latitude;
+    rawPayload.longitude = longitude;
   }
 
   if (
