@@ -10085,6 +10085,7 @@ function buildRawOnlyAddressSurface(address) {
   }
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
   };
 
@@ -14845,6 +14846,7 @@ function buildStrictRawAddressOneOfPayload(address, options = {}) {
   } = options || {};
 
   const rawPayload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedUnnormalized,
   };
 
@@ -14864,8 +14866,8 @@ function buildStrictRawAddressOneOfPayload(address, options = {}) {
   const hasLatitude = Number.isFinite(rawPayload.latitude);
   const hasLongitude = Number.isFinite(rawPayload.longitude);
   if (!hasLatitude || !hasLongitude) {
-    delete rawPayload.latitude;
-    delete rawPayload.longitude;
+    rawPayload.latitude = null;
+    rawPayload.longitude = null;
   }
 
   if (!hasMeaningfulAddressValue(rawPayload.county_name) && defaultCountyName) {
@@ -14888,11 +14890,8 @@ function buildStrictRawAddressOneOfPayload(address, options = {}) {
     rawPayload.country_code = defaultCountryCode.toUpperCase();
   }
 
-  if (
-    !hasMeaningfulAddressValue(rawPayload.postal_code) &&
-    Object.prototype.hasOwnProperty.call(rawPayload, "plus_four_postal_code")
-  ) {
-    delete rawPayload.plus_four_postal_code;
+  if (!hasMeaningfulAddressValue(rawPayload.postal_code)) {
+    rawPayload.plus_four_postal_code = null;
   }
 
   const resolvedIdentifier =
