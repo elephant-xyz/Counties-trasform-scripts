@@ -64554,3 +64554,87 @@ process.on("exit", () => {
     );
   }
 });
+
+function enforceTerminalRawCountyAddressPayload() {
+  const dataDir = path.join("data");
+  ensureDir(dataDir);
+  const relationshipsDir = path.join("relationships");
+  ensureDir(relationshipsDir);
+  const addressPath = path.join(dataDir, "address.json");
+  const existingPayload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource =
+    readJSONIfExists("unnormalized_address.json") || {};
+  const seedSource = readJSONIfExists("property_seed.json") || {};
+
+  const simplifiedPayload =
+    buildSimplifiedRawCountyAddressPayload({
+      existingPayload,
+      unnormalizedSource,
+      seedSource,
+    }) || null;
+
+  if (!simplifiedPayload) {
+    removeFileIfExists(addressPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    return;
+  }
+
+  const trimmedRaw =
+    typeof simplifiedPayload.unnormalized_address === "string"
+      ? simplifiedPayload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    removeFileIfExists(addressPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    return;
+  }
+  simplifiedPayload.unnormalized_address = trimmedRaw;
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(simplifiedPayload, field)) {
+      simplifiedPayload[field] = null;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(simplifiedPayload[field]);
+      simplifiedPayload[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    if (
+      typeof simplifiedPayload[field] === "string" &&
+      simplifiedPayload[field].trim() === ""
+    ) {
+      simplifiedPayload[field] = null;
+    }
+  }
+
+  if (
+    simplifiedPayload.state_code &&
+    !hasMeaningfulAddressValue(simplifiedPayload.country_code)
+  ) {
+    simplifiedPayload.country_code = "US";
+  }
+
+  const requestIdentifier = safeNullIfEmpty(
+    simplifiedPayload.request_identifier,
+  );
+  simplifiedPayload.request_identifier =
+    requestIdentifier === undefined ? null : requestIdentifier;
+
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(simplifiedPayload, null, 2)}\n`,
+  );
+  overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+}
+
+process.on("exit", () => {
+  try {
+    enforceTerminalRawCountyAddressPayload();
+  } catch (error) {
+    console.error(
+      "Failed to enforce terminal raw county address payload:",
+      error,
+    );
+  }
+});
