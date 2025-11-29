@@ -2624,6 +2624,20 @@ function main() {
               relationshipsSalesPersons.push(1);
               relIdx++;
             }
+          } else if (o.type === "company") {
+            const cf = companies.find(
+              (cc) => cc.data.name === normalizeSpace(o.name || ""),
+            );
+            if (cf) {
+              writeJSON(
+                `relationship_sales_history_company_${companies.indexOf(cf) + 1}.json`,
+                {
+                  to: { "/": `./${cf.file}` },
+                  from: { "/": `./${targetSale}` },
+                },
+              );
+              relIdx++;
+            }
           }
         }
       }
@@ -2652,6 +2666,19 @@ function main() {
                 },
               );
               relationshipsSalesPersons.push(1);
+            }
+          } else if (o.type === "company") {
+            const cf = companies.find(
+              (cc) => cc.data.name === normalizeSpace(o.name || ""),
+            );
+            if (cf) {
+              writeJSON(
+                `relationship_sales_history_company_${companies.indexOf(cf) + 1}.json`,
+                {
+                  to: { "/": `./${cf.file}` },
+                  from: { "/": `./${targetSale}` },
+                },
+              );
             }
           }
         }
