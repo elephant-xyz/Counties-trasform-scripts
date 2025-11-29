@@ -66295,6 +66295,172 @@ process.on("exit", () => {
   }
 });
 
+function buildMinimalRawAddressFallbackPayload(
+  addressPayload,
+  unnormalizedSource,
+  seedSource,
+) {
+  const collectRawCandidates = (...sources) => {
+    const values = [];
+    const candidateKeys = [
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "mail_address",
+      "mailing_address",
+      "address",
+    ];
+    for (const source of sources) {
+      if (!source || typeof source !== "object") continue;
+      for (const key of candidateKeys) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        const value = safeNullIfEmpty(source[key]);
+        if (value) {
+          values.push(value);
+        }
+      }
+    }
+    return values;
+  };
+
+  const rawCandidates = collectRawCandidates(
+    addressPayload,
+    unnormalizedSource,
+    seedSource,
+  );
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    return null;
+  }
+
+  const fallback = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: resolvedRaw.trim(),
+  };
+
+  const assignField = (field, sources, fallbackValue) => {
+    const resolved = resolveFirstMeaningfulAddressField(field, sources);
+    if (resolved !== null && resolved !== undefined) {
+      fallback[field] = resolved;
+      return;
+    }
+    if (fallbackValue !== undefined) {
+      fallback[field] =
+        typeof fallbackValue === "string"
+          ? fallbackValue.trim().length
+            ? fallbackValue.trim()
+            : null
+          : fallbackValue === null || fallbackValue === undefined
+            ? null
+            : fallbackValue;
+    }
+  };
+
+  assignField("city_name", [addressPayload, unnormalizedSource]);
+  assignField("municipality_name", [addressPayload, unnormalizedSource]);
+  const countyFromSource = safeNullIfEmpty(
+    unnormalizedSource && unnormalizedSource.county_jurisdiction,
+  );
+  assignField(
+    "county_name",
+    [addressPayload, seedSource],
+    countyFromSource || titleCaseCounty("Palm Beach"),
+  );
+  assignField("state_code", [addressPayload, seedSource], "FL");
+  if (!hasMeaningfulAddressValue(fallback.state_code)) {
+    fallback.state_code = "FL";
+  }
+  assignField("country_code", [addressPayload, seedSource], "US");
+  if (!hasMeaningfulAddressValue(fallback.country_code)) {
+    fallback.country_code = "US";
+  }
+  assignField("postal_code", [addressPayload, unnormalizedSource]);
+  assignField("plus_four_postal_code", [addressPayload, unnormalizedSource]);
+  assignField("township", [addressPayload, unnormalizedSource, seedSource]);
+  assignField("range", [addressPayload, unnormalizedSource, seedSource]);
+  assignField("section", [addressPayload, unnormalizedSource, seedSource]);
+  assignField("block", [addressPayload, unnormalizedSource, seedSource]);
+  assignField("lot", [addressPayload, unnormalizedSource, seedSource]);
+
+  fallback.latitude = null;
+  fallback.longitude = null;
+  fallback.street_number = null;
+  fallback.street_name = null;
+  fallback.street_pre_directional_text = null;
+  fallback.street_post_directional_text = null;
+  fallback.street_suffix_type = null;
+  fallback.unit_identifier = null;
+  fallback.route_number = null;
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    addressPayload && addressPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+  fallback.request_identifier =
+    requestIdentifier === undefined
+      ? null
+      : safeNullIfEmpty(requestIdentifier) ?? null;
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    addressPayload && addressPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+  if (sourceHttpRequest) {
+    const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+    fallback.source_http_request = prepared
+      ? deepClone(prepared)
+      : deepClone(sourceHttpRequest);
+  } else {
+    fallback.source_http_request = null;
+  }
+
+  return fallback;
+}
+
+function enforceMinimalRawAddressFallback() {
+  const dataDir = path.join("data");
+  const relationshipsDir = path.join("relationships");
+  const addressPath = path.join(dataDir, "address.json");
+  if (!fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const addressPayload = readJSONIfExists(addressPath);
+  if (!addressPayload || typeof addressPayload !== "object") {
+    removeFileIfExists(addressPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    return;
+  }
+
+  if (
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...addressPayload })
+  ) {
+    return;
+  }
+
+  const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+  const seedSource = readJSONIfExists("property_seed.json") || {};
+
+  const fallbackPayload = buildMinimalRawAddressFallbackPayload(
+    addressPayload,
+    unnormalizedSource,
+    seedSource,
+  );
+
+  if (!fallbackPayload) {
+    removeFileIfExists(addressPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    return;
+  }
+
+  writeAddressJSONBypass(addressPath, fallbackPayload);
+  overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+}
+
 function buildLeanCountyRawAddressPayload() {
   const dataDir = path.join("data");
   const addressPath = path.join(dataDir, "address.json");
@@ -66508,6 +66674,17 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to rebuild normalized county address at final exit:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceMinimalRawAddressFallback();
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal raw address fallback:",
       error,
     );
   }
