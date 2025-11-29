@@ -10206,8 +10206,10 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
     : source.longitude;
   const latitude = parseCoordinate(latitudeCandidate);
   const longitude = parseCoordinate(longitudeCandidate);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+  if (Number.isFinite(latitude)) {
     lean.latitude = latitude;
+  }
+  if (Number.isFinite(longitude)) {
     lean.longitude = longitude;
   }
 
@@ -10232,15 +10234,10 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
     lean[field] = normalized;
   };
 
-  [
-    "city_name",
-    "municipality_name",
-    "county_name",
-    "state_code",
-    "country_code",
-    "postal_code",
-    "plus_four_postal_code",
-  ].forEach(copyField);
+  const coordinateFields = new Set(["latitude", "longitude"]);
+  RAW_ADDRESS_ALLOWED_FIELDS.filter(
+    (field) => !coordinateFields.has(field),
+  ).forEach(copyField);
 
   if (lean.state_code && !lean.country_code) {
     lean.country_code = "US";
