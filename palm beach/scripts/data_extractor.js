@@ -9875,8 +9875,26 @@ function stripNormalizedFieldsFromRawPayload(address) {
   }
 
   const sanitized = {
+    ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+    const normalizedValue =
+      typeof normalizeAddressFieldForSchema === "function"
+        ? normalizeAddressFieldForSchema(field, address[field])
+        : address[field];
+    sanitized[field] =
+      normalizedValue === undefined || normalizedValue === null
+        ? null
+        : normalizedValue;
+  }
 
   const latitude = parseCoordinate(address.latitude);
   const longitude = parseCoordinate(address.longitude);
