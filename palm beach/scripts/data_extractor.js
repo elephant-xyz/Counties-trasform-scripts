@@ -56451,37 +56451,62 @@ function enforceMinimalRawAddressSurface(addressPath) {
   }
 
   if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
     return;
   }
 
-  const trimmedUnnormalized =
+  const rawValue =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
-  if (!trimmedUnnormalized.length) {
+  if (!rawValue.length) {
+    removeFileIfExists(addressPath);
     return;
   }
 
-  const normalizedProbe =
-    ensureAddressOutputFieldPresence &&
-    typeof ensureAddressOutputFieldPresence === "function"
-      ? ensureAddressOutputFieldPresence({ ...payload })
-      : { ...payload };
-
-  if (hasNormalizedCountyCoverage({ ...normalizedProbe })) {
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (hasNormalizedSurface) {
     return;
   }
 
-  const nextPayload =
-    ensureAddressOutputFieldPresence({
-      ...payload,
-      unnormalized_address: trimmedUnnormalized,
-    }) || {
-      ...payload,
-      unnormalized_address: trimmedUnnormalized,
-    };
+  const minimalPayload = {
+    unnormalized_address: rawValue,
+    request_identifier: null,
+    source_http_request: null,
+  };
 
-  writeJSON(addressPath, nextPayload);
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const identifier = safeNullIfEmpty(payload.request_identifier);
+    minimalPayload.request_identifier =
+      identifier === undefined ? null : identifier;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+  ) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    minimalPayload.source_http_request = prepared
+      ? deepClone(prepared)
+      : null;
+  }
+
+  addressWriteLocked = true;
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(minimalPayload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error(
+      "Failed to persist minimal raw address surface:",
+      error,
+    );
+  } finally {
+    addressWriteLocked = false;
+  }
 }
 
 function enforceCountyAddressFieldSaturation(addressPath, options = {}) {
@@ -68036,6 +68061,18 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to apply final county address reconciliation:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    enforceMinimalRawAddressSurface(addressPath);
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal raw address surface at exit:",
       error,
     );
   }
