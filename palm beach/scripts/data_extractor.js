@@ -67591,6 +67591,135 @@ function enforceNullPropertyAddressRelationships(propertyPath) {
   }
 }
 
+function buildStrictRawAddressSnapshot(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+  } = options || {};
+
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const fieldSources = [existingPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const rawCandidates = [];
+  const enqueueRawCandidate = (value) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidates.push(trimmed);
+    }
+  };
+
+  fieldSources.forEach((source) => {
+    const resolved = resolveRawAddressStringFromSource(source);
+    if (resolved) {
+      enqueueRawCandidate(resolved);
+    }
+  });
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates.forEach(
+      enqueueRawCandidate,
+    );
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    return null;
+  }
+
+  const fallbackRequestIdentifierCandidates =
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+      : [];
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    existingPayload && existingPayload.parcel_identifier,
+    seedSource && seedSource.parcel_id,
+    seedSource && seedSource.property_id,
+    seedSource && seedSource.prop_id,
+    ...fallbackRequestIdentifierCandidates,
+  );
+
+  const fallbackSourceHttpCandidates =
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+      ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+      : [];
+  const resolvedSourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+    ...fallbackSourceHttpCandidates,
+  );
+
+  const strictRaw = {
+    unnormalized_address: resolvedRaw,
+    request_identifier:
+      resolvedRequestIdentifier === undefined
+        ? null
+        : resolvedRequestIdentifier === null
+          ? null
+          : resolvedRequestIdentifier,
+  };
+
+  if (resolvedSourceHttpRequest) {
+    strictRaw.source_http_request = deepClone(resolvedSourceHttpRequest);
+  }
+
+  return pruneAddressToMinimalRawFields(strictRaw);
+}
+
+function buildFinalCountyAddressPayload(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+  } = options || {};
+
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  if (
+    existingPayload &&
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload })
+  ) {
+    const normalizedOutput =
+      typeof buildNormalizedAddressOutputForSchema === "function"
+        ? buildNormalizedAddressOutputForSchema({ ...existingPayload })
+        : { ...existingPayload };
+    if (normalizedOutput && typeof normalizedOutput === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+      return normalizedOutput;
+    }
+  }
+
+  return buildStrictRawAddressSnapshot({
+    addressPath,
+    unnormalizedPath,
+    seedPath,
+  });
+}
+
 function enforceMinimalRawAddressSnapshot(options = {}) {
   const {
     addressPath = path.join("data", "address.json"),
@@ -67829,6 +67958,35 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to enforce minimal raw address snapshot:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const finalPayload = buildFinalCountyAddressPayload({
+      addressPath,
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+    });
+
+    if (finalPayload) {
+      writeAddressJSONBypass(addressPath, finalPayload);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    enforceNullPropertyAddressRelationships(propertyPath);
+    purgeSuppressedRelationshipFiles([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error(
+      "Failed to apply final county address reconciliation:",
       error,
     );
   }
