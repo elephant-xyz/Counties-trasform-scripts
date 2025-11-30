@@ -10369,19 +10369,7 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "source_http_request",
 ]);
 
-const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([
-  "county_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-]);
+const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([]);
 
 const RAW_ADDRESS_REQUIRED_PRESENCE_FIELDS = new Set();
 
@@ -10416,66 +10404,18 @@ function stripRawVariantStructuredFields(address) {
   ) {
     return address;
   }
-
-  const dropField = (field) => {
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      delete address[field];
+  Object.keys(address).forEach((field) => {
+    if (field === "unnormalized_address") {
+      return;
     }
-  };
-
-  for (const field of RAW_VARIANT_STRUCTURED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
+    if (RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST.has(field)) {
+      return;
     }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(address[field]);
-      if (Number.isFinite(numeric)) {
-        address[field] = numeric;
-        continue;
-      }
-      dropField(field);
-      continue;
+    if (RAW_VARIANT_META_FIELD_ALLOWLIST.has(field)) {
+      return;
     }
-
-    if (!hasMeaningfulAddressValue(address[field])) {
-      dropField(field);
-      continue;
-    }
-
-    if (typeof address[field] === "string") {
-      const trimmed = address[field].trim();
-      if (!trimmed.length) {
-        dropField(field);
-        continue;
-      }
-      if (trimmed !== address[field]) {
-        address[field] = trimmed;
-      }
-    }
-  }
-
-  const hasLatitude =
-    Object.prototype.hasOwnProperty.call(address, "latitude") &&
-    Number.isFinite(address.latitude);
-  const hasLongitude =
-    Object.prototype.hasOwnProperty.call(address, "longitude") &&
-    Number.isFinite(address.longitude);
-  if (!hasLatitude || !hasLongitude) {
-    dropField("latitude");
-    dropField("longitude");
-  }
-
-  if (!hasMeaningfulAddressValue(address.postal_code)) {
-    dropField("postal_code");
-    dropField("plus_four_postal_code");
-  } else if (!hasMeaningfulAddressValue(address.plus_four_postal_code)) {
-    dropField("plus_four_postal_code");
-  }
-
-  if (!hasMeaningfulAddressValue(address.state_code)) {
-    dropField("country_code");
-  }
+    delete address[field];
+  });
 
   return address;
 }
@@ -10584,6 +10524,12 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 const RAW_ONLY_ADDRESS_FIELDS = Object.freeze(["latitude", "longitude"]);
 const RAW_ONLY_ADDRESS_FIELD_SET = new Set(RAW_ONLY_ADDRESS_FIELDS);
 const RAW_MINIMAL_SURFACE_FLAG = "__prefer_minimal_raw_surface";
+const RAW_VARIANT_META_FIELD_ALLOWLIST = new Set([
+  RAW_MINIMAL_SURFACE_FLAG,
+  "__force_raw_variant",
+  "__preserve_structured_fields",
+  "__raw_minimal_surface",
+]);
 
 function buildRawOnlyAddressSurface(address) {
   if (!address || typeof address !== "object") {
