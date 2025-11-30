@@ -114,6 +114,32 @@ function writeAddressJSONBypass(addressPath, payload) {
   }
 }
 
+function writeMinimalAddressPayload(addressPath, payload) {
+  if (
+    !addressPath ||
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
+    return false;
+  }
+
+  try {
+    addressWriteLocked = true;
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
+    return true;
+  } catch (error) {
+    console.error("Failed to persist minimal address payload:", error);
+    return false;
+  } finally {
+    addressWriteLocked = false;
+  }
+}
+
 function coerceAddressToMinimalRawOneOf(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -56616,20 +56642,7 @@ function enforceMinimalRawAddressSurface(addressPath) {
   }
 }
 
-const RAW_ONE_OF_MINIMAL_FIELDS = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
+const RAW_ONE_OF_MINIMAL_FIELDS = Object.freeze([]);
 
 function buildRawOneOfMinimalAddressPayloadFromSources(
   sources = [],
@@ -56680,61 +56693,9 @@ function buildRawOneOfMinimalAddressPayloadFromSources(
     return null;
   }
 
-  const payload = {
+  return {
     unnormalized_address: resolvedRaw.trim(),
   };
-
-  for (const field of RAW_ONE_OF_MINIMAL_FIELDS) {
-    const value = resolveFirstMeaningfulAddressField(field, resolvedSources);
-    if (value === undefined || value === null) {
-      continue;
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      payload[field] = trimmed;
-      continue;
-    }
-    payload[field] = value;
-  }
-
-  const {
-    defaultCountyName = null,
-    defaultStateCode = null,
-    defaultCountryCode = "US",
-  } = options || {};
-
-  if (
-    defaultCountyName &&
-    !hasMeaningfulAddressValue(payload.county_name)
-  ) {
-    payload.county_name = titleCaseCounty(defaultCountyName);
-  }
-
-  if (
-    defaultStateCode &&
-    !hasMeaningfulAddressValue(payload.state_code)
-  ) {
-    payload.state_code =
-      typeof defaultStateCode === "string"
-        ? defaultStateCode.toUpperCase()
-        : defaultStateCode;
-  }
-
-  if (
-    hasMeaningfulAddressValue(payload.state_code) &&
-    !hasMeaningfulAddressValue(payload.country_code)
-  ) {
-    payload.country_code = (defaultCountryCode || "US").toUpperCase();
-  }
-
-  if (!hasMeaningfulAddressValue(payload.postal_code)) {
-    payload.plus_four_postal_code = null;
-  }
-
-  return payload;
 }
 
 function enforceRawOneOfMinimalAddress(addressPath, options = {}) {
@@ -56779,12 +56740,12 @@ function enforceRawOneOfMinimalAddress(addressPath, options = {}) {
   );
   if (requestIdentifier !== undefined) {
     const normalizedIdentifier = safeNullIfEmpty(requestIdentifier);
-    minimalPayload.request_identifier =
-      normalizedIdentifier === undefined
-        ? null
-        : normalizedIdentifier === null
-          ? null
-          : normalizedIdentifier;
+    if (normalizedIdentifier === undefined) {
+      minimalPayload.request_identifier = null;
+    } else {
+      minimalPayload.request_identifier =
+        normalizedIdentifier === null ? null : normalizedIdentifier;
+    }
   }
 
   const sourceHttpRequest = resolveSourceHttpRequestCandidate(
@@ -56797,9 +56758,19 @@ function enforceRawOneOfMinimalAddress(addressPath, options = {}) {
     if (prepared) {
       minimalPayload.source_http_request = deepClone(prepared);
     }
+  } else if (
+    existingPayload &&
+    Object.prototype.hasOwnProperty.call(existingPayload, "source_http_request") &&
+    existingPayload.source_http_request === null
+  ) {
+    minimalPayload.source_http_request = null;
   }
 
-  writeAddressJSONBypass(addressPath, minimalPayload);
+  if (!writeMinimalAddressPayload(addressPath, minimalPayload)) {
+    removeFileIfExists(addressPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    return;
+  }
   overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
 }
 
