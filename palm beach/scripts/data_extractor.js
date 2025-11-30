@@ -872,6 +872,22 @@ function ensureRelationshipFieldsAreNull(payload) {
 }
 
 function sanitizeRelationshipPayloadForWrite(data) {
+  if (
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    !Buffer.isBuffer(data)
+  ) {
+    const payload = deepClone(data);
+    if (!payload) {
+      return null;
+    }
+    if (!ensureRelationshipFieldsAreNull(payload)) {
+      return null;
+    }
+    return `${JSON.stringify(payload, null, 2)}\n`;
+  }
+
   let serialized = null;
   if (typeof data === "string") {
     serialized = data;
@@ -10733,6 +10749,14 @@ function enforceMinimalRawSubmissionSurface(address) {
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
       : "";
+
+  const preservedMeta = {};
+  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      preservedMeta[field] = address[field];
+    }
+  });
+
   if (!rawValue.length) {
     Object.keys(address).forEach((key) => {
       if (RAW_VARIANT_META_FIELD_ALLOWLIST.has(key)) {
@@ -10740,40 +10764,75 @@ function enforceMinimalRawSubmissionSurface(address) {
       }
       delete address[key];
     });
+    Object.assign(address, preservedMeta);
     return address;
   }
 
-  const minimal = {
-    unnormalized_address: rawValue,
-  };
+  const schemaAlignedRaw =
+    ensureRawAddressSchemaDefaults({
+      ...address,
+      unnormalized_address: rawValue,
+    }) ||
+    pruneAddressToMinimalRawFields({
+      ...address,
+      unnormalized_address: rawValue,
+    }) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: rawValue,
+    };
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+  if (
+    !Object.prototype.hasOwnProperty.call(schemaAlignedRaw, "request_identifier")
+  ) {
     const identifier = safeNullIfEmpty(address.request_identifier);
-    minimal.request_identifier =
+    schemaAlignedRaw.request_identifier =
       identifier === undefined ? null : identifier;
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    const preparedSource = prepareSourceHttpRequest(
-      address.source_http_request,
-    );
-    if (preparedSource) {
-      minimal.source_http_request = deepClone(preparedSource);
-    } else if (address.source_http_request === null) {
-      minimal.source_http_request = null;
-    }
+  const preparedSource = prepareSourceHttpRequest(
+    address.source_http_request,
+  );
+  if (preparedSource) {
+    schemaAlignedRaw.source_http_request = deepClone(preparedSource);
+  } else if (
+    !Object.prototype.hasOwnProperty.call(
+      schemaAlignedRaw,
+      "source_http_request",
+    ) ||
+    schemaAlignedRaw.source_http_request === undefined
+  ) {
+    schemaAlignedRaw.source_http_request = null;
   }
 
-  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((metaField) => {
-    if (Object.prototype.hasOwnProperty.call(address, metaField)) {
-      minimal[metaField] = address[metaField];
-    }
-  });
+  if (!schemaAlignedRaw.postal_code) {
+    schemaAlignedRaw.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(schemaAlignedRaw.state_code) &&
+    !hasMeaningfulAddressValue(schemaAlignedRaw.country_code)
+  ) {
+    schemaAlignedRaw.country_code = "US";
+  }
+
+  const hasLatitude = Number.isFinite(schemaAlignedRaw.latitude);
+  const hasLongitude = Number.isFinite(schemaAlignedRaw.longitude);
+  if (hasLatitude !== hasLongitude) {
+    schemaAlignedRaw.latitude = null;
+    schemaAlignedRaw.longitude = null;
+  }
+
+  const completedSurface =
+    applyRawAddressPresenceDefaults(schemaAlignedRaw) || schemaAlignedRaw;
+
+  const mergedSurface = {
+    ...completedSurface,
+    ...preservedMeta,
+  };
 
   Object.keys(address).forEach((key) => {
     delete address[key];
   });
-  Object.assign(address, minimal);
+  Object.assign(address, mergedSurface);
   return address;
 }
 
