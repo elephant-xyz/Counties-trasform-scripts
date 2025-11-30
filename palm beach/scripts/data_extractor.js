@@ -10398,18 +10398,7 @@ function applyRawAddressPresenceDefaults(address) {
 }
 
 function stripRawVariantStructuredFields(address) {
-  if (
-    !address ||
-    typeof address !== "object" ||
-    Array.isArray(address)
-  ) {
-    return address;
-  }
-
-  if (
-    typeof hasNormalizedCountyCoverage === "function" &&
-    hasNormalizedCountyCoverage({ ...address })
-  ) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
     return address;
   }
 
@@ -10421,69 +10410,74 @@ function stripRawVariantStructuredFields(address) {
     return address;
   }
 
-  let mutated = false;
-  const ensureFieldPresence = (field) => {
-    const hasField = Object.prototype.hasOwnProperty.call(address, field);
-    let nextValue = null;
+  if (
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...address })
+  ) {
+    return address;
+  }
 
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(address[field]);
-      nextValue = Number.isFinite(numeric) ? numeric : null;
-    } else if (hasField) {
-      const sanitized = typeof sanitizeAddressFieldValue === "function"
-        ? sanitizeAddressFieldValue(field, address[field])
-        : address[field];
-      if (sanitized === undefined || sanitized === null) {
-        nextValue = null;
-      } else if (typeof sanitized === "string") {
-        const trimmed = sanitized.trim();
-        nextValue = trimmed.length ? trimmed : null;
-      } else {
-        nextValue = sanitized;
-      }
-    }
-
-    if (!hasField || address[field] !== nextValue) {
-      address[field] = nextValue;
-      mutated = true;
+  const dropField = (field) => {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      delete address[field];
     }
   };
 
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach(ensureFieldPresence);
+  for (const field of RAW_VARIANT_STRUCTURED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      if (Number.isFinite(numeric)) {
+        address[field] = numeric;
+        continue;
+      }
+      dropField(field);
+      continue;
+    }
+
+    if (!hasMeaningfulAddressValue(address[field])) {
+      dropField(field);
+      continue;
+    }
+
+    if (typeof address[field] === "string") {
+      const trimmed = address[field].trim();
+      if (!trimmed.length) {
+        dropField(field);
+        continue;
+      }
+      if (trimmed !== address[field]) {
+        address[field] = trimmed;
+      }
+    }
+  }
+
+  const hasLatitude =
+    Object.prototype.hasOwnProperty.call(address, "latitude") &&
+    Number.isFinite(address.latitude);
+  const hasLongitude =
+    Object.prototype.hasOwnProperty.call(address, "longitude") &&
+    Number.isFinite(address.longitude);
+  if (!hasLatitude || !hasLongitude) {
+    dropField("latitude");
+    dropField("longitude");
+  }
 
   if (!hasMeaningfulAddressValue(address.postal_code)) {
-    if (address.plus_four_postal_code !== null) {
-      address.plus_four_postal_code = null;
-      mutated = true;
-    }
-  } else if (
-    !Object.prototype.hasOwnProperty.call(address, "plus_four_postal_code")
-  ) {
-    address.plus_four_postal_code = null;
-    mutated = true;
+    dropField("postal_code");
+    dropField("plus_four_postal_code");
+  } else if (!hasMeaningfulAddressValue(address.plus_four_postal_code)) {
+    dropField("plus_four_postal_code");
   }
 
-  if (
-    hasMeaningfulAddressValue(address.state_code) &&
-    !hasMeaningfulAddressValue(address.country_code)
-  ) {
-    if (address.country_code !== "US") {
-      address.country_code = "US";
-      mutated = true;
-    }
+  if (!hasMeaningfulAddressValue(address.state_code)) {
+    dropField("country_code");
   }
 
-  const hasLatitude = Number.isFinite(address.latitude);
-  const hasLongitude = Number.isFinite(address.longitude);
-  if (hasLatitude !== hasLongitude) {
-    if (address.latitude !== null || address.longitude !== null) {
-      address.latitude = null;
-      address.longitude = null;
-      mutated = true;
-    }
-  }
-
-  return mutated ? address : address;
+  return address;
 }
 
 function emitRawAddressSchemaSurface(addressPath) {
