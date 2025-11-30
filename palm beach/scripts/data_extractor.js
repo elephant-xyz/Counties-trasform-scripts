@@ -10655,6 +10655,64 @@ function applyRawAddressPresenceDefaults(address) {
   return address;
 }
 
+function collapseRawAddressToMinimalSurface(address) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
+    return address;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...address });
+  if (hasNormalizedSurface) {
+    return address;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+
+  if (!rawValue.length) {
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(address, field)) {
+        delete address[field];
+      }
+    });
+    return address;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const identifier = safeNullIfEmpty(address.request_identifier);
+    minimal.request_identifier =
+      identifier === undefined ? null : identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      minimal.source_http_request = deepClone(prepared);
+    } else if (address.source_http_request === null) {
+      minimal.source_http_request = null;
+    }
+  }
+
+  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      minimal[field] = address[field];
+    }
+  });
+
+  Object.keys(address).forEach((key) => {
+    delete address[key];
+  });
+  Object.assign(address, minimal);
+  return address;
+}
+
 function stripRawVariantStructuredFields(address) {
   if (!address || typeof address !== "object" || Array.isArray(address)) {
     return address;
@@ -10729,6 +10787,7 @@ function stripRawVariantStructuredFields(address) {
     delete address[key];
   });
   Object.assign(address, mergedSurface);
+  collapseRawAddressToMinimalSurface(address);
 
   return address;
 }
@@ -10833,6 +10892,7 @@ function enforceMinimalRawSubmissionSurface(address) {
     delete address[key];
   });
   Object.assign(address, mergedSurface);
+  collapseRawAddressToMinimalSurface(address);
   return address;
 }
 
