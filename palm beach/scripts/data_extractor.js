@@ -69447,6 +69447,169 @@ function buildPalmBeachRawAddressPayload(addressPath) {
   return payload;
 }
 
+function buildMinimalRawAddressPayloadFromSources(sources = []) {
+  const candidates = Array.isArray(sources)
+    ? sources.filter((source) => source && typeof source === "object")
+    : [];
+  if (!candidates.length) {
+    return null;
+  }
+
+  const rawValue =
+    resolveRawAddressStringFromSources(candidates) ||
+    resolveFirstNonEmptyString(
+      candidates.map((source) =>
+        typeof source.unnormalized_address === "string"
+          ? source.unnormalized_address
+          : null,
+      ),
+    );
+  if (!rawValue) {
+    return null;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue.trim(),
+  };
+
+  const identifierCandidates = [];
+  candidates.forEach((candidate) => {
+    identifierCandidates.push(
+      candidate.request_identifier,
+      candidate.parcel_id,
+      candidate.parcel_identifier,
+      candidate.property_id,
+      candidate.prop_id,
+    );
+  });
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    ...identifierCandidates,
+  );
+  if (requestIdentifier !== undefined) {
+    minimal.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+
+  const sourceHttpCandidates = candidates.map(
+    (candidate) => candidate.source_http_request,
+  );
+  const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+    ...sourceHttpCandidates,
+  );
+  if (resolvedSourceRequest) {
+    const prepared = prepareSourceHttpRequest(resolvedSourceRequest);
+    if (prepared) {
+      minimal.source_http_request = deepClone(prepared);
+    }
+  } else if (sourceHttpCandidates.some((candidate) => candidate === null)) {
+    minimal.source_http_request = null;
+  }
+
+  const latitude = resolveFirstCoordinate(
+    candidates.map((candidate) => candidate.latitude),
+  );
+  const longitude = resolveFirstCoordinate(
+    candidates.map((candidate) => candidate.longitude),
+  );
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    minimal.latitude = latitude;
+    minimal.longitude = longitude;
+  }
+
+  const optionalFields = [
+    "city_name",
+    "municipality_name",
+    "county_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "country_code",
+  ];
+  optionalFields.forEach((field) => {
+    const value = resolveFirstMeaningfulAddressField(field, candidates);
+    if (hasMeaningfulAddressValue(value)) {
+      minimal[field] = value;
+    }
+  });
+
+  return minimal;
+}
+
+function enforceFinalMinimalRawAddressPayload(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+  } = options || {};
+
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const existingPayload = readJSONIfExists(addressPath);
+  if (!existingPayload || typeof existingPayload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
+  if (hasNormalizedSurface) {
+    let normalizedOutput =
+      typeof buildNormalizedAddressOutputForSchema === "function"
+        ? buildNormalizedAddressOutputForSchema({ ...existingPayload })
+        : null;
+    if (!normalizedOutput || typeof normalizedOutput !== "object") {
+      normalizedOutput = { ...existingPayload };
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    try {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(normalizedOutput, null, 2)}\n`,
+      );
+    } catch (error) {
+      console.error("Failed to persist normalized address payload:", error);
+    }
+    return;
+  }
+
+  const sources = [existingPayload];
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  if (unnormalizedSource && typeof unnormalizedSource === "object") {
+    sources.push(unnormalizedSource);
+  }
+  const seedSource = readJSONIfExists(seedPath) || null;
+  if (seedSource && typeof seedSource === "object") {
+    sources.push(seedSource);
+  }
+
+  const minimalRaw = buildMinimalRawAddressPayloadFromSources(sources);
+  if (!minimalRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(minimalRaw, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error("Failed to persist minimal raw address payload:", error);
+  }
+}
+
 function enforcePalmBeachRawAddressOutputs() {
   const dataDir = path.join("data");
   const relationshipsDir = path.join("relationships");
@@ -70252,6 +70415,21 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to finalize raw unnormalized address submission:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceFinalMinimalRawAddressPayload({
+      addressPath: path.join("data", "address.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce final minimal raw address payload:",
       error,
     );
   }
