@@ -10675,40 +10675,31 @@ function stripRawVariantStructuredFields(address) {
     return address;
   }
 
-  const rawOnlyPayload = {
-    unnormalized_address: rawValue,
+  const rawSurface =
+    ensureRawAddressSchemaDefaults({
+      ...address,
+      unnormalized_address: rawValue,
+    }) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: rawValue,
+    };
+
+  if (!Object.prototype.hasOwnProperty.call(rawSurface, "request_identifier")) {
+    rawSurface.request_identifier = null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(rawSurface, "source_http_request")) {
+    rawSurface.source_http_request = null;
+  }
+
+  const mergedSurface = {
+    ...rawSurface,
+    ...preservedMeta,
   };
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const identifier = safeNullIfEmpty(address.request_identifier);
-    if (identifier !== undefined) {
-      rawOnlyPayload.request_identifier =
-        identifier === null ? null : identifier;
-    }
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(address.source_http_request);
-    if (prepared) {
-      rawOnlyPayload.source_http_request = deepClone(prepared);
-    } else if (address.source_http_request === null) {
-      rawOnlyPayload.source_http_request = null;
-    }
-  }
-
   Object.keys(address).forEach((key) => {
-    const isAllowedRawField = RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST.has(key);
-    const isPreservedMeta = Object.prototype.hasOwnProperty.call(
-      preservedMeta,
-      key,
-    );
-    if (isAllowedRawField || isPreservedMeta) {
-      return;
-    }
     delete address[key];
   });
-
-  Object.assign(address, rawOnlyPayload, preservedMeta);
+  Object.assign(address, mergedSurface);
 
   return address;
 }
