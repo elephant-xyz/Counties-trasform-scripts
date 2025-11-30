@@ -3724,6 +3724,8 @@ function ensureRawAddressFieldCompleteness(address) {
     minimalRaw.__force_raw_variant = true;
   }
 
+  stripRawVariantStructuredFields(minimalRaw);
+
   return applyRawAddressPresenceDefaults(minimalRaw);
 }
 
@@ -3769,6 +3771,8 @@ function ensureStrictRawAddressFieldPresence(addressPath) {
     const prepared = prepareSourceHttpRequest(hydrated.source_http_request);
     hydrated.source_http_request = prepared ? deepClone(prepared) : null;
   }
+
+  stripRawVariantStructuredFields(hydrated);
 
   addressWriteLocked = true;
   try {
@@ -5883,6 +5887,9 @@ function writeJSON(p, obj) {
 
   if (isAddressFile && payload && typeof payload === "object") {
     payload = ensureRawAddressFieldCompleteness(payload);
+    if (payload && typeof payload === "object") {
+      stripRawVariantStructuredFields(payload);
+    }
   }
 
   if (isPropertyFile && payload && typeof payload === "object") {
@@ -10423,6 +10430,13 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
+  "county_name",
+  "country_code",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
 ]);
 
 const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([]);
@@ -10929,11 +10943,20 @@ function persistAddressPayload(addressPath, payload) {
   if (!addressPath || !payload || typeof payload !== "object") {
     return;
   }
+
+  let workingPayload =
+    payload && typeof payload === "object" ? deepClone(payload) : payload;
+  if (workingPayload && typeof workingPayload === "object") {
+    workingPayload =
+      ensureRawAddressFieldCompleteness(workingPayload) || workingPayload;
+    stripRawVariantStructuredFields(workingPayload);
+  }
+
   ensureDir(path.dirname(addressPath));
   originalWriteFileSync.call(
     fs,
     addressPath,
-    `${JSON.stringify(payload, null, 2)}\n`,
+    `${JSON.stringify(workingPayload, null, 2)}\n`,
   );
 }
 
