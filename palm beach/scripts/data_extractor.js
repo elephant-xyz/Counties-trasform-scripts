@@ -69897,6 +69897,129 @@ function persistNullAddressRelationshipFiles(directories = []) {
   }
 }
 
+function enforceFinalCountyAddressVariant(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    propertyPath = path.join("data", "property.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  if (!addressPath) {
+    return;
+  }
+
+  const addressPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const fieldSources = [addressPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const normalizedCandidate =
+    fieldSources.reduce((resolved, source) => {
+      if (resolved || !source) {
+        return resolved;
+      }
+      return (
+        buildNormalizedAddressOutputForSchema(
+          {
+            ...source,
+            county_name:
+              source.county_name || titleCaseCounty(defaultCountyName || ""),
+            state_code: source.state_code || defaultStateCode || null,
+            country_code: source.country_code || defaultCountryCode || null,
+          },
+        ) || null
+      );
+    }, null) || null;
+
+  const dataDir = path.dirname(addressPath);
+  const relationshipsDir = path.join("relationships");
+
+  const persistRelationshipNulls = () => {
+    persistNullAddressRelationshipFiles([dataDir, relationshipsDir]);
+    enforceNullPropertyAddressRelationships(propertyPath);
+  };
+
+  if (
+    normalizedCandidate &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...normalizedCandidate })
+  ) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    writeAddressJSONBypass(addressPath, normalizedCandidate);
+    persistRelationshipNulls();
+    return;
+  }
+
+  const fallbackRawCandidates =
+    (ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) &&
+      ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) ||
+    [];
+
+  const resolvedRaw =
+    resolveRawAddressStringFromSources(fieldSources) ||
+    resolveFirstNonEmptyString(fallbackRawCandidates);
+
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    persistRelationshipNulls();
+    return;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    addressPayload && addressPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    addressPayload && addressPayload.parcel_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    addressPayload && addressPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const mergedSource = fieldSources.reduce(
+    (acc, source) => Object.assign(acc, source),
+    {},
+  );
+  mergedSource.unnormalized_address = resolvedRaw;
+
+  const leanRaw =
+    buildLeanRawAddressPayload(mergedSource, {
+      unnormalized_address: resolvedRaw,
+      requestIdentifier,
+      sourceHttpRequest,
+    }) ||
+    {
+      unnormalized_address: resolvedRaw,
+      request_identifier:
+        requestIdentifier === undefined ? null : requestIdentifier,
+      source_http_request: sourceHttpRequest
+        ? prepareSourceHttpRequest(sourceHttpRequest)
+        : null,
+    };
+
+  stripRawVariantStructuredFields(leanRaw);
+  enforceMinimalRawSubmissionSurface(leanRaw);
+  writeAddressJSONBypass(addressPath, leanRaw);
+  persistRelationshipNulls();
+}
+
 function finalizeRawUnnormalizedAddress(options = {}) {
   const {
     addressPath = path.join("data", "address.json"),
@@ -70863,5 +70986,24 @@ process.on("exit", () => {
     if (!process.exitCode) {
       process.exitCode = 1;
     }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceFinalCountyAddressVariant({
+      addressPath: path.join("data", "address.json"),
+      propertyPath: path.join("data", "property.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to consolidate county address variant for schema:",
+      error,
+    );
   }
 });
