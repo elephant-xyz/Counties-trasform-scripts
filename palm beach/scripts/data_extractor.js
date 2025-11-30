@@ -56660,7 +56660,9 @@ function enforceMinimalRawAddressSurface(addressPath) {
   }
 }
 
-const RAW_ONE_OF_MINIMAL_FIELDS = Object.freeze([]);
+const RAW_ONE_OF_MINIMAL_FIELDS = Object.freeze([
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
+]);
 
 function buildRawOneOfMinimalAddressPayloadFromSources(
   sources = [],
@@ -56711,9 +56713,55 @@ function buildRawOneOfMinimalAddressPayloadFromSources(
     return null;
   }
 
-  return {
-    unnormalized_address: resolvedRaw.trim(),
+  const trimmedRaw = resolvedRaw.trim();
+  if (!trimmedRaw.length) {
+    return null;
+  }
+
+  const minimalPayload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: trimmedRaw,
   };
+
+  for (const source of resolvedSources) {
+    if (!source || typeof source !== "object") {
+      continue;
+    }
+    for (const field of RAW_ONE_OF_MINIMAL_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(source, field)) {
+        continue;
+      }
+      if (hasMeaningfulAddressValue(minimalPayload[field])) {
+        continue;
+      }
+      const sanitized = sanitizeAddressFieldValue(field, source[field]);
+      if (sanitized === undefined || sanitized === null) {
+        continue;
+      }
+      minimalPayload[field] = sanitized;
+    }
+  }
+
+  if (
+    (minimalPayload.latitude == null && minimalPayload.longitude != null) ||
+    (minimalPayload.latitude != null && minimalPayload.longitude == null)
+  ) {
+    minimalPayload.latitude = null;
+    minimalPayload.longitude = null;
+  }
+
+  if (!hasMeaningfulAddressValue(minimalPayload.postal_code)) {
+    minimalPayload.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(minimalPayload.state_code) &&
+    !hasMeaningfulAddressValue(minimalPayload.country_code)
+  ) {
+    minimalPayload.country_code = "US";
+  }
+
+  return minimalPayload;
 }
 
 function enforceRawOneOfMinimalAddress(addressPath, options = {}) {
