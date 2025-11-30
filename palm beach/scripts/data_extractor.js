@@ -10438,6 +10438,37 @@ const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
 const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
   RAW_VARIANT_STRUCTURED_FIELDS,
 );
+const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([
+  "latitude",
+  "longitude",
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+]);
+const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
+  RAW_VARIANT_FORBIDDEN_FIELDS,
+);
+const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze([
+  "city_name",
+  "municipality_name",
+  "county_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+]);
+const RAW_VARIANT_OPTIONAL_FIELD_SET = new Set(
+  RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS,
+);
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
@@ -10474,6 +10505,14 @@ function stripRawVariantStructuredFields(address) {
     return address;
   }
 
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__preserve_structured_fields") &&
+    address.__preserve_structured_fields === true
+  ) {
+    delete address.__preserve_structured_fields;
+    return address;
+  }
+
   const rawValue =
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
@@ -10494,43 +10533,47 @@ function stripRawVariantStructuredFields(address) {
       ? ensureCountyRawRequiredFieldSurface({ ...address })
       : { ...address };
 
-  for (const field of RAW_VARIANT_MINIMAL_SURFACE_FIELDS) {
-    if (field === "unnormalized_address") continue;
+  address.unnormalized_address = rawValue;
 
+  for (const field of RAW_VARIANT_FORBIDDEN_FIELD_SET) {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      delete address[field];
+    }
+  }
+
+  const sanitizeAndAssign = (field) => {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      address[field] = Object.prototype.hasOwnProperty.call(
+      return;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, address[field]);
+    if (sanitized === undefined || sanitized === null) {
+      delete address[field];
+      return;
+    }
+    address[field] = sanitized;
+  };
+
+  RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      const canonical = Object.prototype.hasOwnProperty.call(
         canonicalSurface,
         field,
       )
         ? canonicalSurface[field]
         : null;
+      if (canonical !== undefined && canonical !== null) {
+        address[field] = canonical;
+      }
     }
-
-    const value = address[field];
-    if (value === undefined) {
-      address[field] = null;
-      continue;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      address[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      address[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-  }
+    sanitizeAndAssign(field);
+  });
 
   Object.keys(address).forEach((field) => {
     if (field === "unnormalized_address") {
       return;
     }
     if (
-      RAW_VARIANT_ALLOWED_FIELD_SET.has(field) ||
+      RAW_VARIANT_OPTIONAL_FIELD_SET.has(field) ||
       RAW_VARIANT_METADATA_FIELD_SET.has(field) ||
       RAW_VARIANT_META_FIELD_ALLOWLIST.has(field)
     ) {
@@ -10540,7 +10583,12 @@ function stripRawVariantStructuredFields(address) {
   });
 
   if (!hasMeaningfulAddressValue(address.postal_code)) {
-    address.plus_four_postal_code = null;
+    delete address.postal_code;
+    delete address.plus_four_postal_code;
+  } else if (
+    Object.prototype.hasOwnProperty.call(address, "plus_four_postal_code")
+  ) {
+    sanitizeAndAssign("plus_four_postal_code");
   }
 
   if (
@@ -10548,13 +10596,33 @@ function stripRawVariantStructuredFields(address) {
     !hasMeaningfulAddressValue(address.country_code)
   ) {
     address.country_code = "US";
+  } else if (
+    Object.prototype.hasOwnProperty.call(address, "country_code") &&
+    !hasMeaningfulAddressValue(address.country_code)
+  ) {
+    delete address.country_code;
   }
 
-  const hasLatitude = Number.isFinite(address.latitude);
-  const hasLongitude = Number.isFinite(address.longitude);
-  if (hasLatitude !== hasLongitude) {
-    address.latitude = null;
-    address.longitude = null;
+  if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier")
+  ) {
+    const identifier = safeNullIfEmpty(address.request_identifier);
+    if (identifier) {
+      address.request_identifier = identifier;
+    } else {
+      delete address.request_identifier;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request")
+  ) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      address.source_http_request = deepClone(prepared);
+    } else {
+      delete address.source_http_request;
+    }
   }
 
   return address;
