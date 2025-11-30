@@ -144,6 +144,7 @@ function writeAddressJSONBypass(addressPath, payload) {
   const ensuredPayload =
     ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
   stripRawVariantStructuredFields(ensuredPayload);
+  enforceMinimalRawSubmissionSurface(ensuredPayload);
   const serialized = `${JSON.stringify(ensuredPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
@@ -164,6 +165,7 @@ function writeMinimalAddressPayload(addressPath, payload) {
   }
 
   stripRawVariantStructuredFields(payload);
+  enforceMinimalRawSubmissionSurface(payload);
 
   try {
     addressWriteLocked = true;
@@ -720,10 +722,22 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
 
       const finalizedPayload = finalizeAddressWritePayload(preparedPayload);
       if (finalizedPayload) {
-        if (finalizedPayload && typeof finalizedPayload === "object") {
+        if (
+          finalizedPayload &&
+          typeof finalizedPayload === "object" &&
+          Object.prototype.hasOwnProperty.call(
+            finalizedPayload,
+            "__force_raw_variant",
+          )
+        ) {
           delete finalizedPayload.__force_raw_variant;
         }
-        const serialized = JSON.stringify(finalizedPayload, null, 2);
+        const ensuredPayload =
+          ensureRawAddressFieldCompleteness(finalizedPayload) ||
+          finalizedPayload;
+        stripRawVariantStructuredFields(ensuredPayload);
+        enforceMinimalRawSubmissionSurface(ensuredPayload);
+        const serialized = JSON.stringify(ensuredPayload, null, 2);
         return originalWriteFileSync.call(fs, targetPath, serialized, ...args);
       }
     } catch {
@@ -10701,6 +10715,66 @@ function stripRawVariantStructuredFields(address) {
   });
   Object.assign(address, mergedSurface);
 
+  return address;
+}
+
+function enforceMinimalRawSubmissionSurface(address) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
+    return address;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...address });
+  if (hasNormalizedSurface) {
+    return address;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    Object.keys(address).forEach((key) => {
+      if (RAW_VARIANT_META_FIELD_ALLOWLIST.has(key)) {
+        return;
+      }
+      delete address[key];
+    });
+    return address;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const identifier = safeNullIfEmpty(address.request_identifier);
+    minimal.request_identifier =
+      identifier === undefined ? null : identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const preparedSource = prepareSourceHttpRequest(
+      address.source_http_request,
+    );
+    if (preparedSource) {
+      minimal.source_http_request = deepClone(preparedSource);
+    } else if (address.source_http_request === null) {
+      minimal.source_http_request = null;
+    }
+  }
+
+  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((metaField) => {
+    if (Object.prototype.hasOwnProperty.call(address, metaField)) {
+      minimal[metaField] = address[metaField];
+    }
+  });
+
+  Object.keys(address).forEach((key) => {
+    delete address[key];
+  });
+  Object.assign(address, minimal);
   return address;
 }
 
