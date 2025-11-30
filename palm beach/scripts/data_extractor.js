@@ -3575,66 +3575,24 @@ function ensureRawAddressFieldCompleteness(address) {
     return address;
   }
 
-  const rawPayload = {
-    unnormalized_address: rawValue,
-  };
+  const minimalRaw =
+    pruneAddressToMinimalRawFields({
+      ...address,
+      unnormalized_address: rawValue,
+    }) || null;
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const identifier = safeNullIfEmpty(address.request_identifier);
-    if (identifier === undefined) {
-      rawPayload.request_identifier = null;
-    } else if (identifier !== null) {
-      rawPayload.request_identifier = identifier;
-    }
-  }
-
-  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
-  if (preparedSource) {
-    rawPayload.source_http_request = deepClone(preparedSource);
-  }
-
-  const assignMeaningfulField = (field, value) => {
-    if (!hasMeaningfulAddressValue(value)) {
-      return;
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      rawPayload[field] = trimmed;
-      return;
-    }
-    rawPayload[field] = value;
-  };
-
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      continue;
-    }
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      continue;
-    }
-    assignMeaningfulField(field, address[field]);
-  }
-
-  const latitude = parseCoordinate(address.latitude);
-  const longitude = parseCoordinate(address.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    rawPayload.latitude = latitude;
-    rawPayload.longitude = longitude;
+  if (!minimalRaw) {
+    return { unnormalized_address: rawValue };
   }
 
   if (
-    hasMeaningfulAddressValue(rawPayload.state_code) &&
-    !hasMeaningfulAddressValue(rawPayload.country_code)
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true
   ) {
-    rawPayload.country_code = "US";
+    minimalRaw.__force_raw_variant = true;
   }
 
-  applyRawAddressPresenceDefaults(rawPayload);
-
-  return ensureCountyRawRequiredFieldSurface({ ...rawPayload }) || rawPayload;
+  return applyRawAddressPresenceDefaults(minimalRaw);
 }
 
 function enforceRawAddressStructuredSurface(addressPath) {
@@ -10132,6 +10090,13 @@ const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
   "lot",
   "latitude",
   "longitude",
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
 ]);
 const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
   RAW_VARIANT_STRUCTURED_FIELDS,
@@ -67948,7 +67913,19 @@ function persistStrictRawCountyAddress(addressPath, options = {}) {
   rawSeed.__force_raw_variant = true;
   rawSeed.__preserve_structured_fields = true;
 
-  pruneAddressToMinimalRawFields(rawSeed);
+  const forceRawFlag =
+    rawSeed.__force_raw_variant === true;
+  const preserveStructuredFields =
+    rawSeed.__preserve_structured_fields === true;
+
+  rawSeed = pruneAddressToMinimalRawFields(rawSeed) || rawSeed;
+
+  if (forceRawFlag) {
+    rawSeed.__force_raw_variant = true;
+  }
+  if (preserveStructuredFields) {
+    rawSeed.__preserve_structured_fields = true;
+  }
 
   if (writeSchemaAlignedAddress(addressPath, rawSeed)) {
     return true;
