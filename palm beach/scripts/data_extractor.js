@@ -17,26 +17,20 @@ let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
 let normalizedAddressOverrideApplied = false;
 
-const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
+const COUNTY_REQUIRED_NORMALIZED_FIELDS = [
   "latitude",
   "longitude",
   "street_number",
   "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
   "city_name",
   "state_code",
   "postal_code",
-  "plus_four_postal_code",
   "country_code",
   "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
+];
+
+const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
+  ...COUNTY_REQUIRED_NORMALIZED_FIELDS,
 ];
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
@@ -16621,43 +16615,13 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
 
 const NORMALIZED_ADDRESS_STRICT_REQUIRED_FIELDS = ["latitude", "longitude"];
 
-const COUNTY_NORMALIZED_CORE_FIELDS = [
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "latitude",
-  "longitude",
-];
+const COUNTY_NORMALIZED_CORE_FIELDS = [...COUNTY_REQUIRED_NORMALIZED_FIELDS];
 
 const NORMALIZED_ADDRESS_STRONG_FIELDS = [
-  ...COUNTY_NORMALIZED_CORE_FIELDS,
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
+  ...COUNTY_ADDRESS_ENSURE_FIELDS,
 ];
 
-const COUNTY_STRICT_NORMALIZED_FIELDS = [...COUNTY_ADDRESS_ENSURE_FIELDS];
+const COUNTY_STRICT_NORMALIZED_FIELDS = [...COUNTY_REQUIRED_NORMALIZED_FIELDS];
 
 const COUNTY_OPTIONAL_NORMALIZED_FIELDS = [];
 
@@ -63292,6 +63256,12 @@ async function run() {
           ? "Structured snapshot satisfied normalized county schema; skipping raw finalizers."
           : "Resolved normalized county address from existing payload; skipping raw finalizers.",
       );
+      try {
+        process.removeAllListeners("exit");
+      } catch {
+        // Ignore listener cleanup failures; normalized payload already persisted.
+      }
+      ADDRESS_FINALIZATION_COMPLETE = true;
       return;
     }
   }
