@@ -10608,7 +10608,6 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
 const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([]);
@@ -13701,6 +13700,7 @@ function buildStrictRawAddressOutput(source, rawValue) {
     rawOutput.country_code = "US";
   }
 
+  stripRawVariantStructuredFields(rawOutput);
   return rawOutput;
 }
 
@@ -44675,7 +44675,9 @@ async function main() {
       seed,
       structuredSnapshot,
     );
-    forceRawAddressVariantOutput = !hasStructuredSource;
+    if (hasStructuredSource) {
+      forceRawAddressVariantOutput = false;
+    }
   }
   const htmlCoordinates = extractCoordinatesFromHTML(inputHTML);
   const htmlLatitude = parseCoordinate(htmlCoordinates.latitude);
@@ -69372,9 +69374,6 @@ function finalizeRawUnnormalizedAddress(options = {}) {
     addressPath = path.join("data", "address.json"),
     unnormalizedPath = "unnormalized_address.json",
     seedPath = "property_seed.json",
-    defaultCountyName = "Palm Beach",
-    defaultStateCode = "FL",
-    defaultCountryCode = "US",
   } = options || {};
 
   if (!addressPath) {
@@ -69404,100 +69403,49 @@ function finalizeRawUnnormalizedAddress(options = {}) {
     return;
   }
 
-  const fieldSources = [addressPayload, unnormalizedSource, seedSource].filter(
-    (source) => source && typeof source === "object",
-  );
-
-  const allowedFields = [
-    "city_name",
-    "municipality_name",
-    "county_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "country_code",
-    "street_number",
-    "street_name",
-    "street_pre_directional_text",
-    "street_post_directional_text",
-    "street_suffix_type",
-    "unit_identifier",
-    "route_number",
-    "latitude",
-    "longitude",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-  ];
-
-  const rawOutput = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+  const minimalRaw = {
     unnormalized_address: resolvedRaw.trim(),
   };
 
-  const assignField = (field) => {
-    const value = resolveFirstMeaningfulAddressField(field, fieldSources);
-    if (value === undefined || value === null) {
-      return;
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      if (Number.isFinite(numeric)) {
-        rawOutput[field] = numeric;
-      }
-      return;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      rawOutput[field] = trimmed;
-      return;
-    }
-
-    rawOutput[field] = value;
-  };
-
-  allowedFields.forEach(assignField);
-
-  if (!hasMeaningfulAddressValue(rawOutput.county_name) && defaultCountyName) {
-    rawOutput.county_name = titleCaseCounty(defaultCountyName);
+  if (
+    Object.prototype.hasOwnProperty.call(addressPayload || {}, "request_identifier") ||
+    Object.prototype.hasOwnProperty.call(unnormalizedSource || {}, "request_identifier") ||
+    Object.prototype.hasOwnProperty.call(seedSource || {}, "request_identifier")
+  ) {
+    minimalRaw.request_identifier = safeNullIfEmpty(
+      (addressPayload && addressPayload.request_identifier) ||
+        (unnormalizedSource && unnormalizedSource.request_identifier) ||
+        (seedSource && seedSource.request_identifier),
+    );
   }
-  if (!hasMeaningfulAddressValue(rawOutput.state_code) && defaultStateCode) {
-    rawOutput.state_code = defaultStateCode;
-  }
-  if (!hasMeaningfulAddressValue(rawOutput.country_code) && defaultCountryCode) {
-    rawOutput.country_code = defaultCountryCode;
+
+  const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+    addressPayload && addressPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+  const preparedSource = prepareSourceHttpRequest(resolvedSourceRequest);
+  if (preparedSource) {
+    minimalRaw.source_http_request = deepClone(preparedSource);
+  } else if (resolvedSourceRequest === null) {
+    minimalRaw.source_http_request = null;
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(rawOutput, "request_identifier")
+    minimalRaw.request_identifier === undefined ||
+    minimalRaw.request_identifier === ""
   ) {
-    delete rawOutput.request_identifier;
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")
-  ) {
-    delete rawOutput.source_http_request;
+    delete minimalRaw.request_identifier;
   }
 
-  try {
-    originalWriteFileSync.call(
-      fs,
-      addressPath,
-      `${JSON.stringify(rawOutput, null, 2)}\n`,
-    );
-  } catch (error) {
-    console.error(
-      "Failed to finalize raw unnormalized address payload:",
-      error,
-    );
+  if (
+    minimalRaw.source_http_request === undefined &&
+    resolvedSourceRequest === undefined
+  ) {
+    delete minimalRaw.source_http_request;
   }
+
+  writeMinimalAddressPayload(addressPath, minimalRaw);
 }
 
 function enforceAddressOneOfSnapshot(addressPath, options = {}) {
