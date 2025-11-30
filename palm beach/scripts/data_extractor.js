@@ -10673,46 +10673,40 @@ function stripRawVariantStructuredFields(address) {
     return address;
   }
 
-  const minimalRaw = {
+  const rawOnlyPayload = {
     unnormalized_address: rawValue,
   };
 
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
     const identifier = safeNullIfEmpty(address.request_identifier);
     if (identifier !== undefined) {
-      minimalRaw.request_identifier = identifier === null ? null : identifier;
+      rawOnlyPayload.request_identifier =
+        identifier === null ? null : identifier;
     }
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(address.source_http_request);
     if (prepared) {
-      minimalRaw.source_http_request = deepClone(prepared);
+      rawOnlyPayload.source_http_request = deepClone(prepared);
     } else if (address.source_http_request === null) {
-      minimalRaw.source_http_request = null;
+      rawOnlyPayload.source_http_request = null;
     }
-  }
-
-  for (const field of MINIMAL_RAW_ADDRESS_FIELDS) {
-    const hasField = Object.prototype.hasOwnProperty.call(address, field);
-    const rawValue = hasField ? address[field] : null;
-    let sanitized = sanitizeAddressFieldValue(field, rawValue);
-    if (sanitized === undefined) {
-      sanitized = null;
-    }
-    if (typeof sanitized === "string") {
-      const trimmed = sanitized.trim();
-      minimalRaw[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-    minimalRaw[field] = sanitized;
   }
 
   Object.keys(address).forEach((key) => {
+    const isAllowedRawField = RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST.has(key);
+    const isPreservedMeta = Object.prototype.hasOwnProperty.call(
+      preservedMeta,
+      key,
+    );
+    if (isAllowedRawField || isPreservedMeta) {
+      return;
+    }
     delete address[key];
   });
 
-  Object.assign(address, minimalRaw, preservedMeta);
+  Object.assign(address, rawOnlyPayload, preservedMeta);
 
   return address;
 }
