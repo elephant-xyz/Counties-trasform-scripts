@@ -13623,6 +13623,10 @@ function enforceAddressSchemaCompliance(addressPath, options = {}) {
     return;
   }
 
+  if (addressHasStrictNormalizedCoverage(currentPayload)) {
+    return;
+  }
+
   const addressDir = path.dirname(addressPath);
   const structuredSnapshot =
     readJSONIfExists(path.join(addressDir, "address_structured_snapshot.json")) ||
@@ -17461,6 +17465,32 @@ function hasCompleteNormalizedAddress(address) {
   }
 
   return true;
+}
+
+function addressHasStrictNormalizedCoverage(address) {
+  if (
+    !address ||
+    typeof address !== "object" ||
+    typeof hasCompleteNormalizedAddress !== "function"
+  ) {
+    return false;
+  }
+  try {
+    return hasCompleteNormalizedAddress({ ...address });
+  } catch {
+    return false;
+  }
+}
+
+function addressFileHasStrictNormalizedCoverage(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return false;
+  }
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  return addressHasStrictNormalizedCoverage(payload);
 }
 
 function hasStrictNonEmptyNormalizedCoverage(address) {
@@ -69604,6 +69634,10 @@ function enforceFinalMinimalRawAddressPayload(options = {}) {
     return;
   }
 
+  if (addressHasStrictNormalizedCoverage(existingPayload)) {
+    return;
+  }
+
   const hasNormalizedSurface =
     typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
     hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
@@ -69669,11 +69703,14 @@ function enforcePalmBeachRawAddressOutputs() {
   ensureDir(relationshipsDir);
 
   const addressPath = path.join(dataDir, "address.json");
-  const rawPayload = buildPalmBeachRawAddressPayload(addressPath);
-  if (rawPayload) {
-    writeAddressJSONBypass(addressPath, rawPayload);
-  } else {
-    removeFileIfExists(addressPath);
+  const preserveNormalized = addressFileHasStrictNormalizedCoverage(addressPath);
+  if (!preserveNormalized) {
+    const rawPayload = buildPalmBeachRawAddressPayload(addressPath);
+    if (rawPayload) {
+      writeAddressJSONBypass(addressPath, rawPayload);
+    } else {
+      removeFileIfExists(addressPath);
+    }
   }
 
   enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
@@ -69721,6 +69758,10 @@ function finalizeRawUnnormalizedAddress(options = {}) {
   const addressPayload = readJSONIfExists(addressPath) || null;
   const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
   const seedSource = readJSONIfExists(seedPath) || null;
+
+  if (addressHasStrictNormalizedCoverage(addressPayload)) {
+    return;
+  }
 
   const rawCandidates = [
     addressPayload && addressPayload.unnormalized_address,
