@@ -10283,12 +10283,66 @@ function stripRawVariantStructuredFields(address) {
   }
 
   let mutated = false;
-  RAW_VARIANT_STRUCTURED_FIELD_SET.forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      delete address[field];
+  const ensureFieldPresence = (field) => {
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    let nextValue = null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      nextValue = Number.isFinite(numeric) ? numeric : null;
+    } else if (hasField) {
+      const sanitized = typeof sanitizeAddressFieldValue === "function"
+        ? sanitizeAddressFieldValue(field, address[field])
+        : address[field];
+      if (sanitized === undefined || sanitized === null) {
+        nextValue = null;
+      } else if (typeof sanitized === "string") {
+        const trimmed = sanitized.trim();
+        nextValue = trimmed.length ? trimmed : null;
+      } else {
+        nextValue = sanitized;
+      }
+    }
+
+    if (!hasField || address[field] !== nextValue) {
+      address[field] = nextValue;
       mutated = true;
     }
-  });
+  };
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach(ensureFieldPresence);
+
+  if (!hasMeaningfulAddressValue(address.postal_code)) {
+    if (address.plus_four_postal_code !== null) {
+      address.plus_four_postal_code = null;
+      mutated = true;
+    }
+  } else if (
+    !Object.prototype.hasOwnProperty.call(address, "plus_four_postal_code")
+  ) {
+    address.plus_four_postal_code = null;
+    mutated = true;
+  }
+
+  if (
+    hasMeaningfulAddressValue(address.state_code) &&
+    !hasMeaningfulAddressValue(address.country_code)
+  ) {
+    if (address.country_code !== "US") {
+      address.country_code = "US";
+      mutated = true;
+    }
+  }
+
+  const hasLatitude = Number.isFinite(address.latitude);
+  const hasLongitude = Number.isFinite(address.longitude);
+  if (hasLatitude !== hasLongitude) {
+    if (address.latitude !== null || address.longitude !== null) {
+      address.latitude = null;
+      address.longitude = null;
+      mutated = true;
+    }
+  }
 
   return mutated ? address : address;
 }
