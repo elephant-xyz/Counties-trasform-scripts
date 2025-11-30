@@ -108,6 +108,7 @@ function writeAddressJSONBypass(addressPath, payload) {
   }
   const ensuredPayload =
     ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
+  stripRawVariantStructuredFields(ensuredPayload);
   const serialized = `${JSON.stringify(ensuredPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
@@ -126,6 +127,8 @@ function writeMinimalAddressPayload(addressPath, payload) {
   ) {
     return false;
   }
+
+  stripRawVariantStructuredFields(payload);
 
   try {
     addressWriteLocked = true;
@@ -625,6 +628,8 @@ function finalizeAddressWritePayload(rawPayload) {
 
   const minimalRawOutput =
     pruneAddressToMinimalRawFields({ ...leanRawOutput }) || leanRawOutput;
+
+  stripRawVariantStructuredFields(minimalRawOutput);
 
   if (forceRawVariant) {
     minimalRawOutput.__force_raw_variant = true;
@@ -10112,6 +10117,25 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
     ...NORMALIZED_ADDRESS_FIELDS,
   ]),
 );
+const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "latitude",
+  "longitude",
+]);
+const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
+  RAW_VARIANT_STRUCTURED_FIELDS,
+);
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
@@ -10139,6 +10163,41 @@ function applyRawAddressPresenceDefaults(address) {
     }
   }
   return address;
+}
+
+function stripRawVariantStructuredFields(address) {
+  if (
+    !address ||
+    typeof address !== "object" ||
+    Array.isArray(address)
+  ) {
+    return address;
+  }
+
+  if (
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...address })
+  ) {
+    return address;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return address;
+  }
+
+  let mutated = false;
+  RAW_VARIANT_STRUCTURED_FIELD_SET.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      delete address[field];
+      mutated = true;
+    }
+  });
+
+  return mutated ? address : address;
 }
 
 function emitRawAddressSchemaSurface(addressPath) {
@@ -10199,24 +10258,6 @@ const STRUCTURED_ADDRESS_STRICT_FIELDS = [
   "latitude",
   "longitude",
 ];
-
-const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
-const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
-  RAW_VARIANT_STRUCTURED_FIELDS,
-);
 
 // Raw variant only requires the persisted unnormalized string. Downstream
 // validators will populate normalized fields when available, but their absence
