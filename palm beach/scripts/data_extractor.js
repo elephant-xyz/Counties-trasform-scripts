@@ -5657,13 +5657,14 @@ function pruneRawAddressFieldsForOutput(address) {
 
 function writeJSON(p, obj) {
   let payload = obj;
-  const isAddressFile =
-    typeof p === "string" &&
-    p.endsWith("address.json") &&
-    obj &&
-    typeof obj === "object";
+  const normalizedPath = typeof p === "string" ? path.normalize(p) : "";
+  const fileName = normalizedPath ? path.basename(normalizedPath) : "";
 
-  const wantsStructuredPreservation =
+  const isAddressFile =
+    fileName === "address.json" && obj && typeof obj === "object";
+  const isPropertyFile = fileName === "property.json";
+
+  const requestedStructuredPreservation =
     isAddressFile &&
     obj &&
     typeof obj === "object" &&
@@ -5672,7 +5673,12 @@ function writeJSON(p, obj) {
   if (isAddressFile) {
     const sanitized = sanitizeAddressPayloadForWrite(obj);
     if (sanitized && typeof sanitized === "object") {
-      if (wantsStructuredPreservation) {
+      const canPreserveStructuredFields =
+        requestedStructuredPreservation &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...sanitized });
+
+      if (canPreserveStructuredFields) {
         sanitized.__preserve_structured_fields = true;
         payload = sanitized;
       } else {
@@ -5696,6 +5702,17 @@ function writeJSON(p, obj) {
 
   if (isAddressFile && payload && typeof payload === "object") {
     payload = ensureRawAddressFieldCompleteness(payload);
+  }
+
+  if (isPropertyFile && payload && typeof payload === "object") {
+    if (!payload.relationships || typeof payload.relationships !== "object") {
+      payload.relationships = {};
+    }
+    if (RELATIONSHIP_FIELDS_TO_FORCE_NULL.size > 0) {
+      for (const relationshipName of RELATIONSHIP_FIELDS_TO_FORCE_NULL) {
+        payload.relationships[relationshipName] = null;
+      }
+    }
   }
 
   fs.writeFileSync(p, JSON.stringify(payload, null, 2));
