@@ -18,14 +18,24 @@ let ADDRESS_FINALIZATION_COMPLETE = false;
 let normalizedAddressOverrideApplied = false;
 
 const COUNTY_REQUIRED_NORMALIZED_FIELDS = [
+  "city_name",
+  "country_code",
   "latitude",
   "longitude",
-  "street_number",
-  "street_name",
-  "city_name",
-  "state_code",
+  "plus_four_postal_code",
   "postal_code",
-  "country_code",
+  "state_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
   "county_name",
 ];
 
@@ -3583,6 +3593,16 @@ function stripAddressRequestMetadata(address) {
       working,
       "__raw_minimal_surface",
     ) && working.__raw_minimal_surface === true;
+  const preserveRequestMetadata =
+    Object.prototype.hasOwnProperty.call(
+      working,
+      "__preserve_request_metadata",
+    ) && working.__preserve_request_metadata === true;
+
+  if (preserveRequestMetadata) {
+    delete working.__preserve_request_metadata;
+  }
+
   const rawValue =
     typeof working.unnormalized_address === "string"
       ? working.unnormalized_address.trim()
@@ -3595,11 +3615,26 @@ function stripAddressRequestMetadata(address) {
   }
 
   if (Object.prototype.hasOwnProperty.call(working, "request_identifier")) {
-    delete working.request_identifier;
+    if (preserveRequestMetadata) {
+      const identifier = safeNullIfEmpty(working.request_identifier);
+      working.request_identifier =
+        identifier === undefined ? null : identifier;
+    } else {
+      delete working.request_identifier;
+    }
+  } else if (preserveRequestMetadata) {
+    working.request_identifier = null;
   }
 
   if (Object.prototype.hasOwnProperty.call(working, "source_http_request")) {
-    delete working.source_http_request;
+    if (preserveRequestMetadata) {
+      const prepared = prepareSourceHttpRequest(working.source_http_request);
+      working.source_http_request = prepared ? deepClone(prepared) : null;
+    } else {
+      delete working.source_http_request;
+    }
+  } else if (preserveRequestMetadata) {
+    working.source_http_request = null;
   }
 
   const canUseNormalized =
@@ -10703,6 +10738,7 @@ const RAW_VARIANT_META_FIELD_ALLOWLIST = new Set([
   "__force_raw_variant",
   "__preserve_structured_fields",
   "__raw_minimal_surface",
+  "__preserve_request_metadata",
 ]);
 
 function buildRawOnlyAddressSurface(address) {
@@ -13334,6 +13370,183 @@ function buildNormalizedAddressOutputForSchema(source) {
   }
 
   return normalized;
+}
+
+function enforceAddressSchemaCompliance(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+  } = options || {};
+
+  const currentPayload = readJSONIfExists(addressPath);
+  if (!currentPayload || typeof currentPayload !== "object") {
+    return;
+  }
+
+  const addressDir = path.dirname(addressPath);
+  const structuredSnapshot =
+    readJSONIfExists(path.join(addressDir, "address_structured_snapshot.json")) ||
+    {};
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || {};
+  const seedSource = readJSONIfExists(seedPath) || {};
+  const fieldSources = [
+    currentPayload,
+    structuredSnapshot,
+    unnormalizedSource,
+    seedSource,
+  ];
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveRequestIdentifierCandidate(
+      currentPayload.request_identifier,
+      unnormalizedSource.request_identifier,
+      seedSource.request_identifier,
+      seedSource.parcel_id,
+      seedSource.property_id,
+      seedSource.prop_id,
+    ),
+  );
+
+  const sourceHttpRequestCandidate = resolveSourceHttpRequestCandidate(
+    currentPayload.source_http_request,
+    unnormalizedSource.source_http_request,
+    seedSource.source_http_request,
+  );
+  const preparedSourceHttpRequest = sourceHttpRequestCandidate
+    ? prepareSourceHttpRequest(sourceHttpRequestCandidate)
+    : null;
+  if (!preparedSourceHttpRequest) {
+    return;
+  }
+
+  const normalizedSource = { ...structuredSnapshot, ...currentPayload };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (hasMeaningfulAddressValue(normalizedSource[field])) {
+      continue;
+    }
+    const resolved = resolveFirstMeaningfulAddressField(field, fieldSources);
+    if (resolved !== undefined && resolved !== null) {
+      normalizedSource[field] = resolved;
+    }
+  }
+
+  const normalizedCandidate =
+    buildNormalizedAddressOutputForSchema(normalizedSource) || null;
+
+  if (normalizedCandidate) {
+    normalizedCandidate.request_identifier =
+      resolvedRequestIdentifier === undefined
+        ? null
+        : resolvedRequestIdentifier;
+    normalizedCandidate.source_http_request = deepClone(
+      preparedSourceHttpRequest,
+    );
+    delete normalizedCandidate.__preserve_request_metadata;
+    persistSchemaAlignedAddress(addressPath, normalizedCandidate);
+    return;
+  }
+
+  const rawString = resolveFirstNonEmptyString([
+    currentPayload.unnormalized_address,
+    unnormalizedSource.unnormalized_address,
+    unnormalizedSource.full_address,
+    unnormalizedSource.site_address,
+    seedSource.unnormalized_address,
+    seedSource.full_address,
+  ]);
+  if (!rawString || !rawString.trim().length) {
+    return;
+  }
+
+  const latCandidate = parseCoordinate(currentPayload.latitude);
+  const lonCandidate = parseCoordinate(currentPayload.longitude);
+
+  const rawPayload = {
+    unnormalized_address: rawString.trim(),
+    latitude: Number.isFinite(latCandidate)
+      ? latCandidate
+      : resolveFirstCoordinate(
+          fieldSources.map((source) => source && source.latitude),
+        ),
+    longitude: Number.isFinite(lonCandidate)
+      ? lonCandidate
+      : resolveFirstCoordinate(
+          fieldSources.map((source) => source && source.longitude),
+        ),
+    request_identifier:
+      resolvedRequestIdentifier === undefined
+        ? null
+        : resolvedRequestIdentifier,
+    source_http_request: deepClone(preparedSourceHttpRequest),
+    __force_raw_variant: true,
+  };
+  rawPayload.__preserve_request_metadata = true;
+
+  const rawFieldSources = [
+    currentPayload,
+    structuredSnapshot,
+    unnormalizedSource,
+    seedSource,
+  ];
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (
+      field === "latitude" ||
+      field === "longitude" ||
+      field === "unnormalized_address"
+    ) {
+      continue;
+    }
+
+    for (const source of rawFieldSources) {
+      if (!source || !Object.prototype.hasOwnProperty.call(source, field)) {
+        continue;
+      }
+      const value = sanitizeAddressFieldValue(field, source[field]);
+      if (value !== undefined && value !== null) {
+        rawPayload[field] = value;
+        break;
+      }
+    }
+  }
+
+  const schemaAlignedRaw =
+    ensureCountyRawRequiredFieldSurface({ ...rawPayload }) || {
+      ...rawPayload,
+    };
+  stripRawVariantStructuredFields(schemaAlignedRaw);
+  delete schemaAlignedRaw.__force_raw_variant;
+  delete schemaAlignedRaw.__preserve_request_metadata;
+  persistSchemaAlignedAddress(addressPath, schemaAlignedRaw);
+}
+
+function persistSchemaAlignedAddress(addressPath, payload) {
+  if (
+    !addressPath ||
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
+    return;
+  }
+
+  try {
+    ensureDir(path.dirname(addressPath));
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error(
+      "Failed to persist schema-aligned address payload:",
+      error,
+    );
+  }
 }
 
 function buildStrictRawAddressOutput(source, rawValue) {
@@ -69453,6 +69666,20 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to enforce final raw address field coverage:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceAddressSchemaCompliance(path.join("data", "address.json"), {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce County address schema compliance:",
       error,
     );
   }
