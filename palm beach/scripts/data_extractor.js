@@ -68,6 +68,25 @@ const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "lot",
 ]);
 
+function sourceProvidesStructuredAddress(...sources) {
+  if (!Array.isArray(sources) || !sources.length) {
+    sources = [];
+  }
+
+  return sources.some((source) => {
+    if (!source || typeof source !== "object") {
+      return false;
+    }
+
+    return COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS.every((field) => {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        return Number.isFinite(parseCoordinate(source[field]));
+      }
+      return hasMeaningfulAddressValue(source[field]);
+    });
+  });
+}
+
 function hasStrictCountyNormalizedSchemaCoverage(address) {
   if (!address || typeof address !== "object") {
     return false;
@@ -1146,7 +1165,7 @@ function enforceFinalRawAddressSnapshot() {
 }
 
 function rebuildNormalizedAddressPayload(options = {}) {
-  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT) {
+  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput) {
     return;
   }
 
@@ -11137,7 +11156,7 @@ process.on("exit", () => {
     }
     return;
   }
-  if (!FORCE_RAW_ONLY_ADDRESS_OUTPUT) {
+  if (!FORCE_RAW_ONLY_ADDRESS_OUTPUT && !forceRawAddressVariantOutput) {
     return;
   }
   try {
@@ -44258,6 +44277,17 @@ async function main() {
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
+  if (!FORCE_RAW_ONLY_ADDRESS_OUTPUT) {
+    const structuredSnapshot =
+      readJSONIfExists(path.join(dataDir, "address_structured_snapshot.json")) ||
+      null;
+    const hasStructuredSource = sourceProvidesStructuredAddress(
+      unAddr,
+      seed,
+      structuredSnapshot,
+    );
+    forceRawAddressVariantOutput = !hasStructuredSource;
+  }
   const htmlCoordinates = extractCoordinatesFromHTML(inputHTML);
   const htmlLatitude = parseCoordinate(htmlCoordinates.latitude);
   const htmlLongitude = parseCoordinate(htmlCoordinates.longitude);
@@ -62783,6 +62813,9 @@ function buildStructuredRawAddressCandidate(options = {}) {
 }
 
 function applyNormalizedAddressOverride() {
+  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput) {
+    return false;
+  }
   try {
     const dataDir = path.join("data");
     const relationshipsDir = path.join("relationships");
@@ -67880,7 +67913,7 @@ function persistLeanCountyRawAddress() {
 
   const addressPath = path.join(dataDir, "address.json");
 
-  if (!FORCE_RAW_ONLY_ADDRESS_OUTPUT) {
+  if (!FORCE_RAW_ONLY_ADDRESS_OUTPUT && !forceRawAddressVariantOutput) {
     try {
       rebuildNormalizedAddressPayload(
         (FINAL_ADDRESS_REBUILD_CONTEXT &&
@@ -68115,7 +68148,7 @@ process.on("exit", () => {
 });
 
 process.on("exit", () => {
-  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT) {
+  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput) {
     return;
   }
 
