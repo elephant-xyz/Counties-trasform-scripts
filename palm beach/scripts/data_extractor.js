@@ -18,25 +18,15 @@ let ADDRESS_FINALIZATION_COMPLETE = false;
 let normalizedAddressOverrideApplied = false;
 
 const COUNTY_REQUIRED_NORMALIZED_FIELDS = [
+  "street_number",
+  "street_name",
   "city_name",
+  "state_code",
+  "postal_code",
   "country_code",
+  "county_name",
   "latitude",
   "longitude",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "county_name",
 ];
 
 const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
