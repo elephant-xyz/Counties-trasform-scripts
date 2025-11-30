@@ -3,7 +3,7 @@ const path = require("path");
 const cheerio = require("cheerio");
 const { fetch } = require("undici");
 
-process.setMaxListeners(40);
+process.setMaxListeners(60);
 
 const originalWriteFileSync = fs.writeFileSync;
 let addressWriteLocked = false;
@@ -68711,6 +68711,97 @@ const ADDRESS_RELATIONSHIP_NULL_BASENAMES = Object.freeze([
   "relationship_address_has_fact_sheet",
 ]);
 
+function buildPalmBeachRawAddressPayload(addressPath) {
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource =
+    readJSONIfExists("unnormalized_address.json") || null;
+  const seedSource = readJSONIfExists("property_seed.json") || null;
+
+  const fallbackSources = [
+    existingPayload,
+    unnormalizedSource,
+    seedSource,
+  ].filter((source) => source && typeof source === "object");
+
+  const rawCandidates = [];
+  for (const source of fallbackSources) {
+    const resolved = resolveRawAddressStringFromSource(source);
+    if (resolved) {
+      rawCandidates.push(resolved);
+    }
+  }
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates.forEach((candidate) => {
+      if (typeof candidate !== "string") {
+        return;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed.length) {
+        rawCandidates.push(trimmed);
+      }
+    });
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    return null;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const payload = {
+    unnormalized_address: resolvedRaw.trim(),
+    __force_raw_variant: true,
+  };
+
+  if (requestIdentifier !== undefined) {
+    payload.request_identifier =
+      requestIdentifier === null ? null : requestIdentifier;
+  }
+
+  if (sourceHttpRequest) {
+    const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+    if (prepared) {
+      payload.source_http_request = deepClone(prepared);
+    }
+  }
+
+  return payload;
+}
+
+function enforcePalmBeachRawAddressOutputs() {
+  const dataDir = path.join("data");
+  const relationshipsDir = path.join("relationships");
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+
+  const addressPath = path.join(dataDir, "address.json");
+  const rawPayload = buildPalmBeachRawAddressPayload(addressPath);
+  if (rawPayload) {
+    writeAddressJSONBypass(addressPath, rawPayload);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+
+  enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
+  persistNullAddressRelationshipFiles([dataDir, relationshipsDir]);
+}
+
 function persistNullAddressRelationshipFiles(directories = []) {
   if (!Array.isArray(directories) || !directories.length) {
     return;
@@ -69240,6 +69331,15 @@ process.on("exit", () => {
 });
 
 process.on("exit", () => {
+  try {
+    enforcePalmBeachRawAddressOutputs();
+  } catch (error) {
+    console.error(
+      "Failed to enforce final Palm Beach raw address outputs:",
+      error,
+    );
+  }
+
   try {
     const addressPath = path.join("data", "address.json");
     const enforced = ensureStrictRawAddressFieldPresence(addressPath);
