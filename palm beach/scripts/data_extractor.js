@@ -11,7 +11,7 @@ let forceRawAddressVariantOutput = false;
 // Force the emitter to stay on the raw branch unless we have a guaranteed
 // normalized surface. This avoids emitting partial normalized payloads that
 // violate the schema's oneOf requirement.
-const FORCE_RAW_ONLY_ADDRESS_OUTPUT = true;
+const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
@@ -10430,13 +10430,6 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
-  "county_name",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
 ]);
 
 const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([]);
