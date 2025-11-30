@@ -498,12 +498,18 @@ function enforceFinalLeanAddressOutput(addressPath, options = {}) {
     );
   }
 
+  const minimalRawOutput =
+    pruneAddressToMinimalRawFields(schemaAlignedRaw) || schemaAlignedRaw;
+  if (writeMinimalAddressPayload(addressPath, minimalRawOutput)) {
+    return;
+  }
+
   addressWriteLocked = true;
   try {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(schemaAlignedRaw, null, 2)}\n`,
+      `${JSON.stringify(minimalRawOutput, null, 2)}\n`,
     );
   } finally {
     addressWriteLocked = false;
@@ -10119,14 +10125,9 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
-  ...RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS,
 ]);
 
-const RAW_ADDRESS_REQUIRED_PRESENCE_FIELDS = new Set([
-  ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
-  "lot",
-  "municipality_name",
-]);
+const RAW_ADDRESS_REQUIRED_PRESENCE_FIELDS = new Set();
 
 function applyRawAddressPresenceDefaults(address) {
   if (!address || typeof address !== "object") {
@@ -10427,12 +10428,42 @@ function pruneAddressToMinimalRawFields(address) {
   if (!address || typeof address !== "object") {
     return address;
   }
-  Object.keys(address).forEach((key) => {
-    if (!RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST.has(key)) {
-      delete address[key];
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return address;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const identifier = safeNullIfEmpty(address.request_identifier);
+    minimal.request_identifier =
+      identifier === undefined ? null : identifier;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      minimal.source_http_request = deepClone(prepared);
+    } else if (address.source_http_request === null) {
+      minimal.source_http_request = null;
     }
-  });
-  return applyRawAddressPresenceDefaults(address);
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, RAW_MINIMAL_SURFACE_FLAG) &&
+    address[RAW_MINIMAL_SURFACE_FLAG] === true
+  ) {
+    minimal[RAW_MINIMAL_SURFACE_FLAG] = true;
+  }
+
+  return minimal;
 }
 
 function ensureRawVariantFieldSurface(address) {
@@ -64866,12 +64897,17 @@ process.on("exit", () => {
     ) {
       paddedPayload.source_http_request = null;
     }
+    const minimalPayload =
+      pruneAddressToMinimalRawFields(paddedPayload) || paddedPayload;
+    if (writeMinimalAddressPayload(addressPath, minimalPayload)) {
+      return;
+    }
     addressWriteLocked = true;
     try {
       originalWriteFileSync.call(
         fs,
         addressPath,
-        `${JSON.stringify(paddedPayload, null, 2)}\n`,
+        `${JSON.stringify(minimalPayload, null, 2)}\n`,
       );
     } finally {
       addressWriteLocked = false;
