@@ -2376,6 +2376,131 @@ function enforceMinimalRawAddressSurface(addressPath, options = {}) {
   return true;
 }
 
+function enforceStrictRawMinimalAddress(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return false;
+  }
+
+  const payload = readJSONIfExists(addressPath) || null;
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  const hasStrictNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (hasStrictNormalizedSurface) {
+    return false;
+  }
+
+  const fallbackPaths = Array.isArray(options.fallbackPaths)
+    ? options.fallbackPaths
+    : ["unnormalized_address.json", "property_seed.json"];
+  const fallbackSources = [payload];
+
+  fallbackPaths.forEach((candidatePath) => {
+    if (typeof candidatePath !== "string" || !candidatePath.trim().length) {
+      return;
+    }
+    const candidatePayload = readJSONIfExists(candidatePath);
+    if (candidatePayload && typeof candidatePayload === "object") {
+      fallbackSources.push(candidatePayload);
+    }
+  });
+
+  if (Array.isArray(options.extraSources)) {
+    options.extraSources.forEach((source) => {
+      if (source && typeof source === "object") {
+        fallbackSources.push(source);
+      }
+    });
+  }
+
+  const rawCandidates = [];
+  fallbackSources.forEach((source) => {
+    const resolved = resolveRawAddressStringFromSource(source);
+    if (typeof resolved === "string") {
+      const trimmed = resolved.trim();
+      if (trimmed.length) {
+        rawCandidates.push(trimmed);
+      }
+    }
+  });
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  const requestIdentifierCandidates = [];
+  fallbackSources.forEach((source) => {
+    if (!source || typeof source !== "object") {
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(source, "request_identifier")) {
+      requestIdentifierCandidates.push(source.request_identifier);
+    }
+    if (Object.prototype.hasOwnProperty.call(source, "parcel_id")) {
+      requestIdentifierCandidates.push(source.parcel_id);
+    }
+    if (Object.prototype.hasOwnProperty.call(source, "parcel_identifier")) {
+      requestIdentifierCandidates.push(source.parcel_identifier);
+    }
+    if (Object.prototype.hasOwnProperty.call(source, "property_id")) {
+      requestIdentifierCandidates.push(source.property_id);
+    }
+    if (Object.prototype.hasOwnProperty.call(source, "prop_id")) {
+      requestIdentifierCandidates.push(source.prop_id);
+    }
+  });
+
+  const resolvedRequestIdentifier = resolveRequestIdentifierCandidate(
+    ...requestIdentifierCandidates,
+  );
+
+  const sourceHttpCandidates = fallbackSources.map((source) =>
+    source && typeof source === "object" ? source.source_http_request : null,
+  );
+  const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+    ...sourceHttpCandidates,
+  );
+
+  const minimal = {
+    unnormalized_address: resolvedRaw.trim(),
+  };
+
+  if (resolvedRequestIdentifier !== undefined) {
+    minimal.request_identifier =
+      resolvedRequestIdentifier === null ? null : resolvedRequestIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(resolvedSourceRequest);
+  if (preparedSource) {
+    minimal.source_http_request = deepClone(preparedSource);
+  } else if (
+    sourceHttpCandidates.some((candidate) => candidate === null) ||
+    payload.source_http_request === null
+  ) {
+    minimal.source_http_request = null;
+  }
+
+  const optionalFields =
+    Array.isArray(options.optionalFields) && options.optionalFields.length
+      ? options.optionalFields
+      : STRICT_RAW_OPTIONAL_FIELDS;
+  optionalFields.forEach((field) => {
+    const value = resolveFirstMeaningfulAddressField(field, fallbackSources);
+    if (value !== null && value !== undefined) {
+      minimal[field] = value;
+    }
+  });
+
+  persistAddressPayload(addressPath, minimal);
+  return true;
+}
+
 function enforceStrictRawSubmissionSurface(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -10242,6 +10367,20 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
+]);
+
+const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([
+  "county_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
 ]);
 
 const RAW_ADDRESS_REQUIRED_PRESENCE_FIELDS = new Set();
@@ -69017,6 +69156,17 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to finalize raw address schema surface and relationships:",
+      error,
+    );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceStrictRawMinimalAddress(path.join("data", "address.json"));
+  } catch (error) {
+    console.error(
+      "Failed to enforce strict minimal raw address submission payload:",
       error,
     );
   }
