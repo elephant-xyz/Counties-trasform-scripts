@@ -258,7 +258,92 @@ function buildLeanRawAddressPayloadFromSources(sources = [], options = {}) {
     return null;
   }
 
-  return { unnormalized_address: resolvedRaw };
+  const {
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const leanSurface = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: resolvedRaw,
+  };
+
+  const assignStructuredField = (field, value) => {
+    if (value === undefined || value === null) {
+      return false;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      if (Number.isFinite(numeric)) {
+        leanSurface[field] = numeric;
+        return true;
+      }
+      return false;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, value);
+    if (sanitized === undefined) {
+      return false;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      if (!trimmed.length) {
+        return false;
+      }
+      leanSurface[field] = trimmed;
+      return true;
+    }
+    leanSurface[field] = sanitized;
+    return true;
+  };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    for (const source of candidateSources) {
+      if (!Object.prototype.hasOwnProperty.call(source, field)) {
+        continue;
+      }
+      if (assignStructuredField(field, source[field])) {
+        break;
+      }
+    }
+    if (!Object.prototype.hasOwnProperty.call(leanSurface, field)) {
+      leanSurface[field] = null;
+    }
+  }
+
+  if (
+    !hasMeaningfulAddressValue(leanSurface.county_name) &&
+    hasMeaningfulAddressValue(defaultCountyName)
+  ) {
+    leanSurface.county_name = titleCaseCounty(defaultCountyName);
+  }
+
+  if (
+    !hasMeaningfulAddressValue(leanSurface.state_code) &&
+    hasMeaningfulAddressValue(defaultStateCode)
+  ) {
+    leanSurface.state_code = defaultStateCode;
+  }
+
+  if (
+    hasMeaningfulAddressValue(leanSurface.state_code) &&
+    !hasMeaningfulAddressValue(leanSurface.country_code)
+  ) {
+    leanSurface.country_code = (defaultCountryCode || "US").toUpperCase();
+  }
+
+  if (!hasMeaningfulAddressValue(leanSurface.postal_code)) {
+    leanSurface.plus_four_postal_code = null;
+  }
+
+  const hasLatitude = Number.isFinite(leanSurface.latitude);
+  const hasLongitude = Number.isFinite(leanSurface.longitude);
+  if (hasLatitude !== hasLongitude) {
+    leanSurface.latitude = null;
+    leanSurface.longitude = null;
+  }
+
+  return leanSurface;
 }
 
 function enforceFinalLeanAddressOutput(addressPath, options = {}) {
@@ -10053,20 +10138,12 @@ function stripNormalizedFieldsFromRawPayload(address) {
 
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "country_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-];
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([
+    // Mirror the normalized field surface so the raw branch satisfies the schema's oneOf requirements.
+    ...NORMALIZED_ADDRESS_FIELDS,
+  ]),
+);
 const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   "unnormalized_address",
   ...RAW_ADDRESS_ALLOWED_FIELDS,
@@ -56471,25 +56548,55 @@ function enforceMinimalRawAddressSurface(addressPath) {
     return;
   }
 
-  const minimalPayload = {
-    unnormalized_address: rawValue,
-    request_identifier: null,
-    source_http_request: null,
-  };
+  const strictPayload =
+    buildStrictRawAddressOneOfPayload(
+      {
+        ...payload,
+        unnormalized_address: rawValue,
+      },
+      {
+        defaultCountyName: payload.county_name || null,
+        defaultStateCode: payload.state_code || null,
+        defaultCountryCode:
+          payload.country_code && typeof payload.country_code === "string"
+            ? payload.country_code
+            : "US",
+        requestIdentifier: safeNullIfEmpty(payload.request_identifier),
+        sourceHttpRequest: payload.source_http_request || null,
+      },
+    ) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: rawValue,
+    };
 
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    const identifier = safeNullIfEmpty(payload.request_identifier);
-    minimalPayload.request_identifier =
-      identifier === undefined ? null : identifier;
+  if (!hasMeaningfulAddressValue(strictPayload.postal_code)) {
+    strictPayload.plus_four_postal_code = null;
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+    hasMeaningfulAddressValue(strictPayload.state_code) &&
+    !hasMeaningfulAddressValue(strictPayload.country_code)
   ) {
-    const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    minimalPayload.source_http_request = prepared
-      ? deepClone(prepared)
-      : null;
+    strictPayload.country_code = "US";
+  }
+
+  if (
+    (strictPayload.latitude == null) !== (strictPayload.longitude == null)
+  ) {
+    strictPayload.latitude = null;
+    strictPayload.longitude = null;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(strictPayload, "request_identifier")
+  ) {
+    strictPayload.request_identifier = null;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(strictPayload, "source_http_request")
+  ) {
+    strictPayload.source_http_request = null;
   }
 
   addressWriteLocked = true;
@@ -56497,7 +56604,7 @@ function enforceMinimalRawAddressSurface(addressPath) {
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(minimalPayload, null, 2)}\n`,
+      `${JSON.stringify(strictPayload, null, 2)}\n`,
     );
   } catch (error) {
     console.error(
