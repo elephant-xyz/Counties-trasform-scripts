@@ -10602,10 +10602,13 @@ const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = Object.freeze([
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
+// Preserve the complete structured surface when falling back to the raw branch
+// so the County schema's oneOf requirements continue to see the normalized fields.
 const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
 const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([]);
