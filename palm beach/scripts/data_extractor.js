@@ -10681,30 +10681,56 @@ function collapseRawAddressToMinimalSurface(address) {
     return address;
   }
 
+  const preservedMeta = {};
+  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      preservedMeta[field] = address[field];
+    }
+  });
+
   const minimal = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const identifier = safeNullIfEmpty(address.request_identifier);
-    minimal.request_identifier =
-      identifier === undefined ? null : identifier;
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (field === "unnormalized_address") {
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      minimal[field] = null;
+      continue;
+    }
+    const value = address[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      minimal[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    if (value === undefined || value === null) {
+      minimal[field] = null;
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      minimal[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+    minimal[field] = value;
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(address.source_http_request);
-    if (prepared) {
-      minimal.source_http_request = deepClone(prepared);
-    } else if (address.source_http_request === null) {
-      minimal.source_http_request = null;
-    }
-  }
+  const identifier = safeNullIfEmpty(address.request_identifier);
+  minimal.request_identifier =
+    identifier === undefined ? null : identifier;
 
-  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      minimal[field] = address[field];
-    }
-  });
+  const preparedSource = prepareSourceHttpRequest(
+    address.source_http_request,
+  );
+  minimal.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  Object.assign(minimal, preservedMeta);
 
   Object.keys(address).forEach((key) => {
     delete address[key];
