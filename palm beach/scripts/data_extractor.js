@@ -46,9 +46,21 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
 
 const MINIMAL_RAW_ADDRESS_FIELDS = [
-  "county_name",
-  "municipality_name",
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
   "city_name",
+  "municipality_name",
+  "county_name",
   "state_code",
   "postal_code",
   "plus_four_postal_code",
@@ -10682,17 +10694,18 @@ function stripRawVariantStructuredFields(address) {
   }
 
   for (const field of MINIMAL_RAW_ADDRESS_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    const rawValue = hasField ? address[field] : null;
+    let sanitized = sanitizeAddressFieldValue(field, rawValue);
+    if (sanitized === undefined) {
+      sanitized = null;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      minimalRaw[field] = trimmed.length ? trimmed : null;
       continue;
     }
-    const sanitized = sanitizeAddressFieldValue(field, address[field]);
-    if (
-      sanitized !== undefined &&
-      sanitized !== null &&
-      !(typeof sanitized === "string" && !sanitized.trim().length)
-    ) {
-      minimalRaw[field] = sanitized;
-    }
+    minimalRaw[field] = sanitized;
   }
 
   Object.keys(address).forEach((key) => {
@@ -69423,6 +69436,7 @@ function finalizeRawUnnormalizedAddress(options = {}) {
   ];
 
   const rawOutput = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: resolvedRaw.trim(),
   };
 
