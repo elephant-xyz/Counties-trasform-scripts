@@ -68240,6 +68240,100 @@ function persistNullAddressRelationshipFiles(directories = []) {
   }
 }
 
+function enforceAddressOneOfSnapshot(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const {
+    rawFallbackPaths = [],
+    rawFallbackCandidates = [],
+  } = options || {};
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  const normalizedCandidate =
+    hasNormalizedSurface &&
+    typeof buildNormalizedAddressOutputForSchema === "function"
+      ? buildNormalizedAddressOutputForSchema({ ...payload })
+      : null;
+
+  if (normalizedCandidate && typeof normalizedCandidate === "object") {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    writeAddressJSONBypass(addressPath, normalizedCandidate);
+    return;
+  }
+
+  const rawCandidates = [
+    payload.unnormalized_address,
+    payload.full_address,
+    payload.site_address,
+  ];
+
+  if (Array.isArray(rawFallbackCandidates) && rawFallbackCandidates.length) {
+    rawCandidates.push(...rawFallbackCandidates);
+  }
+
+  if (Array.isArray(rawFallbackPaths) && rawFallbackPaths.length) {
+    rawFallbackPaths.forEach((candidatePath) => {
+      if (typeof candidatePath !== "string" || !candidatePath.trim().length) {
+        return;
+      }
+      const candidatePayload = readJSONIfExists(candidatePath);
+      if (!candidatePayload || typeof candidatePayload !== "object") {
+        return;
+      }
+      rawCandidates.push(
+        candidatePayload.unnormalized_address,
+        candidatePayload.full_address,
+        candidatePayload.site_address,
+      );
+    });
+  }
+
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  const minimalRaw =
+    pruneAddressToMinimalRawFields({
+      unnormalized_address: resolvedRaw.trim(),
+      request_identifier:
+        requestIdentifier === undefined ? null : requestIdentifier,
+      source_http_request: preparedSource ? deepClone(preparedSource) : null,
+    }) || {
+      unnormalized_address: resolvedRaw.trim(),
+      request_identifier:
+        requestIdentifier === undefined ? null : requestIdentifier || null,
+      source_http_request: preparedSource ? deepClone(preparedSource) : null,
+    };
+
+  minimalRaw.__force_raw_variant = true;
+  stripRawVariantStructuredFields(minimalRaw);
+  writeAddressJSONBypass(addressPath, minimalRaw);
+}
+
 function buildFinalSimplifiedAddressPayload(addressPath) {
   const existingPayload = readJSONIfExists(addressPath) || null;
   const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || null;
@@ -68588,13 +68682,23 @@ process.on("exit", () => {
     ensureDir(dataDir);
     ensureDir(relationshipsDir);
     const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const fallbackRawCandidates =
+      (ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) &&
+        ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) ||
+      [];
     const finalPayload = buildFinalSimplifiedAddressPayload(addressPath);
     if (finalPayload) {
       writeAddressJSONBypass(addressPath, finalPayload);
-    } else {
-      removeFileIfExists(addressPath);
     }
+    enforceAddressOneOfSnapshot(addressPath, {
+      rawFallbackPaths: ["unnormalized_address.json", "property_seed.json"],
+      rawFallbackCandidates: fallbackRawCandidates,
+    });
+    enforceNullPropertyAddressRelationships(propertyPath);
     persistNullAddressRelationshipFiles([dataDir, relationshipsDir]);
+    purgeSuppressedRelationshipFiles([dataDir, relationshipsDir]);
   } catch (error) {
     console.error(
       "Failed to enforce simplified final county address payload:",
