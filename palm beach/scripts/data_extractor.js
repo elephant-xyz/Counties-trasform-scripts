@@ -4118,6 +4118,7 @@ function buildStrictRawOneOfPayload(rawValue, options = {}) {
   };
 
   const rawPayload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmed,
   };
 
@@ -10827,7 +10828,12 @@ function enforceRawAddressOneOfProjection(addressPath, options = {}) {
 
 const STRICT_RAW_OPTIONAL_FIELDS = Object.freeze([]);
 
-const RAW_ADDRESS_REQUIRED_PRESENCE_FIELDS = new Set();
+const RAW_ADDRESS_REQUIRED_PRESENCE_FIELDS = new Set([
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
+  "request_identifier",
+  "source_http_request",
+  "unnormalized_address",
+]);
 
 function applyRawAddressPresenceDefaults(address) {
   if (!address || typeof address !== "object") {
@@ -11235,11 +11241,27 @@ function buildRawOnlySubmissionPayload(address) {
     return null;
   }
 
-  const rawPayload = { unnormalized_address: rawValue };
+  const rawPayload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: rawValue,
+  };
 
   const identifier = safeNullIfEmpty(address.request_identifier);
   rawPayload.request_identifier =
     identifier === undefined ? null : identifier;
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (
+      field === "unnormalized_address" ||
+      !Object.prototype.hasOwnProperty.call(address, field)
+    ) {
+      return;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, address[field]);
+    if (sanitized !== undefined) {
+      rawPayload[field] = sanitized;
+    }
+  });
 
   if (
     Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
