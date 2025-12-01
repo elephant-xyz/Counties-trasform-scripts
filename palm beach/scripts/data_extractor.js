@@ -109,6 +109,8 @@ const RAW_ADDRESS_GRID_FIELDS = Object.freeze([
 const RAW_ADDRESS_GRID_FIELD_SET = new Set(RAW_ADDRESS_GRID_FIELDS);
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze([
   ...RAW_UNNORMALIZED_ONLY_FIELDS,
+  "latitude",
+  "longitude",
 ]);
 const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(RAW_ADDRESS_RAW_SURFACE_FIELDS);
 
@@ -11958,7 +11960,16 @@ function enforceRawVariantAllowedFields(address) {
     }
     if (preferredAllowList.has(key)) {
       if (!hasMeaningfulAddressValue(address[key])) {
+        if (ADDRESS_COORDINATE_FIELDS.includes(key)) {
+          address[key] = null;
+          return;
+        }
         delete address[key];
+        return;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(key)) {
+        const numeric = parseCoordinate(address[key]);
+        address[key] = Number.isFinite(numeric) ? numeric : null;
         return;
       }
       return;
@@ -12215,8 +12226,18 @@ function pruneRawAddressFieldSurface(address) {
 
   for (const field of RAW_ADDRESS_RAW_SURFACE_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        leanSurface[field] = null;
+      }
       continue;
     }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      leanSurface[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
     const sanitizedValue = sanitizeAddressFieldValue
       ? sanitizeAddressFieldValue(field, address[field])
       : address[field];
@@ -12225,6 +12246,12 @@ function pruneRawAddressFieldSurface(address) {
     }
     leanSurface[field] = sanitizedValue;
   }
+
+  ADDRESS_COORDINATE_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(leanSurface, field)) {
+      leanSurface[field] = null;
+    }
+  });
 
   Object.keys(address).forEach((key) => {
     delete address[key];
