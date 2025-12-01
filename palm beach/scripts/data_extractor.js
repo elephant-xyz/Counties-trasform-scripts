@@ -46,14 +46,18 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
 
-const MINIMAL_RAW_ADDRESS_FIELDS = Array.from(
-  new Set([
-    // County raw submissions must surface the complete normalized field set so the
-    // schema's oneOf branch for raw addresses still passes when values are null.
-    ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
-    "municipality_name",
-  ]),
-);
+const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
+  // Raw variant should only emit the coarse location metadata the source
+  // reliably provides so the schema's oneOf branch does not expect the full
+  // structured surface.
+  "city_name",
+  "municipality_name",
+  "county_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+]);
 
 const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "city_name",
@@ -131,6 +135,7 @@ function writeAddressJSONBypass(addressPath, payload) {
     ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
   stripRawVariantStructuredFields(ensuredPayload);
   enforceMinimalRawSubmissionSurface(ensuredPayload);
+  enforceRawVariantAllowedFields(ensuredPayload);
   const serialized = `${JSON.stringify(ensuredPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
@@ -152,6 +157,7 @@ function writeMinimalAddressPayload(addressPath, payload) {
 
   stripRawVariantStructuredFields(payload);
   enforceMinimalRawSubmissionSurface(payload);
+  enforceRawVariantAllowedFields(payload);
 
   try {
     addressWriteLocked = true;
@@ -179,12 +185,23 @@ function writeAddressPayloadDirect(addressPath, payload) {
     return false;
   }
 
+  let payloadToWrite = payload;
+  if (!Array.isArray(payload) && typeof payload === "object") {
+    payloadToWrite = deepClone(payload);
+    if (
+      payloadToWrite &&
+      typeof payloadToWrite.unnormalized_address === "string"
+    ) {
+      enforceRawVariantAllowedFields(payloadToWrite);
+    }
+  }
+
   try {
     addressWriteLocked = true;
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(payload, null, 2)}\n`,
+      `${JSON.stringify(payloadToWrite, null, 2)}\n`,
     );
     return true;
   } catch (error) {
@@ -2158,7 +2175,7 @@ function buildRawFallbackAddressPayload(address, options = {}) {
     rawPayload.longitude = null;
   }
 
-  return rawPayload;
+  return enforceRawVariantAllowedFields(rawPayload);
 }
 
 function enforceRawAddressFallback(addressPath, options = {}) {
@@ -11238,6 +11255,55 @@ function collapseRawAddressToMinimalSurface(address) {
   return address;
 }
 
+function enforceRawVariantAllowedFields(address) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
+    return address;
+  }
+
+  const forceRaw =
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true;
+
+  Object.keys(address).forEach((key) => {
+    if (key === "__force_raw_variant") {
+      return;
+    }
+    if (!RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET.has(key)) {
+      delete address[key];
+    }
+  });
+
+  if (forceRaw) {
+    address.__force_raw_variant = true;
+  } else if (Object.prototype.hasOwnProperty.call(address, "__force_raw_variant")) {
+    delete address.__force_raw_variant;
+  }
+
+  return address;
+}
+
+function enforceRawFieldAllowlistOnDisk(addressPath) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return;
+  }
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+  if (
+    typeof payload.unnormalized_address !== "string" ||
+    !payload.unnormalized_address.trim().length
+  ) {
+    return;
+  }
+  const sanitized = enforceRawVariantAllowedFields({ ...payload });
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(sanitized, null, 2)}\n`,
+  );
+}
+
 function stripRawVariantStructuredFields(address) {
   if (!address || typeof address !== "object" || Array.isArray(address)) {
     return address;
@@ -11296,6 +11362,8 @@ function stripRawVariantStructuredFields(address) {
     Object.assign(address, preservedMeta);
     return address;
   }
+
+  enforceRawVariantAllowedFields(rawSurface);
 
   const mergedSurface = {
     ...rawSurface,
@@ -11705,7 +11773,7 @@ function buildRawOnlyAddressSurface(address) {
 
   rawOutput.__force_raw_variant = true;
 
-  return rawOutput;
+  return enforceRawVariantAllowedFields(rawOutput);
 }
 
 function buildLeanRawAddressPayload(source, overrides = {}) {
@@ -11818,7 +11886,7 @@ function buildLeanRawAddressPayload(source, overrides = {}) {
     lean.source_http_request = null;
   }
 
-  return lean;
+  return enforceRawVariantAllowedFields(lean);
 }
 
 function pruneAddressToMinimalRawFields(address, metadataSources = []) {
@@ -13288,12 +13356,23 @@ function writeAddressPayloadDirect(addressPath, payload) {
     return false;
   }
 
+  let payloadToWrite = payload;
+  if (!Array.isArray(payload) && typeof payload === "object") {
+    payloadToWrite = deepClone(payload);
+    if (
+      payloadToWrite &&
+      typeof payloadToWrite.unnormalized_address === "string"
+    ) {
+      enforceRawVariantAllowedFields(payloadToWrite);
+    }
+  }
+
   try {
     addressWriteLocked = true;
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(payload, null, 2)}\n`,
+      `${JSON.stringify(payloadToWrite, null, 2)}\n`,
     );
     return true;
   } catch (error) {
@@ -72340,6 +72419,17 @@ process.on("exit", () => {
       "Failed to enforce canonical county raw address snapshot:",
       error,
     );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceRawFieldAllowlistOnDisk(path.join("data", "address.json"));
+  } catch (error) {
+    console.error("Failed to enforce raw address field allowlist:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
