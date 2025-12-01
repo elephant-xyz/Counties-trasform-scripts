@@ -10819,6 +10819,46 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "request_identifier",
   "source_http_request",
 ]);
+
+function buildMinimalRawSubmissionPayload(address, metadataSources = []) {
+  if (!address || typeof address !== "object") {
+    return null;
+  }
+
+  const rawValue = safeNullIfEmpty(address.unnormalized_address);
+  if (!rawValue) {
+    return null;
+  }
+
+  const minimal = { unnormalized_address: rawValue };
+
+  const resolvedSources = [];
+  if (Array.isArray(metadataSources)) {
+    for (const source of metadataSources) {
+      if (source && typeof source === "object") {
+        resolvedSources.push(source);
+      }
+    }
+  }
+
+  attachAddressMetadataForSchema(minimal, [address, ...resolvedSources]);
+
+  if (!Object.prototype.hasOwnProperty.call(minimal, "request_identifier")) {
+    minimal.request_identifier = null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(minimal, "source_http_request")) {
+    minimal.source_http_request = null;
+  }
+
+  Object.keys(minimal).forEach((key) => {
+    if (!RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST.has(key)) {
+      delete minimal[key];
+    }
+  });
+
+  return minimal;
+}
+
 const RAW_LEAN_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
   "section",
@@ -63100,6 +63140,45 @@ function enforceFinalRawAddressSchemaSurface(addressPath, options = {}) {
   );
 }
 
+function enforceFinalAddressOneOfBranch(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...payload });
+
+  if (hasNormalizedSurface) {
+    if (Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")) {
+      delete payload.unnormalized_address;
+      writeAddressJSONBypass(addressPath, payload);
+    }
+    return;
+  }
+
+  const metadataSources = Array.isArray(options.metadataSources)
+    ? options.metadataSources.filter(
+        (source) => source && typeof source === "object",
+      )
+    : [];
+
+  const minimalRaw = buildMinimalRawSubmissionPayload(
+    payload,
+    metadataSources,
+  );
+  if (!minimalRaw) {
+    return;
+  }
+
+  writeMinimalAddressPayload(addressPath, minimalRaw);
+}
+
 function enforceLeanAddressOneOfOutput(addressPath, options = {}) {
   if (!addressPath) {
     return;
@@ -72397,6 +72476,13 @@ process.removeAllListeners("exit");
 process.on("exit", () => {
   try {
     emitDeterministicCountyAddressPayload();
+    const metadataSources = [
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((source) => source && typeof source === "object");
+    enforceFinalAddressOneOfBranch(path.join("data", "address.json"), {
+      metadataSources,
+    });
   } catch (error) {
     console.error(
       "Failed to emit deterministic county address payload:",
