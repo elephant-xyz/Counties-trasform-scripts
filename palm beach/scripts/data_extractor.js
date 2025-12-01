@@ -12113,14 +12113,15 @@ function buildRawOnlySubmissionPayload(address) {
 
   const rawPayload = { unnormalized_address: rawValue };
 
-  MINIMAL_RAW_ADDRESS_FIELDS.forEach((field) => {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      return;
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    let sanitized = null;
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      sanitized = sanitizeAddressFieldValue(field, address[field]);
+      if (sanitized === undefined) {
+        sanitized = null;
+      }
     }
-    const sanitized = sanitizeAddressFieldValue(field, address[field]);
-    if (sanitized !== undefined && sanitized !== null) {
-      rawPayload[field] = sanitized;
-    }
+    rawPayload[field] = sanitized;
   });
 
   const identifier = safeNullIfEmpty(address.request_identifier);
