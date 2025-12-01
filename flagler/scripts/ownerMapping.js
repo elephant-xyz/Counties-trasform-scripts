@@ -92,8 +92,18 @@ function isCompanyName(txt) {
 }
 
 function tokenizeNamePart(part) {
-  return cleanText(part)
+  // Remove ET AL (legal term meaning "and others")
+  let cleaned = cleanText(part)
     .replace(/^\*+/, "")
+    .replace(/\b-?ET\s+AL\b/gi, "")
+    .replace(/\bET\s+AL\b/gi, "");
+
+  // Remove fractional interest notations (e.g., "3/4 INTEREST", "1/2 INT")
+  cleaned = cleaned
+    .replace(/\b\d+\/\d+\s*(INTEREST|INT)\b/gi, "")
+    .replace(/\bINTEREST\b/gi, "");
+
+  return cleaned
     .replace(/[^A-Za-z&'\-\s\.]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -126,15 +136,33 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     last = fallbackLastName;
   }
 
-  // Clean ignored suffixes
+  // Clean up first name: remove leading/trailing dashes and spaces
+  if (first) {
+    first = first.replace(/^[\-\s]+|[\-\s]+$/g, "");
+    if (!first) return null;
+  }
+
+  // Clean up last name: remove leading/trailing dashes and spaces
+  if (last) {
+    last = last.replace(/^[\-\s]+|[\-\s]+$/g, "");
+    if (!last) return null;
+  }
+
+  // Clean ignored suffixes and fractional interest terms from middle name
   if (middle) {
-    const mids = middle.split(" ").filter((t) => !SUFFIXES_IGNORE.test(t));
-    middle = mids.join(" ") || null;
+    const mids = middle.split(" ").filter((t) => !SUFFIXES_IGNORE.test(t) && !/^(INTEREST|INT)$/i.test(t));
+    middle = mids.join(" ").replace(/^[\-\s]+|[\-\s]+$/g, "") || null;
+  }
+
+  // Validate first_name matches Elephant schema pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const firstName = titleCase(first || "");
+  if (firstName && !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(firstName)) {
+    return null; // Invalid first name, skip this person
   }
 
   return {
     type: "person",
-    first_name: titleCase(first || ""),
+    first_name: firstName,
     last_name: titleCase(last || ""),
     middle_name: middle ? titleCase(middle) : null,
   };
