@@ -130,9 +130,21 @@ function writeAddressJSONBypass(addressPath, payload) {
   if (!addressPath || !payload || typeof payload !== "object") {
     return;
   }
+  let workingPayload =
+    payload && typeof payload === "object" ? deepClone(payload) : payload;
+  if (
+    workingPayload &&
+    typeof workingPayload === "object" &&
+    typeof workingPayload.unnormalized_address === "string"
+  ) {
+    applyDerivedAddressFieldsFromRaw(
+      workingPayload,
+      workingPayload.unnormalized_address,
+    );
+  }
   const preparedPayload =
-    ensureCountyRawRequiredFieldSurface(deepClone(payload)) ||
-    deepClone(payload) ||
+    ensureCountyRawRequiredFieldSurface(workingPayload) ||
+    workingPayload ||
     payload;
   const finalizedPayload = finalizeAddressWritePayload(preparedPayload);
   if (!finalizedPayload) {
@@ -2668,6 +2680,8 @@ function reduceAddressFileToLeanRaw(addressPath, options = {}) {
     return;
   }
 
+  applyDerivedAddressFieldsFromRaw(payload, trimmedRaw);
+
   const identifierCandidates = [
     safeNullIfEmpty(payload.request_identifier),
     ...(
@@ -2707,6 +2721,8 @@ function reduceAddressFileToLeanRaw(addressPath, options = {}) {
     removeFileIfExists(addressPath);
     return;
   }
+
+  applyDerivedAddressFieldsFromRaw(leanPayload, trimmedRaw);
 
   try {
     originalWriteFileSync.call(
@@ -5670,6 +5686,20 @@ function enforceStrictRawOnlyAddressPayload(addressPath, options = {}) {
     return false;
   }
 
+  applyDerivedAddressFieldsFromRaw(payload, rawValue);
+  fallbackSources.forEach((source) => {
+    if (
+      source &&
+      typeof source === "object" &&
+      typeof source.unnormalized_address === "string"
+    ) {
+      applyDerivedAddressFieldsFromRaw(
+        source,
+        source.unnormalized_address,
+      );
+    }
+  });
+
   const requestIdentifier = resolveRequestIdentifierCandidate(
     payload && payload.request_identifier,
     ...fallbackSources.map((source) => source && source.request_identifier),
@@ -5707,6 +5737,8 @@ function enforceStrictRawOnlyAddressPayload(addressPath, options = {}) {
     return false;
   }
 
+  applyDerivedAddressFieldsFromRaw(minimalPayload, rawValue);
+
   const strictPayload = buildStrictRawAddressOneOfPayload(minimalPayload, {
     defaultCountyName,
     defaultStateCode,
@@ -5719,6 +5751,8 @@ function enforceStrictRawOnlyAddressPayload(addressPath, options = {}) {
     removeFileIfExists(addressPath);
     return false;
   }
+
+  applyDerivedAddressFieldsFromRaw(strictPayload, rawValue);
 
   persistAddressPayload(addressPath, strictPayload);
 
@@ -18002,6 +18036,11 @@ function ensureCountyRawRequiredFieldSurface(address) {
   ) {
     hydratedRaw.source_http_request = null;
   }
+
+  applyDerivedAddressFieldsFromRaw(
+    hydratedRaw,
+    hydratedRaw.unnormalized_address,
+  );
 
   Object.keys(address).forEach((key) => {
     delete address[key];
@@ -36322,6 +36361,64 @@ function deriveNormalizedAddressFieldsFromRaw(raw) {
   }
 
   return result;
+}
+
+const RAW_DERIVED_ADDRESS_FIELDS = Object.freeze([
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+]);
+
+function applyDerivedAddressFieldsFromRaw(target, rawString) {
+  if (!target || typeof target !== "object") {
+    return target;
+  }
+  const trimmed =
+    typeof rawString === "string" ? rawString.trim() : "";
+  if (!trimmed.length) {
+    return target;
+  }
+  const derived =
+    typeof deriveNormalizedAddressFieldsFromRaw === "function"
+      ? deriveNormalizedAddressFieldsFromRaw(trimmed)
+      : null;
+  if (!derived || typeof derived !== "object") {
+    return target;
+  }
+  RAW_DERIVED_ADDRESS_FIELDS.forEach((field) => {
+    if (hasMeaningfulAddressValue(target[field])) {
+      return;
+    }
+    if (!hasMeaningfulAddressValue(derived[field])) {
+      return;
+    }
+    const sanitized = sanitizeAddressFieldValue(field, derived[field]);
+    if (sanitized === undefined || sanitized === null) {
+      return;
+    }
+    target[field] = sanitized;
+  });
+  if (
+    !hasMeaningfulAddressValue(target.municipality_name) &&
+    hasMeaningfulAddressValue(derived.city_name)
+  ) {
+    const sanitizedMunicipality = sanitizeAddressFieldValue(
+      "city_name",
+      derived.city_name,
+    );
+    if (sanitizedMunicipality) {
+      target.municipality_name = sanitizedMunicipality;
+    }
+  }
+  return target;
 }
 
 function extractLotAndBlock(legalDescription) {
@@ -73302,41 +73399,6 @@ function emitStrictAddressSubmissionPayload(addressPath, options = {}) {
     return "normalized";
   }
 
-  const applyDerivedMetadataFromRaw = (target, rawString) => {
-    if (
-      !target ||
-      typeof target !== "object" ||
-      typeof rawString !== "string" ||
-      !rawString.trim().length
-    ) {
-      return;
-    }
-    const derived = deriveNormalizedAddressFieldsFromRaw(rawString);
-    if (!derived || typeof derived !== "object") {
-      return;
-    }
-    const candidateFields = [
-      "city_name",
-      "state_code",
-      "postal_code",
-      "plus_four_postal_code",
-    ];
-    candidateFields.forEach((field) => {
-      if (hasMeaningfulAddressValue(target[field])) {
-        return;
-      }
-      if (hasMeaningfulAddressValue(derived[field])) {
-        target[field] = derived[field];
-      }
-    });
-    if (
-      !hasMeaningfulAddressValue(target.municipality_name) &&
-      hasMeaningfulAddressValue(derived.city_name)
-    ) {
-      target.municipality_name = derived.city_name;
-    }
-  };
-
   const supplementalRawCandidates = Array.isArray(extraRawCandidates)
     ? extraRawCandidates
     : [];
@@ -73353,7 +73415,7 @@ function emitStrictAddressSubmissionPayload(addressPath, options = {}) {
     if (!hasRawString && typeof rawValue === "string" && rawValue.trim().length) {
       workingPayload.unnormalized_address = rawValue.trim();
     }
-    applyDerivedMetadataFromRaw(
+    applyDerivedAddressFieldsFromRaw(
       workingPayload,
       workingPayload.unnormalized_address,
     );
@@ -73394,7 +73456,7 @@ function emitStrictAddressSubmissionPayload(addressPath, options = {}) {
       defaultStateCode,
       defaultCountryCode,
     }) || { unnormalized_address: rawValue.trim() };
-  applyDerivedMetadataFromRaw(leanRaw, leanRaw.unnormalized_address);
+  applyDerivedAddressFieldsFromRaw(leanRaw, leanRaw.unnormalized_address);
   if (!hasMeaningfulAddressValue(leanRaw.county_name)) {
     leanRaw.county_name = titleCaseCounty(defaultCountyName);
   }
