@@ -70868,6 +70868,59 @@ function buildMinimalRawAddressPayloadFromSources(sources = []) {
   return minimal;
 }
 
+function enforceRawOnlyAddressSubmission(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    propertyPath = path.join("data", "property.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    relationshipDirectories = [],
+  } = options || {};
+
+  const sourceCandidates = [
+    readJSONIfExists(addressPath),
+    readJSONIfExists(unnormalizedPath),
+    readJSONIfExists(seedPath),
+  ].filter((source) => source && typeof source === "object");
+
+  const rawPayload =
+    buildMinimalRawAddressPayloadFromSources(sourceCandidates) ||
+    buildStrictRawAddressSnapshot({
+      addressPath,
+      unnormalizedPath,
+      seedPath,
+    });
+
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    if (propertyPath) {
+      enforceNullPropertyAddressRelationships(propertyPath);
+    }
+    if (
+      Array.isArray(relationshipDirectories) &&
+      relationshipDirectories.length
+    ) {
+      overwriteAddressRelationshipFilesWithNull(relationshipDirectories);
+    }
+    return;
+  }
+
+  rawPayload.__force_raw_variant = true;
+  stripRawVariantStructuredFields(rawPayload);
+  enforceMinimalRawSubmissionSurface(rawPayload);
+  writeAddressJSONBypass(addressPath, rawPayload);
+
+  if (propertyPath) {
+    enforceNullPropertyAddressRelationships(propertyPath);
+  }
+  if (
+    Array.isArray(relationshipDirectories) &&
+    relationshipDirectories.length
+  ) {
+    overwriteAddressRelationshipFilesWithNull(relationshipDirectories);
+  }
+}
+
 function enforceFinalMinimalRawAddressPayload(options = {}) {
   const {
     addressPath = path.join("data", "address.json"),
@@ -72826,6 +72879,13 @@ process.on("exit", () => {
       relationshipDirectories: [dataDir, relationshipsDir],
     });
     emitRawAddressSnapshotFromSources();
+    enforceRawOnlyAddressSubmission({
+      addressPath: path.join(dataDir, "address.json"),
+      propertyPath: path.join(dataDir, "property.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      relationshipDirectories: [dataDir, relationshipsDir],
+    });
   } catch (error) {
     console.error(
       "Failed to emit deterministic county address payload:",
