@@ -11242,10 +11242,7 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
-    new Set([
-      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
-    ]),
+    new Set([...MINIMAL_RAW_ADDRESS_FIELDS, ...RAW_FALLBACK_COPY_FIELDS]),
   ),
 );
 const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
