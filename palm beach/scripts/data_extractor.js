@@ -310,6 +310,255 @@ function resolveFirstMeaningfulAddressField(field, sources = []) {
   return null;
 }
 
+function parseCityStatePostalLean(raw) {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const normalized = raw.trim();
+  if (!normalized.length) {
+    return null;
+  }
+  const segments = normalized
+    .split(",")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length);
+  if (segments.length < 3) {
+    return null;
+  }
+  const citySegment = segments[segments.length - 2] || null;
+  const stateZipSegment = segments[segments.length - 1];
+  const stateZipMatch =
+    typeof stateZipSegment === "string"
+      ? stateZipSegment.match(/^([A-Za-z]{2})\s+(\d{5})(?:[-\s]*(\d{4}))?$/)
+      : null;
+  if (!stateZipMatch) {
+    return null;
+  }
+  return {
+    city_name: citySegment ? citySegment.toUpperCase() : null,
+    state_code: stateZipMatch[1].toUpperCase(),
+    postal_code: stateZipMatch[2],
+    plus_four_postal_code: stateZipMatch[3] || null,
+  };
+}
+
+function enforceDeterministicRawAddressFromSources(addressPath, options = {}) {
+  if (!addressPath) {
+    return false;
+  }
+
+  const {
+    existingAddress = null,
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  let existingPayload = existingAddress || null;
+  if (!existingPayload && fs.existsSync(addressPath)) {
+    existingPayload = readJSONIfExists(addressPath) || null;
+  }
+
+  if (
+    existingPayload &&
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload })
+  ) {
+    return false;
+  }
+
+  const unnormalizedSource =
+    (unnormalizedPath && readJSONIfExists(unnormalizedPath)) || null;
+  const seedSource = (seedPath && readJSONIfExists(seedPath)) || null;
+
+  const candidateSources = [existingPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const rawCandidates = [];
+  const enqueueRawCandidate = (value) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length) {
+      rawCandidates.push(trimmed);
+    }
+  };
+
+  for (const source of candidateSources) {
+    enqueueRawCandidate(source && source.unnormalized_address);
+    enqueueRawCandidate(source && source.full_address);
+    enqueueRawCandidate(source && source.site_address);
+    enqueueRawCandidate(source && source.address);
+    if (source && Array.isArray(source.lines)) {
+      enqueueRawCandidate(
+        source.lines
+          .map((line) => (typeof line === "string" ? line.trim() : ""))
+          .filter((line) => line.length)
+          .join(", "),
+      );
+    }
+  }
+
+  const rawValue = resolveFirstNonEmptyString(rawCandidates);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  const trimmedRaw = rawValue.trim();
+  const payload = {
+    unnormalized_address: trimmedRaw,
+    city_name: null,
+    municipality_name: null,
+    county_name: null,
+    state_code: null,
+    postal_code: null,
+    plus_four_postal_code: null,
+    country_code: null,
+    request_identifier: null,
+    source_http_request: null,
+  };
+
+  const assignField = (field, values, transform) => {
+    for (const value of values) {
+      if (value === undefined || value === null) {
+        continue;
+      }
+      let preparedValue = value;
+      if (typeof transform === "function") {
+        preparedValue = transform(value);
+      }
+      if (preparedValue === undefined || preparedValue === null) {
+        continue;
+      }
+      if (typeof preparedValue === "string") {
+        const trimmed = preparedValue.trim();
+        if (!trimmed.length) {
+          continue;
+        }
+        payload[field] = trimmed;
+        return;
+      }
+      payload[field] = preparedValue;
+      return;
+    }
+  };
+
+  const parsedLocation = parseCityStatePostalLean(trimmedRaw);
+
+  assignField(
+    "city_name",
+    [
+      existingPayload && existingPayload.city_name,
+      unnormalizedSource && unnormalizedSource.city_name,
+      parsedLocation && parsedLocation.city_name,
+      seedSource && seedSource.city_name,
+    ],
+    (value) => value && value.toString().trim().toUpperCase(),
+  );
+
+  assignField("municipality_name", [
+    existingPayload && existingPayload.municipality_name,
+    unnormalizedSource && unnormalizedSource.municipality_name,
+    seedSource && seedSource.municipality_name,
+  ]);
+
+  assignField(
+    "state_code",
+    [
+      existingPayload && existingPayload.state_code,
+      unnormalizedSource && unnormalizedSource.state_code,
+      parsedLocation && parsedLocation.state_code,
+      seedSource && seedSource.state_code,
+      defaultStateCode,
+    ],
+    (value) => value && value.toString().trim().toUpperCase(),
+  );
+
+  assignField("postal_code", [
+    existingPayload && existingPayload.postal_code,
+    unnormalizedSource && unnormalizedSource.postal_code,
+    parsedLocation && parsedLocation.postal_code,
+    seedSource && seedSource.postal_code,
+  ]);
+
+  assignField("plus_four_postal_code", [
+    existingPayload && existingPayload.plus_four_postal_code,
+    unnormalizedSource && unnormalizedSource.plus_four_postal_code,
+    parsedLocation && parsedLocation.plus_four_postal_code,
+  ]);
+
+  assignField(
+    "county_name",
+    [
+      existingPayload && existingPayload.county_name,
+      unnormalizedSource && unnormalizedSource.county_name,
+      unnormalizedSource && unnormalizedSource.county_jurisdiction
+        ? titleCaseCounty(unnormalizedSource.county_jurisdiction)
+        : null,
+      seedSource && seedSource.county_name,
+      defaultCountyName,
+    ],
+  );
+
+  assignField(
+    "country_code",
+    [
+      existingPayload && existingPayload.country_code,
+      unnormalizedSource && unnormalizedSource.country_code,
+      seedSource && seedSource.country_code,
+      defaultCountryCode,
+    ],
+    (value) => value && value.toString().trim().toUpperCase(),
+  );
+
+  if (!payload.county_name && defaultCountyName) {
+    payload.county_name = titleCaseCounty(defaultCountyName);
+  }
+  if (!payload.state_code && defaultStateCode) {
+    payload.state_code = defaultStateCode;
+  }
+  if (!payload.country_code && defaultCountryCode) {
+    payload.country_code = defaultCountryCode;
+  }
+  if (!payload.municipality_name && payload.city_name) {
+    payload.municipality_name = payload.city_name;
+  }
+  if (!payload.postal_code) {
+    payload.plus_four_postal_code = null;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+  payload.request_identifier =
+    requestIdentifier === undefined
+      ? null
+      : safeNullIfEmpty(requestIdentifier) ?? null;
+
+  const sourceHttpCandidate = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+  const preparedSource = sourceHttpCandidate
+    ? prepareSourceHttpRequest(sourceHttpCandidate)
+    : null;
+  payload.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  writeAddressPayloadDirect(addressPath, payload);
+  return true;
+}
+
 function buildLeanRawAddressPayloadFromSources(sources = [], options = {}) {
   const candidateSources = Array.isArray(sources)
     ? sources.filter((source) => source && typeof source === "object")
@@ -66742,81 +66991,32 @@ run()
 
       const existingPayload = readJSONIfExists(addressPath) || null;
 
-      if (
-        !ADDRESS_FINALIZATION_COMPLETE &&
-        existingPayload &&
-        typeof existingPayload === "object"
-      ) {
-        ADDRESS_FINALIZATION_COMPLETE = true;
-      }
-
       if (!ADDRESS_FINALIZATION_COMPLETE) {
-        const unnormalizedInput =
-          readJSONIfExists("unnormalized_address.json") || null;
-        const seedInput = readJSONIfExists("property_seed.json") || null;
+        const hasNormalizedSurface =
+          existingPayload &&
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
 
-        const metadataSources = [
-          existingPayload,
-          unnormalizedInput,
-          seedInput,
-        ].filter((source) => source && typeof source === "object");
-
-        const rawCandidates = [];
-        metadataSources.forEach((source) =>
-          gatherRawAddressCandidatesFromSource(source, rawCandidates),
-        );
-        const fallbackCandidates =
-          (ADDRESS_FALLBACK_CONTEXT &&
-            Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) &&
-            ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) ||
-          [];
-        rawCandidates.push(...fallbackCandidates);
-
-        const rawValue = resolveFirstNonEmptyString(rawCandidates);
-
-        if (rawValue) {
-          const requestIdentifierCandidates = [];
-          for (const source of metadataSources) {
-            if (!source || typeof source !== "object") {
-              continue;
-            }
-            if (
-              Object.prototype.hasOwnProperty.call(source, "request_identifier")
-            ) {
-              requestIdentifierCandidates.push(source.request_identifier);
-            }
-            if (Object.prototype.hasOwnProperty.call(source, "parcel_id")) {
-              requestIdentifierCandidates.push(source.parcel_id);
-            }
-          }
-          const requestIdentifier = safeNullIfEmpty(
-            resolveFirstNonEmptyString(requestIdentifierCandidates),
-          );
-
-          const sourceHttpCandidate = metadataSources.find(
-            (source) =>
-              source &&
-              typeof source === "object" &&
-              source.source_http_request &&
-              typeof source.source_http_request === "object",
-          );
-          const preparedSource = sourceHttpCandidate
-            ? prepareSourceHttpRequest(sourceHttpCandidate.source_http_request)
-            : null;
-
-          const minimalPayload = {
-            unnormalized_address: rawValue,
-            request_identifier:
-              requestIdentifier === undefined ? null : requestIdentifier,
-            source_http_request: preparedSource
-              ? deepClone(preparedSource)
-              : null,
-          };
-
-          writeAddressPayloadDirect(addressPath, minimalPayload);
+        if (hasNormalizedSurface) {
           ADDRESS_FINALIZATION_COMPLETE = true;
         } else {
-          removeFileIfExists(addressPath);
+          const rawEnforced = enforceDeterministicRawAddressFromSources(
+            addressPath,
+            {
+              existingAddress: existingPayload,
+              unnormalizedPath: "unnormalized_address.json",
+              seedPath: "property_seed.json",
+              defaultCountyName: titleCaseCounty("Palm Beach"),
+              defaultStateCode: "FL",
+              defaultCountryCode: "US",
+            },
+          );
+
+          if (rawEnforced) {
+            ADDRESS_FINALIZATION_COMPLETE = true;
+          } else {
+            removeFileIfExists(addressPath);
+          }
         }
       }
 
