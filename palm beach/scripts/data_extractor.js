@@ -11242,20 +11242,11 @@ const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([
 const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
   RAW_VARIANT_FORBIDDEN_FIELDS,
 );
-const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
+const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([...MINIMAL_RAW_ADDRESS_FIELDS, ...RAW_FALLBACK_COPY_FIELDS]),
+  ),
+);
 const RAW_VARIANT_OPTIONAL_FIELD_SET = new Set(
   RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS,
 );
@@ -12471,18 +12462,17 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// County's raw address branch still requires the normalized field surface to
-// exist (even when the values are null). To keep the oneOf branch valid we
-// mirror the normalized field list even for the so-called "minimal" surface
-// so downstream consumers always see every nullable key.
+// County schema's raw branch only allows the coarse, non-normalized fields.
+// Keep the raw variant allowlist scoped to those values so we never emit a
+// partial normalized surface that violates the oneOf requirement.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
+  ...RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS,
 ]);
 const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
+  ...RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS,
 ]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
