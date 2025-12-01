@@ -10942,6 +10942,92 @@ function enforceMinimalRawSubmissionSurface(address) {
   return address;
 }
 
+function enforceRawAddressOneOfFallback(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (hasNormalizedSurface) {
+    return;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const supplementalSources = [];
+  for (const candidatePath of [unnormalizedPath, seedPath]) {
+    if (!candidatePath) continue;
+    const source = readJSONIfExists(candidatePath);
+    if (source && typeof source === "object") {
+      supplementalSources.push(source);
+    }
+  }
+
+  const rawSourceCandidates = [payload, ...supplementalSources];
+  const resolvedRaw =
+    resolveRawAddressStringFromSources(rawSourceCandidates) || null;
+  if (!resolvedRaw) {
+    return;
+  }
+
+  const payloadWithRaw = {
+    ...payload,
+    unnormalized_address: resolvedRaw,
+  };
+
+  const minimalRaw =
+    buildMinimalRawAddressForSchema(payloadWithRaw, rawSourceCandidates, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) || null;
+
+  if (!minimalRaw || typeof minimalRaw !== "object") {
+    return;
+  }
+
+  if (!hasMeaningfulAddressValue(minimalRaw.unnormalized_address)) {
+    minimalRaw.unnormalized_address = resolvedRaw.trim();
+  }
+
+  if (!minimalRaw.postal_code) {
+    minimalRaw.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(minimalRaw.state_code) &&
+    !hasMeaningfulAddressValue(minimalRaw.country_code)
+  ) {
+    minimalRaw.country_code = defaultCountryCode || "US";
+  }
+
+  if (
+    (minimalRaw.latitude == null && minimalRaw.longitude != null) ||
+    (minimalRaw.latitude != null && minimalRaw.longitude == null)
+  ) {
+    minimalRaw.latitude = null;
+    minimalRaw.longitude = null;
+  }
+
+  minimalRaw.__force_raw_variant = true;
+  minimalRaw.__preserve_request_metadata = true;
+
+  writeAddressJSONBypass(addressPath, minimalRaw);
+}
+
 function emitRawAddressSchemaSurface(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -71260,6 +71346,23 @@ process.on("exit", () => {
     if (!process.exitCode) {
       process.exitCode = 1;
     }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceRawAddressOneOfFallback(path.join("data", "address.json"), {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce fallback raw address schema surface:",
+      error,
+    );
   }
 });
 
