@@ -1969,38 +1969,9 @@ function writePropertyUtilityLotStructureFromExtraFeatures($, parcelId) {
     });
   }
 
-  if (hasValues(detected.utility)) {
-    const utilityRecord = {
-      ...appendSourceInfo(seed),
-      cooling_system_type: null,
-      heating_system_type: null,
-      public_utility_type: null,
-      sewer_type: null,
-      water_source_type: null,
-      plumbing_system_type: null,
-      plumbing_system_type_other_description: null,
-      electrical_panel_capacity: null,
-      electrical_wiring_type: null,
-      hvac_condensing_unit_present: null,
-      electrical_wiring_type_other_description: null,
-      solar_panel_present: false,
-      solar_panel_type: null,
-      solar_panel_type_other_description: null,
-      smart_home_features: null,
-      smart_home_features_other_description: null,
-      hvac_unit_condition: null,
-      solar_inverter_visible: false,
-      hvac_unit_issues: null,
-      ...detected.utility,
-    };
-    writeJSON(path.join("data", "utility.json"), utilityRecord);
-    
-    // Create property-utility relationship
-    writeJSON(path.join("data", "relationship_property_has_utility.json"), {
-      from: { "/": "./property.json" },
-      to: { "/": "./utility.json" }
-    });
-  }
+  // Note: Utilities are now created in createUtilitiesFiles() from owners/utilities_data.json
+  // Extra features from HTML (septic, well, heat pump) are integrated into utilityMapping.js
+  // So we don't create a separate utility.json here to avoid duplicates
 }
 
 function extractMailingAddress($) {
