@@ -542,6 +542,13 @@ function parseOwnersFromText(rawText) {
     .replace(/\s{2,}/g, " ")
     .trim();
 
+  // Remove "ET AL" and variations (legal abbreviation meaning "and others")
+  text = text.replace(/\s*[-,]?\s*ET\s+AL\.?\s*$/i, "");
+  text = text.replace(/\s*[-,]?\s*ET\s+AL\.?\s*[,&]/gi, " & ");
+
+  // Remove fractional ownership notations (e.g., "-3/4 INTEREST", "-1/2 INT")
+  text = text.replace(/-\d+\/\d+\s+(?:INTEREST|INT)\s*&?/gi, "");
+
   const commaSegments = text.split(/\s*,\s*/).filter(Boolean);
   let lastSurname = null;
 
