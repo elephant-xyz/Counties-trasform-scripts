@@ -46,20 +46,14 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
 
-const MINIMAL_RAW_ADDRESS_FIELDS = [
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-];
+const MINIMAL_RAW_ADDRESS_FIELDS = Array.from(
+  new Set([
+    // County raw submissions must surface the complete normalized field set so the
+    // schema's oneOf branch for raw addresses still passes when values are null.
+    ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
+    "municipality_name",
+  ]),
+);
 
 const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "city_name",
