@@ -78,15 +78,35 @@ function collectBuildings($) {
   return buildings;
 }
 
-function buildUtilityRecord(building) {
-  const ac = (building["Air Conditioning"] || "").toUpperCase();
-  const heat = (building["Heat Index"] || "").toUpperCase();
-  const cooling_system_type = ac.includes("CENTRAL") ? "CentralAir" : null;
-  const heating_system_type =
-    heat.includes("AIR DUCTED") || heat.includes("CENTRAL") ? "Central" : null;
-  const rec = {
+function inferHVAC(buildings) {
+  let cooling_system_type = null;
+  let heating_system_type = null;
+
+  buildings.forEach((b) => {
+    const ac = (b["Air Conditioning"] || "").toUpperCase();
+    const heat = (b["Heat Index"] || "").toUpperCase();
+    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
+    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
+      heating_system_type = "Central";
+  });
+
+  if (cooling_system_type === "CentralAir") {
+    hvac_system_configuration = "SplitSystem";
+    hvac_equipment_component = "CondenserAndAirHandler";
+    hvac_condensing_unit_present = "Yes";
+  }
+
+  return {
     cooling_system_type,
-    heating_system_type,
+    heating_system_type
+  };
+}
+
+function buildUtilityRecord($, buildings) {
+  const hvac = inferHVAC(buildings);
+  const rec = {
+    cooling_system_type: hvac.cooling_system_type,
+    heating_system_type: hvac.heating_system_type,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -126,6 +146,7 @@ function buildUtilityRecord(building) {
     water_heater_model: null,
     well_installation_date: null,
   };
+
   return rec;
 }
 
@@ -135,20 +156,13 @@ function main() {
   const parcelId = getParcelId($);
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const buildingUtilities = buildings.map((b, idx) => ({
-    building_index: idx + 1,
-    ...buildUtilityRecord(b),
-  }));
+  const utilitiesRecord = buildUtilityRecord($, buildings);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = {
-    buildings: buildingUtilities,
-    property_utilities: [],
-    extra_feature_utilities: [],
-  };
+  outObj[`property_${parcelId}`] = utilitiesRecord;
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }

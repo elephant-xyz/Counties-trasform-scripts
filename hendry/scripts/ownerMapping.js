@@ -9,7 +9,7 @@ const $ = cheerio.load(html);
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_lblParcelID";
 const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl02_mSection .sdw1-owners-container";
-const SALES_TABLE_SELECTOR = 'table[id$="_grdSales"] tbody tr';
+const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl06_ctl01_grdSales tbody tr";
 
 // Utility helpers
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
@@ -35,6 +35,8 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
+    /\bJR\.?\b/gi,
+    /\bSR\.?\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -88,7 +90,6 @@ const COMPANY_KEYWORDS = [
   "alliance",
   "solutions",
   "corp",
-  "cor",
   "co",
   "company",
   "services",
@@ -99,7 +100,6 @@ const COMPANY_KEYWORDS = [
   "holdings",
   "group",
   "partners",
-  "partnership",
   "lp",
   "llp",
   "plc",
@@ -111,156 +111,11 @@ const COMPANY_KEYWORDS = [
   "authority",
 ];
 
-const NAME_PREFIX_MAP = new Map([
-  ["mr", "Mr"],
-  ["mister", "Mr"],
-  ["mrs", "Mrs"],
-  ["ms", "Ms"],
-  ["miss", "Miss"],
-  ["dr", "Dr"],
-  ["doctor", "Dr"],
-  ["prof", "Prof"],
-  ["professor", "Prof"],
-  ["rev", "Rev"],
-  ["reverend", "Rev"],
-  ["pastor", "Pastor"],
-  ["hon", "Hon"],
-  ["honorable", "Hon"],
-  ["sir", "Sir"],
-  ["madam", "Madam"],
-  ["capt", "Capt"],
-  ["captain", "Capt"],
-  ["lt", "Lt"],
-  ["lieutenant", "Lt"],
-  ["sgt", "Sgt"],
-  ["sergeant", "Sgt"],
-  ["col", "Col"],
-  ["colonel", "Col"],
-  ["judge", "Judge"],
-]);
-
-const NAME_SUFFIX_MAP = new Map([
-  ["jr", "Jr."],
-  ["sr", "Sr."],
-  ["ii", "II"],
-  ["iii", "III"],
-  ["iv", "IV"],
-  ["md", "MD"],
-  ["phd", "PhD"],
-  ["esq", "Esq."],
-  ["esquire", "Esq."],
-  ["jd", "JD"],
-  ["llm", "LLM"],
-  ["mba", "MBA"],
-  ["rn", "RN"],
-  ["dds", "DDS"],
-  ["dvm", "DVM"],
-  ["cfa", "CFA"],
-  ["cpa", "CPA"],
-  ["pe", "PE"],
-  ["pmp", "PMP"],
-  ["emeritus", "Emeritus"],
-  ["ret", "Ret."],
-]);
-
-// Valid suffix values according to Elephant schema
-const VALID_SUFFIXES = new Set([
-  "Jr.", "Sr.", "II", "III", "IV",
-  "PhD", "MD", "Esq.", "JD", "LLM", "MBA",
-  "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP",
-  "Emeritus", "Ret."
-]);
-
-// Validate and normalize suffix to match Elephant schema
-function validateSuffix(suffix) {
-  if (!suffix) return null;
-  // First check if it's already valid
-  if (VALID_SUFFIXES.has(suffix)) return suffix;
-  // Try to normalize through the map (handles cases like "Jr" → "Jr.")
-  const normalized = (suffix || "").replace(/\./g, "").toLowerCase();
-  const canonical = NAME_SUFFIX_MAP.get(normalized);
-  if (canonical && VALID_SUFFIXES.has(canonical)) return canonical;
-  // If not valid or normalizable, return null
-  return null;
-}
-
-const SURNAME_PARTICLES = new Set([
-  "da",
-  "das",
-  "de",
-  "del",
-  "dela",
-  "de la",
-  "de las",
-  "de los",
-  "der",
-  "di",
-  "dos",
-  "du",
-  "la",
-  "las",
-  "le",
-  "los",
-  "mac",
-  "mc",
-  "san",
-  "santa",
-  "santo",
-  "saint",
-  "st",
-  "st.",
-  "van",
-  "van der",
-  "vander",
-  "ver",
-  "von",
-  "von der",
-]);
-
-function normalizeTokenForLookup(token) {
-  return (token || "").replace(/\./g, "").toLowerCase();
-}
-
-function aggregateParticles(tokens) {
-  const out = [];
-  while (tokens.length > 0) {
-    const token = tokens[0];
-    const norm = normalizeTokenForLookup(token);
-    out.push(token);
-    tokens.shift();
-    if (!SURNAME_PARTICLES.has(norm)) {
-      break;
-    }
-  }
-  return out;
-}
-
-function aggregateSurnameFromEnd(tokens) {
-  const out = [];
-  let capturedBase = false;
-  while (tokens.length > 0) {
-    const token = tokens[tokens.length - 1];
-    const norm = normalizeTokenForLookup(token);
-    if (!capturedBase) {
-      out.unshift(token);
-      tokens.pop();
-      capturedBase = true;
-      continue;
-    }
-    if (!SURNAME_PARTICLES.has(norm)) {
-      break;
-    }
-    out.unshift(token);
-    tokens.pop();
-  }
-  return out;
-}
-
 
 function isCompanyName(name) {
   const n = name.toLowerCase();
   return COMPANY_KEYWORDS.some((kw) =>
-    new RegExp(`(^|\\b)${kw}(\\b|\\.$|$)`, "i").test(n),
+    new RegExp(`(^|\\b)${kw}(\\b|\.$)`, "i").test(n),
   );
 }
 
@@ -271,123 +126,42 @@ function splitCompositeNames(name) {
     .split(/\s*&\s*|\s+and\s+/i)
     .map((p) => p.trim())
     .filter(Boolean);
-  const merged = [];
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    const norm = normalizeTokenForLookup(part);
-    if (NAME_PREFIX_MAP.has(norm) && i + 1 < parts.length) {
-      const nextPart = parts[i + 1];
-      const firstToken = nextPart.split(/\s+/).find(Boolean) || "";
-      const nextNorm = normalizeTokenForLookup(firstToken);
-      if (!NAME_PREFIX_MAP.has(nextNorm)) {
-        parts[i + 1] = `${part} ${parts[i + 1]}`;
-      }
-      continue;
-    }
-    merged.push(part);
-  }
-  return merged;
+  return parts;
 }
 
 function classifyOwner(raw) {
-  const hasComma = /,/.test(raw || "");
-  const hasLowercase = /[a-z]/.test(raw || "");
   const cleaned = cleanRawName(raw);
   if (!cleaned) {
     return { valid: false, reason: "empty_after_clean", raw };
   }
-  // Filter out placeholder patterns like **Multiple Buyers**, **Multiple Sellers**, **None**, etc.
-  if (/\*\*/.test(cleaned) || /\*\*.*\*\*/.test(raw || "")) {
-    return { valid: false, reason: "placeholder_pattern", raw: cleaned };
-  }
   if (isCompanyName(cleaned)) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
-  let tokens = cleaned
-    .split(/\s+/)
-    .map((tok) => cleanInvalidCharsFromName(tok))
-    .filter(Boolean);
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
-
-  let prefix = null;
-  let hadPrefix = false;
-  while (tokens.length > 0) {
-    const lookup = normalizeTokenForLookup(tokens[0]);
-    const canonical = NAME_PREFIX_MAP.get(lookup);
-    if (!canonical) break;
-    prefix = prefix ? `${prefix} ${canonical}` : canonical;
-    tokens.shift();
-    hadPrefix = true;
-  }
-
-  let suffix = null;
-  while (tokens.length > 0) {
-    const lookup = normalizeTokenForLookup(tokens[tokens.length - 1]);
-    const canonical = NAME_SUFFIX_MAP.get(lookup);
-    if (!canonical) break;
-    suffix = suffix ? `${canonical} ${suffix}` : canonical;
-    tokens.pop();
-  }
-
-  if (tokens.length < 2) {
-    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  }
-
-  let useLastFirst = !(hadPrefix || hasComma || hasLowercase);
-  let lastTokens;
-  if (useLastFirst) {
-    lastTokens = aggregateParticles(tokens);
-    if (tokens.length < 1) {
-      return {
-        valid: false,
-        reason: "person_missing_first_name",
-        raw: cleaned,
-      };
-    }
-  } else {
-    lastTokens = aggregateSurnameFromEnd(tokens);
-    if (tokens.length < 1) {
-      return {
-        valid: false,
-        reason: "person_missing_first_name",
-        raw: cleaned,
-      };
-    }
-  }
-
-  const first = tokens.shift();
-  const middleTokens = tokens;
-
-  const last = lastTokens.join(" ").trim();
-  const middle = middleTokens.join(" ").trim();
-
-  if (!first || !last) {
-    return {
-      valid: false,
-      reason: "person_missing_first_or_last",
-      raw: cleaned,
-    };
-  }
-
-  const validatedSuffix = validateSuffix(suffix);
-  // Extra defensive check: ensure suffix is either null or in VALID_SUFFIXES
-  const finalSuffix = (validatedSuffix && VALID_SUFFIXES.has(validatedSuffix)) ? validatedSuffix : null;
-
+  const first = cleanInvalidCharsFromName(tokens[0]);
+  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
+  const middleTokens = tokens.slice(1, -1);
+  // if (/^[A-Za-z]$/.test(last)) {
+  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
+  // }
+  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
+  if (first && last) {
   const person = {
     type: "person",
     first_name: first,
     last_name: last,
     middle_name: middle ? middle : null,
-    prefix_name: prefix || null,
-    suffix_name: finalSuffix,
   };
   return { valid: true, owner: person };
+  }
+  return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
 
 function dedupeOwners(owners) {
-  const seen = new Map();
+  const seen = new Set();
   const out = [];
   for (const o of owners) {
     let norm;
@@ -395,20 +169,11 @@ function dedupeOwners(owners) {
       norm = `company:${normalizeName(o.name)}`;
     } else {
       const middle = o.middle_name ? normalizeName(o.middle_name) : "";
-      const suffix = o.suffix_name ? normalizeName(o.suffix_name) : "";
-      norm = `person:${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}|${suffix}`;
+      norm = `person:${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}`;
     }
     if (!seen.has(norm)) {
-      seen.set(norm, o);
+      seen.add(norm);
       out.push(o);
-    } else {
-      const existing = seen.get(norm);
-      if (
-        (!existing.mailing_address || !existing.mailing_address.trim()) &&
-        o.mailing_address
-      ) {
-        existing.mailing_address = o.mailing_address;
-      }
     }
   }
   return out;
@@ -425,17 +190,14 @@ function getParcelId($) {
 function extractCurrentOwners($) {
   const owners = [];
   $(CURRENT_OWNER_SELECTOR).each((i, el) => {
-    const lines = $(el)
-      .text()
-      .split("\n")
-      .map((line) => txt(line))
-      .filter((line) => line)
-      .filter((line) => !/primary/i.test(line));
-    if (!lines.length) return;
-    const nameLine = lines[0];
-    const addressLines = lines.slice(1);
-    const mailingAddress = addressLines.length ? addressLines.join(", ") : null;
-    owners.push({ raw: nameLine, mailing_address: mailingAddress });
+    const owner_text_split = $(el).text().split('\n');
+    for (const owner of owner_text_split) {
+      if (owner.trim() && !owner.toLowerCase().includes("primary")) {
+        const t = txt(owner.trim());
+        owners.push(t);
+        break;
+      }
+    }
   });
   return owners;
 }
@@ -446,9 +208,9 @@ function extractSalesOwnersByDate($) {
   const rows = $(SALES_TABLE_SELECTOR);
   rows.each((i, tr) => {
     const $tr = $(tr);
-    const cells = $tr.find("th, td");
-    if (!cells.length) return;
-    const saleDateRaw = txt($(cells[0]).text());
+    const tdate = $tr.find("td").first();
+    const tds = $tr.find("td");
+    const saleDateRaw = txt(tdate.text());
     if (!saleDateRaw) return;
     const dm = saleDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (!dm) return;
@@ -456,34 +218,20 @@ function extractSalesOwnersByDate($) {
     const dd = dm[2].padStart(2, "0");
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    const granteeCell = cells[cells.length - 1];
-    const grantee = granteeCell ? txt($(granteeCell).text()) : null;
-    if (grantee && !/^\*+none\*+$/i.test(grantee)) {
+    const grantee = txt(tds.last().text());
+    if (grantee) {
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(grantee);
     }
-    const grantorCell = cells[cells.length - 2];
-    const grantor = grantorCell ? txt($(grantorCell).text()) : null;
-    if (grantor && !/^\*+none\*+$/i.test(grantor)) priorOwners.push(grantor);
+    const grantor = txt(tds.eq(tds.length - 2).text());
+    if (grantor) priorOwners.push(grantor);
   });
   return { map, priorOwners };
 }
 
 function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
   const owners = [];
-  for (const entry of rawStrings) {
-    let mailingAddress = null;
-    let raw = entry;
-    if (entry && typeof entry === "object") {
-      mailingAddress =
-        entry.mailing_address !== undefined ? entry.mailing_address : null;
-      raw =
-        entry.raw !== undefined
-          ? entry.raw
-          : entry.name !== undefined
-            ? entry.name
-            : "";
-    }
+  for (const raw of rawStrings) {
     const parts = splitCompositeNames(raw);
     if (parts.length === 0) {
       invalidCollector.push({ raw, reason: "unparseable_or_empty" });
@@ -492,10 +240,7 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
     for (const part of parts) {
       const res = classifyOwner(part);
       if (res.valid) {
-        const owner = res.owner;
-        if (mailingAddress && !owner.mailing_address)
-          owner.mailing_address = mailingAddress;
-        owners.push(owner);
+        owners.push(res.owner);
       } else {
         invalidCollector.push({
           raw: part,

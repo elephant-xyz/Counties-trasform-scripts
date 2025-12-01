@@ -124,7 +124,8 @@ function parseNumber(val) {
   return Number.isFinite(n) ? n : null;
 }
 
-function buildStructureRecord(building) {
+function buildStructureRecord($, buildings) {
+  // Defaults per schema requirements (all present, many null)
   const rec = {
     architectural_style_type: null,
     attachment_type: null,
@@ -189,33 +190,51 @@ function buildStructureRecord(building) {
     window_screen_material: null,
   };
 
-  const extTokens = building["Exterior Walls"]
-    ? building["Exterior Walls"].split(";").map((s) => s.trim())
-    : [];
-  const intWallTokens = building["Interior Walls"]
-    ? building["Interior Walls"].split(";").map((s) => s.trim())
-    : [];
-  const floorTokens = building["Floor Cover"]
-    ? building["Floor Cover"].split(";").map((s) => s.trim())
-    : [];
-  const roofTokens = building["Roof Cover"] ? [building["Roof Cover"]] : [];
-  const frameTokens = building["Frame Type"] ? [building["Frame Type"]] : [];
+  // Aggregate from buildings
+  const extTokens = [];
+  const intWallTokens = [];
+  const floorTokens = [];
+  const roofTokens = [];
+  const frameTokens = [];
+  const stories = [];
 
+  buildings.forEach((b) => {
+    if (b["Exterior Walls"])
+      extTokens.push(...b["Exterior Walls"].split(";").map((s) => s.trim()));
+    if (b["Interior Walls"])
+      intWallTokens.push(
+        ...b["Interior Walls"].split(";").map((s) => s.trim()),
+      );
+    if (b["Floor Cover"])
+      floorTokens.push(...b["Floor Cover"].split(";").map((s) => s.trim()));
+    if (b["Roof Cover"]) roofTokens.push(b["Roof Cover"]);
+    if (b["Frame Type"]) frameTokens.push(b["Frame Type"]);
+    if (b["Stories"]) {
+      const st = parseNumber(b["Stories"]);
+      if (st != null) stories.push(st);
+    }
+  });
+
+  // Exterior materials
   const ext = mapExteriorMaterials(extTokens);
   if (ext.length) {
+    // Choose primary material as the most common/first detected
     rec.exterior_wall_material_primary = ext[0] || null;
   }
 
+  // Interior wall surface
   const intSurf = mapInteriorSurface(intWallTokens);
   if (intSurf.length) {
     rec.interior_wall_surface_material_primary = intSurf[0] || null;
   }
 
+  // Flooring
   const floors = mapFlooring(floorTokens);
   if (floors.length) {
     rec.flooring_material_primary = floors[0] || null;
   }
 
+  // Roof covering mapping
   if (roofTokens.length) {
     const u = roofTokens.join(" ").toUpperCase();
     if (
@@ -228,15 +247,22 @@ function buildStructureRecord(building) {
     }
   }
 
+  // Framing
   if (frameTokens.join(" ").toUpperCase().includes("WOOD")) {
     rec.primary_framing_material = "Wood Frame";
+    // rec.interior_wall_structure_material = "Wood Frame";
+    // rec.interior_wall_structure_material_primary = "Wood Frame";
   }
 
-  const storiesVal = parseNumber(building["Stories"]);
-  if (storiesVal != null) rec.number_of_stories = storiesVal;
+  // Stories
+  if (stories.length) {
+    // Use max stories across buildings
+    rec.number_of_stories = Math.max(...stories);
+  }
 
-  const yearBuilt = parseNumber(building["Actual Year Built"]);
-  if (yearBuilt) rec.roof_date = String(yearBuilt);
+  // Subfloor unknown; if any heated area present and FL likely slab, but leave null to avoid assumption
+  // rec.subfloor_material = null;
+
   return rec;
 }
 
@@ -248,20 +274,13 @@ function main() {
     throw new Error("Parcel ID not found");
   }
   const buildings = collectBuildings($);
-  const structures = buildings.map((b, idx) => ({
-    building_index: idx + 1,
-    ...buildStructureRecord(b),
-  }));
+  const structureRecord = buildStructureRecord($, buildings);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "structure_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = {
-    buildings: structures,
-    property_structures: [],
-    extra_feature_structures: [],
-  };
+  outObj[`property_${parcelId}`] = structureRecord;
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
