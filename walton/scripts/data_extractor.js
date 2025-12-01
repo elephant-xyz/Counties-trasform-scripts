@@ -1612,19 +1612,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     request_identifier: parcelId,
   }));
 
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
-
   companies = Array.from(neededCompanies).map((n) => ({
     ...appendSourceInfo(seed),
     name: n,
     request_identifier: parcelId,
   }));
 
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
+  // Track which person/company indices are actually used in relationships
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
 
   // Create relationships: link sale to owners present on that date
   let relPersonCounter = 0;
@@ -1637,6 +1633,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
+          usedPersonIndices.add(pIdx);
           relPersonCounter++;
           writeJSON(
             path.join(
@@ -1655,6 +1652,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
+          usedCompanyIndices.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1668,6 +1666,22 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           );
         }
       });
+  });
+
+  // Only write person files that are actually used in relationships
+  people.forEach((p, idx) => {
+    const personIdx = idx + 1;
+    if (usedPersonIndices.has(personIdx)) {
+      writeJSON(path.join("data", `person_${personIdx}.json`), p);
+    }
+  });
+
+  // Only write company files that are actually used in relationships
+  companies.forEach((c, idx) => {
+    const companyIdx = idx + 1;
+    if (usedCompanyIndices.has(companyIdx)) {
+      writeJSON(path.join("data", `company_${companyIdx}.json`), c);
+    }
   });
 }
 
