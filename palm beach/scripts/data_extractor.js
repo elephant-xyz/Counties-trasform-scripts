@@ -16,7 +16,6 @@ const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
 let normalizedAddressOverrideApplied = false;
-let structuredAddressSourceAvailable = false;
 
 const COUNTY_REQUIRED_NORMALIZED_FIELDS = [
   "street_number",
@@ -766,7 +765,12 @@ const ADDRESS_RELATIONSHIP_BASENAMES = Object.freeze([
 const RELATIONSHIP_SUPPRESSED_BASENAMES = new Set();
 // Always emit explicit null placeholders so downstream systems can safely
 // hydrate the UR-based relationships without tripping validation.
-const RELATIONSHIP_PLACEHOLDER_BASENAMES = new Set();
+const RELATIONSHIP_PLACEHOLDER_BASENAMES = new Set([
+  "property_has_address",
+  "relationship_property_has_address",
+  "address_has_fact_sheet",
+  "relationship_address_has_fact_sheet",
+]);
 
 const RELATIONSHIP_FIELDS_TO_FORCE_NULL = new Set([
   "property_has_address",
@@ -957,7 +961,7 @@ function coerceAddressOneOfSurface(addressPath, options = {}) {
     defaultCountryCode,
   });
 
-  if (normalizedCandidate && structuredAddressSourceAvailable) {
+  if (normalizedCandidate) {
     if (
       Object.prototype.hasOwnProperty.call(
         normalizedCandidate,
@@ -10773,7 +10777,7 @@ function stripRawVariantStructuredFields(address) {
     delete address.__preserve_structured_fields;
   }
 
-  if (hasNormalizedSurface && structuredAddressSourceAvailable) {
+  if (hasNormalizedSurface) {
     if (Object.prototype.hasOwnProperty.call(address, "unnormalized_address")) {
       delete address.unnormalized_address;
     }
@@ -11033,6 +11037,8 @@ const RAW_VARIANT_META_FIELD_ALLOWLIST = new Set([
   "__preserve_structured_fields",
   "__raw_minimal_surface",
   "__preserve_request_metadata",
+  "request_identifier",
+  "source_http_request",
 ]);
 
 function buildRawOnlyAddressSurface(address) {
@@ -34984,7 +34990,7 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
       working.__force_raw_variant = true;
     }
   }
-  if (hasStrictNormalizedSurface && structuredAddressSourceAvailable) {
+  if (hasStrictNormalizedSurface) {
     working.__preserve_structured_fields = true;
     const snapshotPayload = { ...working };
     if (
@@ -44396,9 +44402,6 @@ function finalizeCountyAddressVariantSimple(addressFilePath, options = {}) {
 }
 
 function buildCountyNormalizedOneOfPayload(source, options = {}) {
-  if (!structuredAddressSourceAvailable) {
-    return null;
-  }
   if (!source || typeof source !== "object") {
     return null;
   }
@@ -44918,7 +44921,6 @@ async function main() {
       seed,
       structuredSnapshot,
     );
-    structuredAddressSourceAvailable = !!hasStructuredSource;
     forceRawAddressVariantOutput = hasStructuredSource ? false : true;
   }
   const htmlCoordinates = extractCoordinatesFromHTML(inputHTML);
@@ -50267,7 +50269,7 @@ async function main() {
     return;
   }
 
-  if (canEmitStrictNormalizedVariant && structuredAddressSourceAvailable) {
+  if (canEmitStrictNormalizedVariant) {
     enforceFinalNormalizedAddressPayload(finalAddressPath, {
       unnormalizedPath: "unnormalized_address.json",
       seedPath: "property_seed.json",
@@ -69151,11 +69153,7 @@ function persistStrictRawCountyAddress(addressPath, options = {}) {
         deepClone(existingPayload)
       : null;
 
-  if (
-    structuredAddressSourceAvailable &&
-    normalizedProbe &&
-    hasNormalizedCountyCoverage({ ...normalizedProbe })
-  ) {
+  if (normalizedProbe && hasNormalizedCountyCoverage({ ...normalizedProbe })) {
     const normalizedCandidate =
       buildCountyNormalizedOneOfPayload(normalizedProbe, {
         defaultCountyName: fallbackCountyName,
@@ -71192,13 +71190,18 @@ process.on("exit", () => {
 });
 
 process.on("exit", () => {
-  if (structuredAddressSourceAvailable) {
-    return;
-  }
   try {
     const dataDir = path.join("data");
     const relationshipsDir = path.join("relationships");
     const addressPath = path.join(dataDir, "address.json");
+    const payload = readJSONIfExists(addressPath);
+    const hasNormalizedSurface =
+      payload &&
+      typeof payload === "object" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+    if (hasNormalizedSurface) {
+      return;
+    }
     if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
       console.error("[raw-address-enforcement] forcing raw output");
     }
