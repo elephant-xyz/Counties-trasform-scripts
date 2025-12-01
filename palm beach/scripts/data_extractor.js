@@ -64840,6 +64840,7 @@ function applyNormalizedAddressOverride() {
     enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
     overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
     process.removeAllListeners("exit");
+    ADDRESS_FINALIZATION_COMPLETE = true;
     normalizedAddressOverrideApplied = true;
     console.log(
       "Applied normalized address override; skipping legacy raw address finalizers.",
@@ -64871,6 +64872,10 @@ async function run() {
       }
     }
   };
+
+  if (ADDRESS_FINALIZATION_COMPLETE) {
+    return;
+  }
 
   if (applyNormalizedAddressOverride()) {
     return;
@@ -67238,33 +67243,37 @@ run()
 
       const existingPayload = readJSONIfExists(addressPath) || null;
 
-      if (!ADDRESS_FINALIZATION_COMPLETE) {
-        const hasNormalizedSurface =
-          existingPayload &&
-          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
-          hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
+      const hasNormalizedSurface =
+        existingPayload &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
 
-        if (hasNormalizedSurface) {
+      if (hasNormalizedSurface) {
+        ADDRESS_FINALIZATION_COMPLETE = true;
+      } else if (!ADDRESS_FINALIZATION_COMPLETE) {
+        const rawEnforced = enforceDeterministicRawAddressFromSources(
+          addressPath,
+          {
+            existingAddress: existingPayload,
+            unnormalizedPath: "unnormalized_address.json",
+            seedPath: "property_seed.json",
+            defaultCountyName: titleCaseCounty("Palm Beach"),
+            defaultStateCode: "FL",
+            defaultCountryCode: "US",
+          },
+        );
+
+        if (rawEnforced) {
           ADDRESS_FINALIZATION_COMPLETE = true;
         } else {
-          const rawEnforced = enforceDeterministicRawAddressFromSources(
-            addressPath,
-            {
-              existingAddress: existingPayload,
-              unnormalizedPath: "unnormalized_address.json",
-              seedPath: "property_seed.json",
-              defaultCountyName: titleCaseCounty("Palm Beach"),
-              defaultStateCode: "FL",
-              defaultCountryCode: "US",
-            },
-          );
-
-          if (rawEnforced) {
-            ADDRESS_FINALIZATION_COMPLETE = true;
-          } else {
-            removeFileIfExists(addressPath);
-          }
+          removeFileIfExists(addressPath);
         }
+      }
+
+      if (ADDRESS_FINALIZATION_COMPLETE) {
+        enforceNullPropertyAddressRelationships(propertyPath);
+        overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+        return;
       }
 
       const extraRawCandidates =
