@@ -66662,68 +66662,83 @@ run()
       const propertyPath = path.join(dataDir, "property.json");
 
       const existingPayload = readJSONIfExists(addressPath) || null;
-      const unnormalizedInput =
-        readJSONIfExists("unnormalized_address.json") || null;
-      const seedInput = readJSONIfExists("property_seed.json") || null;
 
-      const metadataSources = [
-        existingPayload,
-        unnormalizedInput,
-        seedInput,
-      ].filter((source) => source && typeof source === "object");
-
-      const rawCandidates = [];
-      metadataSources.forEach((source) =>
-        gatherRawAddressCandidatesFromSource(source, rawCandidates),
-      );
-      const fallbackCandidates =
-        (ADDRESS_FALLBACK_CONTEXT &&
-          Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) &&
-          ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) ||
-        [];
-      rawCandidates.push(...fallbackCandidates);
-
-      const rawValue = resolveFirstNonEmptyString(rawCandidates);
-
-      if (rawValue) {
-        const requestIdentifierCandidates = [];
-        for (const source of metadataSources) {
-          if (!source || typeof source !== "object") {
-            continue;
-          }
-          if (Object.prototype.hasOwnProperty.call(source, "request_identifier")) {
-            requestIdentifierCandidates.push(source.request_identifier);
-          }
-          if (Object.prototype.hasOwnProperty.call(source, "parcel_id")) {
-            requestIdentifierCandidates.push(source.parcel_id);
-          }
-        }
-        const requestIdentifier = safeNullIfEmpty(
-          resolveFirstNonEmptyString(requestIdentifierCandidates),
-        );
-
-        const sourceHttpCandidate = metadataSources.find(
-          (source) =>
-            source &&
-            typeof source === "object" &&
-            source.source_http_request &&
-            typeof source.source_http_request === "object",
-        );
-        const preparedSource = sourceHttpCandidate
-          ? prepareSourceHttpRequest(sourceHttpCandidate.source_http_request)
-          : null;
-
-        const minimalPayload = {
-          unnormalized_address: rawValue,
-          request_identifier:
-            requestIdentifier === undefined ? null : requestIdentifier,
-          source_http_request: preparedSource ? deepClone(preparedSource) : null,
-        };
-
-        writeAddressPayloadDirect(addressPath, minimalPayload);
+      if (
+        !ADDRESS_FINALIZATION_COMPLETE &&
+        existingPayload &&
+        typeof existingPayload === "object"
+      ) {
         ADDRESS_FINALIZATION_COMPLETE = true;
-      } else {
-        removeFileIfExists(addressPath);
+      }
+
+      if (!ADDRESS_FINALIZATION_COMPLETE) {
+        const unnormalizedInput =
+          readJSONIfExists("unnormalized_address.json") || null;
+        const seedInput = readJSONIfExists("property_seed.json") || null;
+
+        const metadataSources = [
+          existingPayload,
+          unnormalizedInput,
+          seedInput,
+        ].filter((source) => source && typeof source === "object");
+
+        const rawCandidates = [];
+        metadataSources.forEach((source) =>
+          gatherRawAddressCandidatesFromSource(source, rawCandidates),
+        );
+        const fallbackCandidates =
+          (ADDRESS_FALLBACK_CONTEXT &&
+            Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) &&
+            ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates) ||
+          [];
+        rawCandidates.push(...fallbackCandidates);
+
+        const rawValue = resolveFirstNonEmptyString(rawCandidates);
+
+        if (rawValue) {
+          const requestIdentifierCandidates = [];
+          for (const source of metadataSources) {
+            if (!source || typeof source !== "object") {
+              continue;
+            }
+            if (
+              Object.prototype.hasOwnProperty.call(source, "request_identifier")
+            ) {
+              requestIdentifierCandidates.push(source.request_identifier);
+            }
+            if (Object.prototype.hasOwnProperty.call(source, "parcel_id")) {
+              requestIdentifierCandidates.push(source.parcel_id);
+            }
+          }
+          const requestIdentifier = safeNullIfEmpty(
+            resolveFirstNonEmptyString(requestIdentifierCandidates),
+          );
+
+          const sourceHttpCandidate = metadataSources.find(
+            (source) =>
+              source &&
+              typeof source === "object" &&
+              source.source_http_request &&
+              typeof source.source_http_request === "object",
+          );
+          const preparedSource = sourceHttpCandidate
+            ? prepareSourceHttpRequest(sourceHttpCandidate.source_http_request)
+            : null;
+
+          const minimalPayload = {
+            unnormalized_address: rawValue,
+            request_identifier:
+              requestIdentifier === undefined ? null : requestIdentifier,
+            source_http_request: preparedSource
+              ? deepClone(preparedSource)
+              : null,
+          };
+
+          writeAddressPayloadDirect(addressPath, minimalPayload);
+          ADDRESS_FINALIZATION_COMPLETE = true;
+        } else {
+          removeFileIfExists(addressPath);
+        }
       }
 
       enforceNullPropertyAddressRelationships(propertyPath);
