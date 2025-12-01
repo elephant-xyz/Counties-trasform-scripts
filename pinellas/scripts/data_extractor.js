@@ -74,10 +74,17 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
     structure: "structure.json",
   };
 
-  // Clean up utility.json if it exists (no longer used)
+  // Clean up utility.json if it exists (no longer used - we use utility_N.json instead)
+  // Note: utility data is collected in grouped.utility but NOT written as a single file
+  // Instead, utilities are written as utility_N.json with proper relationships later in the script
   const utilityFilePath = path.join(dataDir, "utility.json");
   if (fs.existsSync(utilityFilePath)) {
-    fs.unlinkSync(utilityFilePath);
+    try {
+      fs.unlinkSync(utilityFilePath);
+      console.log("Removed utility.json during extractExtraFeatures - using utility_N.json files instead");
+    } catch (e) {
+      console.error("Failed to remove utility.json:", e);
+    }
   }
 
   Object.entries(fileMap).forEach(([cls, filename]) => {
@@ -3649,13 +3656,38 @@ function extract() {
 //   }
 
   // Final cleanup: Ensure utility.json is removed (it's not used - we use utility_N.json instead)
+  // This file should never exist in the final output. We use utility_N.json files with proper relationships instead.
   try {
     const utilityJsonPath = path.join(dataDir, "utility.json");
     if (fs.existsSync(utilityJsonPath)) {
       fs.unlinkSync(utilityJsonPath);
+      console.log("Removed utility.json - using utility_N.json files with relationships instead");
     }
   } catch (e) {
     console.error("Error cleaning up utility.json:", e);
+    // Try alternative cleanup method
+    try {
+      const alternativePath = path.resolve(dataDir, "utility.json");
+      if (fs.existsSync(alternativePath)) {
+        fs.unlinkSync(alternativePath);
+      }
+    } catch (e2) {
+      console.error("Alternative cleanup also failed:", e2);
+    }
+  }
+
+  // Additional cleanup: Remove any other unexpected utility-related files
+  try {
+    const unexpectedFiles = ["propertyUtility.json", "property_utility.json"];
+    unexpectedFiles.forEach(filename => {
+      const filepath = path.join(dataDir, filename);
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+        console.log(`Removed unexpected file: ${filename}`);
+      }
+    });
+  } catch (e) {
+    console.error("Error cleaning up unexpected files:", e);
   }
 
 }
