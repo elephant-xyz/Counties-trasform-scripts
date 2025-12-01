@@ -71,9 +71,14 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
 
   const fileMap = {
     lot: "lot.json",
-    utility: "utility.json",
     structure: "structure.json",
   };
+
+  // Clean up utility.json if it exists (no longer used)
+  const utilityFilePath = path.join(dataDir, "utility.json");
+  if (fs.existsSync(utilityFilePath)) {
+    fs.unlinkSync(utilityFilePath);
+  }
 
   Object.entries(fileMap).forEach(([cls, filename]) => {
     const props = grouped[cls] || {};
