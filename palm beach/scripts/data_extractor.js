@@ -11034,6 +11034,7 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
+      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
       ...MINIMAL_RAW_ADDRESS_FIELDS,
     ]),
   ),
@@ -11113,6 +11114,7 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
 function buildMinimalRawSubmissionPayload(address, metadataSources = []) {
