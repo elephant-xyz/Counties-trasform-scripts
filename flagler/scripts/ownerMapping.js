@@ -18,6 +18,13 @@ const titleCase = (s) =>
     (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
   );
 
+// Clean name field to match Elephant schema pattern
+const cleanNameField = (name) => {
+  if (!name) return name;
+  // Remove trailing punctuation that would violate the pattern
+  return name.replace(/[\-',.\s]+$/, '').trim();
+};
+
 // Extract property ID with preference: Prop ID -> Property ID -> Parcel ID -> unknown
 function extractPropertyId($) {
   let id = null;
@@ -134,9 +141,9 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
 
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: cleanNameField(titleCase(first || "")),
+    last_name: cleanNameField(titleCase(last || "")),
+    middle_name: middle ? cleanNameField(titleCase(middle)) : null,
   };
 }
 

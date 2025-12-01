@@ -442,6 +442,12 @@ function titleCase(str) {
   return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
+function cleanNameField(name) {
+  if (!name) return name;
+  // Remove trailing punctuation that would violate the Elephant schema pattern
+  return name.replace(/[\-',.\s]+$/, '').trim();
+}
+
 const COMPANY_KEYWORDS =
   /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate)(\b|\s)/i;
 const SUFFIXES_IGNORE =
@@ -506,9 +512,9 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
 
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: cleanNameField(titleCase(first || "")),
+    last_name: cleanNameField(titleCase(last || "")),
+    middle_name: middle ? cleanNameField(titleCase(middle)) : null,
   };
 }
 
@@ -1885,9 +1891,9 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
-      middle_name: middleName,
+      first_name: cleanNameField(firstName || ""),
+      last_name: cleanNameField(lastName || ""),
+      middle_name: middleName ? cleanNameField(middleName) : middleName,
       prefix_name:
         personData && personData.prefix_name != null
           ? personData.prefix_name
