@@ -10727,22 +10727,13 @@ function stripNormalizedFieldsFromRawPayload(address) {
 
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze([
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
+const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+    ]),
+  ),
+);
 const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
   "street_number",
   "street_name",
@@ -70440,15 +70431,7 @@ const ADDRESS_RELATIONSHIP_NULL_BASENAMES = Object.freeze([
   "relationship_address_has_fact_sheet",
 ]);
 
-const RAW_ADDRESS_STRUCTURED_FIELD_DENYLIST = Object.freeze([
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-]);
+const RAW_ADDRESS_STRUCTURED_FIELD_DENYLIST = Object.freeze([]);
 
 function buildCanonicalCountyRawAddress(fieldSources, rawValue, options = {}) {
   const trimmedRaw =
