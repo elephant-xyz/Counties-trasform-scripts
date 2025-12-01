@@ -3658,27 +3658,38 @@ function extract() {
   // Final cleanup: Ensure utility.json is removed (it's not used - we use utility_N.json instead)
   // This file should never exist in the final output. We use utility_N.json files with proper relationships instead.
   try {
-    const utilityJsonPath = path.join(dataDir, "utility.json");
-    if (fs.existsSync(utilityJsonPath)) {
-      fs.unlinkSync(utilityJsonPath);
-      console.log("Removed utility.json - using utility_N.json files with relationships instead");
+    // Try multiple path variations to ensure cleanup
+    const pathsToCheck = [
+      path.join(dataDir, "utility.json"),
+      path.resolve(dataDir, "utility.json"),
+      path.join("data", "utility.json"),
+      "./data/utility.json",
+      "data/utility.json"
+    ];
+
+    let removedCount = 0;
+    pathsToCheck.forEach(utilPath => {
+      try {
+        if (fs.existsSync(utilPath)) {
+          fs.unlinkSync(utilPath);
+          removedCount++;
+          console.log(`Removed utility.json at: ${utilPath} - using utility_N.json files with relationships instead`);
+        }
+      } catch (e) {
+        console.error(`Error removing utility.json at ${utilPath}:`, e);
+      }
+    });
+
+    if (removedCount === 0) {
+      console.log("No utility.json file found to remove (expected)");
     }
   } catch (e) {
-    console.error("Error cleaning up utility.json:", e);
-    // Try alternative cleanup method
-    try {
-      const alternativePath = path.resolve(dataDir, "utility.json");
-      if (fs.existsSync(alternativePath)) {
-        fs.unlinkSync(alternativePath);
-      }
-    } catch (e2) {
-      console.error("Alternative cleanup also failed:", e2);
-    }
+    console.error("Error during utility.json cleanup:", e);
   }
 
   // Additional cleanup: Remove any other unexpected utility-related files
   try {
-    const unexpectedFiles = ["propertyUtility.json", "property_utility.json"];
+    const unexpectedFiles = ["propertyUtility.json", "property_utility.json", "utility.json"];
     unexpectedFiles.forEach(filename => {
       const filepath = path.join(dataDir, filename);
       if (fs.existsSync(filepath)) {
@@ -3688,6 +3699,18 @@ function extract() {
     });
   } catch (e) {
     console.error("Error cleaning up unexpected files:", e);
+  }
+
+  // Final verification: Absolutely ensure utility.json does not exist
+  try {
+    const finalCheckPath = path.join(dataDir, "utility.json");
+    if (fs.existsSync(finalCheckPath)) {
+      console.error("WARNING: utility.json still exists after cleanup, forcing removal");
+      fs.unlinkSync(finalCheckPath);
+      console.log("Forced removal of utility.json successful");
+    }
+  } catch (e) {
+    console.error("Error in final utility.json verification:", e);
   }
 
 }
