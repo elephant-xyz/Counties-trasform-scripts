@@ -3077,16 +3077,17 @@ function extract() {
       const iso = toISODate(dateTxt);
       const price = parseCurrencyToNumber(priceTxt);
       console.log(granteeRaw,price)
-      // && price !== null && price > 0
-      if (iso) {
-        sales.push({
+      // Only create sales_history records when there's a valid price (schema requires purchase_price_amount to be a number, not null)
+      if (iso && price !== null && typeof price === 'number' && Number.isFinite(price)) {
+        const saleObj = {
           ownership_transfer_date: iso,
           purchase_price_amount: price,
           request_identifier: requestIdentifier, // Include request_identifier for each sale
           source_http_request: source_http_request, // Include the full source_http_request object
           _rawIndex: i, // Internal use for sorting
           grantee_text: granteeRaw,
-        });
+        };
+        sales.push(saleObj);
       }
     });
     console.log("SALES END------",sales)
