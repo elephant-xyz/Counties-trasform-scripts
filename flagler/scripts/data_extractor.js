@@ -2994,14 +2994,18 @@ function main() {
     }
   });
 
-  Object.keys(previousOwnersByDate).forEach((dateKey) => {
-    if (dateKey === "current") return;
-    const ownersArr = previousOwnersByDate[dateKey];
-    if (!Array.isArray(ownersArr)) return;
-    ownersArr.forEach((owner) => {
-      registerPreviousOwner(owner, dateKey);
-    });
-  });
+  // NOTE: We no longer proactively create person files for all previous owners from previous_owners_by_date.
+  // Previous owners are only created when they appear in sales history (grantors) or are matched to sales.
+  // This prevents creating "unused" person files that don't have relationships.
+  // The previous_owners_by_date is still used for name normalization in normalizeOwner().
+  // Object.keys(previousOwnersByDate).forEach((dateKey) => {
+  //   if (dateKey === "current") return;
+  //   const ownersArr = previousOwnersByDate[dateKey];
+  //   if (!Array.isArray(ownersArr)) return;
+  //   ownersArr.forEach((owner) => {
+  //     registerPreviousOwner(owner, dateKey);
+  //   });
+  // });
 
   const mailingRelationshipKeys = new Set();
   currentOwnerEntities.forEach((entity) => {
