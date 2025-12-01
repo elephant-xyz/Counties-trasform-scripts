@@ -46,6 +46,38 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
 
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
 
+const COUNTY_ADDRESS_ENSURE_FIELDS = [
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "latitude",
+  "longitude",
+];
+
+const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...COUNTY_ADDRESS_ENSURE_FIELDS,
+      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
+    ]),
+  ),
+);
+
 const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
   // Raw variant should only emit the coarse location metadata the source
   // reliably provides so the schema's oneOf branch does not expect the full
@@ -11242,7 +11274,11 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
-    new Set([...MINIMAL_RAW_ADDRESS_FIELDS, ...RAW_FALLBACK_COPY_FIELDS]),
+    new Set([
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_FALLBACK_COPY_FIELDS,
+      ...COUNTY_RAW_ENSURE_FIELDS,
+    ]),
   ),
 );
 const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
@@ -17734,28 +17770,6 @@ function finalizeAddressPayloadForOutput(payload, variantHint = null) {
   return finalized;
 }
 
-const COUNTY_ADDRESS_ENSURE_FIELDS = [
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "latitude",
-  "longitude",
-];
-
 const COUNTY_SUPPLEMENTAL_NORMALIZED_FIELDS = [];
 
 const COUNTY_RAW_REQUIRED_FIELD_SET = new Set([
@@ -17849,6 +17863,27 @@ function ensureCountyRawRequiredFieldSurface(address) {
       ...RAW_ADDRESS_SCHEMA_TEMPLATE,
       unnormalized_address: trimmedRaw,
     };
+
+  for (const field of COUNTY_RAW_ENSURE_FIELDS) {
+    if (
+      ADDRESS_COORDINATE_FIELDS.includes(field) &&
+      Object.prototype.hasOwnProperty.call(hydratedRaw, field)
+    ) {
+      const numeric = parseCoordinate(hydratedRaw[field]);
+      hydratedRaw[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(hydratedRaw, field)) {
+      hydratedRaw[field] = null;
+      continue;
+    }
+
+    if (typeof sanitizeAddressFieldValue === "function") {
+      const sanitized = sanitizeAddressFieldValue(field, hydratedRaw[field]);
+      hydratedRaw[field] = sanitized === undefined ? null : sanitized;
+    }
+  }
 
   if (
     !Object.prototype.hasOwnProperty.call(hydratedRaw, "request_identifier")
