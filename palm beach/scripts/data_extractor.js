@@ -6055,8 +6055,23 @@ function writeJSON(p, obj) {
         hasStrictCountyNormalizedSchemaCoverage({ ...sanitized });
 
       if (canPreserveStructuredFields) {
-        sanitized.__preserve_structured_fields = true;
-        payload = sanitized;
+        const alignedStructuredPayload =
+          composeSchemaAlignedAddressOutput({ ...sanitized }) || {
+            ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+            ...sanitized,
+          };
+        if (
+          alignedStructuredPayload &&
+          typeof alignedStructuredPayload === "object" &&
+          Object.prototype.hasOwnProperty.call(
+            alignedStructuredPayload,
+            "unnormalized_address",
+          )
+        ) {
+          delete alignedStructuredPayload.unnormalized_address;
+        }
+        alignedStructuredPayload.__preserve_structured_fields = true;
+        payload = alignedStructuredPayload;
       } else {
         const completed =
           ensureAddressOutputFieldPresence(sanitized) || sanitized;
