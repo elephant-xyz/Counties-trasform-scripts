@@ -78,7 +78,7 @@ function collectBuildings($) {
   return buildings;
 }
 
-function toNumber(val) {
+function toInt(val) {
   const n = Number(
     String(val || "")
       .replace(/[,]/g, "")
@@ -87,14 +87,13 @@ function toNumber(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, building_number, space_type_index) {
+function defaultLayout(space_type, idx) {
   return {
     space_type,
-    building_number: building_number,
-    space_type_index: space_type_index,
+    space_index: idx,
     flooring_material_type: null,
     size_square_feet: null,
-    // floor_level: null,
+    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -128,82 +127,25 @@ function defaultLayout(space_type, building_number, space_type_index) {
   };
 }
 
-function computeBathroomBreakdown(bathroomCount) {
-  const n = toNumber(bathroomCount);
-  const result = { full: 0, half: 0, threeQuarter: 0 };
-
-  if (!Number.isFinite(n) || n <= 0) return result;
-
-  const full = Math.floor(n);
-  const fractional = n - full;
-  result.full = full;
-  const roundedFraction = Math.round(fractional * 4) / 4;
-  if (roundedFraction >= 0.75) {
-    result.threeQuarter = 1;
-  } else if (roundedFraction >= 0.5) {
-    result.half = 1;
-  }
-  return result;
-}
-
 function buildLayoutsFromBuildings(buildings) {
-  const layouts = [];
-  buildings.forEach((building, index) => {
-    const buildingNumber = index + 1;
-    const buildingIndex = `${buildingNumber}`;
-
-    const buildingLayout = defaultLayout("Building", buildingNumber, buildingIndex);
-    buildingLayout.total_area_sq_ft = toNumber(building["Total Area"]) || null;
-    buildingLayout.built_year = toNumber(building["Actual Year Built"]) || null;
-    layouts.push(buildingLayout);
-
-    const builtYear = toNumber(building["Actual Year Built"]) || null;
-    
-    const bedroomCount = toNumber(building["Bedrooms"]);
-    for (let i = 1; i <= bedroomCount; i += 1) {
-      const bedroomLayout = defaultLayout("Bedroom", buildingNumber, `${buildingNumber}.${i}`);
-      bedroomLayout.built_year = builtYear;
-      layouts.push(bedroomLayout);
-    }
-
-    const bathroomCounts = computeBathroomBreakdown(building["Bathrooms"]);
-    for (let i = 1; i <= bathroomCounts.full; i += 1) {
-      const fullBathLayout = defaultLayout(
-        "Full Bathroom",
-        buildingNumber,
-        `${buildingNumber}.${i}`,
-      );
-      fullBathLayout.built_year = builtYear;
-      layouts.push(fullBathLayout);
-    }
-    for (let i = 1; i <= bathroomCounts.half; i += 1) {
-      const halfBathLayout = defaultLayout(
-        "Half Bathroom / Powder Room",
-        buildingNumber,
-        `${buildingNumber}.${i}`,
-      );
-      halfBathLayout.built_year = builtYear;
-      layouts.push(halfBathLayout);
-    }
-    for (let i = 1; i <= bathroomCounts.threeQuarter; i += 1) {
-      const threeQuarterBathLayout = defaultLayout(
-        "Three-Quarter Bathroom",
-        buildingNumber,
-        `${buildingNumber}.${i}`,
-      );
-      threeQuarterBathLayout.built_year = builtYear;
-      layouts.push(threeQuarterBathLayout);
-    }
+  // Sum across all buildings
+  let totalBeds = 0;
+  let totalBaths = 0;
+  buildings.forEach((b) => {
+    totalBeds += toInt(b["Bedrooms"]);
+    totalBaths += toInt(b["Bathrooms"]);
   });
+  const layouts = [];
+  let idx = 1;
+  for (let i = 0; i < totalBeds; i++) {
+    layouts.push(defaultLayout("Bedroom", idx++));
+  }
+  for (let i = 0; i < totalBaths; i++) {
+    layouts.push(defaultLayout("Full Bathroom", idx++));
+  }
   return layouts;
 }
-function readJSON(p) {
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf8"));
-  } catch (e) {
-    return null;
-  }
-}
+
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
@@ -211,14 +153,6 @@ function main() {
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);
-  const propertySeed = readJSON("property_seed.json");
-  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
-    throw {
-      type: "error",
-      message: "Request identifier and parcel id don't match.",
-      path: "property.request_identifier",
-    };
-  }
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
