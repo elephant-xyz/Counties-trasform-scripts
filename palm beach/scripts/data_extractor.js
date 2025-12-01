@@ -11277,7 +11277,7 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
+  ...MINIMAL_RAW_ADDRESS_FIELDS,
 ]);
 
 function buildMinimalRawSubmissionPayload(address, metadataSources = []) {
@@ -12088,35 +12088,27 @@ function buildRawOnlySubmissionPayload(address) {
     return null;
   }
 
-  const rawValue =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!rawValue.length) {
+  const rawValue = safeNullIfEmpty(address.unnormalized_address);
+  if (!rawValue) {
     return null;
   }
 
-  const rawPayload = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    unnormalized_address: rawValue,
-  };
+  const rawPayload = { unnormalized_address: rawValue };
 
-  const identifier = safeNullIfEmpty(address.request_identifier);
-  rawPayload.request_identifier =
-    identifier === undefined ? null : identifier;
-
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-    if (
-      field === "unnormalized_address" ||
-      !Object.prototype.hasOwnProperty.call(address, field)
-    ) {
+  MINIMAL_RAW_ADDRESS_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
       return;
     }
     const sanitized = sanitizeAddressFieldValue(field, address[field]);
-    if (sanitized !== undefined) {
+    if (sanitized !== undefined && sanitized !== null) {
       rawPayload[field] = sanitized;
     }
   });
+
+  const identifier = safeNullIfEmpty(address.request_identifier);
+  if (identifier !== undefined) {
+    rawPayload.request_identifier = identifier === null ? null : identifier;
+  }
 
   if (
     Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
@@ -12124,7 +12116,10 @@ function buildRawOnlySubmissionPayload(address) {
   ) {
     const prepared = prepareSourceHttpRequest(address.source_http_request);
     rawPayload.source_http_request = prepared ? deepClone(prepared) : null;
-  } else {
+  } else if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
+    address.source_http_request === null
+  ) {
     rawPayload.source_http_request = null;
   }
 
@@ -12149,79 +12144,12 @@ function buildRawOnlySubmissionPayload(address) {
 }
 
 function buildRawOnlyAddressSurface(address) {
-  if (!address || typeof address !== "object") {
+  const rawPayload = buildRawOnlySubmissionPayload(address);
+  if (!rawPayload) {
     return null;
   }
-
-  const trimmedRaw =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!trimmedRaw.length) {
-    return null;
-  }
-
-  const rawOutput = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    unnormalized_address: trimmedRaw,
-  };
-
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const requestIdentifier = safeNullIfEmpty(address.request_identifier);
-    rawOutput.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
-    address.source_http_request
-  ) {
-    const prepared = prepareSourceHttpRequest(address.source_http_request);
-    if (prepared) {
-      rawOutput.source_http_request = deepClone(prepared);
-    }
-  }
-
-  const assignNormalizedField = (field) => {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      return;
-    }
-    const sanitized = sanitizeAddressFieldValue(field, address[field]);
-    if (sanitized === undefined) {
-      return;
-    }
-    if (typeof sanitized === "string") {
-      const trimmed = sanitized.trim();
-      rawOutput[field] = trimmed.length ? trimmed : null;
-      return;
-    }
-    rawOutput[field] = sanitized;
-  };
-
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach(assignNormalizedField);
-
-  if (!hasMeaningfulAddressValue(rawOutput.postal_code)) {
-    rawOutput.plus_four_postal_code = null;
-  }
-
-  if (
-    hasMeaningfulAddressValue(rawOutput.state_code) &&
-    !hasMeaningfulAddressValue(rawOutput.country_code)
-  ) {
-    rawOutput.country_code = "US";
-  }
-
-  if (
-    (rawOutput.latitude == null && rawOutput.longitude != null) ||
-    (rawOutput.latitude != null && rawOutput.longitude == null)
-  ) {
-    rawOutput.latitude = null;
-    rawOutput.longitude = null;
-  }
-
-  rawOutput.__force_raw_variant = true;
-
-  return enforceRawVariantAllowedFields(rawOutput);
+  rawPayload.__force_raw_variant = true;
+  return enforceRawVariantAllowedFields(rawPayload);
 }
 
 function buildLeanRawAddressPayload(source, overrides = {}) {
@@ -12382,78 +12310,27 @@ function ensureRawVariantFieldSurface(address) {
     return address;
   }
 
-  const rawValue =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-  if (!rawValue.length) {
+  const rawValue = safeNullIfEmpty(address.unnormalized_address);
+  if (!rawValue) {
     return address;
   }
 
-  const surfaced = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    unnormalized_address: rawValue,
-  };
+  const surfaced =
+    buildMinimalRawSubmissionPayload(address) ||
+    buildRawOnlySubmissionPayload(address);
 
-  let requestIdentifier = null;
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const identifier = safeNullIfEmpty(address.request_identifier);
-    if (identifier !== undefined) {
-      requestIdentifier = identifier;
-    }
+  if (!surfaced) {
+    return address;
   }
 
-  for (const [key, value] of Object.entries(address)) {
-    if (key === "unnormalized_address") {
-      continue;
+  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
+    if (field === "request_identifier" || field === "source_http_request") {
+      return;
     }
-    if (!RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET.has(key)) {
-      continue;
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      surfaced[field] = address[field];
     }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(key)) {
-      const numeric = parseCoordinate(value);
-      if (Number.isFinite(numeric)) {
-        surfaced[key] = numeric;
-      }
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      surfaced[key] = trimmed;
-      continue;
-    }
-
-    if (value !== undefined && value !== null) {
-      surfaced[key] = value;
-    }
-  }
-
-  surfaced.request_identifier =
-    requestIdentifier === undefined ? null : requestIdentifier;
-
-  if (!surfaced.postal_code && surfaced.plus_four_postal_code == null) {
-    surfaced.plus_four_postal_code = null;
-  }
-  if (surfaced.postal_code === "") {
-    surfaced.postal_code = null;
-  }
-
-  if (surfaced.state_code && !surfaced.country_code) {
-    surfaced.country_code = "US";
-  }
-
-  if (
-    (surfaced.latitude == null && surfaced.longitude != null) ||
-    (surfaced.latitude != null && surfaced.longitude == null)
-  ) {
-    surfaced.latitude = null;
-    surfaced.longitude = null;
-  }
+  });
 
   return surfaced;
 }
