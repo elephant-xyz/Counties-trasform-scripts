@@ -243,11 +243,7 @@ function parseIntOrNull(val) {
     return null;
   }
   const parsedVal = parseInt(normalized, 10);
-  if (Number.isNaN(parsedVal)) {
-    return null;
-  }
-  // Ensure the result is a proper integer by using Math.round
-  return Math.round(parsedVal);
+  return Number.isNaN(parsedVal) ? null : parsedVal;
 }
 
 function makeLayoutEntries(building, bIdx) {

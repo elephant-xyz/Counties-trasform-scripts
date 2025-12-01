@@ -1514,13 +1514,13 @@ function main() {
         bathroom_renovation_date: l.bathroom_renovation_date ?? null,
         building_number: l.building_number ?? null,
         kitchen_renovation_date: l.kitchen_renovation_date ?? null,
-        heated_area_sq_ft: (l.heated_area_sq_ft != null && typeof l.heated_area_sq_ft === 'number') ? Math.round(l.heated_area_sq_ft) : null,
+        heated_area_sq_ft: l.heated_area_sq_ft ?? null,
         installation_date: l.installation_date ?? null,
         livable_area_sq_ft: l.livable_area_sq_ft ?? null,
         pool_installation_date: l.pool_installation_date ?? null,
         spa_installation_date: l.spa_installation_date ?? null,
         story_type: l.story_type ?? null,
-        total_area_sq_ft: (l.total_area_sq_ft != null && typeof l.total_area_sq_ft === 'number') ? Math.round(l.total_area_sq_ft) : null,
+        total_area_sq_ft: l.total_area_sq_ft ?? null,
       };
       writeJSON(path.join("data", `layout_${idx}.json`), layoutOut);
       if (l.space_type === "Building") {
