@@ -11123,7 +11123,33 @@ function emitNormalizedAddressPayload(addressPath, payload, options = {}) {
     delete normalized.unnormalized_address;
   }
 
-  return writeAddressPayloadDirect(addressPath, normalized);
+  const normalizedProbe = { ...normalized };
+  const hasStrictCoverage =
+    typeof hasNormalizedCountyCoverage === "function"
+      ? hasNormalizedCountyCoverage(normalizedProbe)
+      : COUNTY_REQUIRED_NORMALIZED_FIELDS.every((field) => {
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            return Number.isFinite(parseCoordinate(normalizedProbe[field]));
+          }
+          return hasMeaningfulAddressValue(normalizedProbe[field]);
+        });
+
+  if (!hasStrictCoverage) {
+    if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
+      console.error(
+        "[emitNormalizedAddressPayload] missing strict fields",
+        COUNTY_REQUIRED_NORMALIZED_FIELDS.filter((field) => {
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            return !Number.isFinite(parseCoordinate(normalizedProbe[field]));
+          }
+          return !hasMeaningfulAddressValue(normalizedProbe[field]);
+        }),
+      );
+    }
+    return false;
+  }
+
+  return writeAddressPayloadDirect(addressPath, normalizedProbe);
 }
 
 function stripNormalizedFieldsFromRawPayload(address) {
