@@ -1569,26 +1569,37 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-  const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
+
+  // First, determine which persons and companies are actually needed (match sales dates)
+  const neededPersons = new Map();
+  const neededCompanies = new Set();
+
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+
+    ownersOnDate.forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
+        if (!neededPersons.has(k)) {
+          neededPersons.set(k, {
             first_name: o.first_name,
             middle_name: o.middle_name,
             last_name: o.last_name,
           });
-        else {
-          const existing = personMap.get(k);
+        } else {
+          const existing = neededPersons.get(k);
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
         }
+      } else if (o.type === "company" && (o.name || "").trim()) {
+        neededCompanies.add((o.name || "").trim());
       }
     });
   });
-  people = Array.from(personMap.values()).map((p) => ({
+
+  // Create only the persons and companies that are actually needed
+  people = Array.from(neededPersons.values()).map((p) => ({
     ...appendSourceInfo(seed),
     first_name: p.first_name ? titleCaseName(p.first_name) : null,
     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
@@ -1600,30 +1611,22 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     veteran_status: null,
     request_identifier: parcelId,
   }));
+
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
-    });
-  });
-  companies = Array.from(companyNames).map((n) => ({ 
+
+  companies = Array.from(neededCompanies).map((n) => ({
     ...appendSourceInfo(seed),
     name: n,
     request_identifier: parcelId,
   }));
+
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
 
-  // Track which persons and companies are actually used in relationships
-  const usedPersonIdx = new Set();
-  const usedCompanyIdx = new Set();
-
-  // Relationships: link sale to owners present on that date (both persons and companies)
+  // Create relationships: link sale to owners present on that date
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
   sales.forEach((rec, idx) => {
@@ -1634,7 +1637,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
-          usedPersonIdx.add(pIdx);
           relPersonCounter++;
           writeJSON(
             path.join(
@@ -1653,7 +1655,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
-          usedCompanyIdx.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1667,35 +1668,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           );
         }
       });
-  });
-
-  // Remove unused person and company files
-  people.forEach((p, idx) => {
-    const personIdx = idx + 1;
-    if (!usedPersonIdx.has(personIdx)) {
-      const personFile = path.join("data", `person_${personIdx}.json`);
-      try {
-        if (fs.existsSync(personFile)) {
-          fs.unlinkSync(personFile);
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    }
-  });
-
-  companies.forEach((c, idx) => {
-    const companyIdx = idx + 1;
-    if (!usedCompanyIdx.has(companyIdx)) {
-      const companyFile = path.join("data", `company_${companyIdx}.json`);
-      try {
-        if (fs.existsSync(companyFile)) {
-          fs.unlinkSync(companyFile);
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    }
   });
 }
 
