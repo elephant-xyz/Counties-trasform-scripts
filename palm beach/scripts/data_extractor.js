@@ -11731,8 +11731,18 @@ function stripRawVariantStructuredFields(address) {
   const hasForceRawFlag =
     Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
     address.__force_raw_variant === true;
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  const hasNormalizedSurface =
+    typeof hasNormalizedCountyCoverage === "function" &&
+    hasNormalizedCountyCoverage({ ...address });
   const requireRawSurface =
-    FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput || hasForceRawFlag;
+    FORCE_RAW_ONLY_ADDRESS_OUTPUT ||
+    forceRawAddressVariantOutput ||
+    hasForceRawFlag ||
+    (!preserveStructured && !hasNormalizedSurface && rawValue.length > 0);
 
   if (preserveStructured && !hasForceRawFlag) {
     return address;
@@ -11756,15 +11766,6 @@ function stripRawVariantStructuredFields(address) {
   ) {
     delete preservedMeta.__preserve_structured_fields;
   }
-
-  const rawValue =
-    typeof address.unnormalized_address === "string"
-      ? address.unnormalized_address.trim()
-      : "";
-
-  const hasNormalizedSurface =
-    typeof hasNormalizedCountyCoverage === "function" &&
-    hasNormalizedCountyCoverage({ ...address });
 
   if (
     Object.prototype.hasOwnProperty.call(address, "__preserve_structured_fields") &&
