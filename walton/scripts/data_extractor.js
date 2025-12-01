@@ -1569,40 +1569,24 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-
-  // Only create persons that will have relationships:
-  // 1. Current owner persons (will have property relationship)
-  // 2. Persons associated with sale dates (will have sales relationship)
   const personMap = new Map();
-  const currentOwners = ownersByDate['current'] || [];
-  const saleDates = new Set(sales.map(s => parseDateToISO(s.saleDate)).filter(Boolean));
-
-  // Helper to add person to map
-  const addPersonToMap = (o) => {
-    if (o.type === "person") {
-      const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-      if (!personMap.has(k)) {
-        personMap.set(k, {
-          first_name: o.first_name,
-          middle_name: o.middle_name,
-          last_name: o.last_name,
-        });
-      } else {
-        const existing = personMap.get(k);
-        if (!existing.middle_name && o.middle_name) {
-          existing.middle_name = o.middle_name;
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "person") {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!personMap.has(k))
+          personMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+          });
+        else {
+          const existing = personMap.get(k);
+          if (!existing.middle_name && o.middle_name)
+            existing.middle_name = o.middle_name;
         }
       }
-    }
-  };
-
-  // Add current owner persons
-  currentOwners.forEach(addPersonToMap);
-
-  // Add persons associated with sale dates
-  saleDates.forEach((dateISO) => {
-    const ownersOnDate = ownersByDate[dateISO] || [];
-    ownersOnDate.forEach(addPersonToMap);
+    });
   });
   people = Array.from(personMap.values()).map((p) => ({
     ...appendSourceInfo(seed),
@@ -1619,32 +1603,14 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-
-  // Only create companies that will have relationships:
-  // 1. Current owner companies (will have property relationship)
-  // 2. Companies associated with sale dates (will have sales relationship)
   const companyNames = new Set();
-  const currentOwners = ownersByDate['current'] || [];
-  const saleDates = new Set(sales.map(s => parseDateToISO(s.saleDate)).filter(Boolean));
-
-  // Add current owner companies
-  currentOwners.forEach((o) => {
-    if (o.type === "company" && (o.name || "").trim()) {
-      companyNames.add((o.name || "").trim());
-    }
-  });
-
-  // Add companies associated with sale dates
-  saleDates.forEach((dateISO) => {
-    const ownersOnDate = ownersByDate[dateISO] || [];
-    ownersOnDate.forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim()) {
+  Object.values(ownersByDate).forEach((arr) => {
+    (arr || []).forEach((o) => {
+      if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim());
-      }
     });
   });
-
-  companies = Array.from(companyNames).map((n) => ({
+  companies = Array.from(companyNames).map((n) => ({ 
     ...appendSourceInfo(seed),
     name: n,
     request_identifier: parcelId,
@@ -1695,50 +1661,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
       });
   });
-
-  // Create property->person relationships for current owner persons
-  // This ensures all persons have at least one relationship
-  let propertyPersonCounter = 0;
-  currentOwners
-    .filter((o) => o.type === "person")
-    .forEach((o) => {
-      const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-      if (pIdx) {
-        propertyPersonCounter++;
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_property_person_${propertyPersonCounter}.json`,
-          ),
-          {
-            from: { "/": "./property.json" },
-            to: { "/": `./person_${pIdx}.json` },
-          },
-        );
-      }
-    });
-
-  // Create property->company relationships for current owner companies
-  // This ensures all companies have at least one relationship
-  let propertyCompanyCounter = 0;
-  currentOwners
-    .filter((o) => o.type === "company")
-    .forEach((o) => {
-      const cIdx = findCompanyIndexByName(o.name);
-      if (cIdx) {
-        propertyCompanyCounter++;
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_property_company_${propertyCompanyCounter}.json`,
-          ),
-          {
-            from: { "/": "./property.json" },
-            to: { "/": `./company_${cIdx}.json` },
-          },
-        );
-      }
-    });
 }
 
 function writeTaxes($) {
