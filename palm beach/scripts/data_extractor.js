@@ -70206,6 +70206,183 @@ function persistNullAddressRelationshipFiles(directories = []) {
   }
 }
 
+function buildTerminalCountyComplianceAddressPayload(options = {}) {
+  const {
+    addressPayload = null,
+    unnormalizedSource = null,
+    seedSource = null,
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const fieldSources = [addressPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  if (!fieldSources.length) {
+    return null;
+  }
+
+  const normalizedCandidate =
+    fieldSources.reduce((resolved, source) => {
+      if (resolved || !source) {
+        return resolved;
+      }
+      const hydrated = { ...source };
+      if (
+        defaultCountyName &&
+        !hasMeaningfulAddressValue(hydrated.county_name)
+      ) {
+        hydrated.county_name = titleCaseCounty(defaultCountyName);
+      }
+      if (
+        defaultStateCode &&
+        !hasMeaningfulAddressValue(hydrated.state_code)
+      ) {
+        hydrated.state_code = defaultStateCode;
+      }
+      if (
+        defaultCountryCode &&
+        !hasMeaningfulAddressValue(hydrated.country_code)
+      ) {
+        hydrated.country_code = defaultCountryCode;
+      }
+      const normalizedOutput =
+        buildNormalizedAddressOutputForSchema(hydrated) || null;
+      if (
+        normalizedOutput &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalizedOutput })
+      ) {
+        const cleaned = { ...normalizedOutput };
+        if (
+          Object.prototype.hasOwnProperty.call(cleaned, "unnormalized_address")
+        ) {
+          delete cleaned.unnormalized_address;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(cleaned, "__force_raw_variant")
+        ) {
+          delete cleaned.__force_raw_variant;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            cleaned,
+            "__preserve_structured_fields",
+          )
+        ) {
+          delete cleaned.__preserve_structured_fields;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            cleaned,
+            RAW_MINIMAL_SURFACE_FLAG,
+          )
+        ) {
+          delete cleaned[RAW_MINIMAL_SURFACE_FLAG];
+        }
+        return cleaned;
+      }
+      return resolved;
+    }, null) || null;
+
+  if (normalizedCandidate) {
+    return normalizedCandidate;
+  }
+
+  const rawCandidates = collectNonEmptyStrings(
+    ...fieldSources.flatMap((source) => [
+      source && source.unnormalized_address,
+      source && source.full_address,
+      source && source.address,
+      source && source.site_address,
+    ]),
+  );
+
+  if (
+    ADDRESS_FALLBACK_CONTEXT &&
+    Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+  ) {
+    ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates.forEach((candidate) => {
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        if (trimmed.length) {
+          rawCandidates.push(trimmed);
+        }
+      }
+    });
+  }
+
+  const resolvedRaw = rawCandidates.length ? rawCandidates[0] : null;
+  if (!resolvedRaw) {
+    return null;
+  }
+
+  const basePayload = {
+    unnormalized_address: resolvedRaw,
+    [RAW_MINIMAL_SURFACE_FLAG]: true,
+  };
+
+  const minimalRaw =
+    pruneAddressToMinimalRawFields(basePayload) || {
+      unnormalized_address: resolvedRaw,
+    };
+
+  stripRawVariantStructuredFields(minimalRaw);
+  enforceMinimalRawSubmissionSurface(minimalRaw);
+  minimalRaw.__force_raw_variant = true;
+  if (
+    Object.prototype.hasOwnProperty.call(minimalRaw, RAW_MINIMAL_SURFACE_FLAG)
+  ) {
+    delete minimalRaw[RAW_MINIMAL_SURFACE_FLAG];
+  }
+  return minimalRaw;
+}
+
+function enforceTerminalCountyAddressCompliance(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    propertyPath = path.join("data", "property.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  if (!addressPath) {
+    return;
+  }
+
+  const addressPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const finalPayload = buildTerminalCountyComplianceAddressPayload({
+    addressPayload,
+    unnormalizedSource,
+    seedSource,
+    defaultCountyName,
+    defaultStateCode,
+    defaultCountryCode,
+  });
+
+  if (finalPayload) {
+    writeAddressJSONBypass(addressPath, finalPayload);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+
+  enforceNullPropertyAddressRelationships(propertyPath);
+
+  const relationshipDirs = [
+    path.dirname(addressPath),
+    path.join("relationships"),
+  ];
+  overwriteAddressRelationshipFilesWithNull(relationshipDirs);
+  persistNullAddressRelationshipFiles(relationshipDirs);
+}
+
 function enforceFinalCountyAddressVariant(options = {}) {
   const {
     addressPath = path.join("data", "address.json"),
@@ -71573,6 +71750,28 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to project strict raw address oneOf payload:",
+      error,
+    );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceTerminalCountyAddressCompliance({
+      addressPath: path.join("data", "address.json"),
+      propertyPath: path.join("data", "property.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: "Palm Beach",
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce terminal county address compliance:",
       error,
     );
     if (!process.exitCode) {
