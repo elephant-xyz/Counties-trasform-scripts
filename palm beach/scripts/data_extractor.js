@@ -67020,6 +67020,20 @@ run()
         }
       }
 
+      const extraRawCandidates =
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+          : [];
+      emitStrictAddressSubmissionPayload(addressPath, {
+        unnormalizedPath: "unnormalized_address.json",
+        seedPath: "property_seed.json",
+        defaultCountyName: titleCaseCounty("Palm Beach"),
+        defaultStateCode: "FL",
+        defaultCountryCode: "US",
+        extraRawCandidates,
+      });
+      stripAddressRequestMetadataOnDisk(addressPath);
       enforceNullPropertyAddressRelationships(propertyPath);
       overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
     } catch (error) {
@@ -72717,6 +72731,226 @@ function buildLeanRawOneOfPayload(
   }
 
   return payload;
+}
+
+function emitStrictAddressSubmissionPayload(addressPath, options = {}) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return null;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    extraRawCandidates = [],
+    defaultCountyName = titleCaseCounty("Palm Beach"),
+    defaultStateCode = "FL",
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const fieldSources = [existingPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const normalizedCandidate = (() => {
+    for (const source of fieldSources) {
+      if (
+        source &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...source })
+      ) {
+        const normalized = buildNormalizedAddressOutputForSchema({
+          ...source,
+        });
+        if (!normalized) {
+          continue;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalized,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalized,
+            "request_identifier",
+          )
+        ) {
+          delete normalized.request_identifier;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalized,
+            "source_http_request",
+          )
+        ) {
+          delete normalized.source_http_request;
+        }
+        return normalized;
+      }
+    }
+    return null;
+  })();
+
+  if (normalizedCandidate) {
+    writeAddressJSONBypass(addressPath, normalizedCandidate);
+    stripAddressRequestMetadataOnDisk(addressPath);
+    return "normalized";
+  }
+
+  const applyDerivedMetadataFromRaw = (target, rawString) => {
+    if (
+      !target ||
+      typeof target !== "object" ||
+      typeof rawString !== "string" ||
+      !rawString.trim().length
+    ) {
+      return;
+    }
+    const derived = deriveNormalizedAddressFieldsFromRaw(rawString);
+    if (!derived || typeof derived !== "object") {
+      return;
+    }
+    const candidateFields = [
+      "city_name",
+      "state_code",
+      "postal_code",
+      "plus_four_postal_code",
+    ];
+    candidateFields.forEach((field) => {
+      if (hasMeaningfulAddressValue(target[field])) {
+        return;
+      }
+      if (hasMeaningfulAddressValue(derived[field])) {
+        target[field] = derived[field];
+      }
+    });
+    if (
+      !hasMeaningfulAddressValue(target.municipality_name) &&
+      hasMeaningfulAddressValue(derived.city_name)
+    ) {
+      target.municipality_name = derived.city_name;
+    }
+  };
+
+  const supplementalRawCandidates = Array.isArray(extraRawCandidates)
+    ? extraRawCandidates
+    : [];
+  const rawValue =
+    resolveRawAddressStringFromSources(fieldSources) ||
+    resolveFirstNonEmptyString(supplementalRawCandidates);
+
+  if (existingPayload && typeof existingPayload === "object") {
+    const workingPayload = deepClone(existingPayload);
+    const hasRawString =
+      workingPayload &&
+      typeof workingPayload.unnormalized_address === "string" &&
+      workingPayload.unnormalized_address.trim().length;
+    if (!hasRawString && typeof rawValue === "string" && rawValue.trim().length) {
+      workingPayload.unnormalized_address = rawValue.trim();
+    }
+    applyDerivedMetadataFromRaw(
+      workingPayload,
+      workingPayload.unnormalized_address,
+    );
+    if (!hasMeaningfulAddressValue(workingPayload.county_name)) {
+      workingPayload.county_name = titleCaseCounty(defaultCountyName);
+    }
+    if (
+      hasMeaningfulAddressValue(workingPayload.state_code) &&
+      !hasMeaningfulAddressValue(workingPayload.country_code)
+    ) {
+      workingPayload.country_code = defaultCountryCode;
+    }
+    if (Object.prototype.hasOwnProperty.call(workingPayload, "request_identifier")) {
+      delete workingPayload.request_identifier;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        workingPayload,
+        "source_http_request",
+      )
+    ) {
+      delete workingPayload.source_http_request;
+    }
+    enforceRawVariantAllowedFields(workingPayload);
+    writeAddressJSONBypass(addressPath, workingPayload);
+    return "raw";
+  }
+
+  if (!rawValue || !rawValue.trim().length) {
+    removeFileIfExists(addressPath);
+    return null;
+  }
+
+  const leanRaw =
+    buildLeanRawOneOfPayload(rawValue, fieldSources, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) || { unnormalized_address: rawValue.trim() };
+  applyDerivedMetadataFromRaw(leanRaw, leanRaw.unnormalized_address);
+  if (!hasMeaningfulAddressValue(leanRaw.county_name)) {
+    leanRaw.county_name = titleCaseCounty(defaultCountyName);
+  }
+  if (
+    hasMeaningfulAddressValue(leanRaw.state_code) &&
+    !hasMeaningfulAddressValue(leanRaw.country_code)
+  ) {
+    leanRaw.country_code = defaultCountryCode;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(leanRaw, "request_identifier")) {
+    delete leanRaw.request_identifier;
+  }
+  if (Object.prototype.hasOwnProperty.call(leanRaw, "source_http_request")) {
+    delete leanRaw.source_http_request;
+  }
+
+  enforceRawVariantAllowedFields(leanRaw);
+  writeAddressJSONBypass(addressPath, leanRaw);
+  stripAddressRequestMetadataOnDisk(addressPath);
+  return "raw";
+}
+
+function stripAddressRequestMetadataOnDisk(addressPath) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return;
+  }
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  let mutated = false;
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    delete payload.request_identifier;
+    mutated = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    delete payload.source_http_request;
+    mutated = true;
+  }
+  if (!mutated) {
+    return;
+  }
+  try {
+    addressWriteLocked = true;
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error("Failed to strip address metadata from disk:", error);
+  } finally {
+    addressWriteLocked = false;
+  }
 }
 
 function enforceFinalAddressVariantSelection(options = {}) {
