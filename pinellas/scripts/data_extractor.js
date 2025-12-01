@@ -3632,7 +3632,7 @@ function extract() {
 //   try {
 //     const relationshipsToRemove = [
 //       "relationship_property_address.json",
-//       "relationship_property_lot.json", 
+//       "relationship_property_lot.json",
 //       "relationship_property_structure.json",
 //       "relationship_property_utility.json"
 // ];
@@ -3648,6 +3648,15 @@ function extract() {
 //     console.error("Error removing null relationships:", e);
 //   }
 
+  // Final cleanup: Ensure utility.json is removed (it's not used - we use utility_N.json instead)
+  try {
+    const utilityJsonPath = path.join(dataDir, "utility.json");
+    if (fs.existsSync(utilityJsonPath)) {
+      fs.unlinkSync(utilityJsonPath);
+    }
+  } catch (e) {
+    console.error("Error cleaning up utility.json:", e);
+  }
 
 }
 
