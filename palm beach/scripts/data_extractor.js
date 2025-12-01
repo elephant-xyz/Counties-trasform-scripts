@@ -20,11 +20,22 @@ let normalizedAddressOverrideApplied = false;
 const COUNTY_REQUIRED_NORMALIZED_FIELDS = [
   "street_number",
   "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
   "city_name",
   "state_code",
   "postal_code",
+  "plus_four_postal_code",
   "country_code",
   "county_name",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
   "latitude",
   "longitude",
 ];
@@ -64170,6 +64181,7 @@ function applyNormalizedAddressOverride() {
     }
 
     writeAddressJSONBypass(addressPath, normalizedOutput);
+    enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
     overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
     process.removeAllListeners("exit");
     normalizedAddressOverrideApplied = true;
