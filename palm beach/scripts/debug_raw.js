@@ -4940,26 +4940,11 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([
-  "latitude",
-  "longitude",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-]);
+// Fields that may accompany the raw (unnormalized) address payload. Keep the
+// list aligned with the schema requirements so every nullable property remains
+// present—even when we only have an unnormalized string available.
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-// Fields that may accompany the raw (unnormalized) address payload.
-// Keep the list aligned with the schema requirements so every nullable property is present,
-// even when we only have an unnormalized string available.
 const RAW_ADDRESS_ALLOWED_FIELDS = NORMALIZED_ADDRESS_FIELDS.filter(
   (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
 );

@@ -55,14 +55,20 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "county_name",
 ];
 
-const COUNTY_RAW_ENSURE_FIELDS = Object.freeze([
-  ...COUNTY_ADDRESS_ENSURE_FIELDS,
-]);
+const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...COUNTY_REQUIRED_NORMALIZED_FIELDS,
+      ...COUNTY_ADDRESS_ENSURE_FIELDS,
+    ]),
+  ),
+);
 
 const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
-  // Raw variant should only emit the coarse location metadata the source
-  // reliably provides so the schema's oneOf branch does not expect the full
-  // structured surface.
+  // Track the coarse locality fields we can usually hydrate even when the
+  // source only provides an unnormalized string. The full structured surface is
+  // still required by the schema, so anything missing gets defaulted to null
+  // via COUNTY_RAW_ENSURE_FIELDS.
   "city_name",
   "municipality_name",
   "county_name",
