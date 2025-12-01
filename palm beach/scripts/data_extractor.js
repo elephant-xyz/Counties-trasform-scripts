@@ -47,18 +47,6 @@ const COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS = [
 const COUNTY_STRUCTURED_ADDRESS_OPTIONAL_FIELDS = [];
 
 const MINIMAL_RAW_ADDRESS_FIELDS = [
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
   "city_name",
   "municipality_name",
   "county_name",
@@ -66,8 +54,11 @@ const MINIMAL_RAW_ADDRESS_FIELDS = [
   "postal_code",
   "plus_four_postal_code",
   "country_code",
-  "latitude",
-  "longitude",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
 ];
 
 const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
@@ -4216,6 +4207,9 @@ function buildStrictRawOneOfPayload(rawValue, options = {}) {
     defaultStateCode = null,
     defaultCountryCode = "US",
   } = options || {};
+  const parsedFromRaw = parseCityStateZip
+    ? parseCityStateZip(trimmed)
+    : { city: null, state: null, postal: null, plus4: null };
 
   const resolvedSources = [];
   if (Array.isArray(fieldSources)) {
@@ -4263,13 +4257,37 @@ function buildStrictRawOneOfPayload(rawValue, options = {}) {
     return null;
   };
 
+  const resolveFromRawString = (field) => {
+    if (!parsedFromRaw) {
+      return null;
+    }
+    const sanitize = (val) =>
+      typeof sanitizeAddressFieldValue === "function"
+        ? sanitizeAddressFieldValue(field, val)
+        : val;
+    switch (field) {
+      case "city_name":
+        return parsedFromRaw.city ? sanitize(parsedFromRaw.city) : null;
+      case "state_code":
+        return parsedFromRaw.state ? sanitize(parsedFromRaw.state) : null;
+      case "postal_code":
+        return parsedFromRaw.postal ? sanitize(parsedFromRaw.postal) : null;
+      case "plus_four_postal_code":
+        return parsedFromRaw.plus4 ? sanitize(parsedFromRaw.plus4) : null;
+      default:
+        return null;
+    }
+  };
+
   const rawPayload = {
     ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmed,
   };
 
   for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    rawPayload[field] = resolveFieldValue(field);
+    const resolvedValue =
+      resolveFieldValue(field) ?? resolveFromRawString(field);
+    rawPayload[field] = resolvedValue === undefined ? null : resolvedValue;
   }
 
   if (!rawPayload.postal_code) {
@@ -4621,7 +4639,12 @@ function parseCityStateZip(line) {
   if (!match) {
     return { city: null, state: null, postal: null, plus4: null };
   }
-  const city = match[1] ? match[1].replace(/,$/, "").trim() : null;
+  const citySegment = match[1] ? match[1].replace(/,$/, "").trim() : "";
+  const cityParts = citySegment.split(",");
+  const cityCandidate = cityParts[cityParts.length - 1]
+    ? cityParts[cityParts.length - 1].trim()
+    : "";
+  const city = cityCandidate ? cityCandidate.replace(/,$/, "").trim() : null;
   return {
     city: city
       ? sanitizeCityName
@@ -11416,7 +11439,7 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-const RAW_ONLY_ADDRESS_FIELDS = Object.freeze(["latitude", "longitude"]);
+const RAW_ONLY_ADDRESS_FIELDS = Object.freeze([]);
 const RAW_ONLY_ADDRESS_FIELD_SET = new Set(RAW_ONLY_ADDRESS_FIELDS);
 const RAW_MINIMAL_SURFACE_FLAG = "__prefer_minimal_raw_surface";
 const RAW_VARIANT_META_FIELD_ALLOWLIST = new Set([
@@ -70138,6 +70161,116 @@ function forceCanonicalAddressAndRelationships() {
   ADDRESS_FINALIZATION_COMPLETE = true;
 }
 
+function emitRawAddressSnapshotFromSources() {
+  const dataDir = path.join("data");
+  const relationshipsDir = path.join("relationships");
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+
+  const addressPath = path.join(dataDir, "address.json");
+  const propertyPath = path.join(dataDir, "property.json");
+
+  const existingPayload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource =
+    readJSONIfExists("unnormalized_address.json") || {};
+  const seedSource = readJSONIfExists("property_seed.json") || {};
+
+  const rawCandidates = [
+    existingPayload.unnormalized_address,
+    unnormalizedSource.full_address,
+    unnormalizedSource.unnormalized_address,
+    unnormalizedSource.site_address,
+  ];
+  const rawValue = resolveFirstNonEmptyString(rawCandidates);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    enforceNullPropertyAddressRelationships(propertyPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    return;
+  }
+
+  const normalizedRaw =
+    typeof normalizeFullAddressString === "function"
+      ? normalizeFullAddressString(rawValue) || rawValue.trim()
+      : (rawValue || "").trim();
+  const parsed = parseCityStateZip
+    ? parseCityStateZip(normalizedRaw)
+    : { city: null, state: null, postal: null, plus4: null };
+
+  const sanitizeField = (field, value) =>
+    typeof sanitizeAddressFieldValue === "function"
+      ? sanitizeAddressFieldValue(field, value)
+      : value ?? null;
+
+  const pullFromSources = (field, sources = []) => {
+    for (const source of sources) {
+      if (!source || typeof source !== "object") continue;
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      const candidate = sanitizeField(field, source[field]);
+      if (candidate !== undefined && candidate !== null) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
+  const finalAddress = {
+    unnormalized_address: normalizedRaw,
+    city_name:
+      sanitizeField("city_name", parsed.city) ||
+      pullFromSources("city_name", [existingPayload]),
+    municipality_name:
+      pullFromSources("municipality_name", [
+        existingPayload,
+        unnormalizedSource,
+        seedSource,
+      ]) || null,
+    county_name:
+      pullFromSources("county_name", [existingPayload, unnormalizedSource]) ||
+      (unnormalizedSource.county_jurisdiction
+        ? titleCaseCounty(unnormalizedSource.county_jurisdiction)
+        : titleCaseCounty("Palm Beach")),
+    state_code:
+      sanitizeField("state_code", parsed.state) ||
+      pullFromSources("state_code", [existingPayload]) ||
+      "FL",
+    postal_code:
+      sanitizeField("postal_code", parsed.postal) ||
+      pullFromSources("postal_code", [existingPayload]),
+    plus_four_postal_code:
+      sanitizeField("plus_four_postal_code", parsed.plus4) ||
+      pullFromSources("plus_four_postal_code", [existingPayload]),
+    country_code:
+      pullFromSources("country_code", [existingPayload]) || "US",
+    section: pullFromSources("section", [existingPayload]),
+    township: pullFromSources("township", [existingPayload]),
+    range: pullFromSources("range", [existingPayload]),
+    block: pullFromSources("block", [existingPayload]),
+    lot: pullFromSources("lot", [existingPayload]),
+    request_identifier:
+      safeNullIfEmpty(
+        existingPayload.request_identifier ??
+          unnormalizedSource.request_identifier ??
+          seedSource.request_identifier ??
+          seedSource.parcel_id,
+      ) ?? null,
+    source_http_request:
+      prepareSourceHttpRequest(
+        existingPayload.source_http_request ||
+          unnormalizedSource.source_http_request ||
+          seedSource.source_http_request,
+      ) || null,
+  };
+
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(finalAddress, null, 2)}\n`,
+  );
+  enforceNullPropertyAddressRelationships(propertyPath);
+  overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+}
+
 function emitDeterministicCountyAddressPayload(options = {}) {
   const dataDir = path.join("data");
   const relationshipsDir = path.join("relationships");
@@ -72692,6 +72825,7 @@ process.on("exit", () => {
       seedPath: "property_seed.json",
       relationshipDirectories: [dataDir, relationshipsDir],
     });
+    emitRawAddressSnapshotFromSources();
   } catch (error) {
     console.error(
       "Failed to emit deterministic county address payload:",
