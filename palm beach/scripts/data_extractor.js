@@ -11881,19 +11881,22 @@ function enforceRawVariantAllowedFields(address) {
     Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
     address.__force_raw_variant === true;
 
-  const hasNormalizedSurface =
-    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
-    hasStrictCountyNormalizedSchemaCoverage({ ...address });
-  const hasRawString =
-    typeof address.unnormalized_address === "string" &&
-    address.unnormalized_address.trim().length > 0;
-  const preferredAllowList =
-    !hasNormalizedSurface && hasRawString
-      ? RAW_UNNORMALIZED_FIELD_SET
-      : RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET;
+  const preferredAllowList = RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET;
 
   Object.keys(address).forEach((key) => {
     if (key === "__force_raw_variant") {
+      return;
+    }
+    if (
+      preferredAllowList.has(key) ||
+      RAW_VARIANT_META_FIELD_ALLOWLIST.has(key)
+    ) {
+      return;
+    }
+    if (
+      key === "__preserve_structured_fields" &&
+      address.__preserve_structured_fields === true
+    ) {
       return;
     }
     if (!preferredAllowList.has(key)) {
