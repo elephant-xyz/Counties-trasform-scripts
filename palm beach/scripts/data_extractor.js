@@ -1168,26 +1168,46 @@ function forceNullRelationshipPlaceholders() {
 }
 
 function ensureRelationshipFieldsAreNull(payload) {
-  if (
-    !payload ||
-    typeof payload !== "object" ||
-    Array.isArray(payload) ||
-    !payload.relationships ||
-    typeof payload.relationships !== "object"
-  ) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
   }
 
+  const containers = [];
   let mutated = false;
-  for (const field of RELATIONSHIP_FIELDS_TO_FORCE_NULL) {
+
+  const ensureContainer = (container) => {
+    if (!container || typeof container !== "object" || Array.isArray(container)) {
+      return;
+    }
     if (
-      Object.prototype.hasOwnProperty.call(payload.relationships, field) &&
-      payload.relationships[field] !== null
+      !container.relationships ||
+      typeof container.relationships !== "object" ||
+      Array.isArray(container.relationships)
     ) {
-      payload.relationships[field] = null;
+      container.relationships = {};
       mutated = true;
     }
+    containers.push(container.relationships);
+  };
+
+  ensureContainer(payload);
+  if (
+    payload.data &&
+    typeof payload.data === "object" &&
+    !Array.isArray(payload.data)
+  ) {
+    ensureContainer(payload.data);
   }
+
+  for (const relationships of containers) {
+    for (const field of RELATIONSHIP_FIELDS_TO_FORCE_NULL) {
+      if (relationships[field] !== null) {
+        relationships[field] = null;
+        mutated = true;
+      }
+    }
+  }
+
   return mutated;
 }
 
