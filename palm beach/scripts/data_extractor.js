@@ -11263,6 +11263,11 @@ function buildRawOnlySubmissionPayload(address) {
     }
   });
 
+  RAW_ONLY_ADDRESS_FIELDS.forEach((field) => {
+    const coordinate = parseCoordinate(address[field]);
+    rawPayload[field] = Number.isFinite(coordinate) ? coordinate : null;
+  });
+
   return rawPayload;
 }
 
