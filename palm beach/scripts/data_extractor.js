@@ -3815,24 +3815,9 @@ function ensureRawAddressFieldCompleteness(address) {
     Object.prototype.hasOwnProperty.call(address, RAW_MINIMAL_SURFACE_FLAG) &&
     address[RAW_MINIMAL_SURFACE_FLAG] === true;
   if (preferMinimalSurface) {
-    const minimalPayload = {
-      unnormalized_address: rawValue,
-      [RAW_MINIMAL_SURFACE_FLAG]: true,
-    };
-    if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-      const identifier = safeNullIfEmpty(address.request_identifier);
-      minimalPayload.request_identifier =
-        identifier === undefined ? null : identifier;
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
-      address.source_http_request
-    ) {
-      const prepared = prepareSourceHttpRequest(address.source_http_request);
-      if (prepared) {
-        minimalPayload.source_http_request = deepClone(prepared);
-      }
-    }
+    const minimalPayload =
+      buildRawOnlySubmissionPayload(address) || { unnormalized_address: rawValue };
+    minimalPayload[RAW_MINIMAL_SURFACE_FLAG] = true;
     return applyRawAddressPresenceDefaults(minimalPayload);
   }
 
@@ -3850,23 +3835,9 @@ function ensureRawAddressFieldCompleteness(address) {
   }
 
   const minimalRaw =
-    pruneAddressToMinimalRawFields({
-      ...address,
+    buildRawOnlySubmissionPayload(address) || {
       unnormalized_address: rawValue,
-    }) || null;
-
-  if (!minimalRaw) {
-    return { unnormalized_address: rawValue };
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
-    address.__force_raw_variant === true
-  ) {
-    minimalRaw.__force_raw_variant = true;
-  }
-
-  stripRawVariantStructuredFields(minimalRaw);
+    };
 
   return applyRawAddressPresenceDefaults(minimalRaw);
 }
@@ -10888,54 +10859,22 @@ function collapseRawAddressToMinimalSurface(address) {
     }
   });
 
-  const minimal = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    unnormalized_address: rawValue,
-  };
-
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (field === "unnormalized_address") {
-      continue;
-    }
-    if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      minimal[field] = null;
-      continue;
-    }
-    const value = address[field];
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      minimal[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-    if (value === undefined || value === null) {
-      minimal[field] = null;
-      continue;
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      minimal[field] = trimmed.length ? trimmed : null;
-      continue;
-    }
-    minimal[field] = value;
+  const rawSurface = buildRawOnlySubmissionPayload(address);
+  if (!rawSurface) {
+    delete address.unnormalized_address;
+    Object.assign(address, preservedMeta);
+    return address;
   }
 
-  const identifier = safeNullIfEmpty(address.request_identifier);
-  minimal.request_identifier =
-    identifier === undefined ? null : identifier;
-
-  const preparedSource = prepareSourceHttpRequest(
-    address.source_http_request,
-  );
-  minimal.source_http_request = preparedSource
-    ? deepClone(preparedSource)
-    : null;
-
-  Object.assign(minimal, preservedMeta);
+  const mergedSurface = {
+    ...rawSurface,
+    ...preservedMeta,
+  };
 
   Object.keys(address).forEach((key) => {
     delete address[key];
   });
-  Object.assign(address, minimal);
+  Object.assign(address, mergedSurface);
   return address;
 }
 
@@ -10988,20 +10927,14 @@ function stripRawVariantStructuredFields(address) {
     return address;
   }
 
-  const rawSurface =
-    ensureRawAddressSchemaDefaults({
-      ...address,
-      unnormalized_address: rawValue,
-    }) || {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      unnormalized_address: rawValue,
-    };
-
-  if (!Object.prototype.hasOwnProperty.call(rawSurface, "request_identifier")) {
-    rawSurface.request_identifier = null;
-  }
-  if (!Object.prototype.hasOwnProperty.call(rawSurface, "source_http_request")) {
-    rawSurface.source_http_request = null;
+  const rawSurface = buildRawOnlySubmissionPayload({
+    ...address,
+    unnormalized_address: rawValue,
+  });
+  if (!rawSurface) {
+    delete address.unnormalized_address;
+    Object.assign(address, preservedMeta);
+    return address;
   }
 
   const mergedSurface = {
@@ -11013,7 +10946,6 @@ function stripRawVariantStructuredFields(address) {
     delete address[key];
   });
   Object.assign(address, mergedSurface);
-  collapseRawAddressToMinimalSurface(address);
 
   return address;
 }
@@ -11053,64 +10985,18 @@ function enforceMinimalRawSubmissionSurface(address) {
     return address;
   }
 
-  const schemaAlignedRaw =
-    ensureRawAddressSchemaDefaults({
-      ...address,
-      unnormalized_address: rawValue,
-    }) ||
-    pruneAddressToMinimalRawFields({
-      ...address,
-      unnormalized_address: rawValue,
-    }) || {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      unnormalized_address: rawValue,
-    };
-
-  if (
-    !Object.prototype.hasOwnProperty.call(schemaAlignedRaw, "request_identifier")
-  ) {
-    const identifier = safeNullIfEmpty(address.request_identifier);
-    schemaAlignedRaw.request_identifier =
-      identifier === undefined ? null : identifier;
+  const rawSurface = buildRawOnlySubmissionPayload({
+    ...address,
+    unnormalized_address: rawValue,
+  });
+  if (!rawSurface) {
+    delete address.unnormalized_address;
+    Object.assign(address, preservedMeta);
+    return address;
   }
-
-  const preparedSource = prepareSourceHttpRequest(
-    address.source_http_request,
-  );
-  if (preparedSource) {
-    schemaAlignedRaw.source_http_request = deepClone(preparedSource);
-  } else if (
-    !Object.prototype.hasOwnProperty.call(
-      schemaAlignedRaw,
-      "source_http_request",
-    ) ||
-    schemaAlignedRaw.source_http_request === undefined
-  ) {
-    schemaAlignedRaw.source_http_request = null;
-  }
-
-  if (!schemaAlignedRaw.postal_code) {
-    schemaAlignedRaw.plus_four_postal_code = null;
-  }
-  if (
-    hasMeaningfulAddressValue(schemaAlignedRaw.state_code) &&
-    !hasMeaningfulAddressValue(schemaAlignedRaw.country_code)
-  ) {
-    schemaAlignedRaw.country_code = "US";
-  }
-
-  const hasLatitude = Number.isFinite(schemaAlignedRaw.latitude);
-  const hasLongitude = Number.isFinite(schemaAlignedRaw.longitude);
-  if (hasLatitude !== hasLongitude) {
-    schemaAlignedRaw.latitude = null;
-    schemaAlignedRaw.longitude = null;
-  }
-
-  const completedSurface =
-    applyRawAddressPresenceDefaults(schemaAlignedRaw) || schemaAlignedRaw;
 
   const mergedSurface = {
-    ...completedSurface,
+    ...rawSurface,
     ...preservedMeta,
   };
 
@@ -11118,7 +11004,6 @@ function enforceMinimalRawSubmissionSurface(address) {
     delete address[key];
   });
   Object.assign(address, mergedSurface);
-  collapseRawAddressToMinimalSurface(address);
   return address;
 }
 
@@ -11321,6 +11206,50 @@ const RAW_VARIANT_META_FIELD_ALLOWLIST = new Set([
   "request_identifier",
   "source_http_request",
 ]);
+
+function buildRawOnlySubmissionPayload(address) {
+  if (!address || typeof address !== "object") {
+    return null;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return null;
+  }
+
+  const rawPayload = { unnormalized_address: rawValue };
+
+  const identifier = safeNullIfEmpty(address.request_identifier);
+  rawPayload.request_identifier =
+    identifier === undefined ? null : identifier;
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "source_http_request") &&
+    address.source_http_request
+  ) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    rawPayload.source_http_request = prepared ? deepClone(prepared) : null;
+  } else {
+    rawPayload.source_http_request = null;
+  }
+
+  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
+    if (
+      field === "request_identifier" ||
+      field === "source_http_request"
+    ) {
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      rawPayload[field] = address[field];
+    }
+  });
+
+  return rawPayload;
+}
 
 function buildRawOnlyAddressSurface(address) {
   if (!address || typeof address !== "object") {
