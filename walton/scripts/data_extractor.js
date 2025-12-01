@@ -1618,6 +1618,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
+
+  // Track which persons and companies are actually used in relationships
+  const usedPersonIdx = new Set();
+  const usedCompanyIdx = new Set();
+
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -1629,6 +1634,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
+          usedPersonIdx.add(pIdx);
           relPersonCounter++;
           writeJSON(
             path.join(
@@ -1647,6 +1653,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
+          usedCompanyIdx.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1660,6 +1667,35 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           );
         }
       });
+  });
+
+  // Remove unused person and company files
+  people.forEach((p, idx) => {
+    const personIdx = idx + 1;
+    if (!usedPersonIdx.has(personIdx)) {
+      const personFile = path.join("data", `person_${personIdx}.json`);
+      try {
+        if (fs.existsSync(personFile)) {
+          fs.unlinkSync(personFile);
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+  });
+
+  companies.forEach((c, idx) => {
+    const companyIdx = idx + 1;
+    if (!usedCompanyIdx.has(companyIdx)) {
+      const companyFile = path.join("data", `company_${companyIdx}.json`);
+      try {
+        if (fs.existsSync(companyFile)) {
+          fs.unlinkSync(companyFile);
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
   });
 }
 
