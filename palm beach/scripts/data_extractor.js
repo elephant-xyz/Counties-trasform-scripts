@@ -11314,7 +11314,7 @@ const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
-  ...MINIMAL_RAW_ADDRESS_FIELDS,
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
 function buildMinimalRawSubmissionPayload(address, metadataSources = []) {
@@ -11327,7 +11327,17 @@ function buildMinimalRawSubmissionPayload(address, metadataSources = []) {
     return null;
   }
 
-  const minimal = { unnormalized_address: rawValue };
+  const baselineSource = {
+    ...address,
+    unnormalized_address: rawValue,
+  };
+  const rawSurface =
+    buildRawOnlySubmissionPayload(baselineSource) || {
+      unnormalized_address: rawValue,
+    };
+  const minimal = rawSurface && typeof rawSurface === "object"
+    ? rawSurface
+    : { unnormalized_address: rawValue };
 
   const resolvedSources = [];
   if (Array.isArray(metadataSources)) {
@@ -11337,6 +11347,37 @@ function buildMinimalRawSubmissionPayload(address, metadataSources = []) {
       }
     }
   }
+
+  const ensureField = (field) => {
+    if (
+      hasMeaningfulAddressValue(minimal[field]) ||
+      typeof minimal[field] === "number"
+    ) {
+      return;
+    }
+    for (const source of [address, ...resolvedSources]) {
+      if (!source || typeof source !== "object") continue;
+      if (!Object.prototype.hasOwnProperty.call(source, field)) {
+        continue;
+      }
+      const candidate = sanitizeAddressFieldValue(field, source[field]);
+      if (candidate === undefined) {
+        continue;
+      }
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        minimal[field] = trimmed.length ? trimmed : null;
+        return;
+      }
+      minimal[field] = candidate === null ? null : candidate;
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(minimal, field)) {
+      minimal[field] = null;
+    }
+  };
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach(ensureField);
 
   attachAddressMetadataForSchema(minimal, [address, ...resolvedSources]);
 
@@ -12513,14 +12554,23 @@ const RAW_VARIANT_METADATA_FIELDS = [
 // Keep the raw variant allowlist scoped to those values so we never emit a
 // partial normalized surface that violates the oneOf requirement.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
-  ...RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS,
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([
-  ...RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS,
-]);
+// County schema expects the raw branch to surface the same structured fields
+// (street components, grid info, coordinates, etc.) even when we only have the
+// unnormalized string. Keep those keys present (falling back to null) so the
+// oneOf condition validates correctly.
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
+  Array.from(
+    new Set([
+      ...RAW_ADDRESS_ALLOWED_FIELDS,
+      ...RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS,
+    ]),
+  ),
+);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
@@ -67186,6 +67236,7 @@ run()
       }
 
       if (ADDRESS_FINALIZATION_COMPLETE) {
+        enforceRawAddressTemplateOnDisk(addressPath);
         enforceNullPropertyAddressRelationships(propertyPath);
         overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
         return;
@@ -67205,6 +67256,7 @@ run()
         extraRawCandidates,
       });
       stripAddressRequestMetadataOnDisk(addressPath);
+      enforceRawAddressTemplateOnDisk(addressPath);
       enforceNullPropertyAddressRelationships(propertyPath);
       overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
     } catch (error) {
@@ -72858,20 +72910,17 @@ function buildLeanRawOneOfPayload(
     ? deepClone(prepareSourceHttpRequest(resolvedSource) || resolvedSource)
     : null;
 
-  const metadataFields = [
-    "city_name",
-    "municipality_name",
-    "county_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "country_code",
-  ];
+  const schemaFields = RAW_ADDRESS_ALLOWED_FIELDS;
 
-  metadataFields.forEach((field) => {
+  schemaFields.forEach((field) => {
     const resolved = resolveFirstMeaningfulAddressField(field, candidateSources);
     if (resolved === undefined || resolved === null) {
       payload[field] = null;
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(resolved);
+      payload[field] = Number.isFinite(numeric) ? numeric : null;
       return;
     }
     if (typeof resolved === "string") {
@@ -73051,6 +73100,7 @@ function emitStrictAddressSubmissionPayload(addressPath, options = {}) {
       delete workingPayload.source_http_request;
     }
     enforceRawVariantAllowedFields(workingPayload);
+    ensureCountyRawRequiredFieldSurface(workingPayload);
     writeAddressJSONBypass(addressPath, workingPayload);
     return "raw";
   }
@@ -73085,6 +73135,7 @@ function emitStrictAddressSubmissionPayload(addressPath, options = {}) {
   }
 
   enforceRawVariantAllowedFields(leanRaw);
+  ensureCountyRawRequiredFieldSurface(leanRaw);
   writeAddressJSONBypass(addressPath, leanRaw);
   stripAddressRequestMetadataOnDisk(addressPath);
   return "raw";
@@ -73107,20 +73158,69 @@ function stripAddressRequestMetadataOnDisk(addressPath) {
     delete payload.source_http_request;
     mutated = true;
   }
-  if (!mutated) {
-    return;
-  }
+  const hydratedPayload =
+    ensureCountyRawRequiredFieldSurface(payload) || payload;
+  enforceRawVariantAllowedFields(hydratedPayload);
   try {
     addressWriteLocked = true;
     originalWriteFileSync.call(
       fs,
       addressPath,
-      `${JSON.stringify(payload, null, 2)}\n`,
+      `${JSON.stringify(hydratedPayload, null, 2)}\n`,
     );
   } catch (error) {
     console.error("Failed to strip address metadata from disk:", error);
   } finally {
     addressWriteLocked = false;
+  }
+}
+
+function enforceRawAddressTemplateOnDisk(addressPath) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    return;
+  }
+
+  const surfaced =
+    ensureRawAddressOutputSurface({
+      ...payload,
+      unnormalized_address: trimmedRaw,
+    }) || null;
+  if (!surfaced || typeof surfaced !== "object") {
+    return;
+  }
+
+  if (!surfaced.postal_code) {
+    surfaced.plus_four_postal_code = null;
+  }
+  if (surfaced.state_code && !surfaced.country_code) {
+    surfaced.country_code = "US";
+  }
+
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(surfaced, null, 2)}\n`,
+    );
+  } catch (error) {
+    try {
+      writeAddressJSONBypass(addressPath, surfaced);
+    } catch {
+      // Ignore secondary failures; upstream callers will handle missing payloads.
+    }
   }
 }
 
