@@ -99,29 +99,10 @@ const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   ),
 );
 const RAW_UNNORMALIZED_FIELD_SET = new Set(RAW_UNNORMALIZED_ONLY_FIELDS);
-const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-]);
+// Raw schema only allows the unnormalized surface plus coarse locality fields.
+// Keep the structured street decomposition exclusively for the normalized branch
+// so that our raw submissions do not violate the address oneOf.
+const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([]);
 const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
   RAW_VARIANT_STRUCTURED_FIELDS,
 );
@@ -140,12 +121,7 @@ const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
   RAW_VARIANT_FORBIDDEN_FIELDS,
 );
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      ...RAW_UNNORMALIZED_ONLY_FIELDS,
-      ...RAW_VARIANT_STRUCTURED_FIELDS,
-    ]),
-  ),
+  Array.from(new Set([...RAW_UNNORMALIZED_ONLY_FIELDS])),
 );
 const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(RAW_ADDRESS_RAW_SURFACE_FIELDS);
 
@@ -18960,6 +18936,16 @@ const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...COUNTY_NORMALIZED_CORE_FIELDS];
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
+
+const RAW_SCHEMA_POPULATABLE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_GRID_FIELDS,
+      ...ADDRESS_COORDINATE_FIELDS,
+    ]),
+  ),
+);
 
 const STRICT_NORMALIZED_ADDRESS_FIELDS = Array.from(
   new Set([
@@ -72677,7 +72663,7 @@ function populateMinimalRawSurfaceFields(target, fieldSources = []) {
       value === undefined || value === null ? null : value;
   };
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+  for (const field of RAW_SCHEMA_POPULATABLE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(target, field)) {
       continue;
     }
