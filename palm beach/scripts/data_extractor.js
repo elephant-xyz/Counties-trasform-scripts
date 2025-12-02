@@ -47106,7 +47106,9 @@ async function main() {
       seed,
       structuredSnapshot,
     );
-    forceRawAddressVariantOutput = hasStructuredSource ? false : true;
+    if (hasStructuredSource) {
+      forceRawAddressVariantOutput = false;
+    }
   }
   const htmlCoordinates = extractCoordinatesFromHTML(inputHTML);
   const htmlLatitude = parseCoordinate(htmlCoordinates.latitude);
