@@ -1971,10 +1971,6 @@ function main() {
       url: "https://qpublic.schneidercorp.com/Application.aspx",
     };
 
-  if (lastUpdated && defaultSourceHttpRequest) {
-    defaultSourceHttpRequest._last_data_upload = lastUpdated;
-  }
-
   let ownersData = null,
     utilsData = null,
     layoutData = null,
