@@ -87,30 +87,17 @@ const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "country_code",
 ]);
 
-const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze([
-  "unnormalized_address",
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-]);
+const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      "unnormalized_address",
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_GRID_FIELDS,
+      "latitude",
+      "longitude",
+    ]),
+  ),
+);
 const RAW_UNNORMALIZED_FIELD_SET = new Set(RAW_UNNORMALIZED_ONLY_FIELDS);
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
   Array.from(new Set([...RAW_UNNORMALIZED_ONLY_FIELDS])),
@@ -72601,6 +72588,9 @@ function projectAddressPayloadForSchema(address) {
   ) {
     minimal.__force_raw_variant = true;
   }
+
+  stripRawVariantStructuredFields(minimal);
+  enforceRawVariantAllowedFields(minimal);
   if (
     Object.prototype.hasOwnProperty.call(
       address,
