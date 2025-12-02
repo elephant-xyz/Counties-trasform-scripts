@@ -252,6 +252,12 @@ function buildOwnersFromRaw(raw) {
   if (/^(c\/o|care of)\b/i.test(s)) return owners; // ignore care-of lines entirely
   if (/^(po box|p\.?o\.? box)/i.test(s)) return owners;
 
+  // Exclude standalone estate designations (with or without parentheses)
+  const cleanedForCheck = s.replace(/[\(\)\[\]\{\}]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(ESTATE|TRUST|TRUSTEE|DECEASED|DEC'D|DEC|ET AL|ETAL)$/i.test(cleanedForCheck)) {
+    return owners; // ignore standalone estate designations
+  }
+
   // If name contains company indicators -> company
   if (isCompanyName(s)) {
     owners.push({ type: "company", name: s });
