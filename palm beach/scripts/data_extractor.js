@@ -71890,15 +71890,14 @@ function collapseAddressToStrictRawPayload(options = {}) {
   );
 
   const strictRaw = {
-    unnormalized_address: resolvedRaw,
-    request_identifier:
-      requestIdentifier === undefined
-        ? null
-        : requestIdentifier === null
-          ? null
-          : requestIdentifier,
-    source_http_request: null,
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
   };
+  strictRaw.unnormalized_address = resolvedRaw;
+
+  const normalizedIdentifier = safeNullIfEmpty(requestIdentifier);
+  strictRaw.request_identifier =
+    normalizedIdentifier === undefined ? null : normalizedIdentifier;
+  strictRaw.source_http_request = null;
 
   if (sourceHttpRequest !== undefined) {
     if (sourceHttpRequest === null) {
@@ -71939,15 +71938,19 @@ function collapseAddressToStrictRawPayload(options = {}) {
     if (value === undefined || value === null) {
       return;
     }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      strictRaw[field] = trimmed;
+    const sanitized =
+      typeof sanitizeAddressFieldValue === "function"
+        ? sanitizeAddressFieldValue(field, value)
+        : value;
+    if (sanitized === undefined || sanitized === null) {
       return;
     }
-    strictRaw[field] = value;
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      strictRaw[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    strictRaw[field] = sanitized;
   };
 
   localityFields.forEach(assignOptionalField);
@@ -71975,9 +71978,7 @@ function collapseAddressToStrictRawPayload(options = {}) {
   }
 
   if (!hasMeaningfulAddressValue(strictRaw.postal_code)) {
-    if (Object.prototype.hasOwnProperty.call(strictRaw, "plus_four_postal_code")) {
-      delete strictRaw.plus_four_postal_code;
-    }
+    strictRaw.plus_four_postal_code = null;
   }
 
   const hasLatitude = Number.isFinite(
