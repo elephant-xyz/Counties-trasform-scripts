@@ -328,6 +328,7 @@ if (currentOwnersStructured.length > 0) {
 }
 
 const orderedOwnersByDate = {};
+let latestSaleOwner = {};
 const dateKeys = Object.keys(owners_by_date)
   .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
   .sort();
@@ -337,7 +338,9 @@ Object.keys(owners_by_date)
   .forEach((k) => {
     orderedOwnersByDate[k] = owners_by_date[k];
   });
-if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
+if (dateKeys.length > 0) {
+  orderedOwnersByDate["current"] = owners_by_date[dateKeys[dateKeys.length - 1]];
+} else if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
   orderedOwnersByDate["current"] = owners_by_date["current"];
 }
 
