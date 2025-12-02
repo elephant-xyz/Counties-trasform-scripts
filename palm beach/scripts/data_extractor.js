@@ -47450,6 +47450,12 @@ async function main() {
     },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
+  try {
+    enforceNullPropertyAddressRelationships(propertyFilePath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error("Failed to enforce null property/address relationships:", error);
+  }
 
   // Lot.json - with allowed nulls and lot_size_acre
   let lotSizeAcre = null;
@@ -77052,6 +77058,74 @@ const RAW_TERMINAL_ADDRESS_FIELDS = Object.freeze([
   "longitude",
 ]);
 
+const RAW_TERMINAL_UNNORMALIZED_FIELD_WHITELIST = new Set([
+  "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
+  "latitude",
+  "longitude",
+  "__preserve_request_metadata",
+]);
+
+function projectTerminalRawAddressSurface(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    return null;
+  }
+
+  const projected = {
+    unnormalized_address: rawValue,
+  };
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      payload,
+      "__preserve_request_metadata",
+    ) &&
+    payload.__preserve_request_metadata === true
+  ) {
+    projected.__preserve_request_metadata = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const identifier = safeNullIfEmpty(payload.request_identifier);
+    if (identifier === undefined) {
+      projected.request_identifier = null;
+    } else if (identifier === null) {
+      projected.request_identifier = null;
+    } else {
+      projected.request_identifier = identifier;
+    }
+  } else {
+    projected.request_identifier = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    projected.source_http_request = prepared ? deepClone(prepared) : null;
+  } else {
+    projected.source_http_request = null;
+  }
+
+  const latitude = parseCoordinate(payload.latitude);
+  const longitude = parseCoordinate(payload.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    projected.latitude = latitude;
+    projected.longitude = longitude;
+  }
+
+  Object.keys(projected).forEach((key) => {
+    if (!RAW_TERMINAL_UNNORMALIZED_FIELD_WHITELIST.has(key)) {
+      delete projected[key];
+    }
+  });
+
+  return projected;
+}
+
 function buildTerminalRawAddressPayload(fieldSources = [], options = {}) {
   const sources = Array.isArray(fieldSources)
     ? fieldSources.filter((source) => source && typeof source === "object")
@@ -77150,7 +77224,11 @@ function buildTerminalRawAddressPayload(fieldSources = [], options = {}) {
 
   payload.__preserve_request_metadata = true;
 
-  return payload;
+  const projectedPayload = projectTerminalRawAddressSurface(payload);
+  if (!projectedPayload) {
+    return null;
+  }
+  return projectedPayload;
 }
 
 function enforceTerminalCountyRawAddress(options = {}) {
