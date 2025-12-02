@@ -11,7 +11,7 @@ let forceRawAddressVariantOutput = false;
 // Allow the emitter to choose the correct schema branch dynamically. We'll
 // still fall back to the raw variant when we lack structured data, but we no
 // longer suppress normalized outputs by default.
-const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
+const FORCE_RAW_ONLY_ADDRESS_OUTPUT = true;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 const RAW_ADDRESS_DERIVED_FLAG = "__derived_from_raw";
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
@@ -12607,6 +12607,95 @@ function enforceRawFieldAllowlistOnDisk(addressPath) {
     addressPath,
     `${JSON.stringify(sanitized, null, 2)}\n`,
   );
+}
+
+function enforceDeterministicAddressOneOf(addressPath, options = {}) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const {
+    rawSources = [],
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+  } = options || {};
+
+  const normalizedSurfaceAvailable =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (normalizedSurfaceAvailable) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...payload }) || null;
+    if (normalizedOutput) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+      writeAddressJSONBypass(addressPath, normalizedOutput);
+    }
+    return;
+  }
+
+  const sourcePool = Array.isArray(rawSources)
+    ? rawSources.filter((source) => source && typeof source === "object")
+    : [];
+  sourcePool.unshift(payload);
+
+  const leanRaw =
+    buildLeanRawAddressPayloadFromSources(sourcePool, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) || null;
+
+  if (
+    !leanRaw ||
+    !hasMeaningfulAddressValue(leanRaw.unnormalized_address)
+  ) {
+    enforceDeterministicRawAddressFromSources(addressPath, {
+      existingAddress: payload,
+      unnormalizedPath,
+      seedPath,
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    });
+    return;
+  }
+
+  const normalizedIdentifier = safeNullIfEmpty(payload.request_identifier);
+  if (normalizedIdentifier !== undefined) {
+    leanRaw.request_identifier =
+      normalizedIdentifier === null ? null : normalizedIdentifier;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  leanRaw.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  const minimalSurface =
+    pruneAddressToMinimalRawFields(
+      { ...leanRaw, __force_raw_variant: true },
+      sourcePool,
+    ) || { ...leanRaw, __force_raw_variant: true };
+
+  collapseRawAddressToUnnormalizedOnly(minimalSurface);
+  writeAddressJSONBypass(addressPath, minimalSurface);
 }
 
 function stripRawVariantStructuredFields(address) {
@@ -68694,6 +68783,17 @@ run()
         enforceRawAddressTemplateOnDisk(addressPath);
         enforceNullPropertyAddressRelationships(propertyPath);
         overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+        const unnormalizedSource =
+          readJSONIfExists("unnormalized_address.json") || null;
+        const seedSource = readJSONIfExists("property_seed.json") || null;
+        enforceDeterministicAddressOneOf(addressPath, {
+          rawSources: [existingPayload, unnormalizedSource, seedSource],
+          defaultCountyName: titleCaseCounty("Palm Beach"),
+          defaultStateCode: "FL",
+          defaultCountryCode: "US",
+          unnormalizedPath: "unnormalized_address.json",
+          seedPath: "property_seed.json",
+        });
         return;
       }
 
@@ -68714,6 +68814,17 @@ run()
       enforceRawAddressTemplateOnDisk(addressPath);
       enforceNullPropertyAddressRelationships(propertyPath);
       overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+      const unnormalizedSource =
+        readJSONIfExists("unnormalized_address.json") || null;
+      const seedSource = readJSONIfExists("property_seed.json") || null;
+      enforceDeterministicAddressOneOf(addressPath, {
+        rawSources: [existingPayload, unnormalizedSource, seedSource],
+        defaultCountyName: titleCaseCounty("Palm Beach"),
+        defaultStateCode: "FL",
+        defaultCountryCode: "US",
+        unnormalizedPath: "unnormalized_address.json",
+        seedPath: "property_seed.json",
+      });
     } catch (error) {
       console.error("Failed to enforce terminal raw address surface:", error);
       if (!process.exitCode) {
