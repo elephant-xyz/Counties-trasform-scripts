@@ -87,6 +87,17 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
     }
   }
 
+  // Additional safeguard: Delete utility.json before any file writing to prevent accidental generation
+  const utilityJsonBeforeWritePath = path.join(dataDir, "utility.json");
+  if (fs.existsSync(utilityJsonBeforeWritePath)) {
+    try {
+      fs.unlinkSync(utilityJsonBeforeWritePath);
+      console.log("Pre-write safeguard: Removed utility.json before file writing");
+    } catch (e) {
+      console.error("Failed to remove utility.json in pre-write safeguard:", e);
+    }
+  }
+
   Object.entries(fileMap).forEach(([cls, filename]) => {
     // Safety check: Never write utility.json (we use utility_N.json instead)
     if (filename === "utility.json" || cls === "utility") {
