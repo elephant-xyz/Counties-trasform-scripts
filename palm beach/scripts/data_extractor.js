@@ -1211,7 +1211,12 @@ const ADDRESS_RELATIONSHIP_BASENAMES = Object.freeze([
 const ADDRESS_RELATIONSHIP_BASENAME_SET = new Set(
   ADDRESS_RELATIONSHIP_BASENAMES,
 );
-
+const ADDRESS_RELATIONSHIP_NULL_BASENAMES = Object.freeze([
+  "property_has_address",
+  "relationship_property_has_address",
+  "address_has_fact_sheet",
+  "relationship_address_has_fact_sheet",
+]);
 const RELATIONSHIP_SUPPRESSED_BASENAMES = new Set();
 // Always emit explicit null placeholders so downstream systems can safely
 // hydrate the UR-based relationships without tripping validation.
@@ -1282,6 +1287,7 @@ function ensureNullRelationshipPlaceholders(directoryPath, baseNames = []) {
 
   purgeSuppressedRelationshipFiles(directoryPath);
   removeAddressRelationshipFiles([directoryPath]);
+  persistNullAddressRelationshipFiles([directoryPath]);
 
   if (!Array.isArray(baseNames) || !baseNames.length) {
     return;
@@ -72749,13 +72755,6 @@ function collapseAddressToStrictRawPayload(options = {}) {
     addressWriteLocked = false;
   }
 }
-
-const ADDRESS_RELATIONSHIP_NULL_BASENAMES = Object.freeze([
-  "property_has_address",
-  "relationship_property_has_address",
-  "address_has_fact_sheet",
-  "relationship_address_has_fact_sheet",
-]);
 
 const RAW_ADDRESS_STRUCTURED_FIELD_DENYLIST = Object.freeze([]);
 
