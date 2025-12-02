@@ -902,7 +902,6 @@ function textOf($, el) {
   return $(el).text().trim();
 }
 
-
 function findSectionByTitle($, titles) {
   if (!titles) return null;
   const list = Array.isArray(titles) ? titles : [titles];
