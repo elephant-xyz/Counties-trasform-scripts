@@ -68,6 +68,15 @@ const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
   "country_code",
 ]);
 
+const RAW_ADDRESS_GRID_FIELDS = Object.freeze([
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+]);
+const RAW_ADDRESS_GRID_FIELD_SET = new Set(RAW_ADDRESS_GRID_FIELDS);
+
 const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
   Array.from(
     new Set([
@@ -104,14 +113,6 @@ const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze([
   "lot",
 ]);
 const RAW_UNNORMALIZED_FIELD_SET = new Set(RAW_UNNORMALIZED_ONLY_FIELDS);
-const RAW_ADDRESS_GRID_FIELDS = Object.freeze([
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-]);
-const RAW_ADDRESS_GRID_FIELD_SET = new Set(RAW_ADDRESS_GRID_FIELDS);
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
   Array.from(new Set([...RAW_UNNORMALIZED_ONLY_FIELDS])),
 );
@@ -189,8 +190,6 @@ function writeAddressJSONBypass(addressPath, payload) {
   }
   const ensuredPayload =
     ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
-  stripRawVariantStructuredFields(ensuredPayload);
-  enforceMinimalRawSubmissionSurface(ensuredPayload);
   enforceRawVariantAllowedFields(ensuredPayload);
   collapseRawAddressToUnnormalizedOnly(ensuredPayload);
   projectAddressPayloadForSchema(ensuredPayload);
@@ -224,8 +223,6 @@ function writeMinimalAddressPayload(addressPath, payload) {
     return false;
   }
 
-  stripRawVariantStructuredFields(payload);
-  enforceMinimalRawSubmissionSurface(payload);
   enforceRawVariantAllowedFields(payload);
   collapseRawAddressToUnnormalizedOnly(payload);
   projectAddressPayloadForSchema(payload);
@@ -1092,8 +1089,7 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
             "__preserve_structured_fields",
           ) && ensuredPayload.__preserve_structured_fields === true;
         if (!preserveStructured) {
-          stripRawVariantStructuredFields(ensuredPayload);
-          enforceMinimalRawSubmissionSurface(ensuredPayload);
+          enforceRawVariantAllowedFields(ensuredPayload);
           collapseRawAddressToUnnormalizedOnly(ensuredPayload);
         } else {
           delete ensuredPayload.__preserve_structured_fields;
@@ -12015,13 +12011,6 @@ function collapseRawAddressToUnnormalizedOnly(address) {
     return address;
   }
 
-  const hasNormalizedSurface =
-    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
-    hasStrictCountyNormalizedSchemaCoverage({ ...address });
-  if (hasNormalizedSurface) {
-    return address;
-  }
-
   const rawValue =
     typeof address.unnormalized_address === "string"
       ? address.unnormalized_address.trim()
@@ -12036,6 +12025,22 @@ function collapseRawAddressToUnnormalizedOnly(address) {
       unnormalized_address: rawValue,
     }) || null;
   if (!hydrated) {
+    return address;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...address });
+  if (hasNormalizedSurface) {
+    return address;
+  }
+
+  const hasStructuredRawFields = RAW_ADDRESS_RAW_SURFACE_FIELDS.some(
+    (field) =>
+      field !== "unnormalized_address" &&
+      hasMeaningfulAddressValue(address[field]),
+  );
+  if (hasStructuredRawFields) {
     return address;
   }
 
