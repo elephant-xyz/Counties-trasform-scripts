@@ -189,6 +189,7 @@ function writeAddressJSONBypass(addressPath, payload) {
   stripRawVariantStructuredFields(ensuredPayload);
   enforceMinimalRawSubmissionSurface(ensuredPayload);
   enforceRawVariantAllowedFields(ensuredPayload);
+  collapseRawAddressToUnnormalizedOnly(ensuredPayload);
   const serialized = `${JSON.stringify(ensuredPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
@@ -222,6 +223,7 @@ function writeMinimalAddressPayload(addressPath, payload) {
   stripRawVariantStructuredFields(payload);
   enforceMinimalRawSubmissionSurface(payload);
   enforceRawVariantAllowedFields(payload);
+  collapseRawAddressToUnnormalizedOnly(payload);
 
   try {
     addressWriteLocked = true;
@@ -257,6 +259,7 @@ function writeAddressPayloadDirect(addressPath, payload) {
       typeof payloadToWrite.unnormalized_address === "string"
     ) {
       enforceRawVariantAllowedFields(payloadToWrite);
+      collapseRawAddressToUnnormalizedOnly(payloadToWrite);
     }
   }
 
@@ -1085,6 +1088,7 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         if (!preserveStructured) {
           stripRawVariantStructuredFields(ensuredPayload);
           enforceMinimalRawSubmissionSurface(ensuredPayload);
+          collapseRawAddressToUnnormalizedOnly(ensuredPayload);
         } else {
           delete ensuredPayload.__preserve_structured_fields;
         }
@@ -11994,6 +11998,71 @@ function enforceRawVariantAllowedFields(address) {
     delete address.__force_raw_variant;
   }
 
+  return address;
+}
+
+function collapseRawAddressToUnnormalizedOnly(address) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
+    return address;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...address });
+  if (hasNormalizedSurface) {
+    return address;
+  }
+
+  const rawValue =
+    typeof address.unnormalized_address === "string"
+      ? address.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return address;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "request_identifier") &&
+    address.request_identifier !== undefined
+  ) {
+    const normalizedIdentifier = safeNullIfEmpty(address.request_identifier);
+    if (normalizedIdentifier !== undefined) {
+      minimal.request_identifier =
+        normalizedIdentifier === null ? null : normalizedIdentifier;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    if (prepared) {
+      minimal.source_http_request = deepClone(prepared);
+    } else if (address.source_http_request === null) {
+      minimal.source_http_request = null;
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true
+  ) {
+    minimal.__force_raw_variant = true;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__preserve_request_metadata") &&
+    address.__preserve_request_metadata === true
+  ) {
+    minimal.__preserve_request_metadata = true;
+  }
+
+  Object.keys(address).forEach((key) => {
+    delete address[key];
+  });
+  Object.assign(address, minimal);
   return address;
 }
 
