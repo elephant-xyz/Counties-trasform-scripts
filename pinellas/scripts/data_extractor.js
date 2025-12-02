@@ -3738,17 +3738,39 @@ function extract() {
 
 }
 
-extract();
-
-// Post-execution cleanup: Absolutely ensure utility.json does not exist in the output
-// This runs after extract() completes to catch any edge cases
+// Run extraction with guaranteed cleanup
 try {
-  const dataDir = "data";
-  const utilityJsonPath = path.join(dataDir, "utility.json");
-  if (fs.existsSync(utilityJsonPath)) {
-    fs.unlinkSync(utilityJsonPath);
-    console.log("Post-execution cleanup: Removed utility.json - using utility_N.json files instead");
+  extract();
+} finally {
+  // CRITICAL: Post-execution cleanup - absolutely ensure utility.json does not exist
+  // This runs after extract() completes OR if there's an error, to catch any edge cases
+  try {
+    const dataDir = "data";
+    const pathsToClean = [
+      path.join(dataDir, "utility.json"),
+      path.resolve(dataDir, "utility.json"),
+      path.join("data", "utility.json"),
+      "./data/utility.json",
+      "data/utility.json"
+    ];
+
+    let cleanedCount = 0;
+    pathsToClean.forEach(utilPath => {
+      try {
+        if (fs.existsSync(utilPath)) {
+          fs.unlinkSync(utilPath);
+          cleanedCount++;
+          console.log(`Post-execution cleanup: Removed utility.json at ${utilPath} - using utility_N.json files instead`);
+        }
+      } catch (e) {
+        console.error(`Error removing utility.json at ${utilPath}:`, e);
+      }
+    });
+
+    if (cleanedCount === 0) {
+      console.log("Post-execution cleanup: No utility.json found (expected)");
+    }
+  } catch (e) {
+    console.error("Error in post-execution utility.json cleanup:", e);
   }
-} catch (e) {
-  console.error("Error in post-execution utility.json cleanup:", e);
 }
