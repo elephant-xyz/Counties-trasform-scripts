@@ -37018,6 +37018,40 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
   const streetCandidates = collectNonEmptyStrings(
     options.streetCandidates || [],
   );
+  const hasStructuredStreetCandidate = streetCandidates.some((candidate) => {
+    const normalized = normalizeFullAddressString(candidate);
+    if (!normalized) {
+      return false;
+    }
+    const parsed = parseLocationAddress(normalized);
+    return (
+      parsed &&
+      hasMeaningfulAddressValue(parsed.streetName) &&
+      hasMeaningfulAddressValue(parsed.streetNumber)
+    );
+  });
+  const hasCoordinatePair =
+    Array.isArray(options.coordinateCandidates) &&
+    options.coordinateCandidates.some((candidate) => {
+      if (!candidate || typeof candidate !== "object") {
+        return false;
+      }
+      const latitude = parseCoordinate(candidate.latitude);
+      const longitude = parseCoordinate(candidate.longitude);
+      return Number.isFinite(latitude) && Number.isFinite(longitude);
+    });
+
+  if (!hasStructuredStreetCandidate || !hasCoordinatePair) {
+    collapseRawAddressToUnnormalizedOnly(working);
+    enforceRawVariantAllowedFields(working);
+    if (
+      !Object.prototype.hasOwnProperty.call(working, "__force_raw_variant")
+    ) {
+      working.__force_raw_variant = true;
+    }
+    writeJSON(addressFilePath, working);
+    return working;
+  }
   console.log(
     "[hydrateCountyAddressFields] street candidates",
     streetCandidates,
