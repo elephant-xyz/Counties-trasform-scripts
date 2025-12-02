@@ -11,7 +11,7 @@ let forceRawAddressVariantOutput = false;
 // Force the emitter to stay on the raw branch unless we have a guaranteed
 // normalized surface. This avoids emitting partial normalized payloads that
 // violate the schema's oneOf requirement.
-const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
+const FORCE_RAW_ONLY_ADDRESS_OUTPUT = true;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
@@ -180,6 +180,15 @@ function writeAddressJSONBypass(addressPath, payload) {
   }
   const ensuredPayload =
     ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
+
+  if (
+    ensuredPayload &&
+    typeof ensuredPayload === "object" &&
+    Object.prototype.hasOwnProperty.call(ensuredPayload, "source_http_request")
+  ) {
+    // Source HTTP request metadata is injected later in the ingestion flow.
+    delete ensuredPayload.source_http_request;
+  }
 
   const hasNormalizedSurface =
     typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
