@@ -2868,6 +2868,18 @@ function extract() {
     source_http_request
   );
 
+  // CRITICAL: Immediate post-extractExtraFeatures cleanup to ensure utility.json is removed
+  // utility.json should NEVER exist - we use utility_N.json files with proper relationships instead
+  try {
+    const utilityJsonPath = path.join(dataDir, "utility.json");
+    if (fs.existsSync(utilityJsonPath)) {
+      fs.unlinkSync(utilityJsonPath);
+      console.log("Post-extractExtraFeatures cleanup: Removed utility.json - using utility_N.json files with relationships instead");
+    }
+  } catch (e) {
+    console.error("Error in post-extractExtraFeatures utility.json cleanup:", e);
+  }
+
   const mandatoryFields={
       source_http_request: source_http_request,
       request_identifier: requestIdentifier,
