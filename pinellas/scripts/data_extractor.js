@@ -88,6 +88,12 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
   }
 
   Object.entries(fileMap).forEach(([cls, filename]) => {
+    // Safety check: Never write utility.json (we use utility_N.json instead)
+    if (filename === "utility.json" || cls === "utility") {
+      console.log(`Skipping ${filename} - using utility_N.json files with relationships instead`);
+      return;
+    }
+
     const props = grouped[cls] || {};
     const hasProperties = Object.keys(props).length > 0;
     const filePath = path.join(dataDir, filename);
@@ -3716,3 +3722,16 @@ function extract() {
 }
 
 extract();
+
+// Post-execution cleanup: Absolutely ensure utility.json does not exist in the output
+// This runs after extract() completes to catch any edge cases
+try {
+  const dataDir = "data";
+  const utilityJsonPath = path.join(dataDir, "utility.json");
+  if (fs.existsSync(utilityJsonPath)) {
+    fs.unlinkSync(utilityJsonPath);
+    console.log("Post-execution cleanup: Removed utility.json - using utility_N.json files instead");
+  }
+} catch (e) {
+  console.error("Error in post-execution utility.json cleanup:", e);
+}
