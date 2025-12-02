@@ -76147,3 +76147,100 @@ process.on("exit", () => {
     );
   }
 });
+
+function ensureRawFallbackAddressOutput(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = titleCaseCounty("Palm Beach"),
+    defaultStateCode = "FL",
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const addressPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const fieldSources = [addressPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const hasNormalizedCoverage =
+    addressPayload &&
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...addressPayload });
+
+  if (hasNormalizedCoverage) {
+    return;
+  }
+
+  const rawValue =
+    resolveRawAddressStringFromSources(fieldSources) ||
+    resolveFirstMeaningfulAddressField("full_address", fieldSources) ||
+    resolveFirstMeaningfulAddressField("site_address", fieldSources) ||
+    resolveFirstMeaningfulAddressField("address", fieldSources) ||
+    resolveFirstMeaningfulAddressField("raw_address", fieldSources) ||
+    null;
+
+  if (!rawValue) {
+    return;
+  }
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    addressPayload && addressPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    addressPayload && addressPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const rawPayload =
+    buildStrictRawOneOfPayload(rawValue, {
+      fieldSources,
+      requestIdentifier,
+      sourceHttpRequest,
+      defaultCountyName:
+        resolveFirstMeaningfulAddressField("county_name", fieldSources) ||
+        defaultCountyName,
+      defaultStateCode:
+        resolveFirstMeaningfulAddressField("state_code", fieldSources) ||
+        defaultStateCode,
+      defaultCountryCode:
+        resolveFirstMeaningfulAddressField("country_code", fieldSources) ||
+        defaultCountryCode,
+    }) || {
+      unnormalized_address: String(rawValue).trim(),
+      request_identifier: safeNullIfEmpty(requestIdentifier),
+      source_http_request: sourceHttpRequest
+        ? prepareSourceHttpRequest(sourceHttpRequest)
+        : null,
+    };
+
+  rawPayload.__force_raw_variant = true;
+  writeAddressJSONBypass(addressPath, rawPayload);
+  overwriteAddressRelationshipFilesWithNull([
+    path.dirname(addressPath),
+    path.join("relationships"),
+  ]);
+}
+
+process.on("exit", () => {
+  try {
+    ensureRawFallbackAddressOutput({
+      addressPath: path.join("data", "address.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error("Failed to enforce raw fallback address output:", error);
+  }
+});
