@@ -99,8 +99,53 @@ const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   ),
 );
 const RAW_UNNORMALIZED_FIELD_SET = new Set(RAW_UNNORMALIZED_ONLY_FIELDS);
+const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "latitude",
+  "longitude",
+  "city_name",
+  "municipality_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "county_name",
+]);
+const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
+  RAW_VARIANT_STRUCTURED_FIELDS,
+);
+const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([
+  "latitude",
+  "longitude",
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+]);
+const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
+  RAW_VARIANT_FORBIDDEN_FIELDS,
+);
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
-  Array.from(new Set([...RAW_UNNORMALIZED_ONLY_FIELDS])),
+  Array.from(
+    new Set([
+      ...RAW_UNNORMALIZED_ONLY_FIELDS,
+      ...RAW_VARIANT_STRUCTURED_FIELDS,
+    ]),
+  ),
 );
 const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(RAW_ADDRESS_RAW_SURFACE_FIELDS);
 
@@ -11472,46 +11517,6 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
     ),
   ),
 );
-const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "latitude",
-  "longitude",
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "county_name",
-]);
-const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
-  RAW_VARIANT_STRUCTURED_FIELDS,
-);
-const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([
-  "latitude",
-  "longitude",
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-]);
-const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
-  RAW_VARIANT_FORBIDDEN_FIELDS,
-);
 const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
   Array.from(
     new Set([...MINIMAL_RAW_ADDRESS_FIELDS, ...RAW_FALLBACK_COPY_FIELDS]),
@@ -13081,9 +13086,9 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// County schema's raw branch only allows the coarse, non-normalized fields.
-// Keep the raw variant surface scoped to those values so we never emit a
-// partial normalized surface that violates the oneOf requirement.
+// County schema's raw branch mirrors the structured field surface even when we
+// only have an unnormalized string. Emit the complete set (with null padding) so
+// we satisfy the oneOf without fabricating normalized values.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
   ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
 ]);
