@@ -579,9 +579,6 @@ function parseAddress(
 }
 
 function main() {
-
-  throw new Error("Intended error!")
-
   const inHtmlPath = path.join("input.html");
   const unaddrPath = path.join("unnormalized_address.json");
   const seedPath = path.join("property_seed.json");
