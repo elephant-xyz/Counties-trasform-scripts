@@ -8,10 +8,10 @@ process.setMaxListeners(80);
 const originalWriteFileSync = fs.writeFileSync;
 let addressWriteLocked = false;
 let forceRawAddressVariantOutput = false;
-// Force the emitter to stay on the raw branch unless we have a guaranteed
-// normalized surface. This avoids emitting partial normalized payloads that
-// violate the schema's oneOf requirement.
-const FORCE_RAW_ONLY_ADDRESS_OUTPUT = true;
+// Allow the emitter to choose the correct schema branch dynamically. We'll
+// still fall back to the raw variant when we lack structured data, but we no
+// longer suppress normalized outputs by default.
+const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
 let ADDRESS_FINALIZATION_COMPLETE = false;
