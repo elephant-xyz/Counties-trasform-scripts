@@ -48573,24 +48573,56 @@ async function main() {
           true,
         );
       }
-      try {
-        writeJSON(
-          path.join(dataDir, "address_structured_snapshot.json"),
-          preparedAddressOutput,
-        );
-      } catch {
-        // ignore snapshot failures
-      }
-      try {
-        FINAL_ADDRESS_REBUILD_CONTEXT =
-          FINAL_ADDRESS_REBUILD_CONTEXT && typeof FINAL_ADDRESS_REBUILD_CONTEXT === "object"
-            ? FINAL_ADDRESS_REBUILD_CONTEXT
-            : {};
-        FINAL_ADDRESS_REBUILD_CONTEXT.structuredAddress = deepClone(
-          preparedAddressOutput,
-        );
-      } catch {
-        // Snapshot best-effort; ignore clone failures.
+      const structuredSnapshotPath = path.join(
+        dataDir,
+        "address_structured_snapshot.json",
+      );
+      const shouldPersistStructuredSnapshot =
+        finalAddressVariant === "normalized" &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({
+          ...preparedAddressOutput,
+        });
+      if (shouldPersistStructuredSnapshot) {
+        const snapshotPayload = deepClone(preparedAddressOutput);
+        if (
+          snapshotPayload &&
+          typeof snapshotPayload === "object" &&
+          Object.prototype.hasOwnProperty.call(
+            snapshotPayload,
+            "unnormalized_address",
+          )
+        ) {
+          delete snapshotPayload.unnormalized_address;
+        }
+        try {
+          writeJSON(structuredSnapshotPath, snapshotPayload);
+        } catch {
+          // ignore snapshot failures
+        }
+        try {
+          FINAL_ADDRESS_REBUILD_CONTEXT =
+            FINAL_ADDRESS_REBUILD_CONTEXT && typeof FINAL_ADDRESS_REBUILD_CONTEXT === "object"
+              ? FINAL_ADDRESS_REBUILD_CONTEXT
+              : {};
+          FINAL_ADDRESS_REBUILD_CONTEXT.structuredAddress = deepClone(
+            snapshotPayload,
+          );
+        } catch {
+          // Snapshot best-effort; ignore clone failures.
+        }
+      } else {
+        removeFileIfExists(structuredSnapshotPath);
+        if (
+          FINAL_ADDRESS_REBUILD_CONTEXT &&
+          typeof FINAL_ADDRESS_REBUILD_CONTEXT === "object" &&
+          Object.prototype.hasOwnProperty.call(
+            FINAL_ADDRESS_REBUILD_CONTEXT,
+            "structuredAddress",
+          )
+        ) {
+          delete FINAL_ADDRESS_REBUILD_CONTEXT.structuredAddress;
+        }
       }
       if (
         typeof preparedAddressOutput.unnormalized_address === "string" &&
