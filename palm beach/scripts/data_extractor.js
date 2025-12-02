@@ -65199,7 +65199,6 @@ function applyNormalizedAddressOverride() {
     writeAddressJSONBypass(addressPath, normalizedOutput);
     enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
     overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
-    process.removeAllListeners("exit");
     ADDRESS_FINALIZATION_COMPLETE = true;
     normalizedAddressOverrideApplied = true;
     console.log(
@@ -65421,11 +65420,6 @@ async function run() {
           ? "Structured snapshot satisfied normalized county schema; skipping raw finalizers."
           : "Resolved normalized county address from existing payload; skipping raw finalizers.",
       );
-      try {
-        process.removeAllListeners("exit");
-      } catch {
-        // Ignore listener cleanup failures; normalized payload already persisted.
-      }
       ADDRESS_FINALIZATION_COMPLETE = true;
       return;
     }
@@ -67659,8 +67653,6 @@ run()
       if (!process.exitCode) {
         process.exitCode = 1;
       }
-    } finally {
-      process.removeAllListeners("exit");
     }
   });
 process.on("exit", () => {
@@ -73847,8 +73839,6 @@ function enforceFinalAddressVariantSelection(options = {}) {
   return "raw";
 }
 
-process.removeAllListeners("exit");
-
 function enforceTerminalRawAddressSurface(addressPath, options = {}) {
   if (!addressPath) {
     return;
@@ -73942,5 +73932,114 @@ function enforceTerminalRawAddressSurface(addressPath, options = {}) {
     );
   } catch (error) {
     console.error("Failed to persist final raw county address payload:", error);
+  }
+}
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const enforced =
+      persistMinimalUnnormalizedAddress({
+        addressPath,
+        unnormalizedPath: "unnormalized_address.json",
+        seedPath: "property_seed.json",
+      }) ||
+      enforceMinimalRawAddressSnapshot({
+        addressPath,
+        unnormalizedPath: "unnormalized_address.json",
+        seedPath: "property_seed.json",
+        defaultCountyName: titleCaseCounty("Palm Beach"),
+        defaultStateCode: "FL",
+        defaultCountryCode: "US",
+      });
+    if (enforced) {
+      enforceNullPropertyAddressRelationships(propertyPath);
+      overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    }
+  } catch (error) {
+    console.error(
+      "Failed to enforce raw address payload from unnormalized source:",
+      error,
+    );
+  }
+});
+
+function persistMinimalUnnormalizedAddress(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+  } = options || {};
+
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  if (
+    existingPayload &&
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload })
+  ) {
+    return false;
+  }
+
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+  const fieldSources = [existingPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const rawValue = resolveRawAddressStringFromSources(fieldSources);
+  const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!trimmedRaw.length) {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  const minimalPayload = { unnormalized_address: trimmedRaw };
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    existingPayload && existingPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+  if (requestIdentifier !== undefined) {
+    const normalizedIdentifier = safeNullIfEmpty(requestIdentifier);
+    if (normalizedIdentifier !== undefined) {
+      minimalPayload.request_identifier = normalizedIdentifier;
+    }
+  }
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    existingPayload && existingPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+  if (sourceHttpRequest !== undefined) {
+    if (sourceHttpRequest === null) {
+      minimalPayload.source_http_request = null;
+    } else {
+      const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+      if (prepared) {
+        minimalPayload.source_http_request = deepClone(prepared);
+      }
+    }
+  }
+
+  try {
+    ensureDir(path.dirname(addressPath));
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(minimalPayload, null, 2)}\n`,
+    );
+    return true;
+  } catch (error) {
+    console.error(
+      "Failed to persist minimal unnormalized address payload:",
+      error,
+    );
+    return false;
   }
 }
