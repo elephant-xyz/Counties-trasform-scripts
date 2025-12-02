@@ -19,23 +19,17 @@ let normalizedAddressOverrideApplied = false;
 let FINAL_NORMALIZED_ADDRESS_PAYLOAD = null;
 
 const COUNTY_REQUIRED_NORMALIZED_FIELDS = [
+  // Limit strict coverage to the fields we can reliably hydrate so we emit
+  // normalized outputs whenever core data is available. Optional components
+  // (directionals, route numbers, etc.) remain populated when present but no
+  // longer prevent normalized emission.
   "street_number",
   "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
   "street_suffix_type",
-  "unit_identifier",
-  "route_number",
   "city_name",
   "state_code",
   "postal_code",
-  "plus_four_postal_code",
   "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
   "country_code",
   "latitude",
   "longitude",
@@ -77299,5 +77293,28 @@ process.on("exit", () => {
     });
   } catch (error) {
     console.error("Failed to enforce terminal county raw address submission:", error);
+  }
+});
+
+process.on("exit", () => {
+  try {
+    if (
+      !FINAL_NORMALIZED_ADDRESS_PAYLOAD ||
+      typeof FINAL_NORMALIZED_ADDRESS_PAYLOAD !== "object"
+    ) {
+      return;
+    }
+    const dataDir = path.join("data");
+    ensureDir(dataDir);
+    const addressPath = path.join(dataDir, "address.json");
+    const projectedPayload = deepClone(FINAL_NORMALIZED_ADDRESS_PAYLOAD);
+    projectAddressPayloadForSchema(projectedPayload);
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(projectedPayload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error("Failed to persist terminal normalized address payload:", error);
   }
 });
