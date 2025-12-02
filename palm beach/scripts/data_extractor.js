@@ -18278,6 +18278,120 @@ function ensureCountyRawRequiredFieldSurface(address) {
   return address;
 }
 
+function enforceCountyRawAddressSchemaSurface(addressPath, options = {}) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return;
+  }
+  if (!fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (hasNormalizedSurface) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    return;
+  }
+
+  const workingPayload = deepClone(payload);
+  workingPayload.unnormalized_address = rawValue;
+
+  const hydratedPayload =
+    ensureCountyRawRequiredFieldSurface(workingPayload) || workingPayload;
+
+  const {
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  if (!hydratedPayload.county_name && defaultCountyName) {
+    hydratedPayload.county_name = defaultCountyName;
+  }
+  if (!hydratedPayload.state_code && defaultStateCode) {
+    hydratedPayload.state_code = defaultStateCode;
+  }
+  if (!hydratedPayload.country_code && defaultCountryCode) {
+    hydratedPayload.country_code = defaultCountryCode;
+  }
+
+  COUNTY_RAW_ENSURE_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      hydratedPayload[field] = rawValue;
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(hydratedPayload, field)) {
+      hydratedPayload[field] = null;
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(hydratedPayload[field]);
+      hydratedPayload[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof hydratedPayload[field] === "string") {
+      const trimmed = hydratedPayload[field].trim();
+      hydratedPayload[field] = trimmed.length ? trimmed : null;
+    }
+  });
+
+  if (!Object.prototype.hasOwnProperty.call(hydratedPayload, "request_identifier")) {
+    hydratedPayload.request_identifier = null;
+  } else {
+    const normalizedIdentifier = safeNullIfEmpty(
+      hydratedPayload.request_identifier,
+    );
+    hydratedPayload.request_identifier =
+      normalizedIdentifier === undefined
+        ? null
+        : normalizedIdentifier === null
+          ? null
+          : normalizedIdentifier;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(hydratedPayload, "source_http_request")
+  ) {
+    const preparedSource = prepareSourceHttpRequest(
+      hydratedPayload.source_http_request,
+    );
+    hydratedPayload.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
+  } else {
+    hydratedPayload.source_http_request = null;
+  }
+
+  const serializedOriginal = JSON.stringify(payload);
+  const serializedUpdated = JSON.stringify(hydratedPayload);
+  if (serializedOriginal === serializedUpdated) {
+    return;
+  }
+
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(hydratedPayload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error(
+      "Failed to enforce County raw address schema surface:",
+      error,
+    );
+  }
+}
+
 function emitFinalCountyAddressPayload(addressPath, options = {}) {
   if (!addressPath) {
     return;
@@ -50528,6 +50642,11 @@ async function main() {
   });
   enforceAddressOneOfTerminalVariant(addressOutputPath, {
     rawFallbackPaths: ["unnormalized_address.json"],
+  });
+  enforceCountyRawAddressSchemaSurface(addressOutputPath, {
+    defaultCountyName: fallbackCountyName,
+    defaultStateCode: fallbackStateCode,
+    defaultCountryCode: "US",
   });
   // Structure values primarily from model.structuralDetails
   let roofStructureVal = null,
