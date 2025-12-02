@@ -55834,24 +55834,6 @@ function enforceFinalRawAddressVariant(addressPath, options = {}) {
 
   const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
   const seedSource = readJSONIfExists(seedPath) || null;
-
-  const normalizedCandidate =
-    buildCountyNormalizedOneOfPayload(payload, {
-      defaultCountyName,
-      defaultStateCode,
-      defaultCountryCode,
-    }) ||
-    buildCountyNormalizedOneOfPayload(unnormalizedSource, {
-      defaultCountyName,
-      defaultStateCode,
-      defaultCountryCode,
-    }) ||
-    buildCountyNormalizedOneOfPayload(seedSource, {
-      defaultCountyName,
-      defaultStateCode,
-      defaultCountryCode,
-    });
-
   const requestIdentifier = resolveRequestIdentifierCandidate(
     payload.request_identifier,
     payload.parcel_identifier,
@@ -55859,15 +55841,44 @@ function enforceFinalRawAddressVariant(addressPath, options = {}) {
     seedSource && seedSource.request_identifier,
     seedSource && seedSource.parcel_id,
   );
+  const sourceHttpRequestCandidate = resolveSourceHttpRequestCandidate(
+    payload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const structuredSourceAvailable =
+    typeof sourceProvidesStructuredAddress === "function" &&
+    sourceProvidesStructuredAddress(
+      unnormalizedSource,
+      seedSource,
+    );
+  const preferRawOutput =
+    FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput || !structuredSourceAvailable;
+
+  const normalizedCandidate =
+    preferRawOutput
+      ? null
+      : buildCountyNormalizedOneOfPayload(payload, {
+          defaultCountyName,
+          defaultStateCode,
+          defaultCountryCode,
+        }) ||
+        buildCountyNormalizedOneOfPayload(unnormalizedSource, {
+          defaultCountyName,
+          defaultStateCode,
+          defaultCountryCode,
+        }) ||
+        buildCountyNormalizedOneOfPayload(seedSource, {
+          defaultCountyName,
+          defaultStateCode,
+          defaultCountryCode,
+        });
 
   if (normalizedCandidate) {
     const normalizedOutput = { ...normalizedCandidate };
-    if (requestIdentifier !== undefined) {
-      normalizedOutput.request_identifier =
-        requestIdentifier === null ? null : requestIdentifier;
-    } else {
-      normalizedOutput.request_identifier = null;
-    }
+    normalizedOutput.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
     writeJSON(addressPath, normalizedOutput);
     return;
   }
@@ -55883,7 +55894,7 @@ function enforceFinalRawAddressVariant(addressPath, options = {}) {
     seedSource && seedSource.full_address,
   ];
 
-  if (Array.isArray(extraRawCandidates)) {
+  if (Array.isArray(extraRawCandidates) && extraRawCandidates.length) {
     rawCandidates.push(...extraRawCandidates);
   }
 
@@ -55893,90 +55904,27 @@ function enforceFinalRawAddressVariant(addressPath, options = {}) {
     return;
   }
 
-  const normalizedSources = [payload, unnormalizedSource, seedSource].filter(
+  const fieldSources = [payload, unnormalizedSource, seedSource].filter(
     (candidate) => candidate && typeof candidate === "object",
   );
 
-  const finalRaw = {
-    unnormalized_address: resolvedRaw.trim(),
-    __force_raw_variant: true,
-  };
+  const rawPayload =
+    buildStrictRawOneOfPayload(resolvedRaw, {
+      fieldSources,
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+      requestIdentifier: requestIdentifier === undefined ? null : requestIdentifier,
+      sourceHttpRequest: sourceHttpRequestCandidate || null,
+    }) || null;
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    let candidateValue;
-    for (const source of normalizedSources) {
-      if (!Object.prototype.hasOwnProperty.call(source, field)) {
-        continue;
-      }
-      const value = source[field];
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        if (Number.isFinite(numeric)) {
-          candidateValue = numeric;
-          break;
-        }
-        continue;
-      }
-      if (hasMeaningfulAddressValue(value)) {
-        candidateValue =
-          typeof value === "string" ? value.trim() : value;
-        break;
-      }
-    }
-
-    if (
-      candidateValue === undefined ||
-      candidateValue === null ||
-      (typeof candidateValue === "string" && !candidateValue.length)
-    ) {
-      if (field === "county_name" && defaultCountyName) {
-        candidateValue = titleCaseCounty(defaultCountyName);
-      } else if (field === "state_code" && defaultStateCode) {
-        candidateValue = defaultStateCode;
-      } else if (field === "country_code") {
-        candidateValue = defaultCountryCode || "US";
-      } else {
-        candidateValue = null;
-      }
-    }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(candidateValue);
-      finalRaw[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (typeof candidateValue === "string") {
-      const trimmed = candidateValue.trim();
-      finalRaw[field] = trimmed.length ? trimmed : null;
-    } else {
-      finalRaw[field] = candidateValue;
-    }
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    return;
   }
 
-  if (!finalRaw.postal_code) {
-    finalRaw.plus_four_postal_code = null;
-  }
-
-  if (
-    hasMeaningfulAddressValue(finalRaw.state_code) &&
-    !hasMeaningfulAddressValue(finalRaw.country_code)
-  ) {
-    finalRaw.country_code = defaultCountryCode || "US";
-  }
-
-  if (!hasMeaningfulAddressValue(finalRaw.county_name) && defaultCountyName) {
-    finalRaw.county_name = titleCaseCounty(defaultCountyName);
-  }
-
-  if (requestIdentifier !== undefined) {
-    finalRaw.request_identifier =
-      requestIdentifier === null ? null : requestIdentifier;
-  } else {
-    finalRaw.request_identifier = null;
-  }
-
-  writeJSON(addressPath, finalRaw);
+  rawPayload.__force_raw_variant = true;
+  writeJSON(addressPath, rawPayload);
 }
 
 function enforceCountyAddressSchemaFloor(addressPath, options = {}) {
