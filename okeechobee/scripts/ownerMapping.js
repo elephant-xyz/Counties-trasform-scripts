@@ -382,16 +382,16 @@ function extractOwnerCandidates($) {
       if (valueTd && valueTd.length) {
         const boldText = valueTd.find("b").text();
         if (boldText) {
-          // Split by <br> tags to get individual owner names
-          const ownerLines = boldText.split(/\n/).map(line => norm(line)).filter(Boolean);
-          ownerLines.forEach(line => {
+          // Normalize newlines to spaces - bold text may contain line breaks within a single owner name
+          const normalizedText = norm(boldText.replace(/\n/g, ' '));
+          if (normalizedText) {
             // Skip address lines
-            if (!/\b(\d{5})(?:-\d{4})?$/.test(line) && 
-                !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-                !/^\d+\s/.test(line)) {
-              cand.push(line);
+            if (!/\b(\d{5})(?:-\d{4})?$/.test(normalizedText) &&
+                !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(normalizedText) &&
+                !/^\d+\s/.test(normalizedText)) {
+              cand.push(normalizedText);
             }
-          });
+          }
         }
       }
     }
