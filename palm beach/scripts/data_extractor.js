@@ -12438,6 +12438,11 @@ function collapseRawAddressToUnnormalizedOnly(address) {
     return address;
   }
 
+  const minimal = projectRawUnnormalizedOnlyPayload(hydrated);
+  if (!minimal) {
+    return address;
+  }
+
   const hasNormalizedSurface =
     typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
     hasStrictCountyNormalizedSchemaCoverage({ ...address });
@@ -12445,18 +12450,47 @@ function collapseRawAddressToUnnormalizedOnly(address) {
     return address;
   }
 
-  if (!Object.prototype.hasOwnProperty.call(hydrated, "request_identifier")) {
-    hydrated.request_identifier = null;
-  }
-  if (!Object.prototype.hasOwnProperty.call(hydrated, "source_http_request")) {
-    hydrated.source_http_request = null;
-  }
-
   Object.keys(address).forEach((key) => {
     delete address[key];
   });
-  Object.assign(address, hydrated);
+  Object.assign(address, minimal);
+  address.__force_raw_variant = true;
   return address;
+}
+
+function projectRawUnnormalizedOnlyPayload(address) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
+    return null;
+  }
+  const rawValue = safeNullIfEmpty(address.unnormalized_address);
+  if (!rawValue) {
+    return null;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const normalizedIdentifier = safeNullIfEmpty(address.request_identifier);
+    minimal.request_identifier =
+      normalizedIdentifier === undefined
+        ? null
+        : normalizedIdentifier === null
+          ? null
+          : normalizedIdentifier;
+  } else {
+    minimal.request_identifier = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    minimal.source_http_request = prepared ? deepClone(prepared) : null;
+  } else {
+    minimal.source_http_request = null;
+  }
+
+  return minimal;
 }
 
 function enforceRawFieldAllowlistOnDisk(addressPath) {
@@ -13036,6 +13070,17 @@ function buildRawOnlySubmissionPayload(address) {
     rawPayload.source_http_request = null;
   }
 
+  const minimalPayload = projectRawUnnormalizedOnlyPayload(rawPayload);
+  if (minimalPayload) {
+    if (
+      Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+      address.__force_raw_variant === true
+    ) {
+      minimalPayload.__force_raw_variant = true;
+    }
+    return minimalPayload;
+  }
+
   return rawPayload;
 }
 
@@ -13363,13 +13408,7 @@ const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
 const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
-  Array.from(
-    new Set([
-      ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
-    ]),
-  ),
-);
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
@@ -18744,55 +18783,15 @@ function ensureCountyRawRequiredFieldSurface(address) {
     ...address,
     unnormalized_address: trimmedRaw,
   };
-
-  const hydratedRaw =
-    ensureRawAddressSchemaDefaults(rawSeed) || {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      unnormalized_address: trimmedRaw,
-    };
-
-  for (const field of COUNTY_RAW_ENSURE_FIELDS) {
-    if (
-      ADDRESS_COORDINATE_FIELDS.includes(field) &&
-      Object.prototype.hasOwnProperty.call(hydratedRaw, field)
-    ) {
-      const numeric = parseCoordinate(hydratedRaw[field]);
-      hydratedRaw[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
-    }
-
-    if (!Object.prototype.hasOwnProperty.call(hydratedRaw, field)) {
-      hydratedRaw[field] = null;
-      continue;
-    }
-
-    if (typeof sanitizeAddressFieldValue === "function") {
-      const sanitized = sanitizeAddressFieldValue(field, hydratedRaw[field]);
-      hydratedRaw[field] = sanitized === undefined ? null : sanitized;
-    }
+  const minimalRaw = projectRawUnnormalizedOnlyPayload(rawSeed);
+  if (!minimalRaw) {
+    return address;
   }
-
-  if (
-    !Object.prototype.hasOwnProperty.call(hydratedRaw, "request_identifier")
-  ) {
-    hydratedRaw.request_identifier = null;
-  }
-
-  if (
-    !Object.prototype.hasOwnProperty.call(hydratedRaw, "source_http_request")
-  ) {
-    hydratedRaw.source_http_request = null;
-  }
-
-  applyDerivedAddressFieldsFromRaw(
-    hydratedRaw,
-    hydratedRaw.unnormalized_address,
-  );
 
   Object.keys(address).forEach((key) => {
     delete address[key];
   });
-  Object.assign(address, hydratedRaw);
+  Object.assign(address, minimalRaw);
   return address;
 }
 
@@ -73038,47 +73037,6 @@ function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
     minimal.source_http_request = null;
   }
 
-  const normalizedFieldSources = [];
-  if (
-    options &&
-    options.templateSource &&
-    typeof options.templateSource === "object"
-  ) {
-    normalizedFieldSources.push(options.templateSource);
-  }
-  if (Array.isArray(options.fieldSources)) {
-    options.fieldSources.forEach((source) => {
-      if (source && typeof source === "object") {
-        normalizedFieldSources.push(source);
-      }
-    });
-  }
-  populateMinimalRawSurfaceFields(minimal, normalizedFieldSources);
-
-  if (!hasMeaningfulAddressValue(minimal.county_name)) {
-    minimal.county_name =
-      resolveFirstMeaningfulAddressField("county_name", normalizedFieldSources) ||
-      (options && options.defaultCountyName) ||
-      titleCaseCounty("Palm Beach");
-  }
-
-  if (!hasMeaningfulAddressValue(minimal.state_code)) {
-    minimal.state_code =
-      resolveFirstMeaningfulAddressField("state_code", normalizedFieldSources) ||
-      (options && options.defaultStateCode) ||
-      "FL";
-  }
-
-  if (
-    hasMeaningfulAddressValue(minimal.state_code) &&
-    !hasMeaningfulAddressValue(minimal.country_code)
-  ) {
-    minimal.country_code =
-      resolveFirstMeaningfulAddressField("country_code", normalizedFieldSources) ||
-      (options && options.defaultCountryCode) ||
-      "US";
-  }
-
   return minimal;
 }
 
@@ -73178,6 +73136,11 @@ function projectAddressPayloadForSchema(address) {
     delete address[key];
   });
   Object.assign(address, minimal);
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant")
+  ) {
+    delete address.__force_raw_variant;
+  }
   return address;
 }
 
