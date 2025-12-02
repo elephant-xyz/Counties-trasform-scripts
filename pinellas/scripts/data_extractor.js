@@ -40,7 +40,7 @@ const extraFeaturesDescriptionMappings = [
 function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) {
   const rows = $("#tblExtraFeatures tbody tr");
   if (!rows || rows.length === 0) {
-    ["propertyLot.json", "propertyUtility.json", "propertyStructure.json"].forEach((filename) => {
+    ["propertyLot.json", "propertyUtility.json", "propertyStructure.json", "utility.json"].forEach((filename) => {
       const filePath = path.join(dataDir, filename);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -2731,6 +2731,17 @@ function extract() {
 
   const dataDir = path.join("data");
   ensureDir(dataDir);
+
+  // Ensure utility.json is removed if it exists (we use utility_N.json files instead)
+  const utilityJsonPath = path.join(dataDir, "utility.json");
+  if (fs.existsSync(utilityJsonPath)) {
+    try {
+      fs.unlinkSync(utilityJsonPath);
+      console.log("Initial cleanup: Removed utility.json - using utility_N.json files with relationships instead");
+    } catch (e) {
+      console.error("Failed to remove utility.json during initial cleanup:", e);
+    }
+  }
 
   const html = fs.readFileSync("input.html", "utf8");
   const $ = cheerio.load(html);
