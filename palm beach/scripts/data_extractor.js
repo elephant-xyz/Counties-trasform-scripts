@@ -104,6 +104,18 @@ const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
 );
 const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(RAW_ADDRESS_RAW_SURFACE_FIELDS);
 
+const RAW_PREFERRED_FIELD_WHITELIST = Object.freeze(
+  Array.from(
+    new Set([
+      "unnormalized_address",
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_GRID_FIELDS,
+      "municipality_name",
+      "request_identifier",
+    ]),
+  ),
+);
+
 
 function sourceProvidesStructuredAddress(...sources) {
   if (!Array.isArray(sources) || !sources.length) {
@@ -4616,6 +4628,79 @@ function buildSchemaCompliantRawAddress(payload) {
   }
 
   return hydratedPayload;
+}
+
+function composeLeanCountyRawOutput(payload, options = {}) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    return null;
+  }
+
+  const {
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const leanPayload = {
+    unnormalized_address: rawValue,
+  };
+
+  for (const field of RAW_PREFERRED_FIELD_WHITELIST) {
+    if (field === "unnormalized_address") {
+      continue;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      continue;
+    }
+
+    const sanitized = sanitizeAddressFieldValue(field, payload[field]);
+    if (sanitized === undefined || sanitized === null) {
+      continue;
+    }
+
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      if (!trimmed.length) {
+        continue;
+      }
+      leanPayload[field] = trimmed;
+      continue;
+    }
+
+    leanPayload[field] = sanitized;
+  }
+
+  if (!hasMeaningfulAddressValue(leanPayload.county_name) && defaultCountyName) {
+    leanPayload.county_name = titleCaseCounty(defaultCountyName);
+  }
+  if (!hasMeaningfulAddressValue(leanPayload.state_code) && defaultStateCode) {
+    leanPayload.state_code = defaultStateCode;
+  }
+  if (!hasMeaningfulAddressValue(leanPayload.country_code) && defaultCountryCode) {
+    leanPayload.country_code = defaultCountryCode;
+  }
+  if (!hasMeaningfulAddressValue(leanPayload.postal_code)) {
+    delete leanPayload.plus_four_postal_code;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(leanPayload, "request_identifier")) {
+    const normalizedIdentifier = safeNullIfEmpty(leanPayload.request_identifier);
+    if (normalizedIdentifier === undefined) {
+      delete leanPayload.request_identifier;
+    } else if (normalizedIdentifier === null) {
+      leanPayload.request_identifier = null;
+    } else {
+      leanPayload.request_identifier = normalizedIdentifier;
+    }
+  }
+
+  return leanPayload;
 }
 
 function buildStrictRawOneOfPayload(rawValue, options = {}) {
@@ -46415,6 +46500,102 @@ function enforceCountyAddressOneOfCompliance(addressPath, options = {}) {
   removeFileIfExists(addressPath);
 }
 
+function enforceLeanCountyAddressBranch(addressPath, options = {}) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return false;
+  }
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    extraRawCandidates = [],
+  } = options || {};
+
+  const currentPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+
+  const normalizedCandidate =
+    buildCountyNormalizedOneOfPayload(currentPayload, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) ||
+    buildCountyNormalizedOneOfPayload(unnormalizedSource, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) ||
+    buildCountyNormalizedOneOfPayload(seedSource, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    });
+
+  ensureDir(path.dirname(addressPath));
+
+  if (normalizedCandidate) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "source_http_request",
+      )
+    ) {
+      delete normalizedCandidate.source_http_request;
+    }
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(normalizedCandidate, null, 2)}\n`,
+    );
+    return true;
+  }
+
+  const rawSources = [currentPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const rawCandidate = buildCountyRawOneOfPayload(
+    rawSources,
+    Array.isArray(extraRawCandidates) ? extraRawCandidates : [],
+  );
+
+  const leanRaw =
+    composeLeanCountyRawOutput(rawCandidate, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) ||
+    composeLeanCountyRawOutput(currentPayload, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    });
+
+  if (!leanRaw) {
+    removeFileIfExists(addressPath);
+    return false;
+  }
+
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(leanRaw, null, 2)}\n`,
+  );
+  return true;
+}
+
 function enforceFinalNormalizedCountyAddress(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -75747,5 +75928,33 @@ process.on("exit", () => {
       "Failed to persist final normalized address payload:",
       error,
     );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+    const addressPath = path.join(dataDir, "address.json");
+    const extraRawCandidates =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+        ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+        : [];
+    const resolved = enforceLeanCountyAddressBranch(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates,
+    });
+    if (resolved) {
+      overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    }
+  } catch (error) {
+    console.error("Failed to enforce lean county address branch:", error);
   }
 });
