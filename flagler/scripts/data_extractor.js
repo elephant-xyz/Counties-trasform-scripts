@@ -2825,20 +2825,6 @@ function main() {
   }
 
   const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -2863,6 +2849,48 @@ function main() {
         currentOwners = latestOwners;
       }
     }
+  }
+
+  // Create mailing address files only if we have current owners who will use them
+  const mailingAddressFiles = [];
+  const usedMailingIndices = new Set();
+
+  // First pass: determine which mailing addresses will be used
+  if (currentOwners.length > 0) {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+      let mailingIdx = null;
+      if (ownerMailingInfo.rawAddresses[idx] != null) {
+        const rawAddr = ownerMailingInfo.rawAddresses[idx];
+        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
+        if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+      }
+      if (mailingIdx == null && ownerMailingInfo.uniqueAddresses.length) {
+        mailingIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+      }
+      if (mailingIdx != null && mailingIdx >= 0) {
+        usedMailingIndices.add(mailingIdx);
+      }
+    });
+
+    // Second pass: create only the mailing address files that will be used
+    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+      if (!addr) return;
+      const fileName = `mailing_address_${idx + 1}.json`;
+      mailingAddressFiles[idx] = { path: `./${fileName}` };
+
+      // Only write the file if this mailing address will be used
+      if (usedMailingIndices.has(idx)) {
+        const mailingObj = {
+          unnormalized_address: addr,
+          latitude: null,
+          longitude: null,
+          source_http_request: clone(defaultSourceHttpRequest),
+          request_identifier: requestIdentifier,
+        };
+        writeJSON(path.join(dataDir, fileName), mailingObj);
+      }
+    });
   }
 
   const currentOwnerEntities = [];
