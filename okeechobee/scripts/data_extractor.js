@@ -2786,10 +2786,22 @@ function raiseEnumError(value, pathStr) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, ' ');
-  return cleaned.split(' ').map(part => 
+  // Remove any remaining parentheses, brackets, or invalid characters
+  let cleaned = name.trim().replace(/[\(\)\[\]\{\}]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return null;
+  // Remove estate/trust designations
+  cleaned = cleaned.replace(/\b(ESTATE|TRUST|TRUSTEE|DECEASED|DEC'D|DEC|ET AL|ETAL)\b/gi, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return null;
+  // Format to proper case
+  const formatted = cleaned.split(' ').map(part =>
     part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
   ).join(' ');
+  // Validate against the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!namePattern.test(formatted)) {
+    return null;
+  }
+  return formatted;
 }
 
 // function mapPrefixName(name) {
@@ -3216,13 +3228,24 @@ function main() {
           writeJson(path.join("data", `company_${companyIndex}.json`), company);
           companyFiles.push(`./company_${companyIndex}.json`);
         } else if (ow.type === "person") {
+          // Format and validate name parts
+          const formattedFirst = formatNameToPattern(ow.first_name);
+          const formattedLast = formatNameToPattern(ow.last_name);
+          const formattedMiddle = ow.middle_name ? formatNameToPattern(ow.middle_name) : null;
+
+          // Only create person if first_name and last_name are valid
+          if (!formattedFirst || !formattedLast) {
+            console.error(`Skipping invalid person name: first_name="${ow.first_name}", last_name="${ow.last_name}"`);
+            continue;
+          }
+
           personIndex += 1;
           const person = {
             ...appendSourceInfo(seed),
             birth_date: null,
-            first_name: formatNameToPattern(ow.first_name),
-            last_name: formatNameToPattern(ow.last_name),
-            middle_name: ow.middle_name ? formatNameToPattern(ow.middle_name) : null,
+            first_name: formattedFirst,
+            last_name: formattedLast,
+            middle_name: formattedMiddle,
             prefix_name: ow.prefix_name,
             suffix_name: ow.suffix_name,
             us_citizenship_status: null,

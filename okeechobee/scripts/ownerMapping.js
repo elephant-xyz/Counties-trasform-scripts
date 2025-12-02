@@ -275,10 +275,22 @@ function buildOwnersFromRaw(raw) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, ' ');
-  return cleaned.split(' ').map(part => 
+  // Remove any remaining parentheses, brackets, or invalid characters
+  let cleaned = name.trim().replace(/[\(\)\[\]\{\}]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return null;
+  // Remove estate/trust designations
+  cleaned = cleaned.replace(/\b(ESTATE|TRUST|TRUSTEE|DECEASED|DEC'D|DEC|ET AL|ETAL)\b/gi, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return null;
+  // Format to proper case
+  const formatted = cleaned.split(' ').map(part =>
     part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
   ).join(' ');
+  // Validate against the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!namePattern.test(formatted)) {
+    return null;
+  }
+  return formatted;
 }
 
 function buildPersonFromSingleName(s) {
@@ -289,6 +301,8 @@ function buildPersonFromSingleName(s) {
   cleaned = cleaned.replace(/\([^)]*\)/g, "").trim();
   // Then remove trailing designations like "ESTATE", "TRUST", "TRUSTEE", "DEC", etc.
   cleaned = cleaned.replace(/\b(ESTATE|TRUST|TRUSTEE|DECEASED|DEC'D|DEC|ET AL|ETAL)\s*$/i, "").trim();
+  // Remove any remaining parentheses or brackets that might be standalone
+  cleaned = cleaned.replace(/[\(\)\[\]\{\}]/g, " ").replace(/\s+/g, " ").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
 
   const { prefix, suffix, coreParts } = extractAffixes(parts);
@@ -312,13 +326,23 @@ function buildPersonFromSingleName(s) {
     if (detectedPrefix) restParts.shift();
     const first = restParts.shift() || "";
     const middle = restParts.length ? norm(restParts.join(" ")) : null;
+
+    const formattedFirst = formatNameToPattern(first);
+    const formattedLast = formatNameToPattern(lastParts.length ? lastParts.join(" ") : last);
+    const formattedMiddle = middle ? formatNameToPattern(middle) : null;
+
+    // Only create person if first_name and last_name are valid
+    if (!formattedFirst || !formattedLast) {
+      // If name parts are invalid, treat as company
+      out.push({ type: "company", name: cleaned });
+      return out;
+    }
+
     out.push({
       type: "person",
-      first_name: formatNameToPattern(first),
-      last_name: formatNameToPattern(
-        lastParts.length ? lastParts.join(" ") : last,
-      ),
-      ...(middle ? { middle_name: formatNameToPattern(middle) } : {}),
+      first_name: formattedFirst,
+      last_name: formattedLast,
+      ...(formattedMiddle ? { middle_name: formattedMiddle } : {}),
       prefix_name: detectedPrefix || prefix || null,
       suffix_name: suffixFromLast || suffix || null,
     });
@@ -329,27 +353,33 @@ function buildPersonFromSingleName(s) {
   if (usableParts.length === 2) {
     // Check if first part looks like a last name (all caps typically)
     const [part1, part2] = usableParts;
+    let formattedFirst, formattedLast;
+
     if (part1 === part1.toUpperCase() && part2 === part2.toUpperCase()) {
       // Both are uppercase, assume LASTNAME FIRSTNAME
-      out.push({
-        type: "person",
-        first_name: formatNameToPattern(part2),
-        last_name: formatNameToPattern(part1),
-        middle_name: null,
-        prefix_name: prefix || null,
-        suffix_name: suffix || null,
-      });
+      formattedFirst = formatNameToPattern(part2);
+      formattedLast = formatNameToPattern(part1);
     } else {
       // Normal FIRSTNAME LASTNAME
-      out.push({
-        type: "person",
-        first_name: formatNameToPattern(part1),
-        last_name: formatNameToPattern(part2),
-        middle_name: null,
-        prefix_name: prefix || null,
-        suffix_name: suffix || null,
-      });
+      formattedFirst = formatNameToPattern(part1);
+      formattedLast = formatNameToPattern(part2);
     }
+
+    // Only create person if first_name and last_name are valid
+    if (!formattedFirst || !formattedLast) {
+      // If name parts are invalid, treat as company
+      out.push({ type: "company", name: cleaned });
+      return out;
+    }
+
+    out.push({
+      type: "person",
+      first_name: formattedFirst,
+      last_name: formattedLast,
+      middle_name: null,
+      prefix_name: prefix || null,
+      suffix_name: suffix || null,
+    });
     return out;
   }
   
@@ -358,12 +388,23 @@ function buildPersonFromSingleName(s) {
   const last = usableParts[usableParts.length - 1];
   const middleParts = usableParts.slice(1, -1).filter(Boolean);
   const middle = middleParts.length ? norm(middleParts.join(" ")) : null;
-  
+
+  const formattedFirst = formatNameToPattern(first);
+  const formattedLast = formatNameToPattern(last);
+  const formattedMiddle = middle ? formatNameToPattern(middle) : null;
+
+  // Only create person if first_name and last_name are valid
+  if (!formattedFirst || !formattedLast) {
+    // If name parts are invalid, treat as company
+    out.push({ type: "company", name: cleaned });
+    return out;
+  }
+
   out.push({
     type: "person",
-    first_name: formatNameToPattern(first),
-    last_name: formatNameToPattern(last),
-    ...(middle ? { middle_name: formatNameToPattern(middle) } : {}),
+    first_name: formattedFirst,
+    last_name: formattedLast,
+    ...(formattedMiddle ? { middle_name: formattedMiddle } : {}),
     prefix_name: prefix || null,
     suffix_name: suffix || null,
   });
