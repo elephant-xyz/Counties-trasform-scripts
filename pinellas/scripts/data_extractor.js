@@ -2743,7 +2743,8 @@ function extract() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
-  // Ensure utility.json is removed if it exists (we use utility_N.json files instead)
+  // CRITICAL: utility.json should NEVER be created - we use utility_N.json files with proper relationships
+  // This cleanup ensures any legacy utility.json from previous executions is removed
   const utilityJsonPath = path.join(dataDir, "utility.json");
   if (fs.existsSync(utilityJsonPath)) {
     try {
@@ -2753,6 +2754,20 @@ function extract() {
       console.error("Failed to remove utility.json during initial cleanup:", e);
     }
   }
+
+  // Additional cleanup for other legacy utility file variants
+  const legacyUtilityFiles = ["propertyUtility.json", "property_utility.json"];
+  legacyUtilityFiles.forEach(filename => {
+    const filepath = path.join(dataDir, filename);
+    if (fs.existsSync(filepath)) {
+      try {
+        fs.unlinkSync(filepath);
+        console.log(`Initial cleanup: Removed legacy file ${filename}`);
+      } catch (e) {
+        console.error(`Failed to remove ${filename}:`, e);
+      }
+    }
+  });
 
   const html = fs.readFileSync("input.html", "utf8");
   const $ = cheerio.load(html);
