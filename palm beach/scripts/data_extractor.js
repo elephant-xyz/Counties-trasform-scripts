@@ -71854,6 +71854,7 @@ function buildStrictRawAddressSnapshot(options = {}) {
       sourceHttpRequest: resolvedSourceHttpRequest,
       latitude,
       longitude,
+      fieldSources,
     }) || null
   );
 }
@@ -72390,7 +72391,47 @@ function buildMinimalRawAddressPayloadFromSources(sources = []) {
     sourceHttpRequest: resolvedSourceRequest,
     latitude,
     longitude,
+    fieldSources: candidates,
   });
+}
+
+function populateMinimalRawSurfaceFields(target, fieldSources = []) {
+  if (!target || typeof target !== "object" || Array.isArray(target)) {
+    return target;
+  }
+
+  const resolvedSources = Array.isArray(fieldSources)
+    ? fieldSources.filter((source) => source && typeof source === "object")
+    : [];
+
+  const ensureField = (field, value) => {
+    target[field] =
+      value === undefined || value === null ? null : value;
+  };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(target, field)) {
+      continue;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const coordinate = resolveFirstCoordinate(
+        resolvedSources.map((source) => source && source[field]),
+      );
+      ensureField(field, Number.isFinite(coordinate) ? coordinate : null);
+      continue;
+    }
+    const resolved = resolveFirstMeaningfulAddressField(
+      field,
+      resolvedSources,
+    );
+    if (resolved !== undefined && resolved !== null) {
+      ensureField(field, resolved);
+      continue;
+    }
+    ensureField(field, null);
+  }
+
+  return target;
 }
 
 function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
@@ -72431,9 +72472,26 @@ function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
   const latitude = parseCoordinate(options.latitude);
   const longitude = parseCoordinate(options.longitude);
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    minimal.latitude = latitude;
-    minimal.longitude = longitude;
+   minimal.latitude = latitude;
+   minimal.longitude = longitude;
   }
+
+  const normalizedFieldSources = [];
+  if (
+    options &&
+    options.templateSource &&
+    typeof options.templateSource === "object"
+  ) {
+    normalizedFieldSources.push(options.templateSource);
+  }
+  if (Array.isArray(options.fieldSources)) {
+    options.fieldSources.forEach((source) => {
+      if (source && typeof source === "object") {
+        normalizedFieldSources.push(source);
+      }
+    });
+  }
+  populateMinimalRawSurfaceFields(minimal, normalizedFieldSources);
 
   return minimal;
 }
@@ -72499,6 +72557,7 @@ function projectAddressPayloadForSchema(address) {
       sourceHttpRequest: address.source_http_request,
       latitude: address.latitude,
       longitude: address.longitude,
+      fieldSources: [address],
     }) || null;
   if (!minimal) {
     return address;
