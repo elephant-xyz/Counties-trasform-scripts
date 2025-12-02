@@ -7998,6 +7998,256 @@ function purgeManagedRelationshipOutputs(targetDirectories = []) {
   });
 }
 
+function pickAddressFieldFromSources(field, sources = []) {
+  if (!field || !Array.isArray(sources)) {
+    return null;
+  }
+  const candidates = [];
+  for (const source of sources) {
+    if (!source || typeof source !== "object") {
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      candidates.push(source[field]);
+    }
+  }
+  if (!candidates.length) {
+    return null;
+  }
+  return resolveFieldFromCandidates(field, candidates);
+}
+
+function resolveSimpleNormalizedAddressCandidate(sources = []) {
+  if (!Array.isArray(sources)) {
+    return null;
+  }
+  for (const source of sources) {
+    if (!source || typeof source !== "object") {
+      continue;
+    }
+    if (
+      hasMinimalNormalizedAddressCoverage(source, {
+        requireCoordinates: false,
+      })
+    ) {
+      return source;
+    }
+  }
+  return null;
+}
+
+function buildSimpleNormalizedAddressPayload(candidate, sources = []) {
+  if (
+    !candidate ||
+    typeof candidate !== "object" ||
+    !hasMinimalNormalizedAddressCoverage(candidate, { requireCoordinates: false })
+  ) {
+    return null;
+  }
+  const orderedSources = [candidate, ...(Array.isArray(sources) ? sources : [])];
+  const normalizedFields = [
+    "street_number",
+    "street_name",
+    "street_suffix_type",
+    "street_pre_directional_text",
+    "street_post_directional_text",
+    "unit_identifier",
+    "route_number",
+    "city_name",
+    "municipality_name",
+    "county_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "country_code",
+    "section",
+    "township",
+    "range",
+    "block",
+    "lot",
+  ];
+  const payload = {};
+  normalizedFields.forEach((field) => {
+    const value = pickAddressFieldFromSources(field, orderedSources);
+    if (value !== null && value !== undefined) {
+      payload[field] = value;
+    }
+  });
+  const latitude = parseCoordinate(
+    pickAddressFieldFromSources("latitude", orderedSources),
+  );
+  const longitude = parseCoordinate(
+    pickAddressFieldFromSources("longitude", orderedSources),
+  );
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    payload.latitude = latitude;
+    payload.longitude = longitude;
+  }
+  const requiredFields = [
+    "street_number",
+    "street_name",
+    "city_name",
+    "state_code",
+    "postal_code",
+  ];
+  const hasRequired = requiredFields.every((field) =>
+    hasMeaningfulAddressValue(payload[field]),
+  );
+  if (!hasRequired) {
+    return null;
+  }
+  return payload;
+}
+
+function buildSimpleRawAddressPayload(sources = []) {
+  if (!Array.isArray(sources) || !sources.length) {
+    return null;
+  }
+  const candidateSources = sources.filter(
+    (source) => source && typeof source === "object",
+  );
+  const rawCandidates = [];
+  candidateSources.forEach((source) =>
+    gatherRawAddressCandidatesFromSource(source, rawCandidates),
+  );
+  const rawValue = resolveFirstNonEmptyString(rawCandidates);
+  if (!rawValue) {
+    return null;
+  }
+  const payload = {
+    unnormalized_address: rawValue,
+  };
+  const rawAllowedFields = [
+    "city_name",
+    "municipality_name",
+    "county_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "country_code",
+    "section",
+    "township",
+    "range",
+    "block",
+    "lot",
+  ];
+  rawAllowedFields.forEach((field) => {
+    const value = pickAddressFieldFromSources(field, candidateSources);
+    if (value !== null && value !== undefined) {
+      payload[field] = value;
+    }
+  });
+  if (!hasMeaningfulAddressValue(payload.county_name)) {
+    const derivedCounty = titleCaseCounty(
+      safeNullIfEmpty(
+        pickAddressFieldFromSources("county_jurisdiction", candidateSources) ||
+          pickAddressFieldFromSources("county_name", candidateSources),
+      ),
+    );
+    if (derivedCounty) {
+      payload.county_name = derivedCounty;
+    }
+  }
+  if (
+    hasMeaningfulAddressValue(payload.state_code) &&
+    !hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    payload.country_code = "US";
+  }
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    ...candidateSources.map((source) => source && source.request_identifier),
+  );
+  payload.request_identifier =
+    requestIdentifier === undefined ? null : requestIdentifier;
+  const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+    ...candidateSources.map((source) => source && source.source_http_request),
+  );
+  payload.source_http_request = resolvedSourceRequest
+    ? prepareSourceHttpRequest(resolvedSourceRequest)
+    : null;
+  if (!Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    payload.source_http_request = null;
+  }
+  return payload;
+}
+
+function persistFinalAddressPayload(addressPath, payload) {
+  if (!addressPath || !payload || typeof payload !== "object") {
+    return false;
+  }
+  const serialized = `${JSON.stringify(payload, null, 2)}\n`;
+  addressWriteLocked = true;
+  try {
+    ensureDir(path.dirname(addressPath));
+    originalWriteFileSync.call(fs, addressPath, serialized);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    addressWriteLocked = false;
+  }
+}
+
+function enforceSimpleAddressOneOfOutput(options = {}) {
+  const addressPath =
+    options.addressPath || path.join("data", "address.json");
+  const unnormalizedSource =
+    (options.unnormalizedPath &&
+      readJSONIfExists(options.unnormalizedPath)) ||
+    readJSONIfExists("unnormalized_address.json") ||
+    null;
+  const seedSource =
+    (options.seedPath && readJSONIfExists(options.seedPath)) ||
+    readJSONIfExists("property_seed.json") ||
+    null;
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  const sources = [existingPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const normalizedCandidate = resolveSimpleNormalizedAddressCandidate(sources);
+  if (normalizedCandidate) {
+    const normalizedPayload = buildSimpleNormalizedAddressPayload(
+      normalizedCandidate,
+      sources,
+    );
+    if (normalizedPayload) {
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        normalizedPayload.request_identifier,
+        ...sources.map((source) => source.request_identifier),
+      );
+      normalizedPayload.request_identifier =
+        requestIdentifier === undefined ? null : requestIdentifier;
+      const normalizedSourceRequest = resolveSourceHttpRequestCandidate(
+        normalizedCandidate && normalizedCandidate.source_http_request,
+        ...sources.map((source) => source.source_http_request),
+      );
+      normalizedPayload.source_http_request = normalizedSourceRequest
+        ? prepareSourceHttpRequest(normalizedSourceRequest)
+        : null;
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedPayload,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedPayload.unnormalized_address;
+      }
+      if (persistFinalAddressPayload(addressPath, normalizedPayload)) {
+        return true;
+      }
+    }
+  }
+
+  const rawPayload = buildSimpleRawAddressPayload(sources);
+  if (rawPayload && persistFinalAddressPayload(addressPath, rawPayload)) {
+    return true;
+  }
+
+  removeFileIfExists(addressPath);
+  return false;
+}
+
 function enforceRawAddressSubmissionFallback(options = {}) {
   const {
     addressPath = path.join("data", "address.json"),
@@ -76512,5 +76762,17 @@ process.on("exit", () => {
     purgeManagedRelationshipOutputs([path.join("data"), path.join("relationships")]);
   } catch (error) {
     console.error("Failed to remove autogenerated address relationships:", error);
+  }
+});
+
+process.on("exit", () => {
+  try {
+    enforceSimpleAddressOneOfOutput({
+      addressPath: path.join("data", "address.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+    });
+  } catch (error) {
+    console.error("Failed to enforce simplified county address output:", error);
   }
 });
