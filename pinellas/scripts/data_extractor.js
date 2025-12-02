@@ -3056,23 +3056,6 @@ function extract() {
   }
 
 
-  //Mailing Address creation
-  try {
-
-    const mailing_address = {
-      source_http_request: source_http_request,
-      request_identifier: requestIdentifier,
-      latitude:  null,
-      longitude: null,
-      unnormalized_address: mailing_address_text
-    };
-
-    writeJSON(path.join(dataDir, "mailing_address.json"), mailing_address);
-  } catch (e) {
-    console.error("Error extracting mailing address data:", e);
-  }
-
-
   // SALES AND OWNERS CODE BLOCK--------------
   try {
     const salesRows = $("#tblSalesHistory tbody tr");
@@ -3299,6 +3282,18 @@ function extract() {
         });
       });
     });
+
+    // Only create mailing_address.json if there are owners to link it to
+    if ((mailingPersonRefs.size > 0 || mailingCompanyRefs.size > 0) && mailing_address_text) {
+      const mailing_address = {
+        source_http_request: source_http_request,
+        request_identifier: requestIdentifier,
+        latitude:  null,
+        longitude: null,
+        unnormalized_address: mailing_address_text
+      };
+      writeJSON(path.join(dataDir, "mailing_address.json"), mailing_address);
+    }
 
     mailingPersonRefs.forEach((personRef) => {
       const relFile = `relationship_person_${personRef
