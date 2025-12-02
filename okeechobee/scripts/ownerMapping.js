@@ -283,7 +283,11 @@ function formatNameToPattern(name) {
 
 function buildPersonFromSingleName(s) {
   const out = [];
-  const cleaned = s.replace(/\s{2,}/g, " ");
+  // Remove estate designations and other parenthetical content
+  let cleaned = s.replace(/\s{2,}/g, " ");
+  cleaned = cleaned.replace(/\([^)]*\)/g, "").trim();
+  // Remove trailing designations like "ESTATE", "TRUST", "TRUSTEE", etc.
+  cleaned = cleaned.replace(/\b(ESTATE|TRUST|TRUSTEE|DECEASED|DEC'D|ET AL|ETAL)\s*$/i, "").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
 
   const { prefix, suffix, coreParts } = extractAffixes(parts);
