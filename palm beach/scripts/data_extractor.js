@@ -210,6 +210,7 @@ function writeAddressJSONBypass(addressPath, payload) {
   enforceMinimalRawSubmissionSurface(ensuredPayload);
   enforceRawVariantAllowedFields(ensuredPayload);
   collapseRawAddressToUnnormalizedOnly(ensuredPayload);
+  projectAddressPayloadForSchema(ensuredPayload);
   const serialized = `${JSON.stringify(ensuredPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
@@ -244,6 +245,7 @@ function writeMinimalAddressPayload(addressPath, payload) {
   enforceMinimalRawSubmissionSurface(payload);
   enforceRawVariantAllowedFields(payload);
   collapseRawAddressToUnnormalizedOnly(payload);
+  projectAddressPayloadForSchema(payload);
 
   try {
     addressWriteLocked = true;
@@ -281,6 +283,7 @@ function writeAddressPayloadDirect(addressPath, payload) {
       enforceRawVariantAllowedFields(payloadToWrite);
       collapseRawAddressToUnnormalizedOnly(payloadToWrite);
     }
+    projectAddressPayloadForSchema(payloadToWrite);
   }
 
   try {
@@ -4453,6 +4456,13 @@ function enforceRawAddressStructuredSurface(addressPath) {
   }
   const payload = readJSONIfExists(addressPath);
   if (!payload || typeof payload !== "object") {
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (!hasNormalizedSurface) {
     return;
   }
 
@@ -12843,6 +12853,7 @@ function persistAddressPayload(addressPath, payload) {
     workingPayload =
       ensureRawAddressFieldCompleteness(workingPayload) || workingPayload;
     stripRawVariantStructuredFields(workingPayload);
+    projectAddressPayloadForSchema(workingPayload);
   }
 
   ensureDir(path.dirname(addressPath));
@@ -68386,7 +68397,6 @@ process.on("exit", () => {
   }
 });
 
-
 function finalizeExitCleanup() {
   try {
     const dataDir = path.join("data");
@@ -71668,79 +71678,21 @@ function buildStrictRawAddressSnapshot(options = {}) {
     ...fallbackSourceHttpCandidates,
   );
 
-  const strictRaw = {
-    unnormalized_address: resolvedRaw,
-    request_identifier:
-      resolvedRequestIdentifier === undefined
-        ? null
-        : resolvedRequestIdentifier === null
-          ? null
-          : resolvedRequestIdentifier,
-  };
+  const latitude = resolveFirstCoordinate(
+    fieldSources.map((source) => source && source.latitude),
+  );
+  const longitude = resolveFirstCoordinate(
+    fieldSources.map((source) => source && source.longitude),
+  );
 
-  if (resolvedSourceHttpRequest) {
-    strictRaw.source_http_request = deepClone(resolvedSourceHttpRequest);
-  }
-
-  const minimalRawFields = [
-    "city_name",
-    "municipality_name",
-    "county_name",
-    "state_code",
-    "country_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-  ];
-
-  const assignMinimalField = (field) => {
-    const resolved = resolveFirstMeaningfulAddressField(field, fieldSources);
-    if (resolved === undefined || resolved === null) {
-      return;
-    }
-    if (typeof resolved === "string") {
-      const trimmed = resolved.trim();
-      if (!trimmed.length) return;
-      strictRaw[field] = trimmed;
-      return;
-    }
-    strictRaw[field] = resolved;
-  };
-
-  minimalRawFields.forEach(assignMinimalField);
-
-  const derivedFromRaw = deriveNormalizedAddressFieldsFromRaw(resolvedRaw);
-  if (derivedFromRaw && typeof derivedFromRaw === "object") {
-    for (const field of minimalRawFields) {
-      if (hasMeaningfulAddressValue(strictRaw[field])) {
-        continue;
-      }
-      const derivedValue = derivedFromRaw[field];
-      if (derivedValue === undefined || derivedValue === null) {
-        continue;
-      }
-      if (typeof derivedValue === "string") {
-        const trimmed = derivedValue.trim();
-        if (!trimmed.length) continue;
-        strictRaw[field] = trimmed;
-        continue;
-      }
-      strictRaw[field] = derivedValue;
-    }
-  }
-
-  if (
-    hasMeaningfulAddressValue(strictRaw.state_code) &&
-    !hasMeaningfulAddressValue(strictRaw.country_code)
-  ) {
-    strictRaw.country_code = "US";
-  }
-
-  return pruneAddressToMinimalRawFields(strictRaw);
+  return (
+    buildStrictMinimalRawAddressPayload(resolvedRaw, {
+      requestIdentifier: resolvedRequestIdentifier,
+      sourceHttpRequest: resolvedSourceHttpRequest,
+      latitude,
+      longitude,
+    }) || null
+  );
 }
 
 function enforceMinimalRawAddressSnapshot(options = {}) {
@@ -72243,10 +72195,6 @@ function buildMinimalRawAddressPayloadFromSources(sources = []) {
     return null;
   }
 
-  const minimal = {
-    unnormalized_address: rawValue.trim(),
-  };
-
   const identifierCandidates = [];
   candidates.forEach((candidate) => {
     identifierCandidates.push(
@@ -72260,10 +72208,6 @@ function buildMinimalRawAddressPayloadFromSources(sources = []) {
   const requestIdentifier = resolveRequestIdentifierCandidate(
     ...identifierCandidates,
   );
-  if (requestIdentifier !== undefined) {
-    minimal.request_identifier =
-      requestIdentifier === null ? null : requestIdentifier;
-  }
 
   const sourceHttpCandidates = candidates.map(
     (candidate) => candidate.source_http_request,
@@ -72271,14 +72215,6 @@ function buildMinimalRawAddressPayloadFromSources(sources = []) {
   const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
     ...sourceHttpCandidates,
   );
-  if (resolvedSourceRequest) {
-    const prepared = prepareSourceHttpRequest(resolvedSourceRequest);
-    if (prepared) {
-      minimal.source_http_request = deepClone(prepared);
-    }
-  } else if (sourceHttpCandidates.some((candidate) => candidate === null)) {
-    minimal.source_http_request = null;
-  }
 
   const latitude = resolveFirstCoordinate(
     candidates.map((candidate) => candidate.latitude),
@@ -72286,28 +72222,131 @@ function buildMinimalRawAddressPayloadFromSources(sources = []) {
   const longitude = resolveFirstCoordinate(
     candidates.map((candidate) => candidate.longitude),
   );
+  return buildStrictMinimalRawAddressPayload(rawValue, {
+    requestIdentifier,
+    sourceHttpRequest: resolvedSourceRequest,
+    latitude,
+    longitude,
+  });
+}
+
+function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
+  const trimmed = safeNullIfEmpty(rawValue);
+  if (!trimmed) {
+    return null;
+  }
+
+  const minimal = {
+    unnormalized_address: trimmed,
+  };
+
+  const hasIdentifier = Object.prototype.hasOwnProperty.call(
+    options || {},
+    "requestIdentifier",
+  );
+  const normalizedIdentifier = hasIdentifier
+    ? safeNullIfEmpty(options.requestIdentifier)
+    : undefined;
+  minimal.request_identifier =
+    normalizedIdentifier === undefined
+      ? null
+      : normalizedIdentifier === null
+        ? null
+        : normalizedIdentifier;
+
+  const hasSourceRequest = Object.prototype.hasOwnProperty.call(
+    options || {},
+    "sourceHttpRequest",
+  );
+  if (hasSourceRequest) {
+    const prepared = prepareSourceHttpRequest(options.sourceHttpRequest);
+    minimal.source_http_request = prepared ? deepClone(prepared) : null;
+  } else {
+    minimal.source_http_request = null;
+  }
+
+  const latitude = parseCoordinate(options.latitude);
+  const longitude = parseCoordinate(options.longitude);
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
     minimal.latitude = latitude;
     minimal.longitude = longitude;
   }
 
-  const optionalFields = [
-    "city_name",
-    "municipality_name",
-    "county_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "country_code",
-  ];
-  optionalFields.forEach((field) => {
-    const value = resolveFirstMeaningfulAddressField(field, candidates);
-    if (hasMeaningfulAddressValue(value)) {
-      minimal[field] = value;
-    }
-  });
-
   return minimal;
+}
+
+function projectAddressPayloadForSchema(address) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
+    return address;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...address });
+
+  if (hasNormalizedSurface) {
+    if (
+      Object.prototype.hasOwnProperty.call(address, "unnormalized_address")
+    ) {
+      delete address.unnormalized_address;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(address, "__force_raw_variant")
+    ) {
+      delete address.__force_raw_variant;
+    }
+    if (!Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+      address.request_identifier = null;
+    } else {
+      const normalizedIdentifier = safeNullIfEmpty(
+        address.request_identifier,
+      );
+      address.request_identifier =
+        normalizedIdentifier === undefined
+          ? null
+          : normalizedIdentifier === null
+            ? null
+            : normalizedIdentifier;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(address, "source_http_request")
+    ) {
+      const prepared = prepareSourceHttpRequest(address.source_http_request);
+      address.source_http_request = prepared ? deepClone(prepared) : null;
+    } else {
+      address.source_http_request = null;
+    }
+    return address;
+  }
+
+  const rawValue = safeNullIfEmpty(address.unnormalized_address);
+  if (!rawValue) {
+    return address;
+  }
+
+  const minimal =
+    buildStrictMinimalRawAddressPayload(rawValue, {
+      requestIdentifier: address.request_identifier,
+      sourceHttpRequest: address.source_http_request,
+      latitude: address.latitude,
+      longitude: address.longitude,
+    }) || null;
+  if (!minimal) {
+    return address;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true
+  ) {
+    minimal.__force_raw_variant = true;
+  }
+
+  Object.keys(address).forEach((key) => {
+    delete address[key];
+  });
+  Object.assign(address, minimal);
+  return address;
 }
 
 function enforceRawOnlyAddressSubmission(options = {}) {
@@ -75394,6 +75433,34 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to collapse county address to strict raw variant:",
+      error,
+    );
+  }
+});
+
+
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    if (!fs.existsSync(addressPath)) {
+      return;
+    }
+    const payload = readJSONIfExists(addressPath);
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
+      console.log("[terminal-schema] projecting address payload");
+    }
+    projectAddressPayloadForSchema(payload);
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error(
+      "Failed to enforce terminal address schema projection:",
       error,
     );
   }
