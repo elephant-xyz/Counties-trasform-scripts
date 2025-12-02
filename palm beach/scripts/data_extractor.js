@@ -104,8 +104,6 @@ const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
       "unnormalized_address",
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
-      "latitude",
-      "longitude",
     ]),
   ),
 );
@@ -13290,16 +13288,10 @@ function materializeRawAddressSchemaSurface(addressPath) {
     unnormalized_address: rawValue,
   };
 
-  const assignNormalizedField = (field) => {
+  const assignRawField = (field) => {
     const sourceValue = Object.prototype.hasOwnProperty.call(payload, field)
       ? payload[field]
       : derivedFromRaw[field];
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(sourceValue);
-      surfaced[field] = Number.isFinite(numeric) ? numeric : null;
-      return;
-    }
 
     const sanitized =
       typeof sanitizeAddressFieldValue === "function"
@@ -13320,7 +13312,7 @@ function materializeRawAddressSchemaSurface(addressPath) {
     surfaced[field] = sanitized;
   };
 
-  NORMALIZED_ADDRESS_FIELDS.forEach(assignNormalizedField);
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach(assignRawField);
 
   if (!hasMeaningfulAddressValue(surfaced.postal_code)) {
     surfaced.plus_four_postal_code = null;
@@ -13331,13 +13323,6 @@ function materializeRawAddressSchemaSurface(addressPath) {
     !hasMeaningfulAddressValue(surfaced.country_code)
   ) {
     surfaced.country_code = "US";
-  }
-
-  const hasLatitude = Number.isFinite(surfaced.latitude);
-  const hasLongitude = Number.isFinite(surfaced.longitude);
-  if (hasLatitude !== hasLongitude) {
-    surfaced.latitude = null;
-    surfaced.longitude = null;
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
@@ -19253,7 +19238,6 @@ const RAW_SCHEMA_POPULATABLE_FIELDS = Object.freeze(
     new Set([
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
-      ...ADDRESS_COORDINATE_FIELDS,
     ]),
   ),
 );
@@ -72431,20 +72415,21 @@ function buildStrictRawAddressSnapshot(options = {}) {
     ...fallbackSourceHttpCandidates,
   );
 
-  const latitude = resolveFirstCoordinate(
-    fieldSources.map((source) => source && source.latitude),
-  );
-  const longitude = resolveFirstCoordinate(
-    fieldSources.map((source) => source && source.longitude),
-  );
+  const defaultCountyName =
+    resolveFirstMeaningfulAddressField("county_name", fieldSources) || null;
+  const defaultStateCode =
+    resolveFirstMeaningfulAddressField("state_code", fieldSources) || null;
+  const defaultCountryCode =
+    resolveFirstMeaningfulAddressField("country_code", fieldSources) || "US";
 
   return (
     buildStrictMinimalRawAddressPayload(resolvedRaw, {
       requestIdentifier: resolvedRequestIdentifier,
       sourceHttpRequest: resolvedSourceHttpRequest,
-      latitude,
-      longitude,
       fieldSources,
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
     }) || null
   );
 }
@@ -72970,18 +72955,19 @@ function buildMinimalRawAddressPayloadFromSources(sources = []) {
     ...sourceHttpCandidates,
   );
 
-  const latitude = resolveFirstCoordinate(
-    candidates.map((candidate) => candidate.latitude),
-  );
-  const longitude = resolveFirstCoordinate(
-    candidates.map((candidate) => candidate.longitude),
-  );
+  const defaultCountyName =
+    resolveFirstMeaningfulAddressField("county_name", candidates) || null;
+  const defaultStateCode =
+    resolveFirstMeaningfulAddressField("state_code", candidates) || null;
+  const defaultCountryCode =
+    resolveFirstMeaningfulAddressField("country_code", candidates) || "US";
   return buildStrictMinimalRawAddressPayload(rawValue, {
     requestIdentifier,
     sourceHttpRequest: resolvedSourceRequest,
-    latitude,
-    longitude,
     fieldSources: candidates,
+    defaultCountyName,
+    defaultStateCode,
+    defaultCountryCode,
   });
 }
 
@@ -73001,13 +72987,6 @@ function populateMinimalRawSurfaceFields(target, fieldSources = []) {
 
   for (const field of RAW_SCHEMA_POPULATABLE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(target, field)) {
-      continue;
-    }
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const coordinate = resolveFirstCoordinate(
-        resolvedSources.map((source) => source && source[field]),
-      );
-      ensureField(field, Number.isFinite(coordinate) ? coordinate : null);
       continue;
     }
     const resolved = resolveFirstMeaningfulAddressField(
@@ -73059,13 +73038,6 @@ function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
     minimal.source_http_request = null;
   }
 
-  const latitude = parseCoordinate(options.latitude);
-  const longitude = parseCoordinate(options.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-   minimal.latitude = latitude;
-   minimal.longitude = longitude;
-  }
-
   const normalizedFieldSources = [];
   if (
     options &&
@@ -73082,6 +73054,30 @@ function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
     });
   }
   populateMinimalRawSurfaceFields(minimal, normalizedFieldSources);
+
+  if (!hasMeaningfulAddressValue(minimal.county_name)) {
+    minimal.county_name =
+      resolveFirstMeaningfulAddressField("county_name", normalizedFieldSources) ||
+      (options && options.defaultCountyName) ||
+      titleCaseCounty("Palm Beach");
+  }
+
+  if (!hasMeaningfulAddressValue(minimal.state_code)) {
+    minimal.state_code =
+      resolveFirstMeaningfulAddressField("state_code", normalizedFieldSources) ||
+      (options && options.defaultStateCode) ||
+      "FL";
+  }
+
+  if (
+    hasMeaningfulAddressValue(minimal.state_code) &&
+    !hasMeaningfulAddressValue(minimal.country_code)
+  ) {
+    minimal.country_code =
+      resolveFirstMeaningfulAddressField("country_code", normalizedFieldSources) ||
+      (options && options.defaultCountryCode) ||
+      "US";
+  }
 
   return minimal;
 }
@@ -73145,9 +73141,16 @@ function projectAddressPayloadForSchema(address) {
     buildStrictMinimalRawAddressPayload(rawValue, {
       requestIdentifier: address.request_identifier,
       sourceHttpRequest: address.source_http_request,
-      latitude: address.latitude,
-      longitude: address.longitude,
       fieldSources: [address],
+      defaultCountyName: hasMeaningfulAddressValue(address.county_name)
+        ? address.county_name
+        : null,
+      defaultStateCode: hasMeaningfulAddressValue(address.state_code)
+        ? address.state_code
+        : null,
+      defaultCountryCode: hasMeaningfulAddressValue(address.country_code)
+        ? address.country_code
+        : "US",
     }) || null;
   if (!minimal) {
     return address;
