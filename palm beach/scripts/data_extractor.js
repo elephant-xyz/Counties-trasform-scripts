@@ -55,20 +55,10 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "county_name",
 ];
 
-const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      ...COUNTY_REQUIRED_NORMALIZED_FIELDS,
-      ...COUNTY_ADDRESS_ENSURE_FIELDS,
-    ]),
-  ),
-);
-
 const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
   // Track the coarse locality fields we can usually hydrate even when the
-  // source only provides an unnormalized string. The full structured surface is
-  // still required by the schema, so anything missing gets defaulted to null
-  // via COUNTY_RAW_ENSURE_FIELDS.
+  // source only provides an unnormalized string. These align with the raw
+  // branch of the schema, so we avoid forcing unused structured fields.
   "city_name",
   "municipality_name",
   "county_name",
@@ -77,6 +67,16 @@ const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
   "plus_four_postal_code",
   "country_code",
 ]);
+
+const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      "unnormalized_address",
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_GRID_FIELDS,
+    ]),
+  ),
+);
 
 const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "city_name",
@@ -88,32 +88,21 @@ const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "country_code",
 ]);
 
-const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      "unnormalized_address",
-      "street_number",
-      "street_name",
-      "street_pre_directional_text",
-      "street_post_directional_text",
-      "street_suffix_type",
-      "unit_identifier",
-      "route_number",
-      "township",
-      "range",
-      "section",
-      "block",
-      "lot",
-      "city_name",
-      "municipality_name",
-      "county_name",
-      "state_code",
-      "postal_code",
-      "plus_four_postal_code",
-      "country_code",
-    ]),
-  ),
-);
+const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze([
+  "unnormalized_address",
+  "city_name",
+  "municipality_name",
+  "county_name",
+  "state_code",
+  "postal_code",
+  "plus_four_postal_code",
+  "country_code",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+]);
 const RAW_UNNORMALIZED_FIELD_SET = new Set(RAW_UNNORMALIZED_ONLY_FIELDS);
 const RAW_ADDRESS_GRID_FIELDS = Object.freeze([
   "section",
@@ -124,13 +113,7 @@ const RAW_ADDRESS_GRID_FIELDS = Object.freeze([
 ]);
 const RAW_ADDRESS_GRID_FIELD_SET = new Set(RAW_ADDRESS_GRID_FIELDS);
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      ...RAW_UNNORMALIZED_ONLY_FIELDS,
-      "latitude",
-      "longitude",
-    ]),
-  ),
+  Array.from(new Set([...RAW_UNNORMALIZED_ONLY_FIELDS])),
 );
 const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(RAW_ADDRESS_RAW_SURFACE_FIELDS);
 
