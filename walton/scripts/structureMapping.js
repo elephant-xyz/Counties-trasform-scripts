@@ -193,11 +193,10 @@ function mapFlooring(tokens) {
   tokens.forEach((tok) => {
     const t = tok.toUpperCase().trim();
     if (t.includes("CARPET")) out.push("Carpet");
-    if (t.includes("VINYL")) out.push("Sheet Vinyl");
-    if (t.includes("CERAMIC")) out.push("Ceramic Tile");
     if (t.includes("LVP")) out.push("Luxury Vinyl Plank");
+    else if (t.includes("VINYL")) out.push("Luxury Vinyl Plank");
+    if (t.includes("CERAMIC")) out.push("Ceramic Tile");
     if (t.includes("LAMINATE")) out.push("Laminate");
-    if (t.includes("STONE")) out.push("Natural Stone Tile");
   });
   return out;
 }
