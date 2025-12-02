@@ -285,9 +285,10 @@ function buildPersonFromSingleName(s) {
   const out = [];
   // Remove estate designations and other parenthetical content
   let cleaned = s.replace(/\s{2,}/g, " ");
+  // First remove any parenthetical content like (DEC), (DECEASED), (ESTATE), etc.
   cleaned = cleaned.replace(/\([^)]*\)/g, "").trim();
-  // Remove trailing designations like "ESTATE", "TRUST", "TRUSTEE", etc.
-  cleaned = cleaned.replace(/\b(ESTATE|TRUST|TRUSTEE|DECEASED|DEC'D|ET AL|ETAL)\s*$/i, "").trim();
+  // Then remove trailing designations like "ESTATE", "TRUST", "TRUSTEE", "DEC", etc.
+  cleaned = cleaned.replace(/\b(ESTATE|TRUST|TRUSTEE|DECEASED|DEC'D|DEC|ET AL|ETAL)\s*$/i, "").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
 
   const { prefix, suffix, coreParts } = extractAffixes(parts);
