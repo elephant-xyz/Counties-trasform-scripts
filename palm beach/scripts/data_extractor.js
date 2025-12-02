@@ -89,6 +89,15 @@ const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze([
   "unnormalized_address",
+  "street_number",
+  "street_name",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "latitude",
+  "longitude",
   "city_name",
   "municipality_name",
   "county_name",
