@@ -69,9 +69,13 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
     }
   });
 
+  // CRITICAL: Only lot and structure files should be created here
+  // Utility files are created as utility_N.json with proper relationships later (lines 3431-3490)
+  // NEVER add "utility" to this fileMap - it will cause an unused file error
   const fileMap = {
     lot: "lot.json",
     structure: "structure.json",
+    // utility: "utility.json", // NEVER uncomment this - use utility_N.json files instead
   };
 
   // Clean up utility.json if it exists (no longer used - we use utility_N.json instead)
@@ -98,6 +102,17 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
     }
   }
 
+  // FINAL safeguard before the loop: Force delete utility.json to prevent any accidental creation
+  try {
+    const finalUtilityCheck = path.join(dataDir, "utility.json");
+    if (fs.existsSync(finalUtilityCheck)) {
+      fs.unlinkSync(finalUtilityCheck);
+      console.log("Final pre-loop cleanup: Removed utility.json before fileMap processing");
+    }
+  } catch (e) {
+    console.error("Failed to remove utility.json in final pre-loop cleanup:", e);
+  }
+
   Object.entries(fileMap).forEach(([cls, filename]) => {
     // Safety check: Never write utility.json (we use utility_N.json instead)
     if (filename === "utility.json" || cls === "utility") {
@@ -122,6 +137,17 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
     };
     writeJSON(filePath, output);
   });
+
+  // IMMEDIATE post-loop cleanup: Delete utility.json if it was somehow created
+  try {
+    const postLoopUtilityCheck = path.join(dataDir, "utility.json");
+    if (fs.existsSync(postLoopUtilityCheck)) {
+      fs.unlinkSync(postLoopUtilityCheck);
+      console.log("Post-loop cleanup: Removed utility.json after fileMap processing");
+    }
+  } catch (e) {
+    console.error("Failed to remove utility.json in post-loop cleanup:", e);
+  }
 }
 
 const propertyTypeMapping=[
@@ -2743,6 +2769,18 @@ function extract() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
+  // CRITICAL FIRST CHECK: Before anything else, ensure utility.json doesn't exist from previous runs
+  // This is the first line of defense against the "Unused data JSON file" error
+  const earlyUtilityCheck = path.join(dataDir, "utility.json");
+  if (fs.existsSync(earlyUtilityCheck)) {
+    try {
+      fs.unlinkSync(earlyUtilityCheck);
+      console.log("PRE-EXECUTION: Removed utility.json from previous run");
+    } catch (e) {
+      console.error("Failed to remove utility.json during pre-execution cleanup:", e);
+    }
+  }
+
   // CRITICAL: utility.json should NEVER be created - we use utility_N.json files with proper relationships
   // This cleanup ensures any legacy utility.json from previous executions is removed
   const utilityJsonPath = path.join(dataDir, "utility.json");
@@ -3787,5 +3825,30 @@ try {
     }
   } catch (e) {
     console.error("Error in post-execution utility.json cleanup:", e);
+  }
+
+  // ABSOLUTE FINAL CHECK: One last verification with fs.readdirSync to catch any edge cases
+  try {
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      const utilityJsonFiles = files.filter(f => f === "utility.json");
+      if (utilityJsonFiles.length > 0) {
+        console.error("CRITICAL: utility.json still exists after all cleanup attempts!");
+        utilityJsonFiles.forEach(file => {
+          try {
+            const fullPath = path.join(dataDir, file);
+            fs.unlinkSync(fullPath);
+            console.log(`Emergency cleanup: Force deleted ${fullPath}`);
+          } catch (err) {
+            console.error(`Failed to delete ${file} in emergency cleanup:`, err);
+          }
+        });
+      } else {
+        console.log("Final verification: Confirmed utility.json does not exist ✓");
+      }
+    }
+  } catch (e) {
+    console.error("Error in final verification:", e);
   }
 }
