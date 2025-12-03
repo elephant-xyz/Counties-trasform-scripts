@@ -54,285 +54,3031 @@ function toTitleCase(str) {
     .join(" ");
 }
 
-// Define the street suffix normalization map outside the function,
-// ideally at the top of your data_extractor.js file, along with other constants.
-const STREET_SUFFIX_NORMALIZATION = {
-  "ST": "St", "STREET": "St",
-  "RD": "Rd", "ROAD": "Rd",
-  "AVE": "Ave", "AVENUE": "Ave",
-  "BLVD": "Blvd", "BOULEVARD": "Blvd",
-  "LN": "Ln", "LANE": "Ln",
-  "DR": "Dr", "DRIVE": "Dr",
-  "CT": "Ct", "COURT": "Ct",
-  "PL": "Pl", "PLACE": "Pl",
-  "WAY": "Way",
-  "HWY": "Hwy", "HIGHWAY": "Hwy",
-  "TRL": "Trl", "TRAIL": "Trl",
-  "CIR": "Cir", "CIRCLE": "Cir",
-  "SQ": "Sq", "SQUARE": "Sq",
-  "TER": "Ter", "TERRACE": "Ter",
-  "PKWY": "Pkwy", "PARKWAY": "Pkwy",
-  "EXPY": "Expy", "EXPRESSWAY": "Expy",
-  "FWY": "Fwy", "FREEWAY": "Fwy",
-  "JCT": "Jct", "JUNCTION": "Jct",
-  "LOOP": "Loop",
-  "RAMP": "Ramp",
-  "RUN": "Run",
-  "SPG": "Spg", "SPRING": "Spg",
-  "SPGS": "Spgs", "SPRINGS": "Spgs",
-  "STA": "Sta", "STATION": "Sta",
-  "TPKE": "Tpke", "TURNPIKE": "Tpke",
-  "XING": "Xing", "CROSSING": "Xing",
-  "ALY": "Aly", "ALLEY": "Aly",
-  "BCH": "Bch", "BEACH": "Bch",
-  "BLF": "Blf", "BLUFF": "Blf",
-  "BLFS": "Blfs", "BLUFFS": "Blfs",
-  "BR": "Br", "BRANCH": "Br",
-  "BRG": "Brg", "BRIDGE": "Brg",
-  "BRK": "Brk", "BROOK": "Brk",
-  "BRKS": "Brks", "BROOKS": "Brks",
-  "BYU": "Byu", "BAYOU": "Byu",
-  "CANYON": "Cyn", "CYN": "Cyn",
-  "CLF": "Clf", "CLIFF": "Clf",
-  "CLFS": "Clfs", "CLIFFS": "Clfs",
-  "CMN": "Cmn", "COMMON": "Cmn",
-  "CMNS": "Cmns", "COMMONS": "Cmns",
-  "COR": "Cor", "CORNER": "Cor",
-  "CORS": "Cors", "CORNERS": "Cors",
-  "CRK": "Crk", "CREEK": "Crk",
-  "CRST": "Crst", "CREST": "Crst",
-  "CSWY": "Cswy", "CAUSEWAY": "Cswy",
-  "CTR": "Ctr", "CENTER": "Ctr",
-  "CTRS": "Ctrs", "CENTERS": "Ctrs",
-  "CURV": "Curv", "CURVE": "Curv",
-  "DM": "Dm", "DAM": "Dm",
-  "DV": "Dv", "DIVIDE": "Dv",
-  "EST": "Est", "ESTATE": "Est",
-  "ESTS": "Ests", "ESTATES": "Ests",
-  "EXT": "Ext", "EXTENSION": "Ext",
-  "EXTS": "Exts", "EXTENSIONS": "Exts",
-  "FALL": "Fall",
-  "FLS": "Fls", "FALLS": "Fls",
-  "FLD": "Fld", "FIELD": "Fld",
-  "FLDS": "Flds", "FIELDS": "Flds",
-  "FLT": "Flt", "FLAT": "Flt",
-  "FLTS": "Flts", "FLATS": "Flats",
-  "FRD": "Frd", "FORD": "Frd",
-  "FRGS": "Frgs", "FORGES": "Frgs",
-  "FRK": "Frk", "FORK": "Frk",
-  "FRKS": "Frks", "FORKS": "Frks",
-  "FRST": "Frst", "FOREST": "Frst",
-  "FRY": "Fry", "FERRY": "Fry",
-  "FT": "Ft", "FORT": "Ft",
-  "GDN": "Gdn", "GARDEN": "Gdn",
-  "GDNS": "Gdns", "GARDENS": "Gdns",
-  "GLN": "Gln", "GLEN": "Gln",
-  "GLNS": "Glns", "GLENS": "Glns",
-  "GRN": "Grn", "GREEN": "Grn",
-  "GRNS": "Grns", "GREENS": "Grns",
-  "GRV": "Grv", "GROVE": "Grv",
-  "GRVS": "Grvs", "GROVES": "Grvs",
-  "GTWY": "Gtwy", "GATEWAY": "Gtwy",
-  "HBR": "Hbr", "HARBOR": "Hbr",
-  "HBRS": "Hbrs", "HARBORS": "Hbrs",
-  "HL": "Hl", "HILL": "Hl",
-  "HLS": "Hls", "HILLS": "Hls",
-  "HOLW": "Holw", "HOLLOW": "Holw",
-  "HTS": "Hts", "HEIGHTS": "Hts",
-  "HVN": "Hvn", "HAVEN": "Hvn",
-  "INLT": "Inlt", "INLET": "Inlt",
-  "IS": "Is", "ISLAND": "Is",
-  "ISS": "Iss", "ISLANDS": "Iss",
-  "KY": "Ky", "KEY": "Ky",
-  "KYS": "Kys", "KEYS": "Kys",
-  "LAKE": "Lk", "LK": "Lk",
-  "LKS": "Lks", "LAKES": "Lks",
-  "LNDG": "Lndg", "LANDING": "Lndg",
-  "LF": "Lf", "LOAF": "Lf",
-  "LGT": "Lgt", "LIGHT": "Lgt",
-  "LGTS": "Lgts", "LIGHTS": "Lgts",
-  "LCK": "Lck", "LOCK": "Lck",
-  "LCKS": "Lcks", "LOCKS": "Lcks",
-  "MDW": "Mdw", "MEADOW": "Mdw",
-  "MDWS": "Mdws", "MEADOWS": "Mdws",
-  "ML": "Ml", "MILL": "Ml",
-  "MLS": "Mls", "MILLS": "Mls",
-  "MNR": "Mnr", "MANOR": "Mnr",
-  "MNRS": "Mnrs", "MANORS": "Mnrs",
-  "MT": "Mt", "MOUNT": "Mt",
-  "MTN": "Mtn", "MOUNTAIN": "Mtn",
-  "MTNS": "Mtns", "MOUNTAINS": "Mtns",
-  "NCK": "Nck", "NECK": "Nck",
-  "ORCH": "Orch", "ORCHARD": "Orch",
-  "PASS": "Pass",
-  "PSGE": "Psge", "PASSAGE": "Psge",
-  "PIKE": "Pike",
-  "PLN": "Pln", "PLAIN": "Pln",
-  "PLNS": "Plns", "PLAINS": "Plns",
-  "PLZ": "Plz", "PLAZA": "Plz",
-  "PNE": "Pne", "PINE": "Pne",
-  "PNES": "Pnes", "PINES": "Pnes",
-  "PR": "Pr", "PRAIRIE": "Pr",
-  "PRT": "Prt", "PORT": "Prt",
-  "PRTS": "Prts", "PORTS": "Prts",
-  "PT": "Pt", "POINT": "Pt",
-  "PTS": "Pts", "POINTS": "Pts",
-  "RADL": "Radl", "RADIAL": "Radl",
-  "RMP": "Rmp", "RAMP": "Rmp",
-  "RCH": "Rch", "RANCH": "Rch",
-  "RNCH": "Rnch", "RANCH": "Rnch",
-  "RDG": "Rdg", "RIDGE": "Rdg",
-  "RDGS": "Rdgs", "RIDGES": "Rdgs",
-  "RPD": "Rpd", "RAPID": "Rpd",
-  "RPDS": "Rpds", "RAPIDS": "Rpds",
-  "RST": "Rst", "REST": "Rst",
-  "RTE": "Rte", "ROUTE": "Rte",
-  "SHL": "Shl", "SHOAL": "Shl",
-  "SHLS": "Shls", "SHOALS": "Shls",
-  "SHR": "Shr", "SHORE": "Shr",
-  "SHRS": "Shrs", "SHORES": "Shrs",
-  "SKWY": "Skwy", "SKYWAY": "Skwy",
-  "SMT": "Smt", "SUMMIT": "Smt",
-  "SPUR": "Spur",
-  "SQS": "Sqs", "SQUARES": "Sqs",
-  "STRA": "Stra", "STRAVENUE": "Stra",
-  "STRM": "Strm", "STREAM": "Strm",
-  "TRCE": "Trce", "TRACE": "Trce",
-  "TRFY": "Trfy", "TRAFFICWAY": "Trfy",
-  "TRWY": "Trwy", "THROUGHWAY": "Trwy",
-  "TUNL": "Tunl", "TUNNEL": "Tunl",
-  "UN": "Un", "UNION": "Un",
-  "UNS": "Uns", "UNIONS": "Uns",
-  "VIA": "Via",
-  "VLG": "Vlg", "VILLAGE": "Vlg",
-  "VLGS": "Vlgs", "VILLAGES": "Vlgs",
-  "VLY": "Vly", "VALLEY": "Vly",
-  "VLYS": "Vlys", "VALLEYS": "Vlys",
-  "VW": "Vw", "VIEW": "Vw",
-  "VWS": "Vws", "VIEWS": "Vws",
-  "WLS": "Wls", "WELLS": "Wls",
-  "XRD": "Xrd", "CROSSROAD": "Xrd",
-  "XRDS": "Xrds", "CROSSROADS": "Xrds",
-  "WALK": "Walk",
-  "WALL": "Wall",
-  "WLS": "Wls", "WELLS": "Wls",
-  "CP": "Cp", "CAMP": "Cp",
-  "DM": "Dm", "DAM": "Dm",
-  "FRGS": "Frgs", "FORGES": "Frgs",
-  "ISLE": "Isle",
-  "KY": "Ky", "KEY": "Ky",
-  "LGT": "Lgt", "LIGHT": "Lgt",
-  "LNDG": "Lndg", "LANDING": "Lndg",
-  "ML": "Ml", "MILL": "Ml",
-  "MT": "Mt", "MOUNT": "Mt",
-  "Nck": "Nck", "NECK": "Nck",
-  "OPAS": "Opas",
-  "OVRPS": "Ovrps", "OVERPASS": "Ovrps",
-  "PR": "Pr", "PRAIRIE": "Pr",
-  "RCH": "Rch", "RANCH": "Rch",
-  "RTE": "Rte", "ROUTE": "Rte",
-  "SHL": "Shl", "SHOAL": "Shl",
-  "SPG": "Spg", "SPRING": "Spg",
-  "STA": "Sta", "STATION": "Sta",
-  "TRWY": "Trwy", "THROUGHWAY": "Trwy",
-  "UN": "Un", "UNION": "Un",
-  "UPAS": "Upas",
-  "VLY": "Vly", "VALLEY": "Vly",
-  "VW": "Vw", "VIEW": "Vw",
-  "WALK": "Walk",
-  "WALL": "Wall",
-  "WLS": "Wls", "WELLS": "Wls",
-  "ANX": "Anx", "ANNEX": "Anx",
-  "ARC": "Arc", "ARCADE": "Arc",
-  "BGS": "Bgs", "BURG": "Bgs",
-  "BND": "Bnd", "BEND": "Bnd",
-  "BTM": "Btm", "BOTTOM": "Btm",
-  "BYP": "Byp", "BYPASS": "Byp",
-  "CLB": "Clb", "CLUB": "Clb",
-  "CPE": "Cpe", "CAPE": "Cpe",
-  "CRSE": "Crse", "COURSE": "Crse",
-  "CRES": "Cres", "CRESCENT": "Cres",
-  "DL": "Dl", "DALE": "Dl",
-  "DRS": "Drs", "DIVERSION": "Drs",
-  "FLD": "Fld", "FIELD": "Fld",
-  "FRDS": "Frds", "FORD": "Frds",
-  "FRGS": "Frgs", "FORGE": "Frgs",
-  "FRK": "Frk", "FORK": "Frk",
-  "FRST": "Frst", "FOREST": "Frst",
-  "FRY": "Fry", "FERRY": "Fry",
-  "GARDEN": "Gdn", "GDN": "Gdn",
-  "GLN": "Gln", "GLEN": "Gln",
-  "GRN": "Grn", "GREEN": "Grn",
-  "GRV": "Grv", "GROVE": "Grv",
-  "HBR": "Hbr", "HARBOR": "Hbr",
-  "HL": "Hl", "HILL": "Hl",
-  "HOLW": "Holw", "HOLLOW": "Holw",
-  "HTS": "Hts", "HEIGHTS": "Hts",
-  "HVN": "Hvn", "HAVEN": "Hvn",
-  "IS": "Is", "ISLAND": "Is",
-  "JCT": "Jct", "JUNCTION": "Jct",
-  "KNL": "Knl", "KNOLL": "Knl",
-  "KNLS": "Knls", "KNOLLS": "Knls",
-  "LAKE": "Lk", "LK": "Lk",
-  "LNDG": "Lndg", "LANDING": "Lndg",
-  "LOOP": "Loop",
-  "MALL": "Mall",
-  "MDW": "Mdw", "MEADOW": "Mdw",
-  "MEWS": "Mews",
-  "ML": "Ml", "MILL": "Ml",
-  "MNR": "Mnr", "MANOR": "Mnr",
-  "MSN": "Msn", "MISSION": "Msn",
-  "MT": "Mt", "MOUNT": "Mt",
-  "MTN": "Mtn", "MOUNTAIN": "Mtn",
-  "MTWY": "Mtwy", "MOTORWAY": "Mtwy",
-  "Nck": "Nck", "NECK": "Nck",
-  "ORCH": "Orch", "ORCHARD": "Orch",
-  "PASS": "Pass",
-  "PIKE": "Pike",
-  "PLN": "Pln", "PLAIN": "Pln",
-  "PLZ": "Plz", "PLAZA": "Plz",
-  "PNE": "Pne", "PINE": "Pne",
-  "PNES": "Pnes", "PINES": "Pnes",
-  "PR": "Pr", "PRAIRIE": "Pr",
-  "PRT": "Prt", "PORT": "Prt",
-  "PSGE": "Psge", "PASSAGE": "Psge",
-  "PT": "Pt", "POINT": "Pt",
-  "RADL": "Radl", "RADIAL": "Radl",
-  "RCH": "Rch", "RANCH": "Rch",
-  "RDG": "Rdg", "RIDGE": "Rdg",
-  "RIV": "Riv", "RIVER": "Riv",
-  "RMP": "Rmp", "RAMP": "Rmp",
-  "ROW": "Row",
-  "RUE": "Rue",
-  "RUN": "Run",
-  "SHL": "Shl", "SHOAL": "Shl",
-  "SHR": "Shr", "SHORE": "Shr",
-  "SKWY": "Skwy", "SKYWAY": "Skwy",
-  "SMT": "Smt", "SUMMIT": "Smt",
-  "SPUR": "Spur",
-  "SQ": "Sq", "SQUARE": "Sq",
-  "STA": "Sta", "STATION": "Sta",
-  "STRM": "Strm", "STREAM": "Strm",
-  "TER": "Ter", "TERRACE": "Ter",
-  "TPKE": "Tpke", "TURNPIKE": "Tpke",
-  "TRCE": "Trce", "TRACE": "Trce",
-  "TRFY": "Trfy", "TRAFFICWAY": "Trfy",
-  "TRL": "Trl", "TRAIL": "Trl",
-  "TRLR": "Trlr", "TRAILER": "Trlr",
-  "TUNL": "Tunl", "TUNNEL": "Tunl",
-  "UN": "Un", "UNION": "Un",
-  "VIA": "Via",
-  "VLG": "Vlg", "VILLAGE": "Vlg",
-  "VLY": "Vly", "VALLEY": "Vly",
-  "VW": "Vw", "VIEW": "Vw",
-  "WALK": "Walk",
-  "WALL": "Wall",
-  "WAY": "Way",
-  "XING": "Xing", "CROSSING": "Xing",
-};
+
+const propertyTypeMapping = [
+  {
+    "property_usecode": "0001 - VAC.RES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0002 - VAC. MH - PLATTED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0003 - VAC. CONDO SITE - PLATTED",
+    "ownership_estate_type": "Condominium",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0004 - VAC. RES. W/MISC IMPR @ ZERO VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0006 - RESIDENTIAL IMPROVEMENTS CARRIED ON OTHER PCL'S",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0007 - RES. OR MH LOT W/ MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0008 - LOT W/ MH ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0009 - VACANT RV LOT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0024 - VAC. MH LOT W/ MISC IMPR @ 0 VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0028 - VAC. MH WATERFRONT LOT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0044 - VAC. CONDO/RV LOT",
+    "ownership_estate_type": "Condominium",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0064 - VAC. RESIDENTIAL, UNBUILDABLE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0080 - VAC. LAKEFRONT.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0082 - VAC. OTHER WATERFRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0084 - VAC. LAKEFRONT W/ MISC IMPR @ ZERO VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0085 - VAC. LAKEFRONT W/MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0086 - VAC. GOLF COURSE FRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GolfCourse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0088 - VAC. AIRSTRIP FRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0100 - SFR UP TO 2.49 AC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0101 - SFR 2.5 TO 9.99AC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0102 - SFR 10+ AC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0140 - ATTACHED HOUSING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "TownhouseRowhouse",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0150 - MODULAR HOME UP TO 2.49 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "Modular",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0151 - MODULAR HOME 2.50 - 9.99 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "Modular",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0152 - MODULAR HOME 10+ ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "Modular",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0160 - SFR - RENTAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0180 - RES. LAKEFRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0182 - SFR OTHER WATERFRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0183 - MODULAR HOME LAKEFRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "Modular",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0185 - MODULAR HOME OTHER WATERFRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "Modular",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0186 - SFR GOLF COURSE FRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "GolfCourse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0188 - SFR AIRSTRIP FRONT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0200 - M.H. (RP) UP TO 2.49 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0201 - M.H. (RP) 2.5 - 9.99 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0202 - M.H. (RP) 10+ ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0280 - M.H. LAKEFRONT (RP TAG)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0282 - M.H. OTHER WATERFRONT W/ VALUE(RP)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0286 - M.H. GOLF COURSE FRONT (RP)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "GolfCourse",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0301 - MULTI-FAMILY 10+ (INDIV UNITS)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0310 - MULTI-FAMILY - 10 - 49 UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0315 - MULTI-FAMILY 50-119 UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0320 - MULTI-FAMILY 120+ UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0330 - MULTI FAMILY - LIHTC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0331 - MULTI-FAMILY LOW INCOME (USDA, SECT. 8, ETC.)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0350 - DUPLEXES, TRI'S, QUAD'S IN THE GREATER LAKELAND AREA 10+ UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0351 - DUPLEXES, TRI'S, QUAD'S IN HIGHLANDS CITY, MULBERRY, BARTOW, FORT MEADE, EAGLE LAKE AREA 10+ UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0352 - DUPLEXES, TRI'S, QUAD'S IN POLK CITY, AUBURNDALE, LAKE ALFRED, WINTER HAVEN AREA 10+ UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0353 - DUPLEXES, TRI'S, QUAD'S ALONG HWY 27, EAST PART OF THE COUNTY FROM DAVENPORT TO FROSTPROOF 10+ UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0360 - MIGRANT CAMPS 10+ UNITS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0400 - CONDOMINIUMS",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "0401 - CONDOMINIUMS - M.H. (INDIV UNIT)",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "0441 - CONDOMINIUMS - R.V. (INDIV UNIT)",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "0500 - CO-OP APARTMENTS",
+    "ownership_estate_type": "Cooperative",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "0650 - ASSISTED LIVING FACILITY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Retirement",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0651 - SKILLED NURSING HOMES (PRIVATE-MEDICAL)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "SanitariumConvalescentHome",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0652 - RETIREMENT FACILITY (MIXED)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Retirement",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0801 - MULTIPLE SFR RESIDENCES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0802 - MULTIPLE MH RESIDENCES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0803 - MULTIPLE RESIDENCES SFR & MH",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "0811 - MULTI-FAMILY W/SFR",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "SingleFamilyDetached",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0850 - DUPLEXES, TRI'S, QUAD'S IN THE GREATER LAKELAND AREA 9 UNITS OR LESS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0851 - DUPLEXES, TRI'S, QUAD'S IN HIGHLANDS CITY, MULBERRY, BARTOW, FORT MEADE, EAGLE LAKE AREA 9 UNITS OR",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0852 - DUPLEXES, TRI'S, QUAD'S IN POLK CITY, AUBURNDALE, LAKE ALFRED, WINTER HAVEN AREA 9 UNITS OR LESS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0853 - DUPLEXES, TRI'S, QUAD'S ALONG HWY 27, EAST PART OF THE COUNTY FROM DAVENPORT TO FROSTPROOF 9 UNITS O",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0860 - MIGRANT CAMPS 9 UNITS OR LESS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyMoreThan10",
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0900 - VAC. RESIDENTIAL / OR MISC IMP. COMMON ELEMENTS/AREAS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "ResidentialCommonElementsAreas",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "0901 - IMP. RESIDENTIAL COMMON ELEMENTS/AREAS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ResidentialCommonElementsAreas",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "0989 - SPLIT AND/OR COMBINE IN PROGRESS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "UnderConstruction",
+    "structure_form": null,
+    "property_usage_type": "TransitionalProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "1000 - VACANT COMMERCIAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "1004 - VAC COMM MISC IMPR @ ZERO VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "1005 - VAC. COM./IMPS ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "1006 - COMM. IMPROVEMENTS CARRIED ON OTHER PCL'S",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1007 - COMM. MISC IMPS OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1038 - VAC. COMMERCIAL GOLF COURSE LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GolfCourse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "1040 - COMM. COMMON ELEMENTS/AREAS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1064 - VACANT COMMERCIAL, UNBUILDABLE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "1100 - COM. MISC.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1104 - STRUCTURE(S) OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1110 - RETAIL UP TO 4999 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1120 - RETAIL 5000SF TO 20000SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1130 - RETAIL OVER 20000 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1140 - DRUG STORE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1150 - DISCOUNT STORES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1160 - POST OFFICE (NOT GOV. OWNED)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1170 - HOME IMPROVEMENT CENTER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1171 - FURNITURE STORES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1172 - DOLLAR STORES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1174 - CONVENIENCE STORES W/GAS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1175 - CONVENIENCE STORES ONLY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1179 - BEAUTY SHOPS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1180 - DRY CLEANERS-LAUNDROMAT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1190 - DAY CARE CENTER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1203 - COM. LAND & NON-CONFORMING STRUCTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1204 - STORE/OFFICE W/RESIDENCE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1211 - DOWNTOWN CORE AREA MISC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1300 - DEPARTMENT STORES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1400 - SUPERMARKETS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1500 - REGIONAL SHOPPING CENTER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1600 - MINI PLAZA",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1610 - NEIGHBORHOOD PLAZA",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1620 - NEIGHBORHOOD SHOPPING CNTR",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1671 - COMMUNITY SHOPPING CNTR",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1711 - ONE-STORY, CLASS A OFFICE, 10,000 & LARGER SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1721 - ONE-STORY, CLASS B OFFICE 10,000 & LARGER SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1730 - ONE-STORY, CLASS C, OFFICE, 1 - 9,999 SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1731 - ONE-STORY, CLASS C, OFFICE, 10,000 & LARGER SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1740 - ONE-STORY, CLASS D OFFICE, 1 - 9,999 SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1741 - ONE-STORY, CLASS D OFFICE, 10,000 & LARGER SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1811 - MULTI-STORY, CLASS A OFFICE, 10,000 & LARGER SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1821 - MULTI-STORY, CLASS B OFFICE, 10,000 & LARGER SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1830 - MULTI-STORY, CLASS C OFFICE, 1 - 9999 SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1831 - MULTI-STORY, CLASS C OFFICE, 10,000 & LARGER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1840 - MULTI-STORY, CLASS D OFFICE, 1 - 9999 SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1841 - MULTI-STORY, CLASS D OFFICE, 10,000 & LARGER SQFT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1906 - COMMERCIAL CONDO",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "Commercial",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "1940 - HOSPITALS (TAXABLE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateHospital",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1942 - PROFESSIONAL BLDGS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1943 - MEDICAL COMPLEX/DRS. OFFICES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1944 - ANIMAL CLINICS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1945 - FUNERAL HOMES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "1946 - SCHOOLS AND COLLEGES (TAXABLE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2000 - AIRPORTS (PRIVATE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TransportationTerminal",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2020 - MARINAS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TransportationTerminal",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2101 - LOCAL RESTAURANTS/EATERIES UPSCALE DINING, HIGH LEVEL OF DECOR.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2102 - LOCAL RESTAURANTS/EATERIES CASUAL DINING.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2103 - LOCAL RESTAURANTS/EATERIES FAST CASUAL, MINIMUM DECOR.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2104 - LOCAL RESTAURANTS/EATERIES MINIMUM TYPE STRUCTURES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2150 - NATIONAL/CHAIN RESTAURANTS CASUAL DINING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2151 - NATIONAL/CHAIN RESTAURANTS FAST CASUAL DINING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2201 - LOCAL FAST FOOD RESTAURANTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2250 - NATIONAL/CHAIN FAST FOOD RESTAURANTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Restaurant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2300 - BANKS (S&L, FINANCIAL INSTS.)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "FinancialInstitution",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2310 - BANK BRANCH OFFICE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "FinancialInstitution",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2400 - INSURANCE CO. (NATIONAL & REGIONAL)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "FinancialInstitution",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2500 - SVC & REPAIR SHOPS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2600 - SERVICE STATIONS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ServiceStation",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2610 - TRUCK STOPS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ServiceStation",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2700 - AUTO SALES/SVC (DEALERSHIPS)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2701 - RV SALES/SERVICE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2702 - MOTORCYCLE/REC. VEHICLES SALES/SERVICE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2710 - FARM MACHINERY SALES/SVC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2720 - MARINE SALES/SVC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2730 - MOBILE HOME SALES/SVC",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Commercial",
+    "property_type": "ManufacturedHome"
+  },
+  {
+    "property_usecode": "2740 - AUTO PARTS SALES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2750 - AUTO REPAIR / COMMERCIAL SERVICE GARAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2760 - USED SALES & RENTAL/LEASING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2770 - QUICK LUBE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ServiceStation",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2780 - CAR WASH",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ServiceStation",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "2805 - COMMERCIAL PARKING LOTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2850 - MHP - 55+ PARK; LOT ONLY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MobileHomePark",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2851 - MHP - 55+ PARK; MH LOT AND UNIT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MobileHomePark",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2852 - MHP - 55+ PARK; MH LOT AND RECREATIONAL VEHICLE (RV)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MobileHomePark",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2853 - RVP - 55+ PARK; RECREATIONAL VEHICLE (RV)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2854 - MHP - FAMILY PARK; LOT ONLY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MobileHomePark",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2855 - MHP - FAMILY PARK; MH LOT AND UNIT",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MobileHomePark",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2856 - MHP - FAMILY PARK; MH LOT AND RECREATIONAL VEHICLE (RV)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MobileHomePark",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2857 - RVP - FAMILY PARK; RECREATIONAL VEHICLE (RV)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "2900 - WHOLESALE OUTLETS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "WholesaleOutlet",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3000 - FLORISTS & GREENHOUSES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3100 - THEATERS (DRIVE-INS)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Theater",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3200 - THEATERS (ENCLOSED)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Theater",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3300 - BARS & LOUNGES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Entertainment",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3400 - BOWLINGALLEYS,SKATING RINKS&POOL HAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Entertainment",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3410 - FITNESS CENTER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "3420 - RADIO/TV STATION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3536 - TOURIST ATTRACTIONS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Entertainment",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3537 - ENTERT FACIL.( GOLF, GO CARTS, EVENT VENUES)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Entertainment",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3538 - CLUBHOUSE/COUNTRY CLUB/CULTURAL ORG. (TAXABLE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ClubsLodges",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3600 - FISH CAMPS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "3700 - RACE TRACKS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "RaceTrack",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "3800 - GOLF COURSES & DR. RANGES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GolfCourse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "3900 - FRANCHISE OR CHAIN HOTELS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3901 - INDEPENDENTLY OWNED MOTELS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3910 - BED & BREAKFAST",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "3950 - TIMESHARE PROPERTIES",
+    "ownership_estate_type": "Timeshare",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Hotel",
+    "property_type": "Unit"
+  },
+  {
+    "property_usecode": "4001 - VACANT INDUSTRIAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "4004 - VAC INDUST W/MISC IMP@ 0 VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "4005 - VAC IND/IMPS ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "4006 - INDUSTRIAL IMPROVEMENTS CARRIED ON OTHER PARCELS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4007 - INDUSTRIAL W/ IMPR OF SOME VALUE (XFOB)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4040 - IND. COMMON ELEMENTS/AREAS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Commercial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4064 - VACANT INDUSTRIAL, UNBUILDABLE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "4100 - LIGHT MANUFACTURING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4105 - MISC. INDUSTRIAL FACILITY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4202 - HEAVY INDUSTRIAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4216 - HEAVY IND-POLLUTION CONT.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4300 - LUMBER YDS, SAWMILLS, PLAINING",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "LumberYard",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4400 - CITRUS PACKING PLANTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PackingPlant",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4500 - CITRUS CANNING, BOTTLERS, BREWERS, DISTILLERIES AND WINERIES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Cannery",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4600 - OTHER FOOD PROCESSING, BAKERIES, CANDY FACTORIES, POTATO CHIP FACTORIES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4800 - ALL WH, DISTRIB, TERM, STORAGE UNDER 19,999 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4801 - ALL WH, DISTRIB, TERM, STORAGE 20,000 TO 99,999 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4805 - WH, DISTRIB, TERM, STORAGE STEEL CONSTR 100,000 TO 399,999 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4806 - WH, DISTRIB, TERM, STORAGE CONCRETE CONSTR 100,000 TO 399,999 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4810 - ALL WH, DISTRIB, TERM, STORAGE OVER 400,000 SF",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4814 - INDUSTRIAL SELF STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4815 - SELF STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4816 - FLEX BUILDINGS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4830 - COLD STORAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4915 - OPEN STORAGE-NEW&USED BLDG SUPPLIES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4924 - GAS & OIL STORAGE & DISTRIBUTION",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Warehouse",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "4925 - AUTO WRECKING & JUNKYARDS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "AutoSalesRepair",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "5100 - CROPLAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5101 - CROPLAND W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5102 - CROPLAND W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5103 - CROPLAND W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5104 - CROPLAND W/MH ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5110 - CROPLAND W/UNDEV. LND.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5111 - CROPLAND W/UNDEV. W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5112 - CROPLAND W/UNDEV. W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5113 - CROPLAND W/UNDEV. W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5120 - CROPLAND W/COM. LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5121 - CROPLAND W/COM. BLDG.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5150 - CROPLAND W/CITRUS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5151 - CROPLAND W/CITRUS/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5152 - CROPLAND W/CITRUS/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5160 - CROPLAND W/PASTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5161 - CROPLAND W/PASTURE/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5162 - CROPLAND W/PASTURE/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5163 - CROPLAND W/PASTURE/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5164 - CROPLAND W/PASTURE W/MH ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5170 - CROPLAND W/FARMLAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5171 - CROPLAND W/FARMLAND/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "DrylandCropland",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5400 - TIMBER",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5401 - TIMBER W/MISC.IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5402 - TIMBER W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5403 - TIMBER W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5410 - TIMBER W/UNDEV. LND.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5411 - TIMBER W/UNDEV. W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5412 - TIMBER W/UNDEV. W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5413 - TIMBER W/UNDEV. W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5420 - TIMBER W/COM. LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5421 - TIMBER W/COM. BLDG.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5450 - TIMBER W/CITRUS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5460 - TIMBER W/PASTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5461 - TIMBER W/PASTURE/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5462 - TIMBER W/PASTURE/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5470 - TIMBER W/FARMLAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5471 - TIMBER W/FARMLAND/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "5472 - TIMBER W/FARMLAND/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TimberLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6000 - PASTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6001 - PASTURE W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6002 - PASTURE W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6003 - PASTURE W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6004 - PASTURE W/MH ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6010 - PASTURE W/UNDEV. LND.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6011 - PASTURE W/UNDEV. W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6012 - PASTURE W/UNDEV. W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6013 - PASTURE W/UNDEV. W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6014 - PASTURE W/UNDEV. W/MH ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6020 - PASTURE W/COM. LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6021 - PASTURE W/COM. BLDG.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6022 - PASTURE W/M.H. PARK",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6023 - PASTURE W/GOLF COURSE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6050 - PASTURE W/CITRUS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6051 - PASTURE W/CITRUS/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6052 - PASTURE W/CITRUS/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6053 - PASTURE W/CITRUS/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6070 - PASTURE W/FARMLAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6071 - PASTURE W/FARMLAND/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6072 - PASTURE W/FARMLAND/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6073 - PASTURE W/FARMLAND/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6600 - CITRUS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6601 - CITRUS W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6602 - CITRUS W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6603 - CITRUS W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6610 - CITRUS W/UNDEV. LND.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6611 - CITRUS W/UNDEV. W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6612 - CITRUS W/UNDEV. W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6613 - CITRUS W/UNDEV. W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6620 - CITRUS W/COM. LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6621 - CITRUS W/COM. BLDG.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6660 - CITRUS W/PASTURE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6661 - CITRUS W/PASTURE/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6662 - CITRUS W/PASTURE/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6670 - CITRUS W/FARMLAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6671 - CITRUS W/FARMLAND/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6672 - CITRUS W/FARMLAND/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "OrchardGroves",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6700 - POULTRY, BEES, FISH, RABBITS...",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6701 - POULTRY, BEES, FISH, RABBITS... W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6702 - POULTRY, BEES, FISH, RABBITS... W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6703 - POULTRY, BEES, FISH, RABBITS... W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6704 - POULTRY, BEES, FISH, RABBITS...W/MH ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6712 - POULTRY, BEES, FISH, RABBITS... W/UNDEV. W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6721 - POULTRY, BEES, FISH, RABBITS... W/COM. BLDG.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Poultry",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6761 - POULTRY, BEES, FISH, & RABBITS...W/PASTURE/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6800 - DAIRY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "LivestockFacility",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6801 - DAIRY W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "LivestockFacility",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6802 - DAIRY W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "LivestockFacility",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6810 - DAIRY W/UNDEV. LND.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "LivestockFacility",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6900 - NURSERY",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6901 - NURSERY W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6902 - NURSERY W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6903 - NURSERY W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6904 - NURSERY W/MH ON TPP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6910 - NURSERY W/UNDEV. LND.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6911 - NURSERY W/UNDEV. W/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6912 - NURSERY W/UNDEV. W/RES.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6913 - NURSERY W/UNDEV. W/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6921 - NURSERY W/COM. BLDG.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NurseryGreenhouse",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6961 - NURSERY W/PASTURE/MISC. IMP.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "6963 - NURSERY W/PASTURE/M.H.",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "ManufacturedHomeOnLand",
+    "property_usage_type": "GrazingLand",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7000 - VACANT INSTITUTIONAL - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7050 - VACANT NON-APPURTENANT COMMON ELEMENTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "ResidentialCommonElementsAreas",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7070 - VACANT CDD PARCEL - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7071 - CHURCHES- VACANT LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Church",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7072 - SCHOOLS & COLLEGES (PRIVATE) - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7073 - HOSPITALS (PRIVATELY OWNED) - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "PrivateHospital",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7074 - HOMES FOR THE AGED - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "HomesForAged",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7075 - CHARITABLE INCLUDING ORPHANAGES - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "NonProfitCharity",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7076 - CEMETERIES - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "MortuaryCemetery",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7077 - CLUBS & LODGES - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "ClubsLodges",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7078 - NURSING HOMES (MEDICAL FACILITIES) - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "SanitariumConvalescentHome",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7079 - CULTURAL ORGANIZATIONS - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "CulturalOrganization",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7100 - CHURCHES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Church",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7101 - CHURCHES (TAXABLE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Church",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7200 - SCHOOLS & COLLEGES (PRIVATE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7300 - HOSPITALS (PRIVATELY OWNED) & MEDICAL FACILITIES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateHospital",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7400 - HOMES FOR THE AGED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "HomesForAged",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7500 - CHARITABLE INCLUDING ORPHANAGES-IMPROVED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "NonProfitCharity",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7600 - CEMETERIES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MortuaryCemetery",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7728 - CLUBS & LODGES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ClubsLodges",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7750 - NON-APPURTENANT COMMON ELEMENTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ResidentialCommonElementsAreas",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7770 - CDD PARCEL IMPROVED",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "7800 - NURSING HOMES (MEDICAL FACILITIES)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "SanitariumConvalescentHome",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "7900 - CULTURAL ORGANIZATIONS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "CulturalOrganization",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8050 - VACANT MINERAL RIGHTS (100% GOV EX)",
+    "ownership_estate_type": "SubsurfaceRights",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8076 - VACANT CEMETERY (100% GOV EX)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "MortuaryCemetery",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8081 - VACANT MILITARY - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "Military",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8082 - VACANT FOREST, PARKS - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "ForestParkRecreation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8083 - VACANT PUBLIC COUNTY SCHOOLS - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8084 - VACANT COLLEGES - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8086 - VACANT COUNTY - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8087 - VACANT STATE - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8088 - VACANT FEDERAL - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8089 - VACANT MUNICIPAL - VAC LAND OR MISC IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8095 - VACANT SUBMRGD LAND (100% GOV EX)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "VacantLand",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8200 - FORESTS, PARKS, REC. AREAS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ForestParkRecreation",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8300 - SCHOOLS,PUBLIC-COUNTY (OWNED BY SCH BRD",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PublicSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8400 - COLLEGES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "PrivateSchool",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8600 - COUNTIES (OTHER THAN PUB SCHOOLS,COLLEGES)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8700 - STATE (OTHER THAN MILITARY,FORESTS,P",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8800 - FEDERAL (OTHER THAN MILITARY, FORESTS,P",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "8900 - MUNICIPAL (OTHER THAN COLLEGES,PARKS&RE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "8930 - MUNICIPAL GOLF COURSE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "GovernmentProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9130 - RAILROAD LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Railroad",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9140 - RAILROAD LAND W/MISC. IMP",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Railroad",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9190 - UTILITIES (GAS, ELECTRIC, PHONE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": "MultiFamilyLessThan10",
+    "property_usage_type": "Industrial",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9200 - PHOSPHATE LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9207 - PHOSPHATE PLANTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9208 - SAND MINES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9209 - SAND MINES WITH IMPROVEMENTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9210 - PHOSPHATE LAND WITH IMPROVEMENTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9350 - MINERAL RIGHTS (NOT PHOS.)",
+    "ownership_estate_type": "SubsurfaceRights",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9360 - PHOS. MINERAL RIGHTS",
+    "ownership_estate_type": "SubsurfaceRights",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "MineralProcessing",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9400 - STREETS, R/W & RETENTION (PRIVATE)",
+    "ownership_estate_type": "RightOfWay",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "ReferenceParcel",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9500 - SUBMRGD LAND/LK BOTTOM/PERC POND)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "RiversLakes",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9670 - SEWAGE/BORROW PITS/SPRAY FIELDS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "SewageDisposal",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9681 - WASTE LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TransitionalProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9741 - RECREATION LAND (COVENANT)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9744 - RECREATION LAND W/MISC.IMP.(COVENANT)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Recreational",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9800 - CENTRALLY ASSESSED RAILROAD LAND",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Railroad",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9801 - CENTRALLY ASSESSED RAILROAD VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Railroad",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9900 - UNPLATTED UP TO 10 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9904 - UNPLATTED UP TO 10AC W/ IMPR @ ZERO VAL",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9905 - UNPLATTED UP TO 10AC W/IMPR OF SOME VALUE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9910 - INACCESSIBLE TRACTS",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "TransitionalProperty",
+    "property_type": "LandParcel"
+  },
+  {
+    "property_usecode": "9920 - UNPLATTED TRACTS 10 - 29.99 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9924 - TRACTS 10AC+ W/MISC.IMP. @ 0",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9925 - UNPLATTED TRACTS 30 TO 59.99 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9930 - UNPLATTED TRACTS 60 - 99.99 ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9935 - UNPLATTED TRACTS 100+ ACRES",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9940 - RECREATIONAL LAND (PRIVATE)",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  },
+  {
+    "property_usecode": "9980 - UNPLATTED TRACTS W/ LAKE FRONTAGE",
+    "ownership_estate_type": "FeeSimple",
+    "build_status": "Improved",
+    "structure_form": null,
+    "property_usage_type": "Residential",
+    "property_type": "Building"
+  }
+]
+
+const propertyTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) => {
+  if (!entry || !entry.property_usecode) {
+    return lookup;
+  }
+
+  const normalizedUseCode = entry.property_usecode.match(/\d{4}/)[0];
+
+  if (!normalizedUseCode) {
+    return lookup;
+  }
+
+  lookup[normalizedUseCode] = entry;
+  return lookup;
+}, {});
+
+function mapPropertyTypeFromUseCode(code) {
+  if (!code && code !== 0) return null;
+
+  const normalizedInput = String(code).match(/\d{4}/)[0];
+  if (!normalizedInput) return null;
+
+  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+    return propertyTypeByUseCode[normalizedInput];
+  }
+
+  return null;
+}
 
 function extractProperty($, seed) {
-  let property_type = null; // Default to null
 
   // ATTEMPT 1: Map from "Property (DOR) Use Code" using the provided PDF logic
   let dorUseCode = null;
@@ -342,55 +3088,18 @@ function extractProperty($, seed) {
     .each((i, tr) => {
       const tds = $(tr).find("td");
       if (tds.eq(0).text().trim().toLowerCase().includes("property (dor) use code")) {
-        const dorText = tds.eq(1).text().trim();
-        const match = dorText.match(/\(Code:\s*(\d{4})\)/);
-        if (match) {
-          dorUseCode = parseInt(match[1], 10);
-          return false; // Exit .each loop
-        }
+        dorUseCode = tds.eq(1).text().trim();
       }
     });
-
-  if (dorUseCode !== null) {
-    // RESIDENTIAL CATEGORIES
-    if (dorUseCode >= 1 && dorUseCode <= 88) { // RES 00 VACANT RESIDENTIAL
-      property_type = "VacantLand";
-    } else if (dorUseCode >= 100 && dorUseCode <= 188) { // RES 01 SINGLE FAMILY RESIDENTIAL
-      property_type = "SingleFamily";
-    } else if (dorUseCode >= 200 && dorUseCode <= 288) { // RES 02 MOBILE HOMES
-      property_type = "MobileHome";
-    } else if (dorUseCode >= 301 && dorUseCode <= 360) { // RES 03 MULTI-FAMILY (10 UNITS OR MORE)
-      property_type = "MultipleFamily";
-    } else if (dorUseCode >= 400 && dorUseCode <= 441) { // RES 04 CONDOMINIA
-      property_type = "Condominium";
-    } else if (dorUseCode >= 500 && dorUseCode <= 502) { // RES 05 COOPERATIVES
-      property_type = "Cooperative";
-    } else if (dorUseCode >= 650 && dorUseCode <= 653) { // RES 06 RETIREMENT HMS (NON-EX)
-      property_type = "Retirement";
-    } else if (dorUseCode >= 801 && dorUseCode <= 860) { // RES 08 MULTI-FAMILY(UNDER 10 UNITS)
-      if (dorUseCode === 810) property_type = "Duplex";
-      else if (dorUseCode === 820) property_type = "TwoToFourFamily"; // Triplexes & Quad
-      else property_type = "MultipleFamily"; // For other multi-family under 10 units
-    } else if (dorUseCode >= 900 && dorUseCode <= 989) { // RES 09 RESIDENTIAL COMMON ELEMENTS/AREAS
-      property_type = "ResidentialCommonElementsAreas";
-    }
-    // COMMERCIAL, INDUSTRIAL, AGRICULTURAL, INSTITUTIONAL, MISCELLANEOUS
-    // For these, if they are vacant, they are VacantLand. Otherwise, they fall under MiscellaneousResidential
-    // as per the schema's limited enums for non-residential types.
-    else if (dorUseCode >= 1000 && dorUseCode <= 1064) { // COM 10 VACANT COMMERCIAL
-      property_type = "COMMERCIAL";
-    } else if (dorUseCode >= 4001 && dorUseCode <= 4064) { // IND 40 VACANT INDUSTRIAL
-      property_type = "INDUSTRIAL";
-    } else if (dorUseCode >= 7000 && dorUseCode <= 7079) { // INST 70 VACANT INSTITUTIONAL
-      property_type = "INSTITUTIONAL";
-    } else if (dorUseCode >= 8050 && dorUseCode <= 8095) { // GOV 80 VACANT GOVERNMENTAL
-      property_type = "GOVERNMENTAL";
-    } else if (dorUseCode === 9910) { // MISC 99 Inaccessible tracts
-      property_type = "VacantLand";
-    } else if (dorUseCode >= 1100 && dorUseCode <= 9980) { // All other non-residential codes
-      property_type = null;
-    }
+  const propertyMapping = mapPropertyTypeFromUseCode(dorUseCode);
+  if (!propertyMapping) {
+    throw {
+      type: "error",
+      message: `Unknown enum value ${dorUseCode}.`,
+      path: "property.property_type",
+    };
   }
+  
 
   // Year built(s)
   let years = [];
@@ -432,207 +3141,27 @@ function extractProperty($, seed) {
     }
   });
 
-  // Apply the corrected helper function here
-  const livable_floor_area = livingAreas.length
-    ? extractNumberAsString(livingAreas[0]) // Assuming only one total living area is relevant
-    : null;
-  const total_area = underRoofAreas.length
-    ? extractNumberAsString(underRoofAreas[0]) // Assuming only one total under roof is relevant
-    : null;
-
-
-  // Determine unit count from distinct BUILDING headings (deduplicate by number)
-  const buildingNumbers = new Set();
-  $("h4").each((i, el) => {
-    const tx = $(el).text();
-    const m = tx.match(/BUILDING\s+(\d+)/i);
-    if (m) buildingNumbers.add(m[1]);
-  });
-  let unitCount = buildingNumbers.size;
-  if (!unitCount) {
-    // fallback to UNITS rows
-    $("table").each((i, tbl) => {
-      const trs = $(tbl).find("tr");
-      trs.each((j, tr) => {
-        const tds = $(tr).find("td");
-        if (tds.length >= 3) {
-          const label = tds.eq(0).text().trim().toUpperCase();
-          const val = tds.eq(2).text().trim().toUpperCase();
-          if (label === "UNITS" && /\b1\s*UNIT\b/.test(val)) {
-            unitCount += 1;
-          }
-        }
-      });
-    });
-  }
-  let number_of_units_type = null;
-  if (unitCount === 1) number_of_units_type = "One";
-  else if (unitCount === 2) number_of_units_type = "Two";
-  else if (unitCount === 3) number_of_units_type = "Three";
-  else if (unitCount === 4) number_of_units_type = "Four";
-  // else if (unitCount > 1 && unitCount <= 4) number_of_units_type = "TwoToFour";
-
   // Parcel identifier
   const parcel_identifier =
     seed && (seed.parcel_id || seed.request_identifier)
       ? String(seed.parcel_id || seed.request_identifier)
       : null;
-
-  return {
-    livable_floor_area,
-    number_of_units_type,
+  const property = {
     parcel_identifier,
     property_legal_description_text: null,
     property_structure_built_year,
-    property_type,
+    property_type: propertyMapping.property_type,
+    ownership_estate_type: propertyMapping.ownership_estate_type,
+    build_status: propertyMapping.build_status,
+    structure_form: propertyMapping.structure_form,
+    property_usage_type: propertyMapping.property_usage_type,
+    number_of_units: null,
     subdivision: subdivision || "",
-    area_under_air: null,
-    total_area,
-    zoning: "", // Changed from null to empty string
+    zoning: null,
   };
+  return property;
 }
 
-function extractAddress($, unaddr) {
-  const full = unaddr && unaddr.full_address ? unaddr.full_address : "";
-
-  let street_number = null,
-    street_name = null,
-    street_suffix_type = null,
-    street_post_directional_text = null,
-    street_pre_directional_text = null,
-    city_name = null,
-    state_code = null,
-    postal_code = null,
-    route_number = null;
-
-  // PRIMARY ATTEMPT: Parse from unnormalized_address.json's full_address string
-  // This regex is designed to parse addresses that start with a number,
-  // followed by an optional pre-directional, a street name, an optional street suffix,
-  // an optional post-directional, then city, state, and zip.
-  // The street_name capture group is specifically designed to NOT include directionals.
-  const primaryMatch = full.match(
-    /^(\d+)\s+(N|S|E|W|NE|NW|SE|SW)?\s*([A-Z\s]+?)(?: (ST|AVE|RD|BLVD|LN|DR|CT|PL|WAY|HWY|TRL|CIR|SQ|TER|PKWY|EXPY|FWY|GRN|HTS|IS|JCT|KY|LK|MDWS|MTN|OVRPS|PRK|PT|RCH|RTE|SHLS|SPG|STA|TPKE|UN|VLG|VLY|XING))?\s*(N|S|E|W|NE|NW|SE|SW)?\s*,\s*([A-Z\s\-']+)\s*,\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/i
-  );
-
-  if (primaryMatch) {
-    street_number = primaryMatch[1];
-    street_pre_directional_text = primaryMatch[2] ? primaryMatch[2].toUpperCase() : null;
-    let base_street_name_candidate = primaryMatch[3].trim();
-    let suffix_from_primary = primaryMatch[4] ? primaryMatch[4].trim() : null;
-    street_post_directional_text = primaryMatch[5] ? primaryMatch[5].toUpperCase() : null;
-    city_name = (primaryMatch[6] || "").trim().toUpperCase();
-    state_code = (primaryMatch[7] || "").trim().toUpperCase();
-    postal_code = (primaryMatch[8] || "").trim();
-
-    // Normalize suffix from primary extraction
-    if (suffix_from_primary) {
-      street_suffix_type = STREET_SUFFIX_NORMALIZATION[suffix_from_primary.toUpperCase()] || suffix_from_primary;
-      // Remove the suffix from the base_street_name_candidate if it was part of it
-      const suffixRegex = new RegExp(`\\s+${suffix_from_primary}$`, 'i');
-      base_street_name_candidate = base_street_name_candidate.replace(suffixRegex, '').trim();
-    }
-    street_name = base_street_name_candidate; // Assign the cleaned street name
-  }
-
-  // FALLBACK ATTEMPT: Extract from HTML's "Physical Street Address" section
-  // This fallback will only run if street_number, street_name, or street_suffix_type
-  // were NOT successfully extracted by the primary regex.
-  // This also serves as a fallback for addresses that don't start with a number.
-  if (!street_number || !street_name || !street_suffix_type) {
-    const physicalAddressRow = $("h4:contains('Physical Street Address')")
-      .next("table")
-      .find("tr.tr1") // Target the specific row with the address line
-      .find("td")
-      .last()
-      .text()
-      .trim();
-
-    // Regex for HTML physical address: (Optional Number) (Optional Pre-Directional) (Street Name) (Optional Suffix) (Optional Post-Directional)
-    // The street_name capture group is specifically designed to NOT include directionals.
-    const htmlMatch = physicalAddressRow.match(
-      /^(\d+)?\s*(N|S|E|W|NE|NW|SE|SW)?\s*([A-Z\s]+?)(?: (ST|AVE|RD|BLVD|LN|DR|CT|PL|WAY|HWY|TRL|CIR|SQ|TER|PKWY|EXPY|FWY|GRN|HTS|IS|JCT|KY|LK|MDWS|MTN|OVRPS|PRK|PT|RCH|RTE|SHLS|SPG|STA|TPKE|UN|VLG|VLY|XING))?\s*(N|S|E|W|NE|NW|SE|SW)?$/i
-    );
-
-    if (htmlMatch) {
-      // Only update if the primary extraction failed for these specific fields
-      street_number = street_number || htmlMatch[1];
-      street_pre_directional_text = street_pre_directional_text || (htmlMatch[2] ? htmlMatch[2].toUpperCase() : null);
-      let base_street_name_candidate_html = htmlMatch[3].trim();
-      let suffix_from_html = htmlMatch[4] ? htmlMatch[4].trim() : null;
-      let post_directional_html = htmlMatch[5] ? htmlMatch[5].toUpperCase() : null;
-
-      // Normalize suffix from HTML fallback
-      if (suffix_from_html) {
-        suffix_from_html = STREET_SUFFIX_NORMALIZATION[suffix_from_html.toUpperCase()] || suffix_from_html;
-        // Remove the suffix from the base_street_name_candidate_html if it was part of it
-        const suffixRegex = new RegExp(`\\s+${suffix_from_html}$`, 'i');
-        base_street_name_candidate_html = base_street_name_candidate_html.replace(suffixRegex, '').trim();
-      }
-
-      // Only update if the primary extraction failed
-      street_suffix_type = street_suffix_type || suffix_from_html;
-      street_post_directional_text = street_post_directional_text || post_directional_html;
-
-      // Construct street_name from HTML parts if primary failed
-      if (!street_name) {
-        street_name = base_street_name_candidate_html;
-      }
-    }
-  }
-
-  // Handle route number if present (original logic, checks full_address string)
-  // This remains separate as it's a specific type of street identification.
-  if (!route_number) {
-    const rn2 = (full || "").match(/HWY\s+(\d{1,5})/i);
-    if (rn2 && rn2[1]) route_number = rn2[1];
-  }
-
-  // Fallback for city, state, and postal code from HTML (original logic)
-  // This part remains the same as it's already a fallback for city/state/zip
-  if (!city_name || !state_code || !postal_code) {
-    const postalRow = $("h4:contains('Postal City and Zip')")
-      .next("table")
-      .find("tr")
-      .first()
-      .find("td")
-      .last()
-      .text()
-      .trim();
-    const mx = postalRow.match(/([A-Z\s\-']+)\s+([A-Z]{2})\s+(\d{5})/);
-    if (mx) {
-      city_name = city_name || mx[1].trim().toUpperCase();
-      state_code = state_code || mx[2].trim().toUpperCase();
-      postal_code = postal_code || mx[3].trim();
-    }
-  }
-
-  // County name is hardcoded as per the original script's design for Polk County.
-  const county_name = "Polk";
-
-  // Return the structured address object.
-  // Fields that are not extracted by the current logic remain null.
-  return {
-    block: null, // Not extracted by this script
-    city_name: city_name || null,
-    country_code: null, // Not extracted by this script
-    county_name,
-    latitude: null, // Not extracted by this script
-    longitude: null, // Not extracted by this script
-    plus_four_postal_code: null, // Not extracted by this script
-    postal_code: postal_code || null,
-    range: null, // Not extracted by this script
-    route_number: route_number || null,
-    section: null, // Not extracted by this script
-    state_code: state_code || null,
-    street_name: street_name || null,
-    street_number: street_number || null,
-    street_post_directional_text: street_post_directional_text || null,
-    street_pre_directional_text: street_pre_directional_text || null, // Ensure this is set
-    street_suffix_type: street_suffix_type || null,
-    unit_identifier: null, // Not extracted by this script
-    township: null, // Not extracted by this script
-  };
-}
 function extractTaxCurrent($) {
   // Current year from Value Summary header
   const yearMatch = $("#valueSummary h3")
@@ -645,6 +3174,7 @@ function extractTaxCurrent($) {
   let property_taxable_value_amount = 0; // Initialize to 0
   let property_building_amount = 0; // Initialize to 0
   let property_land_amount = 0; // Initialize to 0
+  let property_exemption_amount = 0; // Initialize to 0
 
   $("#valueSummary table tr").each((i, tr) => {
     const tds = $(tr).find("td");
@@ -661,6 +3191,8 @@ function extractTaxCurrent($) {
         property_building_amount = parseCurrencyToNumber(valueText) ?? 0; // Default to 0
       if (label === "LAND VALUE")
         property_land_amount = parseCurrencyToNumber(valueText) ?? 0; // Default to 0
+      if (label.includes("EXEMPTION VALUE") && label.includes("(COUNTY)"))
+        property_exemption_amount = parseCurrencyToNumber(valueText) ?? 0; // Default to 0
     }
   });
 
@@ -671,6 +3203,7 @@ function extractTaxCurrent($) {
     property_building_amount,
     property_land_amount,
     property_taxable_value_amount,
+    property_exemption_amount,
     monthly_tax_amount: null, // Default to null as not extracted
     period_end_date: null, // Default to null as not extracted
     period_start_date: null, // Default to null as not extracted
@@ -704,6 +3237,7 @@ function extractTaxPriorYears($) {
       property_building_amount: 0, // Initialize to 0
       property_land_amount: 0, // Initialize to 0
       property_taxable_value_amount: 0, // Initialize to 0
+      property_exemption_amount: 0,
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
@@ -742,6 +3276,9 @@ function extractTaxPriorYears($) {
           case "TAXABLE VALUE (COUNTY)":
             obj.property_taxable_value_amount = value;
             break;
+          case "EXEMPTION VALUE (COUNTY)":
+            obj.property_exemption_amount = value;
+            break;
           default:
             break;
         }
@@ -752,6 +3289,26 @@ function extractTaxPriorYears($) {
   return results;
 }
 
+function mapInstrumentToDeedType(instr) {
+  if (!instr) return "Miscellaneous";
+  const u = instr.trim().toUpperCase();
+  if (u === "A") return "Miscellaneous";
+  if (u === "AS") return "Assignment of Contract";
+  if (u === "CT") return "Miscellaneous";
+  if (u === "C") return "Correction Deed";
+  if (u === "F") return "Miscellaneous";
+  if (u === "L") return "Life Estate Deed";
+  if (u === "M") return "Miscellaneous";
+  if (u === "X") return "Miscellaneous";
+  if (u === "Q") return "Quitclaim Deed";
+  if (u === "R") return "Miscellaneous";
+  if (u === "RF") return "Miscellaneous";
+  if (u === "T") return "Tax Deed";
+  if (u === "TQ") return "Trustee's Deed";
+  if (u === "W") return "Warranty Deed";
+  return "Miscellaneous";
+}
+
 function extractSales($) {
   const sales = [];
   const rows = $("#saleHist table.center tr");
@@ -760,6 +3317,20 @@ function extractSales($) {
     const tds = $(tr).find("td");
     if (tds.length >= 6) {
       const dateText = tds.eq(1).text().trim(); // e.g., 11/2021
+      const bookPageRaw = tds.eq(0).text().trim();
+      let bookPage = null;
+      if (bookPageRaw) {
+        bookPage = bookPageRaw.split("\n")[0];
+      }
+      let book = null;
+      let page = null;
+      if (bookPage && bookPage.split("/").length == 2) {
+        book = bookPage.split("/")[0];
+        page = bookPage.split("/")[1];
+      }
+      const link = $(tds[0]).find("a").last().attr("href") || null;
+      const instTypeRaw = tds.eq(2).text().trim();
+      const instrumentType = mapInstrumentToDeedType(instTypeRaw);
       const grantee = tds.eq(4).text().trim();
       const priceText = tds.eq(5).text().trim();
       const price = parseCurrencyToNumber(priceText);
@@ -776,6 +3347,10 @@ function extractSales($) {
           dateText,
           ownership_transfer_date: isoDate,
           purchase_price_amount: price,
+          book,
+          page,
+          link,
+          instrumentType
         });
       }
     }
@@ -789,6 +3364,8 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
     companies: [],
     personIndexByKey: new Map(),
     companyIndexByName: new Map(),
+    personCurrentOwners: [],
+    companyCurrentOwners: []
   };
   if (!ownerJSON) return res;
   const key = `property_${parcelId}`;
@@ -814,7 +3391,15 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
           us_citizenship_status: null,
           veteran_status: null,
         });
+        res.personCurrentOwners.push(res.persons.length); // 1-based
         res.personIndexByKey.set(personKey, res.persons.length); // 1-based
+      }
+    } else if (o.type === "company") {
+      const name = (o.name || "").trim();
+      if (name && !res.companyIndexByName.has(name)) {
+        res.companies.push({ name });
+        res.companyCurrentOwners.push(res.companies.length); // 1-based
+        res.companyIndexByName.set(name, res.companies.length);
       }
     }
   });
@@ -858,110 +3443,6 @@ function normalizeNameForMatch(str) {
   return (str || "").replace(/\s+/g, " ").trim().toUpperCase();
 }
 
-function extractStructure($) {
-  // Prefer values from Building 2 subareas when present
-  let finished_base_area = null;
-  let finished_upper_story_area = null;
-
-  $('h4:contains("BUILDING 2")').each((i, h) => {
-    const container = $(h).closest("table").parent();
-    $(container)
-      .find("table.center tr")
-      .each((j, tr) => {
-        const tds = $(tr).find("td");
-        if (tds.length >= 3) {
-          const label = tds.eq(0).text().trim().toUpperCase();
-          const valText = tds.eq(2).text().trim().replace(/,/g, "");
-          if (label.startsWith("BASE AREA")) {
-            const n = parseInt(valText, 10);
-            if (Number.isFinite(n)) finished_base_area = n;
-          }
-          if (label.startsWith("TWO") || label.includes("TWO STORY")) {
-            const n2 = parseInt(valText, 10);
-            if (Number.isFinite(n2)) finished_upper_story_area = n2;
-          }
-        }
-      });
-  });
-
-  // Detect categorical fields from text
-  let roof_design_type = null;
-  let roof_material_type = null;
-  let foundation_type = null;
-  let primary_framing_material = null;
-
-  const allText = $.text().toUpperCase();
-  if (allText.includes("ROOF STRUCTURE") && allText.includes("GABLE"))
-    roof_design_type = "Gable";
-  if (allText.includes("ROOF STRUCTURE") && allText.includes("METAL"))
-    roof_material_type = "Metal";
-  if (allText.includes("SUBSTRUCT") && allText.includes("CONTINUOUS WALL"))
-    foundation_type = "Stem Wall";
-  if (
-    allText.includes("FRAME / CONST TYPE") &&
-    allText.includes("MASONRY/BLOCK")
-  )
-    primary_framing_material = "Concrete Block";
-
-  return {
-    architectural_style_type: null,
-    attachment_type: "Detached",
-    ceiling_condition: null,
-    ceiling_height_average: null,
-    ceiling_insulation_type: null,
-    ceiling_structure_material: null,
-    ceiling_surface_material: null,
-    exterior_door_material: null,
-    exterior_wall_condition: null,
-    exterior_wall_condition_primary: null,
-    exterior_wall_condition_secondary: null,
-    exterior_wall_insulation_type: null,
-    exterior_wall_insulation_type_primary: null,
-    exterior_wall_insulation_type_secondary: null,
-    exterior_wall_material_primary: null,
-    exterior_wall_material_secondary: null,
-    finished_base_area: finished_base_area ?? null,
-    finished_basement_area: null,
-    finished_upper_story_area: finished_upper_story_area ?? null,
-    flooring_condition: null,
-    flooring_material_primary: null,
-    flooring_material_secondary: null,
-    foundation_condition: null,
-    foundation_material: null,
-    foundation_type: foundation_type ?? null,
-    foundation_waterproofing: null,
-    gutters_condition: null,
-    gutters_material: null,
-    interior_door_material: null,
-    interior_wall_condition: null,
-    interior_wall_finish_primary: null,
-    interior_wall_finish_secondary: null,
-    interior_wall_structure_material: null,
-    interior_wall_structure_material_primary: null,
-    interior_wall_structure_material_secondary: null,
-    interior_wall_surface_material_primary: null,
-    interior_wall_surface_material_secondary: null,
-    primary_framing_material: primary_framing_material ?? null,
-    roof_age_years: null,
-    roof_condition: null,
-    roof_covering_material: null,
-    roof_design_type: roof_design_type ?? null,
-    roof_material_type: roof_material_type ?? null,
-    roof_structure_material: null,
-    roof_underlayment_type: null,
-    secondary_framing_material: null,
-    structural_damage_indicators: null,
-    subfloor_material: null,
-    unfinished_base_area: null,
-    unfinished_basement_area: null,
-    unfinished_upper_story_area: null,
-    window_frame_material: null,
-    window_glazing_type: null,
-    window_operation_type: null,
-    window_screen_material: null,
-  };
-}
-
 function extractLot($) {
   let acreage = null;
   $("h4:contains('Parcel Information')")
@@ -977,8 +3458,11 @@ function extractLot($) {
       }
     });
   let lot_type = null;
-  if (acreage != null && acreage > 0.25) lot_type = "GreaterThanOneQuarterAcre";
-
+  if (acreage != null && acreage > 0.25) {
+    lot_type = "GreaterThanOneQuarterAcre";
+  } else {
+    lot_type = "LessThanOrEqualToOneQuarterAcre";
+  }
   return {
     lot_type: lot_type ?? null,
     lot_length_feet: null,
@@ -995,6 +3479,318 @@ function extractLot($) {
   };
 }
 
+function extractAddressText($) {
+  const line1 = parseAddressSection($, 'Physical Street Address');
+  const line2 = parseAddressSection($, 'Postal City and Zip');
+  if (line1 && line2) {
+    return `${line1.formatted}, ${line2.formatted}`;
+  } else if (line1) {
+    return line1.formatted;
+  } else if (line2) {
+    return line2.formatted;
+  }
+  return null;
+}
+
+function extractOwnerMailingAddress($) {
+  const lines = parseAddressSection($, 'Mailing Address');
+  if (lines) {
+    return lines.formatted;
+  }
+  return null;
+}
+
+function getCellText(cell) {
+  if (!cell || !cell.length) {
+    return '';
+  }
+  const clone = cell.clone();
+  clone.find('br').replaceWith(' ');
+  return cleanText(clone.text());
+}
+
+function cleanText(value) {
+  if (!value) {
+    return '';
+  }
+  return value.replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function parseAddressSection($, headingText) {
+  if (!headingText) {
+    return null;
+  }
+
+  const heading = $('h4')
+    .filter((_, el) => cleanText($(el).text()).startsWith(headingText))
+    .first();
+  if (!heading.length) {
+    return null;
+  }
+
+  const table = heading.nextAll('table').first();
+  if (!table.length) {
+    return null;
+  }
+
+  const lines = table
+    .find('tr')
+    .map((_, row) => {
+      const cell = $(row).find('td').last();
+      const text = getCellText(cell);
+      return text || null;
+    })
+    .get()
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return null;
+  }
+
+  return {
+    lines,
+    formatted: lines.join(', '),
+  };
+}
+
+function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
+  let hasOwnerMailingAddress = false;
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
+  if (!inputCounty) {
+    inputCounty = (unnorm.county_name || "").trim();
+  }
+  const county_name = inputCounty || null;
+  if (mailingAddress) {
+    const mailingAddressObj = {
+      unnormalized_address: mailingAddress,
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
+    hasOwnerMailingAddress = true;
+  }
+  if (siteAddress) {
+    const addressObj = {
+      county_name,
+      // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+      // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+      unnormalized_address: siteAddress,
+    };
+    writeJSON(path.join("data", "address.json"), addressObj);
+    writeJSON(path.join("data", "relationship_property_has_address.json"), {
+                to: { "/": `./address.json` },
+                from: { "/": `./property.json` },
+              });
+  }
+  return hasOwnerMailingAddress;
+}
+/**
+ * Minimal Geometry model that mirrors the Elephant Geometry class.
+ */
+class Geometry {
+  constructor({ latitude, longitude, polygon }) {
+    this.latitude = latitude ?? null;
+    this.longitude = longitude ?? null;
+    this.polygon = polygon ?? null;
+  }
+
+  /**
+   * Build a Geometry instance from a CSV record.
+   */
+  static fromRecord(record) {
+    return new Geometry({
+      latitude: toNumber(record.latitude),
+      longitude: toNumber(record.longitude),
+      polygon: parsePolygon(
+        record.parcel_polygon
+      )
+    });
+  }
+}
+
+const NORMALIZE_EOL_REGEX = /\r\n/g;
+
+function parseCsv(content) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let insideQuotes = false;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+
+    if (char === '"') {
+      if (insideQuotes && content[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (char === '\r' && content[i + 1] === '\n') {
+        i += 1;
+      }
+      row.push(current);
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+}
+
+function parsePolygon(value) {
+  if (!value) {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (isGeoJsonGeometry(parsed)) {
+    return parsed;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  const depth = coordinatesDepth(parsed);
+  if (depth === 4) {
+    return { type: 'MultiPolygon', coordinates: parsed };
+  }
+
+  if (depth === 3) {
+    return { type: 'Polygon', coordinates: parsed };
+  }
+
+  if (depth === 2) {
+    return { type: 'Polygon', coordinates: [parsed] };
+  }
+
+  return null;
+}
+
+function coordinatesDepth(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 0;
+  }
+
+  return 1 + coordinatesDepth(value[0]);
+}
+
+function isGeoJsonGeometry(value) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    (value.type === 'Polygon' || value.type === 'MultiPolygon') &&
+    Array.isArray(value.coordinates)
+  );
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
+}
+
+function splitGeometry(record) {
+  const baseGeometry = Geometry.fromRecord(record);
+  const { polygon } = baseGeometry;
+
+  if (!polygon || polygon.type !== 'MultiPolygon') {
+    return [baseGeometry];
+  }
+
+  return polygon.coordinates.map((coords, index) => {
+    const identifier = baseGeometry.request_identifier
+      ? `${baseGeometry.request_identifier}#${index + 1}`
+      : null;
+
+    return new Geometry({
+      latitude: baseGeometry.latitude,
+      longitude: baseGeometry.longitude,
+      polygon: {
+        type: 'Polygon',
+        coordinates: coords,
+      },
+      request_identifier: identifier,
+    });
+  });
+}
+
+/**
+ * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
+ */
+function createGeometryInstances(csvContent) {
+
+  const rows = parseCsv(csvContent.replace(NORMALIZE_EOL_REGEX, '\n'));
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const headers = rows[0].map((header) => header.trim());
+  const records = rows.slice(1).map((values) =>
+    headers.reduce((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {})
+  );
+
+  return records.flatMap((record) => splitGeometry(record));
+}
+
+function createGeometryClass(geometryInstances) {
+  let geomIndex = 1;
+  for(let geom of geometryInstances) {
+    let polygon = [];
+    let geometry = {
+      "latitude": geom.latitude,
+      "longitude": geom.longitude,
+    }
+    if (geom && geom.polygon) {
+      for (const coordinate of geom.polygon.coordinates[0]) {
+        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+      }
+      geometry.polygon = polygon;
+    }
+    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
+    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./parcel.json` },
+        to: { "/": `./geometry_${geomIndex}.json` },
+    });
+    geomIndex++;
+  }
+}
+
 function main() {
   const inputHtmlPath = path.join("input.html");
   const unaddrPath = path.join("unnormalized_address.json");
@@ -1002,36 +3798,57 @@ function main() {
   const ownerPath = path.join("owners", "owner_data.json");
   const utilitiesPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
+  const structurePath = path.join("owners", "structure_data.json");
 
   const html = fs.readFileSync(inputHtmlPath, "utf8");
   const $ = cheerio.load(html);
   const unaddr = readJSON(unaddrPath) || {};
   const seed = readJSON(seedPath) || {};
   const ownerJSON = readJSON(ownerPath) || {};
-  const utilitiesJSON = readJSON(utilitiesPath) || {};
-  const layoutJSON = readJSON(layoutPath) || {};
+  const utilitiesData = readJSON(utilitiesPath) || {};
+  const layoutData = readJSON(layoutPath) || {};
+  const structureData = readJSON(structurePath) || {};
+
+  ensureDir("data");
 
   const parcelId =
     seed.request_identifier ||
     seed.parcel_id ||
     unaddr.request_identifier ||
     "";
-
-  ensureDir("data");
+  const key = `property_${parcelId}`;
+  try {
+    const seedCsvPath = path.join(".", "input.csv");
+    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+    createGeometryClass(createGeometryInstances(seedCsv));
+  } catch (e) {
+    const latitude = unaddr && unaddr.latitude ? unaddr.latitude : null;
+    const longitude = unaddr && unaddr.longitude ? unaddr.longitude : null;
+    if (latitude && longitude) {
+      const coordinate = new Geometry({
+        latitude: latitude,
+        longitude: longitude
+      });
+      createGeometryClass([coordinate]);
+    }
+  }
+  let struct = null;
+  if (structureData) {
+    struct = key && structureData[key] ? structureData[key] : null;
+  }
+  let util = null;
+  if (utilitiesData) {
+    util = key && utilitiesData[key] ? utilitiesData[key] : null;
+  }
 
   // Property
   const property = extractProperty($, seed);
   writeJSON(path.join("data", "property.json"), property);
+  writeJSON(path.join("data", "parcel.json"), {parcel_identifier: parcelId || ""});
 
-  // Address
-  const address = extractAddress($, unaddr);
-  // Add source_http_request and request_identifier to address object
-  address.source_http_request = {
-    method: "GET",
-    url: `http://www.polkpa.org/CamaDisplay.aspx?OutputMode=Display&SearchType=RealEstate&ParcelID=${parcelId}`
-  };
-  address.request_identifier = parcelId;
-  writeJSON(path.join("data", "address.json"), address);
+  const addressText = extractAddressText($);
+  const mailingAddress = extractOwnerMailingAddress($);
+  const hasOwnerMailingAddress = attemptWriteAddress(unaddr, addressText, mailingAddress);
 
   // Lot
   const lot = extractLot($);
@@ -1040,15 +3857,6 @@ function main() {
   // Tax current year (from Value Summary)
   const taxCurrent = extractTaxCurrent($);
   if (taxCurrent.tax_year) {
-    // Add required fields for tax schema
-    taxCurrent.source_http_request = {
-      method: "GET",
-      url: `http://www.polkpa.org/CamaDisplay.aspx?OutputMode=Display&SearchType=RealEstate&ParcelID=${parcelId}`
-    };
-    taxCurrent.request_identifier = parcelId;
-    // monthly_tax_amount, period_end_date, period_start_date are already defaulted to null in extractTaxCurrent
-    // property_assessed_value_amount, property_market_value_amount, property_building_amount, property_land_amount, property_taxable_value_amount are already defaulted to 0 in extractTaxCurrent
-
     writeJSON(path.join("data", `tax_${taxCurrent.tax_year}.json`), taxCurrent);
   }
 
@@ -1056,15 +3864,6 @@ function main() {
   const taxPrior = extractTaxPriorYears($);
   taxPrior.forEach((t) => {
     if (t.tax_year) {
-      // Add required fields for tax schema
-      t.source_http_request = {
-        method: "GET",
-        url: `http://www.polkpa.org/CamaDisplay.aspx?OutputMode=Display&SearchType=RealEstate&ParcelID=${parcelId}`
-      };
-      t.request_identifier = parcelId;
-      // monthly_tax_amount, period_end_date, period_start_date are already defaulted to null in extractTaxPriorYears
-      // property_assessed_value_amount, property_market_value_amount, property_building_amount, property_land_amount, property_taxable_value_amount are already defaulted to 0 in extractTaxPriorYears
-
       writeJSON(path.join("data", `tax_${t.tax_year}.json`), t);
     }
   });
@@ -1077,6 +3876,41 @@ function main() {
       purchase_price_amount: s.purchase_price_amount ?? null,
     };
     writeJSON(path.join("data", `sales_${idx + 1}.json`), saleOut);
+    let deed = { deed_type: s.instrumentType };
+    if (s.book) {
+      deed.book = s.book;
+    }
+    if (s.page) {
+      deed.page = s.page;
+    }
+    writeJSON(path.join("data", `deed_${idx + 1}.json`), deed);
+    
+    let fileName = deed.book && deed.page ? `${deed.book}/${deed.page}` : null;
+    const file = {
+      document_type: "Title",
+      file_format: null,
+      ipfs_url: null,
+      name: fileName ? `Deed ${fileName}` : "Deed Document",
+      original_url: s.link || null,
+    };
+    writeJSON(path.join("data", `file_${idx + 1}.json`), file);
+    const relDeedFile = {
+      from: { "/": `./deed_${idx + 1}.json` },
+      to: { "/": `./file_${idx + 1}.json` },
+    };
+    writeJSON(
+      path.join("data", `relationship_deed_file_${idx + 1}.json`),
+      relDeedFile,
+    );
+
+    const relSalesDeed = {
+      from: { "/": `./sales_${idx + 1}.json` },
+      to: { "/": `./deed_${idx + 1}.json` },
+    };
+    writeJSON(
+      path.join("data", `relationship_sales_deed_${idx + 1}.json`),
+      relSalesDeed,
+    );
   });
 
   // Owners (persons/companies)
@@ -1087,90 +3921,32 @@ function main() {
   pc.companies.forEach((c, i) =>
     writeJSON(path.join("data", `company_${i + 1}.json`), c),
   );
-
-  // Utilities
-  const utilsKey = `property_${parcelId}`;
-  let util =
-    utilitiesJSON && utilitiesJSON[utilsKey] ? utilitiesJSON[utilsKey] : null;
-  if (util) {
-    const requiredKeys = [
-      "cooling_system_type",
-      "heating_system_type",
-      "public_utility_type",
-      "sewer_type",
-      "water_source_type",
-      "plumbing_system_type",
-      "plumbing_system_type_other_description",
-      "electrical_panel_capacity",
-      "electrical_wiring_type",
-      "hvac_condensing_unit_present",
-      "electrical_wiring_type_other_description",
-      "solar_panel_present",
-      "solar_panel_type",
-      "solar_panel_type_other_description",
-      "smart_home_features",
-      "smart_home_features_other_description",
-      "hvac_unit_condition",
-      "solar_inverter_visible",
-      "hvac_unit_issues",
-    ];
-    const out = {};
-    requiredKeys.forEach((k) => {
-      out[k] = Object.prototype.hasOwnProperty.call(util, k) ? util[k] : null;
-    });
-    writeJSON(path.join("data", "utility.json"), out);
+  if (hasOwnerMailingAddress) {
+    pc.personCurrentOwners.forEach((idx, i) =>
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_person_has_mailing_address_${idx}.json`,
+        ),
+        {
+          from: { "/": `./person_${idx}.json` },
+          to: { "/": `./mailing_address.json` },
+        }
+      )
+    );
+    pc.companyCurrentOwners.forEach((idx, i) =>
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_company_has_mailing_address_${idx}.json`,
+        ),
+        {
+          from: { "/": `./company_${idx}.json` },
+          to: { "/": `./mailing_address.json` },
+        }
+      )
+    );
   }
-
-  // Layouts
-  const layoutsBlock =
-    layoutJSON && layoutJSON[utilsKey] && layoutJSON[utilsKey].layouts
-      ? layoutJSON[utilsKey].layouts
-      : [];
-  layoutsBlock.forEach((lay, i) => {
-    const requiredKeys = [
-      "space_type",
-      "space_index",
-      "flooring_material_type",
-      "size_square_feet",
-      "floor_level",
-      "has_windows",
-      "window_design_type",
-      "window_material_type",
-      "window_treatment_type",
-      "is_finished",
-      "furnished",
-      "paint_condition",
-      "flooring_wear",
-      "clutter_level",
-      "visible_damage",
-      "countertop_material",
-      "cabinet_style",
-      "fixture_finish_quality",
-      "design_style",
-      "natural_light_quality",
-      "decor_elements",
-      "pool_type",
-      "pool_equipment",
-      "spa_type",
-      "safety_features",
-      "view_type",
-      "lighting_features",
-      "condition_issues",
-      "is_exterior",
-      "pool_condition",
-      "pool_surface_type",
-      "pool_water_quality",
-    ];
-    const out = {};
-    requiredKeys.forEach((k) => {
-      out[k] = Object.prototype.hasOwnProperty.call(lay, k) ? lay[k] : null;
-    });
-    writeJSON(path.join("data", `layout_${i + 1}.json`), out);
-  });
-
-  // Structure
-  const structure = extractStructure($);
-  writeJSON(path.join("data", "structure.json"), structure);
 
   // Relationships person/company -> sales
   const personNameToPath = new Map();
@@ -1233,42 +4009,98 @@ function main() {
       }
     }
   });
+  // Layout extraction from owners/layout_data.json
+  if (layoutData) {
+    const lset =
+      key && layoutData[key] && Array.isArray(layoutData[key].layouts)
+        ? layoutData[key].layouts
+        : [];
+    let layoutBuildingMap = {};
+    let idx = 1;
+    for (const l of lset) {
+      const layoutOut = {
+        space_type: l.space_type ?? null,
+        space_type_index: l.space_type_index ?? null,
+        flooring_material_type: l.flooring_material_type ?? null,
+        size_square_feet: l.size_square_feet ?? null,
+        has_windows: l.has_windows ?? null,
+        window_design_type: l.window_design_type ?? null,
+        window_material_type: l.window_material_type ?? null,
+        window_treatment_type: l.window_treatment_type ?? null,
+        is_finished: l.is_finished ?? null,
+        furnished: l.furnished ?? null,
+        paint_condition: l.paint_condition ?? null,
+        flooring_wear: l.flooring_wear ?? null,
+        clutter_level: l.clutter_level ?? null,
+        visible_damage: l.visible_damage ?? null,
+        countertop_material: l.countertop_material ?? null,
+        cabinet_style: l.cabinet_style ?? null,
+        fixture_finish_quality: l.fixture_finish_quality ?? null,
+        design_style: l.design_style ?? null,
+        natural_light_quality: l.natural_light_quality ?? null,
+        decor_elements: l.decor_elements ?? null,
+        pool_type: l.pool_type ?? null,
+        pool_equipment: l.pool_equipment ?? null,
+        spa_type: l.spa_type ?? null,
+        safety_features: l.safety_features ?? null,
+        view_type: l.view_type ?? null,
+        lighting_features: l.lighting_features ?? null,
+        condition_issues: l.condition_issues ?? null,
+        is_exterior: l.is_exterior ?? false,
+        pool_condition: l.pool_condition ?? null,
+        pool_surface_type: l.pool_surface_type ?? null,
+        pool_water_quality: l.pool_water_quality ?? null,
 
-  // Relationship: property_has_address
-  // Added 'type' field as a common fix for 'anyOf' schema validation issues in relationships
-  const propertyHasAddressRel = {
-    type: "PropertyHasAddress", // Assuming this type name, adjust if schema specifies otherwise
-    to: { "/": "./address.json" },
-    from: { "/": "./property.json" },
-  };
-  writeJSON(path.join("data", "relationship_property_has_address.json"), propertyHasAddressRel);
-
-  // Relationship: address_has_fact_sheet
-  // Added 'type' field as a common fix for 'anyOf' schema validation issues in relationships
-  const addressHasFactSheetRel = {
-    type: "AddressHasFactSheet", // Assuming this type name, adjust if schema specifies otherwise
-    to: { "/": "./address.json" },
-    from: { "/": "./property.json" }, // Assuming property.json is the fact sheet source
-  };
-  writeJSON(path.join("data", "relationship_address_has_fact_sheet.json"), addressHasFactSheetRel);
-
-  // Relationship: property_has_tax
-  taxPrior.forEach((t, idx) => {
-    const propertyHasTaxRel = {
-      type: "PropertyHasTax", // Assuming this type name, adjust if schema specifies otherwise
-      to: { "/": `./tax_${t.tax_year}.json` },
-      from: { "/": "./property.json" },
-    };
-    writeJSON(path.join("data", `relationship_property_has_tax_${idx + 1}.json`), propertyHasTaxRel);
-  });
-  if (taxCurrent.tax_year) {
-    const propertyHasTaxRel = {
-      type: "PropertyHasTax", // Assuming this type name, adjust if schema specifies otherwise
-      to: { "/": `./tax_${taxCurrent.tax_year}.json` },
-      from: { "/": "./property.json" },
-    };
-    writeJSON(path.join("data", `relationship_property_has_tax_current.json`), propertyHasTaxRel);
+        adjustable_area_sq_ft: l.adjustable_area_sq_ft ?? null,
+        area_under_air_sq_ft: l.area_under_air_sq_ft ?? null,
+        bathroom_renovation_date: l.bathroom_renovation_date ?? null,
+        building_number: l.building_number ?? null,
+        kitchen_renovation_date: l.kitchen_renovation_date ?? null,
+        heated_area_sq_ft: l.heated_area_sq_ft ?? null,
+        installation_date: l.installation_date ?? null,
+        livable_area_sq_ft: l.livable_area_sq_ft ?? null,
+        pool_installation_date: l.pool_installation_date ?? null,
+        spa_installation_date: l.spa_installation_date ?? null,
+        story_type: l.story_type ?? null,
+        total_area_sq_ft: l.total_area_sq_ft ?? null,
+      };
+      writeJSON(path.join("data", `layout_${idx}.json`), layoutOut);
+      if (l.space_type === "Building") {
+        const building_number = l.building_number;
+        layoutBuildingMap[building_number.toString()] = idx;
+      }
+      if (l.space_type !== "Building") {
+        const building_number = l.building_number;
+        if (building_number) {
+          const building_layout_number = layoutBuildingMap[building_number.toString()];
+          writeJSON(path.join("data", `relationship_layout_${building_layout_number}_to_layout_${idx}.json`), {
+            to: { "/": `./layout_${idx}.json` },
+            from: { "/": `./layout_${building_layout_number}.json` },
+          },);
+        }
+      }
+      if (util && l.space_type === "Building") {
+        if (l.building_number && l.building_number.toString() in util) {
+          writeJSON(path.join("data", `utility_${idx}.json`), util[l.building_number.toString()]);
+          writeJSON(path.join("data", `relationship_layout_to_utility_${idx}.json`), {
+                    to: { "/": `./utility_${idx}.json` },
+                    from: { "/": `./layout_${idx}.json` },
+          },);
+        }
+      }
+      if (struct && l.space_type === "Building") {
+        if (l.building_number && l.building_number.toString() in struct) {
+          writeJSON(path.join("data", `structure_${idx}.json`), struct[l.building_number.toString()]);
+          writeJSON(path.join("data", `relationship_layout_to_structure_${idx}.json`), {
+                    to: { "/": `./structure_${idx}.json` },
+                    from: { "/": `./layout_${idx}.json` },
+          },);
+        }
+      }
+      idx++;
+    }
   }
+  
 }
 
 if (require.main === module) {
