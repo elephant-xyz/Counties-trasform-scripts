@@ -1654,7 +1654,10 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
   // IMPORTANT: Must have actual alphanumeric content and be at least 1 character for minLength constraint
-  const hasValidSitus = trimmedSitus && trimmedSitus.length >= 1 && /[a-zA-Z0-9]/.test(trimmedSitus);
+  // Also check that it's not just commas, spaces, and state codes - needs actual street/location info
+  const hasAlphanumeric = /[a-zA-Z0-9]/.test(trimmedSitus);
+  const hasMoreThanStateCode = trimmedSitus.replace(/[,\s]/g, '').length > 2; // More than just state abbreviation
+  const hasValidSitus = trimmedSitus && trimmedSitus.length >= 1 && hasAlphanumeric && hasMoreThanStateCode;
 
   let address;
 
@@ -1693,11 +1696,13 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       street_suffix_type: null,
       unit_identifier: null,
       route_number: null,
-      block: null,
-      section: section,
-      township: township,
-      range: range,
+      block: null
     };
+
+    // Add optional location fields if available (only if they have valid values)
+    if (section) address.section = section;
+    if (township) address.township = township;
+    if (range) address.range = range;
   }
 
   writeJSON(path.join(dataDir, "address.json"), address);
