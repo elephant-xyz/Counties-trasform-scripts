@@ -8,7 +8,7 @@ const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl04_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
-const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl05_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lblSearch";
+const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl05_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lnkSearch";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl12_ctl01_grdSales tbody tr";
 
 // Utility helpers
@@ -82,33 +82,26 @@ function cleanInvalidCharsFromName(raw) {
 }
 
 const COMPANY_KEYWORDS = [
-  "inc",
-  "llc",
-  "l.l.c",
-  "ltd",
-  "foundation",
-  "alliance",
-  "solutions",
-  "corp",
-  "co",
-  "company",
-  "services",
-  "trust",
-  "tr",
-  "associates",
-  "association",
-  "holdings",
-  "group",
-  "partners",
-  "lp",
-  "llp",
-  "plc",
-  "pllc",
-  "bank",
-  "church",
-  "school",
-  "university",
-  "authority",
+  "inc", "incorporated", "corp", "corporation", "co", "company", "llc", "l.l.c", "ltd", "limited",
+  "lp", "llp", "plc", "pllc", "pc", "pa", "pllp", "lllp", "rlp", "rllp",
+  "trust", "tr", "estate", "foundation", "fund", "endowment", "charity", "charitable",
+  "bank", "banking", "credit", "union", "financial", "finance", "investment", "investments",
+  "insurance", "mutual", "savings", "loan", "mortgage", "capital", "ventures", "venture",
+  "holdings", "holding", "group", "partners", "partnership", "associates", "association",
+  "alliance", "consortium", "syndicate", "cooperative", "coop", "collective",
+  "solutions", "services", "consulting", "management", "development", "enterprises",
+  "systems", "technologies", "tech", "software", "hardware", "networks", "communications",
+  "construction", "builders", "contractors", "realty", "real estate", "properties",
+  "manufacturing", "industries", "industrial", "productions", "operations",
+  "church", "chapel", "cathedral", "parish", "ministry", "ministries", "mission",
+  "school", "college", "university", "institute", "academy", "education", "learning",
+  "hospital", "medical", "health", "healthcare", "clinic", "center", "centre",
+  "government", "federal", "state", "county", "city", "municipal", "authority", "agency",
+  "department", "bureau", "commission", "board", "district", "administration",
+  "club", "society", "organization", "org", "league", "union", "federation",
+  "retail", "wholesale", "trading", "imports", "exports", "logistics", "transportation",
+  "energy", "oil", "gas", "electric", "power", "utilities", "water", "sewer",
+  "media", "broadcasting", "publishing", "entertainment", "studios", "productions"
 ];
 
 
@@ -141,21 +134,38 @@ function classifyOwner(raw) {
   if (tokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
-  const first = cleanInvalidCharsFromName(tokens[0]);
-  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
-  const middleTokens = tokens.slice(1, -1);
-  // if (/^[A-Za-z]$/.test(last)) {
-  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  // }
-  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
+  
+  const prefixes = ["Mr.", "Mrs.", "Ms.", "Miss", "Mx.", "Dr.", "Prof.", "Rev.", "Fr.", "Sr.", "Br.", "Capt.", "Col.", "Maj.", "Lt.", "Sgt.", "Hon.", "Judge", "Rabbi", "Imam", "Sheikh", "Sir", "Dame"];
+  const suffixes = ["Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM", "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."];
+  
+  let prefix = null, suffix = null;
+  let nameTokens = [...tokens];
+  
+  if (prefixes.some(p => p.toLowerCase() === nameTokens[0].toLowerCase())) {
+    prefix = nameTokens.shift();
+  }
+  if (nameTokens.length > 0 && suffixes.some(s => s.toLowerCase() === nameTokens[nameTokens.length - 1].toLowerCase())) {
+    suffix = nameTokens.pop();
+  }
+  
+  if (nameTokens.length < 2) {
+    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
+  }
+  
+  const first = cleanInvalidCharsFromName(nameTokens[0]);
+  const last = cleanInvalidCharsFromName(nameTokens[nameTokens.length - 1]);
+  const middle = nameTokens.length > 2 ? cleanInvalidCharsFromName(nameTokens.slice(1, -1).join(" ").trim()) : null;
+  
   if (first && last) {
-  const person = {
-    type: "person",
-    first_name: first,
-    last_name: last,
-    middle_name: middle ? middle : null,
-  };
-  return { valid: true, owner: person };
+    const person = {
+      type: "person",
+      prefix_name: prefix || null,
+      first_name: first,
+      middle_name: middle || null,
+      last_name: last,
+      suffix_name: suffix || null,
+    };
+    return { valid: true, owner: person };
   }
   return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
 }
@@ -189,16 +199,23 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).each((i, el) => {
-    const owner_text_split = $(el).text().split('\n');
-    for (const owner of owner_text_split) {
-      if (owner.trim() && !owner.toLowerCase().includes("primary")) {
-        const t = txt(owner.trim());
-        owners.push(t);
-        break;
-      }
+  // Try anchor tag selector first
+  const linkSelector = "#ctlBodyPane_ctl05_ctl01_rptOwner_ctl00_sprOwnerName1_lnkUpmSearchLinkSuppressed_lnkSearch";
+  $(linkSelector).each((i, el) => {
+    const ownerText = $(el).text().trim();
+    if (ownerText && !ownerText.toLowerCase().includes("primary")) {
+      owners.push(txt(ownerText));
     }
   });
+  // Fallback to label selector if no results
+  if (owners.length === 0) {
+    $(CURRENT_OWNER_SELECTOR).each((i, el) => {
+      const ownerText = $(el).text().trim();
+      if (ownerText && !ownerText.toLowerCase().includes("primary")) {
+        owners.push(txt(ownerText));
+      }
+    });
+  }
   return owners;
 }
 
@@ -254,6 +271,7 @@ function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
 
 const parcelId = getParcelId($);
 const currentOwnerRaw = extractCurrentOwners($);
+console.log("----",currentOwnerRaw)
 const { map: salesMap, priorOwners } = extractSalesOwnersByDate($);
 
 const invalid_owners = [];
