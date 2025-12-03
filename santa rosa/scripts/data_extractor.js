@@ -1700,50 +1700,22 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // - Normalized format: all required normalized fields + NO unnormalized_address
   if (hasValidSitus && trimmedSitus && trimmedSitus.length > 0) {
     // Use unnormalized format when we have a valid address string
-    // Based on verified examples: include unnormalized_address with optional location fields
-    // CRITICAL SAFETY CHECK: Ensure trimmedSitus is never an empty string (minLength: 1)
-    const finalSitus = trimmedSitus.trim();
-    if (finalSitus.length === 0) {
-      // This should never happen due to earlier validation, but safety check
-      // Fall through to normalized format
-      address = {
-        source_http_request: sourceHttpRequest,
-        request_identifier: parcelId,
-        street_number: null,
-        street_name: null,
-        street_pre_directional_text: null,
-        street_post_directional_text: null,
-        street_suffix_type: null,
-        unit_identifier: null,
-        city_name: null,
-        state_code: null,
-        postal_code: null,
-        plus_four_postal_code: null,
-        country_code: "US",
-        route_number: null,
-        block: null
-      };
-      if (county_name) address.county_name = county_name;
-      if (section) address.section = section;
-      if (township) address.township = township;
-      if (range) address.range = range;
-    } else {
-      address = {
-        source_http_request: sourceHttpRequest,
-        request_identifier: parcelId,
-        unnormalized_address: finalSitus
-      };
+    // CRITICAL: Ensure unnormalized_address is NEVER an empty string (minLength: 1)
+    address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      unnormalized_address: trimmedSitus
+    };
 
-      // Add optional location fields if available
-      if (county_name) address.county_name = county_name;
-      if (section) address.section = section;
-      if (township) address.township = township;
-      if (range) address.range = range;
-    }
+    // Add optional location fields if available
+    if (county_name) address.county_name = county_name;
+    if (section) address.section = section;
+    if (township) address.township = township;
+    if (range) address.range = range;
   } else {
     // Use normalized format when we don't have a valid street address
     // CRITICAL: DO NOT include unnormalized_address in normalized format
-    // Include all required normalized fields (even if null)
+    // Include all required normalized fields (even if null) per schema
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
@@ -1846,10 +1818,12 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
     // CRITICAL: Only include agricultural_valuation_amount if it's a valid number
     // Schema requires type: "number" (not nullable), so never include null/undefined
     // The field must be omitted entirely if not a valid number
-    if (typeof agricultural === 'number' && Number.isFinite(agricultural)) {
+    // Add multiple defensive checks to ensure null/undefined is never set
+    if (agricultural !== null && agricultural !== undefined &&
+        typeof agricultural === 'number' && Number.isFinite(agricultural)) {
       taxOut.agricultural_valuation_amount = agricultural;
     }
-    // Note: If agricultural is null/undefined/NaN, the field is completely omitted from taxOut
+    // Note: If agricultural is null/undefined/NaN/invalid, the field is completely omitted from taxOut
 
     writeJSON(path.join(dataDir, `tax_${year}.json`), taxOut);
   }
