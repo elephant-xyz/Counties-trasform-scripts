@@ -5477,78 +5477,10 @@ delete layoutContent.space_type_indexer;
     }
   }
 
-  // Now create files only for owners that will be used in relationships
-  // All owners in seenOwners but NOT in usedOwnerKeys will be skipped
-  let personIndex = 1;
-  let companyIndex = 1;
-  const ownerEntries = [];
-  seenOwners.forEach((info, key) => {
-    // Only create files for owners that are actually used in relationships
-    if (usedOwnerKeys.has(key)) {
-      ownerEntries.push([key, info]);
-    }
-  });
-
-  ownerEntries.forEach(([key, info]) => {
-    if (info.type === "person") {
-      const file = `person_${personIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      personFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      personIndex += 1;
-      console.log("Created person file:", file, info.payload); // DEBUG LOG
-    } else if (info.type === "company") {
-      const file = `company_${companyIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      companyFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      companyIndex += 1;
-      console.log("Created company file:", file, info.payload); // DEBUG LOG
-    }
-  });
-
-  console.log("All person files created:", personFiles); // DEBUG LOG
-  console.log("All company files created:", companyFiles); // DEBUG LOG
-
-  // Update salesBuyerFiles with actual file names after owner files are created
-  salesBuyerFiles.forEach((saleInfo) => {
-    saleInfo.buyerKeys.forEach((buyerKey) => {
-      const buyerFile = ownerKeyToFile.get(buyerKey);
-      if (buyerFile) {
-        saleInfo.buyerFiles.push(buyerFile);
-      }
-    });
-  });
-
-  if (mailingAddressFile) {
-    personFiles.forEach((pf) => {
-      const rel = {
-        from: { "/": `./${pf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(pf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
-    });
-    companyFiles.forEach((cf) => {
-      const rel = {
-        from: { "/": `./${cf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(cf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
-    });
-  }
-
-  // CRITICAL FIX: Create relationships from property to current owners (person/company)
-  // This ensures person/company files are "used" and not flagged as orphaned
-  personFiles.forEach((pf, idx) => {
-    const suffix = personFiles.length === 1 ? null : `${idx + 1}`;
-    writeRelationshipFile(propertyFileName, pf, suffix);
-  });
-  companyFiles.forEach((cf, idx) => {
-    const suffix = companyFiles.length === 1 ? null : `${idx + 1}`;
-    writeRelationshipFile(propertyFileName, cf, suffix);
-  });
+  // REMOVED: Person and company file creation
+  // NOTE: person and company classes do not exist in any datagroup in the Elephant schema
+  // Therefore, we do NOT create person_*.json or company_*.json files
+  // Owner information is tracked internally but not written to files or relationships
 
   // relationship_deed_file_*.json (file → deed)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
@@ -5560,15 +5492,8 @@ delete layoutContent.space_type_indexer;
     writeRelationshipFile(salesHistoryFiles[i], deedFiles[i]);
   }
 
-  // Create relationships between sales and their specific buyers
-  salesBuyerFiles.forEach((saleInfo) => {
-    if (saleInfo.buyerFiles.length > 0) {
-      saleInfo.buyerFiles.forEach((buyerFile, idx) => {
-        const suffix = saleInfo.buyerFiles.length === 1 ? null : `buyer_${idx + 1}`;
-        writeRelationshipFile(saleInfo.saleFile, buyerFile, suffix);
-      });
-    }
-  });
+  // REMOVED: Sales-buyer relationships
+  // NOTE: person and company classes do not exist, so we don't create relationships to buyer files
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
