@@ -114,6 +114,7 @@ function main() {
       );
     }
   }
+  
   // Add a Living Room with base area as an approximation if available
   layouts.push(makeDefaultLayout("Living Room", layouts.length + 1, baseArea));
 
