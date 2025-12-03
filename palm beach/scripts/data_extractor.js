@@ -327,13 +327,7 @@ function writeAddressJSONBypass(addressPath, payload) {
     typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
     hasStrictCountyNormalizedSchemaCoverage({ ...ensuredPayload });
 
-  const preserveStructured =
-    hasNormalizedSurface ||
-    (Object.prototype.hasOwnProperty.call(
-      ensuredPayload,
-      "__preserve_structured_fields",
-    ) &&
-      ensuredPayload.__preserve_structured_fields === true);
+  const preserveStructured = hasNormalizedSurface;
 
   if (preserveStructured) {
     if (
@@ -1258,11 +1252,16 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         const ensuredPayload =
           ensureRawAddressFieldCompleteness(finalizedPayload) ||
           finalizedPayload;
+        const hasNormalizedSurface =
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...ensuredPayload });
         const preserveStructured =
+          hasNormalizedSurface &&
           Object.prototype.hasOwnProperty.call(
             ensuredPayload,
             "__preserve_structured_fields",
-          ) && ensuredPayload.__preserve_structured_fields === true;
+          ) &&
+          ensuredPayload.__preserve_structured_fields === true;
         if (!preserveStructured) {
           enforceRawVariantAllowedFields(ensuredPayload);
           collapseRawAddressToUnnormalizedOnly(ensuredPayload);
@@ -4560,13 +4559,19 @@ function ensureRawAddressFieldCompleteness(address) {
     return address;
   }
 
-  if (
+  const preserveStructured =
     Object.prototype.hasOwnProperty.call(
       address,
       "__preserve_structured_fields",
-    ) &&
-    address.__preserve_structured_fields === true
-  ) {
+    ) && address.__preserve_structured_fields === true;
+  const hasForceRawFlag =
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true;
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...address });
+
+  if (preserveStructured && !hasForceRawFlag && hasNormalizedSurface) {
     if (!address.postal_code) {
       address.plus_four_postal_code = null;
     }
@@ -12851,7 +12856,7 @@ function stripRawVariantStructuredFields(address) {
     hasForceRawFlag ||
     (!preserveStructured && !hasNormalizedSurface && rawValue.length > 0);
 
-  if (preserveStructured && !hasForceRawFlag) {
+  if (preserveStructured && !hasForceRawFlag && hasNormalizedSurface) {
     return address;
   }
 
@@ -12936,13 +12941,12 @@ function enforceMinimalRawSubmissionSurface(address) {
   const hasForceRawFlag =
     Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
     address.__force_raw_variant === true;
-  if (preserveStructured && !hasForceRawFlag) {
-    return address;
-  }
-
   const hasNormalizedSurface =
     typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
     hasStrictCountyNormalizedSchemaCoverage({ ...address });
+  if (preserveStructured && !hasForceRawFlag && hasNormalizedSurface) {
+    return address;
+  }
   if (hasNormalizedSurface) {
     return address;
   }
