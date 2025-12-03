@@ -73488,6 +73488,53 @@ function forceAddressRelationshipNullOutputs(directories = []) {
     });
 }
 
+function finalizeCountyAddressOutputs() {
+  const dataDir = path.join("data");
+  const relationshipsDir = path.join("relationships");
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+
+  const addressPath = path.join(dataDir, "address.json");
+  const sourcePool = [
+    readJSONIfExists(addressPath),
+    readJSONIfExists("unnormalized_address.json"),
+    readJSONIfExists("property_seed.json"),
+  ].filter(
+    (source) =>
+      source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const resolvedRaw =
+    resolveRawAddressStringFromSources(sourcePool) ||
+    resolveFirstMeaningfulAddressField("unnormalized_address", sourcePool) ||
+    null;
+
+  if (resolvedRaw && resolvedRaw.trim().length) {
+    const strictRaw =
+      buildStrictMinimalRawAddressPayload(resolvedRaw, {
+        fieldSources: sourcePool,
+        defaultCountyName: titleCaseCounty("Palm Beach"),
+        defaultStateCode: "FL",
+        defaultCountryCode: "US",
+      }) || {
+        unnormalized_address: resolvedRaw.trim(),
+      };
+
+    const enforced =
+      collapseRawAddressToUnnormalizedOnly({
+        ...strictRaw,
+        __force_raw_variant: true,
+      }) || strictRaw;
+
+    writeAddressJSONBypass(addressPath, enforced);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+
+  enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
+  forceAddressRelationshipNullOutputs([dataDir, relationshipsDir]);
+}
+
 function resolveFirstNonEmptyStringCandidate(candidates = []) {
   if (!Array.isArray(candidates)) {
     return null;
@@ -76555,6 +76602,17 @@ process.on("exit", () => {
       "Failed to force canonical county address output:",
       error,
     );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    finalizeCountyAddressOutputs();
+  } catch (error) {
+    console.error("Failed to finalize county address outputs:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
