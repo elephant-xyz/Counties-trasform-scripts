@@ -115,6 +115,14 @@ function toIsoDate(mdy) {
 
 function formatToken(token) {
   if (!token) return "";
+
+  // Handle abbreviations like "L.A." - preserve uppercase letters followed by periods
+  // Pattern: single uppercase letter followed by period, repeated
+  if (/^([A-Z]\.)+$/.test(token)) {
+    // Remove trailing period to match schema pattern: "L.A." -> "L.A"
+    return token.replace(/\.$/, "");
+  }
+
   return token
     .split(/([-'])/)
     .map((segment) => {
