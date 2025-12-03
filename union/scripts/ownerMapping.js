@@ -130,12 +130,24 @@ function formatToken(token) {
 
 function formatNameValue(value) {
   if (!value) return null;
-  return value
+  let formatted = value
     .split(/\s+/)
     .filter(Boolean)
     .map(formatToken)
     .join(" ")
     .trim();
+
+  // Remove leading special characters to match schema pattern ^[A-Z]
+  while (formatted && /^[\-', .]/.test(formatted)) {
+    formatted = formatted.slice(1).trim();
+  }
+
+  // Remove trailing special characters
+  while (formatted && /[\-', .]$/.test(formatted)) {
+    formatted = formatted.slice(0, -1).trim();
+  }
+
+  return formatted || null;
 }
 
 function formatSuffixValue(value) {
