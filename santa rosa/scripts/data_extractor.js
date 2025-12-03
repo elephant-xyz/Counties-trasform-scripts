@@ -1700,8 +1700,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
-      unnormalized_address: trimmedSitus,
-      country_code: "US"
+      unnormalized_address: trimmedSitus
     };
 
     // Add optional location fields if available
