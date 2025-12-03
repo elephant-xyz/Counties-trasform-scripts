@@ -2407,15 +2407,6 @@ function textNormalize(value) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
-function normalizeCompanyName(name) {
-  if (!name) return "";
-  // Normalize whitespace
-  let normalized = name.replace(/\s+/g, " ").trim();
-  // Remove trailing punctuation (commas, periods, etc.)
-  normalized = normalized.replace(/[,\.;:]+$/g, "");
-  return normalized.trim();
-}
-
 function toNumber(value) {
   if (value == null) return null;
   const clean = String(value).replace(/[^0-9.\-]/g, "");
@@ -4232,6 +4223,7 @@ function buildPropertyJson() {
     };
   }
 
+  const addr = parseAddress();
   const rawPropertyAddress = (general.propertyLocationRaw ||
     addrSeed.full_address ||
     "")
@@ -4240,19 +4232,45 @@ function buildPropertyJson() {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Use unnormalized_address approach since source provides full_address
-  const addr = {
-    unnormalized_address: rawPropertyAddress || null,
-    latitude: addrSeed.latitude || null,
-    longitude: addrSeed.longitude || null,
-    county_name: addrSeed.county_jurisdiction || null,
-    country_code: "US",
-    township: null,
-    range: null,
-    section: null,
-    request_identifier: propSeed.request_identifier || null,
-    source_http_request: propSeed.source_http_request || null,
-  };
+  // addr.unnormalized_address = rawPropertyAddress || null;
+  // Extract latitude and longitude from addrSeed if available
+  addr.latitude = addrSeed.latitude || null;
+  addr.longitude = addrSeed.longitude || null;
+
+  const propertyAddressKeys = new Set([
+    "street_number",
+    "street_pre_directional_text",
+    "street_name",
+    "street_suffix_type",
+    "street_post_directional_text",
+    "unit_identifier",
+    "city_name",
+    "municipality_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "country_code",
+    "county_name",
+    "latitude",
+    "longitude",
+    "request_identifier",
+    "source_http_request",
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+  ]);
+  Object.keys(addr).forEach((key) => {
+    if (!propertyAddressKeys.has(key)) {
+      addr[key] = null;
+    }
+  });
+  addr.country_code = rawPropertyAddress ? "US" : addr.country_code || "US";
+  addr.county_name = addrSeed.county_jurisdiction || null;
+  addr.request_identifier = propSeed.request_identifier || null;
+  addr.source_http_request = propSeed.source_http_request || null;
 
   function buildMailingAddress(lines) {
     if (!Array.isArray(lines) || !lines.length) return null;
@@ -4456,12 +4474,6 @@ function buildPropertyJson() {
     if (property[k] === undefined) delete property[k];
   });
   writeJSON(path.join(dataDir, "property.json"), property);
-
-  // Create property_has_address relationship
-  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" },
-  });
   const propertyTypeValue = property.property_type || null;
   const isLandProperty =
     propertyTypeValue === "LandParcel" ||
@@ -5463,7 +5475,7 @@ delete layoutContent.space_type_indexer;
       } else if (ownerType === "company") {
         const rawName = owner.name || owner.company_name || owner.organization_name;
         if (!rawName) return;
-        const normalized = normalizeCompanyName(rawName);
+        const normalized = rawName.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
         if (!normalized) return;
         const key = `company:${normalized.toLowerCase()}`;
         if (seenOwners.has(key)) return;
@@ -5476,22 +5488,18 @@ delete layoutContent.space_type_indexer;
       }
     };
 
-    // Only process owners from ownersByDate if there's a mailing address file to link them to
-    // Otherwise, they'll be unused files. Buyers are processed separately during sales processing.
-    if (mailingAddressFile) {
-      Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
-        console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
-        const ownersArray = Array.isArray(entry)
-          ? entry
-          : entry && typeof entry === "object" && entry.type
-          ? [entry]
-          : [];
-        ownersArray.forEach((owner) => {
-          const ownerKey = pushOwner(owner);
-          if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
-        });
+    Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
+      console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
+      const ownersArray = Array.isArray(entry)
+        ? entry
+        : entry && typeof entry === "object" && entry.type
+        ? [entry]
+        : [];
+      ownersArray.forEach((owner) => {
+        const ownerKey = pushOwner(owner);
+        if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
       });
-    }
+    });
   }
 
   // sales_history_*.json, deed_*.json, file_*.json + relationships + buyer processing
@@ -5536,20 +5544,15 @@ delete layoutContent.space_type_indexer;
         if (buyer) {
           // Create buyer key similar to owner key creation
           let buyerKey = null;
+          let normalizedCompanyName = null;
           if (buyer.type === "company") {
-            const normalized = normalizeCompanyName(buyer.name);
-            buyerKey = `company:${normalized.toLowerCase()}`;
+            normalizedCompanyName = buyer.name.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
+            buyerKey = `company:${normalizedCompanyName.toLowerCase()}`;
           } else {
-            // Use pipe separator to match owner key format (line 5434-5437)
-            const first = properCaseName(buyer.first_name || null);
-            const last = properCaseName(buyer.last_name || null);
-            const middle = buyer.middle_name || null;
-            const prefixName = buyer.prefix_name || null;
-            const suffixName = buyer.suffix_name || null;
-            const parts = [first, middle, last, prefixName, suffixName]
+            const parts = [buyer.first_name, buyer.middle_name, buyer.last_name]
               .map((part) => (part || "").trim().toLowerCase())
               .filter(Boolean);
-            buyerKey = `person:${parts.join("|")}`;
+            buyerKey = `person:${parts.join(" ")}`;
           }
 
           if (buyerKey) {
@@ -5559,25 +5562,31 @@ delete layoutContent.space_type_indexer;
             // Add to global owner tracking for file creation
             if (!seenOwners.has(buyerKey)) {
               if (buyer.type === "company") {
-                const normalized = normalizeCompanyName(buyer.name);
                 seenOwners.set(buyerKey, {
                   type: "company",
-                  payload: { name: normalized },
+                  payload: { name: normalizedCompanyName },
                 });
               } else {
-                // Reuse the variables defined above for key creation
+                const firstName = properCaseName(buyer.first_name || null);
+                const lastName = properCaseName(buyer.last_name || null);
+                if (!firstName || !lastName) return;
+                const middleName = buyer.middle_name ? buyer.middle_name : null;
+                const prefixName = buyer.prefix_name ? buyer.prefix_name : null;
+                const suffixName = buyer.suffix_name ? buyer.suffix_name : null;
+                const personPayload = {
+                  birth_date: null,
+                  first_name: firstName,
+                  last_name: lastName,
+                  middle_name: middleName,
+                  prefix_name: prefixName,
+                  suffix_name: suffixName,
+                  us_citizenship_status: null,
+                  veteran_status: null,
+                };
+
                 seenOwners.set(buyerKey, {
                   type: "person",
-                  payload: {
-                    birth_date: null,
-                    first_name: first,
-                    last_name: last,
-                    middle_name: middle,
-                    prefix_name: prefixName,
-                    suffix_name: suffixName,
-                    us_citizenship_status: null,
-                    veteran_status: null,
-                  },
+                  payload: personPayload,
                 });
               }
             }
@@ -5629,37 +5638,43 @@ delete layoutContent.space_type_indexer;
     fileFiles.push(fileFileName);
   });
 
-  // Determine which owner keys will have relationships
-  const ownerKeysWithRelationships = new Set();
+  // Determine which owner keys will be used in relationships
+  // CRITICAL: Only create entity files for owners that will have relationships.
+  // This prevents "Unused data JSON file detected" validation errors.
+  const usedOwnerKeys = new Set();
 
-  // Track owners that will link to mailing address
-  if (mailingAddressFile) {
-    ownerKeysByDate.forEach((keys) => {
-      keys.forEach((key) => ownerKeysWithRelationships.add(key));
+  // Add buyer keys from sales - these will have sales_history_has_company/person relationships
+  salesBuyerFiles.forEach((saleInfo) => {
+    saleInfo.buyerKeys.forEach((buyerKey) => {
+      usedOwnerKeys.add(buyerKey);
     });
+  });
+
+  // Add current owner keys ONLY if mailing address exists
+  // These will have company/person_has_mailing_address relationships
+  // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
+  if (mailingAddressFile) {
+    const currentOwners = ownerKeysByDate.get('current');
+    if (currentOwners) {
+      currentOwners.forEach((ownerKey) => {
+        usedOwnerKeys.add(ownerKey);
+      });
+    }
   }
 
-  // Track buyers that will link to sales
-  allBuyerOwnerKeys.forEach((key) => ownerKeysWithRelationships.add(key));
-
-  console.log("Owner keys with relationships:", Array.from(ownerKeysWithRelationships)); // DEBUG LOG
-
-  // Now that all owners (including buyers from sales) are collected in seenOwners, create their files
-  // Only create files for owners that have at least one relationship
+  // Now create files only for owners that will be used in relationships
+  // All owners in seenOwners but NOT in usedOwnerKeys will be skipped
   let personIndex = 1;
   let companyIndex = 1;
   const ownerEntries = [];
   seenOwners.forEach((info, key) => {
-    ownerEntries.push([key, info]);
+    // Only create files for owners that are actually used in relationships
+    if (usedOwnerKeys.has(key)) {
+      ownerEntries.push([key, info]);
+    }
   });
 
   ownerEntries.forEach(([key, info]) => {
-    // Only create file if this owner has a relationship
-    if (!ownerKeysWithRelationships.has(key)) {
-      console.log("Skipping owner without relationships:", key); // DEBUG LOG
-      return;
-    }
-
     if (info.type === "person") {
       const file = `person_${personIndex}.json`;
       writeJSON(path.join(dataDir, file), info.payload);

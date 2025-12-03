@@ -3189,16 +3189,6 @@ function extract() {
       const file = path.join(dataDir, saleFileName);
       // Remove _rawIndex and grantee_text before writing to file
       const { _rawIndex, grantee_text, ...saleData } = s;
-
-      // CRITICAL: purchase_price_amount must be a number (not null) per schema
-      // Since it's optional, omit it entirely if not a valid number
-      if (saleData.purchase_price_amount === null ||
-          saleData.purchase_price_amount === undefined ||
-          typeof saleData.purchase_price_amount !== 'number' ||
-          !Number.isFinite(saleData.purchase_price_amount)) {
-        delete saleData.purchase_price_amount;
-      }
-
       writeJSON(file, saleData);
       s._file = `./${saleFileName}`; // Keep _file for relationship linking
       saleFileMap.set(s.ownership_transfer_date, s._file);
@@ -3397,29 +3387,27 @@ function extract() {
         unnormalized_address: mailing_address_text
       };
       writeJSON(path.join(dataDir, "mailing_address.json"), mailing_address);
-
-      // Create relationships for person → mailing_address
-      mailingPersonRefs.forEach((personRef) => {
-        const relFile = `relationship_person_${personRef
-          .replace("./", "")
-          .replace(".json", "")}_has_mailing_address.json`;
-        writeJSON(path.join(dataDir, relFile), {
-          from: { "/": personRef },
-          to: { "/": "./mailing_address.json" },
-        });
-      });
-
-      // Create relationships for company → mailing_address
-      mailingCompanyRefs.forEach((companyRef) => {
-        const relFile = `relationship_company_${companyRef
-          .replace("./", "")
-          .replace(".json", "")}_has_mailing_address.json`;
-        writeJSON(path.join(dataDir, relFile), {
-          from: { "/": companyRef },
-          to: { "/": "./mailing_address.json" },
-        });
-      });
     }
+
+    mailingPersonRefs.forEach((personRef) => {
+      const relFile = `relationship_person_${personRef
+        .replace("./", "")
+        .replace(".json", "")}_has_mailing_address.json`;
+      writeJSON(path.join(dataDir, relFile), {
+        from: { "/": personRef },
+        to: { "/": "./mailing_address.json" },
+      });
+    });
+
+    mailingCompanyRefs.forEach((companyRef) => {
+      const relFile = `relationship_company_${companyRef
+        .replace("./", "")
+        .replace(".json", "")}_has_mailing_address.json`;
+      writeJSON(path.join(dataDir, relFile), {
+        from: { "/": companyRef },
+        to: { "/": "./mailing_address.json" },
+      });
+    });
   } catch (e) {
     console.error("Error extracting sales/owner data:", e);
   }
