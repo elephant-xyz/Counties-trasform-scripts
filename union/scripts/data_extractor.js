@@ -1010,6 +1010,11 @@ function normalizeSuffixName(suffix) {
     return suffixMap[cleaned];
   }
 
+  // Additional safety check: if the value is literally "Jr" without period, return "Jr."
+  // This should never happen due to the mappings above, but acts as a failsafe
+  if (cleaned === 'Jr') return 'Jr.';
+  if (cleaned === 'Sr') return 'Sr.';
+
   // If not in map, return null
   return null;
 }

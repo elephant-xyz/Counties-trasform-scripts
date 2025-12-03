@@ -248,6 +248,11 @@ function formatSuffixValue(value) {
     return suffixMap[trimmed];
   }
 
+  // Additional safety check: if the value is literally "Jr" without period, return "Jr."
+  // This should never happen due to the mappings above, but acts as a failsafe
+  if (trimmed === 'Jr') return 'Jr.';
+  if (trimmed === 'Sr') return 'Sr.';
+
   // If not in map, return null (unknown suffix)
   return null;
 }
