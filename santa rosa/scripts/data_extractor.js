@@ -1713,13 +1713,20 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // - Unnormalized format: unnormalized_address (minLength: 1) + optional fields
   // - Normalized format: all required normalized fields + NO unnormalized_address
   // NEVER set unnormalized_address to empty string or include it in normalized format
-  if (hasValidSitus && trimmedSitus && trimmedSitus.length > 0) {
+  // DOUBLE CHECK: Ensure trimmedSitus is valid before using unnormalized format
+  const canUseUnnormalized = hasValidSitus &&
+                              trimmedSitus &&
+                              typeof trimmedSitus === 'string' &&
+                              trimmedSitus.length > 0 &&
+                              trimmedSitus.trim().length > 0;
+
+  if (canUseUnnormalized) {
     // Use unnormalized format when we have a valid address string
     // CRITICAL: Ensure unnormalized_address is NEVER an empty string (minLength: 1)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
-      unnormalized_address: trimmedSitus
+      unnormalized_address: trimmedSitus.trim()
     };
 
     // Add optional location fields if available
