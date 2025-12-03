@@ -12130,8 +12130,12 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Raw schema only allows the unnormalized surface plus coarse
-      // locality/grid metadata, so restrict the allowed fields to that set.
+      // County schema exposes a oneOf where the "raw" branch still expects the
+      // full normalized field surface (street components + coordinates) to be
+      // present, even when values are null. Preserve those keys alongside the
+      // traditional raw locality/grid metadata so we never emit objects that
+      // are missing required properties like latitude/longitude.
+      ...NORMALIZED_ADDRESS_FIELDS,
       ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
