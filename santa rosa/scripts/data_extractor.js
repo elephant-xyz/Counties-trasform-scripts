@@ -1641,68 +1641,26 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       range = parts[2];
     }
   }
-  // Address uses oneOf: either unnormalized_address OR all normalized fields
-  // IMPORTANT: unnormalized_address must be non-empty (minLength: 1) or omitted entirely
-  let address;
+  // Address uses unnormalized_address format following verified examples
+  // IMPORTANT: unnormalized_address must be non-empty string OR null (never empty string)
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
-  // More strict check: must have at least one alphanumeric character and length > 0
   const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && /[a-zA-Z0-9]/.test(trimmedSitus);
 
-  if (hasValidSitus && trimmedSitus.length >= 1) {
-    // Use unnormalized_address format (do NOT include normalized fields)
-    address = {
-      source_http_request: sourceHttpRequest,
-      request_identifier: parcelId,
-      county_name: "Santa Rosa",
-      unnormalized_address: trimmedSitus,
-      township: township,
-      range: range,
-      section: section,
-    };
-  } else {
-    // Use normalized fields format (do NOT include unnormalized_address at all)
-    // All fields marked as required in schema must be present (even if null)
-    address = {
-      source_http_request: sourceHttpRequest,
-      request_identifier: parcelId,
-      county_name: "Santa Rosa",
-      city_name: null,
-      country_code: "US",
-      plus_four_postal_code: null,
-      postal_code: null,
-      state_code: "FL",
-      street_name: null,
-      street_post_directional_text: null,
-      street_pre_directional_text: null,
-      street_number: null,
-      street_suffix_type: null,
-      unit_identifier: null,
-      route_number: null,
-      block: null,
-      township: township,
-      range: range,
-      section: section,
-    };
-  }
+  // Set unnormalized_address to either valid string or null (never empty string)
+  const unnormalizedAddress = hasValidSitus ? trimmedSitus : null;
 
-  // Final safeguard: if somehow unnormalized_address ended up empty, switch to normalized format
-  if (address.unnormalized_address !== undefined && address.unnormalized_address.length === 0) {
-    delete address.unnormalized_address;
-    address.city_name = null;
-    address.country_code = "US";
-    address.plus_four_postal_code = null;
-    address.postal_code = null;
-    address.state_code = "FL";
-    address.street_name = null;
-    address.street_post_directional_text = null;
-    address.street_pre_directional_text = null;
-    address.street_number = null;
-    address.street_suffix_type = null;
-    address.unit_identifier = null;
-    address.route_number = null;
-    address.block = null;
-  }
+  // Always use unnormalized_address format (following verified examples)
+  const address = {
+    source_http_request: sourceHttpRequest,
+    request_identifier: parcelId,
+    county_name: "Santa Rosa",
+    unnormalized_address: unnormalizedAddress,
+    section: section,
+    township: township,
+    range: range,
+    country_code: "US",
+  };
 
   writeJSON(path.join(dataDir, "address.json"), address);
 
