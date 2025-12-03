@@ -246,6 +246,135 @@ function formatSuffixValue(value) {
   return null;
 }
 
+function formatPrefixValue(value) {
+  if (!value) return null;
+  const trimmed = value.replace(/\./g, "").replace(/,/g, "").trim();
+  if (!trimmed) return null;
+
+  // Map prefixes to Elephant schema enum values
+  // Only include prefixes that are allowed by the Elephant schema
+  const prefixMap = {
+    'MR': 'Mr.',
+    'Mr': 'Mr.',
+    'mr': 'Mr.',
+    'MRS': 'Mrs.',
+    'Mrs': 'Mrs.',
+    'mrs': 'Mrs.',
+    'MS': 'Ms.',
+    'Ms': 'Ms.',
+    'ms': 'Ms.',
+    'MISS': 'Miss',
+    'Miss': 'Miss',
+    'miss': 'Miss',
+    'MX': 'Mx.',
+    'Mx': 'Mx.',
+    'mx': 'Mx.',
+    'DR': 'Dr.',
+    'Dr': 'Dr.',
+    'dr': 'Dr.',
+    'DOCTOR': 'Dr.',
+    'Doctor': 'Dr.',
+    'doctor': 'Dr.',
+    'PROF': 'Prof.',
+    'Prof': 'Prof.',
+    'prof': 'Prof.',
+    'PROFESSOR': 'Prof.',
+    'Professor': 'Prof.',
+    'professor': 'Prof.',
+    'REV': 'Rev.',
+    'Rev': 'Rev.',
+    'rev': 'Rev.',
+    'REVEREND': 'Rev.',
+    'Reverend': 'Rev.',
+    'reverend': 'Rev.',
+    'FR': 'Fr.',
+    'Fr': 'Fr.',
+    'fr': 'Fr.',
+    'FATHER': 'Fr.',
+    'Father': 'Fr.',
+    'father': 'Fr.',
+    'SR': 'Sr.',
+    'SISTER': 'Sr.',
+    'Sister': 'Sr.',
+    'sister': 'Sr.',
+    'BR': 'Br.',
+    'Br': 'Br.',
+    'br': 'Br.',
+    'BROTHER': 'Br.',
+    'Brother': 'Br.',
+    'brother': 'Br.',
+    'CAPT': 'Capt.',
+    'Capt': 'Capt.',
+    'capt': 'Capt.',
+    'CAPTAIN': 'Capt.',
+    'Captain': 'Capt.',
+    'captain': 'Capt.',
+    'COL': 'Col.',
+    'Col': 'Col.',
+    'col': 'Col.',
+    'COLONEL': 'Col.',
+    'Colonel': 'Col.',
+    'colonel': 'Col.',
+    'MAJ': 'Maj.',
+    'Maj': 'Maj.',
+    'maj': 'Maj.',
+    'MAJOR': 'Maj.',
+    'Major': 'Maj.',
+    'major': 'Maj.',
+    'LT': 'Lt.',
+    'Lt': 'Lt.',
+    'lt': 'Lt.',
+    'LIEUTENANT': 'Lt.',
+    'Lieutenant': 'Lt.',
+    'lieutenant': 'Lt.',
+    'SGT': 'Sgt.',
+    'Sgt': 'Sgt.',
+    'sgt': 'Sgt.',
+    'SERGEANT': 'Sgt.',
+    'Sergeant': 'Sgt.',
+    'sergeant': 'Sgt.',
+    'HON': 'Hon.',
+    'Hon': 'Hon.',
+    'hon': 'Hon.',
+    'HONORABLE': 'Hon.',
+    'Honorable': 'Hon.',
+    'honorable': 'Hon.',
+    'JUDGE': 'Judge',
+    'Judge': 'Judge',
+    'judge': 'Judge',
+    'RABBI': 'Rabbi',
+    'Rabbi': 'Rabbi',
+    'rabbi': 'Rabbi',
+    'IMAM': 'Imam',
+    'Imam': 'Imam',
+    'imam': 'Imam',
+    'SHEIKH': 'Sheikh',
+    'Sheikh': 'Sheikh',
+    'sheikh': 'Sheikh',
+    'SIR': 'Sir',
+    'Sir': 'Sir',
+    'sir': 'Sir',
+    'DAME': 'Dame',
+    'Dame': 'Dame',
+    'dame': 'Dame',
+  };
+
+  const upper = trimmed.toUpperCase();
+
+  // Check if it's in the prefix map with uppercase first
+  if (prefixMap[upper]) {
+    return prefixMap[upper];
+  }
+
+  // Check with original case as fallback
+  if (prefixMap[trimmed]) {
+    return prefixMap[trimmed];
+  }
+
+  // If not in map, return null (unknown prefix like "Bishop")
+  return null;
+}
+
 function stripNameAffixes(name) {
   let working = collapseWs(name);
   let prefix = null;
@@ -390,7 +519,7 @@ function parsePersonNameBasic(name) {
     first_name: formattedFirst,
     last_name: formattedLast,
     middle_name: formattedMiddle || null,
-    prefix_name: prefix ? formatNameValue(prefix) : null,
+    prefix_name: prefix ? formatPrefixValue(prefix) : null,
     suffix_name: suffix ? formatSuffixValue(suffix) : null,
   };
 }

@@ -1014,6 +1014,136 @@ function normalizeSuffixName(suffix) {
   return null;
 }
 
+function normalizePrefixName(prefix) {
+  if (!prefix) return null;
+
+  // Remove dots and commas, then trim
+  const cleaned = String(prefix).replace(/\./g, "").replace(/,/g, "").trim();
+  if (!cleaned) return null;
+
+  // Map to Elephant schema enum values
+  const prefixMap = {
+    'MR': 'Mr.',
+    'Mr': 'Mr.',
+    'mr': 'Mr.',
+    'MRS': 'Mrs.',
+    'Mrs': 'Mrs.',
+    'mrs': 'Mrs.',
+    'MS': 'Ms.',
+    'Ms': 'Ms.',
+    'ms': 'Ms.',
+    'MISS': 'Miss',
+    'Miss': 'Miss',
+    'miss': 'Miss',
+    'MX': 'Mx.',
+    'Mx': 'Mx.',
+    'mx': 'Mx.',
+    'DR': 'Dr.',
+    'Dr': 'Dr.',
+    'dr': 'Dr.',
+    'DOCTOR': 'Dr.',
+    'Doctor': 'Dr.',
+    'doctor': 'Dr.',
+    'PROF': 'Prof.',
+    'Prof': 'Prof.',
+    'prof': 'Prof.',
+    'PROFESSOR': 'Prof.',
+    'Professor': 'Prof.',
+    'professor': 'Prof.',
+    'REV': 'Rev.',
+    'Rev': 'Rev.',
+    'rev': 'Rev.',
+    'REVEREND': 'Rev.',
+    'Reverend': 'Rev.',
+    'reverend': 'Rev.',
+    'FR': 'Fr.',
+    'Fr': 'Fr.',
+    'fr': 'Fr.',
+    'FATHER': 'Fr.',
+    'Father': 'Fr.',
+    'father': 'Fr.',
+    'SR': 'Sr.',
+    'SISTER': 'Sr.',
+    'Sister': 'Sr.',
+    'sister': 'Sr.',
+    'BR': 'Br.',
+    'Br': 'Br.',
+    'br': 'Br.',
+    'BROTHER': 'Br.',
+    'Brother': 'Br.',
+    'brother': 'Br.',
+    'CAPT': 'Capt.',
+    'Capt': 'Capt.',
+    'capt': 'Capt.',
+    'CAPTAIN': 'Capt.',
+    'Captain': 'Capt.',
+    'captain': 'Capt.',
+    'COL': 'Col.',
+    'Col': 'Col.',
+    'col': 'Col.',
+    'COLONEL': 'Col.',
+    'Colonel': 'Col.',
+    'colonel': 'Col.',
+    'MAJ': 'Maj.',
+    'Maj': 'Maj.',
+    'maj': 'Maj.',
+    'MAJOR': 'Maj.',
+    'Major': 'Maj.',
+    'major': 'Maj.',
+    'LT': 'Lt.',
+    'Lt': 'Lt.',
+    'lt': 'Lt.',
+    'LIEUTENANT': 'Lt.',
+    'Lieutenant': 'Lt.',
+    'lieutenant': 'Lt.',
+    'SGT': 'Sgt.',
+    'Sgt': 'Sgt.',
+    'sgt': 'Sgt.',
+    'SERGEANT': 'Sgt.',
+    'Sergeant': 'Sgt.',
+    'sergeant': 'Sgt.',
+    'HON': 'Hon.',
+    'Hon': 'Hon.',
+    'hon': 'Hon.',
+    'HONORABLE': 'Hon.',
+    'Honorable': 'Hon.',
+    'honorable': 'Hon.',
+    'JUDGE': 'Judge',
+    'Judge': 'Judge',
+    'judge': 'Judge',
+    'RABBI': 'Rabbi',
+    'Rabbi': 'Rabbi',
+    'rabbi': 'Rabbi',
+    'IMAM': 'Imam',
+    'Imam': 'Imam',
+    'imam': 'Imam',
+    'SHEIKH': 'Sheikh',
+    'Sheikh': 'Sheikh',
+    'sheikh': 'Sheikh',
+    'SIR': 'Sir',
+    'Sir': 'Sir',
+    'sir': 'Sir',
+    'DAME': 'Dame',
+    'Dame': 'Dame',
+    'dame': 'Dame',
+  };
+
+  const upper = cleaned.toUpperCase();
+
+  // Check uppercase version first
+  if (prefixMap[upper]) {
+    return prefixMap[upper];
+  }
+
+  // Check original case as fallback
+  if (prefixMap[cleaned]) {
+    return prefixMap[cleaned];
+  }
+
+  // If not in map (e.g., "Bishop"), return null
+  return null;
+}
+
 function normalizeOwnerKeyForIndex(owner) {
   if (!owner || !owner.type) return "";
   if (owner.type === "company") {
@@ -1139,7 +1269,7 @@ function writeOwners(
           first_name: owner.first_name,
           last_name: owner.last_name,
           middle_name: owner.middle_name ?? null,
-          prefix_name: owner.prefix_name ?? null,
+          prefix_name: normalizePrefixName(owner.prefix_name),
           suffix_name: normalizeSuffixName(owner.suffix_name),
           us_citizenship_status: owner.us_citizenship_status ?? null,
           veteran_status: owner.veteran_status ?? null,
