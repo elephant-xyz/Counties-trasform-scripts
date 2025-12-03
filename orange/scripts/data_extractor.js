@@ -3825,27 +3825,6 @@ function buildPropertyJson() {
       .trim();
     raw = raw.replace(/\n/g, ", ").replace(/\s+/g, " ").trim();
 
-    const countyName = addrSeed.county_jurisdiction || null;
-
-    // Return unnormalized address only (as source provides full_address)
-    return {
-      unnormalized_address: raw || null,
-      country_code: "US",
-      county_name: countyName || null,
-      latitude: addrSeed.latitude || null,
-      longitude: addrSeed.longitude || null,
-      request_identifier: propSeed.request_identifier || null,
-      source_http_request: propSeed.source_http_request || null,
-    };
-  }
-
-  // Legacy normalized address parsing (kept for reference, not used)
-  function parseAddressNormalized() {
-    let raw = (general.propertyLocationRaw || addrSeed.full_address || "")
-      .replace(/\r/g, "")
-      .trim();
-    raw = raw.replace(/\n/g, ", ").replace(/\s+/g, " ").trim();
-
     let street_number = null,
       street_name = null,
       street_suffix_type = null,
@@ -4245,6 +4224,53 @@ function buildPropertyJson() {
   }
 
   const addr = parseAddress();
+  const rawPropertyAddress = (general.propertyLocationRaw ||
+    addrSeed.full_address ||
+    "")
+    .replace(/\r/g, "")
+    .replace(/\s*\n+\s*/g, ", ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // addr.unnormalized_address = rawPropertyAddress || null;
+  // Extract latitude and longitude from addrSeed if available
+  addr.latitude = addrSeed.latitude || null;
+  addr.longitude = addrSeed.longitude || null;
+
+  const propertyAddressKeys = new Set([
+    "street_number",
+    "street_pre_directional_text",
+    "street_name",
+    "street_suffix_type",
+    "street_post_directional_text",
+    "unit_identifier",
+    "city_name",
+    "municipality_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "country_code",
+    "county_name",
+    "latitude",
+    "longitude",
+    "request_identifier",
+    "source_http_request",
+    "route_number",
+    "township",
+    "range",
+    "section",
+    "block",
+    "lot",
+  ]);
+  Object.keys(addr).forEach((key) => {
+    if (!propertyAddressKeys.has(key)) {
+      addr[key] = null;
+    }
+  });
+  addr.country_code = rawPropertyAddress ? "US" : addr.country_code || "US";
+  addr.county_name = addrSeed.county_jurisdiction || null;
+  addr.request_identifier = propSeed.request_identifier || null;
+  addr.source_http_request = propSeed.source_http_request || null;
 
   function buildMailingAddress(lines) {
     if (!Array.isArray(lines) || !lines.length) return null;
@@ -4255,13 +4281,144 @@ function buildPropertyJson() {
 
     const raw = normalizedLines.join(", ");
 
-    // Return only unnormalized address
+    let cityLineIndex = -1;
+    for (let i = normalizedLines.length - 1; i >= 0; i -= 1) {
+      if (/\d{5}/.test(normalizedLines[i]) || /[A-Z]{2}\b/.test(normalizedLines[i])) {
+        cityLineIndex = i;
+        break;
+      }
+    }
+
+    let cityLine = cityLineIndex >= 0 ? normalizedLines[cityLineIndex] : null;
+    const addressSegments =
+      cityLineIndex >= 0
+        ? normalizedLines.slice(0, cityLineIndex)
+        : normalizedLines.slice();
+    const trailingSegments =
+      cityLineIndex >= 0 ? normalizedLines.slice(cityLineIndex + 1) : [];
+
+    let cityName = null;
+    let stateCode = null;
+    let postalCode = null;
+    let plusFour = null;
+
+    if (cityLine) {
+      const zipMatch = cityLine.match(/(\d{5})(?:-?(\d{4}))?/);
+      if (zipMatch) {
+        postalCode = zipMatch[1];
+        plusFour = zipMatch[2] || null;
+        cityLine = cityLine.slice(0, zipMatch.index).trim();
+      }
+
+      const parts = cityLine
+        .replace(/,+/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+      if (parts.length) {
+        const possibleState = parts[parts.length - 1];
+        if (/^[A-Z]{2}$/i.test(possibleState)) {
+          stateCode = possibleState.toUpperCase();
+          parts.pop();
+        }
+        if (parts.length) {
+          cityName = parts.join(" ").toUpperCase();
+        }
+      }
+    }
+
+    const streetRaw = addressSegments.concat(trailingSegments).join(", ");
+    let streetNumber = null;
+    let streetName = null;
+    let streetSuffix = null;
+    if (streetRaw) {
+      const normalizedStreet = streetRaw.replace(/\s+/g, " ").trim();
+      const streetMatch = normalizedStreet.match(/^(\d+)\s+(.*)$/);
+      if (streetMatch) {
+        streetNumber = streetMatch[1];
+        let remainder = streetMatch[2].trim();
+        const parts = remainder.split(/\s+/);
+        if (parts.length > 1) {
+          const suffixCandidate = parts[parts.length - 1].replace(/\./g, "").toUpperCase();
+          const suffixAlias = {
+            AVENUE: "Ave",
+            AVE: "Ave",
+            STREET: "St",
+            ST: "St",
+            ROAD: "Rd",
+            RD: "Rd",
+            DRIVE: "Dr",
+            DR: "Dr",
+            COURT: "Ct",
+            CT: "Ct",
+            LANE: "Ln",
+            LN: "Ln",
+            CIRCLE: "Cir",
+            CIR: "Cir",
+            BOULEVARD: "Blvd",
+            BLVD: "Blvd",
+            WAY: "Way",
+            TERRACE: "Ter",
+            TER: "Ter",
+            PLACE: "Pl",
+            PL: "Pl",
+            HIGHWAY: "Hwy",
+            HWY: "Hwy",
+            PARKWAY: "Pkwy",
+            PKWY: "Pkwy",
+            TRAIL: "Trl",
+            TRL: "Trl",
+            LOOP: "Loop",
+            POINT: "Pt",
+            PT: "Pt",
+            SQUARE: "Sq",
+            SQ: "Sq",
+            COVE: "Cv",
+            CV: "Cv",
+            RUN: "Run",
+            BEND: "Bnd",
+            BND: "Bnd",
+          };
+          const mappedSuffix =
+            suffixAlias[suffixCandidate] ||
+            (suffixCandidate.length
+              ? suffixCandidate[0] +
+                suffixCandidate.slice(1).toLowerCase()
+              : null);
+          if (mappedSuffix && parts.length > 1) {
+            parts.pop();
+            streetSuffix = mappedSuffix;
+          }
+          remainder = parts.join(" ");
+        }
+        streetName = remainder.toUpperCase();
+      } else {
+        streetName = normalizedStreet.toUpperCase();
+      }
+    }
+
     return {
-      unnormalized_address: raw,
-      country_code: "US",
+      street_number: streetNumber || null,
+      street_pre_directional_text: null,
+      street_name: streetName || null,
+      street_suffix_type: streetSuffix || null,
+      street_post_directional_text: null,
+      unit_identifier: null,
+      city_name: cityName || null,
+      municipality_name: null,
+      state_code: stateCode || null,
+      postal_code: postalCode || null,
+      plus_four_postal_code: plusFour || null,
       county_name: addrSeed.county_jurisdiction || null,
+      country_code: "US",
       latitude: null,
       longitude: null,
+      route_number: null,
+      township: null,
+      range: null,
+      section: null,
+      block: null,
+      lot: null,
+      unnormalized_address: raw,
       request_identifier: propSeed.request_identifier || null,
       source_http_request: propSeed.source_http_request || null,
     };
@@ -4271,6 +4428,32 @@ function buildPropertyJson() {
     general.mailingAddressLines || null,
   );
   const mailingAddressFile = mailingAddress ? "mailing_address.json" : null;
+  if (mailingAddress) {
+    const rawMailing = (general.mailingAddressLines || [])
+      .map((line) => (line || "").replace(/\s+/g, " ").trim())
+      .filter((line) => line)
+      .join(", ")
+      .trim();
+    mailingAddress.unnormalized_address = rawMailing || null;
+    // Extract latitude and longitude from addrSeed for mailing address if available
+    mailingAddress.latitude =  null;
+    mailingAddress.longitude =  null;
+
+    const mailingAddressKeys = new Set([
+      "unnormalized_address",
+      "latitude",
+      "longitude",
+      "request_identifier",
+      "source_http_request",
+    ]);
+    // Object.keys(mailingAddress).forEach((key) => {
+    //   if (!mailingAddressKeys.has(key)) {
+    //     mailingAddress[key] = null;
+    //   }
+    // });
+    mailingAddress.request_identifier = propSeed.request_identifier || null;
+    mailingAddress.source_http_request = propSeed.source_http_request || null;
+  }
 
   function createRelationshipFileName(fromFile, toFile, suffix = null) {
     const fromBase = fromFile.replace(/\.json$/i, "");
