@@ -1703,6 +1703,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     // Use normalized format when we don't have a valid unnormalized address
     // All required fields must be present for oneOf to validate correctly
     // CRITICAL: Do NOT include unnormalized_address here - it violates oneOf constraint
+    // CRITICAL: section, township, range are OPTIONAL fields in address schema, not required
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
@@ -1802,8 +1803,9 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
       request_identifier: parcelId,
     };
 
-    // Only include agricultural_valuation_amount if it's a valid number (schema requires type: "number", not null)
-    if (typeof agricultural === 'number' && Number.isFinite(agricultural)) {
+    // CRITICAL: Only include agricultural_valuation_amount if it's a valid number
+    // Schema requires type: "number" (not nullable), so never include null/undefined
+    if (agricultural !== null && agricultural !== undefined && typeof agricultural === 'number' && Number.isFinite(agricultural)) {
       taxOut.agricultural_valuation_amount = agricultural;
     }
 
