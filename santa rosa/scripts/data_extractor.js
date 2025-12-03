@@ -1699,8 +1699,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
-      unnormalized_address: trimmedSitus,
-      country_code: "US"
+      unnormalized_address: trimmedSitus
     };
 
     // Add optional location fields if available
@@ -1710,19 +1709,32 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     if (range) address.range = range;
   } else {
     // Use normalized format when we don't have a valid unnormalized address
-    // Based on schema errors: section, township, range are REQUIRED for the normalized variant
-    // Do NOT include street_name, street_number, etc. - they are unexpected in this schema
+    // All required fields must be present for oneOf to validate correctly
+    // CRITICAL: Do NOT include unnormalized_address here - it violates oneOf constraint
+    // CRITICAL: section, township, range are OPTIONAL fields in address schema, not required
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
+      city_name: null,
       country_code: "US",
-      section: section,
-      township: township,
-      range: range
+      plus_four_postal_code: null,
+      postal_code: null,
+      state_code: "FL",
+      street_name: null,
+      street_post_directional_text: null,
+      street_pre_directional_text: null,
+      street_number: null,
+      street_suffix_type: null,
+      unit_identifier: null,
+      route_number: null,
+      block: null
     };
 
-    // Add optional location fields if available
+    // Add optional location fields if available (these are allowed in normalized format)
     if (county_name) address.county_name = county_name;
+    if (section) address.section = section;
+    if (township) address.township = township;
+    if (range) address.range = range;
   }
 
   writeJSON(path.join(dataDir, "address.json"), address);
