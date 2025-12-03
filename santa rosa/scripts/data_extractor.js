@@ -1679,19 +1679,17 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   if (hasValidSitus) {
     // Use unnormalized format when we have a valid address string
-    // Based on verified examples, when using unnormalized_address, ONLY include unnormalized_address
-    // and optional metadata fields - do NOT mix with normalized fields
+    // CRITICAL: Based on verified examples and oneOf constraint, when using unnormalized_address:
+    // - ONLY include unnormalized_address and county_name
+    // - Do NOT include section, township, range (these are only for normalized format)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
       unnormalized_address: trimmedSitus
     };
 
-    // Add optional location fields if available
+    // Only add county_name if available (other location fields belong in normalized format only)
     if (county_name) address.county_name = county_name;
-    if (section) address.section = section;
-    if (township) address.township = township;
-    if (range) address.range = range;
   } else {
     // Use normalized format when we don't have a valid unnormalized address
     // All required fields must be present for oneOf to validate correctly
@@ -1714,7 +1712,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       block: null
     };
 
-    // Add optional location fields if available
+    // Add optional location fields if available (these are allowed in normalized format)
     if (county_name) address.county_name = county_name;
     if (section) address.section = section;
     if (township) address.township = township;
