@@ -2003,22 +2003,6 @@ function writePropertyUtilityLotStructureFromExtraFeatures($, parcelId) {
   }
 }
 
-function extractMailingAddress($) {
-  // Primary selector
-  const primaryAddress = $('#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress').html();
-  if (primaryAddress) {
-    return primaryAddress.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
-  }
-  
-  // Fallback to existing selectors
-  const parts = [];
-  $('[id*="lblAddress"], [id*="lblAptUnit"], [id*="lblCityStateZip"]').each((i, el) => {
-    const text = $(el).text().trim();
-    if (text) parts.push(text);
-  });
-  return parts.length > 0 ? parts.join(', ') : null;
-}
-
 function main() {
   ensureDir("data");
   const $ = loadHTML();
