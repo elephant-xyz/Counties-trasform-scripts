@@ -580,7 +580,7 @@ function parseAddress(
 
 function main() {
 
-  // throw new Error("Intended error!")
+  throw new Error("Intended error!")
 
   const inHtmlPath = path.join("input.html");
   const unaddrPath = path.join("unnormalized_address.json");
@@ -935,12 +935,12 @@ function main() {
 
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
-  // if (utilsEntry) {
-  //   fs.writeFileSync(
-  //     path.join(dataDir, "utility.json"),
-  //     JSON.stringify(utilsEntry, null, 2),
-  //   );
-  // }
+  if (utilsEntry) {
+    fs.writeFileSync(
+      path.join(dataDir, "utility.json"),
+      JSON.stringify(utilsEntry, null, 2),
+    );
+  }
 
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
@@ -1236,11 +1236,11 @@ function main() {
     structureObj.number_of_buildings = buildingTypes.size;
   }
 
-  // // Always write structure.json with all required fields
-  // fs.writeFileSync(
-  //   path.join(dataDir, "structure.json"),
-  //   JSON.stringify(structureObj, null, 2),
-  // );
+  // Always write structure.json with all required fields
+  fs.writeFileSync(
+    path.join(dataDir, "structure.json"),
+    JSON.stringify(structureObj, null, 2),
+  );
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
