@@ -2646,16 +2646,16 @@ function main() {
     ...appendSourceInfo(seed),
     unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
   };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
   // Create mailing address relationships with current owners
-  // Only write mailing_address.json if at least one relationship is created
-  let relCounter = 0;
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (owners) {
     const key = `property_${parcelId}`;
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
+      let relCounter = 0;
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
@@ -2684,11 +2684,6 @@ function main() {
         }
       });
     }
-  }
-
-  // Only write mailing_address.json if at least one relationship was created
-  if (relCounter > 0) {
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
   }
 
 
