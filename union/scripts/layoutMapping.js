@@ -22,13 +22,20 @@ function parseNumber(val) {
 }
 
 function parseYear(val) {
+  // Check if the original value is negative before parseNumber strips the sign
+  if (val != null && String(val).trim().startsWith('-')) return null;
+
   const year = parseNumber(val);
   // built_year must be >= 1 according to schema, or null
   if (year == null) return null;
   if (typeof year !== 'number') return null;
   if (!Number.isFinite(year)) return null;
+  // Ensure year is at least 1 (schema requires minimum: 1)
   if (year < 1) return null;
-  return Math.floor(year); // Ensure integer
+  const intYear = Math.floor(year);
+  // Double-check after flooring that we still have >= 1
+  if (intYear < 1) return null;
+  return intYear;
 }
 
 function loadJsonSafe(filePath) {
@@ -147,7 +154,8 @@ function buildLayouts($, requestMeta) {
     spaceTypeIndex += 1;
     const layout = buildBaseLayout("Building", spaceTypeIndex, requestMeta);
     layout.building_number = buildingNumber;
-    layout.built_year = builtYear;
+    // Ensure built_year is only set if it's a valid year (>= 1), otherwise null
+    layout.built_year = (builtYear != null && builtYear >= 1) ? builtYear : null;
     layout.size_square_feet = actualSf;
     layout.total_area_sq_ft = actualSf;
     layout.heated_area_sq_ft = baseSf;
@@ -182,7 +190,8 @@ function buildLayouts($, requestMeta) {
       requestMeta,
     );
     layout.building_number = code;
-    layout.built_year = builtYear;
+    // Ensure built_year is only set if it's a valid year (>= 1), otherwise null
+    layout.built_year = (builtYear != null && builtYear >= 1) ? builtYear : null;
     layout.size_square_feet = units;
     layout.total_area_sq_ft = units;
     layout.is_exterior = true;
