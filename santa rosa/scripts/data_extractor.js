@@ -1646,7 +1646,8 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   let address;
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
-  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && trimmedSitus !== "," && trimmedSitus !== ", ,";
+  // More strict check: must have at least one alphanumeric character
+  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && /[a-zA-Z0-9]/.test(trimmedSitus);
 
   if (hasValidSitus) {
     // Use unnormalized_address format (do NOT include normalized fields)
