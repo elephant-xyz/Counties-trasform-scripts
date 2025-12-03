@@ -140,20 +140,6 @@ const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
 );
 const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(RAW_ADDRESS_RAW_SURFACE_FIELDS);
 
-const RAW_ADDRESS_ONE_OF_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      "unnormalized_address",
-      "latitude",
-      "longitude",
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_GRID_FIELDS,
-      "route_number",
-      "request_identifier",
-      "source_http_request",
-    ]),
-  ),
-);
 
 const RAW_PREFERRED_FIELD_WHITELIST = Object.freeze(
   Array.from(
@@ -13687,6 +13673,16 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
     acc[field] = null;
     return acc;
   }, {}),
+);
+
+const RAW_ADDRESS_ONE_OF_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...RAW_ADDRESS_OUTPUT_FIELDS,
+      "request_identifier",
+      "source_http_request",
+    ]),
+  ),
 );
 
 const RAW_ONLY_ADDRESS_FIELDS = Object.freeze([]);
