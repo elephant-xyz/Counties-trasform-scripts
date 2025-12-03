@@ -11,7 +11,7 @@ let forceRawAddressVariantOutput = false;
 // Allow the emitter to choose the correct schema branch dynamically. We'll
 // still fall back to the raw variant when we lack structured data, but we no
 // longer suppress normalized outputs by default.
-const FORCE_RAW_ONLY_ADDRESS_OUTPUT = true;
+const FORCE_RAW_ONLY_ADDRESS_OUTPUT = false;
 const SKIP_LEGACY_ADDRESS_FINALIZERS = true;
 const RAW_ADDRESS_DERIVED_FLAG = "__derived_from_raw";
 let FINAL_ADDRESS_REBUILD_CONTEXT = null;
@@ -77623,6 +77623,17 @@ process.on("exit", () => {
     const unnormalizedSource =
       readJSONIfExists("unnormalized_address.json") || null;
     const seedSource = readJSONIfExists("property_seed.json") || null;
+
+    const hasNormalizedSubmission =
+      existingPayload &&
+      typeof hasNormalizedCountyCoverage === "function" &&
+      hasNormalizedCountyCoverage(
+        deepClone(existingPayload) || { ...existingPayload },
+      );
+    if (hasNormalizedSubmission) {
+      return;
+    }
+
     const rawCandidate =
       buildCountyRawOneOfPayload(
         [existingPayload, unnormalizedSource, seedSource],
@@ -77648,7 +77659,7 @@ process.on("exit", () => {
     );
   } catch (error) {
     console.error(
-      "Failed to enforce final raw-only county address payload:",
+      "Failed to finalize county address payload:",
       error,
     );
   }
