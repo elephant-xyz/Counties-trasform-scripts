@@ -19,6 +19,7 @@ let ADDRESS_FINALIZATION_COMPLETE = false;
 let normalizedAddressOverrideApplied = false;
 let FINAL_NORMALIZED_ADDRESS_PAYLOAD = null;
 let FINAL_ADDRESS_WRITE_LOCKED = false;
+let ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
 
 function allowNormalizedAddressOutput() {
   return !FORCE_RAW_ONLY_ADDRESS_OUTPUT && !forceRawAddressVariantOutput;
@@ -47411,6 +47412,7 @@ async function main() {
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
+  ENFORCE_UNNORMALIZED_ONLY_ADDRESS = FORCE_RAW_ONLY_ADDRESS_OUTPUT;
   if (!FORCE_RAW_ONLY_ADDRESS_OUTPUT) {
     const structuredSnapshot =
       readJSONIfExists(path.join(dataDir, "address_structured_snapshot.json")) ||
@@ -47422,7 +47424,13 @@ async function main() {
     );
     if (hasStructuredSource) {
       forceRawAddressVariantOutput = false;
+      ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
+    } else {
+      forceRawAddressVariantOutput = true;
+      ENFORCE_UNNORMALIZED_ONLY_ADDRESS = true;
     }
+  } else {
+    forceRawAddressVariantOutput = true;
   }
   const htmlCoordinates = extractCoordinatesFromHTML(inputHTML);
   const htmlLatitude = parseCoordinate(htmlCoordinates.latitude);
@@ -78203,6 +78211,91 @@ process.on("exit", () => {
       "Failed to enforce final Palm Beach address/relationship placeholders:",
       error,
     );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  if (!ENFORCE_UNNORMALIZED_ONLY_ADDRESS) {
+    return;
+  }
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const existingPayload = readJSONIfExists(addressPath) || null;
+    const unnormalizedSource =
+      readJSONIfExists("unnormalized_address.json") || null;
+    const seedSource = readJSONIfExists("property_seed.json") || null;
+    const sourcePool = [existingPayload, unnormalizedSource, seedSource].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+    const rawValue = resolveRawAddressStringFromSources(sourcePool) || null;
+    if (!rawValue) {
+      removeFileIfExists(addressPath);
+      removeFileIfExists(path.join(dataDir, "address_structured_snapshot.json"));
+      enforceNullPropertyAddressRelationships(propertyPath);
+      overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+      return;
+    }
+
+    const requestIdentifier = resolveRequestIdentifierCandidate(
+      existingPayload && existingPayload.request_identifier,
+      unnormalizedSource && unnormalizedSource.request_identifier,
+      seedSource && seedSource.request_identifier,
+      seedSource && seedSource.parcel_id,
+    );
+    const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+      existingPayload && existingPayload.source_http_request,
+      unnormalizedSource && unnormalizedSource.source_http_request,
+      seedSource && seedSource.source_http_request,
+    );
+
+    const rawOptions = {
+      fieldSources: sourcePool,
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    };
+    if (requestIdentifier !== undefined) {
+      rawOptions.requestIdentifier = requestIdentifier;
+    }
+    if (sourceHttpRequest !== undefined) {
+      rawOptions.sourceHttpRequest = sourceHttpRequest;
+    }
+
+    const rawPayload =
+      buildStrictMinimalRawAddressPayload(rawValue, rawOptions) || null;
+    if (!rawPayload) {
+      removeFileIfExists(addressPath);
+      removeFileIfExists(path.join(dataDir, "address_structured_snapshot.json"));
+      enforceNullPropertyAddressRelationships(propertyPath);
+      overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+      return;
+    }
+
+    const projectedRaw =
+      projectRawUnnormalizedOnlyPayload(rawPayload) || rawPayload;
+
+    try {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(projectedRaw, null, 2)}\n`,
+      );
+    } catch (error) {
+      console.error("Failed to persist enforced raw address payload:", error);
+      throw error;
+    }
+    removeFileIfExists(path.join(dataDir, "address_structured_snapshot.json"));
+    enforceNullPropertyAddressRelationships(propertyPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error("Failed to persist minimal raw address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
