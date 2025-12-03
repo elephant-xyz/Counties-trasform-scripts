@@ -1691,11 +1691,12 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   let address;
 
-  // CRITICAL: Final safety check - unnormalized_address must NEVER be empty string
-  // If trimmedSitus is empty or invalid, use null
+  // CRITICAL: Address must use either unnormalized OR normalized format (oneOf constraint)
+  // - Unnormalized format: unnormalized_address (minLength: 1) + optional fields
+  // - Normalized format: all required normalized fields + NO unnormalized_address
   if (hasValidSitus && trimmedSitus && trimmedSitus.length > 0) {
     // Use unnormalized format when we have a valid address string
-    // Based on verified examples: can include unnormalized_address with section, township, range, county_name
+    // Based on verified examples: include unnormalized_address with optional location fields
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
@@ -1709,14 +1710,25 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     if (township) address.township = township;
     if (range) address.range = range;
   } else {
-    // CRITICAL: When we don't have a valid address, set unnormalized_address to null (not empty string)
-    // Empty string violates minLength: 1 constraint
-    // unnormalized_address schema allows null: type: ["string", "null"]
+    // Use normalized format when we don't have a valid street address
+    // CRITICAL: DO NOT include unnormalized_address in normalized format
+    // Include all required normalized fields (even if null)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
-      unnormalized_address: null,
-      country_code: "US"
+      street_number: null,
+      street_name: null,
+      street_pre_directional_text: null,
+      street_post_directional_text: null,
+      street_suffix_type: null,
+      unit_identifier: null,
+      city_name: null,
+      state_code: null,
+      postal_code: null,
+      plus_four_postal_code: null,
+      country_code: "US",
+      route_number: null,
+      block: null
     };
 
     // Add optional location fields if available
