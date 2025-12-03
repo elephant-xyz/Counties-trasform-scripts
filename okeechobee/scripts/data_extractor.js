@@ -3854,35 +3854,39 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($, ownerData, hyphenParcel)
   console.log("MAILING--",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJson(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // Create mailing address relationships with current owners
+  // Only create mailing address if there are owners to link it to
   const companies = globalThis.__ownerCompanyFiles || [];
   const persons = globalThis.__ownerPersonFiles || [];
-  
-  companies.forEach((companyPath, idx) => {
-    writeJson(
-      path.join("data", `relationship_company_has_mailing_address_${idx + 1}.json`),
-      {
-        from: { "/": companyPath },
-        to: { "/": "./mailing_address.json" }
-      }
-    );
-  });
-  
-  persons.forEach((personPath, idx) => {
-    writeJson(
-      path.join("data", `relationship_person_has_mailing_address_${idx + 1}.json`),
-      {
-        from: { "/": personPath },
-        to: { "/": "./mailing_address.json" }
-      }
-    );
-  });
+
+  if (companies.length > 0 || persons.length > 0) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(seed),
+      unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+    };
+    writeJson(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+    // Create mailing address relationships with current owners
+    companies.forEach((companyPath, idx) => {
+      writeJson(
+        path.join("data", `relationship_company_has_mailing_address_${idx + 1}.json`),
+        {
+          from: { "/": companyPath },
+          to: { "/": "./mailing_address.json" }
+        }
+      );
+    });
+
+    persons.forEach((personPath, idx) => {
+      writeJson(
+        path.join("data", `relationship_person_has_mailing_address_${idx + 1}.json`),
+        {
+          from: { "/": personPath },
+          to: { "/": "./mailing_address.json" }
+        }
+      );
+    });
+  }
 
 
   //Extra Features Extraction.Adds lot area as well.
