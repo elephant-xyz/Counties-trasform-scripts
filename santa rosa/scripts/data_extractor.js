@@ -1623,14 +1623,21 @@ function buildProperty(parcelId, propertyMapping, parcelInfo, remixData, buildin
 
 function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, $, sourceHttpRequest, dataDir) {
   // Try to get address from multiple sources in priority order:
-  // 1. unnormalized.full_address from input file
+  // 1. unnormalized.full_address from input file (most reliable)
   // 2. parcelInfo.situs from remix data
   // 3. Scraped from HTML
-  let situs = parcelInfo.situs || $('td[data-cell="Situs/Physical Address"]').text().trim();
 
-  // If situs is empty or invalid, try to use full_address from unnormalized input
-  if ((!situs || !situs.trim()) && unnormalized && unnormalized.full_address) {
-    situs = unnormalized.full_address;
+  // Start with full_address from input file if available
+  let situs = null;
+  if (unnormalized && unnormalized.full_address && unnormalized.full_address.trim()) {
+    situs = unnormalized.full_address.trim();
+  } else {
+    // Fall back to parcelInfo.situs or HTML scraping
+    situs = parcelInfo.situs || $('td[data-cell="Situs/Physical Address"]').text().trim();
+    // Ensure situs is not just whitespace
+    if (situs && !situs.trim()) {
+      situs = null;
+    }
   }
 
   const sectionTownRange = (
@@ -1658,29 +1665,31 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     county_name = unnormalized.county_name.trim() || null;
   }
 
-  // Check if we have a valid address
-  const trimmedSitus = (situs || "").trim();
-  // Clean up the situs string - remove excessive punctuation and whitespace
-  const cleanedSitus = trimmedSitus.replace(/[,\s]+/g, ' ').trim();
+  // Check if we have a valid address for unnormalized format
+  // CRITICAL: unnormalized_address must satisfy minLength: 1 constraint (never empty string)
+  const trimmedSitus = situs ? situs.trim() : null;
+  let hasValidSitus = false;
 
-  // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
-  // IMPORTANT: Must have actual alphanumeric content and be at least 1 character for minLength constraint
-  // Also check that it's not just commas, spaces, and state codes - needs actual street/location info
-  const hasAlphanumeric = /[a-zA-Z0-9]/.test(cleanedSitus);
-  const withoutPunctuation = cleanedSitus.replace(/[,\s]/g, ''); // Remove all commas and spaces
-  const hasMoreThanStateCode = withoutPunctuation.length > 2; // More than just state abbreviation (e.g., "FL")
-  const hasActualAddressContent = /\d/.test(cleanedSitus) || withoutPunctuation.length > 10; // Has numbers or substantial text
+  if (trimmedSitus && trimmedSitus.length > 0) {
+    // Clean up the situs string - remove excessive punctuation and whitespace
+    const cleanedSitus = trimmedSitus.replace(/[,\s]+/g, ' ').trim();
 
-  // CRITICAL: Ensure unnormalized_address is never empty (violates minLength: 1 constraint)
-  // Must have real address content, not just state code or punctuation
-  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && hasAlphanumeric && hasMoreThanStateCode && hasActualAddressContent;
+    // Check if we have a meaningful address (not just punctuation or state code)
+    const hasAlphanumeric = /[a-zA-Z0-9]/.test(cleanedSitus);
+    const withoutPunctuation = cleanedSitus.replace(/[,\s]/g, ''); // Remove all commas and spaces
+    const hasMoreThanStateCode = withoutPunctuation.length > 2; // More than just state abbreviation
+    const hasActualAddressContent = /\d/.test(cleanedSitus) || withoutPunctuation.length > 10; // Has numbers or substantial text
+
+    hasValidSitus = hasAlphanumeric && hasMoreThanStateCode && hasActualAddressContent;
+  }
 
   let address;
 
   if (hasValidSitus) {
     // Use unnormalized format when we have a valid address string
     // CRITICAL: Based on verified examples and oneOf constraint, when using unnormalized_address:
-    // - ONLY include unnormalized_address and county_name
+    // - ONLY include unnormalized_address (required, minLength: 1)
+    // - Optionally include county_name
     // - Do NOT include section, township, range (these are only for normalized format)
     address = {
       source_http_request: sourceHttpRequest,
