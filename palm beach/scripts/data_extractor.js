@@ -11988,12 +11988,11 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
-    new Set([
-      ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+    new Set(
+      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
-      ...NORMALIZED_ADDRESS_FIELDS,
-    ]),
+    ),
   ),
 );
 const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
@@ -12016,8 +12015,8 @@ const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = Object.freeze([
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
-// Preserve the complete structured surface when falling back to the raw branch
-// so the County schema's oneOf requirements continue to see the normalized fields.
+// Emit only the coarse locality metadata when falling back to the raw branch so
+// the payload clearly targets the unnormalized schema variant.
 const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
@@ -13729,12 +13728,9 @@ const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
   Array.from(
     new Set(
-      [
-        ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
-          (field) => field !== "unnormalized_address",
-        ),
-        ...NORMALIZED_ADDRESS_FIELDS,
-      ],
+      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+        (field) => field !== "unnormalized_address",
+      ),
     ),
   ),
 );
