@@ -12129,11 +12129,17 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
-    new Set(
-      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+    new Set([
+      // County schema's raw branch still expects the full normalized field
+      // surface (the validator enforces this through the address oneOf). Emit
+      // every normalized key alongside the raw locality/grid fields so that
+      // `required` checks pass even when we only have an `unnormalized_address`
+      // string available from the source.
+      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
-    ),
+    ]),
   ),
 );
 const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
