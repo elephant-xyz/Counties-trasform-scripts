@@ -12337,14 +12337,15 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Preserve the normalized field surface (even when values are null) so
-      // the raw oneOf branch still satisfies every schema-level required key.
-      // This ensures validators do not flag missing normalized fields when we
-      // only have an unnormalized address string to emit.
-      ...NORMALIZED_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
-        (field) => field !== "unnormalized_address",
-      ),
+      // Raw schema only allows the unnormalized string plus coarse locality and
+      // land grid metadata. Keep street-level decomposition exclusive to the
+      // normalized branch so the payload cleanly satisfies the raw oneOf option.
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_GRID_FIELDS,
+      "route_number",
+      "unit_identifier",
+      "latitude",
+      "longitude",
     ]),
   ),
 );
