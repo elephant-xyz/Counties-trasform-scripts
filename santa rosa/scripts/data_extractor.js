@@ -1681,7 +1681,11 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     const hasMoreThanStateCode = withoutPunctuation.length > 2; // More than just state abbreviation
     const hasActualAddressContent = /\d/.test(cleanedSitus) || withoutPunctuation.length > 10; // Has numbers or substantial text
 
-    hasValidSitus = hasAlphanumeric && hasMoreThanStateCode && hasActualAddressContent;
+    // CRITICAL: Reject addresses that are just state codes (e.g., "FL", "CA") or minimal content
+    // Check if it's just a 2-letter state code or similar minimal content
+    const isJustStateCode = /^[A-Z]{2}$/i.test(withoutPunctuation);
+
+    hasValidSitus = hasAlphanumeric && hasMoreThanStateCode && hasActualAddressContent && !isJustStateCode;
 
     // Double-check: if after all validation cleanedSitus is effectively empty, mark as invalid
     if (!cleanedSitus || cleanedSitus.length === 0) {
@@ -1697,17 +1701,45 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   if (hasValidSitus && trimmedSitus && trimmedSitus.length > 0) {
     // Use unnormalized format when we have a valid address string
     // Based on verified examples: include unnormalized_address with optional location fields
-    address = {
-      source_http_request: sourceHttpRequest,
-      request_identifier: parcelId,
-      unnormalized_address: trimmedSitus
-    };
+    // CRITICAL SAFETY CHECK: Ensure trimmedSitus is never an empty string (minLength: 1)
+    const finalSitus = trimmedSitus.trim();
+    if (finalSitus.length === 0) {
+      // This should never happen due to earlier validation, but safety check
+      // Fall through to normalized format
+      address = {
+        source_http_request: sourceHttpRequest,
+        request_identifier: parcelId,
+        street_number: null,
+        street_name: null,
+        street_pre_directional_text: null,
+        street_post_directional_text: null,
+        street_suffix_type: null,
+        unit_identifier: null,
+        city_name: null,
+        state_code: null,
+        postal_code: null,
+        plus_four_postal_code: null,
+        country_code: "US",
+        route_number: null,
+        block: null
+      };
+      if (county_name) address.county_name = county_name;
+      if (section) address.section = section;
+      if (township) address.township = township;
+      if (range) address.range = range;
+    } else {
+      address = {
+        source_http_request: sourceHttpRequest,
+        request_identifier: parcelId,
+        unnormalized_address: finalSitus
+      };
 
-    // Add optional location fields if available
-    if (county_name) address.county_name = county_name;
-    if (section) address.section = section;
-    if (township) address.township = township;
-    if (range) address.range = range;
+      // Add optional location fields if available
+      if (county_name) address.county_name = county_name;
+      if (section) address.section = section;
+      if (township) address.township = township;
+      if (range) address.range = range;
+    }
   } else {
     // Use normalized format when we don't have a valid street address
     // CRITICAL: DO NOT include unnormalized_address in normalized format
