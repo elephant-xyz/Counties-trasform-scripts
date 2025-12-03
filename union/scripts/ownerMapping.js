@@ -48,12 +48,7 @@ const NAME_SUFFIXES = new Set([
   "ii",
   "iii",
   "iv",
-  "v",
-  "vi",
-  "vii",
-  "viii",
-  "ix",
-  "x",
+  // Note: v, vi, vii, viii, ix, x removed - not valid in Elephant schema
   "esq",
   "esquire",
   "md",
