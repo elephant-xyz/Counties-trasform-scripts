@@ -1792,7 +1792,6 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
       property_land_amount: landVal,
       property_taxable_value_amount: taxable,
       property_exemption_amount: exempt,
-      agricultural_valuation_amount: agricultural,
       monthly_tax_amount: null,
       period_start_date: null,
       period_end_date: null,
@@ -1802,6 +1801,12 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
     };
+
+    // Only include agricultural_valuation_amount if it's a valid number (schema requires type: "number", not null)
+    if (typeof agricultural === 'number' && Number.isFinite(agricultural)) {
+      taxOut.agricultural_valuation_amount = agricultural;
+    }
+
     writeJSON(path.join(dataDir, `tax_${year}.json`), taxOut);
   }
   
