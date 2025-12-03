@@ -37286,6 +37286,19 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
   }
 
   const working = { ...payload };
+
+  if (ENFORCE_UNNORMALIZED_ONLY_ADDRESS) {
+    collapseRawAddressToUnnormalizedOnly(working);
+    enforceRawVariantAllowedFields(working);
+    if (
+      !Object.prototype.hasOwnProperty.call(working, "__force_raw_variant")
+    ) {
+      working.__force_raw_variant = true;
+    }
+    writeJSON(addressFilePath, working);
+    return working;
+  }
+
   let mutated = false;
   const snapshotPath = path.join(
     path.dirname(addressFilePath),
@@ -37516,7 +37529,9 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
     } catch (error) {
       console.error("Failed to persist structured address snapshot:", error);
     }
-    forceRawAddressVariantOutput = false;
+    if (!ENFORCE_UNNORMALIZED_ONLY_ADDRESS) {
+      forceRawAddressVariantOutput = false;
+    }
     if (Object.prototype.hasOwnProperty.call(working, "__force_raw_variant")) {
       delete working.__force_raw_variant;
       mutated = true;
@@ -66377,7 +66392,11 @@ function buildStructuredRawAddressCandidate(options = {}) {
 }
 
 function applyNormalizedAddressOverride() {
-  if (FORCE_RAW_ONLY_ADDRESS_OUTPUT || forceRawAddressVariantOutput) {
+  if (
+    ENFORCE_UNNORMALIZED_ONLY_ADDRESS ||
+    FORCE_RAW_ONLY_ADDRESS_OUTPUT ||
+    forceRawAddressVariantOutput
+  ) {
     return false;
   }
   try {
@@ -78432,91 +78451,97 @@ process.on("exit", () => {
     const addressPath = path.join(dataDir, "address.json");
     const propertyPath = path.join(dataDir, "property.json");
 
-    const originalForceRawFlag = forceRawAddressVariantOutput;
-    let normalizedOverrideAppliedNow = false;
-    try {
-      forceRawAddressVariantOutput = false;
-      normalizedOverrideAppliedNow = applyNormalizedAddressOverride();
-    } catch (overrideError) {
-      console.error(
-        "Failed to refresh normalized address during finalization:",
-        overrideError,
-      );
-    } finally {
-      forceRawAddressVariantOutput = originalForceRawFlag;
-    }
-    if (normalizedOverrideAppliedNow) {
-      ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
-      return;
-    }
+    const existingPayload = readJSONIfExists(addressPath) || null;
 
-    const normalizedOverrideAvailable =
-      FINAL_NORMALIZED_ADDRESS_PAYLOAD &&
-      typeof FINAL_NORMALIZED_ADDRESS_PAYLOAD === "object";
-    if (normalizedOverrideAvailable) {
-      const normalizedCandidate =
-        buildNormalizedAddressOutputForSchema(
-          deepClone(FINAL_NORMALIZED_ADDRESS_PAYLOAD),
-        ) || null;
-      if (normalizedCandidate) {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedCandidate,
-            "unnormalized_address",
-          )
-        ) {
-          delete normalizedCandidate.unnormalized_address;
-        }
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedCandidate,
-            RAW_ADDRESS_DERIVED_FLAG,
-          )
-        ) {
-          delete normalizedCandidate[RAW_ADDRESS_DERIVED_FLAG];
-        }
-        writeSchemaAlignedAddress(addressPath, normalizedCandidate);
-        removeFileIfExists(path.join(dataDir, "address_structured_snapshot.json"));
-        enforceNullPropertyAddressRelationships(propertyPath);
-        overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    if (!ENFORCE_UNNORMALIZED_ONLY_ADDRESS) {
+      const originalForceRawFlag = forceRawAddressVariantOutput;
+      let normalizedOverrideAppliedNow = false;
+      try {
+        forceRawAddressVariantOutput = false;
+        normalizedOverrideAppliedNow = applyNormalizedAddressOverride();
+      } catch (overrideError) {
+        console.error(
+          "Failed to refresh normalized address during finalization:",
+          overrideError,
+        );
+      } finally {
+        forceRawAddressVariantOutput = originalForceRawFlag;
+      }
+      if (normalizedOverrideAppliedNow) {
         ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
         return;
       }
-    }
 
-    const existingPayload = readJSONIfExists(addressPath) || null;
-
-    const hasNormalizedSurface =
-      existingPayload &&
-      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
-      hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
-
-    if (hasNormalizedSurface) {
-      const normalizedCandidate =
-        buildNormalizedAddressOutputForSchema({ ...existingPayload }) || null;
-      if (normalizedCandidate) {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedCandidate,
-            "unnormalized_address",
-          )
-        ) {
-          delete normalizedCandidate.unnormalized_address;
+      const normalizedOverrideAvailable =
+        FINAL_NORMALIZED_ADDRESS_PAYLOAD &&
+        typeof FINAL_NORMALIZED_ADDRESS_PAYLOAD === "object";
+      if (normalizedOverrideAvailable) {
+        const normalizedCandidate =
+          buildNormalizedAddressOutputForSchema(
+            deepClone(FINAL_NORMALIZED_ADDRESS_PAYLOAD),
+          ) || null;
+        if (normalizedCandidate) {
+          if (
+            Object.prototype.hasOwnProperty.call(
+              normalizedCandidate,
+              "unnormalized_address",
+            )
+          ) {
+            delete normalizedCandidate.unnormalized_address;
+          }
+          if (
+            Object.prototype.hasOwnProperty.call(
+              normalizedCandidate,
+              RAW_ADDRESS_DERIVED_FLAG,
+            )
+          ) {
+            delete normalizedCandidate[RAW_ADDRESS_DERIVED_FLAG];
+          }
+          writeSchemaAlignedAddress(addressPath, normalizedCandidate);
+          removeFileIfExists(
+            path.join(dataDir, "address_structured_snapshot.json"),
+          );
+          enforceNullPropertyAddressRelationships(propertyPath);
+          overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+          ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
+          return;
         }
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedCandidate,
-            RAW_ADDRESS_DERIVED_FLAG,
-          )
-        ) {
-          delete normalizedCandidate[RAW_ADDRESS_DERIVED_FLAG];
+      }
+
+      const hasNormalizedSurface =
+        existingPayload &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
+
+      if (hasNormalizedSurface) {
+        const normalizedCandidate =
+          buildNormalizedAddressOutputForSchema({ ...existingPayload }) || null;
+        if (normalizedCandidate) {
+          if (
+            Object.prototype.hasOwnProperty.call(
+              normalizedCandidate,
+              "unnormalized_address",
+            )
+          ) {
+            delete normalizedCandidate.unnormalized_address;
+          }
+          if (
+            Object.prototype.hasOwnProperty.call(
+              normalizedCandidate,
+              RAW_ADDRESS_DERIVED_FLAG,
+            )
+          ) {
+            delete normalizedCandidate[RAW_ADDRESS_DERIVED_FLAG];
+          }
+          writeSchemaAlignedAddress(addressPath, normalizedCandidate);
+          removeFileIfExists(
+            path.join(dataDir, "address_structured_snapshot.json"),
+          );
+          enforceNullPropertyAddressRelationships(propertyPath);
+          overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+          ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
+          return;
         }
-        writeSchemaAlignedAddress(addressPath, normalizedCandidate);
-        removeFileIfExists(path.join(dataDir, "address_structured_snapshot.json"));
-        enforceNullPropertyAddressRelationships(propertyPath);
-        overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
-        ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
-        return;
       }
     }
 
