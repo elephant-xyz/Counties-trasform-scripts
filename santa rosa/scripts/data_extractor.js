@@ -1691,20 +1691,22 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   let address;
 
-  if (hasValidSitus) {
+  // CRITICAL: Final safety check - unnormalized_address must NEVER be empty string
+  // If trimmedSitus is empty or invalid, force normalized format
+  if (hasValidSitus && trimmedSitus && trimmedSitus.length > 0) {
     // Use unnormalized format when we have a valid address string
-    // CRITICAL: Based on verified examples and oneOf constraint, when using unnormalized_address:
-    // - ONLY include unnormalized_address (required, minLength: 1)
-    // - Optionally include county_name
-    // - Do NOT include section, township, range, or any normalized fields
+    // Based on verified examples: can include unnormalized_address with section, township, range, county_name
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
       unnormalized_address: trimmedSitus
     };
 
-    // Only add county_name if available (other location fields belong in normalized format only)
+    // Add optional location fields if available
     if (county_name) address.county_name = county_name;
+    if (section) address.section = section;
+    if (township) address.township = township;
+    if (range) address.range = range;
   } else {
     // Use normalized format when we don't have a valid unnormalized address
     // All required fields must be present for oneOf to validate correctly
@@ -1812,11 +1814,10 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
     // CRITICAL: Only include agricultural_valuation_amount if it's a valid number
     // Schema requires type: "number" (not nullable), so never include null/undefined
     // The field must be omitted entirely if not a valid number
-    if (typeof agricultural === 'number' && Number.isFinite(agricultural) && agricultural !== null && agricultural !== undefined) {
+    if (typeof agricultural === 'number' && Number.isFinite(agricultural)) {
       taxOut.agricultural_valuation_amount = agricultural;
     }
-    // Explicitly ensure the field is never set to null or undefined
-    // If valFor returned null/undefined, the field should not exist in taxOut at all
+    // Note: If agricultural is null/undefined/NaN, the field is completely omitted from taxOut
 
     writeJSON(path.join(dataDir, `tax_${year}.json`), taxOut);
   }
