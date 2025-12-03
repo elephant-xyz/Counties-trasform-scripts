@@ -12541,8 +12541,10 @@ function collapseRawAddressToUnnormalizedOnly(address) {
     return address;
   }
 
-  const minimal = projectRawUnnormalizedOnlyPayload(hydrated);
-  if (!minimal) {
+  const projected =
+    projectRawUnnormalizedOnlyPayload(hydrated) ||
+    ensureRawAddressRequiredCoverage(hydrated, rawValue);
+  if (!projected) {
     return address;
   }
 
@@ -12556,7 +12558,7 @@ function collapseRawAddressToUnnormalizedOnly(address) {
   Object.keys(address).forEach((key) => {
     delete address[key];
   });
-  Object.assign(address, minimal);
+  Object.assign(address, projected);
   address.__force_raw_variant = true;
   return address;
 }
@@ -12570,30 +12572,36 @@ function projectRawUnnormalizedOnlyPayload(address) {
     return null;
   }
 
-  const minimal = {
+  const seeded = {
+    ...address,
     unnormalized_address: rawValue,
   };
 
+  const hydrated =
+    ensureRawAddressRequiredCoverage(seeded, rawValue) || {
+      unnormalized_address: rawValue,
+    };
+
   if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
     const normalizedIdentifier = safeNullIfEmpty(address.request_identifier);
-    minimal.request_identifier =
+    hydrated.request_identifier =
       normalizedIdentifier === undefined
         ? null
         : normalizedIdentifier === null
           ? null
           : normalizedIdentifier;
-  } else {
-    minimal.request_identifier = null;
+  } else if (!Object.prototype.hasOwnProperty.call(hydrated, "request_identifier")) {
+    hydrated.request_identifier = null;
   }
 
   if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(address.source_http_request);
-    minimal.source_http_request = prepared ? deepClone(prepared) : null;
-  } else {
-    minimal.source_http_request = null;
+    hydrated.source_http_request = prepared ? deepClone(prepared) : null;
+  } else if (!Object.prototype.hasOwnProperty.call(hydrated, "source_http_request")) {
+    hydrated.source_http_request = null;
   }
 
-  return minimal;
+  return hydrated;
 }
 
 function enforceRawFieldAllowlistOnDisk(addressPath) {
@@ -73297,9 +73305,38 @@ function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
     return null;
   }
 
-  const minimal = {
+  const {
+    fieldSources = [],
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const sourcePool = Array.isArray(fieldSources)
+    ? fieldSources.filter((source) => source && typeof source === "object")
+    : [];
+  const aggregatedSurface = aggregateRawSourcesForUnnormalizedSurface(sourcePool);
+
+  const seededSurface = {
+    ...aggregatedSurface,
     unnormalized_address: trimmed,
   };
+
+  if (!hasMeaningfulAddressValue(seededSurface.county_name) && defaultCountyName) {
+    seededSurface.county_name = defaultCountyName;
+  }
+  if (!hasMeaningfulAddressValue(seededSurface.state_code) && defaultStateCode) {
+    seededSurface.state_code = defaultStateCode;
+  }
+  if (!hasMeaningfulAddressValue(seededSurface.country_code) && defaultCountryCode) {
+    seededSurface.country_code = defaultCountryCode;
+  }
+
+  const ensured =
+    ensureRawAddressRequiredCoverage(seededSurface, trimmed) || null;
+  if (!ensured) {
+    return null;
+  }
 
   const hasIdentifier = Object.prototype.hasOwnProperty.call(
     options || {},
@@ -73308,7 +73345,7 @@ function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
   const normalizedIdentifier = hasIdentifier
     ? safeNullIfEmpty(options.requestIdentifier)
     : undefined;
-  minimal.request_identifier =
+  ensured.request_identifier =
     normalizedIdentifier === undefined
       ? null
       : normalizedIdentifier === null
@@ -73321,12 +73358,12 @@ function buildStrictMinimalRawAddressPayload(rawValue, options = {}) {
   );
   if (hasSourceRequest) {
     const prepared = prepareSourceHttpRequest(options.sourceHttpRequest);
-    minimal.source_http_request = prepared ? deepClone(prepared) : null;
-  } else {
-    minimal.source_http_request = null;
+    ensured.source_http_request = prepared ? deepClone(prepared) : null;
+  } else if (!Object.prototype.hasOwnProperty.call(ensured, "source_http_request")) {
+    ensured.source_http_request = null;
   }
 
-  return minimal;
+  return ensured;
 }
 
 function projectAddressPayloadForSchema(address) {
