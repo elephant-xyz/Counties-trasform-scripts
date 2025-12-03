@@ -1647,9 +1647,9 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
   // More strict check: must have at least one alphanumeric character and length > 0
-  const hasValidSitus = trimmedSitus.length > 0 && /[a-zA-Z0-9]/.test(trimmedSitus);
+  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && /[a-zA-Z0-9]/.test(trimmedSitus);
 
-  if (hasValidSitus) {
+  if (hasValidSitus && trimmedSitus.length >= 1) {
     // Use unnormalized_address format (do NOT include normalized fields)
     address = {
       source_http_request: sourceHttpRequest,
@@ -1685,6 +1685,25 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       section: section,
     };
   }
+
+  // Final safeguard: if somehow unnormalized_address ended up empty, switch to normalized format
+  if (address.unnormalized_address !== undefined && address.unnormalized_address.length === 0) {
+    delete address.unnormalized_address;
+    address.city_name = null;
+    address.country_code = "US";
+    address.plus_four_postal_code = null;
+    address.postal_code = null;
+    address.state_code = "FL";
+    address.street_name = null;
+    address.street_post_directional_text = null;
+    address.street_pre_directional_text = null;
+    address.street_number = null;
+    address.street_suffix_type = null;
+    address.unit_identifier = null;
+    address.route_number = null;
+    address.block = null;
+  }
+
   writeJSON(path.join(dataDir, "address.json"), address);
 
   // Create relationship between property and address
@@ -2590,49 +2609,58 @@ function main() {
 
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
-  console.log("MAILING--",mailingAddressRaw);  
-  const mailingAddressOutput = {
-    ...appendSourceInfo(propertySeed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+  console.log("MAILING--",mailingAddressRaw);
+  const mailingAddressProcessed = mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
-  // Create mailing address relationships with current owners
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (owners) {
-    const key = `property_${parcelId}`;
-    const record = owners[key];
-    if (record && record.owners_by_date && record.owners_by_date['current']) {
-      const currentOwners = record.owners_by_date['current'];
-      console.log("CURRENT-",currentOwners)
-      let relCounter = 0;
-      currentOwners.forEach((owner) => {
-        if (owner.type === "person") {
-          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": "./mailing_address.json" },
-              }
-            );
+  // Only create mailing_address if we have a valid non-empty address (minLength: 1)
+  const hasValidMailingAddress = mailingAddressProcessed && mailingAddressProcessed.length > 0;
+
+  if (hasValidMailingAddress) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(propertySeed),
+      unnormalized_address: mailingAddressProcessed,
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+  }
+
+  // Create mailing address relationships with current owners (only if mailing address was created)
+  if (hasValidMailingAddress) {
+    const owners = readJSON(path.join("owners", "owner_data.json"));
+    if (owners) {
+      const key = `property_${parcelId}`;
+      const record = owners[key];
+      if (record && record.owners_by_date && record.owners_by_date['current']) {
+        const currentOwners = record.owners_by_date['current'];
+        console.log("CURRENT-",currentOwners)
+        let relCounter = 0;
+        currentOwners.forEach((owner) => {
+          if (owner.type === "person") {
+            const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+            if (pIdx) {
+              relCounter++;
+              writeJSON(
+                path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+                {
+                  from: { "/": `./person_${pIdx}.json` },
+                  to: { "/": "./mailing_address.json" },
+                }
+              );
+            }
+          } else if (owner.type === "company") {
+            const cIdx = findCompanyIndexByName(owner.name);
+            if (cIdx) {
+              relCounter++;
+              writeJSON(
+                path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+                {
+                  from: { "/": `./company_${cIdx}.json` },
+                  to: { "/": "./mailing_address.json" }
+                }
+              );
+            }
           }
-        } else if (owner.type === "company") {
-          const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": "./mailing_address.json" }
-              }
-            );
-          }
-        }
-      });
+        });
+      }
     }
   }
 
