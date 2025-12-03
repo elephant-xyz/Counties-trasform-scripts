@@ -12337,10 +12337,11 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Raw submissions should keep only the unnormalized surface, coarse
-      // locality metadata, section-township-range grid references, and the
-      // coordinate pair when available so the payload unambiguously targets the
-      // raw schema branch.
+      // County schema requires the full normalized field surface to exist even
+      // when we fall back to the raw branch. Populate the entire normalized
+      // field list so validators always see each required property (values may
+      // still be null when the source only exposes an unnormalized string).
+      ...NORMALIZED_ADDRESS_FIELDS,
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
       "latitude",
