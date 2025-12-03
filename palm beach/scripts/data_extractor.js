@@ -12601,11 +12601,7 @@ function projectRawUnnormalizedOnlyPayload(address) {
     hydrated.source_http_request = null;
   }
 
-  const allowedRawFields = new Set([
-    ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
-    "request_identifier",
-    "source_http_request",
-  ]);
+  const allowedRawFields = RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET;
   const projected = {};
   allowedRawFields.forEach((field) => {
     if (field === "unnormalized_address") {
@@ -77379,15 +77375,6 @@ const RAW_TERMINAL_ADDRESS_FIELDS = Object.freeze([
   "longitude",
 ]);
 
-const RAW_TERMINAL_UNNORMALIZED_FIELD_WHITELIST = new Set([
-  "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
-  "latitude",
-  "longitude",
-  "__preserve_request_metadata",
-]);
-
 function projectTerminalRawAddressSurface(payload) {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -77438,13 +77425,27 @@ function projectTerminalRawAddressSurface(payload) {
     projected.longitude = longitude;
   }
 
-  Object.keys(projected).forEach((key) => {
-    if (!RAW_TERMINAL_UNNORMALIZED_FIELD_WHITELIST.has(key)) {
-      delete projected[key];
+  const canonical = {};
+  RAW_VARIANT_ALLOWED_OUTPUT_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      canonical[field] = projected[field];
+      return;
     }
+    if (Object.prototype.hasOwnProperty.call(projected, field)) {
+      canonical[field] = projected[field];
+      return;
+    }
+    canonical[field] = null;
   });
 
-  return projected;
+  if (
+    Object.prototype.hasOwnProperty.call(projected, "__preserve_request_metadata") &&
+    projected.__preserve_request_metadata === true
+  ) {
+    canonical.__preserve_request_metadata = true;
+  }
+
+  return canonical;
 }
 
 function buildTerminalRawAddressPayload(fieldSources = [], options = {}) {
