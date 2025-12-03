@@ -1664,6 +1664,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   } else {
     // Use normalized format when we don't have a valid unnormalized address
     // All fields must be present but can be null
+    // IMPORTANT: Do NOT include unnormalized_address here - it violates oneOf constraint
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
