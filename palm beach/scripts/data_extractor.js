@@ -39571,35 +39571,37 @@ function composeMinimalRawAddress(address) {
     unnormalized_address: trimmedUnnormalized,
   };
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
-    const hasField = Object.prototype.hasOwnProperty.call(address, field);
-    const rawValue = hasField ? address[field] : null;
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(rawValue);
-      minimal[field] = Number.isFinite(numeric) ? numeric : null;
+  for (const field of RAW_VARIANT_OUTPUT_ALLOWLIST) {
+    if (field === "unnormalized_address") {
       continue;
     }
 
-    const normalizedValue = normalizeAddressFieldForSchema(field, rawValue);
-    minimal[field] =
-      normalizedValue === undefined || normalizedValue === null
-        ? null
-        : normalizedValue;
+    const hasField = Object.prototype.hasOwnProperty.call(address, field);
+    let value = hasField ? address[field] : null;
+
+    if (typeof sanitizeAddressFieldValue === "function") {
+      value = sanitizeAddressFieldValue(field, value);
+    }
+
+    if (value === undefined || value === null) {
+      minimal[field] = null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      minimal[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    minimal[field] = value;
   }
 
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const trimmed = safeNullIfEmpty(address.request_identifier);
-    if (trimmed) {
-      minimal.request_identifier = trimmed;
-    }
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(address.source_http_request);
-    if (prepared) {
-      minimal.source_http_request = deepClone(prepared);
-    }
+  if (
+    hasMeaningfulAddressValue(minimal.city_name) &&
+    !hasMeaningfulAddressValue(minimal.municipality_name)
+  ) {
+    minimal.municipality_name = minimal.city_name;
   }
 
   if (
@@ -39610,6 +39612,23 @@ function composeMinimalRawAddress(address) {
   }
   if (!minimal.postal_code) {
     minimal.plus_four_postal_code = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    const trimmed = safeNullIfEmpty(address.request_identifier);
+    minimal.request_identifier =
+      trimmed === undefined ? null : trimmed;
+  } else if (!Object.prototype.hasOwnProperty.call(minimal, "request_identifier")) {
+    minimal.request_identifier = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(address.source_http_request);
+    minimal.source_http_request = prepared ? deepClone(prepared) : null;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(minimal, "source_http_request")
+  ) {
+    minimal.source_http_request = null;
   }
 
   return minimal;
