@@ -1649,8 +1649,9 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   let address;
 
-  if (hasValidSitus) {
+  if (hasValidSitus && trimmedSitus.length >= 1) {
     // Use unnormalized format when we have a valid address string
+    // IMPORTANT: unnormalized_address must have at least 1 character (minLength: 1)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
@@ -1663,7 +1664,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     };
   } else {
     // Use normalized format when we don't have a valid unnormalized address
-    // All fields must be present but can be null
+    // All required fields must be present (even if null) for oneOf to validate correctly
     // IMPORTANT: Do NOT include unnormalized_address here - it violates oneOf constraint
     address = {
       source_http_request: sourceHttpRequest,
