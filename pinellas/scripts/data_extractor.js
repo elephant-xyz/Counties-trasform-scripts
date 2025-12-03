@@ -3148,7 +3148,7 @@ function extract() {
     const salesRows = $("#tblSalesHistory tbody tr");
 
     fs.readdirSync(dataDir).forEach((file) => {
-      if (/^sales_history_\d+\.json$/i.test(file) || /^sales_\d+\.json$/i.test(file)) {
+      if (/^sales_history_\d+\.json$/i.test(file) || /^sales_\d+\.json$/i.test(file) || /^relationship_property_has_sales_history_\d+\.json$/i.test(file)) {
         fs.unlinkSync(path.join(dataDir, file));
       }
     });
@@ -3193,6 +3193,13 @@ function extract() {
       s._file = `./${saleFileName}`; // Keep _file for relationship linking
       saleFileMap.set(s.ownership_transfer_date, s._file);
       if (!firstSaleFile) firstSaleFile = s._file;
+
+      // Create property→sales_history relationship
+      const relationshipFile = path.join(dataDir, `relationship_property_has_sales_history_${idx + 1}.json`);
+      writeJSON(relationshipFile, {
+        from: { "/": "./property.json" },
+        to: { "/": `./${saleFileName}` }
+      });
     });
 
     const ownerExtraction = extractOwnersFromHtml(
