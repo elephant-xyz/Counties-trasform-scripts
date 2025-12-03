@@ -12635,10 +12635,26 @@ function applyRawAddressPresenceDefaults(address) {
     hasStrictCountyNormalizedSchemaCoverage({ ...address });
 
   if (!hasNormalizedSurface) {
+    // Raw branch still needs to expose the normalized field surface so the schema's
+    // oneOf can positively match the unnormalized variant. Populate any missing
+    // normalized keys with null so validation sees them as intentionally blank.
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(address, field)) {
+        address[field] = null;
+        continue;
+      }
+      if (address[field] === undefined) {
+        address[field] = null;
+      }
+    }
     if (!Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+      address.request_identifier = null;
+    } else if (address.request_identifier === undefined) {
       address.request_identifier = null;
     }
     if (!Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+      address.source_http_request = null;
+    } else if (address.source_http_request === undefined) {
       address.source_http_request = null;
     }
     return address;
