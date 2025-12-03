@@ -1297,11 +1297,20 @@ function titleCaseName(s) {
     .replace(/,{2,}/g, ",")  // Replace multiple commas with single comma
     .trim();
 
+  // Split on delimiters but keep them in the result
+  // This handles spaces, hyphens, apostrophes, commas, and periods
   return normalized
     .toLowerCase()
-    .split(/\s+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+    .split(/([ \-',.])/)  // Split but keep delimiters
+    .map((part, idx, arr) => {
+      // If this is a delimiter, keep it as is
+      if (/^[ \-',.]$/.test(part)) return part;
+      // If empty, skip
+      if (!part) return part;
+      // Capitalize first letter of each word part
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join("");
 }
 
 function parseRemixContext(html) {
