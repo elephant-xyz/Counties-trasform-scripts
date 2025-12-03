@@ -1657,7 +1657,8 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // Also check that it's not just commas, spaces, and state codes - needs actual street/location info
   const hasAlphanumeric = /[a-zA-Z0-9]/.test(trimmedSitus);
   const hasMoreThanStateCode = trimmedSitus.replace(/[,\s]/g, '').length > 2; // More than just state abbreviation
-  const hasValidSitus = trimmedSitus && trimmedSitus.length >= 1 && hasAlphanumeric && hasMoreThanStateCode;
+  // CRITICAL: Ensure unnormalized_address is never empty (violates minLength: 1 constraint)
+  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && hasAlphanumeric && hasMoreThanStateCode;
 
   let address;
 
