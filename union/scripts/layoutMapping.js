@@ -24,8 +24,11 @@ function parseNumber(val) {
 function parseYear(val) {
   const year = parseNumber(val);
   // built_year must be >= 1 according to schema, or null
-  if (year == null || year < 1) return null;
-  return year;
+  if (year == null) return null;
+  if (typeof year !== 'number') return null;
+  if (!Number.isFinite(year)) return null;
+  if (year < 1) return null;
+  return Math.floor(year); // Ensure integer
 }
 
 function loadJsonSafe(filePath) {
