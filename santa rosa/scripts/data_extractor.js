@@ -1667,7 +1667,8 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   // Check if we have a valid address for unnormalized format
   // CRITICAL: unnormalized_address must satisfy minLength: 1 constraint (never empty string)
-  const trimmedSitus = situs ? situs.trim() : null;
+  // Ensure trimmedSitus is never an empty string - use null instead
+  const trimmedSitus = (situs && situs.trim()) ? situs.trim() : null;
   let hasValidSitus = false;
 
   if (trimmedSitus && trimmedSitus.length > 0) {
@@ -1681,6 +1682,11 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     const hasActualAddressContent = /\d/.test(cleanedSitus) || withoutPunctuation.length > 10; // Has numbers or substantial text
 
     hasValidSitus = hasAlphanumeric && hasMoreThanStateCode && hasActualAddressContent;
+
+    // Double-check: if after all validation cleanedSitus is effectively empty, mark as invalid
+    if (!cleanedSitus || cleanedSitus.length === 0) {
+      hasValidSitus = false;
+    }
   }
 
   let address;
@@ -1805,9 +1811,12 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
 
     // CRITICAL: Only include agricultural_valuation_amount if it's a valid number
     // Schema requires type: "number" (not nullable), so never include null/undefined
-    if (agricultural !== null && agricultural !== undefined && typeof agricultural === 'number' && Number.isFinite(agricultural)) {
+    // The field must be omitted entirely if not a valid number
+    if (typeof agricultural === 'number' && Number.isFinite(agricultural) && agricultural !== null && agricultural !== undefined) {
       taxOut.agricultural_valuation_amount = agricultural;
     }
+    // Explicitly ensure the field is never set to null or undefined
+    // If valFor returned null/undefined, the field should not exist in taxOut at all
 
     writeJSON(path.join(dataDir, `tax_${year}.json`), taxOut);
   }
