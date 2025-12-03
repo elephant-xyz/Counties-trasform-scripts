@@ -1646,8 +1646,8 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   let address;
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
-  // More strict check: must have at least one alphanumeric character
-  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && /[a-zA-Z0-9]/.test(trimmedSitus);
+  // More strict check: must have at least one alphanumeric character and length > 0
+  const hasValidSitus = trimmedSitus.length > 0 && /[a-zA-Z0-9]/.test(trimmedSitus);
 
   if (hasValidSitus) {
     // Use unnormalized_address format (do NOT include normalized fields)
@@ -1656,9 +1656,9 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       request_identifier: parcelId,
       county_name: "Santa Rosa",
       unnormalized_address: trimmedSitus,
-      township: township || null,
-      range: range || null,
-      section: section || null,
+      township: township,
+      range: range,
+      section: section,
     };
   } else {
     // Use normalized fields format (do NOT include unnormalized_address at all)
@@ -1680,9 +1680,9 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       unit_identifier: null,
       route_number: null,
       block: null,
-      township: township || null,
-      range: range || null,
-      section: section || null,
+      township: township,
+      range: range,
+      section: section,
     };
   }
   writeJSON(path.join(dataDir, "address.json"), address);
