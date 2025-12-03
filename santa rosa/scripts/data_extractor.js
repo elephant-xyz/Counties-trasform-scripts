@@ -1653,23 +1653,26 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // Check if we have a valid address
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
+  // IMPORTANT: Must have actual alphanumeric content and be at least 1 character for minLength constraint
   const hasValidSitus = trimmedSitus && trimmedSitus.length >= 1 && /[a-zA-Z0-9]/.test(trimmedSitus);
 
   let address;
 
   if (hasValidSitus) {
     // Use unnormalized format when we have a valid address string
-    // IMPORTANT: unnormalized_address must have at least 1 character (minLength: 1)
+    // IMPORTANT: When using unnormalized_address, only include it with county_name and location fields
+    // Do NOT mix with normalized fields like street_name, city_name, etc (violates oneOf)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
       county_name: "Santa Rosa",
-      unnormalized_address: trimmedSitus,
-      section: section,
-      township: township,
-      range: range,
-      country_code: "US",
+      unnormalized_address: trimmedSitus
     };
+
+    // Add optional location fields if available
+    if (section) address.section = section;
+    if (township) address.township = township;
+    if (range) address.range = range;
   } else {
     // Use normalized format when we don't have a valid unnormalized address
     // All required fields must be present (even if null) for oneOf to validate correctly
