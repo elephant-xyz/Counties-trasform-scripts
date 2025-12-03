@@ -3540,7 +3540,7 @@ function extract() {
         to: { "/": `./utility_${utilityIndex}.json` }
       };
       writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        path.join("data", `relationship_layout_to_utility_${utilityIndex}.json`),
         relationship
       );
     });
@@ -3619,7 +3619,7 @@ function extract() {
               to: { "/": `./layout_${subLayoutIndex}.json` }
             };
             writeJSON(
-              path.join("data", `relationship_layout_${buildingNumber}_has_layout_${subLayoutIndex}.json`),
+              path.join("data", `relationship_layout_${buildingLayoutIndex}_to_layout_${subLayoutIndex}.json`),
               relationship
             );
           }
@@ -3723,7 +3723,7 @@ function extract() {
         to: { "/": `./structure_${structureIndex}.json` }
       };
       writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        path.join("data", `relationship_layout_to_structure_${structureIndex}.json`),
         relationship
       );
     });
