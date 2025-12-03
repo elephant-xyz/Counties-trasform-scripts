@@ -927,6 +927,93 @@ function extractSalesAndDeeds($) {
   return sales;
 }
 
+function normalizeSuffixName(suffix) {
+  if (!suffix) return null;
+
+  // Remove dots and commas, then trim
+  const cleaned = String(suffix).replace(/\./g, "").replace(/,/g, "").trim();
+  if (!cleaned) return null;
+
+  // Map to Elephant schema enum values
+  const suffixMap = {
+    'JR': 'Jr.',
+    'Jr': 'Jr.',
+    'jr': 'Jr.',
+    'SR': 'Sr.',
+    'Sr': 'Sr.',
+    'sr': 'Sr.',
+    'II': 'II',
+    'III': 'III',
+    'IV': 'IV',
+    'PHD': 'PhD',
+    'PhD': 'PhD',
+    'phd': 'PhD',
+    'MD': 'MD',
+    'Md': 'MD',
+    'md': 'MD',
+    'ESQ': 'Esq.',
+    'Esq': 'Esq.',
+    'esq': 'Esq.',
+    'ESQUIRE': 'Esq.',
+    'Esquire': 'Esq.',
+    'esquire': 'Esq.',
+    'JD': 'JD',
+    'Jd': 'JD',
+    'jd': 'JD',
+    'LLM': 'LLM',
+    'Llm': 'LLM',
+    'llm': 'LLM',
+    'MBA': 'MBA',
+    'Mba': 'MBA',
+    'mba': 'MBA',
+    'RN': 'RN',
+    'Rn': 'RN',
+    'rn': 'RN',
+    'DDS': 'DDS',
+    'Dds': 'DDS',
+    'dds': 'DDS',
+    'DVM': 'DVM',
+    'Dvm': 'DVM',
+    'dvm': 'DVM',
+    'CFA': 'CFA',
+    'Cfa': 'CFA',
+    'cfa': 'CFA',
+    'CPA': 'CPA',
+    'Cpa': 'CPA',
+    'cpa': 'CPA',
+    'PE': 'PE',
+    'Pe': 'PE',
+    'pe': 'PE',
+    'PMP': 'PMP',
+    'Pmp': 'PMP',
+    'pmp': 'PMP',
+    'EMERITUS': 'Emeritus',
+    'Emeritus': 'Emeritus',
+    'emeritus': 'Emeritus',
+    'RET': 'Ret.',
+    'Ret': 'Ret.',
+    'ret': 'Ret.',
+    'RETIRED': 'Ret.',
+    'Retired': 'Ret.',
+    'retired': 'Ret.',
+  };
+
+  const upper = cleaned.toUpperCase();
+
+  // Check uppercase version first
+  if (suffixMap[upper]) {
+    return suffixMap[upper];
+  }
+
+  // Check original case as fallback
+  if (suffixMap[cleaned]) {
+    return suffixMap[cleaned];
+  }
+
+  // If not in map, return null
+  return null;
+}
+
 function normalizeOwnerKeyForIndex(owner) {
   if (!owner || !owner.type) return "";
   if (owner.type === "company") {
@@ -1053,7 +1140,7 @@ function writeOwners(
           last_name: owner.last_name,
           middle_name: owner.middle_name ?? null,
           prefix_name: owner.prefix_name ?? null,
-          suffix_name: owner.suffix_name ?? null,
+          suffix_name: normalizeSuffixName(owner.suffix_name),
           us_citizenship_status: owner.us_citizenship_status ?? null,
           veteran_status: owner.veteran_status ?? null,
         });
