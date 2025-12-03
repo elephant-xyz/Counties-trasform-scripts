@@ -12337,16 +12337,14 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // County schema validators expect the full normalized field surface to be
-      // present (values may still be null) even when we emit the raw oneOf
-      // branch. Preserve every normalized key so the address payload satisfies
-      // the discriminator without forcing the emitter to synthesize values the
-      // source never provided.
-      ...NORMALIZED_ADDRESS_FIELDS,
-      // Keep the coarse locality/grid fallbacks in case upstream schemas evolve
-      // before these scripts are refreshed.
+      // Raw submissions should keep only the unnormalized surface, coarse
+      // locality metadata, section-township-range grid references, and the
+      // coordinate pair when available so the payload unambiguously targets the
+      // raw schema branch.
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
+      "latitude",
+      "longitude",
     ]),
   ),
 );
