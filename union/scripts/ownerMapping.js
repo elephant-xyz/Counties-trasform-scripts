@@ -143,7 +143,11 @@ function formatSuffixValue(value) {
   // Map suffixes to Elephant schema enum values
   const suffixMap = {
     'JR': 'Jr.',
+    'Jr': 'Jr.',
+    'jr': 'Jr.',
     'SR': 'Sr.',
+    'Sr': 'Sr.',
+    'sr': 'Sr.',
     'II': 'II',
     'III': 'III',
     'IV': 'IV',
@@ -154,32 +158,77 @@ function formatSuffixValue(value) {
     'IX': 'IX',
     'X': 'X',
     'PHD': 'PhD',
+    'PhD': 'PhD',
+    'phd': 'PhD',
     'MD': 'MD',
+    'Md': 'MD',
+    'md': 'MD',
     'ESQ': 'Esq.',
+    'Esq': 'Esq.',
+    'esq': 'Esq.',
     'ESQUIRE': 'Esq.',
+    'Esquire': 'Esq.',
+    'esquire': 'Esq.',
     'JD': 'JD',
+    'Jd': 'JD',
+    'jd': 'JD',
     'LLM': 'LLM',
+    'Llm': 'LLM',
+    'llm': 'LLM',
     'MBA': 'MBA',
+    'Mba': 'MBA',
+    'mba': 'MBA',
     'RN': 'RN',
+    'Rn': 'RN',
+    'rn': 'RN',
     'DDS': 'DDS',
+    'Dds': 'DDS',
+    'dds': 'DDS',
     'DVM': 'DVM',
+    'Dvm': 'DVM',
+    'dvm': 'DVM',
     'DMD': 'DDS',
+    'Dmd': 'DDS',
+    'dmd': 'DDS',
     'DO': 'MD',
+    'Do': 'MD',
+    'do': 'MD',
     'CFA': 'CFA',
+    'Cfa': 'CFA',
+    'cfa': 'CFA',
     'CPA': 'CPA',
+    'Cpa': 'CPA',
+    'cpa': 'CPA',
     'PA': 'CPA',
+    'Pa': 'CPA',
+    'pa': 'CPA',
     'PE': 'PE',
+    'Pe': 'PE',
+    'pe': 'PE',
     'PMP': 'PMP',
+    'Pmp': 'PMP',
+    'pmp': 'PMP',
     'EMERITUS': 'Emeritus',
+    'Emeritus': 'Emeritus',
+    'emeritus': 'Emeritus',
     'RET': 'Ret.',
+    'Ret': 'Ret.',
+    'ret': 'Ret.',
     'RETIRED': 'Ret.',
+    'Retired': 'Ret.',
+    'retired': 'Ret.',
   };
 
   const upper = trimmed.toUpperCase();
 
-  // Check if it's in the suffix map
+  // Check if it's in the suffix map with uppercase first
   if (suffixMap[upper]) {
     return suffixMap[upper];
+  }
+
+  // Check with original case as fallback
+  if (suffixMap[trimmed]) {
+    return suffixMap[trimmed];
   }
 
   // If not in map, return null (unknown suffix)
