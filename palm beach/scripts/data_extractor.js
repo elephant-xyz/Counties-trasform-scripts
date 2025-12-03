@@ -12337,15 +12337,10 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // County schema requires the full normalized field surface to exist even
-      // when we fall back to the raw branch. Populate the entire normalized
-      // field list so validators always see each required property (values may
-      // still be null when the source only exposes an unnormalized string).
-      ...NORMALIZED_ADDRESS_FIELDS,
+      // Limit the raw payload to the coarse locality fields the schema accepts
+      // so we don't accidentally emit partial normalized data.
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
-      "latitude",
-      "longitude",
     ]),
   ),
 );
@@ -14128,7 +14123,7 @@ const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
-  Array.from(new Set([...RAW_ADDRESS_ALLOWED_FIELDS])),
+  Array.from(new Set([...RAW_ADDRESS_RAW_SURFACE_FIELDS])),
 );
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
@@ -70297,6 +70292,42 @@ process.on("exit", () => {
     enforceAddressOneOfVariantOnDisk(addressPath);
   } catch (error) {
     console.error("Failed to enforce final address oneOf variant:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const payload = readJSONIfExists(addressPath);
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      (typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...payload }))
+    ) {
+      return;
+    }
+
+    const collapsed =
+      collapseRawAddressToUnnormalizedOnly({ ...payload }) || { ...payload };
+    collapsed.__force_raw_variant = true;
+
+    const projected =
+      projectRawUnnormalizedOnlyPayload(collapsed) ||
+      buildRawOnlyAddressSurface(collapsed) ||
+      collapsed;
+
+    enforceRawVariantAllowedFields(projected);
+    writeAddressJSONBypass(addressPath, projected);
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal raw address payload after exit:",
+      error,
+    );
     if (!process.exitCode) {
       process.exitCode = 1;
     }
