@@ -351,6 +351,17 @@ function writeAddressJSONBypass(addressPath, payload) {
   projectAddressPayloadForSchema(ensuredPayload);
   const schemaAlignedPayload =
     alignAddressPayloadToSchemaVariant(ensuredPayload) || ensuredPayload;
+  if (
+    schemaAlignedPayload &&
+    typeof schemaAlignedPayload === "object"
+  ) {
+    const schemaAlignedHasNormalizedSurface =
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...schemaAlignedPayload });
+    if (!schemaAlignedHasNormalizedSurface) {
+      applyRawAddressPresenceDefaults(schemaAlignedPayload);
+    }
+  }
   const serialized = `${JSON.stringify(schemaAlignedPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
@@ -1425,6 +1436,9 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         const schemaAlignedPayload =
           alignAddressPayloadToSchemaVariant(ensuredPayload) ||
           ensuredPayload;
+        if (!preserveStructured) {
+          applyRawAddressPresenceDefaults(schemaAlignedPayload);
+        }
         const serialized = JSON.stringify(schemaAlignedPayload, null, 2);
         return originalWriteFileSync.call(fs, targetPath, serialized, ...args);
       }
@@ -8730,6 +8744,12 @@ function persistFinalAddressPayload(addressPath, payload) {
   if (!addressPath || !payload || typeof payload !== "object") {
     return false;
   }
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (!hasNormalizedSurface) {
+    applyRawAddressPresenceDefaults(payload);
+  }
   const serialized = `${JSON.stringify(payload, null, 2)}\n`;
   addressWriteLocked = true;
   try {
@@ -12337,10 +12357,11 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Limit the raw payload to the coarse locality fields the schema accepts
-      // so we don't accidentally emit partial normalized data.
+      // Preserve the full normalized surface (values may remain null) so the raw
+      // branch satisfies the schema's explicit field requirements.
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
+      ...NORMALIZED_ADDRESS_FIELDS,
     ]),
   ),
 );
@@ -13289,6 +13310,7 @@ function stripRawVariantStructuredFields(address) {
     delete address[key];
   });
   Object.assign(address, mergedSurface);
+  applyRawAddressPresenceDefaults(address);
 
   return address;
 }
@@ -33031,7 +33053,15 @@ function ensureRawAddressOneOfReadiness(addressFilePath) {
   }
 
   if (mutated) {
-    writeJSON(addressFilePath, payload);
+    try {
+      originalWriteFileSync.call(
+        fs,
+        addressFilePath,
+        `${JSON.stringify(payload, null, 2)}\n`,
+      );
+    } catch {
+      writeJSON(addressFilePath, payload);
+    }
   }
 }
 
@@ -33119,7 +33149,15 @@ function ensureRawAddressFieldSurface(addressFilePath) {
   }
 
   if (mutated) {
-    writeJSON(addressFilePath, payload);
+    try {
+      originalWriteFileSync.call(
+        fs,
+        addressFilePath,
+        `${JSON.stringify(payload, null, 2)}\n`,
+      );
+    } catch {
+      writeJSON(addressFilePath, payload);
+    }
   }
 }
 
@@ -55008,6 +55046,7 @@ function enforceNormalizedOrMinimalRawAddress(addressPath, options = {}) {
     );
   }
 
+  applyRawAddressPresenceDefaults(rawOutput);
   const serializedRaw = `${JSON.stringify(rawOutput, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serializedRaw);
@@ -79313,7 +79352,6 @@ process.on("exit", () => {
     const addressPath = path.join(dataDir, "address.json");
     const propertyPath = path.join(dataDir, "property.json");
 
-    ensureRawAddressFieldSurface(addressPath);
     ensureRawAddressOneOfReadiness(addressPath);
     enforceRawAddressMetadataCoverage(addressPath, {
       metadataPaths: ["unnormalized_address.json", "property_seed.json"],
@@ -79321,6 +79359,7 @@ process.on("exit", () => {
       defaultStateCode: "FL",
       defaultCountryCode: "US",
     });
+    ensureRawAddressFieldSurface(addressPath);
 
     enforceNullPropertyAddressRelationships(propertyPath);
     forceAddressRelationshipNullOutputs([dataDir, relationshipsDir]);
