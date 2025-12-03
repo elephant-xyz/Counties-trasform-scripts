@@ -1713,20 +1713,21 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // - Unnormalized format: unnormalized_address (minLength: 1) + optional fields
   // - Normalized format: all required normalized fields + NO unnormalized_address
   // NEVER set unnormalized_address to empty string or include it in normalized format
-  // DOUBLE CHECK: Ensure trimmedSitus is valid before using unnormalized format
+  // TRIPLE CHECK: Ensure trimmedSitus is valid, non-empty, and meaningful before using unnormalized format
+  const finalTrimmedAddress = trimmedSitus ? String(trimmedSitus).trim() : "";
   const canUseUnnormalized = hasValidSitus &&
-                              trimmedSitus &&
-                              typeof trimmedSitus === 'string' &&
-                              trimmedSitus.length > 0 &&
-                              trimmedSitus.trim().length > 0;
+                              finalTrimmedAddress &&
+                              typeof finalTrimmedAddress === 'string' &&
+                              finalTrimmedAddress.length > 0;
 
   if (canUseUnnormalized) {
     // Use unnormalized format when we have a valid address string
     // CRITICAL: Ensure unnormalized_address is NEVER an empty string (minLength: 1)
+    // Final defensive check: verify address is not empty after all validation
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
-      unnormalized_address: trimmedSitus.trim()
+      unnormalized_address: finalTrimmedAddress
     };
 
     // Add optional location fields if available
@@ -2682,7 +2683,18 @@ function main() {
   const mailingAddressProcessed = mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
   // Only create mailing_address if we have a valid non-empty address AND we have current owners to link it to
-  const hasValidMailingAddress = mailingAddressProcessed && mailingAddressProcessed.length > 0;
+  // CRITICAL: Validate mailing address is meaningful (not just punctuation or empty)
+  // Same validation as main address to prevent empty string violation (minLength: 1)
+  let hasValidMailingAddress = false;
+  if (mailingAddressProcessed && mailingAddressProcessed.length > 0) {
+    const cleanedMailing = mailingAddressProcessed.replace(/[,\s]+/g, ' ').trim();
+    const hasAlphanumeric = /[a-zA-Z0-9]/.test(cleanedMailing);
+    const withoutPunctuation = cleanedMailing.replace(/[,\s]/g, '');
+    const hasMoreThanStateCode = withoutPunctuation.length > 2;
+    const hasActualContent = /\d/.test(cleanedMailing) || withoutPunctuation.length > 10;
+    const isJustStateCode = /^[A-Z]{2}$/i.test(withoutPunctuation);
+    hasValidMailingAddress = hasAlphanumeric && hasMoreThanStateCode && hasActualContent && !isJustStateCode;
+  }
 
   if (hasValidMailingAddress) {
     const ownersFilePath = path.join("owners", "owner_data.json");
