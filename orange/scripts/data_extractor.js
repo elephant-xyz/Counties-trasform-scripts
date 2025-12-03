@@ -5676,6 +5676,33 @@ delete layoutContent.space_type_indexer;
     });
   });
 
+  // Create relationships between property and owners (current owners)
+  // This ensures that owner files (person/company) are properly connected to the property
+  if (ownerKeysByDate.has("current")) {
+    const currentOwnerKeys = Array.from(ownerKeysByDate.get("current"));
+    currentOwnerKeys.forEach((ownerKey, idx) => {
+      const ownerFile = ownerKeyToFile.get(ownerKey);
+      if (ownerFile) {
+        const suffix = currentOwnerKeys.length === 1 ? null : idx + 1;
+        writeRelationshipFile(propertyFileName, ownerFile, suffix);
+      }
+    });
+  }
+
+  // Also create relationships for historical owners if they are not buyers
+  ownerKeysByDate.forEach((ownerKeys, dateKey) => {
+    if (dateKey === "current") return; // Already handled above
+    const ownerKeysArray = Array.from(ownerKeys);
+    ownerKeysArray.forEach((ownerKey) => {
+      const ownerFile = ownerKeyToFile.get(ownerKey);
+      // Only create relationship if this owner is not already connected via sales
+      if (ownerFile && !allBuyerOwnerKeys.has(ownerKey)) {
+        // Create a property-owner relationship for historical owners
+        writeRelationshipFile(propertyFileName, ownerFile, dateKey.replace(/[^a-zA-Z0-9]/g, "_"));
+      }
+    });
+  });
+
   if (mailingAddressFile) {
     personFiles.forEach((pf) => {
       const rel = {
