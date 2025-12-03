@@ -3189,6 +3189,16 @@ function extract() {
       const file = path.join(dataDir, saleFileName);
       // Remove _rawIndex and grantee_text before writing to file
       const { _rawIndex, grantee_text, ...saleData } = s;
+
+      // CRITICAL: purchase_price_amount must be a number (not null) per schema
+      // Since it's optional, omit it entirely if not a valid number
+      if (saleData.purchase_price_amount === null ||
+          saleData.purchase_price_amount === undefined ||
+          typeof saleData.purchase_price_amount !== 'number' ||
+          !Number.isFinite(saleData.purchase_price_amount)) {
+        delete saleData.purchase_price_amount;
+      }
+
       writeJSON(file, saleData);
       s._file = `./${saleFileName}`; // Keep _file for relationship linking
       saleFileMap.set(s.ownership_transfer_date, s._file);
