@@ -21,6 +21,13 @@ function parseNumber(val) {
   return Number.isFinite(num) ? num : null;
 }
 
+function parseYear(val) {
+  const year = parseNumber(val);
+  // built_year must be >= 1 according to schema, or null
+  if (year == null || year < 1) return null;
+  return year;
+}
+
 function loadJsonSafe(filePath) {
   try {
     if (fs.existsSync(filePath)) {
@@ -130,7 +137,7 @@ function buildLayouts($, requestMeta) {
     if (/bldg item/i.test(cells[0])) return;
 
     const buildingNumber = parseNumber(cells[0]);
-    const builtYear = parseNumber(cells[2]);
+    const builtYear = parseYear(cells[2]);
     const baseSf = parseNumber(cells[3]);
     const actualSf = parseNumber(cells[4]);
 
@@ -159,7 +166,7 @@ function buildLayouts($, requestMeta) {
 
     const code = parseNumber(cells[0]);
     const descRaw = cells[1] || null;
-    const builtYear = parseNumber(cells[2]);
+    const builtYear = parseYear(cells[2]);
     const units = parseNumber(cells[4]);
 
     const mappedSpaceType = mapOutbuildingSpaceType(descRaw);
