@@ -1668,7 +1668,15 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // Check if we have a valid address for unnormalized format
   // CRITICAL: unnormalized_address must satisfy minLength: 1 constraint (never empty string)
   // Ensure trimmedSitus is never an empty string - use null instead
-  const trimmedSitus = (situs && situs.trim() && situs.trim().length > 0) ? situs.trim() : null;
+  let trimmedSitus = null;
+  if (situs) {
+    const trimmed = situs.trim();
+    // Only set trimmedSitus if it's a non-empty string after trimming
+    if (trimmed && trimmed.length > 0) {
+      trimmedSitus = trimmed;
+    }
+  }
+
   let hasValidSitus = false;
 
   if (trimmedSitus && trimmedSitus.length > 0) {
@@ -1698,6 +1706,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // CRITICAL: Address must use either unnormalized OR normalized format (oneOf constraint)
   // - Unnormalized format: unnormalized_address (minLength: 1) + optional fields
   // - Normalized format: all required normalized fields + NO unnormalized_address
+  // NEVER set unnormalized_address to empty string or include it in normalized format
   if (hasValidSitus && trimmedSitus && trimmedSitus.length > 0) {
     // Use unnormalized format when we have a valid address string
     // CRITICAL: Ensure unnormalized_address is NEVER an empty string (minLength: 1)
