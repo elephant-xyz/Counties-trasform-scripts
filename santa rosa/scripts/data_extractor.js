@@ -1706,19 +1706,19 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
-      city_name: "",
+      city_name: null,
       country_code: "US",
-      plus_four_postal_code: "",
-      postal_code: "",
+      plus_four_postal_code: null,
+      postal_code: null,
       state_code: "FL",
-      street_name: "",
-      street_post_directional_text: "",
-      street_pre_directional_text: "",
-      street_number: "",
-      street_suffix_type: "",
-      unit_identifier: "",
-      route_number: "",
-      block: ""
+      street_name: null,
+      street_post_directional_text: null,
+      street_pre_directional_text: null,
+      street_number: null,
+      street_suffix_type: null,
+      unit_identifier: null,
+      route_number: null,
+      block: null
     };
 
     // Add optional location fields if available (these are allowed in normalized format)
@@ -1792,6 +1792,7 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
       property_land_amount: landVal,
       property_taxable_value_amount: taxable,
       property_exemption_amount: exempt,
+      agricultural_valuation_amount: agricultural,
       monthly_tax_amount: null,
       period_start_date: null,
       period_end_date: null,
@@ -1801,12 +1802,6 @@ function buildTaxes(parcelId, remixData, $, sourceHttpRequest, dataDir) {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
     };
-
-    // Only include agricultural_valuation_amount if it's a valid number (type is "number", not ["number", "null"])
-    if (typeof agricultural === 'number' && Number.isFinite(agricultural)) {
-      taxOut.agricultural_valuation_amount = agricultural;
-    }
-
     writeJSON(path.join(dataDir, `tax_${year}.json`), taxOut);
   }
   
