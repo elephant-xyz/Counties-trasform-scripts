@@ -1711,7 +1711,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     // Use normalized format when we don't have a valid unnormalized address
     // All required fields must be present for oneOf to validate correctly
     // CRITICAL: Do NOT include unnormalized_address here - it violates oneOf constraint
-    // The oneOf constraint requires EITHER unnormalized_address OR normalized fields, never both
+    // CRITICAL: section, township, range are OPTIONAL fields in address schema, not required
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
@@ -1732,8 +1732,9 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
     // Add optional location fields if available (these are allowed in normalized format)
     if (county_name) address.county_name = county_name;
-    // Note: section, township, range are NOT part of the normalized address schema
-    // They should only be included with unnormalized_address format
+    if (section) address.section = section;
+    if (township) address.township = township;
+    if (range) address.range = range;
   }
 
   writeJSON(path.join(dataDir, "address.json"), address);
@@ -2655,80 +2656,54 @@ function main() {
   // Only create mailing_address if we have a valid non-empty address (minLength: 1)
   const hasValidMailingAddress = mailingAddressProcessed && mailingAddressProcessed.length > 0;
 
-  // Check if we have current owners to create relationships with
-  // Only create mailing_address.json if we can create at least one relationship
+  if (hasValidMailingAddress) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(propertySeed),
+      unnormalized_address: mailingAddressProcessed,
+    };
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+  }
+
+  // Create mailing address relationships with current owners (only if mailing address was created)
   if (hasValidMailingAddress) {
     const ownersFilePath = path.join("owners", "owner_data.json");
     const owners = fs.existsSync(ownersFilePath) ? readJSON(ownersFilePath) : null;
-    let relationshipsCreated = 0;
-
     if (owners) {
       const key = `property_${parcelId}`;
       const record = owners[key];
       if (record && record.owners_by_date && record.owners_by_date['current']) {
         const currentOwners = record.owners_by_date['current'];
         console.log("CURRENT-",currentOwners)
-
-        // First, count how many relationships can be created
-        let canCreateRelationships = false;
+        let relCounter = 0;
         currentOwners.forEach((owner) => {
           if (owner.type === "person") {
             const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
             if (pIdx) {
-              canCreateRelationships = true;
+              relCounter++;
+              writeJSON(
+                path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+                {
+                  from: { "/": `./person_${pIdx}.json` },
+                  to: { "/": "./mailing_address.json" },
+                }
+              );
             }
           } else if (owner.type === "company") {
             const cIdx = findCompanyIndexByName(owner.name);
             if (cIdx) {
-              canCreateRelationships = true;
+              relCounter++;
+              writeJSON(
+                path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+                {
+                  from: { "/": `./company_${cIdx}.json` },
+                  to: { "/": "./mailing_address.json" }
+                }
+              );
             }
           }
         });
-
-        // Only create mailing_address.json if we can create relationships
-        if (canCreateRelationships) {
-          const mailingAddressOutput = {
-            ...appendSourceInfo(propertySeed),
-            unnormalized_address: mailingAddressProcessed,
-          };
-          writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-          // Now create the relationships
-          let relCounter = 0;
-          currentOwners.forEach((owner) => {
-            if (owner.type === "person") {
-              const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-              if (pIdx) {
-                relCounter++;
-                writeJSON(
-                  path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-                  {
-                    from: { "/": `./person_${pIdx}.json` },
-                    to: { "/": "./mailing_address.json" },
-                  }
-                );
-                relationshipsCreated++;
-              }
-            } else if (owner.type === "company") {
-              const cIdx = findCompanyIndexByName(owner.name);
-              if (cIdx) {
-                relCounter++;
-                writeJSON(
-                  path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-                  {
-                    from: { "/": `./company_${cIdx}.json` },
-                    to: { "/": "./mailing_address.json" }
-                  }
-                );
-                relationshipsCreated++;
-              }
-            }
-          });
-        }
       }
     }
-
-    console.log("Mailing address relationships created:", relationshipsCreated);
   }
 
 
