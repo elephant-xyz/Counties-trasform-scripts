@@ -13467,6 +13467,20 @@ const RAW_VARIANT_META_FIELD_ALLOWLIST = new Set([
   "source_http_request",
 ]);
 
+function stripRawVariantForbiddenFields(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  RAW_VARIANT_FORBIDDEN_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      delete address[field];
+    }
+  });
+
+  return address;
+}
+
 function buildRawOnlySubmissionPayload(address) {
   if (!address || typeof address !== "object") {
     return null;
@@ -13539,6 +13553,8 @@ function buildRawOnlySubmissionPayload(address) {
     rawPayload.source_http_request = null;
   }
 
+  stripRawVariantForbiddenFields(rawPayload);
+
   const minimalPayload = projectRawUnnormalizedOnlyPayload(rawPayload);
   if (minimalPayload) {
     if (
@@ -13547,6 +13563,7 @@ function buildRawOnlySubmissionPayload(address) {
     ) {
       minimalPayload.__force_raw_variant = true;
     }
+    stripRawVariantForbiddenFields(minimalPayload);
     return minimalPayload;
   }
 
@@ -45117,6 +45134,7 @@ function filterRawAddressFields(address, options = {}) {
     result[field] = Number.isFinite(numeric) ? numeric : null;
   }
 
+  stripRawVariantForbiddenFields(result);
   return result;
 }
 
