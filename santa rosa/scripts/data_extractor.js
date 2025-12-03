@@ -1668,7 +1668,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   // Check if we have a valid address for unnormalized format
   // CRITICAL: unnormalized_address must satisfy minLength: 1 constraint (never empty string)
   // Ensure trimmedSitus is never an empty string - use null instead
-  const trimmedSitus = (situs && situs.trim()) ? situs.trim() : null;
+  const trimmedSitus = (situs && situs.trim() && situs.trim().length > 0) ? situs.trim() : null;
   let hasValidSitus = false;
 
   if (trimmedSitus && trimmedSitus.length > 0) {
@@ -1692,14 +1692,15 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   let address;
 
   // CRITICAL: Final safety check - unnormalized_address must NEVER be empty string
-  // If trimmedSitus is empty or invalid, force normalized format
+  // If trimmedSitus is empty or invalid, use null
   if (hasValidSitus && trimmedSitus && trimmedSitus.length > 0) {
     // Use unnormalized format when we have a valid address string
     // Based on verified examples: can include unnormalized_address with section, township, range, county_name
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
-      unnormalized_address: trimmedSitus
+      unnormalized_address: trimmedSitus,
+      country_code: "US"
     };
 
     // Add optional location fields if available
@@ -1708,8 +1709,8 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     if (township) address.township = township;
     if (range) address.range = range;
   } else {
-    // Use unnormalized format with null when we don't have a valid address
-    // This satisfies the oneOf constraint by using the unnormalized_address option
+    // CRITICAL: When we don't have a valid address, set unnormalized_address to null (not empty string)
+    // Empty string violates minLength: 1 constraint
     // unnormalized_address schema allows null: type: ["string", "null"]
     address = {
       source_http_request: sourceHttpRequest,
