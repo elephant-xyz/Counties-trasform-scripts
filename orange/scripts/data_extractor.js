@@ -2958,25 +2958,25 @@ function main() {
         result.propertyLocationRaw = locationParts.join(", ");
       }
 
-      const mailingLines = [];
-      const mailingLine1 = normSpace(generalProfile.mailAddress || "");
-      const mailingCity = normSpace(generalProfile.mailCity || "");
-      const mailingState = normSpace(generalProfile.mailState || "");
-      const mailingZip = normSpace(generalProfile.mailZip || "");
-      if (mailingLine1) mailingLines.push(mailingLine1);
-      const mailingLine2Parts = [];
-      if (mailingCity) mailingLine2Parts.push(mailingCity);
-      if (mailingState) mailingLine2Parts.push(mailingState);
-      let mailingLine2 = mailingLine2Parts.join(", ");
-      if (mailingZip) {
-        mailingLine2 = mailingLine2
-          ? `${mailingLine2} ${mailingZip}`
-          : mailingZip;
-      }
-      if (mailingLine2) mailingLines.push(mailingLine2);
-      if (mailingLines.length) {
-        result.mailingAddressLines = mailingLines;
-      }
+      // const mailingLines = [];
+      // const mailingLine1 = normSpace(generalProfile.mailAddress || "");
+      // const mailingCity = normSpace(generalProfile.mailCity || "");
+      // const mailingState = normSpace(generalProfile.mailState || "");
+      // const mailingZip = normSpace(generalProfile.mailZip || "");
+      // if (mailingLine1) mailingLines.push(mailingLine1);
+      // const mailingLine2Parts = [];
+      // if (mailingCity) mailingLine2Parts.push(mailingCity);
+      // if (mailingState) mailingLine2Parts.push(mailingState);
+      // let mailingLine2 = mailingLine2Parts.join(", ");
+      // if (mailingZip) {
+      //   mailingLine2 = mailingLine2
+      //     ? `${mailingLine2} ${mailingZip}`
+      //     : mailingZip;
+      // }
+      // if (mailingLine2) mailingLines.push(mailingLine2);
+      // if (mailingLines.length) {
+      //   result.mailingAddressLines = mailingLines;
+      // }
 
       if (
         INPUT_JSON.parcelLegalDescription &&
