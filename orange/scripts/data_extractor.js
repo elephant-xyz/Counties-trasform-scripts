@@ -5639,16 +5639,20 @@ delete layoutContent.space_type_indexer;
   });
 
   // Determine which owner keys will be used in relationships
+  // CRITICAL: Only create entity files for owners that will have relationships.
+  // This prevents "Unused data JSON file detected" validation errors.
   const usedOwnerKeys = new Set();
 
-  // Add buyer keys from sales
+  // Add buyer keys from sales - these will have sales_history_has_company/person relationships
   salesBuyerFiles.forEach((saleInfo) => {
     saleInfo.buyerKeys.forEach((buyerKey) => {
       usedOwnerKeys.add(buyerKey);
     });
   });
 
-  // Add current owner keys if mailing address exists
+  // Add current owner keys ONLY if mailing address exists
+  // These will have company/person_has_mailing_address relationships
+  // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
   if (mailingAddressFile) {
     const currentOwners = ownerKeysByDate.get('current');
     if (currentOwners) {
@@ -5659,6 +5663,7 @@ delete layoutContent.space_type_indexer;
   }
 
   // Now create files only for owners that will be used in relationships
+  // All owners in seenOwners but NOT in usedOwnerKeys will be skipped
   let personIndex = 1;
   let companyIndex = 1;
   const ownerEntries = [];
