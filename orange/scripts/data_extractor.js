@@ -5539,6 +5539,17 @@ delete layoutContent.space_type_indexer;
     });
   }
 
+  // CRITICAL FIX: Create relationships from property to current owners (person/company)
+  // This ensures person/company files are "used" and not flagged as orphaned
+  personFiles.forEach((pf, idx) => {
+    const suffix = personFiles.length === 1 ? null : `${idx + 1}`;
+    writeRelationshipFile(propertyFileName, pf, suffix);
+  });
+  companyFiles.forEach((cf, idx) => {
+    const suffix = companyFiles.length === 1 ? null : `${idx + 1}`;
+    writeRelationshipFile(propertyFileName, cf, suffix);
+  });
+
   // relationship_deed_file_*.json (file → deed)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
     writeRelationshipFile(fileFiles[i], deedFiles[i]);
