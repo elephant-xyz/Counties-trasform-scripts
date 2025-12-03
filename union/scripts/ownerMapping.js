@@ -137,7 +137,7 @@ function formatNameValue(value) {
 
 function formatSuffixValue(value) {
   if (!value) return null;
-  const trimmed = value.replace(/\./g, "").trim();
+  const trimmed = value.replace(/\./g, "").replace(/,/g, "").trim();
   if (!trimmed) return null;
 
   // Map suffixes to Elephant schema enum values
@@ -147,6 +147,12 @@ function formatSuffixValue(value) {
     'II': 'II',
     'III': 'III',
     'IV': 'IV',
+    'V': 'V',
+    'VI': 'VI',
+    'VII': 'VII',
+    'VIII': 'VIII',
+    'IX': 'IX',
+    'X': 'X',
     'PHD': 'PhD',
     'MD': 'MD',
     'ESQ': 'Esq.',
@@ -157,12 +163,16 @@ function formatSuffixValue(value) {
     'RN': 'RN',
     'DDS': 'DDS',
     'DVM': 'DVM',
+    'DMD': 'DDS',
+    'DO': 'MD',
     'CFA': 'CFA',
     'CPA': 'CPA',
+    'PA': 'CPA',
     'PE': 'PE',
     'PMP': 'PMP',
     'EMERITUS': 'Emeritus',
     'RET': 'Ret.',
+    'RETIRED': 'Ret.',
   };
 
   const upper = trimmed.toUpperCase();
