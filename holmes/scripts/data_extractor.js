@@ -2661,11 +2661,15 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
   console.log("MAILING--",mailingAddressRaw);
+
+  // Only create mailing address if we have data and can create relationships
   const mailingAddressOutput = {
     ...appendSourceInfo(seed),
     unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
   };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+  // Track if any relationships were created
+  let mailingAddressRelCounter = 0;
 
   // Create mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
@@ -2674,15 +2678,14 @@ function main() {
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
-      let relCounter = 0;
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
             usedPersonIndices.add(pIdx);
-            relCounter++;
+            mailingAddressRelCounter++;
             writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+              path.join("data", `relationship_person_has_mailing_address_${mailingAddressRelCounter}.json`),
               {
                 from: { "/": `./person_${pIdx}.json` },
                 to: { "/": "./mailing_address.json" },
@@ -2693,9 +2696,9 @@ function main() {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
             usedCompanyIndices.add(cIdx);
-            relCounter++;
+            mailingAddressRelCounter++;
             writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+              path.join("data", `relationship_company_has_mailing_address_${mailingAddressRelCounter}.json`),
               {
                 from: { "/": `./company_${cIdx}.json` },
                 to: { "/": "./mailing_address.json" }
@@ -2705,6 +2708,11 @@ function main() {
         }
       });
     }
+  }
+
+  // Only write mailing_address.json if at least one relationship was created
+  if (mailingAddressRelCounter > 0) {
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
   }
 
   // Remove unused person and company files
