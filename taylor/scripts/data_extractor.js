@@ -1917,19 +1917,9 @@ function attemptWriteAddressAndGeometry($, unnorm, secTwpRng) {
 }
 
 
-function extractMailingAddress($) {
-  const addressParts = [];
-  
-  // Find all spans that contain address information
-  $('[id*="sprAddress"][id*="_lblSuppressed"]').each(function() {
-    const text = textOf($(this));
-    if (text && text.trim()) {
-      addressParts.push(text.trim());
-    }
-  });
-  
-  return addressParts.length > 0 ? addressParts.join(' ') : null;
-}
+// extractMailingAddress function removed - there are no valid relationship classes
+// in Elephant schema to connect person/company to mailing_address
+// The mailing address data should be handled differently
 
 
 function main() {
@@ -1971,12 +1961,6 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   // console.log(secTwpRng)
   attemptWriteAddressAndGeometry($, unnormalized, secTwpRng);
-
-  //Mailing Address - removed because there are no valid relationship classes in Elephant schema
-  // to connect person/company to mailing_address. The mailing address data should be handled differently.
-  // const mailingAddressRaw = extractMailingAddress($)
-  // console.log("MAILING--",mailingAddressRaw);
-  
 }
 
 if (require.main === module) {
