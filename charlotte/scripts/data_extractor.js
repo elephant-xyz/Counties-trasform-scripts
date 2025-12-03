@@ -2043,8 +2043,8 @@ function attemptWriteAddress(unnorm, siteAddress, mailingAddress, secTwpRng) {
   if (siteAddress) {
     const addressObj = {
       county_name,
-      latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-      longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+    // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+    // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
       township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
       range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
       section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
