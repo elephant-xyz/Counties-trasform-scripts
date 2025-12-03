@@ -1797,10 +1797,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
 
-  // Track which person/company indices are used in relationships
-  const usedPersonIndices = new Set();
-  const usedCompanyIndices = new Set();
-
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -1813,7 +1809,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
-          usedPersonIndices.add(pIdx);
           relPersonCounter++;
           writeJSON(
             path.join(
@@ -1832,7 +1827,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
-          usedCompanyIndices.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1847,13 +1841,13 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
       });
   });
-
+  
   // Create relationship between current owner and first sale (sales_1) if not already created
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
     const currentOwners = ownersByDate["current"] || [];
-
+    
     currentOwners.forEach((owner) => {
       // Check if this owner already has a relationship with sales_1
       const alreadyLinked = ownersOnFirstSale.some(existingOwner => {
@@ -1865,12 +1859,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
         return false;
       });
-
+      
       if (!alreadyLinked) {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
-            usedPersonIndices.add(pIdx);
             relPersonCounter++;
             writeJSON(
               path.join(
@@ -1886,7 +1879,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
-            usedCompanyIndices.add(cIdx);
             relCompanyCounter++;
             writeJSON(
               path.join(
@@ -1903,9 +1895,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       }
     });
   }
-
-  // Return the tracking sets so they can be used for mailing address relationships
-  return { usedPersonIndices, usedCompanyIndices };
 }
 
 function writeTaxes($, parcelId) {
@@ -2626,16 +2615,8 @@ function main() {
 
   writeTaxes($, parcelId);
 
-  // Track used person/company indices across all relationship creation
-  let usedPersonIndices = new Set();
-  let usedCompanyIndices = new Set();
-
   if (parcelId) {
-    const tracking = writePersonCompaniesSalesRelationships(parcelId, sales);
-    if (tracking) {
-      usedPersonIndices = new Set([...usedPersonIndices, ...tracking.usedPersonIndices]);
-      usedCompanyIndices = new Set([...usedCompanyIndices, ...tracking.usedCompanyIndices]);
-    }
+    writePersonCompaniesSalesRelationships(parcelId, sales);
     // writeOwnersCurrentAndRelationships(parcelId);
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     // writeUtility(parcelId);
@@ -2661,15 +2642,11 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
   console.log("MAILING--",mailingAddressRaw);
-
-  // Only create mailing address if we have data and can create relationships
   const mailingAddressOutput = {
     ...appendSourceInfo(seed),
     unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
   };
-
-  // Track if any relationships were created
-  let mailingAddressRelCounter = 0;
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
   // Create mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
@@ -2678,14 +2655,14 @@ function main() {
     const record = owners[key];
     if (record && record.owners_by_date && record.owners_by_date['current']) {
       const currentOwners = record.owners_by_date['current'];
+      let relCounter = 0;
       currentOwners.forEach((owner) => {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
-            usedPersonIndices.add(pIdx);
-            mailingAddressRelCounter++;
+            relCounter++;
             writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${mailingAddressRelCounter}.json`),
+              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
               {
                 from: { "/": `./person_${pIdx}.json` },
                 to: { "/": "./mailing_address.json" },
@@ -2695,10 +2672,9 @@ function main() {
         } else if (owner.type === "company") {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
-            usedCompanyIndices.add(cIdx);
-            mailingAddressRelCounter++;
+            relCounter++;
             writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${mailingAddressRelCounter}.json`),
+              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
               {
                 from: { "/": `./company_${cIdx}.json` },
                 to: { "/": "./mailing_address.json" }
@@ -2708,40 +2684,6 @@ function main() {
         }
       });
     }
-  }
-
-  // Only write mailing_address.json if at least one relationship was created
-  if (mailingAddressRelCounter > 0) {
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-  }
-
-  // Remove unused person and company files
-  try {
-    const dataFiles = fs.readdirSync("data");
-
-    // Remove unused person files
-    dataFiles.forEach((file) => {
-      const personMatch = file.match(/^person_(\d+)\.json$/);
-      if (personMatch) {
-        const idx = parseInt(personMatch[1], 10);
-        if (!usedPersonIndices.has(idx)) {
-          fs.unlinkSync(path.join("data", file));
-          console.log(`Removed unused ${file}`);
-        }
-      }
-
-      // Remove unused company files
-      const companyMatch = file.match(/^company_(\d+)\.json$/);
-      if (companyMatch) {
-        const idx = parseInt(companyMatch[1], 10);
-        if (!usedCompanyIndices.has(idx)) {
-          fs.unlinkSync(path.join("data", file));
-          console.log(`Removed unused ${file}`);
-        }
-      }
-    });
-  } catch (e) {
-    console.error("Error removing unused files:", e);
   }
 
 
