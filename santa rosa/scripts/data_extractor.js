@@ -1690,7 +1690,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     // CRITICAL: Based on verified examples and oneOf constraint, when using unnormalized_address:
     // - ONLY include unnormalized_address (required, minLength: 1)
     // - Optionally include county_name
-    // - Do NOT include section, township, range (these are only for normalized format)
+    // - Do NOT include section, township, range, or any normalized fields
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
