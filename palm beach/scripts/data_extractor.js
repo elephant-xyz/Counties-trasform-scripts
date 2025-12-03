@@ -11992,6 +11992,7 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
       ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
+      ...NORMALIZED_ADDRESS_FIELDS,
     ]),
   ),
 );
@@ -13728,9 +13729,12 @@ const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
   Array.from(
     new Set(
-      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
-        (field) => field !== "unnormalized_address",
-      ),
+      [
+        ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+          (field) => field !== "unnormalized_address",
+        ),
+        ...NORMALIZED_ADDRESS_FIELDS,
+      ],
     ),
   ),
 );
