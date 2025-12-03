@@ -78883,3 +78883,26 @@ process.on("exit", () => {
     }
   }
 });
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    ensureRawAddressFieldSurface(addressPath);
+    ensureRawAddressOneOfReadiness(addressPath);
+
+    enforceNullPropertyAddressRelationships(propertyPath);
+    forceAddressRelationshipNullOutputs([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error("Failed to enforce final raw address schema surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
