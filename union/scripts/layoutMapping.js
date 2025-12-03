@@ -21,6 +21,12 @@ function parseNumber(val) {
   return Number.isFinite(num) ? num : null;
 }
 
+function parseInteger(val) {
+  const num = parseNumber(val);
+  if (num == null) return null;
+  return Math.round(num);
+}
+
 function parseYear(val) {
   // Check if the original value is negative before parseNumber strips the sign
   if (val != null && String(val).trim().startsWith('-')) return null;
@@ -30,9 +36,13 @@ function parseYear(val) {
   if (year == null) return null;
   if (typeof year !== 'number') return null;
   if (!Number.isFinite(year)) return null;
+  // Explicit check for 0 (which violates minimum: 1 constraint)
+  if (year === 0) return null;
   // Ensure year is at least 1 (schema requires minimum: 1)
   if (year < 1) return null;
   const intYear = Math.floor(year);
+  // Explicit check for 0 after flooring
+  if (intYear === 0) return null;
   // Double-check after flooring that we still have >= 1
   if (intYear < 1) return null;
   return intYear;
@@ -148,8 +158,8 @@ function buildLayouts($, requestMeta) {
 
     const buildingNumber = parseNumber(cells[0]);
     const builtYear = parseYear(cells[2]);
-    const baseSf = parseNumber(cells[3]);
-    const actualSf = parseNumber(cells[4]);
+    const baseSf = parseInteger(cells[3]);
+    const actualSf = parseInteger(cells[4]);
 
     spaceTypeIndex += 1;
     const layout = buildBaseLayout("Building", spaceTypeIndex, requestMeta);
@@ -178,7 +188,7 @@ function buildLayouts($, requestMeta) {
     const code = parseNumber(cells[0]);
     const descRaw = cells[1] || null;
     const builtYear = parseYear(cells[2]);
-    const units = parseNumber(cells[4]);
+    const units = parseInteger(cells[4]);
 
     const mappedSpaceType = mapOutbuildingSpaceType(descRaw);
     if (!mappedSpaceType) return;
