@@ -14139,13 +14139,23 @@ const RAW_VARIANT_METADATA_FIELDS = [
 // but ensure the emitted payloads preserve the full allowed surface so no
 // required keys disappear.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze(
-  Array.from(new Set([...RAW_ADDRESS_RAW_SURFACE_FIELDS])),
+  Array.from(
+    new Set([
+      ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
+      ...RAW_ADDRESS_ALLOWED_FIELDS,
+    ]),
+  ),
 );
 const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
-  Array.from(new Set([...RAW_ADDRESS_RAW_SURFACE_FIELDS])),
+  Array.from(
+    new Set([
+      ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
+      ...RAW_ADDRESS_ALLOWED_FIELDS,
+    ]),
+  ),
 );
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
