@@ -1662,15 +1662,16 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     };
   } else {
     // Use normalized fields format (do NOT include unnormalized_address at all)
+    // All fields marked as required in schema must be present (even if null)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
       county_name: "Santa Rosa",
       city_name: null,
-      country_code: null,
+      country_code: "US",
       plus_four_postal_code: null,
       postal_code: null,
-      state_code: null,
+      state_code: "FL",
       street_name: null,
       street_post_directional_text: null,
       street_pre_directional_text: null,
