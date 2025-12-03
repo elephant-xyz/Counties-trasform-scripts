@@ -1972,83 +1972,10 @@ function main() {
   // console.log(secTwpRng)
   attemptWriteAddressAndGeometry($, unnormalized, secTwpRng);
 
-  //Mailing Address - only create if we have data and owners to link it to
-  const mailingAddressRaw = extractMailingAddress($)
-  console.log("MAILING--",mailingAddressRaw);
-
-  // Check if we have a valid mailing address
-  const hasValidMailingAddress = mailingAddressRaw && mailingAddressRaw.trim().length > 0;
-
-  if (hasValidMailingAddress) {
-    const mailingAddressOutput = {
-      ...appendSourceInfo(seed),
-      unnormalized_address: mailingAddressRaw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-    };
-
-    // First, collect all valid relationships that can be created
-    const owners = readJSON(path.join("owners", "owner_data.json"));
-    const relationshipsToCreate = [];
-
-    if (owners) {
-      const key = `property_${parcelId}`;
-      const record = owners[key];
-      if (record && record.owners_by_date && record.owners_by_date['current']) {
-        const currentOwners = record.owners_by_date['current'];
-        if (currentOwners && currentOwners.length > 0) {
-          currentOwners.forEach((owner) => {
-            if (owner.type === "person") {
-              const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-              if (pIdx) {
-                relationshipsToCreate.push({
-                  type: 'person',
-                  index: pIdx
-                });
-              }
-            } else if (owner.type === "company") {
-              const cIdx = findCompanyIndexByName(owner.name);
-              if (cIdx) {
-                relationshipsToCreate.push({
-                  type: 'company',
-                  index: cIdx
-                });
-              }
-            }
-          });
-        }
-      }
-    }
-
-    // Only create mailing_address.json if we have at least one valid relationship
-    if (relationshipsToCreate.length > 0) {
-      writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-      // Create the relationships
-      let personRelCounter = 0;
-      let companyRelCounter = 0;
-
-      relationshipsToCreate.forEach((rel) => {
-        if (rel.type === 'person') {
-          personRelCounter++;
-          writeJSON(
-            path.join("data", `relationship_person_has_mailing_address_${personRelCounter}.json`),
-            {
-              from: { "/": `./person_${rel.index}.json` },
-              to: { "/": "./mailing_address.json" },
-            }
-          );
-        } else if (rel.type === 'company') {
-          companyRelCounter++;
-          writeJSON(
-            path.join("data", `relationship_company_has_mailing_address_${companyRelCounter}.json`),
-            {
-              from: { "/": `./company_${rel.index}.json` },
-              to: { "/": "./mailing_address.json" }
-            }
-          );
-        }
-      });
-    }
-  }
+  //Mailing Address - removed because there are no valid relationship classes in Elephant schema
+  // to connect person/company to mailing_address. The mailing address data should be handled differently.
+  // const mailingAddressRaw = extractMailingAddress($)
+  // console.log("MAILING--",mailingAddressRaw);
   
 }
 
