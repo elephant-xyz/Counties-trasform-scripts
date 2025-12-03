@@ -5666,20 +5666,6 @@ delete layoutContent.space_type_indexer;
   console.log("All person files created:", personFiles); // DEBUG LOG
   console.log("All company files created:", companyFiles); // DEBUG LOG
 
-  // Create relationships between property and all owners
-  // Connect all owner files (person and company) to property
-  const allOwnerFiles = [...personFiles, ...companyFiles];
-  allOwnerFiles.forEach((ownerFile, index) => {
-    const rel = {
-      from: { "/": `./property.json` },
-      to: { "/": `./${ownerFile}` },
-    };
-    const suffix = allOwnerFiles.length === 1 ? null : index + 1;
-    const relFile = createRelationshipFileName("property", ownerFile, suffix);
-    writeJSON(path.join(dataDir, relFile), rel);
-    console.log(`Created property-owner relationship: ${relFile}`); // DEBUG LOG
-  });
-
   // Update salesBuyerFiles with actual file names after owner files are created
   salesBuyerFiles.forEach((saleInfo) => {
     saleInfo.buyerKeys.forEach((buyerKey) => {
