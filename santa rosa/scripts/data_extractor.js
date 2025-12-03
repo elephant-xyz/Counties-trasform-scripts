@@ -1641,15 +1641,43 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       range = parts[2];
     }
   }
-  const address = {
-    source_http_request: sourceHttpRequest,
-    request_identifier: parcelId,
-    county_name: "Santa Rosa",
-    unnormalized_address: situs,
-    township: township || null,
-    range: range || null,
-    section: section || null,
-  };
+  // Address uses oneOf: either unnormalized_address OR all normalized fields
+  let address;
+  if (situs && situs.trim()) {
+    // If we have a non-empty situs, use unnormalized_address
+    address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      county_name: "Santa Rosa",
+      unnormalized_address: situs,
+      township: township || null,
+      range: range || null,
+      section: section || null,
+    };
+  } else {
+    // Otherwise, provide all required normalized fields (even if null)
+    address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      county_name: "Santa Rosa",
+      city_name: null,
+      country_code: null,
+      plus_four_postal_code: null,
+      postal_code: null,
+      state_code: null,
+      street_name: null,
+      street_post_directional_text: null,
+      street_pre_directional_text: null,
+      street_number: null,
+      street_suffix_type: null,
+      unit_identifier: null,
+      route_number: null,
+      block: null,
+      township: township || null,
+      range: range || null,
+      section: section || null,
+    };
+  }
   writeJSON(path.join(dataDir, "address.json"), address);
 
 
