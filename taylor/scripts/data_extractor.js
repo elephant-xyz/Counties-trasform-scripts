@@ -1441,6 +1441,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
+  people = validPeople; // Update people array to match the files being created
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
@@ -1984,59 +1985,68 @@ function main() {
       unnormalized_address: mailingAddressRaw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
     };
 
-    // Create mailing address relationships with current owners
+    // First, collect all valid relationships that can be created
     const owners = readJSON(path.join("owners", "owner_data.json"));
-    let hasOwners = false;
+    const relationshipsToCreate = [];
+
     if (owners) {
       const key = `property_${parcelId}`;
       const record = owners[key];
       if (record && record.owners_by_date && record.owners_by_date['current']) {
         const currentOwners = record.owners_by_date['current'];
-        hasOwners = currentOwners && currentOwners.length > 0;
-      }
-    }
-
-    // Only create mailing_address.json if we have owners to link it to
-    if (hasOwners) {
-      writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-      // Create relationships with current owners
-      const owners = readJSON(path.join("owners", "owner_data.json"));
-      if (owners) {
-        const key = `property_${parcelId}`;
-        const record = owners[key];
-        if (record && record.owners_by_date && record.owners_by_date['current']) {
-          const currentOwners = record.owners_by_date['current'];
-          let relCounter = 0;
+        if (currentOwners && currentOwners.length > 0) {
           currentOwners.forEach((owner) => {
             if (owner.type === "person") {
               const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
               if (pIdx) {
-                relCounter++;
-                writeJSON(
-                  path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-                  {
-                    from: { "/": `./person_${pIdx}.json` },
-                    to: { "/": "./mailing_address.json" },
-                  }
-                );
+                relationshipsToCreate.push({
+                  type: 'person',
+                  index: pIdx
+                });
               }
             } else if (owner.type === "company") {
               const cIdx = findCompanyIndexByName(owner.name);
               if (cIdx) {
-                relCounter++;
-                writeJSON(
-                  path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-                  {
-                    from: { "/": `./company_${cIdx}.json` },
-                    to: { "/": "./mailing_address.json" }
-                  }
-                );
+                relationshipsToCreate.push({
+                  type: 'company',
+                  index: cIdx
+                });
               }
             }
           });
         }
       }
+    }
+
+    // Only create mailing_address.json if we have at least one valid relationship
+    if (relationshipsToCreate.length > 0) {
+      writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+      // Create the relationships
+      let personRelCounter = 0;
+      let companyRelCounter = 0;
+
+      relationshipsToCreate.forEach((rel) => {
+        if (rel.type === 'person') {
+          personRelCounter++;
+          writeJSON(
+            path.join("data", `relationship_person_has_mailing_address_${personRelCounter}.json`),
+            {
+              from: { "/": `./person_${rel.index}.json` },
+              to: { "/": "./mailing_address.json" },
+            }
+          );
+        } else if (rel.type === 'company') {
+          companyRelCounter++;
+          writeJSON(
+            path.join("data", `relationship_company_has_mailing_address_${companyRelCounter}.json`),
+            {
+              from: { "/": `./company_${rel.index}.json` },
+              to: { "/": "./mailing_address.json" }
+            }
+          );
+        }
+      });
     }
   }
   
