@@ -141,6 +141,7 @@ function formatSuffixValue(value) {
   if (!trimmed) return null;
 
   // Map suffixes to Elephant schema enum values
+  // Only include suffixes that are allowed by the Elephant schema
   const suffixMap = {
     'JR': 'Jr.',
     'Jr': 'Jr.',
@@ -151,12 +152,7 @@ function formatSuffixValue(value) {
     'II': 'II',
     'III': 'III',
     'IV': 'IV',
-    'V': 'V',
-    'VI': 'VI',
-    'VII': 'VII',
-    'VIII': 'VIII',
-    'IX': 'IX',
-    'X': 'X',
+    // Note: V, VI, VII, VIII, IX, X are NOT in the Elephant schema, so they are omitted
     'PHD': 'PhD',
     'PhD': 'PhD',
     'phd': 'PhD',
