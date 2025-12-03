@@ -12601,7 +12601,32 @@ function projectRawUnnormalizedOnlyPayload(address) {
     hydrated.source_http_request = null;
   }
 
-  return hydrated;
+  const allowedRawFields = new Set([
+    ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
+    "request_identifier",
+    "source_http_request",
+  ]);
+  const projected = {};
+  allowedRawFields.forEach((field) => {
+    if (field === "unnormalized_address") {
+      projected[field] = hydrated[field];
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(hydrated, field)) {
+      projected[field] = hydrated[field];
+      return;
+    }
+    projected[field] = null;
+  });
+
+  if (
+    Object.prototype.hasOwnProperty.call(address, "__force_raw_variant") &&
+    address.__force_raw_variant === true
+  ) {
+    projected.__force_raw_variant = true;
+  }
+
+  return projected;
 }
 
 function enforceRawFieldAllowlistOnDisk(addressPath) {
