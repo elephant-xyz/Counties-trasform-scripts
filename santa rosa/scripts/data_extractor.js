@@ -1643,13 +1643,14 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   }
   // Address uses oneOf: either unnormalized_address OR all normalized fields
   let address;
-  if (situs && situs.trim()) {
+  const trimmedSitus = situs ? situs.trim() : "";
+  if (trimmedSitus && trimmedSitus.length > 0) {
     // If we have a non-empty situs, use unnormalized_address
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
       county_name: "Santa Rosa",
-      unnormalized_address: situs,
+      unnormalized_address: trimmedSitus,
       township: township || null,
       range: range || null,
       section: section || null,
