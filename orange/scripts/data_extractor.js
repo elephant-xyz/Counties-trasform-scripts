@@ -5475,7 +5475,7 @@ delete layoutContent.space_type_indexer;
       } else if (ownerType === "company") {
         const rawName = owner.name || owner.company_name || owner.organization_name;
         if (!rawName) return;
-        const normalized = rawName.replace(/\s+/g, " ").trim();
+        const normalized = rawName.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
         if (!normalized) return;
         const key = `company:${normalized.toLowerCase()}`;
         if (seenOwners.has(key)) return;
@@ -5544,9 +5544,10 @@ delete layoutContent.space_type_indexer;
         if (buyer) {
           // Create buyer key similar to owner key creation
           let buyerKey = null;
+          let normalizedCompanyName = null;
           if (buyer.type === "company") {
-            const normalized = buyer.name.replace(/\s+/g, " ").trim();
-            buyerKey = `company:${normalized.toLowerCase()}`;
+            normalizedCompanyName = buyer.name.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
+            buyerKey = `company:${normalizedCompanyName.toLowerCase()}`;
           } else {
             const parts = [buyer.first_name, buyer.middle_name, buyer.last_name]
               .map((part) => (part || "").trim().toLowerCase())
@@ -5563,7 +5564,7 @@ delete layoutContent.space_type_indexer;
               if (buyer.type === "company") {
                 seenOwners.set(buyerKey, {
                   type: "company",
-                  payload: { name: buyer.name },
+                  payload: { name: normalizedCompanyName },
                 });
               } else {
                 const firstName = properCaseName(buyer.first_name || null);
