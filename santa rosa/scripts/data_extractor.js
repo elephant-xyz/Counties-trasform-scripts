@@ -1660,13 +1660,20 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   // Check if we have a valid address
   const trimmedSitus = (situs || "").trim();
+  // Clean up the situs string - remove excessive punctuation and whitespace
+  const cleanedSitus = trimmedSitus.replace(/[,\s]+/g, ' ').trim();
+
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
   // IMPORTANT: Must have actual alphanumeric content and be at least 1 character for minLength constraint
   // Also check that it's not just commas, spaces, and state codes - needs actual street/location info
-  const hasAlphanumeric = /[a-zA-Z0-9]/.test(trimmedSitus);
-  const hasMoreThanStateCode = trimmedSitus.replace(/[,\s]/g, '').length > 2; // More than just state abbreviation
+  const hasAlphanumeric = /[a-zA-Z0-9]/.test(cleanedSitus);
+  const withoutPunctuation = cleanedSitus.replace(/[,\s]/g, ''); // Remove all commas and spaces
+  const hasMoreThanStateCode = withoutPunctuation.length > 2; // More than just state abbreviation (e.g., "FL")
+  const hasActualAddressContent = /\d/.test(cleanedSitus) || withoutPunctuation.length > 10; // Has numbers or substantial text
+
   // CRITICAL: Ensure unnormalized_address is never empty (violates minLength: 1 constraint)
-  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && hasAlphanumeric && hasMoreThanStateCode;
+  // Must have real address content, not just state code or punctuation
+  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && hasAlphanumeric && hasMoreThanStateCode && hasActualAddressContent;
 
   let address;
 
