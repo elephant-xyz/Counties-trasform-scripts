@@ -1642,10 +1642,14 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     }
   }
   // Address uses oneOf: either unnormalized_address OR all normalized fields
+  // IMPORTANT: unnormalized_address must be non-empty (minLength: 1) or omitted entirely
   let address;
-  const trimmedSitus = situs ? situs.trim() : "";
-  if (trimmedSitus && trimmedSitus.length > 0) {
-    // If we have a non-empty situs, use unnormalized_address
+  const trimmedSitus = (situs || "").trim();
+  // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
+  const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && trimmedSitus !== "," && trimmedSitus !== ", ,";
+
+  if (hasValidSitus) {
+    // Use unnormalized_address format (do NOT include normalized fields)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
@@ -1656,7 +1660,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       section: section || null,
     };
   } else {
-    // Otherwise, provide all required normalized fields (even if null)
+    // Use normalized fields format (do NOT include unnormalized_address at all)
     address = {
       source_http_request: sourceHttpRequest,
       request_identifier: parcelId,
