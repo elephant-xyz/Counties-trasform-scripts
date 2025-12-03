@@ -13620,33 +13620,29 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// County schema's raw branch mirrors the structured field surface even when we
-// only have an unnormalized string. Emit the complete set (with null padding) so
-// we satisfy the oneOf without fabricating normalized values.
+// County schema's raw branch only allows the unnormalized line plus the coarse
+// locality/grid components. Avoid carrying the structured street breakdown so
+// the payload cleanly matches the raw oneOf option.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      ...NORMALIZED_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
-    ]),
-  ),
+  Array.from(new Set([...RAW_ADDRESS_RAW_SURFACE_FIELDS])),
 );
 const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
   Array.from(
-    new Set([
-      ...NORMALIZED_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_OUTPUT_FIELDS,
-    ]),
+    new Set(
+      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+        (field) => field !== "unnormalized_address",
+      ),
+    ),
   ),
 );
-const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
+const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
   ...RAW_VARIANT_METADATA_FIELDS,
-];
+]);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELD_SET = new Set(
   RAW_VARIANT_ALLOWED_OUTPUT_FIELDS,
 );
