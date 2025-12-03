@@ -11885,11 +11885,12 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
-    new Set(
-      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+    new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
-    ),
+    ]),
   ),
 );
 const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
@@ -13585,13 +13586,25 @@ const RAW_VARIANT_METADATA_FIELDS = [
 // County schema's raw branch mirrors the structured field surface even when we
 // only have an unnormalized string. Emit the complete set (with null padding) so
 // we satisfy the oneOf without fabricating normalized values.
-const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze([
-  ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
-]);
+const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_RAW_SURFACE_FIELDS,
+    ]),
+  ),
+);
 const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
-const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze([]);
+const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
+  Array.from(
+    new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_OUTPUT_FIELDS,
+    ]),
+  ),
+);
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = [
   "unnormalized_address",
   ...RAW_VARIANT_OUTPUT_ALLOWLIST,
