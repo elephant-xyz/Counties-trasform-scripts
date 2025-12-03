@@ -100,7 +100,14 @@ function classifyOwner(raw, invalid) {
   }
   name = removeEtAl(name);
 
-  // If mostly address-like (contains digits and street terms), exclude
+  // Company classification
+  if (isCompanyName(name)) {
+    return { type: "company", name: cleanText(name) };
+  }
+
+  // If mostly address-like (contains digits and street terms), exclude.
+  // We check this after identifying companies so that entity names with
+  // legal suffixes (e.g. "7167 KINGS ROAD LLC") are not discarded.
   if (
     /\d/.test(name) &&
     /(st|street|ave|avenue|blvd|road|rd|ct|court|ln|lane|dr|drive|fl|zip)/i.test(
@@ -109,11 +116,6 @@ function classifyOwner(raw, invalid) {
   ) {
     invalid.push({ raw: raw, reason: "address-like string, not an owner" });
     return null;
-  }
-
-  // Company classification
-  if (isCompanyName(name)) {
-    return { type: "company", name: cleanText(name) };
   }
 
   // Person classification

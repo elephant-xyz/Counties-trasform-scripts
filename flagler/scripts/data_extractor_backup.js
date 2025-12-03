@@ -902,7 +902,6 @@ function textOf($, el) {
   return $(el).text().trim();
 }
 
-
 function findSectionByTitle($, titles) {
   if (!titles) return null;
   const list = Array.isArray(titles) ? titles : [titles];
@@ -1940,18 +1939,6 @@ function normalizeOwner(owner, ownersByDate) {
 }
 
 
-function extractLastUpdated($) {
-  const lastUpdatedElem = $("#hlkLastUpdated");
-  if (lastUpdatedElem && lastUpdatedElem.length) {
-    const text = lastUpdatedElem.text().trim();
-    const match = text.match(/Last Data Upload:\s*(.+)/i);
-    if (match) {
-      return match[1].trim();
-    }
-  }
-  return null;
-}
-
 function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
@@ -1959,8 +1946,6 @@ function main() {
 
   const html = readText("input.html");
   const $ = cheerio.load(html);
-
-  const lastUpdated = extractLastUpdated($);
 
   const unaddr = readJSON("unnormalized_address.json");
   const seed = readJSON("property_seed.json");
@@ -2518,7 +2503,6 @@ function main() {
       pool_condition: null,
       pool_surface_type: null,
       pool_water_quality: null,
-      built_year: null,
       source_http_request: clone(defaultSourceHttpRequest),
       request_identifier: requestIdentifier,
     };
@@ -2751,14 +2735,12 @@ function main() {
             const label = titleCase(
               subArea.description || subArea.type || "Sub Area",
             );
-            const yearBuilt = parseIntSafe(subArea.actYear) || parseIntSafe(binfo.actYear);
             attachLayoutToBuilding(
               info.index,
               createLayoutRecord(label, {
                 floor_level: "1st Floor",
                 size_square_feet:
                   subArea.square_feet != null ? subArea.square_feet : null,
-                built_year: yearBuilt,
               }),
             );
           });
@@ -2768,13 +2750,11 @@ function main() {
             const label = titleCase(
               subArea.description || subArea.type || "Sub Area",
             );
-            const yearBuilt = parseIntSafe(subArea.actYear) || parseIntSafe(binfo.actYear);
             attachLayoutToBuilding(
               info.index,
               createLayoutRecord(label, {
                 floor_level: "1st Floor",
                 size_square_feet: parseIntSafe(subArea.sqFootage),
-                built_year: yearBuilt,
               }),
             );
           });
@@ -3105,6 +3085,20 @@ function main() {
   }
 
   const ownerMailingInfo = parseOwnerMailingAddresses($);
+  const mailingAddressFiles = [];
+  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+    if (!addr) return;
+    const fileName = `mailing_address_${idx + 1}.json`;
+    const mailingObj = {
+      unnormalized_address: addr,
+      latitude: null,
+      longitude: null,
+      source_http_request: clone(defaultSourceHttpRequest),
+      request_identifier: requestIdentifier,
+    };
+    writeJSON(path.join(dataDir, fileName), mailingObj);
+    mailingAddressFiles.push({ path: `./${fileName}` });
+  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -3129,48 +3123,6 @@ function main() {
         currentOwners = latestOwners;
       }
     }
-  }
-
-  // Create mailing address files only if we have current owners who will use them
-  const mailingAddressFiles = [];
-  const usedMailingIndices = new Set();
-
-  // First pass: determine which mailing addresses will be used
-  if (currentOwners.length > 0) {
-    currentOwners.forEach((owner, idx) => {
-      if (!owner || !owner.type) return;
-      let mailingIdx = null;
-      if (ownerMailingInfo.rawAddresses[idx] != null) {
-        const rawAddr = ownerMailingInfo.rawAddresses[idx];
-        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-        if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-      }
-      if (mailingIdx == null && ownerMailingInfo.uniqueAddresses.length) {
-        mailingIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
-      }
-      if (mailingIdx != null && mailingIdx >= 0) {
-        usedMailingIndices.add(mailingIdx);
-      }
-    });
-
-    // Second pass: create only the mailing address files that will be used
-    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-      if (!addr) return;
-      const fileName = `mailing_address_${idx + 1}.json`;
-      mailingAddressFiles[idx] = { path: `./${fileName}` };
-
-      // Only write the file if this mailing address will be used
-      if (usedMailingIndices.has(idx)) {
-        const mailingObj = {
-          unnormalized_address: addr,
-          latitude: null,
-          longitude: null,
-          source_http_request: clone(defaultSourceHttpRequest),
-          request_identifier: requestIdentifier,
-        };
-        writeJSON(path.join(dataDir, fileName), mailingObj);
-      }
-    });
   }
 
   const currentOwnerEntities = [];
@@ -3328,80 +3280,6 @@ function main() {
     }
     writeJSON(path.join(dataDir, `tax_${rec.year}.json`), tax);
   });
-
-  // Explicitly read all table elements to ensure error detection sees all data as accessed
-  function ensureAllElementsAccessed() {
-    // Read all valuation table cells explicitly
-    $("table[id*='grdValuation']").each((_, table) => {
-      $(table).find("thead th").each((__, th) => {
-        $(th).text(); // Access header text
-      });
-      $(table).find("tbody tr").each((__, tr) => {
-        $(tr).find("th").each((___, th) => {
-          $(th).text(); // Access row header
-        });
-        $(tr).find("td").each((___, td) => {
-          $(td).text(); // Access cell value
-        });
-      });
-    });
-
-    // Read all sales table cells and their internal spans explicitly
-    $("table[id*='grdSales']").each((_, table) => {
-      $(table).find("tbody tr").each((__, tr) => {
-        $(tr).find("th, td").each((___, cell) => {
-          $(cell).text(); // Access cell text
-          // Access all spans within cells
-          $(cell).find("span").each((____, span) => {
-            $(span).text();
-          });
-          // Access all inputs within cells
-          $(cell).find("input").each((____, input) => {
-            $(input).attr("value");
-            $(input).attr("onclick");
-          });
-        });
-      });
-    });
-
-    // Read all module-content tables
-    $("div.module-content > table.tabular-data").each((_, table) => {
-      $(table).find("tbody tr").each((__, tr) => {
-        $(tr).find("th").each((___, th) => {
-          $(th).text();
-        });
-        $(tr).find("td").each((___, td) => {
-          $(td).text();
-          $(td).find("span, div").each((____, el) => {
-            $(el).text();
-          });
-        });
-      });
-    });
-
-    // Read summary table spans
-    $("table.tabular-data-two-column tbody tr").each((_, tr) => {
-      $(tr).find("th, td").each((__, cell) => {
-        $(cell).text();
-        $(cell).find("span, div").each((___, el) => {
-          $(el).text();
-        });
-      });
-    });
-
-    // Read last updated and footer elements
-    const lastUpdatedElem = $("#hlkLastUpdated");
-    if (lastUpdatedElem.length) {
-      lastUpdatedElem.text();
-    }
-
-    $(".footer-credits").each((_, elem) => {
-      $(elem).text();
-    });
-  }
-
-  // Call the function to access all elements
-  ensureAllElementsAccessed();
 
   const sales = parseSales($);
   const salesSorted = sales.sort(
