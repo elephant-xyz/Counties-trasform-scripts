@@ -1622,9 +1622,17 @@ function buildProperty(parcelId, propertyMapping, parcelInfo, remixData, buildin
 }
 
 function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, $, sourceHttpRequest, dataDir) {
-  const situs =
-    parcelInfo.situs ||
-    $('td[data-cell="Situs/Physical Address"]').text().trim();
+  // Try to get address from multiple sources in priority order:
+  // 1. unnormalized.full_address from input file
+  // 2. parcelInfo.situs from remix data
+  // 3. Scraped from HTML
+  let situs = parcelInfo.situs || $('td[data-cell="Situs/Physical Address"]').text().trim();
+
+  // If situs is empty or invalid, try to use full_address from unnormalized input
+  if ((!situs || !situs.trim()) && unnormalized && unnormalized.full_address) {
+    situs = unnormalized.full_address;
+  }
+
   const sectionTownRange = (
     parcelInfo.sectionTownshipRange ||
     $('td[data-cell="Section-Township-Range"]').text().trim() ||
