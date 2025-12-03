@@ -1,51 +1,112 @@
-// Utility data extractor using Cheerio
-// Reads input.html, extracts utility-related details, and writes JSON to data/ and owners/
+// Utility mapping script
+// Reads input.html, parses building hints for HVAC, and writes owners/utilities_data.json
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+function readHtml(filepath) {
+  const html = fs.readFileSync(filepath, "utf8");
+  return cheerio.load(html);
 }
 
-function textNorm(t) {
-  return (t || "").replace(/\s+/g, " ").trim();
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_lblParcelID";
+const BUILDING_SECTION_TITLE = "Building Data";
+
+function textTrim(s) {
+  return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
-  let id = null;
-  $("#ctl00_MasterPlaceHolder_GenCell table tr").each((_, tr) => {
-    const $tds = $(tr).find("td");
-    const label = textNorm($tds.eq(0).text());
-    if (/^Parcel ID:/i.test(label)) id = textNorm($tds.eq(1).text());
-  });
-  return id;
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
 }
 
-function parseStructuralElements($) {
-  const raw = {};
-  const buildingsTable = $("#ctl00_MasterPlaceHolder_tblBldgs");
-  buildingsTable.find("b").each((_, b) => {
-    const label = textNorm($(b).text());
-    const val = textNorm($(b).next("i").text());
-    if (label) raw[label.toUpperCase()] = val || null;
-  });
-  return raw;
+function collectBuildings($) {
+  const buildings = [];
+  const section = $("section")
+    .filter(
+      (_, s) =>
+        textTrim($(s).find(".module-header .title").first().text()) ===
+        BUILDING_SECTION_TITLE,
+    )
+    .first();
+  if (!section.length) return buildings;
+  $(section)
+    .find(
+      '#ctlBodyPane_ctl04_mSection > div > table',
+    )
+    .each((_, table) => {
+      const map = {};
+      $(table)
+        .find("tbody tr")
+        .each((__, tr) => {
+          let label = textTrim($(tr).find("td strong").first().text());
+          if (!label || !label.trim()) {
+            label = textTrim($(tr).find("th strong").first().text());
+          }
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) buildings.push(map);
+    });
+  // let buildingCount = 0;
+  // $(section)
+  //   .find(
+  //     '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+  //   )
+  //   .each((_, div) => {
+  //     const map = {};
+  //     $(div)
+  //       .find("table tbody tr")
+  //       .each((__, tr) => {
+  //         let label = textTrim($(tr).find("td strong").first().text());
+  //         if (!label || !label.trim()) {
+  //           label = textTrim($(tr).find("th strong").first().text());
+  //         }
+  //         const value = textTrim($(tr).find("td span").first().text());
+  //         if (label) map[label] = value;
+  //       });
+  //     if (Object.keys(map).length) {
+  //       const combined_map = {...buildings[buildingCount], ...map};
+  //       buildings[buildingCount++] = combined_map;
+  //     };
+  //   });
+  return buildings;
 }
 
-function main() {
-  const inputPath = path.resolve("input.html");
-  const html = fs.readFileSync(inputPath, "utf8");
-  const $ = cheerio.load(html);
+function inferHVAC(buildings) {
+  let cooling_system_type = null;
+  let heating_system_type = null;
 
-  const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  buildings.forEach((b) => {
+    const ac = (b["Cooling Type"] || "").toUpperCase();
+    const heat = (b["Heating Type"] || "").toUpperCase();
+    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
+    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
+      heating_system_type = "Central";
+  });
 
-  // No defensible evidence for utilities beyond presence of structure. Populate required fields conservatively as null/false per schema.
-  const utilityObj = {
-    cooling_system_type: null,
-    heating_system_type: null,
+  if (cooling_system_type === "CentralAir") {
+    hvac_system_configuration = "SplitSystem";
+    hvac_equipment_component = "CondenserAndAirHandler";
+    hvac_condensing_unit_present = "Yes";
+  }
+
+  return {
+    cooling_system_type,
+    heating_system_type
+  };
+}
+
+function buildUtilityRecord($, buildings) {
+  const hvac = inferHVAC(buildings);
+  const rec = {
+    cooling_system_type: hvac.cooling_system_type,
+    heating_system_type: hvac.heating_system_type,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -63,28 +124,49 @@ function main() {
     hvac_unit_condition: null,
     solar_inverter_visible: false,
     hvac_unit_issues: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    plumbing_system_installation_date: null,
+    sewer_connection_date: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    well_installation_date: null,
   };
 
-  const output = {};
-  output[`property_${parcelId}`] = utilityObj;
+  return rec;
+}
 
-  ensureDir(path.resolve("data"));
-  ensureDir(path.resolve("owners"));
+function main() {
+  const inputPath = path.resolve("input.html");
+  const $ = readHtml(inputPath);
+  const parcelId = getParcelId($);
+  if (!parcelId) throw new Error("Parcel ID not found");
+  const buildings = collectBuildings($);
+  const utilitiesRecord = buildUtilityRecord($, buildings);
 
-  const outDataPath = path.resolve("data/utilities_data.json");
-  const outOwnersPath = path.resolve("owners/utilities_data.json");
-
-  fs.writeFileSync(outDataPath, JSON.stringify(output, null, 2), "utf8");
-  fs.writeFileSync(outOwnersPath, JSON.stringify(output, null, 2), "utf8");
-
-  console.log("Utility mapping complete:", outDataPath, outOwnersPath);
+  const outDir = path.resolve("owners");
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "utilities_data.json");
+  const outObj = {};
+  outObj[`property_${parcelId}`] = utilitiesRecord;
+  fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
+  console.log(`Wrote ${outPath}`);
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (e) {
-    console.error("Error in utilityMapping:", e.message);
-    process.exit(1);
-  }
+  main();
 }

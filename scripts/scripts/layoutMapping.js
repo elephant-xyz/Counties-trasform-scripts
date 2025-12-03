@@ -1,55 +1,107 @@
-// Layout data extractor using Cheerio
-// Reads input.html, identifies rooms/spaces and writes JSON to data/ and owners/
+// Layout mapping script
+// Reads input.html, parses buildings bedroom/bath counts and generates layout entries per room type
 
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+function readHtml(filepath) {
+  const html = fs.readFileSync(filepath, "utf8");
+  return cheerio.load(html);
 }
-function textNorm(t) {
-  return (t || "").replace(/\s+/g, " ").trim();
+
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
+}
+
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_lblParcelID";
+const BUILDING_SECTION_TITLE = "Building Data";
+
+function textTrim(s) {
+  return (s || "").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
-  let id = null;
-  $("#ctl00_MasterPlaceHolder_GenCell table tr").each((_, tr) => {
-    const $tds = $(tr).find("td");
-    const label = textNorm($tds.eq(0).text());
-    if (/^Parcel ID:/i.test(label)) id = textNorm($tds.eq(1).text());
-  });
-  return id;
+  let parcelIdText = $(PARCEL_SELECTOR).text().trim();
+  if (parcelIdText) {
+    return parcelIdText;
+  }
+  return null;
 }
 
-function parseAreas($) {
-  // Extract area items from the Areas block beneath Buildings
-  const areas = {};
-  const buildings = $("#ctl00_MasterPlaceHolder_tblBldgs");
-  buildings.find("span").each((_, s) => {
-    const t = textNorm($(s).text());
-    if (/Areas\s*-\s*\d+\s*Total\s*SF/i.test(t)) {
-      const container = $(s).parent();
-      container.find("b").each((_, b) => {
-        const key = textNorm($(b).text()).toUpperCase();
-        const val = parseInt(
-          textNorm($(b).next("i").text()).replace(/[^0-9]/g, ""),
-          10,
-        );
-        if (!isNaN(val)) areas[key] = val;
-      });
-    }
-  });
-  return areas; // e.g., { 'BASE AREA': 912, 'CARPORT FIN': 228, 'UTILITY UNF': 72 }
+function collectBuildings($) {
+  const buildings = [];
+  const section = $("section")
+    .filter(
+      (_, s) =>
+        textTrim($(s).find(".module-header .title").first().text()) ===
+        BUILDING_SECTION_TITLE,
+    )
+    .first();
+  if (!section.length) return buildings;
+  $(section)
+    .find(
+      '#ctlBodyPane_ctl04_mSection > div > table',
+    )
+    .each((_, table) => {
+      const map = {};
+      $(table)
+        .find("tbody tr")
+        .each((__, tr) => {
+          let label = textTrim($(tr).find("td strong").first().text());
+          if (!label || !label.trim()) {
+            label = textTrim($(tr).find("th strong").first().text());
+          }
+          const value = textTrim($(tr).find("td span").first().text());
+          if (label) map[label] = value;
+        });
+      if (Object.keys(map).length) buildings.push(map);
+    });
+  // let buildingCount = 0;
+  // $(section)
+  //   .find(
+  //     '.two-column-blocks > div[id$="_dynamicBuildingDataRightColumn_divSummary"]',
+  //   )
+  //   .each((_, div) => {
+  //     const map = {};
+  //     $(div)
+  //       .find("table tbody tr")
+  //       .each((__, tr) => {
+  //         let label = textTrim($(tr).find("td strong").first().text());
+  //         if (!label || !label.trim()) {
+  //           label = textTrim($(tr).find("th strong").first().text());
+  //         }
+  //         const value = textTrim($(tr).find("td span").first().text());
+  //         if (label) map[label] = value;
+  //       });
+  //     if (Object.keys(map).length) {
+  //       const combined_map = {...buildings[buildingCount], ...map};
+  //       buildings[buildingCount++] = combined_map;
+  //     };
+  //   });
+  return buildings;
 }
 
-function defaultLayout(space_type, index) {
+function toInt(val) {
+  const n = Number(
+    String(val || "")
+      .replace(/[,]/g, "")
+      .trim(),
+  );
+  return Number.isFinite(n) ? n : 0;
+}
+
+function defaultLayout(space_type, idx) {
   return {
     space_type,
-    space_index: index,
+    space_index: idx,
     flooring_material_type: null,
     size_square_feet: null,
-    floor_level: "1st Floor",
+    floor_level: null,
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -77,68 +129,58 @@ function defaultLayout(space_type, index) {
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
+    bathroom_renovation_date: null,
+    kitchen_renovation_date: null,
+    flooring_installation_date: null,
   };
+}
+
+function buildLayoutsFromBuildings(buildings) {
+  // Sum across all buildings
+  let totalBeds = 0;
+  let totalBaths = 0;
+  buildings.forEach((b) => {
+    totalBeds += toInt(b["Bedrooms"]);
+    totalBaths += toInt(b["Bathrooms"]);
+  });
+  const layouts = [];
+  let idx = 1;
+  for (let i = 0; i < totalBeds; i++) {
+    layouts.push(defaultLayout("Bedroom", idx++));
+  }
+  for (let i = 0; i < totalBaths; i++) {
+    layouts.push(defaultLayout("Full Bathroom", idx++));
+  }
+  return layouts;
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
-  const html = fs.readFileSync(inputPath, "utf8");
-  const $ = cheerio.load(html);
+  const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
+
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier != parcelId) {
+    throw {
+      type: "error",
+      message: `Request identifier and parcel id don't match.`,
+      path: "property.request_identifier",
+    };
+  }
+  
   if (!parcelId) throw new Error("Parcel ID not found");
+  const buildings = collectBuildings($);
+  const layouts = buildLayoutsFromBuildings(buildings);
 
-  const areas = parseAreas($);
-
-  const layouts = [];
-  let idx = 1;
-
-  // Core interior spaces (sizes unknown in source)
-  layouts.push({ ...defaultLayout("Living Room", idx++) });
-  layouts.push({ ...defaultLayout("Kitchen", idx++) });
-  layouts.push({ ...defaultLayout("Bedroom", idx++) });
-  layouts.push({ ...defaultLayout("Full Bathroom", idx++) });
-
-  // Map Carport FIN explicitly as exterior Carport
-  if (Number.isInteger(areas["CARPORT FIN"])) {
-    layouts.push({
-      ...defaultLayout("Carport", idx++),
-      size_square_feet: areas["CARPORT FIN"],
-      is_exterior: true,
-      is_finished: false,
-      has_windows: false,
-    });
-  }
-
-  // Map Utility UNF as Utility Closet (unfinished interior service space)
-  if (Number.isInteger(areas["UTILITY UNF"])) {
-    layouts.push({
-      ...defaultLayout("Utility Closet", idx++),
-      size_square_feet: areas["UTILITY UNF"],
-      is_exterior: false,
-      is_finished: false,
-    });
-  }
-
-  const output = {};
-  output[`property_${parcelId}`] = { layouts };
-
-  ensureDir(path.resolve("data"));
-  ensureDir(path.resolve("owners"));
-
-  const outDataPath = path.resolve("data/layout_data.json");
-  const outOwnersPath = path.resolve("owners/layout_data.json");
-
-  fs.writeFileSync(outDataPath, JSON.stringify(output, null, 2), "utf8");
-  fs.writeFileSync(outOwnersPath, JSON.stringify(output, null, 2), "utf8");
-
-  console.log("Layout mapping complete:", outDataPath, outOwnersPath);
+  const outDir = path.resolve("owners");
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "layout_data.json");
+  const outObj = {};
+  outObj[`property_${parcelId}`] = { layouts };
+  fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
+  console.log(`Wrote ${outPath}`);
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (e) {
-    console.error("Error in layoutMapping:", e.message);
-    process.exit(1);
-  }
+  main();
 }
