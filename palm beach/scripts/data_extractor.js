@@ -14878,11 +14878,22 @@ function writeAddressPayloadDirect(addressPath, payload) {
 
   let payloadToWrite = payload;
   if (!Array.isArray(payload) && typeof payload === "object") {
-    payloadToWrite = deepClone(payload);
-    if (
-      payloadToWrite &&
+    payloadToWrite = deepClone(payload) || {};
+    const rawValue =
       typeof payloadToWrite.unnormalized_address === "string"
-    ) {
+        ? payloadToWrite.unnormalized_address.trim()
+        : "";
+
+    const hasNormalizedCoverage =
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...payloadToWrite });
+
+    if (hasNormalizedCoverage) {
+      if (rawValue.length) {
+        delete payloadToWrite.unnormalized_address;
+      }
+    } else if (rawValue.length) {
+      payloadToWrite.unnormalized_address = rawValue;
       enforceRawVariantAllowedFields(payloadToWrite);
     }
   }
