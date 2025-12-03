@@ -5637,12 +5637,35 @@ delete layoutContent.space_type_indexer;
     fileFiles.push(fileFileName);
   });
 
-  // Now that all owners (including buyers from sales) are collected in seenOwners, create their files
+  // Determine which owner keys will be used in relationships
+  const usedOwnerKeys = new Set();
+
+  // Add buyer keys from sales
+  salesBuyerFiles.forEach((saleInfo) => {
+    saleInfo.buyerKeys.forEach((buyerKey) => {
+      usedOwnerKeys.add(buyerKey);
+    });
+  });
+
+  // Add current owner keys if mailing address exists
+  if (mailingAddressFile) {
+    const currentOwners = ownerKeysByDate.get('current');
+    if (currentOwners) {
+      currentOwners.forEach((ownerKey) => {
+        usedOwnerKeys.add(ownerKey);
+      });
+    }
+  }
+
+  // Now create files only for owners that will be used in relationships
   let personIndex = 1;
   let companyIndex = 1;
   const ownerEntries = [];
   seenOwners.forEach((info, key) => {
-    ownerEntries.push([key, info]);
+    // Only create files for owners that are actually used in relationships
+    if (usedOwnerKeys.has(key)) {
+      ownerEntries.push([key, info]);
+    }
   });
 
   ownerEntries.forEach(([key, info]) => {
