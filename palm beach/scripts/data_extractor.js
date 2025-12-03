@@ -6750,6 +6750,40 @@ function sanitizeAddressPayloadForWrite(payload) {
       }
     }
 
+    if (!preserveStructuredFields) {
+      const minimalRaw =
+        buildMinimalRawAddressForSchema(
+          {
+            ...rawSurface,
+            unnormalized_address: trimmedUnnormalized,
+          },
+          [payload, rawSurface].filter(
+            (source) => source && typeof source === "object",
+          ),
+          {
+            defaultCountyName:
+              normalizedCandidate.county_name ||
+              payload.county_name ||
+              null,
+            defaultStateCode:
+              normalizedCandidate.state_code || payload.state_code || null,
+            defaultCountryCode:
+              normalizedCandidate.country_code ||
+              payload.country_code ||
+              "US",
+            requestIdentifier: payload.request_identifier || null,
+            sourceHttpRequest: payload.source_http_request || null,
+          },
+        ) || null;
+
+      if (minimalRaw) {
+        if (forceRawVariant) {
+          minimalRaw.__force_raw_variant = true;
+        }
+        return minimalRaw;
+      }
+    }
+
     if (preserveStructuredFields) {
       rawSurface.__preserve_structured_fields = true;
       if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
@@ -11894,7 +11928,6 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      ...NORMALIZED_ADDRESS_FIELDS,
       ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
@@ -13183,7 +13216,10 @@ const ADDRESS_SCHEMA_FIELDS = [
   ]),
 ];
 
-const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+const RAW_ADDRESS_OUTPUT_FIELDS = Object.freeze([
+  "unnormalized_address",
+  ...RAW_ADDRESS_ALLOWED_FIELDS,
+]);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [
   "unnormalized_address",
@@ -24738,73 +24774,39 @@ function buildCountyAddressOutput(candidate) {
   }
 
   if (trimmedUnnormalized.length) {
-    const rawOutput = {
+    const rawSeed = {
       ...normalizedSurface,
+      ...candidate,
       unnormalized_address: trimmedUnnormalized,
     };
-    if (requestIdentifier) {
-      rawOutput.request_identifier = requestIdentifier;
-    }
-    if (preparedSource) {
-      rawOutput.source_http_request = deepClone(preparedSource);
-    }
-    const rawWithDefaults =
-      ensureRawAddressSchemaDefaults(rawOutput) || rawOutput;
 
-    if (hasRawAddressRequiredValues(rawWithDefaults)) {
-      return rawWithDefaults;
-    }
-
-    const normalizedSeed = {
-      ...normalizedSurface,
-      latitude: rawWithDefaults.latitude,
-      longitude: rawWithDefaults.longitude,
-    };
-
-    const normalizedFromUnnormalized =
-      buildNormalizedAddressFromUnnormalized(
-        normalizedSeed,
-        trimmedUnnormalized,
+    const minimalRaw =
+      buildMinimalRawAddressForSchema(
+        rawSeed,
+        [candidate, normalizedSurface].filter(
+          (source) => source && typeof source === "object",
+        ),
         {
-          seed: normalizedSeed,
-          latitudeCandidates: Number.isFinite(rawWithDefaults.latitude)
-            ? [rawWithDefaults.latitude]
-            : [],
-          longitudeCandidates: Number.isFinite(rawWithDefaults.longitude)
-            ? [rawWithDefaults.longitude]
-            : [],
+          defaultCountyName:
+            normalizedSurface.county_name || candidate.county_name || null,
+          defaultStateCode:
+            normalizedSurface.state_code || candidate.state_code || null,
+          defaultCountryCode:
+            normalizedSurface.country_code || candidate.country_code || "US",
+          requestIdentifier: requestIdentifier || null,
+          sourceHttpRequest: candidate.source_http_request || null,
         },
-      ) || normalizedSeed;
+      ) || null;
 
-    const normalizedSurfaceFallback =
-      ensureNormalizedAddressSchemaSurface(normalizedFromUnnormalized) || null;
-
-    if (normalizedSurfaceFallback) {
-      const hasNormalizedCoverageFallback =
-        NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-          (field) =>
-            typeof normalizedSurfaceFallback[field] === "string" &&
-            normalizedSurfaceFallback[field].trim().length > 0,
-        );
-
-      if (hasNormalizedCoverageFallback) {
-        if (requestIdentifier) {
-          normalizedSurfaceFallback.request_identifier = requestIdentifier;
-        }
-        if (preparedSource) {
-          normalizedSurfaceFallback.source_http_request =
-            deepClone(preparedSource);
-        }
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedSurfaceFallback,
-            "unnormalized_address",
-          )
-        ) {
-          delete normalizedSurfaceFallback.unnormalized_address;
-        }
-        return normalizedSurfaceFallback;
+    if (minimalRaw) {
+      if (preparedSource) {
+        minimalRaw.source_http_request = deepClone(preparedSource);
       }
+      if (requestIdentifier) {
+        minimalRaw.request_identifier = requestIdentifier;
+      }
+      minimalRaw.__force_raw_variant = true;
+      return minimalRaw;
     }
 
     return null;
