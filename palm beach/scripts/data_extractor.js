@@ -126,17 +126,10 @@ const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([]);
 const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
   RAW_VARIANT_STRUCTURED_FIELDS,
 );
-const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([
-  "latitude",
-  "longitude",
-  "street_number",
-  "street_name",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-]);
+// County schema expects the normalized field surface to exist even when we emit
+// the raw branch (values may still be null), so do not strip any of the street
+// or coordinate fields out of the raw payload.
+const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([]);
 const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
   RAW_VARIANT_FORBIDDEN_FIELDS,
 );
@@ -12136,11 +12129,12 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
-    new Set(
-      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+    new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
-    ),
+    ]),
   ),
 );
 const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
@@ -13892,11 +13886,12 @@ const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
 );
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
   Array.from(
-    new Set(
-      RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
+    new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
-    ),
+    ]),
   ),
 );
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = Object.freeze([
