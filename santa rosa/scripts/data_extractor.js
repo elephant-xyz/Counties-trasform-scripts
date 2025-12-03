@@ -1664,12 +1664,9 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   if (hasValidSitus) {
     // Use unnormalized format when we have a valid address string
-    // IMPORTANT: When using unnormalized_address, only include it with county_name and location fields
+    // IMPORTANT: When using unnormalized_address, ONLY include it with optional fields
     // Do NOT mix with normalized fields like street_name, city_name, etc (violates oneOf)
     address = {
-      source_http_request: sourceHttpRequest,
-      request_identifier: parcelId,
-      county_name: "Santa Rosa",
       unnormalized_address: trimmedSitus
     };
 
@@ -1682,9 +1679,6 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     // All required fields must be present (even if null) for oneOf to validate correctly
     // IMPORTANT: Do NOT include unnormalized_address here - it violates oneOf constraint
     address = {
-      source_http_request: sourceHttpRequest,
-      request_identifier: parcelId,
-      county_name: "Santa Rosa",
       city_name: null,
       country_code: "US",
       plus_four_postal_code: null,
@@ -1700,7 +1694,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       block: null
     };
 
-    // Add optional location fields if available (only if they have valid values)
+    // Add optional location fields if available
     if (section) address.section = section;
     if (township) address.township = township;
     if (range) address.range = range;
