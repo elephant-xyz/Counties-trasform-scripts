@@ -13194,39 +13194,42 @@ function pruneRawAddressFieldSurface(address) {
   }
 
   const leanSurface = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
-  for (const field of RAW_ADDRESS_RAW_SURFACE_FIELDS) {
-    if (field === "unnormalized_address") {
-      continue;
-    }
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
-      leanSurface[field] = null;
-      continue;
+      return;
     }
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(address[field]);
       leanSurface[field] = Number.isFinite(numeric) ? numeric : null;
-      continue;
+      return;
     }
 
     const sanitizedValue = sanitizeAddressFieldValue
       ? sanitizeAddressFieldValue(field, address[field])
       : address[field];
+
     if (!hasMeaningfulAddressValue(sanitizedValue)) {
       leanSurface[field] = null;
-      continue;
+      return;
     }
-    leanSurface[field] = sanitizedValue;
-  }
 
-  ADDRESS_COORDINATE_FIELDS.forEach((field) => {
-    if (!Object.prototype.hasOwnProperty.call(leanSurface, field)) {
-      leanSurface[field] = null;
+    if (typeof sanitizedValue === "string") {
+      const trimmed = sanitizedValue.trim();
+      leanSurface[field] = trimmed.length ? trimmed : null;
+      return;
     }
+
+    leanSurface[field] = sanitizedValue;
   });
+
+  if (!leanSurface.postal_code) {
+    leanSurface.plus_four_postal_code = null;
+  }
 
   Object.keys(address).forEach((key) => {
     delete address[key];
