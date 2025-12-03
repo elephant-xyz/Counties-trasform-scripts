@@ -1679,11 +1679,12 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   if (hasValidSitus) {
     // Use unnormalized format when we have a valid address string
-    // Based on verified examples, when using unnormalized_address, include metadata fields
+    // Based on verified examples, when using unnormalized_address, ONLY include unnormalized_address
+    // and optional metadata fields - do NOT mix with normalized fields
     address = {
-      unnormalized_address: trimmedSitus,
       source_http_request: sourceHttpRequest,
-      request_identifier: parcelId
+      request_identifier: parcelId,
+      unnormalized_address: trimmedSitus
     };
 
     // Add optional location fields if available
@@ -1693,9 +1694,11 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     if (range) address.range = range;
   } else {
     // Use normalized format when we don't have a valid unnormalized address
-    // All required fields must be present (even if null) for oneOf to validate correctly
-    // IMPORTANT: Do NOT include unnormalized_address here - it violates oneOf constraint
+    // All required fields must be present for oneOf to validate correctly
+    // CRITICAL: Do NOT include unnormalized_address here - it violates oneOf constraint
     address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
       city_name: null,
       country_code: "US",
       plus_four_postal_code: null,
@@ -1708,9 +1711,7 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       street_suffix_type: null,
       unit_identifier: null,
       route_number: null,
-      block: null,
-      source_http_request: sourceHttpRequest,
-      request_identifier: parcelId
+      block: null
     };
 
     // Add optional location fields if available
