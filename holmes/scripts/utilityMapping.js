@@ -77,7 +77,7 @@ function mapHeatingSystem(value) {
   if (v.includes("ELECTRIC FURNACE")) return "ElectricFurnace";
   if (v.includes("GAS FURNACE")) return "GasFurnace";
   if (v.includes("HEAT PUMP")) return "HeatPump";
-  if (v.includes("AIR DUCTED") || v.includes("CENTRAL")) return "Central";
+  if (v.includes("AIR DUCTED") || v.includes("CENTRAL") || v.includes("H&AC W/DCT")) return "Central";
   if (v.includes("DUCTLESS")) return "Ductless";
   if (v.includes("RADIANT")) return "Radiant";
   if (v.includes("SOLAR")) return "Solar";
@@ -122,44 +122,6 @@ function mapElectricalWiring(value) {
   return null;
 }
 
-function mapUtilityValues($, buildings) {
-  let cooling_system_type = null;
-  let heating_system_type = null;
-  let hvac_condensing_unit_present = null;
-  let sewer_type = null;
-  let water_source_type = null;
-  let plumbing_system_type = null;
-  let electrical_wiring_type = null;
-
-  buildings.forEach((b) => {
-    cooling_system_type = mapCoolingSystem(b["Air Conditioning"]);
-    heating_system_type = mapHeatingSystem(b["Heat"]);
-    plumbing_system_type = mapPlumbingSystem(b["Plumbing"]);
-    electrical_wiring_type = mapElectricalWiring(b["Electrical"]);
-    
-    if (cooling_system_type === "CentralAir") {
-      hvac_condensing_unit_present = "Yes";
-    }
-  });
-
-  const extraFeatures = collectExtraFeatures($);
-  extraFeatures.forEach((feature) => {
-    const desc = feature.Description || "";
-    if (!sewer_type) sewer_type = mapSewerType(desc);
-    if (!water_source_type) water_source_type = mapWaterSource(desc);
-  });
-
-  return {
-    cooling_system_type,
-    heating_system_type,
-    hvac_condensing_unit_present,
-    sewer_type,
-    water_source_type,
-    plumbing_system_type,
-    electrical_wiring_type
-  };
-}
-
 function collectExtraFeatures($) {
   const features = [];
   $(EXTRA_FEATURES_SELECTOR).find("tbody tr").each((_, tr) => {
@@ -176,9 +138,26 @@ function collectExtraFeatures($) {
   return features;
 }
 
-function buildUtilityRecord($, parcelId, buildings) {
-  const mapped = mapUtilityValues($, buildings);
-  
+function buildPropertyUtilityContext($) {
+  let sewer_type = null;
+  let water_source_type = null;
+  const extraFeatures = collectExtraFeatures($);
+  extraFeatures.forEach((feature) => {
+    const desc = feature.Description || "";
+    if (!sewer_type) sewer_type = mapSewerType(desc);
+    if (!water_source_type) water_source_type = mapWaterSource(desc);
+  });
+  return { sewer_type, water_source_type };
+}
+
+function buildUtilityRecordForBuilding(building, parcelId, index, propertyContext) {
+  const cooling_system_type = mapCoolingSystem(building["Air Conditioning"]);
+  const heating_system_type = mapHeatingSystem(building["Heat"]);
+  const plumbing_system_type = mapPlumbingSystem(building["Plumbing"]);
+  const electrical_wiring_type = mapElectricalWiring(building["Electrical"]);
+  const hvac_condensing_unit_present =
+    cooling_system_type === "CentralAir" ? "Yes" : null;
+
   return {
     source_http_request: {
       method: "GET",
@@ -192,17 +171,17 @@ function buildUtilityRecord($, parcelId, buildings) {
         KeyValue: [parcelId]
       }
     },
-    request_identifier: parcelId,
-    cooling_system_type: mapped.cooling_system_type,
-    heating_system_type: mapped.heating_system_type,
+    request_identifier: `${parcelId}_utility_${index + 1}`,
+    cooling_system_type,
+    heating_system_type,
     public_utility_type: null,
-    sewer_type: mapped.sewer_type,
-    water_source_type: mapped.water_source_type,
-    plumbing_system_type: mapped.plumbing_system_type,
+    sewer_type: propertyContext.sewer_type,
+    water_source_type: propertyContext.water_source_type,
+    plumbing_system_type,
     plumbing_system_type_other_description: null,
     electrical_panel_capacity: null,
-    electrical_wiring_type: mapped.electrical_wiring_type,
-    hvac_condensing_unit_present: mapped.hvac_condensing_unit_present,
+    electrical_wiring_type,
+    hvac_condensing_unit_present,
     electrical_wiring_type_other_description: null,
     solar_panel_present: false,
     solar_panel_type: null,
@@ -211,25 +190,34 @@ function buildUtilityRecord($, parcelId, buildings) {
     smart_home_features_other_description: null,
     hvac_unit_condition: null,
     solar_inverter_visible: false,
-    hvac_unit_issues: null
+    hvac_unit_issues: null,
+    building_number: index + 1
   };
+}
+
+function buildUtilities($, parcelId, buildings) {
+  if (!buildings.length) return [];
+  const propertyContext = buildPropertyUtilityContext($);
+  return buildings.map((building, index) =>
+    buildUtilityRecordForBuilding(building, parcelId, index, propertyContext),
+  );
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  // if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const utilitiesRecord = buildUtilityRecord($, parcelId, buildings);
+  const utilities = buildUtilities($, parcelId, buildings);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = utilitiesRecord;
+  outObj[`property_${parcelId}`] = { utilities };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
-  console.log(`Wrote ${outPath}`);
+  console.log(`Wrote ${utilities.length} utilities to ${outPath}`);
 }
 
 if (require.main === module) {
