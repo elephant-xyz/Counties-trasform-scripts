@@ -13899,9 +13899,11 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// County schema's raw branch only allows the unnormalized line plus the coarse
-// locality/grid components. Avoid carrying the structured street breakdown so
-// the payload cleanly matches the raw oneOf option.
+// County schema validators still expect the normalized street/coordinate field
+// surface to exist (values may be null) even when we fall back to the raw
+// oneOf branch. Keep the coarse locality/grid list handy for quick projections,
+// but ensure the emitted payloads preserve the full allowed surface so no
+// required keys disappear.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze(
   Array.from(new Set([...RAW_ADDRESS_RAW_SURFACE_FIELDS])),
 );
@@ -13909,7 +13911,7 @@ const RAW_VARIANT_MINIMAL_SURFACE_FIELD_SET = new Set(
   RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
 );
 const RAW_VARIANT_OUTPUT_ALLOWLIST = Object.freeze(
-  Array.from(new Set([...RAW_ADDRESS_RAW_SURFACE_FIELDS])),
+  Array.from(new Set([...RAW_ADDRESS_ALLOWED_FIELDS])),
 );
 const RAW_VARIANT_ALLOWED_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
