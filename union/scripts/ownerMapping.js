@@ -117,6 +117,12 @@ function toIsoDate(mdy) {
 function formatToken(token) {
   if (!token) return "";
 
+  // Handle single-letter abbreviations like "V." - remove the period
+  // Pattern: single uppercase letter followed by period
+  if (/^[A-Z]\.$/.test(token)) {
+    return token.replace(/\.$/, "");
+  }
+
   // Handle abbreviations like "L.A." - preserve uppercase letters followed by periods
   // Pattern: single uppercase letter followed by period, repeated
   if (/^([A-Z]\.)+$/.test(token)) {
@@ -502,13 +508,67 @@ function parsePersonNameBasic(name) {
   if (normalized.includes(",")) {
     const [lastSegment, restSegment] = normalized.split(",", 2).map(collapseWs);
     if (!lastSegment || !restSegment) return null;
-    const restTokens = restSegment.split(/\s+/).filter(Boolean);
+    const restTokens = restSegment.split(/\s+/).filter(Boolean).map(token => {
+      let cleaned = token;
+      while (cleaned && /^[\-', .#0-9]/.test(cleaned)) {
+        cleaned = cleaned.slice(1);
+      }
+      while (cleaned && /[\-', .]$/.test(cleaned)) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      return cleaned;
+    }).filter(Boolean);
     if (restTokens.length === 0) return null;
-    firstName = restTokens[0];
-    middleName = restTokens.slice(1).join(" ") || null;
-    lastName = lastSegment;
+
+    // Check if lastSegment has multiple words - if so, only the first word is the last name
+    const lastTokens = lastSegment.split(/\s+/).filter(Boolean).map(token => {
+      let cleaned = token;
+      while (cleaned && /^[\-', .#0-9]/.test(cleaned)) {
+        cleaned = cleaned.slice(1);
+      }
+      while (cleaned && /[\-', .]$/.test(cleaned)) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      return cleaned;
+    }).filter(Boolean);
+    if (lastTokens.length > 1) {
+      // Format like "TUCKER LOIS G., VINCENT" where TUCKER is last name, LOIS G. are first/middle
+      lastName = lastTokens[0];
+      firstName = lastTokens[1];
+      // Combine remaining tokens from lastSegment with restSegment if needed
+      const remainingFromLast = lastTokens.slice(2);
+      if (remainingFromLast.length > 0) {
+        middleName = remainingFromLast.join(" ");
+      } else {
+        middleName = null;
+      }
+      // Note: restSegment (VINCENT) represents another person, not part of this person
+      // So we ignore it here and let the ampersand parser handle it
+      // But if this is being called from a non-ampersand context, we need to use restSegment as firstName
+      // Check if this looks like a multi-person format by seeing if restSegment is a simple first name
+      if (restTokens.length === 1 && remainingFromLast.length === 0) {
+        // Simple format: "Last, First" - use restSegment
+        firstName = restTokens[0];
+        middleName = null;
+      }
+    } else {
+      // Standard "Last, First Middle" format
+      firstName = restTokens[0];
+      middleName = restTokens.slice(1).join(" ") || null;
+      lastName = lastSegment;
+    }
   } else {
-    const tokens = normalized.split(/\s+/).filter(Boolean);
+    const tokens = normalized.split(/\s+/).filter(Boolean).map(token => {
+      // Remove leading and trailing special characters from each token
+      let cleaned = token;
+      while (cleaned && /^[\-', .#0-9]/.test(cleaned)) {
+        cleaned = cleaned.slice(1);
+      }
+      while (cleaned && /[\-', .]$/.test(cleaned)) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      return cleaned;
+    }).filter(Boolean);
     if (tokens.length < 2) return null;
     const allUpper = tokens.every((token) => token === token.toUpperCase());
     if (allUpper) {
@@ -672,18 +732,22 @@ function classifyOwners(entries) {
     const s = collapseWs(raw);
     if (!s) continue;
 
-    const hasEtAl = /\bet\s*al\b/i.test(s);
+    // Check for "et al" variations including "ET. AL." with periods
+    const hasEtAl = /\bet\.?\s*al\.?\b/i.test(s);
+
+    // If contains "et al", mark as invalid and skip parsing
+    if (hasEtAl) {
+      invalidOwners.push({
+        raw: s,
+        reason: "contains_et_al",
+      });
+      continue;
+    }
 
     if (!looksLikeCompany(s) && /(?:\s&\s|\sand\s|\/)/i.test(s)) {
       const people = parseAmpersandNames(s, mailingAddress);
       if (people.length) {
         for (const p of people) validOwners.push(p);
-        if (hasEtAl) {
-          invalidOwners.push({
-            raw: s,
-            reason: "contains_et_al",
-          });
-        }
       } else {
         invalidOwners.push({
           raw: s,
@@ -699,9 +763,6 @@ function classifyOwners(entries) {
         name: collapseWs(s),
         mailing_address: mailingAddress,
       });
-      if (hasEtAl) {
-        invalidOwners.push({ raw: s, reason: "contains_et_al" });
-      }
       continue;
     }
 
@@ -709,9 +770,6 @@ function classifyOwners(entries) {
     if (person) {
       person.mailing_address = mailingAddress;
       validOwners.push(person);
-      if (hasEtAl) {
-        invalidOwners.push({ raw: s, reason: "contains_et_al" });
-      }
     } else {
       invalidOwners.push({ raw: s, reason: "unclassifiable_owner" });
     }
@@ -730,10 +788,10 @@ function classifyOwners(entries) {
         existing.mailing_address = o.mailing_address;
       }
       if (!existing.prefix_name && o.prefix_name) {
-        existing.prefix_name = o.prefix_name;
+        existing.prefix_name = formatPrefixValue(o.prefix_name);
       }
       if (!existing.suffix_name && o.suffix_name) {
-        existing.suffix_name = o.suffix_name;
+        existing.suffix_name = formatSuffixValue(o.suffix_name);
       }
       if (!existing.middle_name && o.middle_name) {
         existing.middle_name = o.middle_name;

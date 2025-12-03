@@ -927,6 +927,33 @@ function extractSalesAndDeeds($) {
   return sales;
 }
 
+function cleanNameField(value) {
+  if (!value) return null;
+
+  let cleaned = String(value).trim();
+  if (!cleaned) return null;
+
+  // Remove leading special characters that don't match pattern ^[A-Z]
+  while (cleaned && /^[\-', .#0-9\s]/.test(cleaned)) {
+    cleaned = cleaned.slice(1).trim();
+  }
+
+  // Remove trailing special characters
+  while (cleaned && /[\-', .\s]$/.test(cleaned)) {
+    cleaned = cleaned.slice(0, -1).trim();
+  }
+
+  // If empty after cleaning, return null
+  if (!cleaned) return null;
+
+  // Ensure first character is uppercase
+  if (cleaned.length > 0 && cleaned[0] !== cleaned[0].toUpperCase()) {
+    cleaned = cleaned[0].toUpperCase() + cleaned.slice(1);
+  }
+
+  return cleaned;
+}
+
 function normalizeSuffixName(suffix) {
   if (!suffix) return null;
 
@@ -1274,13 +1301,44 @@ function writeOwners(
         if (!owner.first_name || !owner.last_name) return null;
         personIdx += 1;
         const filePath = path.join(dataDir, `person_${personIdx}.json`);
+
+        // Clean all name fields to ensure they match the schema pattern ^[A-Z][a-zA-Z\s\-',.]*$
+        const cleanedFirstName = cleanNameField(owner.first_name);
+        const cleanedLastName = cleanNameField(owner.last_name);
+        const cleanedMiddleName = cleanNameField(owner.middle_name);
+
+        // If first or last name becomes null after cleaning, skip this person
+        if (!cleanedFirstName || !cleanedLastName) return null;
+
+        // Validate prefix_name - ensure it's either null or a valid enum value
+        let validatedPrefix = normalizePrefixName(owner.prefix_name);
+        const validPrefixes = new Set([
+          'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Mx.', 'Dr.', 'Prof.', 'Rev.',
+          'Fr.', 'Sr.', 'Br.', 'Capt.', 'Col.', 'Maj.', 'Lt.', 'Sgt.',
+          'Hon.', 'Judge', 'Rabbi', 'Imam', 'Sheikh', 'Sir', 'Dame'
+        ]);
+        if (validatedPrefix !== null && !validPrefixes.has(validatedPrefix)) {
+          validatedPrefix = null;
+        }
+
+        // Validate suffix_name - ensure it's either null or a valid enum value
+        let validatedSuffix = normalizeSuffixName(owner.suffix_name);
+        const validSuffixes = new Set([
+          'Jr.', 'Sr.', 'II', 'III', 'IV', 'PhD', 'MD', 'Esq.',
+          'JD', 'LLM', 'MBA', 'RN', 'DDS', 'DVM', 'CFA', 'CPA',
+          'PE', 'PMP', 'Emeritus', 'Ret.'
+        ]);
+        if (validatedSuffix !== null && !validSuffixes.has(validatedSuffix)) {
+          validatedSuffix = null;
+        }
+
         writeJson(filePath, {
           birth_date: owner.birth_date ?? null,
-          first_name: owner.first_name,
-          last_name: owner.last_name,
-          middle_name: owner.middle_name ?? null,
-          prefix_name: normalizePrefixName(owner.prefix_name),
-          suffix_name: normalizeSuffixName(owner.suffix_name),
+          first_name: cleanedFirstName,
+          last_name: cleanedLastName,
+          middle_name: cleanedMiddleName,
+          prefix_name: validatedPrefix,
+          suffix_name: validatedSuffix,
           us_citizenship_status: owner.us_citizenship_status ?? null,
           veteran_status: owner.veteran_status ?? null,
         });
