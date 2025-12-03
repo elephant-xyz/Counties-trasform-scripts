@@ -1686,6 +1686,12 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
   }
   writeJSON(path.join(dataDir, "address.json"), address);
 
+  // Create relationship between property and address
+  const relPropertyAddress = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  };
+  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), relPropertyAddress);
 
   //Geometry creation
   const geometry = {
