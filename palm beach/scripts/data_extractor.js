@@ -72388,6 +72388,109 @@ function forceCanonicalAddressAndRelationships() {
   ADDRESS_FINALIZATION_COMPLETE = true;
 }
 
+function enforcePalmBeachAddressOneOfFinal(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = titleCaseCounty("Palm Beach"),
+    defaultStateCode = "FL",
+    defaultCountryCode = "US",
+  } = options || {};
+
+  if (!addressPath) {
+    return;
+  }
+
+  const addressPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource =
+    unnormalizedPath && readJSONIfExists(unnormalizedPath);
+  const seedSource = seedPath && readJSONIfExists(seedPath);
+
+  const sourcePool = [addressPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const hasNormalizedSurface =
+    addressPayload &&
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...addressPayload });
+
+  if (hasNormalizedSurface) {
+    let normalizedOutput =
+      typeof buildNormalizedAddressOutputForSchema === "function"
+        ? buildNormalizedAddressOutputForSchema({ ...addressPayload })
+        : deepClone(addressPayload);
+    if (!normalizedOutput || typeof normalizedOutput !== "object") {
+      normalizedOutput = deepClone(addressPayload);
+    }
+    if (!normalizedOutput || typeof normalizedOutput !== "object") {
+      removeFileIfExists(addressPath);
+      return;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    normalizedOutput.__force_normalized_surface = true;
+    writeAddressJSONBypass(addressPath, normalizedOutput);
+    return;
+  }
+
+  const rawValue = resolveRawAddressStringFromSources(sourcePool) || null;
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawPayload =
+    buildStrictMinimalRawAddressPayload(rawValue, {
+      fieldSources: sourcePool,
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) || null;
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  rawPayload.__force_raw_variant = true;
+  writeAddressJSONBypass(addressPath, rawPayload);
+}
+
+function forceAddressRelationshipNullOutputs(directories = []) {
+  if (!Array.isArray(directories) || !directories.length) {
+    return;
+  }
+
+  directories
+    .map((dirPath) => (typeof dirPath === "string" ? dirPath : null))
+    .filter(Boolean)
+    .forEach((directoryPath) => {
+      try {
+        ensureDir(directoryPath);
+      } catch {
+        // Ignore directory creation hiccups; we still attempt remaining targets.
+      }
+      ADDRESS_RELATIONSHIP_BASENAMES.forEach((baseName) => {
+        const targetPath = path.join(directoryPath, `${baseName}.json`);
+        try {
+          originalWriteFileSync.call(fs, targetPath, "null\n");
+        } catch (error) {
+          console.error(
+            `Failed to persist null relationship placeholder for ${baseName}:`,
+            error,
+          );
+        }
+      });
+    });
+}
+
 function resolveFirstNonEmptyStringCandidate(candidates = []) {
   if (!Array.isArray(candidates)) {
     return null;
@@ -78074,6 +78177,30 @@ process.on("exit", () => {
   } catch (error) {
     console.error(
       "Failed to enforce final Palm Beach county address payload:",
+      error,
+    );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    enforcePalmBeachAddressOneOfFinal({
+      addressPath: path.join(dataDir, "address.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+    forceAddressRelationshipNullOutputs([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error(
+      "Failed to enforce final Palm Beach address/relationship placeholders:",
       error,
     );
     if (!process.exitCode) {
