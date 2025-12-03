@@ -1288,14 +1288,20 @@ function writeJSON(p, obj) {
 
 function titleCaseName(s) {
   if (!s) return s;
-  // Normalize consecutive special characters to single occurrence
+
+  // First, aggressively normalize consecutive special characters
+  // Replace any sequence of 2+ same special characters with single occurrence
   let normalized = s
-    .replace(/--+/g, "-")  // Replace multiple hyphens with single hyphen
-    .replace(/\s{2,}/g, " ")  // Replace multiple spaces with single space
-    .replace(/\.\.+/g, ".")  // Replace multiple periods with single period
-    .replace(/'{2,}/g, "'")  // Replace multiple apostrophes with single apostrophe
-    .replace(/,{2,}/g, ",")  // Replace multiple commas with single comma
+    .replace(/[-]{2,}/g, "-")  // Replace multiple hyphens with single hyphen
+    .replace(/\s{2,}/g, " ")   // Replace multiple spaces with single space
+    .replace(/[.]{2,}/g, ".")  // Replace multiple periods with single period
+    .replace(/[\']{2,}/g, "'")  // Replace multiple apostrophes with single apostrophe
+    .replace(/[,]{2,}/g, ",")  // Replace multiple commas with single comma
     .trim();
+
+  // Remove any mixed consecutive special characters (e.g., "- -" or " -")
+  // This ensures only single special character separators remain
+  normalized = normalized.replace(/([ \-',.])+([ \-',.]+)/g, "$1");
 
   // Split on delimiters but keep them in the result
   // This handles spaces, hyphens, apostrophes, commas, and periods
