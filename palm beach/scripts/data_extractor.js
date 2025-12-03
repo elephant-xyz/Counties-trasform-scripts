@@ -69473,6 +69473,142 @@ process.on("exit", () => {
   }
 });
 
+function enforceFinalAddressFromSourcePreferences(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    propertyPath = path.join("data", "property.json"),
+    relationshipsDir = path.join("relationships"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = titleCaseCounty("Palm Beach"),
+    defaultStateCode = "FL",
+    defaultCountryCode = "US",
+  } = options || {};
+
+  if (!addressPath) {
+    return;
+  }
+
+  const dataDir = path.dirname(addressPath);
+  const structuredSnapshotPath = path.join(
+    dataDir,
+    "address_structured_snapshot.json",
+  );
+
+  const addressPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource =
+    unnormalizedPath && readJSONIfExists(unnormalizedPath);
+  const seedSource = seedPath && readJSONIfExists(seedPath);
+
+  const sourceCandidates = [addressPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const cleanupRelationships = () => {
+    removeFileIfExists(structuredSnapshotPath);
+    enforceNullPropertyAddressRelationships(propertyPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+  };
+
+  const hasNormalizedCoverage =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    sourceCandidates.some((source) =>
+      hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+    );
+
+  if (hasNormalizedCoverage) {
+    const normalizedSource =
+      sourceCandidates.find((source) =>
+        hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      ) || null;
+    let normalizedOutput =
+      normalizedSource &&
+      typeof buildNormalizedAddressOutputForSchema === "function"
+        ? buildNormalizedAddressOutputForSchema({ ...normalizedSource })
+        : normalizedSource
+          ? deepClone(normalizedSource)
+          : null;
+    if (normalizedOutput && typeof normalizedOutput === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOutput.unnormalized_address;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOutput,
+          RAW_ADDRESS_DERIVED_FLAG,
+        )
+      ) {
+        delete normalizedOutput[RAW_ADDRESS_DERIVED_FLAG];
+      }
+      writeAddressJSONBypass(addressPath, normalizedOutput);
+      cleanupRelationships();
+      return;
+    }
+  }
+
+  const rawValue =
+    resolveRawAddressStringFromSources(sourceCandidates) || null;
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    cleanupRelationships();
+    return;
+  }
+
+  const basePayload =
+    addressPayload && typeof addressPayload === "object"
+      ? { ...addressPayload, unnormalized_address: rawValue }
+      : { unnormalized_address: rawValue };
+
+  const rawPayload =
+    buildMinimalRawAddressForSchema(basePayload, sourceCandidates, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    }) || null;
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    cleanupRelationships();
+    return;
+  }
+
+  const projectedRaw =
+    collapseRawAddressToUnnormalizedOnly({ ...rawPayload }) || rawPayload;
+  enforceRawVariantAllowedFields(projectedRaw);
+  stripDerivedAddressFlag(projectedRaw);
+  projectedRaw.__force_raw_variant = true;
+
+  writeAddressJSONBypass(addressPath, projectedRaw);
+  cleanupRelationships();
+}
+
+process.on("exit", () => {
+  try {
+    enforceFinalAddressFromSourcePreferences({
+      addressPath: path.join("data", "address.json"),
+      propertyPath: path.join("data", "property.json"),
+      relationshipsDir: path.join("relationships"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce final county address variant from sources:",
+      error,
+    );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 function persistRawOnlyAddressSnapshot(addressPath, context = {}) {
   if (!addressPath) {
     return false;
