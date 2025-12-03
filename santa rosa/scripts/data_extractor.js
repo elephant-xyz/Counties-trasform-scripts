@@ -1288,7 +1288,16 @@ function writeJSON(p, obj) {
 
 function titleCaseName(s) {
   if (!s) return s;
-  return s
+  // Normalize consecutive special characters to single occurrence
+  let normalized = s
+    .replace(/--+/g, "-")  // Replace multiple hyphens with single hyphen
+    .replace(/\s{2,}/g, " ")  // Replace multiple spaces with single space
+    .replace(/\.\.+/g, ".")  // Replace multiple periods with single period
+    .replace(/'{2,}/g, "'")  // Replace multiple apostrophes with single apostrophe
+    .replace(/,{2,}/g, ",")  // Replace multiple commas with single comma
+    .trim();
+
+  return normalized
     .toLowerCase()
     .split(/\s+/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

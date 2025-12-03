@@ -140,6 +140,10 @@ function cleanInvalidCharsFromName(raw) {
   let parsedName = normalizeWhitespace(raw)
     .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
     .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .replace(/--+/g, "-")  // Replace multiple hyphens with single hyphen
+    .replace(/'{2,}/g, "'")  // Replace multiple apostrophes with single apostrophe
+    .replace(/\.\.+/g, ".")  // Replace multiple periods with single period
+    .replace(/,{2,}/g, ",")  // Replace multiple commas with single comma
     .trim();
   while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
     parsedName = parsedName.slice(1);
