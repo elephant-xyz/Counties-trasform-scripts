@@ -78218,16 +78218,105 @@ process.on("exit", () => {
 });
 
 process.on("exit", () => {
-  if (!ENFORCE_UNNORMALIZED_ONLY_ADDRESS) {
-    return;
-  }
   try {
     const dataDir = path.join("data");
     const relationshipsDir = path.join("relationships");
     ensureDir(dataDir);
     const addressPath = path.join(dataDir, "address.json");
     const propertyPath = path.join(dataDir, "property.json");
+
+    const originalForceRawFlag = forceRawAddressVariantOutput;
+    let normalizedOverrideAppliedNow = false;
+    try {
+      forceRawAddressVariantOutput = false;
+      normalizedOverrideAppliedNow = applyNormalizedAddressOverride();
+    } catch (overrideError) {
+      console.error(
+        "Failed to refresh normalized address during finalization:",
+        overrideError,
+      );
+    } finally {
+      forceRawAddressVariantOutput = originalForceRawFlag;
+    }
+    if (normalizedOverrideAppliedNow) {
+      ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
+      return;
+    }
+
+    const normalizedOverrideAvailable =
+      FINAL_NORMALIZED_ADDRESS_PAYLOAD &&
+      typeof FINAL_NORMALIZED_ADDRESS_PAYLOAD === "object";
+    if (normalizedOverrideAvailable) {
+      const normalizedCandidate =
+        buildNormalizedAddressOutputForSchema(
+          deepClone(FINAL_NORMALIZED_ADDRESS_PAYLOAD),
+        ) || null;
+      if (normalizedCandidate) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedCandidate,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedCandidate.unnormalized_address;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedCandidate,
+            RAW_ADDRESS_DERIVED_FLAG,
+          )
+        ) {
+          delete normalizedCandidate[RAW_ADDRESS_DERIVED_FLAG];
+        }
+        writeSchemaAlignedAddress(addressPath, normalizedCandidate);
+        removeFileIfExists(path.join(dataDir, "address_structured_snapshot.json"));
+        enforceNullPropertyAddressRelationships(propertyPath);
+        overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+        ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
+        return;
+      }
+    }
+
     const existingPayload = readJSONIfExists(addressPath) || null;
+
+    const hasNormalizedSurface =
+      existingPayload &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
+
+    if (hasNormalizedSurface) {
+      const normalizedCandidate =
+        buildNormalizedAddressOutputForSchema({ ...existingPayload }) || null;
+      if (normalizedCandidate) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedCandidate,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedCandidate.unnormalized_address;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedCandidate,
+            RAW_ADDRESS_DERIVED_FLAG,
+          )
+        ) {
+          delete normalizedCandidate[RAW_ADDRESS_DERIVED_FLAG];
+        }
+        writeSchemaAlignedAddress(addressPath, normalizedCandidate);
+        removeFileIfExists(path.join(dataDir, "address_structured_snapshot.json"));
+        enforceNullPropertyAddressRelationships(propertyPath);
+        overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+        ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
+        return;
+      }
+    }
+
+    if (!ENFORCE_UNNORMALIZED_ONLY_ADDRESS) {
+      return;
+    }
+
     const unnormalizedSource =
       readJSONIfExists("unnormalized_address.json") || null;
     const seedSource = readJSONIfExists("property_seed.json") || null;
