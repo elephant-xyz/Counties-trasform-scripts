@@ -24,8 +24,8 @@ function parseNumber(val) {
 function parseYear(val) {
   const year = parseNumber(val);
   // built_year must be >= 1 according to schema, or null
-  if (year == null || year <= 0 || !Number.isFinite(year)) return null;
-  return Math.floor(year);
+  if (year == null || year < 1) return null;
+  return year;
 }
 
 function loadJsonSafe(filePath) {
