@@ -1699,6 +1699,12 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     if (!cleanedSitus || cleanedSitus.length === 0) {
       hasValidSitus = false;
     }
+
+    // CRITICAL: Additional check - if validation failed, reset trimmedSitus to null
+    // This ensures we never try to use an invalid address string in unnormalized format
+    if (!hasValidSitus) {
+      trimmedSitus = null;
+    }
   }
 
   let address;
