@@ -1641,26 +1641,51 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       range = parts[2];
     }
   }
-  // Address uses unnormalized_address format following verified examples
-  // IMPORTANT: unnormalized_address must be non-empty string OR null (never empty string)
+
+  // Check if we have a valid address
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
   const hasValidSitus = trimmedSitus && trimmedSitus.length > 0 && /[a-zA-Z0-9]/.test(trimmedSitus);
 
-  // Set unnormalized_address to either valid string or null (never empty string)
-  const unnormalizedAddress = hasValidSitus ? trimmedSitus : null;
+  let address;
 
-  // Always use unnormalized_address format (following verified examples)
-  const address = {
-    source_http_request: sourceHttpRequest,
-    request_identifier: parcelId,
-    county_name: "Santa Rosa",
-    unnormalized_address: unnormalizedAddress,
-    section: section,
-    township: township,
-    range: range,
-    country_code: "US",
-  };
+  if (hasValidSitus) {
+    // Use unnormalized format when we have a valid address string
+    address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      county_name: "Santa Rosa",
+      unnormalized_address: trimmedSitus,
+      section: section,
+      township: township,
+      range: range,
+      country_code: "US",
+    };
+  } else {
+    // Use normalized format when we don't have a valid unnormalized address
+    // All fields must be present but can be null
+    address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      county_name: "Santa Rosa",
+      city_name: null,
+      country_code: "US",
+      plus_four_postal_code: null,
+      postal_code: null,
+      state_code: "FL",
+      street_name: null,
+      street_post_directional_text: null,
+      street_pre_directional_text: null,
+      street_number: null,
+      street_suffix_type: null,
+      unit_identifier: null,
+      route_number: null,
+      block: null,
+      section: section,
+      township: township,
+      range: range,
+    };
+  }
 
   writeJSON(path.join(dataDir, "address.json"), address);
 
@@ -2583,7 +2608,8 @@ function main() {
 
   // Create mailing address relationships with current owners (only if mailing address was created)
   if (hasValidMailingAddress) {
-    const owners = readJSON(path.join("owners", "owner_data.json"));
+    const ownersFilePath = path.join("owners", "owner_data.json");
+    const owners = fs.existsSync(ownersFilePath) ? readJSON(ownersFilePath) : null;
     if (owners) {
       const key = `property_${parcelId}`;
       const record = owners[key];
