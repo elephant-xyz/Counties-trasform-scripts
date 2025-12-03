@@ -139,23 +139,41 @@ function formatSuffixValue(value) {
   if (!value) return null;
   const trimmed = value.replace(/\./g, "").trim();
   if (!trimmed) return null;
-  if (/^et\s+al$/i.test(trimmed) || /^etal$/i.test(trimmed)) {
-    return "et al";
-  }
+
+  // Map suffixes to Elephant schema enum values
+  const suffixMap = {
+    'JR': 'Jr.',
+    'SR': 'Sr.',
+    'II': 'II',
+    'III': 'III',
+    'IV': 'IV',
+    'PHD': 'PhD',
+    'MD': 'MD',
+    'ESQ': 'Esq.',
+    'ESQUIRE': 'Esq.',
+    'JD': 'JD',
+    'LLM': 'LLM',
+    'MBA': 'MBA',
+    'RN': 'RN',
+    'DDS': 'DDS',
+    'DVM': 'DVM',
+    'CFA': 'CFA',
+    'CPA': 'CPA',
+    'PE': 'PE',
+    'PMP': 'PMP',
+    'EMERITUS': 'Emeritus',
+    'RET': 'Ret.',
+  };
+
   const upper = trimmed.toUpperCase();
-  if (/^[IVX]+$/.test(upper)) return upper;
-  if (upper === "JR" || upper === "SR") {
-    return upper[0] + upper.slice(1).toLowerCase();
+
+  // Check if it's in the suffix map
+  if (suffixMap[upper]) {
+    return suffixMap[upper];
   }
-  return trimmed
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => {
-      const upperPart = part.toUpperCase();
-      if (/^[IVX]+$/.test(upperPart)) return upperPart;
-      return formatToken(part);
-    })
-    .join(" ");
+
+  // If not in map, return null (unknown suffix)
+  return null;
 }
 
 function stripNameAffixes(name) {
