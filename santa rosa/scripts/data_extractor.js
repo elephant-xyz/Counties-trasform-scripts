@@ -1650,6 +1650,14 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     }
   }
 
+  // Extract county_name from unnormalized input or remix data
+  let county_name = null;
+  if (unnormalized && unnormalized.county_jurisdiction) {
+    county_name = unnormalized.county_jurisdiction.trim() || null;
+  } else if (unnormalized && unnormalized.county_name) {
+    county_name = unnormalized.county_name.trim() || null;
+  }
+
   // Check if we have a valid address
   const trimmedSitus = (situs || "").trim();
   // Check if we have a meaningful address (not just empty, whitespace, or meaningless punctuation)
@@ -1664,13 +1672,16 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
 
   if (hasValidSitus) {
     // Use unnormalized format when we have a valid address string
-    // IMPORTANT: When using unnormalized_address, ONLY include it with optional fields
-    // Do NOT mix with normalized fields like street_name, city_name, etc (violates oneOf)
+    // Based on verified examples, when using unnormalized_address, include metadata fields
     address = {
-      unnormalized_address: trimmedSitus
+      unnormalized_address: trimmedSitus,
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      country_code: "US"
     };
 
     // Add optional location fields if available
+    if (county_name) address.county_name = county_name;
     if (section) address.section = section;
     if (township) address.township = township;
     if (range) address.range = range;
@@ -1691,10 +1702,13 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
       street_suffix_type: null,
       unit_identifier: null,
       route_number: null,
-      block: null
+      block: null,
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId
     };
 
     // Add optional location fields if available
+    if (county_name) address.county_name = county_name;
     if (section) address.section = section;
     if (township) address.township = township;
     if (range) address.range = range;
