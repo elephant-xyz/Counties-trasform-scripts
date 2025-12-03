@@ -1683,22 +1683,50 @@ function buildAddressAndGeometry(parcelId, parcelInfo, remixData, unnormalized, 
     hasValidSitus = hasAlphanumeric && hasMoreThanStateCode && hasActualAddressContent;
   }
 
-  // CRITICAL: Based on verified examples, always use unnormalized_address format
-  // The oneOf constraint allows unnormalized_address (can be null) with location fields
-  // like section, township, range, county_name, and country_code
-  const address = {
-    source_http_request: sourceHttpRequest,
-    request_identifier: parcelId,
-    unnormalized_address: hasValidSitus ? trimmedSitus : null
-  };
+  let address;
 
-  // Add optional location fields when available
-  if (county_name) address.county_name = county_name;
-  if (section) address.section = section;
-  if (township) address.township = township;
-  if (range) address.range = range;
-  // Always include country_code as it's commonly used
-  address.country_code = "US";
+  if (hasValidSitus) {
+    // Use unnormalized format when we have a valid address string
+    // CRITICAL: Based on verified examples and oneOf constraint, when using unnormalized_address:
+    // - ONLY include unnormalized_address (required, minLength: 1)
+    // - Optionally include county_name
+    // - Do NOT include section, township, range (these are only for normalized format)
+    address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      unnormalized_address: trimmedSitus
+    };
+
+    // Only add county_name if available (other location fields belong in normalized format only)
+    if (county_name) address.county_name = county_name;
+  } else {
+    // Use normalized format when we don't have a valid unnormalized address
+    // All required fields must be present for oneOf to validate correctly
+    // CRITICAL: Do NOT include unnormalized_address here - it violates oneOf constraint
+    address = {
+      source_http_request: sourceHttpRequest,
+      request_identifier: parcelId,
+      city_name: null,
+      country_code: "US",
+      plus_four_postal_code: null,
+      postal_code: null,
+      state_code: "FL",
+      street_name: null,
+      street_post_directional_text: null,
+      street_pre_directional_text: null,
+      street_number: null,
+      street_suffix_type: null,
+      unit_identifier: null,
+      route_number: null,
+      block: null
+    };
+
+    // Add optional location fields if available (these are allowed in normalized format)
+    if (county_name) address.county_name = county_name;
+    if (section) address.section = section;
+    if (township) address.township = township;
+    if (range) address.range = range;
+  }
 
   writeJSON(path.join(dataDir, "address.json"), address);
 
