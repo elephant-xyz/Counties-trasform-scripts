@@ -12130,12 +12130,8 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // County schema's raw branch still expects the full normalized field
-      // surface (the validator enforces this through the address oneOf). Emit
-      // every normalized key alongside the raw locality/grid fields so that
-      // `required` checks pass even when we only have an `unnormalized_address`
-      // string available from the source.
-      ...NORMALIZED_ADDRESS_FIELDS,
+      // Raw schema only allows the unnormalized surface plus coarse
+      // locality/grid metadata, so restrict the allowed fields to that set.
       ...RAW_ADDRESS_RAW_SURFACE_FIELDS.filter(
         (field) => field !== "unnormalized_address",
       ),
@@ -41048,17 +41044,39 @@ function emitFinalCountyAddressPayload(addressFilePath, options = {}) {
 
   const {
     unnormalizedCandidates = [],
-    fallbackCountyName = null,
-    fallbackStateCode = null,
-    fallbackCountryCode = "US",
-    fallbackCityName = null,
-    fallbackMunicipalityName = null,
-    fallbackPostalCode = null,
-    fallbackPlusFour = null,
+    fallbackCountyName: fallbackCountyNameOption = null,
+    defaultCountyName = null,
+    fallbackStateCode: fallbackStateCodeOption = null,
+    defaultStateCode = null,
+    fallbackCountryCode: fallbackCountryCodeOption = "US",
+    defaultCountryCode = null,
+    fallbackCityName: fallbackCityNameOption = null,
+    defaultCityName = null,
+    fallbackMunicipalityName: fallbackMunicipalityNameOption = null,
+    defaultMunicipalityName = null,
+    fallbackPostalCode: fallbackPostalCodeOption = null,
+    defaultPostalCode = null,
+    fallbackPlusFour: fallbackPlusFourOption = null,
+    defaultPlusFour = null,
     coordinateCandidates = [],
     requestIdentifierCandidates = [],
     sourceHttpRequestCandidates = [],
   } = options || {};
+
+  const resolvedFallbackCountyName =
+    fallbackCountyNameOption || defaultCountyName || null;
+  const resolvedFallbackStateCode =
+    fallbackStateCodeOption || defaultStateCode || null;
+  const resolvedFallbackCountryCode =
+    fallbackCountryCodeOption || defaultCountryCode || "US";
+  const resolvedFallbackCityName =
+    fallbackCityNameOption || defaultCityName || null;
+  const resolvedFallbackMunicipalityName =
+    fallbackMunicipalityNameOption || defaultMunicipalityName || null;
+  const resolvedFallbackPostalCode =
+    fallbackPostalCodeOption || defaultPostalCode || null;
+  const resolvedFallbackPlusFour =
+    fallbackPlusFourOption || defaultPlusFour || null;
 
   const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
   for (const field of NORMALIZED_ADDRESS_FIELDS) {
@@ -41077,13 +41095,13 @@ function emitFinalCountyAddressPayload(addressFilePath, options = {}) {
   };
 
   const fallbackAssignments = [
-    ["county_name", fallbackCountyName],
-    ["state_code", fallbackStateCode],
-    ["country_code", fallbackCountryCode],
-    ["city_name", fallbackCityName],
-    ["municipality_name", fallbackMunicipalityName],
-    ["postal_code", fallbackPostalCode],
-    ["plus_four_postal_code", fallbackPlusFour],
+    ["county_name", resolvedFallbackCountyName],
+    ["state_code", resolvedFallbackStateCode],
+    ["country_code", resolvedFallbackCountryCode],
+    ["city_name", resolvedFallbackCityName],
+    ["municipality_name", resolvedFallbackMunicipalityName],
+    ["postal_code", resolvedFallbackPostalCode],
+    ["plus_four_postal_code", resolvedFallbackPlusFour],
   ];
   for (const [field, candidate] of fallbackAssignments) {
     if (Array.isArray(candidate)) {
@@ -41102,7 +41120,7 @@ function emitFinalCountyAddressPayload(addressFilePath, options = {}) {
     hasMeaningfulAddressValue(normalizedSurface.state_code) &&
     !hasMeaningfulAddressValue(normalizedSurface.country_code)
   ) {
-    normalizedSurface.country_code = fallbackCountryCode || "US";
+    normalizedSurface.country_code = resolvedFallbackCountryCode || "US";
   }
 
   if (!hasMeaningfulAddressValue(normalizedSurface.postal_code)) {
@@ -41223,7 +41241,7 @@ function emitFinalCountyAddressPayload(addressFilePath, options = {}) {
       normalizedOutput.state_code &&
       !normalizedOutput.country_code
     ) {
-      normalizedOutput.country_code = fallbackCountryCode || "US";
+      normalizedOutput.country_code = resolvedFallbackCountryCode || "US";
     }
 
     if (resolvedRequestIdentifier) {
@@ -41270,7 +41288,7 @@ function emitFinalCountyAddressPayload(addressFilePath, options = {}) {
     rawOutput.plus_four_postal_code = null;
   }
   if (rawOutput.state_code && !rawOutput.country_code) {
-    rawOutput.country_code = fallbackCountryCode || "US";
+    rawOutput.country_code = resolvedFallbackCountryCode || "US";
   }
   if (
     (rawOutput.latitude == null) !== (rawOutput.longitude == null)
