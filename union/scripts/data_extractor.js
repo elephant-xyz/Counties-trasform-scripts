@@ -934,6 +934,11 @@ function normalizeSuffixName(suffix) {
   const cleaned = String(suffix).replace(/\./g, "").replace(/,/g, "").trim();
   if (!cleaned) return null;
 
+  // Check for "et al" variations - these are not valid suffixes
+  if (/^et\s*al$/i.test(cleaned)) {
+    return null;
+  }
+
   // Map to Elephant schema enum values
   const suffixMap = {
     'JR': 'Jr.',

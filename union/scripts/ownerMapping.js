@@ -161,6 +161,11 @@ function formatSuffixValue(value) {
   const trimmed = value.replace(/\./g, "").replace(/,/g, "").trim();
   if (!trimmed) return null;
 
+  // Check for "et al" variations - these are not valid suffixes
+  if (/^et\s*al$/i.test(trimmed)) {
+    return null;
+  }
+
   // Map suffixes to Elephant schema enum values
   // Only include suffixes that are allowed by the Elephant schema
   const suffixMap = {
