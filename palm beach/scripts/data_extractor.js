@@ -13767,13 +13767,19 @@ function enforceUnnormalizedOnlyAddressSurface(addressPath, options = {}) {
     leanPayload.source_http_request = null;
   }
 
-  Object.keys(leanPayload).forEach((key) => {
+  const schemaAlignedPayload =
+    ensureRawAddressRequiredCoverage(leanPayload, trimmedRaw) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...leanPayload,
+    };
+
+  Object.keys(schemaAlignedPayload).forEach((key) => {
     if (!RAW_UNNORMALIZED_SURFACE_FIELD_SET.has(key)) {
-      delete leanPayload[key];
+      delete schemaAlignedPayload[key];
     }
   });
 
-  writeJSON(addressPath, leanPayload);
+  writeJSON(addressPath, schemaAlignedPayload);
 }
 
 function enforceUnnormalizedAddressFieldAllowlist(address) {
