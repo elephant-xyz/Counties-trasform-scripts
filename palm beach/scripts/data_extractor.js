@@ -13838,7 +13838,10 @@ function enforceUnnormalizedAddressFieldAllowlist(address) {
     ) {
       return;
     }
-    if (!hasMeaningfulAddressValue(address[key])) {
+    if (
+      !hasMeaningfulAddressValue(address[key]) &&
+      !COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS.includes(key)
+    ) {
       delete address[key];
     }
   });
@@ -14791,7 +14794,12 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
+  ...Array.from(
+    new Set([
+      ...RAW_ADDRESS_ALLOWED_FIELDS,
+      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
+    ]),
+  ),
 ]);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [
@@ -14833,6 +14841,7 @@ const RAW_UNNORMALIZED_SURFACE_ALLOWLIST = Object.freeze(
     new Set([
       "unnormalized_address",
       ...RAW_SCHEMA_CORE_FIELDS,
+      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
       "request_identifier",
       "source_http_request",
     ]),
