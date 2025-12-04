@@ -73681,6 +73681,59 @@ function buildLeanCountyRawAddressPayload() {
   };
 }
 
+function forceAddressOneOfAndNullRelationships() {
+  const dataDir = path.join("data");
+  const relationshipsDir = path.join("relationships");
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+
+  const addressPath = path.join(dataDir, "address.json");
+  const propertyPath = path.join(dataDir, "property.json");
+  const existingPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+  const seedSource = readJSONIfExists("property_seed.json") || {};
+
+  const hasNormalizedSurface =
+    existingPayload &&
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...existingPayload });
+
+  if (hasNormalizedSurface) {
+    const normalizedSurface = ensureNormalizedAddressSchemaSurface
+      ? ensureNormalizedAddressSchemaSurface({ ...existingPayload })
+      : { ...existingPayload };
+    if (normalizedSurface && typeof normalizedSurface === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedSurface,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedSurface.unnormalized_address;
+      }
+      writeAddressPayloadDirect(addressPath, normalizedSurface);
+    }
+  } else {
+    const fallbackPayload = buildMinimalRawAddressFallbackPayload(
+      existingPayload || {},
+      unnormalizedSource,
+      seedSource,
+    );
+
+    if (!fallbackPayload) {
+      removeFileIfExists(addressPath);
+    } else {
+      const sanitizedRaw =
+        enforceMinimalRawAddressSurface({ ...fallbackPayload }) ||
+        fallbackPayload;
+      writeAddressPayloadDirect(addressPath, sanitizedRaw);
+    }
+  }
+
+  overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+  enforceNullPropertyAddressRelationships(propertyPath);
+}
+
 function persistLeanCountyRawAddress() {
   const dataDir = path.join("data");
   const relationshipsDir = path.join("relationships");
@@ -81546,6 +81599,20 @@ process.on("exit", () => {
     });
   } catch (error) {
     console.error("Failed to enforce terminal raw address baseline fields:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    forceAddressOneOfAndNullRelationships();
+  } catch (error) {
+    console.error(
+      "Failed to enforce final county address oneOf and relationship nulls:",
+      error,
+    );
     if (!process.exitCode) {
       process.exitCode = 1;
     }
