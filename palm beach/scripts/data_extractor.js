@@ -5571,61 +5571,59 @@ function composeLeanCountyRawOutput(payload, options = {}) {
     defaultCountryCode = "US",
   } = options || {};
 
-  const leanPayload = {
+  const seededSurface = {
+    ...payload,
     unnormalized_address: rawValue,
   };
 
-  for (const field of RAW_PREFERRED_FIELD_WHITELIST) {
-    if (field === "unnormalized_address") {
-      continue;
-    }
-
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
-      continue;
-    }
-
-    const sanitized = sanitizeAddressFieldValue(field, payload[field]);
-    if (sanitized === undefined || sanitized === null) {
-      continue;
-    }
-
-    if (typeof sanitized === "string") {
-      const trimmed = sanitized.trim();
-      if (!trimmed.length) {
-        continue;
-      }
-      leanPayload[field] = trimmed;
-      continue;
-    }
-
-    leanPayload[field] = sanitized;
+  if (
+    !hasMeaningfulAddressValue(seededSurface.county_name) &&
+    defaultCountyName
+  ) {
+    seededSurface.county_name = titleCaseCounty(defaultCountyName);
+  }
+  if (
+    !hasMeaningfulAddressValue(seededSurface.state_code) &&
+    defaultStateCode
+  ) {
+    seededSurface.state_code = defaultStateCode;
+  }
+  if (
+    !hasMeaningfulAddressValue(seededSurface.country_code) &&
+    defaultCountryCode
+  ) {
+    seededSurface.country_code = defaultCountryCode;
   }
 
-  if (!hasMeaningfulAddressValue(leanPayload.county_name) && defaultCountyName) {
-    leanPayload.county_name = titleCaseCounty(defaultCountyName);
-  }
-  if (!hasMeaningfulAddressValue(leanPayload.state_code) && defaultStateCode) {
-    leanPayload.state_code = defaultStateCode;
-  }
-  if (!hasMeaningfulAddressValue(leanPayload.country_code) && defaultCountryCode) {
-    leanPayload.country_code = defaultCountryCode;
-  }
-  if (!hasMeaningfulAddressValue(leanPayload.postal_code)) {
-    delete leanPayload.plus_four_postal_code;
+  const schemaAligned =
+    ensureRawAddressRequiredCoverage(seededSurface, rawValue) || null;
+  if (!schemaAligned) {
+    return null;
   }
 
-  if (Object.prototype.hasOwnProperty.call(leanPayload, "request_identifier")) {
-    const normalizedIdentifier = safeNullIfEmpty(leanPayload.request_identifier);
-    if (normalizedIdentifier === undefined) {
-      delete leanPayload.request_identifier;
-    } else if (normalizedIdentifier === null) {
-      leanPayload.request_identifier = null;
-    } else {
-      leanPayload.request_identifier = normalizedIdentifier;
-    }
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const normalizedIdentifier = safeNullIfEmpty(payload.request_identifier);
+    schemaAligned.request_identifier =
+      normalizedIdentifier === undefined
+        ? null
+        : normalizedIdentifier === null
+          ? null
+          : normalizedIdentifier;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(schemaAligned, "request_identifier")
+  ) {
+    schemaAligned.request_identifier = null;
   }
 
-  return leanPayload;
+  let preparedSource = null;
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+  }
+  schemaAligned.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  return schemaAligned;
 }
 
 function buildStrictRawOneOfPayload(rawValue, options = {}) {
@@ -12727,16 +12725,6 @@ function stripNormalizedFieldsFromRawPayload(address) {
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
-const RAW_TERMINAL_FIELD_LIST = Object.freeze(
-  Array.from(
-    new Set([
-      ...RAW_PREFERRED_FIELD_WHITELIST,
-      ...RAW_ADDRESS_COORDINATE_FIELDS,
-      "source_http_request",
-    ]),
-  ),
-);
-const RAW_TERMINAL_FIELD_SET = new Set(RAW_TERMINAL_FIELD_LIST);
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
@@ -12751,6 +12739,15 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
     ]),
   ),
 );
+const RAW_TERMINAL_FIELD_LIST = Object.freeze(
+  Array.from(
+    new Set([
+      ...RAW_ADDRESS_ALLOWED_FIELDS,
+      "source_http_request",
+    ]),
+  ),
+);
+const RAW_TERMINAL_FIELD_SET = new Set(RAW_TERMINAL_FIELD_LIST);
 const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
   Array.from(
     new Set([...MINIMAL_RAW_ADDRESS_FIELDS, ...RAW_FALLBACK_COPY_FIELDS]),
@@ -14051,9 +14048,7 @@ function buildTerminalRawSubmissionSnapshot(address) {
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(address[field]);
-      if (Number.isFinite(numeric)) {
-        snapshot[field] = numeric;
-      }
+      snapshot[field] = Number.isFinite(numeric) ? numeric : null;
       return;
     }
 
@@ -14061,15 +14056,13 @@ function buildTerminalRawSubmissionSnapshot(address) {
       ? sanitizeAddressFieldValue(field, address[field])
       : address[field];
     if (sanitized === undefined) {
+      snapshot[field] = null;
       return;
     }
 
     if (typeof sanitized === "string") {
       const trimmed = sanitized.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      snapshot[field] = trimmed;
+      snapshot[field] = trimmed.length ? trimmed : null;
       return;
     }
 
@@ -14082,6 +14075,15 @@ function buildTerminalRawSubmissionSnapshot(address) {
   if (!Object.prototype.hasOwnProperty.call(snapshot, "source_http_request")) {
     snapshot.source_http_request = null;
   }
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(snapshot, field)) {
+      snapshot[field] = null;
+    }
+  });
 
   return snapshot;
 }
@@ -80628,6 +80630,84 @@ process.on("exit", () => {
     writeAddressJSONBypass(addressPath, snapshot);
   } catch (error) {
     console.error("Failed to enforce terminal raw-only address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    if (!fs.existsSync(addressPath)) {
+      return;
+    }
+
+    const payload = readJSONIfExists(addressPath);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return;
+    }
+
+    const hasNormalizedSurface =
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+    if (hasNormalizedSurface) {
+      return;
+    }
+
+    const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+    if (!rawValue) {
+      return;
+    }
+
+    const schemaAligned =
+      ensureRawAddressRequiredCoverage({ ...payload }, rawValue) || null;
+    if (!schemaAligned) {
+      return;
+    }
+
+    if (process.env.DEBUG_ADDRESS_FIELDS === "1") {
+      console.log(
+        "[final-raw-schema] fields:",
+        Object.keys(schemaAligned).sort(),
+      );
+    }
+
+    if (Object.prototype.hasOwnProperty.call(schemaAligned, "__force_raw_variant")) {
+      delete schemaAligned.__force_raw_variant;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(schemaAligned, "request_identifier")) {
+      schemaAligned.request_identifier = null;
+    } else {
+      const normalizedIdentifier = safeNullIfEmpty(schemaAligned.request_identifier);
+      schemaAligned.request_identifier =
+        normalizedIdentifier === undefined
+          ? null
+          : normalizedIdentifier === null
+            ? null
+            : normalizedIdentifier;
+    }
+
+    const preparedSource = prepareSourceHttpRequest(
+      schemaAligned.source_http_request ||
+        payload.source_http_request ||
+        null,
+    );
+    schemaAligned.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
+
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(schemaAligned, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error(
+      "Failed to enforce final raw address schema coverage:",
+      error,
+    );
     if (!process.exitCode) {
       process.exitCode = 1;
     }
