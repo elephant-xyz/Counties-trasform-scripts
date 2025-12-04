@@ -12731,9 +12731,10 @@ const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Palm Beach rarely exposes a complete normalized surface. Keep the raw
-      // payload tightly scoped to the locality + grid details that actually
-      // exist in the source instead of mirroring the normalized schema.
+      // County schema requires the normalized surface keys to be present even
+      // for the raw branch, so mirror those fields (values can stay null) and
+      // keep the locality/grid data we already populate from the source.
+      ...NORMALIZED_ADDRESS_FIELDS,
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
       ...RAW_ADDRESS_COORDINATE_FIELDS,
@@ -14307,8 +14308,22 @@ const RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS = new Set([
   "source_http_request",
 ]);
 
+const RAW_ADDRESS_TEMPLATE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      // County schema requires the normalized surface to exist even when we
+      // only emit the raw branch, so mirror those fields here so they persist
+      // (with nulls) on every raw payload.
+      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_OUTPUT_FIELDS,
+      "request_identifier",
+      "source_http_request",
+    ]),
+  ),
+);
+
 const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
-  RAW_ADDRESS_OUTPUT_FIELDS.reduce((acc, field) => {
+  RAW_ADDRESS_TEMPLATE_FIELDS.reduce((acc, field) => {
     acc[field] = null;
     return acc;
   }, {}),
