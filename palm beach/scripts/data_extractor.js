@@ -13915,10 +13915,11 @@ function pruneRawAddressFieldSurface(address) {
   }
 
   const leanSurface = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
-  RAW_UNNORMALIZED_ONLY_FIELDS.forEach((field) => {
+  RAW_ADDRESS_OUTPUT_FIELDS.forEach((field) => {
     if (field === "unnormalized_address") {
       return;
     }
@@ -13926,32 +13927,46 @@ function pruneRawAddressFieldSurface(address) {
       return;
     }
 
+    const originalValue = address[field];
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(address[field]);
-      if (Number.isFinite(numeric)) {
-        leanSurface[field] = numeric;
-      }
+      const numeric = parseCoordinate(originalValue);
+      leanSurface[field] = Number.isFinite(numeric) ? numeric : null;
       return;
     }
 
     const sanitizedValue = sanitizeAddressFieldValue
-      ? sanitizeAddressFieldValue(field, address[field])
-      : address[field];
+      ? sanitizeAddressFieldValue(field, originalValue)
+      : originalValue;
     if (!hasMeaningfulAddressValue(sanitizedValue)) {
+      leanSurface[field] = null;
       return;
     }
 
     if (typeof sanitizedValue === "string") {
       const trimmed = sanitizedValue.trim();
-      if (!trimmed.length) {
-        return;
-      }
-      leanSurface[field] = trimmed;
+      leanSurface[field] = trimmed.length ? trimmed : null;
       return;
     }
 
     leanSurface[field] = sanitizedValue;
   });
+
+  if (!leanSurface.postal_code) {
+    leanSurface.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(leanSurface.state_code) &&
+    !hasMeaningfulAddressValue(leanSurface.country_code)
+  ) {
+    leanSurface.country_code = "US";
+  }
+
+  const hasLatitude = Number.isFinite(leanSurface.latitude);
+  const hasLongitude = Number.isFinite(leanSurface.longitude);
+  if (hasLatitude !== hasLongitude) {
+    leanSurface.latitude = null;
+    leanSurface.longitude = null;
+  }
 
   if (
     !Object.prototype.hasOwnProperty.call(preservedMeta, "request_identifier")
