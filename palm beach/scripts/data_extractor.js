@@ -12391,10 +12391,10 @@ const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Raw schema only allows the coarse locality/grid surface plus coordinates.
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_GRID_FIELDS,
-      ...RAW_ADDRESS_COORDINATE_FIELDS,
+      // County address schema expects the full normalized field surface to remain
+      // present (nullable) even when we emit the raw oneOf branch. Mirror the
+      // normalized list so required keys are always serialized.
+      ...NORMALIZED_ADDRESS_FIELDS,
     ]),
   ),
 );
@@ -12418,8 +12418,8 @@ const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = Object.freeze([
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
-// Keep the raw payload limited to the coarse locality/grid fields so we do not
-// accidentally leak partial street components and trigger the normalized branch.
+// Preserve the full normalized surface on the raw payload so validators always
+// see the required keys, even if the values remain null.
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
   Array.from(
     new Set([
@@ -12432,8 +12432,9 @@ const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(
   RAW_ADDRESS_RAW_SURFACE_FIELDS,
 );
 
-// Emit only the coarse locality metadata when falling back to the raw branch so
-// the payload clearly targets the unnormalized schema variant.
+// Emit the normalized surface (nullable) plus metadata alongside the raw value
+// so the payload clearly targets the unnormalized schema branch without losing
+// required keys.
 const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
   "unnormalized_address",
   "request_identifier",
