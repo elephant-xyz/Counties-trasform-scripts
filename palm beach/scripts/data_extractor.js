@@ -12391,10 +12391,14 @@ const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // County address schema expects the full normalized field surface to remain
-      // present (nullable) even when we emit the raw oneOf branch. Mirror the
-      // normalized list so required keys are always serialized.
-      ...NORMALIZED_ADDRESS_FIELDS,
+      // Raw oneOf branch only permits the coarse locality surface plus optional
+      // grid + coordinate fields. Keep the structured street decomposition for
+      // the normalized branch so we do not violate the schema when we only have
+      // an unnormalized string from the source.
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_GRID_FIELDS,
+      "latitude",
+      "longitude",
     ]),
   ),
 );
@@ -14247,11 +14251,9 @@ const RAW_VARIANT_METADATA_FIELDS = [
   "request_identifier",
   "source_http_request",
 ];
-// County schema validators still expect the normalized street/coordinate field
-// surface to exist (values may be null) even when we fall back to the raw
-// oneOf branch. Keep the coarse locality/grid list handy for quick projections,
-// but ensure the emitted payloads preserve the full allowed surface so no
-// required keys disappear.
+// County raw branch is intentionally minimal: keep the coarse locality/grid
+// surface (plus optional coordinates) aligned with the allowlist so every raw
+// projection emits only the fields the schema actually permits.
 const RAW_VARIANT_MINIMAL_SURFACE_FIELDS = Object.freeze(
   Array.from(
     new Set([
