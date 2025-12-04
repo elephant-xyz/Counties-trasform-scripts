@@ -1473,40 +1473,86 @@ function extractProperty(parsed, seed) {
     build_status: propertyMapping.build_status,
     structure_form: propertyMapping.structure_form,
     property_usage_type: propertyMapping.property_usage_type,
-    number_of_units: parsed?.propertyDetail?.Units ?? null,
+    number_of_units: parseIntOrNull(parsed?.propertyDetail?.Units),
     subdivision: parsed?.propertyDetail?.Subdivision ?? null,
     zoning: parsed?.propertyDetail?.Zoning ?? null,
   };
   return property;
 }
 
-function extractTaxCurrent(parsed) {
-  if (!parsed.valueInformation) {
+function parseIntOrNull(val) {
+  if (!val) {
     return null;
   }
-  const tax_year = parsed.valueInformation.applicableYear ?? null;
+  const normalized = val.replace(/,/gi, '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsedVal = parseInt(normalized, 10);
+  return Number.isNaN(parsedVal) ? null : parsedVal;
+}
 
-  const property_market_value_amount = parsed.valueInformation.totalJustValue ?? null;
-  const property_assessed_value_amount = parsed.valueInformation.assessedValueNonSchool ?? null;
-  const property_building_amount = parsed.valueInformation.buildingValue ?? null;
-  const property_land_amount = parsed.valueInformation.landValue ?? null;
-  const county_taxable_value_amount = parsed.valueInformation.taxableValueCounty ?? null;
-  const school_taxable_value_amount = parsed.valueInformation.taxableValueSchool ?? null;
-  const property_exemption_amount = parsed.valueInformation.exemptionValueCounty ?? null;
-
-  return {
-    tax_year,
-    property_market_value_amount,
-    property_assessed_value_amount,
-    property_building_amount,
-    property_land_amount,
-    county_taxable_value_amount,
-    school_taxable_value_amount,
-    property_exemption_amount,
-    monthly_tax_amount: null,
-    period_end_date: null,
-    period_start_date: null,
-  };
+function extractTaxPriorYears(parsed) {
+  const result = [];
+  const assessmentInfo = parsed?.assessmentInfo || [];
+  const appraisalInfo = parsed?.appraisalInfo || [];
+  const taxInfo = parsed?.taxInfo || [];
+  let flattenedTaxObj = {}
+  assessmentInfo.forEach((assessment, idx) => {
+    let taxYear = assessment?.TaxYear;
+    if (taxYear) {
+      if (!(taxYear in flattenedTaxObj)) {
+        flattenedTaxObj[taxYear] = {};
+      }
+      for (const [key, value] of Object.entries(assessment)) {
+        if (key !== "TaxYear") {
+          flattenedTaxObj[taxYear][key] = value;
+        }
+      }
+    }
+  });
+  appraisalInfo.forEach((appraisal, idx) => {
+    let taxYear = appraisal?.TaxYear;
+    if (taxYear) {
+      if (!(taxYear in flattenedTaxObj)) {
+        flattenedTaxObj[taxYear] = {};
+      }
+      for (const [key, value] of Object.entries(appraisal)) {
+        if (key !== "TaxYear") {
+          flattenedTaxObj[taxYear][key] = value;
+        }
+      }
+    }
+  });
+  taxInfo.forEach((tax, idx) => {
+    let taxYear = tax?.TaxYear;
+    if (taxYear) {
+      if (!(taxYear in flattenedTaxObj)) {
+        flattenedTaxObj[taxYear] = {};
+      }
+      for (const [key, value] of Object.entries(tax)) {
+        if (key !== "TaxYear") {
+          flattenedTaxObj[taxYear][key] = value;
+        }
+      }
+    }
+  });
+  for (const [year, taxObj] of Object.entries(flattenedTaxObj)) {
+    const tax = {
+      tax_year: parseIntOrNull(year),
+      property_assessed_value_amount: parseNumber(taxObj.AssessedValue),
+      property_market_value_amount: parseNumber(taxObj.TotalMarketValue),
+      property_building_amount: parseNumber(taxObj.ImprovementValue),
+      property_land_amount: parseNumber(taxObj.LandValue),
+      property_taxable_value_amount: parseNumber(taxObj.TaxableValue),
+      property_exemption_amount: parseNumber(taxObj.ExemptionAmount),
+      monthly_tax_amount: null,
+      period_end_date: null,
+      period_start_date: null,
+    };
+    result.push(tax);
+  }
+  return result;
 }
 
 function mapInstrumentToDeedType(instr) {
@@ -1625,7 +1671,7 @@ function normalizeNameForMatch(str) {
 }
 
 function parseNumber(val) {
-  if (val == null) return null;
+  if (val == null || val === undefined) return null;
   const n = Number(String(val).replace(/[,]/g, "").trim());
   return Number.isFinite(n) ? n : null;
 }
@@ -1641,7 +1687,10 @@ function extractLot(parsed) {
   } else {
     lot_type = "LessThanOrEqualToOneQuarterAcre";
   }
-  let sqFeet = parseNumber(parsed?.propertyDetail?.SqFt || null);
+  let sqFeet = parseIntOrNull(parsed?.propertyDetail?.SqFt);
+  if (sqFeet < 1) {
+    sqFeet = null;
+  }
   return {
     lot_type: lot_type ?? null,
     lot_length_feet: null,
@@ -1659,19 +1708,23 @@ function extractLot(parsed) {
 }
 
 function extractAddressText(parsed) {
-  return parsed?.propertyDetail?.Location || null;
+  const siteAddress = parsed?.propertyDetail?.Location;
+  if (siteAddress && siteAddress.trim()) {
+    return siteAddress;
+  }
+  return null;
 }
 
 function extractOwnerMailingAddress(parsed) {
   let addressLines = [];
   if (parsed?.propertyDetail?.AddressLine1 && parsed?.propertyDetail?.AddressLine1.trim()) {
-    addressLines.push(parsed?.propertyDetail?.AddressLine1);
+    addressLines.push(parsed?.propertyDetail?.AddressLine1.trim());
   }
   if (parsed?.propertyDetail?.AddressLine2 && parsed?.propertyDetail?.AddressLine2.trim()) {
-    addressLines.push(parsed?.propertyDetail?.AddressLine2);
+    addressLines.push(parsed?.propertyDetail?.AddressLine2.trim());
   }
   if (parsed?.propertyDetail?.AddressLine3 && parsed?.propertyDetail?.AddressLine3.trim()) {
-    addressLines.push(parsed?.propertyDetail?.AddressLine3);
+    addressLines.push(parsed?.propertyDetail?.AddressLine3.trim());
   }
   if (addressLines.length > 0) {
     return addressLines.join(", ");
