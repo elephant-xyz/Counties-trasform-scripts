@@ -7808,6 +7808,10 @@ function writeJSON(p, obj) {
     }
   }
 
+  if (isAddressFile && payload && typeof payload === "object") {
+    ensureCountyStructuredFieldPresence(payload);
+  }
+
   fs.writeFileSync(p, JSON.stringify(payload, null, 2));
 }
 
@@ -13386,6 +13390,36 @@ function hydrateNormalizedFieldSurface(address) {
   } else if (address.source_http_request === undefined) {
     address.source_http_request = null;
   }
+
+  return address;
+}
+
+function ensureCountyStructuredFieldPresence(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS.forEach((field) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+      return;
+    }
+
+    const value = address[field];
+    if (value === undefined || value === null) {
+      address[field] = null;
+      return;
+    }
+    if (typeof value === "string" && !value.trim().length) {
+      address[field] = null;
+    }
+  });
 
   return address;
 }
@@ -74040,6 +74074,7 @@ function composeCanonicalCountyAddressPayload(addressPayload, options = {}) {
       ) {
         delete normalizedCandidate.source_http_request;
       }
+      ensureCountyStructuredFieldPresence(normalizedCandidate);
       return normalizedCandidate;
     }
   }
@@ -74077,6 +74112,7 @@ function composeCanonicalCountyAddressPayload(addressPayload, options = {}) {
   const collapsed =
     collapseRawAddressToUnnormalizedOnly({ ...minimalRaw }) || minimalRaw;
   enforceRawVariantAllowedFields(collapsed);
+  ensureCountyStructuredFieldPresence(collapsed);
 
   if (
     requestIdentifier !== undefined &&
