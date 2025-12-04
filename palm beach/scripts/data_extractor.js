@@ -12727,6 +12727,16 @@ function stripNormalizedFieldsFromRawPayload(address) {
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
+const RAW_TERMINAL_FIELD_LIST = Object.freeze(
+  Array.from(
+    new Set([
+      ...RAW_PREFERRED_FIELD_WHITELIST,
+      ...RAW_ADDRESS_COORDINATE_FIELDS,
+      "source_http_request",
+    ]),
+  ),
+);
+const RAW_TERMINAL_FIELD_SET = new Set(RAW_TERMINAL_FIELD_LIST);
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
@@ -14010,17 +14020,35 @@ function buildTerminalRawSubmissionSnapshot(address) {
   }
 
   const snapshot = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
-  RAW_UNNORMALIZED_ONLY_FIELDS.forEach((field) => {
+  RAW_TERMINAL_FIELD_LIST.forEach((field) => {
     if (field === "unnormalized_address") {
       return;
     }
+
+    if (field === "request_identifier") {
+      const identifier = safeNullIfEmpty(address.request_identifier);
+      snapshot.request_identifier =
+        identifier === undefined
+          ? null
+          : identifier === null
+            ? null
+            : identifier;
+      return;
+    }
+
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(address.source_http_request);
+      snapshot.source_http_request = prepared ? deepClone(prepared) : null;
+      return;
+    }
+
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
       return;
     }
+
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(address[field]);
       if (Number.isFinite(numeric)) {
@@ -14028,12 +14056,14 @@ function buildTerminalRawSubmissionSnapshot(address) {
       }
       return;
     }
+
     const sanitized = sanitizeAddressFieldValue
       ? sanitizeAddressFieldValue(field, address[field])
       : address[field];
-    if (!hasMeaningfulAddressValue(sanitized)) {
+    if (sanitized === undefined) {
       return;
     }
+
     if (typeof sanitized === "string") {
       const trimmed = sanitized.trim();
       if (!trimmed.length) {
@@ -14042,47 +14072,18 @@ function buildTerminalRawSubmissionSnapshot(address) {
       snapshot[field] = trimmed;
       return;
     }
-    snapshot[field] = sanitized;
+
+    snapshot[field] = sanitized === null ? null : sanitized;
   });
 
-  const resolvedIdentifier = safeNullIfEmpty(address.request_identifier);
-  if (resolvedIdentifier !== undefined) {
-    snapshot.request_identifier =
-      resolvedIdentifier === null ? null : resolvedIdentifier;
-  } else {
+  if (!Object.prototype.hasOwnProperty.call(snapshot, "request_identifier")) {
     snapshot.request_identifier = null;
   }
-
-  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
-  snapshot.source_http_request = preparedSource
-    ? deepClone(preparedSource)
-    : null;
-
-  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
-    if (
-      field === "request_identifier" ||
-      field === "source_http_request" ||
-      field === RAW_MINIMAL_SURFACE_FLAG
-    ) {
-      return;
-    }
-    if (Object.prototype.hasOwnProperty.call(address, field)) {
-      snapshot[field] = address[field];
-    }
-  });
-  if (
-    Object.prototype.hasOwnProperty.call(address, RAW_MINIMAL_SURFACE_FLAG) &&
-    address[RAW_MINIMAL_SURFACE_FLAG] === true
-  ) {
-    snapshot[RAW_MINIMAL_SURFACE_FLAG] = true;
+  if (!Object.prototype.hasOwnProperty.call(snapshot, "source_http_request")) {
+    snapshot.source_http_request = null;
   }
 
-  const ensuredSnapshot =
-    typeof applyRawAddressPresenceDefaults === "function"
-      ? applyRawAddressPresenceDefaults(snapshot)
-      : snapshot;
-
-  return ensuredSnapshot || snapshot;
+  return snapshot;
 }
 
 function enforceLeanRawAddressFile(addressPath) {
