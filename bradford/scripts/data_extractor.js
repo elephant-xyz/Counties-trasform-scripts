@@ -590,9 +590,11 @@ function ensureAllPropertyCodesHandled() {
     }
   }
   if (missing.length) {
-    throw new Error(
-      `Missing property use mapping for codes: ${missing.join(", ")}`,
-    );
+    console.error(JSON.stringify({
+      type: "error",
+      message: `Missing property use mapping for codes: ${missing.join(", ")}`,
+      path: "property.property_type"
+    }));
   }
 }
 
@@ -1540,29 +1542,37 @@ function main() {
     const propertyUseMapping = propertyUseLabel
       ? resolvePropertyUseMapping(propertyUseLabel)
       : null;
+
+    let mappedPropertyType = null;
+    let buildStatusValue = null;
+    let propertyUsageTypeValue = null;
+    let structureFormValue = null;
+    let ownershipEstateTypeValue = null;
+    let propertyUseCanonicalLabel = null;
+
     if (!propertyUseMapping) {
-      throw {
+      console.error(JSON.stringify({
         type: "error",
         message: `Missing property use mapping for label "${propertyUseLabel || "Unknown"}" (code: ${landUseCode || "N/A"}).`,
         path: "property.property_type",
-      };
-    }
+      }));
+      mappedPropertyType = "MAPPING NOT AVAILABLE";
+    } else {
+      mappedPropertyType = propertyUseMapping.property_type;
+      buildStatusValue = propertyUseMapping.build_status;
+      propertyUsageTypeValue = propertyUseMapping.property_usage_type;
+      structureFormValue = propertyUseMapping.structure_form;
+      ownershipEstateTypeValue = propertyUseMapping.ownership_estate_type;
+      propertyUseCanonicalLabel = propertyUseMapping.label;
 
-    const {
-      property_type: mappedPropertyType,
-      build_status: buildStatusValue,
-      property_usage_type: propertyUsageTypeValue,
-      structure_form: structureFormValue,
-      ownership_estate_type: ownershipEstateTypeValue,
-      label: propertyUseCanonicalLabel,
-    } = propertyUseMapping;
-
-    if (!mappedPropertyType) {
-      throw {
-        type: "error",
-        message: `Property use mapping for "${propertyUseCanonicalLabel}" does not include a property_type.`,
-        path: "property.property_type",
-      };
+      if (!mappedPropertyType) {
+        console.error(JSON.stringify({
+          type: "error",
+          message: `Property use mapping for "${propertyUseCanonicalLabel}" does not include a property_type.`,
+          path: "property.property_type",
+        }));
+        mappedPropertyType = "MAPPING NOT AVAILABLE";
+      }
     }
     propertyTypeValue = mappedPropertyType;
     if (typeof livable === "number") {
