@@ -12731,12 +12731,12 @@ const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // The validator requires every normalized field name to be present on the
-      // raw submission even when we only know an unnormalized string, so keep
-      // the full normalized surface in the raw allowlist.
-      ...NORMALIZED_ADDRESS_FIELDS,
+      // Palm Beach rarely exposes a complete normalized surface. Keep the raw
+      // payload tightly scoped to the locality + grid details that actually
+      // exist in the source instead of mirroring the normalized schema.
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
+      ...RAW_ADDRESS_COORDINATE_FIELDS,
     ]),
   ),
 );
@@ -13303,18 +13303,6 @@ function applyRawAddressPresenceDefaults(address) {
     hasStrictCountyNormalizedSchemaCoverage({ ...address });
 
   if (!hasNormalizedSurface) {
-    // Raw branch still needs to expose the normalized field surface so the schema's
-    // oneOf can positively match the unnormalized variant. Populate any missing
-    // normalized keys with null so validation sees them as intentionally blank.
-    for (const field of NORMALIZED_ADDRESS_FIELDS) {
-      if (!Object.prototype.hasOwnProperty.call(address, field)) {
-        address[field] = null;
-        continue;
-      }
-      if (address[field] === undefined) {
-        address[field] = null;
-      }
-    }
     if (!Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
       address.request_identifier = null;
     } else if (address.request_identifier === undefined) {
@@ -13325,6 +13313,28 @@ function applyRawAddressPresenceDefaults(address) {
     } else if (address.source_http_request === undefined) {
       address.source_http_request = null;
     }
+
+    Object.keys(address).forEach((key) => {
+      if (
+        RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST.has(key) ||
+        RAW_VARIANT_META_FIELD_ALLOWLIST.has(key)
+      ) {
+        if (ADDRESS_COORDINATE_FIELDS.includes(key)) {
+          const numeric = parseCoordinate(address[key]);
+          address[key] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (
+          typeof address[key] === "string" &&
+          !address[key].trim().length
+        ) {
+          address[key] = null;
+        }
+        return;
+      }
+      delete address[key];
+    });
+
     enforceMinimalRawAddressSurface(address);
     return address;
   }
