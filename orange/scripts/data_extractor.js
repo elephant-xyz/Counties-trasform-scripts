@@ -4279,9 +4279,14 @@ function buildPropertyJson() {
 
   // Write address.json
   writeJSON(path.join(dataDir, "address.json"), addr);
-  if (mailingAddressFile) {
-    writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
-  }
+
+  // REMOVED: mailing_address.json creation
+  // NOTE: Person and company classes do not exist in this datagroup, so there are no
+  // relationships that can reference the mailing_address. Writing this file would result
+  // in an "Unused data JSON file detected" error.
+  // if (mailingAddressFile) {
+  //   writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
+  // }
 
   // property.json
   const property = buildPropertyJson();
@@ -5468,14 +5473,16 @@ delete layoutContent.space_type_indexer;
   // Add current owner keys ONLY if mailing address exists
   // These will have company/person_has_mailing_address relationships
   // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
-  if (mailingAddressFile) {
-    const currentOwners = ownerKeysByDate.get('current');
-    if (currentOwners) {
-      currentOwners.forEach((ownerKey) => {
-        usedOwnerKeys.add(ownerKey);
-      });
-    }
-  }
+  // REMOVED: Since mailing_address.json is not being created (person and company classes
+  // don't exist), we don't add current owner keys.
+  // if (mailingAddressFile) {
+  //   const currentOwners = ownerKeysByDate.get('current');
+  //   if (currentOwners) {
+  //     currentOwners.forEach((ownerKey) => {
+  //       usedOwnerKeys.add(ownerKey);
+  //     });
+  //   }
+  // }
 
   // REMOVED: Person and company file creation
   // NOTE: person and company classes do not exist in any datagroup in the Elephant schema
