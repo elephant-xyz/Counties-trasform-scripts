@@ -75267,6 +75267,132 @@ function finalizeSimpleCountyAddressOutputs(options = {}) {
   overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
 }
 
+function enforceMinimalCountyAddressAndRelationships(options = {}) {
+  const dataDir = options.dataDir || path.join("data");
+  const relationshipsDir = options.relationshipsDir || path.join("relationships");
+  const addressPath = options.addressPath || path.join(dataDir, "address.json");
+  const unnormalizedPath = options.unnormalizedPath || "unnormalized_address.json";
+  const seedPath = options.seedPath || "property_seed.json";
+
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+
+  const addressPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+  const sources = [addressPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    ...sources.map((source) => source && source.request_identifier),
+    ...sources.map((source) => source && source.parcel_identifier),
+    ...sources.map((source) => source && source.parcel_id),
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    ...sources.map((source) => source && source.source_http_request),
+  );
+  const preparedSource = sourceHttpRequest
+    ? prepareSourceHttpRequest(sourceHttpRequest)
+    : null;
+
+  const persistNullRelationships = () => {
+    try {
+      forceNullRelationshipPlaceholders([dataDir, relationshipsDir]);
+      enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
+    } catch {
+      /* best-effort */
+    }
+  };
+
+  const canUseNormalized =
+    addressPayload && addressHasStrictNormalizedCoverage(addressPayload);
+  if (canUseNormalized) {
+    const normalized = buildNormalizedAddressOutputForSchema({
+      ...addressPayload,
+    });
+    if (normalized && typeof normalized === "object") {
+      if (Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")) {
+        delete normalized.unnormalized_address;
+      }
+      normalized.request_identifier =
+        requestIdentifier === undefined ? null : requestIdentifier;
+      normalized.source_http_request = preparedSource
+        ? deepClone(preparedSource)
+        : null;
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(normalized, null, 2)}\n`,
+      );
+      ADDRESS_ONE_OF_FINALIZED = true;
+      FINAL_ADDRESS_WRITE_LOCKED = true;
+      persistNullRelationships();
+      return;
+    }
+  }
+
+  const rawValue = resolveRawAddressStringFromSources(sources);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    persistNullRelationships();
+    return;
+  }
+
+  const rawPayload =
+    buildStrictMinimalRawAddressPayload(rawValue, {
+      fieldSources: sources,
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      requestIdentifier,
+      sourceHttpRequest,
+    }) || null;
+
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    persistNullRelationships();
+    return;
+  }
+
+  const projected =
+    collapseRawAddressToUnnormalizedOnly(
+      enforceRawVariantAllowedFields({ ...rawPayload }),
+    ) || { ...rawPayload };
+
+  RAW_MINIMAL_SURFACE_META_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(projected, field)) {
+      delete projected[field];
+    }
+  });
+
+  if (!Object.prototype.hasOwnProperty.call(projected, "request_identifier")) {
+    projected.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
+  }
+  if (preparedSource) {
+    projected.source_http_request = deepClone(preparedSource);
+  } else if (
+    !Object.prototype.hasOwnProperty.call(projected, "source_http_request")
+  ) {
+    projected.source_http_request = null;
+  }
+
+  if (!projected.postal_code) {
+    projected.plus_four_postal_code = null;
+  }
+
+  nativeWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(projected, null, 2)}\n`,
+  );
+  ADDRESS_ONE_OF_FINALIZED = true;
+  FINAL_ADDRESS_WRITE_LOCKED = true;
+  persistNullRelationships();
+}
+
 function enforcePalmBeachAddressOneOfFinal(options = {}) {
   const {
     addressPath = path.join("data", "address.json"),
@@ -82099,6 +82225,19 @@ setImmediate(() => {
     } catch (error) {
       console.error(
         "Failed to enforce simplified county address output:",
+        error,
+      );
+      if (!process.exitCode) {
+        process.exitCode = 1;
+      }
+    }
+  });
+  process.on("exit", () => {
+    try {
+      enforceMinimalCountyAddressAndRelationships();
+    } catch (error) {
+      console.error(
+        "Failed to enforce minimal county address and null relationships:",
         error,
       );
       if (!process.exitCode) {
