@@ -4225,6 +4225,7 @@ function buildPropertyJson() {
     };
   }
 
+  const addr = parseAddress();
   const rawPropertyAddress = (general.propertyLocationRaw ||
     addrSeed.full_address ||
     "")
