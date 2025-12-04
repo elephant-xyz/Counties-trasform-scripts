@@ -579,6 +579,9 @@ function parseAddress(
 }
 
 function main() {
+
+  // throw new Error("Intended error!")
+
   const inHtmlPath = path.join("input.html");
   const unaddrPath = path.join("unnormalized_address.json");
   const seedPath = path.join("property_seed.json");
@@ -1233,11 +1236,11 @@ function main() {
     structureObj.number_of_buildings = buildingTypes.size;
   }
 
-  // Always write structure.json with all required fields
-  fs.writeFileSync(
-    path.join(dataDir, "structure.json"),
-    JSON.stringify(structureObj, null, 2),
-  );
+  // // Always write structure.json with all required fields
+  // fs.writeFileSync(
+  //   path.join(dataDir, "structure.json"),
+  //   JSON.stringify(structureObj, null, 2),
+  // );
 
   // Tax from Summary and History
   // From Summary (preliminary/current)
