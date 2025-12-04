@@ -82,21 +82,11 @@ const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
   "country_code",
 ]);
 
-const RAW_ADDRESS_GRID_FIELDS = Object.freeze([
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-]);
-const RAW_ADDRESS_GRID_FIELD_SET = new Set(RAW_ADDRESS_GRID_FIELDS);
-
 const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
       ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_GRID_FIELDS,
     ]),
   ),
 );
@@ -116,7 +106,6 @@ const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
     new Set([
       "unnormalized_address",
       ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_GRID_FIELDS,
     ]),
   ),
 );
@@ -140,7 +129,6 @@ const RAW_PREFERRED_FIELD_WHITELIST = Object.freeze(
     new Set([
       "unnormalized_address",
       ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_GRID_FIELDS,
       "municipality_name",
       "request_identifier",
     ]),
@@ -12763,18 +12751,10 @@ function stripNormalizedFieldsFromRawPayload(address) {
 
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
-
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // County's raw oneOf branch still expects the normalized surface to exist
-      // (nullable), so preserve the full structured field set alongside the
-      // locality/grid metadata even when we only have an unnormalized line.
-      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
       ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_GRID_FIELDS,
-      ...RAW_ADDRESS_COORDINATE_FIELDS,
     ]),
   ),
 );
@@ -21183,7 +21163,6 @@ const RAW_SCHEMA_POPULATABLE_FIELDS = Object.freeze(
   Array.from(
     new Set([
       ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...RAW_ADDRESS_GRID_FIELDS,
     ]),
   ),
 );
