@@ -121,9 +121,9 @@ const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   ),
 );
 const RAW_UNNORMALIZED_FIELD_SET = new Set(RAW_UNNORMALIZED_ONLY_FIELDS);
-// Raw schema only allows the unnormalized surface plus coarse locality fields.
-// Keep the structured street decomposition exclusively for the normalized branch
-// so that our raw submissions do not violate the address oneOf.
+// The county schema's raw oneOf branch still expects the normalized field
+// surface to exist (values may remain null), so never strip those keys even
+// when we only have an unnormalized string from the source.
 const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([]);
 const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
   RAW_VARIANT_STRUCTURED_FIELDS,
@@ -12391,14 +12391,12 @@ const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Raw oneOf branch only permits the coarse locality surface plus optional
-      // grid + coordinate fields. Keep the structured street decomposition for
-      // the normalized branch so we do not violate the schema when we only have
-      // an unnormalized string from the source.
+      // The validator requires every normalized field name to be present on the
+      // raw submission even when we only know an unnormalized string, so keep
+      // the full normalized surface in the raw allowlist.
+      ...NORMALIZED_ADDRESS_FIELDS,
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
-      "latitude",
-      "longitude",
     ]),
   ),
 );
