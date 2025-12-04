@@ -1362,6 +1362,8 @@ function writeSchemaAlignedAddress(addressPath, payload) {
   const schemaReadyPayload =
     ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
 
+  hydrateNormalizedFieldSurface(schemaReadyPayload);
+
   try {
     originalWriteFileSync.call(
       fs,
@@ -1435,6 +1437,7 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         const schemaAlignedPayload =
           alignAddressPayloadToSchemaVariant(ensuredPayload) ||
           ensuredPayload;
+        hydrateNormalizedFieldSurface(schemaAlignedPayload);
         if (!preserveStructured) {
           applyRawAddressPresenceDefaults(schemaAlignedPayload);
         }
@@ -1483,6 +1486,7 @@ originalWriteFileSync = function guardedWriteFileSync(targetPath, data, ...args)
     if (payload && typeof payload === "object") {
       const aligned =
         alignAddressPayloadToSchemaVariant(payload) || payload;
+      hydrateNormalizedFieldSurface(aligned);
       const serialized = `${JSON.stringify(aligned, null, 2)}\n`;
       return nativeWriteFileSync.call(fs, targetPath, serialized, ...args);
     }
@@ -12994,6 +12998,41 @@ function applyRawAddressPresenceDefaults(address) {
       address[field] = null;
     }
   }
+  return address;
+}
+
+function hydrateNormalizedFieldSurface(address) {
+  if (!address || typeof address !== "object") {
+    return address;
+  }
+
+  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+      return;
+    }
+    if (address[field] === undefined) {
+      address[field] = null;
+    }
+  });
+
+  if (!Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
+    address.request_identifier = null;
+  } else if (
+    typeof address.request_identifier === "string" &&
+    !address.request_identifier.trim().length
+  ) {
+    address.request_identifier = null;
+  } else if (address.request_identifier === undefined) {
+    address.request_identifier = null;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
+    address.source_http_request = null;
+  } else if (address.source_http_request === undefined) {
+    address.source_http_request = null;
+  }
+
   return address;
 }
 
