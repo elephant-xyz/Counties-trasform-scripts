@@ -5484,10 +5484,86 @@ delete layoutContent.space_type_indexer;
   //   }
   // }
 
-  // REMOVED: Person and company file creation
-  // NOTE: person and company classes do not exist in any datagroup in the Elephant schema
-  // Therefore, we do NOT create person_*.json or company_*.json files
-  // Owner information is tracked internally but not written to files or relationships
+  // Create person and company files from seenOwners
+  // NOTE: person and company classes exist in the County datagroup
+  // Only create files for owners that have relationships (buyers from sales)
+  const requestIdentifier = propSeed.request_identifier || null;
+
+  // Separate persons and companies from usedOwnerKeys
+  const personsToCreate = [];
+  const companiesToCreate = [];
+
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      personsToCreate.push(ownerData.payload);
+    } else if (ownerData.type === "company") {
+      companiesToCreate.push(ownerData.payload);
+    }
+  });
+
+  // Create person files
+  personsToCreate.forEach((person, idx) => {
+    const personFileName = `person_${idx + 1}.json`;
+    const personObj = {
+      first_name: person.first_name,
+      last_name: person.last_name,
+      middle_name: person.middle_name,
+      prefix_name: person.prefix_name,
+      suffix_name: person.suffix_name,
+      birth_date: person.birth_date,
+      us_citizenship_status: person.us_citizenship_status,
+      veteran_status: person.veteran_status,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(personObj).forEach((key) => {
+      if (personObj[key] === undefined) delete personObj[key];
+    });
+    writeJSON(path.join(dataDir, personFileName), personObj);
+    personFiles.push(personFileName);
+  });
+
+  // Create company files
+  companiesToCreate.forEach((company, idx) => {
+    const companyFileName = `company_${idx + 1}.json`;
+    const companyObj = {
+      name: company.name,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(companyObj).forEach((key) => {
+      if (companyObj[key] === undefined) delete companyObj[key];
+    });
+    writeJSON(path.join(dataDir, companyFileName), companyObj);
+    companyFiles.push(companyFileName);
+  });
+
+  // Create a mapping from ownerKey to file index
+  const ownerKeyToFileIndex = new Map();
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      const idx = personsToCreate.findIndex((p) =>
+        p.first_name === ownerData.payload.first_name &&
+        p.last_name === ownerData.payload.last_name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "person", index: idx + 1 });
+      }
+    } else if (ownerData.type === "company") {
+      const idx = companiesToCreate.findIndex((c) =>
+        c.name === ownerData.payload.name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "company", index: idx + 1 });
+      }
+    }
+  });
 
   // relationship_deed_file_*.json (file → deed)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
@@ -5499,8 +5575,38 @@ delete layoutContent.space_type_indexer;
     writeRelationshipFile(salesHistoryFiles[i], deedFiles[i]);
   }
 
-  // REMOVED: Sales-buyer relationships
-  // NOTE: person and company classes do not exist, so we don't create relationships to buyer files
+  // Sales-buyer relationships: sales_history → person/company
+  salesBuyerFiles.forEach((saleInfo) => {
+    let personCounter = 0;
+    let companyCounter = 0;
+    const seenInThisSale = new Set();
+
+    saleInfo.buyerKeys.forEach((buyerKey) => {
+      if (seenInThisSale.has(buyerKey)) return;
+      seenInThisSale.add(buyerKey);
+
+      const fileInfo = ownerKeyToFileIndex.get(buyerKey);
+      if (!fileInfo) return;
+
+      if (fileInfo.type === "person") {
+        personCounter++;
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./person_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_person_${personCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
+      } else if (fileInfo.type === "company") {
+        companyCounter++;
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./company_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_company_${companyCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
+      }
+    });
+  });
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
