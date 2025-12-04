@@ -12731,8 +12731,10 @@ const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // The raw branch should only surface the original unnormalized line,
-      // coarse locality details, grid components, and coordinate metadata.
+      // County's raw oneOf branch still expects the normalized surface to exist
+      // (nullable), so preserve the full structured field set alongside the
+      // locality/grid metadata even when we only have an unnormalized line.
+      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
       ...RAW_ADDRESS_COORDINATE_FIELDS,
