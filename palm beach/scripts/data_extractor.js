@@ -135,12 +135,6 @@ const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([]);
 const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
   RAW_VARIANT_FORBIDDEN_FIELDS,
 );
-const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
-  Array.from(new Set([...RAW_UNNORMALIZED_ONLY_FIELDS])),
-);
-const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(RAW_ADDRESS_RAW_SURFACE_FIELDS);
-
-
 const RAW_PREFERRED_FIELD_WHITELIST = Object.freeze(
   Array.from(
     new Set([
@@ -12423,6 +12417,22 @@ const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = Object.freeze([
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
+// Preserve the full normalized surface (even when values are null) whenever we
+// emit the raw branch so that the county schema's oneOf can still see every
+// required key. Earlier revisions trimmed these fields away, which caused
+// validation to complain about missing latitude/longitude and street segments.
+const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...RAW_UNNORMALIZED_ONLY_FIELDS,
+      ...RAW_ADDRESS_ALLOWED_FIELDS,
+    ]),
+  ),
+);
+const RAW_ADDRESS_RAW_SURFACE_FIELD_SET = new Set(
+  RAW_ADDRESS_RAW_SURFACE_FIELDS,
+);
+
 // Emit only the coarse locality metadata when falling back to the raw branch so
 // the payload clearly targets the unnormalized schema variant.
 const RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST = new Set([
@@ -13169,17 +13179,18 @@ function projectRawUnnormalizedOnlyPayload(address) {
     hydrated.source_http_request = null;
   }
 
-  const projected = {};
-  RAW_UNNORMALIZED_ONLY_FIELDS.forEach((field) => {
-    if (field === "unnormalized_address") {
-      projected[field] = hydrated[field];
+  const projected = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: hydrated.unnormalized_address,
+  };
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(hydrated, field)) {
       return;
     }
-    if (Object.prototype.hasOwnProperty.call(hydrated, field)) {
-      projected[field] = hydrated[field];
-      return;
-    }
-    projected[field] = null;
+    const sanitized = sanitizeAddressFieldValue(field, hydrated[field]);
+    projected[field] =
+      sanitized === undefined || sanitized === null ? null : sanitized;
   });
 
   const normalizedIdentifier = safeNullIfEmpty(hydrated.request_identifier);
