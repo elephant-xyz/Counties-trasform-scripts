@@ -8916,11 +8916,28 @@ function extractPropertyModelFromHtml(html) {
 }
 
 function writeRelationshipFile(filePath) {
-  // Relationship URs are now generated downstream, so eagerly remove any files
-  // the legacy mapper tries to emit to avoid leaking invalid placeholders.
-  if (filePath) {
-    removeFileIfExists(filePath);
+  if (!filePath) {
+    return null;
   }
+
+  const baseName = path.basename(filePath, ".json");
+  // For address-related links we need an explicit null placeholder so the
+  // platform can hydrate URs later without validating an object shape.
+  if (ADDRESS_RELATIONSHIP_BASENAME_SET.has(baseName)) {
+    try {
+      ensureDir(path.dirname(filePath));
+      originalWriteFileSync.call(fs, filePath, "null\n");
+    } catch (error) {
+      console.error(
+        `Failed to persist null relationship placeholder at ${filePath}:`,
+        error,
+      );
+    }
+    return null;
+  }
+
+  // Other relationships are suppressed; let downstream generation handle them.
+  removeFileIfExists(filePath);
   return null;
 }
 
@@ -39144,6 +39161,7 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
   const coordinateCandidates = Array.isArray(options.coordinateCandidates)
     ? options.coordinateCandidates
     : [];
+  let resolvedCoordinatePair = null;
 
   const localityCandidates = collectNonEmptyStrings(
     options.localityCandidates || [],
@@ -39190,10 +39208,38 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
       longitude,
     );
     if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      if (!resolvedCoordinatePair) {
+        resolvedCoordinatePair = { latitude, longitude };
+      }
       assignFieldIfMissing("latitude", latitude);
       assignFieldIfMissing("longitude", longitude);
       break;
     }
+  }
+
+  if (!resolvedCoordinatePair && coordinateCandidates.length) {
+    resolvedCoordinatePair = coordinateCandidates
+      .map((candidate) => {
+        if (!candidate || typeof candidate !== "object") {
+          return null;
+        }
+        const latitude = parseCoordinate(candidate.latitude);
+        const longitude = parseCoordinate(candidate.longitude);
+        return Number.isFinite(latitude) && Number.isFinite(longitude)
+          ? { latitude, longitude }
+          : null;
+      })
+      .find(Boolean);
+  }
+
+  if (
+    resolvedCoordinatePair &&
+    (!Number.isFinite(working.latitude) ||
+      !Number.isFinite(working.longitude))
+  ) {
+    working.latitude = resolvedCoordinatePair.latitude;
+    working.longitude = resolvedCoordinatePair.longitude;
+    mutated = true;
   }
 
   if (ENFORCE_UNNORMALIZED_ONLY_ADDRESS) {
@@ -39250,6 +39296,15 @@ function hydrateCountyAddressFields(addressFilePath, options = {}) {
   }
 
   if (!hasStructuredStreetCandidate || !hasCoordinatePair) {
+    if (
+      resolvedCoordinatePair &&
+      (!Number.isFinite(working.latitude) ||
+        !Number.isFinite(working.longitude))
+    ) {
+      working.latitude = resolvedCoordinatePair.latitude;
+      working.longitude = resolvedCoordinatePair.longitude;
+      mutated = true;
+    }
     collapseRawAddressToUnnormalizedOnly(working);
     enforceRawVariantAllowedFields(working);
     if (
