@@ -12386,14 +12386,15 @@ function stripNormalizedFieldsFromRawPayload(address) {
 
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
+const RAW_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
+
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Preserve the full normalized surface (values may remain null) so the raw
-      // branch satisfies the schema's explicit field requirements.
+      // Raw schema only allows the coarse locality/grid surface plus coordinates.
       ...MINIMAL_RAW_ADDRESS_FIELDS,
       ...RAW_ADDRESS_GRID_FIELDS,
-      ...NORMALIZED_ADDRESS_FIELDS,
+      ...RAW_ADDRESS_COORDINATE_FIELDS,
     ]),
   ),
 );
@@ -12417,10 +12418,8 @@ const RAW_ADDRESS_MINIMAL_ALLOWED_FIELDS = Object.freeze([
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ]);
 
-// Preserve the full normalized surface (even when values are null) whenever we
-// emit the raw branch so that the county schema's oneOf can still see every
-// required key. Earlier revisions trimmed these fields away, which caused
-// validation to complain about missing latitude/longitude and street segments.
+// Keep the raw payload limited to the coarse locality/grid fields so we do not
+// accidentally leak partial street components and trigger the normalized branch.
 const RAW_ADDRESS_RAW_SURFACE_FIELDS = Object.freeze(
   Array.from(
     new Set([
