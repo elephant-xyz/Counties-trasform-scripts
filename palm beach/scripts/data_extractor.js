@@ -13982,7 +13982,9 @@ function buildTerminalRawSubmissionSnapshot(address) {
   if (!rawValue) {
     return null;
   }
+
   const snapshot = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
@@ -14018,14 +14020,43 @@ function buildTerminalRawSubmissionSnapshot(address) {
   });
 
   const resolvedIdentifier = safeNullIfEmpty(address.request_identifier);
-  snapshot.request_identifier =
-    resolvedIdentifier === undefined ? null : resolvedIdentifier;
+  if (resolvedIdentifier !== undefined) {
+    snapshot.request_identifier =
+      resolvedIdentifier === null ? null : resolvedIdentifier;
+  } else {
+    snapshot.request_identifier = null;
+  }
+
   const preparedSource = prepareSourceHttpRequest(address.source_http_request);
   snapshot.source_http_request = preparedSource
     ? deepClone(preparedSource)
     : null;
 
-  return snapshot;
+  RAW_VARIANT_META_FIELD_ALLOWLIST.forEach((field) => {
+    if (
+      field === "request_identifier" ||
+      field === "source_http_request" ||
+      field === RAW_MINIMAL_SURFACE_FLAG
+    ) {
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(address, field)) {
+      snapshot[field] = address[field];
+    }
+  });
+  if (
+    Object.prototype.hasOwnProperty.call(address, RAW_MINIMAL_SURFACE_FLAG) &&
+    address[RAW_MINIMAL_SURFACE_FLAG] === true
+  ) {
+    snapshot[RAW_MINIMAL_SURFACE_FLAG] = true;
+  }
+
+  const ensuredSnapshot =
+    typeof applyRawAddressPresenceDefaults === "function"
+      ? applyRawAddressPresenceDefaults(snapshot)
+      : snapshot;
+
+  return ensuredSnapshot || snapshot;
 }
 
 function enforceLeanRawAddressFile(addressPath) {
