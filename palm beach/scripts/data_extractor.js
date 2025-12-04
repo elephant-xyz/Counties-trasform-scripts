@@ -101,16 +101,10 @@ const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "country_code",
 ]);
 
-// The county schema's raw branch still validates the same normalized surface,
-// so treat the normalized field set as part of the raw allowlist whenever we
-// can hydrate those values.
+// Keep the raw surface lean so we reliably hit the unnormalized oneOf branch.
+// Only allow the coarse locality fields that exist in the schema.
 const RAW_SCHEMA_CORE_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...COUNTY_REQUIRED_NORMALIZED_FIELDS,
-    ]),
-  ),
+  Array.from(new Set([...MINIMAL_RAW_ADDRESS_FIELDS])),
 );
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
