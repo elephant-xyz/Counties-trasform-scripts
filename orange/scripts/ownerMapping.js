@@ -68,16 +68,6 @@ const companyRegex = new RegExp(
 
 const personSuffixes = new Set(["JR", "SR", "III", "IV", "II"]);
 
-function validateMiddleName(middleName) {
-  if (!middleName) return null;
-  const trimmed = String(middleName).trim();
-  if (!trimmed) return null;
-  // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, periods
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!pattern.test(trimmed)) return null;
-  return trimmed;
-}
-
 function isCompany(name) {
   return companyRegex.test(name);
 }
@@ -95,7 +85,7 @@ function parsePersonName(name) {
     if (parts.length >= 2) {
       const first_name = parts.slice(0, parts.length - 1).join(" ");
       const last_name = parts[parts.length - 1];
-      return { type: "person", first_name, last_name, middle_name: validateMiddleName(null) };
+      return { type: "person", first_name, last_name, middle_name: null };
     }
   }
 
@@ -120,7 +110,7 @@ function parsePersonName(name) {
     if (rem.length >= 1) first_name = rem[0];
     if (rem.length >= 2) {
       const mid = rem.slice(1).join(" ");
-      if (mid && !personSuffixes.has(mid.toUpperCase())) middle_name = validateMiddleName(mid);
+      if (mid && !personSuffixes.has(mid.toUpperCase())) middle_name = mid;
     }
   } else {
     const parts = n.split(" ").filter(Boolean);
@@ -131,7 +121,7 @@ function parsePersonName(name) {
       if (parts.length >= 3) {
         const maybeMid = parts[2];
         if (!personSuffixes.has(maybeMid.toUpperCase())) {
-          middle_name = validateMiddleName(maybeMid);
+          middle_name = maybeMid;
         }
       }
     }
@@ -142,7 +132,7 @@ function parsePersonName(name) {
     type: "person",
     first_name,
     last_name,
-    middle_name: validateMiddleName(middle_name),
+    middle_name: middle_name || null,
   };
 }
 

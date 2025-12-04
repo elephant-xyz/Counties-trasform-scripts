@@ -557,16 +557,6 @@ function toIsoDate(s) {
   return null;
 }
 
-function validateMiddleName(middleName) {
-  if (!middleName) return null;
-  const trimmed = String(middleName).trim();
-  if (!trimmed) return null;
-  // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, periods
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!pattern.test(trimmed)) return null;
-  return trimmed;
-}
-
 function splitOwnerCandidates(text) {
   const cleaned = (text || "")
     .replace(/\u00A0/g, " ")
@@ -656,7 +646,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: normalizedLast,
-        middle_name: validateMiddleName(middle),
+        middle_name: middle,
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         // Store removed designations if any, for debugging or further processing
@@ -683,7 +673,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: last,
-        middle_name: validateMiddleName(middle),
+        middle_name: middle,
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         _removed_designations: removedDesignations,
@@ -706,7 +696,7 @@ function parsePersonName(raw, contextHint) {
       type: "person",
       first_name: first,
       last_name: last,
-      middle_name: validateMiddleName(middle),
+      middle_name: middle,
       prefix_name: processed.prefix || null,
       suffix_name: processed.suffix || null,
       _removed_designations: removedDesignations,
@@ -5279,7 +5269,7 @@ delete layoutContent.space_type_indexer;
         const first = properCaseName(owner.first_name || null);
         const last = properCaseName(owner.last_name || null);
         if (!first || !last) return;
-        const middle = validateMiddleName(owner.middle_name);
+        const middle = owner.middle_name ? owner.middle_name : null;
         const prefixName = owner.prefix_name ? owner.prefix_name : null;
         const suffixName = owner.suffix_name ? owner.suffix_name : null;
         const key = `person:${[first, middle, last, prefixName, suffixName]
@@ -5400,7 +5390,7 @@ delete layoutContent.space_type_indexer;
                 const firstName = properCaseName(buyer.first_name || null);
                 const lastName = properCaseName(buyer.last_name || null);
                 if (!firstName || !lastName) return;
-                const middleName = validateMiddleName(buyer.middle_name);
+                const middleName = buyer.middle_name ? buyer.middle_name : null;
                 const prefixName = buyer.prefix_name ? buyer.prefix_name : null;
                 const suffixName = buyer.suffix_name ? buyer.suffix_name : null;
                 const personPayload = {
