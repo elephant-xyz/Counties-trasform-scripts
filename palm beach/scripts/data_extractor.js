@@ -101,11 +101,23 @@ const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "country_code",
 ]);
 
+// The county schema's raw branch still validates the same normalized surface,
+// so treat the normalized field set as part of the raw allowlist whenever we
+// can hydrate those values.
+const RAW_SCHEMA_CORE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...COUNTY_REQUIRED_NORMALIZED_FIELDS,
+    ]),
+  ),
+);
+
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_SCHEMA_CORE_FIELDS,
     ]),
   ),
 );
@@ -127,7 +139,7 @@ const RAW_PREFERRED_FIELD_WHITELIST = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_SCHEMA_CORE_FIELDS,
       "municipality_name",
       "request_identifier",
     ]),
@@ -12770,7 +12782,7 @@ function stripNormalizedFieldsFromRawPayload(address) {
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
-  Array.from(new Set([...MINIMAL_RAW_ADDRESS_FIELDS])),
+  Array.from(new Set([...RAW_SCHEMA_CORE_FIELDS])),
 );
 const RAW_TERMINAL_FIELD_LIST = Object.freeze(
   Array.from(
@@ -14802,16 +14814,14 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-// When the source only provides an unnormalized string we only want to emit the
-// coarse locality metadata that the raw schema branch expects. Keeping the
-// street/grid fields on the payload makes it impossible for validation to
-// disambiguate the correct oneOf branch, so restrict the final snapshot to
-// this lean allowlist before persisting it.
+// The validator still expects the normalized grid/location fields to be
+// present on the raw branch when they are available, so gate the payload to
+// the expanded allowlist instead of trimming those keys away.
 const RAW_UNNORMALIZED_SURFACE_ALLOWLIST = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_SCHEMA_CORE_FIELDS,
       "request_identifier",
       "source_http_request",
     ]),
