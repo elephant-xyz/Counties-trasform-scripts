@@ -345,8 +345,9 @@ function writeAddressJSONBypass(addressPath, payload) {
   projectAddressPayloadForSchema(ensuredPayload);
   let schemaAlignedPayload =
     alignAddressPayloadToSchemaVariant(ensuredPayload) || ensuredPayload;
+  let schemaAlignedHasNormalizedSurface = false;
   if (schemaAlignedPayload && typeof schemaAlignedPayload === "object") {
-    const schemaAlignedHasNormalizedSurface =
+    schemaAlignedHasNormalizedSurface =
       typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
       hasStrictCountyNormalizedSchemaCoverage({ ...schemaAlignedPayload });
     if (schemaAlignedHasNormalizedSurface) {
@@ -364,7 +365,11 @@ function writeAddressJSONBypass(addressPath, payload) {
       schemaAlignedPayload.__force_raw_variant = true;
     }
   }
-  const serialized = `${JSON.stringify(schemaAlignedPayload, null, 2)}\n`;
+  const finalPayload = schemaAlignedHasNormalizedSurface
+    ? schemaAlignedPayload
+    : buildTerminalRawSubmissionSnapshot(schemaAlignedPayload) ||
+      schemaAlignedPayload;
+  const serialized = `${JSON.stringify(finalPayload, null, 2)}\n`;
   try {
     originalWriteFileSync.call(fs, addressPath, serialized);
   } catch (error) {
@@ -372,6 +377,39 @@ function writeAddressJSONBypass(addressPath, payload) {
     throw error;
   }
 }
+
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    if (!fs.existsSync(addressPath)) {
+      return;
+    }
+    const payload = readJSONIfExists(addressPath);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return;
+    }
+    const hasNormalizedSurface =
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+    if (hasNormalizedSurface) {
+      return;
+    }
+    const snapshot = buildTerminalRawSubmissionSnapshot(payload);
+    if (!snapshot) {
+      return;
+    }
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(snapshot, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error("Failed to enforce terminal raw-only address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
 
 function stabilizeCountyAddressOneOf(addressPath, options = {}) {
   if (!addressPath) {
@@ -1441,7 +1479,16 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         if (!preserveStructured) {
           applyRawAddressPresenceDefaults(schemaAlignedPayload);
         }
-        const serialized = JSON.stringify(schemaAlignedPayload, null, 2);
+        const schemaAlignedHasNormalizedSurface =
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({
+            ...schemaAlignedPayload,
+          });
+        const finalPayload = schemaAlignedHasNormalizedSurface
+          ? schemaAlignedPayload
+          : buildTerminalRawSubmissionSnapshot(schemaAlignedPayload) ||
+            schemaAlignedPayload;
+        const serialized = JSON.stringify(finalPayload, null, 2);
         return originalWriteFileSync.call(fs, targetPath, serialized, ...args);
       }
     } catch {
@@ -1487,7 +1534,13 @@ originalWriteFileSync = function guardedWriteFileSync(targetPath, data, ...args)
       const aligned =
         alignAddressPayloadToSchemaVariant(payload) || payload;
       hydrateNormalizedFieldSurface(aligned);
-      const serialized = `${JSON.stringify(aligned, null, 2)}\n`;
+      const hasNormalizedSurface =
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...aligned });
+      const finalPayload = hasNormalizedSurface
+        ? aligned
+        : buildTerminalRawSubmissionSnapshot(aligned) || aligned;
+      const serialized = `${JSON.stringify(finalPayload, null, 2)}\n`;
       return nativeWriteFileSync.call(fs, targetPath, serialized, ...args);
     }
   } catch {
@@ -7734,6 +7787,18 @@ function writeJSON(p, obj) {
     }
   }
 
+  if (isAddressFile && payload && typeof payload === "object") {
+    const finalHasNormalizedSurface =
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+    if (!finalHasNormalizedSurface) {
+      const snapshot = buildTerminalRawSubmissionSnapshot(payload);
+      if (snapshot) {
+        payload = snapshot;
+      }
+    }
+  }
+
   if (isPropertyFile && payload && typeof payload === "object") {
     if (!payload.relationships || typeof payload.relationships !== "object") {
       payload.relationships = {};
@@ -13850,41 +13915,56 @@ function pruneRawAddressFieldSurface(address) {
   }
 
   const leanSurface = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+  RAW_UNNORMALIZED_ONLY_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      return;
+    }
     if (!Object.prototype.hasOwnProperty.call(address, field)) {
       return;
     }
 
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(address[field]);
-      leanSurface[field] = Number.isFinite(numeric) ? numeric : null;
+      if (Number.isFinite(numeric)) {
+        leanSurface[field] = numeric;
+      }
       return;
     }
 
     const sanitizedValue = sanitizeAddressFieldValue
       ? sanitizeAddressFieldValue(field, address[field])
       : address[field];
-
     if (!hasMeaningfulAddressValue(sanitizedValue)) {
-      leanSurface[field] = null;
       return;
     }
 
     if (typeof sanitizedValue === "string") {
       const trimmed = sanitizedValue.trim();
-      leanSurface[field] = trimmed.length ? trimmed : null;
+      if (!trimmed.length) {
+        return;
+      }
+      leanSurface[field] = trimmed;
       return;
     }
 
     leanSurface[field] = sanitizedValue;
   });
 
-  if (!leanSurface.postal_code) {
-    leanSurface.plus_four_postal_code = null;
+  if (
+    !Object.prototype.hasOwnProperty.call(preservedMeta, "request_identifier")
+  ) {
+    preservedMeta.request_identifier = null;
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      preservedMeta,
+      "source_http_request",
+    )
+  ) {
+    preservedMeta.source_http_request = null;
   }
 
   Object.keys(address).forEach((key) => {
@@ -13892,6 +13972,60 @@ function pruneRawAddressFieldSurface(address) {
   });
   Object.assign(address, leanSurface, preservedMeta);
   return address;
+}
+
+function buildTerminalRawSubmissionSnapshot(address) {
+  if (!address || typeof address !== "object" || Array.isArray(address)) {
+    return null;
+  }
+  const rawValue = safeNullIfEmpty(address.unnormalized_address);
+  if (!rawValue) {
+    return null;
+  }
+  const snapshot = {
+    unnormalized_address: rawValue,
+  };
+
+  RAW_UNNORMALIZED_ONLY_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      if (Number.isFinite(numeric)) {
+        snapshot[field] = numeric;
+      }
+      return;
+    }
+    const sanitized = sanitizeAddressFieldValue
+      ? sanitizeAddressFieldValue(field, address[field])
+      : address[field];
+    if (!hasMeaningfulAddressValue(sanitized)) {
+      return;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      if (!trimmed.length) {
+        return;
+      }
+      snapshot[field] = trimmed;
+      return;
+    }
+    snapshot[field] = sanitized;
+  });
+
+  const resolvedIdentifier = safeNullIfEmpty(address.request_identifier);
+  snapshot.request_identifier =
+    resolvedIdentifier === undefined ? null : resolvedIdentifier;
+  const preparedSource = prepareSourceHttpRequest(address.source_http_request);
+  snapshot.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  return snapshot;
 }
 
 function enforceLeanRawAddressFile(addressPath) {
@@ -75910,9 +76044,16 @@ function enforceFinalUnnormalizedAddressSkeleton(addressPath, options = {}) {
     unnormalized_address: resolvedRaw,
   };
 
-  RAW_ADDRESS_OUTPUT_FIELDS.forEach((field) => {
+  RAW_UNNORMALIZED_ONLY_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      return;
+    }
     const value = resolveRawSkeletonFieldValue(field, fieldSources);
-    skeleton[field] = coerceRawSkeletonFieldValue(field, value);
+    const coerced = coerceRawSkeletonFieldValue(field, value);
+    if (coerced === undefined || coerced === null) {
+      return;
+    }
+    skeleton[field] = coerced;
   });
 
   if (!hasMeaningfulAddressValue(skeleton.county_name) && defaultCountyName) {
@@ -75931,10 +76072,6 @@ function enforceFinalUnnormalizedAddressSkeleton(addressPath, options = {}) {
     skeleton.country_code = normalizedCountry;
   } else if (!hasMeaningfulAddressValue(skeleton.country_code)) {
     skeleton.country_code = normalizedCountry;
-  }
-
-  if (!hasMeaningfulAddressValue(skeleton.postal_code)) {
-    skeleton.plus_four_postal_code = null;
   }
 
   const identifierCandidate = safeNullIfEmpty(
@@ -80395,6 +80532,35 @@ process.on("exit", () => {
       "Failed to backfill final unnormalized address skeleton:",
       error,
     );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    if (!fs.existsSync(addressPath)) {
+      return;
+    }
+    const payload = readJSONIfExists(addressPath);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return;
+    }
+    const hasNormalizedSurface =
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+    if (hasNormalizedSurface) {
+      return;
+    }
+    const snapshot = buildTerminalRawSubmissionSnapshot(payload);
+    if (!snapshot) {
+      return;
+    }
+    writeAddressJSONBypass(addressPath, snapshot);
+  } catch (error) {
+    console.error("Failed to enforce terminal raw-only address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
