@@ -77585,22 +77585,31 @@ function buildLeanRawAddressSnapshot(sources = [], options = {}) {
   }
 
   const snapshot = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue.trim(),
+    __force_raw_variant: true,
   };
 
   RAW_SCHEMA_CORE_FIELDS.forEach((field) => {
     const resolved = resolveFirstMeaningfulAddressField(field, sourceList);
-    if (resolved === undefined || resolved === null) {
-      return;
-    }
     const sanitized = sanitizeAddressFieldValue
       ? sanitizeAddressFieldValue(field, resolved)
       : resolved;
-    if (sanitized === undefined) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(sanitized);
+      snapshot[field] = Number.isFinite(numeric) ? numeric : null;
       return;
     }
-    snapshot[field] =
-      typeof sanitized === "string" ? sanitized.trim() : sanitized;
+    if (sanitized === undefined) {
+      snapshot[field] = null;
+      return;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      snapshot[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    snapshot[field] = sanitized === null ? null : sanitized;
   });
 
   const requestIdentifier = resolveRequestIdentifierCandidate(
