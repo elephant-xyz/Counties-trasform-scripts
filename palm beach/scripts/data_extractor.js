@@ -406,6 +406,30 @@ process.on("exit", () => {
 
 process.on("exit", () => {
   try {
+    enforceTerminalRawAddressOutput({
+      dataDir: path.join("data"),
+      relationshipsDir: path.join("relationships"),
+      addressPath: path.join("data", "address.json"),
+      propertyPath: path.join("data", "property.json"),
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce terminal raw address output and null relationships:",
+      error,
+    );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
     enforceTerminalAddressOneOfCompliance({
       addressPath: path.join("data", "address.json"),
       propertyPath: path.join("data", "property.json"),
@@ -77744,6 +77768,150 @@ function finalizeCountyAddressArtifacts(options = {}) {
   const relationshipDirs = [dataDir, path.join("relationships")];
   persistNullAddressRelationshipFiles(relationshipDirs);
   overwriteAddressRelationshipFilesWithNull(relationshipDirs);
+}
+
+function enforceTerminalRawAddressOutput(options = {}) {
+  const {
+    dataDir = path.join("data"),
+    relationshipsDir = path.join("relationships"),
+    addressPath = path.join("data", "address.json"),
+    propertyPath = path.join("data", "property.json"),
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = titleCaseCounty("Palm Beach"),
+    defaultStateCode = "FL",
+    defaultCountryCode = "US",
+  } = options || {};
+
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+
+  const addressPayload = readJSONIfExists(addressPath) || null;
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || null;
+  const seedSource = readJSONIfExists(seedPath) || null;
+  const sourcePool = [addressPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const requestIdentifier = resolveRequestIdentifierCandidate(
+    addressPayload && addressPayload.request_identifier,
+    unnormalizedSource && unnormalizedSource.request_identifier,
+    seedSource && seedSource.request_identifier,
+    seedSource && seedSource.parcel_id,
+  );
+
+  const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+    addressPayload && addressPayload.source_http_request,
+    unnormalizedSource && unnormalizedSource.source_http_request,
+    seedSource && seedSource.source_http_request,
+  );
+
+  const hasNormalizedSurface =
+    addressPayload &&
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...addressPayload });
+  if (hasNormalizedSurface) {
+    const normalizedOutput =
+      buildNormalizedAddressOutputForSchema({ ...addressPayload }) ||
+      { ...addressPayload };
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOutput.unnormalized_address;
+    }
+    if (
+      sourceHttpRequest &&
+      !Object.prototype.hasOwnProperty.call(
+        normalizedOutput,
+        "source_http_request",
+      )
+    ) {
+      normalizedOutput.source_http_request = prepareSourceHttpRequest(
+        sourceHttpRequest,
+      );
+    }
+    if (
+      requestIdentifier !== undefined &&
+      !Object.prototype.hasOwnProperty.call(normalizedOutput, "request_identifier")
+    ) {
+      normalizedOutput.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    } else if (
+      !Object.prototype.hasOwnProperty.call(normalizedOutput, "request_identifier")
+    ) {
+      normalizedOutput.request_identifier = null;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(normalizedOutput, "country_code")
+    ) {
+      normalizedOutput.country_code = (defaultCountryCode || "US").toUpperCase();
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(normalizedOutput, "state_code") &&
+      defaultStateCode
+    ) {
+      normalizedOutput.state_code = defaultStateCode;
+    }
+
+    writeAddressJSONBypass(addressPath, normalizedOutput);
+    enforceNullPropertyAddressRelationships(propertyPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    persistNullAddressRelationshipFiles([dataDir, relationshipsDir]);
+    ADDRESS_ONE_OF_FINALIZED = true;
+    return;
+  }
+
+  const rawValue =
+    resolveRawAddressStringFromSources(sourcePool) ||
+    resolveRawAddressStringFromSource(
+      resolveFirstPlainObjectCandidate(sourcePool),
+    ) ||
+    null;
+
+  if (!rawValue || typeof rawValue !== "string" || !rawValue.trim().length) {
+    removeFileIfExists(addressPath);
+    enforceNullPropertyAddressRelationships(propertyPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    persistNullAddressRelationshipFiles([dataDir, relationshipsDir]);
+    ADDRESS_ONE_OF_FINALIZED = true;
+    return;
+  }
+
+  const resolvedCounty =
+    resolveFirstMeaningfulAddressField("county_name", sourcePool) ||
+    resolveFirstMeaningfulAddressField("county_jurisdiction", sourcePool) ||
+    defaultCountyName ||
+    null;
+  const resolvedState =
+    resolveFirstMeaningfulAddressField("state_code", sourcePool) ||
+    defaultStateCode ||
+    null;
+
+  const rawPayload = {
+    unnormalized_address: rawValue.trim(),
+    county_name: resolvedCounty ? titleCaseCounty(resolvedCounty) : null,
+    state_code: resolvedState || null,
+    country_code: (defaultCountryCode || "US").toUpperCase(),
+    request_identifier:
+      requestIdentifier === undefined ? null : requestIdentifier,
+    source_http_request: sourceHttpRequest
+      ? prepareSourceHttpRequest(sourceHttpRequest)
+      : null,
+  };
+
+  collapseRawAddressToUnnormalizedOnly(rawPayload);
+  stripRawVariantStructuredFields(rawPayload);
+  enforceRawVariantAllowedFields(rawPayload);
+  rawPayload.__force_raw_variant = true;
+
+  writeAddressJSONBypass(addressPath, rawPayload);
+  enforceNullPropertyAddressRelationships(propertyPath);
+  overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+  persistNullAddressRelationshipFiles([dataDir, relationshipsDir]);
+  ADDRESS_ONE_OF_FINALIZED = true;
 }
 
 function resolveRawSkeletonFieldValue(field, sources = []) {
