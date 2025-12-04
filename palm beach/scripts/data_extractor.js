@@ -12755,6 +12755,7 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
   Array.from(
     new Set([
       ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
     ]),
   ),
 );
@@ -14607,18 +14608,17 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 // street/grid fields on the payload makes it impossible for validation to
 // disambiguate the correct oneOf branch, so restrict the final snapshot to
 // this lean allowlist before persisting it.
-const RAW_UNNORMALIZED_SURFACE_ALLOWLIST = Object.freeze([
-  "unnormalized_address",
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "request_identifier",
-  "source_http_request",
-]);
+const RAW_UNNORMALIZED_SURFACE_ALLOWLIST = Object.freeze(
+  Array.from(
+    new Set([
+      "unnormalized_address",
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
+      "request_identifier",
+      "source_http_request",
+    ]),
+  ),
+);
 const RAW_UNNORMALIZED_SURFACE_FIELD_SET = new Set(
   RAW_UNNORMALIZED_SURFACE_ALLOWLIST,
 );
@@ -49564,6 +49564,7 @@ async function main() {
   try {
     enforceNullPropertyAddressRelationships(propertyFilePath);
     overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+    forceAddressRelationshipNullOutputs([dataDir, relationshipsDir]);
   } catch (error) {
     console.error("Failed to enforce null property/address relationships:", error);
   }
