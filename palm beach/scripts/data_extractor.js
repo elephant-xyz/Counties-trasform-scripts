@@ -71017,6 +71017,23 @@ process.on("exit", () => {
 
 process.on("exit", () => {
   try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    const relationshipDirs = [dataDir, relationshipsDir];
+
+    enforceNullPropertyAddressRelationships(path.join(dataDir, "property.json"));
+    removeAddressRelationshipFiles(relationshipDirs);
+    forceAddressRelationshipNullOutputs(relationshipDirs);
+  } catch (error) {
+    console.error("Failed to finalize property/address relationship placeholders:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+process.on("exit", () => {
+  try {
     const addressPath = path.join("data", "address.json");
     enforceAddressOneOfVariantOnDisk(addressPath);
   } catch (error) {
