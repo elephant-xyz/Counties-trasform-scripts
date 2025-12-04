@@ -48229,6 +48229,108 @@ function enforceCountyAddressSchemaOneOf(addressPath, options = {}) {
   removeFileIfExists(addressPath);
 }
 
+function forceCountyAddressOneOfCompliance(addressPath, options = {}) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return;
+  }
+
+  const {
+    unnormalizedPath = null,
+    seedPath = null,
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    extraSources = [],
+    extraRawCandidates = [],
+  } = options || {};
+
+  const sourcePool = [];
+  const registerSource = (candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      return;
+    }
+    sourcePool.push(candidate);
+  };
+
+  registerSource(readJSONIfExists(addressPath));
+  if (unnormalizedPath) {
+    registerSource(readJSONIfExists(unnormalizedPath));
+  }
+  if (seedPath) {
+    registerSource(readJSONIfExists(seedPath));
+  }
+  if (Array.isArray(extraSources)) {
+    extraSources.forEach(registerSource);
+  }
+
+  const normalizedCandidate = sourcePool.reduce((resolved, source) => {
+    if (resolved) {
+      return resolved;
+    }
+    return buildCountyNormalizedOneOfPayload(source, {
+      defaultCountyName,
+      defaultStateCode,
+      defaultCountryCode,
+    });
+  }, null);
+
+  if (normalizedCandidate) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedCandidate.unnormalized_address;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "request_identifier",
+      )
+    ) {
+      delete normalizedCandidate.request_identifier;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedCandidate,
+        "source_http_request",
+      )
+    ) {
+      delete normalizedCandidate.source_http_request;
+    }
+    writeSchemaAlignedAddress(addressPath, normalizedCandidate);
+    return;
+  }
+
+  const rawCandidateStrings = flattenCandidateValues(
+    extraRawCandidates,
+  ).filter(
+    (value) => typeof value === "string" && value.trim().length,
+  );
+
+  const rawCandidate =
+    buildCountyRawOneOfPayload(sourcePool, rawCandidateStrings) || null;
+
+  if (!rawCandidate) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(rawCandidate, "request_identifier")
+  ) {
+    delete rawCandidate.request_identifier;
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(rawCandidate, "source_http_request")
+  ) {
+    delete rawCandidate.source_http_request;
+  }
+
+  writeSchemaAlignedAddress(addressPath, rawCandidate);
+}
+
 async function main() {
   forceRawAddressVariantOutput = FORCE_RAW_ONLY_ADDRESS_OUTPUT;
   const dataDir = path.join("data");
@@ -69902,6 +70004,51 @@ async function run() {
     });
   } catch (error) {
     console.error("Failed to enforce deterministic final county address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const dataDir = path.join("data");
+    const addressPath = path.join(dataDir, "address.json");
+    const fallbackFieldSources =
+      ADDRESS_FALLBACK_CONTEXT &&
+      Array.isArray(ADDRESS_FALLBACK_CONTEXT.fieldSources)
+        ? ADDRESS_FALLBACK_CONTEXT.fieldSources
+        : [];
+    forceCountyAddressOneOfCompliance(addressPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraSources: [
+        structuredSnapshot,
+        unAddr,
+        seed,
+        ...fallbackFieldSources,
+      ],
+      extraRawCandidates: [
+        finalUnnormalizedCandidates,
+        ADDRESS_FALLBACK_CONTEXT &&
+          ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates,
+      ],
+    });
+  } catch (error) {
+    console.error("Failed to force county address oneOf compliance:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    persistNullAddressRelationshipFiles([
+      path.join("data"),
+      path.join("relationships"),
+    ]);
+  } catch (error) {
+    console.error("Failed to persist final null address relationships:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
