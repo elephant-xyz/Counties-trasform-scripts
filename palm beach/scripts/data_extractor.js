@@ -3,7 +3,7 @@ const path = require("path");
 const cheerio = require("cheerio");
 const { fetch } = require("undici");
 
-process.setMaxListeners(80);
+process.setMaxListeners(0);
 
 const nativeWriteFileSync = fs.writeFileSync;
 let originalWriteFileSync = nativeWriteFileSync;
@@ -20726,6 +20726,202 @@ function enforceRawAddressMetadataCoverage(addressPath, options = {}) {
     );
   } catch (error) {
     console.error("Failed to enforce raw address metadata coverage:", error);
+  }
+}
+
+function enforceRawAddressBaselineFields(addressPath, options = {}) {
+  if (!addressPath || typeof addressPath !== "string") {
+    return;
+  }
+  if (!fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const currentPayload = readJSONIfExists(addressPath);
+  if (!currentPayload || typeof currentPayload !== "object") {
+    return;
+  }
+
+  const {
+    metadataPaths = [],
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    extraRawCandidates = [],
+    debugLabel = null,
+  } = options || {};
+
+  const metadataSources = Array.isArray(metadataPaths)
+    ? metadataPaths
+        .map((metadataPath) => {
+          if (typeof metadataPath !== "string" || !metadataPath.trim()) {
+            return null;
+          }
+          return readJSONIfExists(metadataPath) || null;
+        })
+        .filter((source) => source && typeof source === "object")
+    : [];
+
+  const fieldSources = [currentPayload, ...metadataSources].filter(
+    (source) => source && typeof source === "object",
+  );
+
+  const rawCandidates = [];
+  if (
+    typeof currentPayload.unnormalized_address === "string" &&
+    currentPayload.unnormalized_address.trim().length
+  ) {
+    rawCandidates.push(currentPayload.unnormalized_address.trim());
+  }
+
+  const resolvedRawFromSources =
+    resolveRawAddressStringFromSources(fieldSources) || null;
+  if (resolvedRawFromSources) {
+    rawCandidates.push(resolvedRawFromSources);
+  }
+
+  if (Array.isArray(extraRawCandidates) && extraRawCandidates.length) {
+    extraRawCandidates.forEach((candidate) => {
+      if (typeof candidate !== "string") {
+        return;
+      }
+      const trimmed = candidate.trim();
+      if (trimmed.length) {
+        rawCandidates.push(trimmed);
+      }
+    });
+  }
+
+  const resolvedRawValue = resolveFirstNonEmptyString(rawCandidates);
+  if (!resolvedRawValue) {
+    return;
+  }
+
+  const trimmedRaw = resolvedRawValue.trim();
+  if (!trimmedRaw.length) {
+    return;
+  }
+
+  const resolveFieldValue = (...fieldNames) => {
+    for (const fieldName of fieldNames) {
+      if (!fieldName) continue;
+      const resolved = resolveFirstMeaningfulAddressField(
+        fieldName,
+        fieldSources,
+      );
+      if (hasMeaningfulAddressValue(resolved)) {
+        return resolved;
+      }
+    }
+    return null;
+  };
+
+  const baseline = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  baseline.unnormalized_address = trimmedRaw;
+
+  const resolvedCity = resolveFieldValue("city_name", "municipality_name");
+  baseline.city_name =
+    sanitizeAddressFieldValue("city_name", resolvedCity) || null;
+
+  const resolvedMunicipality =
+    resolveFieldValue("municipality_name") || baseline.city_name;
+  baseline.municipality_name =
+    sanitizeAddressFieldValue("municipality_name", resolvedMunicipality) ||
+    null;
+
+  const resolvedCounty =
+    resolveFieldValue("county_name", "county_jurisdiction") ||
+    defaultCountyName ||
+    null;
+  baseline.county_name = resolvedCounty
+    ? titleCaseCounty(resolvedCounty)
+    : null;
+
+  const resolvedState =
+    resolveFieldValue("state_code") || defaultStateCode || null;
+  baseline.state_code =
+    sanitizeAddressFieldValue("state_code", resolvedState) || null;
+
+  const resolvedPostal = resolveFieldValue("postal_code");
+  baseline.postal_code =
+    sanitizeAddressFieldValue("postal_code", resolvedPostal) || null;
+
+  const resolvedPlus4 = resolveFieldValue(
+    "plus_four_postal_code",
+    "plus4_postal_code",
+  );
+  baseline.plus_four_postal_code =
+    sanitizeAddressFieldValue("plus_four_postal_code", resolvedPlus4) || null;
+
+  const resolvedCountry =
+    resolveFieldValue("country_code") || defaultCountryCode || null;
+  baseline.country_code =
+    sanitizeAddressFieldValue("country_code", resolvedCountry) || null;
+
+  if (baseline.state_code && !baseline.country_code) {
+    baseline.country_code = "US";
+  }
+
+  if (baseline.city_name && !baseline.municipality_name) {
+    baseline.municipality_name = baseline.city_name;
+  }
+
+  const identifierCandidates = [
+    currentPayload.request_identifier,
+    ...(Array.isArray(requestIdentifierCandidates)
+      ? requestIdentifierCandidates
+      : []),
+  ];
+  metadataSources.forEach((source) => {
+    if (!source || typeof source !== "object") {
+      return;
+    }
+    identifierCandidates.push(source.request_identifier, source.parcel_id);
+  });
+  const resolvedIdentifier = resolveRequestIdentifierCandidate(
+    ...identifierCandidates,
+  );
+  baseline.request_identifier =
+    resolvedIdentifier === undefined ? null : resolvedIdentifier;
+
+  const sourceRequestCandidates = [
+    currentPayload.source_http_request,
+    ...(Array.isArray(sourceHttpRequestCandidates)
+      ? sourceHttpRequestCandidates
+      : []),
+  ];
+  metadataSources.forEach((source) => {
+    if (source && typeof source.source_http_request === "object") {
+      sourceRequestCandidates.push(source.source_http_request);
+    }
+  });
+  const resolvedSourceRequest = resolveSourceHttpRequestCandidate(
+    ...sourceRequestCandidates,
+  );
+  if (resolvedSourceRequest) {
+    const prepared = prepareSourceHttpRequest(resolvedSourceRequest);
+    baseline.source_http_request = prepared ? deepClone(prepared) : null;
+  } else {
+    baseline.source_http_request = null;
+  }
+
+  if (process.env.DEBUG_ADDRESS_BASELINE === "1") {
+    console.error(
+      `[raw-baseline${debugLabel ? `/${debugLabel}` : ""}]`,
+      JSON.stringify(baseline, null, 2),
+    );
+  }
+
+  try {
+    originalWriteFileSync.call(
+      fs,
+      addressPath,
+      `${JSON.stringify(baseline, null, 2)}\n`,
+    );
+  } catch (error) {
+    console.error("Failed to persist raw address baseline fields:", error);
   }
 }
 
@@ -70904,6 +71100,28 @@ async function run() {
           ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
           : [],
     });
+    enforceRawAddressBaselineFields(path.join("data", "address.json"), {
+      metadataPaths: ["unnormalized_address.json", "property_seed.json"],
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+          : [],
+      requestIdentifierCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+          : [],
+      sourceHttpRequestCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+          : [],
+      debugLabel: "run-finally",
+    });
   }
 }
 
@@ -81002,6 +81220,28 @@ process.on("exit", () => {
       defaultCountryCode: "US",
     });
     ensureRawAddressFieldSurface(addressPath);
+    enforceRawAddressBaselineFields(addressPath, {
+      metadataPaths: ["unnormalized_address.json", "property_seed.json"],
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+          : [],
+      requestIdentifierCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+          : [],
+      sourceHttpRequestCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+          : [],
+      debugLabel: "exit-metadata",
+    });
 
     enforceNullPropertyAddressRelationships(propertyPath);
     forceAddressRelationshipNullOutputs([dataDir, relationshipsDir]);
@@ -81269,6 +81509,43 @@ process.on("exit", () => {
       "Failed to enforce final raw address schema coverage:",
       error,
     );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    if (!fs.existsSync(addressPath)) {
+      return;
+    }
+    enforceRawAddressBaselineFields(addressPath, {
+      metadataPaths: ["unnormalized_address.json", "property_seed.json"],
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+      extraRawCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates
+          : [],
+      requestIdentifierCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.requestIdentifierCandidates
+          : [],
+      sourceHttpRequestCandidates:
+        ADDRESS_FALLBACK_CONTEXT &&
+        Array.isArray(ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates)
+          ? ADDRESS_FALLBACK_CONTEXT.sourceHttpRequestCandidates
+          : [],
+      debugLabel: "exit-terminal",
+    });
+  } catch (error) {
+    console.error("Failed to enforce terminal raw address baseline fields:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
