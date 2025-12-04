@@ -5576,6 +5576,10 @@ delete layoutContent.space_type_indexer;
   }
 
   // Sales-buyer relationships: sales_history → person/company
+  // Track which person/company indices are actually used in relationships
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
+
   salesBuyerFiles.forEach((saleInfo) => {
     let personCounter = 0;
     let companyCounter = 0;
@@ -5590,6 +5594,7 @@ delete layoutContent.space_type_indexer;
 
       if (fileInfo.type === "person") {
         personCounter++;
+        usedPersonIndices.add(fileInfo.index);
         const relObj = {
           from: { "/": `./${saleInfo.saleFile}` },
           to: { "/": `./person_${fileInfo.index}.json` },
@@ -5598,6 +5603,7 @@ delete layoutContent.space_type_indexer;
         writeJSON(path.join(dataDir, relFileName), relObj);
       } else if (fileInfo.type === "company") {
         companyCounter++;
+        usedCompanyIndices.add(fileInfo.index);
         const relObj = {
           from: { "/": `./${saleInfo.saleFile}` },
           to: { "/": `./company_${fileInfo.index}.json` },
@@ -5606,6 +5612,36 @@ delete layoutContent.space_type_indexer;
         writeJSON(path.join(dataDir, relFileName), relObj);
       }
     });
+  });
+
+  // Remove unused person/company files to prevent "Unused data JSON file detected" errors
+  // Only keep person/company files that have relationships
+  personFiles.forEach((personFile, idx) => {
+    const personIndex = idx + 1;
+    if (!usedPersonIndices.has(personIndex)) {
+      const filePath = path.join(dataDir, personFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  });
+
+  companyFiles.forEach((companyFile, idx) => {
+    const companyIndex = idx + 1;
+    if (!usedCompanyIndices.has(companyIndex)) {
+      const filePath = path.join(dataDir, companyFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
   });
 
   // Property Improvements / Permits
