@@ -75566,24 +75566,23 @@ function buildPalmBeachRawAddressPayload(addressPath) {
     seedSource && seedSource.source_http_request,
   );
 
-  const payload = {
-    unnormalized_address: resolvedRaw.trim(),
-    __force_raw_variant: true,
-  };
-
-  if (requestIdentifier !== undefined) {
-    payload.request_identifier =
-      requestIdentifier === null ? null : requestIdentifier;
+  const strictPayload =
+    buildStrictMinimalRawAddressPayload(resolvedRaw.trim(), {
+      fieldSources: fallbackSources,
+      defaultCountyName: titleCaseCounty("Palm Beach"),
+      defaultStateCode:
+        resolveFirstMeaningfulAddressField("state_code", fallbackSources) ||
+        "FL",
+      defaultCountryCode: "US",
+      requestIdentifier,
+      sourceHttpRequest,
+    }) || null;
+  if (!strictPayload) {
+    return null;
   }
 
-  if (sourceHttpRequest) {
-    const prepared = prepareSourceHttpRequest(sourceHttpRequest);
-    if (prepared) {
-      payload.source_http_request = deepClone(prepared);
-    }
-  }
-
-  return payload;
+  strictPayload.__force_raw_variant = true;
+  return strictPayload;
 }
 
 function buildMinimalRawAddressPayloadFromSources(sources = []) {
