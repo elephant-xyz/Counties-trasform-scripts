@@ -1473,7 +1473,7 @@ function extractProperty(parsed, seed) {
     build_status: propertyMapping.build_status,
     structure_form: propertyMapping.structure_form,
     property_usage_type: propertyMapping.property_usage_type,
-    number_of_units: parsed?.propertyDetail?.Units ?? null,
+    number_of_units: parseIntOrNull(parsed?.propertyDetail?.Units),
     subdivision: parsed?.propertyDetail?.Subdivision ?? null,
     zoning: parsed?.propertyDetail?.Zoning ?? null,
   };
@@ -1687,7 +1687,10 @@ function extractLot(parsed) {
   } else {
     lot_type = "LessThanOrEqualToOneQuarterAcre";
   }
-  let sqFeet = parseNumber(parsed?.propertyDetail?.SqFt || null);
+  let sqFeet = parseIntOrNull(parsed?.propertyDetail?.SqFt);
+  if (sqFeet < 1) {
+    sqFeet = null;
+  }
   return {
     lot_type: lot_type ?? null,
     lot_length_feet: null,
@@ -1705,19 +1708,23 @@ function extractLot(parsed) {
 }
 
 function extractAddressText(parsed) {
-  return parsed?.propertyDetail?.Location || null;
+  const siteAddress = parsed?.propertyDetail?.Location;
+  if (siteAddress && siteAddress.trim()) {
+    return siteAddress;
+  }
+  return null;
 }
 
 function extractOwnerMailingAddress(parsed) {
   let addressLines = [];
   if (parsed?.propertyDetail?.AddressLine1 && parsed?.propertyDetail?.AddressLine1.trim()) {
-    addressLines.push(parsed?.propertyDetail?.AddressLine1);
+    addressLines.push(parsed?.propertyDetail?.AddressLine1.trim());
   }
   if (parsed?.propertyDetail?.AddressLine2 && parsed?.propertyDetail?.AddressLine2.trim()) {
-    addressLines.push(parsed?.propertyDetail?.AddressLine2);
+    addressLines.push(parsed?.propertyDetail?.AddressLine2.trim());
   }
   if (parsed?.propertyDetail?.AddressLine3 && parsed?.propertyDetail?.AddressLine3.trim()) {
-    addressLines.push(parsed?.propertyDetail?.AddressLine3);
+    addressLines.push(parsed?.propertyDetail?.AddressLine3.trim());
   }
   if (addressLines.length > 0) {
     return addressLines.join(", ");
