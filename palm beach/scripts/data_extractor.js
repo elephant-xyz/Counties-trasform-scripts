@@ -101,10 +101,42 @@ const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
   "country_code",
 ]);
 
+const NORMALIZED_ADDRESS_FIELDS = [
+  "latitude",
+  "longitude",
+  "city_name",
+  "country_code",
+  "plus_four_postal_code",
+  "postal_code",
+  "state_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "county_name",
+  "municipality_name",
+];
+
 // Keep the raw surface lean so we reliably hit the unnormalized oneOf branch.
 // Only allow the coarse locality fields that exist in the schema.
 const RAW_SCHEMA_CORE_FIELDS = Object.freeze(
-  Array.from(new Set([...MINIMAL_RAW_ADDRESS_FIELDS])),
+  Array.from(
+    new Set([
+      // Align the raw payload with the county address schema so every
+      // oneOf-required field is present (nullable) even when we only have an
+      // unnormalized string from the source.
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...NORMALIZED_ADDRESS_FIELDS,
+    ]),
+  ),
 );
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
@@ -12570,30 +12602,6 @@ const STREET_SUFFIX_ENUM = [
 ];
 
 const STREET_NAME_FORBIDDEN_DIRECTIONS = /^(?:E|N|NE|NW|S|SE|SW|W)$/;
-
-const NORMALIZED_ADDRESS_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
-  "municipality_name",
-];
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
