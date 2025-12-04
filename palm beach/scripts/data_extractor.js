@@ -14794,12 +14794,7 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 const RAW_ADDRESS_OUTPUT_FIELDS = Object.freeze([
   "unnormalized_address",
-  ...Array.from(
-    new Set([
-      ...RAW_ADDRESS_ALLOWED_FIELDS,
-      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
-    ]),
-  ),
+  ...Array.from(new Set([...RAW_ADDRESS_ALLOWED_FIELDS])),
 ]);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [
@@ -14833,15 +14828,14 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
-// The validator still expects the normalized grid/location fields to be
-// present on the raw branch when they are available, so gate the payload to
-// the expanded allowlist instead of trimming those keys away.
+// Keep the raw surface lean so we reliably satisfy the unnormalized oneOf
+// branch. Only allow the coarse locality fields that the schema accepts for
+// raw addresses.
 const RAW_UNNORMALIZED_SURFACE_ALLOWLIST = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
       ...RAW_SCHEMA_CORE_FIELDS,
-      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
       "request_identifier",
       "source_http_request",
     ]),
