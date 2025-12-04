@@ -110,16 +110,15 @@ const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   ),
 );
 const RAW_UNNORMALIZED_FIELD_SET = new Set(RAW_UNNORMALIZED_ONLY_FIELDS);
-// The county schema's raw oneOf branch still expects the normalized field
-// surface to exist (values may remain null), so never strip those keys even
-// when we only have an unnormalized string from the source.
+// The county schema's raw oneOf branch only allows the lean unnormalized
+// surface plus coarse locality fields, so avoid carrying the structured street
+// grid keys through the raw pipeline.
 const RAW_VARIANT_STRUCTURED_FIELDS = Object.freeze([]);
 const RAW_VARIANT_STRUCTURED_FIELD_SET = new Set(
   RAW_VARIANT_STRUCTURED_FIELDS,
 );
-// County schema expects the normalized field surface to exist even when we emit
-// the raw branch (values may still be null), so do not strip any of the street
-// or coordinate fields out of the raw payload.
+// Normalize handling above; we actively prune structured fields from the raw
+// payload to keep validation on the correct oneOf branch.
 const RAW_VARIANT_FORBIDDEN_FIELDS = Object.freeze([]);
 const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
   RAW_VARIANT_FORBIDDEN_FIELDS,
@@ -12752,12 +12751,7 @@ function stripNormalizedFieldsFromRawPayload(address) {
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
-    ]),
-  ),
+  Array.from(new Set([...MINIMAL_RAW_ADDRESS_FIELDS])),
 );
 const RAW_TERMINAL_FIELD_LIST = Object.freeze(
   Array.from(
@@ -14619,7 +14613,6 @@ const RAW_UNNORMALIZED_SURFACE_ALLOWLIST = Object.freeze(
     new Set([
       "unnormalized_address",
       ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS,
       "request_identifier",
       "source_http_request",
     ]),
@@ -71791,10 +71784,13 @@ process.on("exit", () => {
   }
 });
 
-// Ensure the raw branch always emits the full normalized field surface so the
-// address.oneOf can match the raw variant without tripping over missing keys.
+// Keep the raw branch lean—only hydrate the fields that schema explicitly
+// allows so the payload can target the unnormalized oneOf branch cleanly.
 const COUNTY_RAW_SCHEMA_FIELD_BLUEPRINT = Array.from(
-  new Set([...NORMALIZED_ADDRESS_FIELDS, ...RAW_VARIANT_MINIMAL_SURFACE_FIELDS]),
+  new Set([
+    ...RAW_VARIANT_MINIMAL_SURFACE_FIELDS,
+    ...RAW_VARIANT_METADATA_FIELDS,
+  ]),
 );
 
 function normalizeCityForSchema(city) {
