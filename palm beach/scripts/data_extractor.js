@@ -423,6 +423,87 @@ process.on("exit", () => {
   }
 });
 
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((source) => source && typeof source === "object");
+
+    const rawValue =
+      resolveRawAddressStringFromSources(sourcePool) ||
+      resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
+      resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
+      resolveFirstMeaningfulAddressField("address", sourcePool) ||
+      null;
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+    if (trimmedRaw) {
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        ...sourcePool.map((source) => source && source.request_identifier),
+        ...sourcePool.map((source) => source && source.parcel_id),
+      );
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        ...sourcePool.map((source) => source && source.source_http_request),
+      );
+
+      const payload = {
+        unnormalized_address: trimmedRaw,
+        request_identifier:
+          requestIdentifier === undefined ? null : requestIdentifier,
+        source_http_request: sourceHttpRequest
+          ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
+          : null,
+      };
+
+      writeJSON(addressPath, payload);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object"
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      writeJSON(propertyPath, propertyPayload);
+    }
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      relationshipFiles.forEach((baseName) => {
+        const targetPath = path.join(dirPath, `${baseName}.json`);
+        writeJSON(targetPath, null);
+      });
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce final raw address payload and null relationships:",
+      error,
+    );
+  }
+});
+
 // Final guardrail: emit a schema-safe address payload (preferring raw/unnormalized
 // when we do not have full normalized coverage) and persist explicit null
 // placeholders for the address relationships so validation bypasses UR content.
