@@ -423,6 +423,178 @@ process.on("exit", () => {
   }
 });
 
+// Absolute finalizer: keep the address on the correct oneOf branch and strip
+// relationship payload generation so downstream can hydrate URs itself.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const currentAddress = readJSONIfExists(addressPath) || null;
+    const unnormalizedSource =
+      readJSONIfExists("unnormalized_address.json") || null;
+    const seedSource = readJSONIfExists("property_seed.json") || null;
+    const addressSources = [currentAddress, unnormalizedSource, seedSource].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    let finalAddress = null;
+
+    // Prefer a fully normalized address only when the strict schema surface is
+    // satisfied; otherwise fall back to the raw unnormalized branch.
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      addressSources.find(
+        (source) =>
+          source &&
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (
+        normalized &&
+        typeof normalized === "object" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalized })
+      ) {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(addressSources) ||
+        resolveFirstMeaningfulAddressField("full_address", addressSources) ||
+        resolveFirstMeaningfulAddressField("site_address", addressSources) ||
+        resolveFirstMeaningfulAddressField("address", addressSources) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw.length) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...addressSources.map((source) => source && source.request_identifier),
+          ...addressSources.map((source) => source && source.parcel_id),
+          ...addressSources.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...addressSources.map((source) => source && source.source_http_request),
+        );
+        finalAddress = {
+          unnormalized_address: trimmedRaw,
+        };
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (sourceHttpRequest) {
+          finalAddress.source_http_request = deepClone(
+            prepareSourceHttpRequest(sourceHttpRequest),
+          );
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+
+      if (hasNormalizedSurface) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            finalAddress,
+            "unnormalized_address",
+          )
+        ) {
+          delete finalAddress.unnormalized_address;
+        }
+      } else {
+        const minimalRaw = {
+          unnormalized_address: finalAddress.unnormalized_address,
+        };
+        if (
+          Object.prototype.hasOwnProperty.call(
+            finalAddress,
+            "request_identifier",
+          )
+        ) {
+          minimalRaw.request_identifier = finalAddress.request_identifier;
+        } else {
+          minimalRaw.request_identifier = null;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            finalAddress,
+            "source_http_request",
+          )
+        ) {
+          const prepared = prepareSourceHttpRequest(
+            finalAddress.source_http_request,
+          );
+          if (prepared) {
+            minimalRaw.source_http_request = deepClone(prepared);
+          }
+        }
+        Object.keys(minimalRaw).forEach((key) => {
+          if (minimalRaw[key] === undefined) {
+            delete minimalRaw[key];
+          }
+        });
+        finalAddress = minimalRaw;
+      }
+
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object"
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      writeJSON(propertyPath, propertyPayload);
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      removeFileIfExists(path.join(dataDir, `${base}.json`));
+      removeFileIfExists(path.join(relationshipsDir, `${base}.json`));
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal county address payload and strip relationships:",
+      error,
+    );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 process.on("exit", () => {
   try {
     const dataDir = path.join("data");
@@ -78209,24 +78381,7 @@ function persistNullAddressRelationshipFiles(directories = []) {
     }
     for (const baseName of ADDRESS_RELATIONSHIP_NULL_BASENAMES) {
       const targetPath = path.join(dirPath, `${baseName}.json`);
-      const normalizedBase = baseName.replace(/_\d+$/, "").toLowerCase();
-      const baseNameLower = baseName.toLowerCase();
-      if (
-        RELATIONSHIP_SUPPRESSED_BASENAMES.has(baseNameLower) ||
-        RELATIONSHIP_SUPPRESSED_BASENAMES.has(normalizedBase)
-      ) {
-        removeAutogeneratedRelationshipFile(targetPath);
-        continue;
-      }
-      try {
-        removeAutogeneratedRelationshipFile(targetPath);
-        originalWriteFileSync.call(fs, targetPath, "null\n");
-      } catch (error) {
-        console.error(
-          `Failed to persist null relationship placeholder at ${targetPath}:`,
-          error,
-        );
-      }
+      removeAutogeneratedRelationshipFile(targetPath);
     }
   }
 }
