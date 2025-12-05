@@ -42440,44 +42440,74 @@ function enforceFinalAddressSchemaOutput(addressFilePath, options = {}) {
     payload.source_http_request,
   );
 
-  const finalizePayload = (basePayload) => {
-    const output = { ...basePayload };
-
+  if (normalizedCoverage) {
+    const normalizedOutput = { ...normalizedSurface };
     if (hasRequestIdentifierField || requestIdentifier) {
-      output.request_identifier =
+      normalizedOutput.request_identifier =
         requestIdentifier === null ? null : requestIdentifier;
     }
-
     if (preparedSource) {
-      output.source_http_request = deepClone(preparedSource);
+      normalizedOutput.source_http_request = deepClone(preparedSource);
     } else if (hasSourceField) {
-      output.source_http_request = null;
+      normalizedOutput.source_http_request = null;
     }
-
-    if (!output.postal_code) {
-      output.plus_four_postal_code = null;
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
     }
-    if (output.state_code && !output.country_code) {
-      output.country_code = "US";
+    if (normalizedOutput.state_code && !normalizedOutput.country_code) {
+      normalizedOutput.country_code = "US";
     }
-
-    writeJSON(addressFilePath, output);
-  };
-
-  if (normalizedCoverage) {
-    finalizePayload(normalizedSurface);
+    writeJSON(addressFilePath, normalizedOutput);
     return;
   }
 
   if (resolvedRaw) {
-    finalizePayload({
-      ...normalizedSurface,
+    const rawSeed = {
+      ...payload,
       unnormalized_address: resolvedRaw,
-    });
+    };
+    const rawPayload =
+      buildMinimalRawAddressForSchema(
+        rawSeed,
+        [payload, normalizedSurface].filter(
+          (source) => source && typeof source === "object",
+        ),
+        {
+          defaultCountyName: normalizedSurface.county_name || null,
+          defaultStateCode: normalizedSurface.state_code || null,
+          defaultCountryCode: normalizedSurface.country_code || "US",
+          requestIdentifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          sourceHttpRequest: preparedSource || null,
+        },
+      ) || { unnormalized_address: resolvedRaw };
+
+    let finalizedRaw = {
+      ...rawPayload,
+      __force_raw_variant: true,
+    };
+
+    if (preparedSource && !finalizedRaw.source_http_request) {
+      finalizedRaw.source_http_request = deepClone(preparedSource);
+    } else if (hasSourceField && !finalizedRaw.source_http_request) {
+      finalizedRaw.source_http_request = null;
+    }
+
+    if (hasRequestIdentifierField || requestIdentifier !== undefined) {
+      finalizedRaw.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+
+    finalizedRaw =
+      enforceRawVariantAllowedFields(finalizedRaw) || finalizedRaw;
+    finalizedRaw =
+      collapseRawAddressToUnnormalizedOnly(finalizedRaw) || finalizedRaw;
+
+    writeJSON(addressFilePath, finalizedRaw);
     return;
   }
 
-  finalizePayload(normalizedSurface);
+  writeJSON(addressFilePath, normalizedSurface);
 }
 
 function enforceStrictCountyAddressVariant(addressFilePath, options = {}) {
