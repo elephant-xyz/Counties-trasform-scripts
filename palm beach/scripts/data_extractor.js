@@ -86382,8 +86382,14 @@ function applyTerminalAddressReducer() {
     "relationship_address_has_fact_sheet",
   ];
   [dataDir, relationshipsDir].forEach((dirPath) => {
+    ensureDir(dirPath);
     relBases.forEach((base) => {
-      removeFileIfExists(path.join(dirPath, `${base}.json`));
+      const relPath = path.join(dirPath, `${base}.json`);
+      try {
+        nativeWriteFileSync(relPath, "null\n");
+      } catch {
+        removeFileIfExists(relPath);
+      }
     });
   });
 
