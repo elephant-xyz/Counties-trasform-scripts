@@ -85682,3 +85682,108 @@ process.on("exit", () => {
     console.error("Terminal county address scrub failed:", error);
   }
 });
+
+// Final override to keep address payload on the unnormalized oneOf branch and
+// suppress relationship payload generation (URs are populated downstream).
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+      readJSONIfExists(addressPath),
+    ].filter((source) => source && typeof source === "object");
+
+    let finalAddress = null;
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      sourcePool.find(
+        (source) =>
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(sourcePool) ||
+        resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
+        resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
+        resolveFirstMeaningfulAddressField("address", sourcePool) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sourcePool.map((source) => source && source.request_identifier),
+          ...sourcePool.map((source) => source && source.parcel_id),
+          ...sourcePool.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sourcePool.map((source) => source && source.source_http_request),
+        );
+
+        const payload = {
+          unnormalized_address: trimmedRaw,
+        };
+
+        if (requestIdentifier !== undefined) {
+          payload.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+
+        if (sourceHttpRequest) {
+          const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+          if (prepared) {
+            payload.source_http_request = deepClone(prepared);
+          }
+        }
+
+        Object.keys(payload).forEach((key) => {
+          if (!RAW_UNNORMALIZED_SURFACE_FIELD_SET.has(key)) {
+            delete payload[key];
+          }
+        });
+
+        finalAddress = payload;
+      }
+    }
+
+    if (finalAddress) {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    enforceNullPropertyAddressRelationships(propertyPath);
+    forceAddressRelationshipNullOutputs([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error("Failed to persist final raw address payload:", error);
+  }
+});
