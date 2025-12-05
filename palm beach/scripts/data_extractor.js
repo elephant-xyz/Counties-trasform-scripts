@@ -421,6 +421,161 @@ process.on("exit", () => {
   }
 });
 
+// Absolute terminal fix: keep address payload on a single oneOf branch (prefer
+// normalized only when fully populated, otherwise emit the minimal raw variant
+// using the provided unnormalized source) and strip relationship payloads so
+// downstream UR hydration can handle them.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+    const seedSource = readJSONIfExists("property_seed.json") || {};
+    const existingAddress = readJSONIfExists(addressPath) || {};
+
+    const candidateSources = [existingAddress, unnormalizedSource, seedSource].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      candidateSources.find(
+        (source) =>
+          source &&
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    const requestIdentifier = resolveRequestIdentifierCandidate(
+      existingAddress.request_identifier,
+      unnormalizedSource.request_identifier,
+      seedSource.request_identifier,
+      seedSource.parcel_id,
+    );
+    const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+      existingAddress.source_http_request,
+      unnormalizedSource.source_http_request,
+      seedSource.source_http_request,
+    );
+    const preparedSource =
+      sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+        ? prepareSourceHttpRequest(sourceHttpRequest)
+        : null;
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        normalized.request_identifier =
+          requestIdentifier === undefined ? null : requestIdentifier;
+        if (preparedSource) {
+          normalized.source_http_request = deepClone(preparedSource);
+        } else if (
+          Object.prototype.hasOwnProperty.call(normalized, "source_http_request")
+        ) {
+          delete normalized.source_http_request;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    const firstString = (...values) => {
+      for (const value of values) {
+        if (typeof value !== "string") continue;
+        const trimmed = value.trim();
+        if (trimmed.length) {
+          return trimmed;
+        }
+      }
+      return null;
+    };
+
+    if (!finalAddress) {
+      const rawValue = firstString(
+        existingAddress.unnormalized_address,
+        existingAddress.full_address,
+        unnormalizedSource.unnormalized_address,
+        unnormalizedSource.full_address,
+        seedSource.unnormalized_address,
+        seedSource.full_address,
+      );
+
+      if (rawValue) {
+        finalAddress = {
+          unnormalized_address: rawValue,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: preparedSource ? deepClone(preparedSource) : null,
+        };
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object"
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      relationshipBases.forEach((base) => {
+        const targetPath = path.join(dirPath, `${base}.json`);
+        removeFileIfExists(targetPath);
+        try {
+          nativeWriteFileSync.call(fs, targetPath, "null\n");
+        } catch {
+          removeFileIfExists(targetPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Failed to persist terminal address/relationship payloads:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 
 // Absolute finalizer: keep the address on the correct oneOf branch and strip
 // relationship payload generation so downstream can hydrate URs itself.
