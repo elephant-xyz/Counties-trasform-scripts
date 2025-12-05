@@ -84883,3 +84883,89 @@ process.on("exit", () => {
     console.error("Final county address guard failed:", error);
   }
 });
+
+// Deterministic final scrub: pick a single valid address branch (normalized
+// only when the strict schema surface is fully covered, otherwise the lean
+// unnormalized variant) and remove any relationship payload files so UR
+// backfilling owns the links.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) =>
+        source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedAddress =
+      allowNormalizedAddressOutput() && typeof pickNormalizedCountyAddress === "function"
+        ? pickNormalizedCountyAddress(sourcePool)
+        : null;
+    const rawAddress =
+      typeof pickRawCountyAddress === "function"
+        ? pickRawCountyAddress(sourcePool)
+        : null;
+
+    const finalAddress = normalizedAddress || rawAddress;
+    if (finalAddress && typeof finalAddress === "object") {
+      const normalizedSurface = !!normalizedAddress;
+      if (!normalizedSurface) {
+        Object.keys(finalAddress).forEach((key) => {
+          if (!RAW_UNNORMALIZED_SURFACE_FIELD_SET.has(key)) {
+            delete finalAddress[key];
+          } else if (
+            key === "unnormalized_address" &&
+            typeof finalAddress[key] === "string"
+          ) {
+            finalAddress[key] = finalAddress[key].trim();
+          }
+        });
+      }
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath);
+    if (
+      propertyPayload &&
+      typeof propertyPayload === "object" &&
+      !Array.isArray(propertyPayload)
+    ) {
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object" ||
+        Array.isArray(propertyPayload.relationships)
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      writeJSON(propertyPath, propertyPayload);
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      relationshipBases.forEach((baseName) => {
+        removeFileIfExists(path.join(dirPath, `${baseName}.json`));
+      });
+    });
+  } catch (error) {
+    console.error("Deterministic final address/relationship scrub failed:", error);
+  }
+});
