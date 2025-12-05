@@ -1061,8 +1061,7 @@ function main() {
         visible_damage: null,
         window_design_type: null,
         window_material_type: null,
-        window_treatment_type: 123456789,
-        non_existing_field: null,
+        window_treatment_type: null,
         ...customFields, // Override with specific values
       };
     };
@@ -1142,6 +1141,21 @@ function main() {
       layoutIdx++;
     }
   });
+
+  // Create relationships from property to all layouts
+  for (let i = 1; i < layoutIdx; i++) {
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_has_layout_${i}.json`),
+      JSON.stringify(
+        {
+          from: { "/": "./property.json" },
+          to: { "/": `./layout_${i}.json` },
+        },
+        null,
+        2,
+      ),
+    );
+  }
 
   // Structure data from permits and building features
   const structureObj = {
