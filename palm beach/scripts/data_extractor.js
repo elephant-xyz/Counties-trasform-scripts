@@ -73,20 +73,6 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
   "county_name",
 ];
 
-const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
-  // Keep raw submissions minimal so they clearly satisfy the unnormalized
-  // oneOf branch without introducing partially structured fields.
-]);
-
-const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      "unnormalized_address",
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
-    ]),
-  ),
-);
-
 const RAW_FALLBACK_COPY_FIELDS = Object.freeze([]);
 
 const NORMALIZED_ADDRESS_FIELDS = [
@@ -113,15 +99,27 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "municipality_name",
 ];
 
-// Keep the raw surface lean so we reliably hit the unnormalized oneOf branch.
-// Only allow the coarse locality fields that exist in the schema.
+const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
+  // Preserve the full normalized field surface (nullable) on raw outputs so we
+  // satisfy the schema's required keys even when we only have an
+  // unnormalized_address from the source.
+  ...NORMALIZED_ADDRESS_FIELDS,
+]);
+
+const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
+  Array.from(
+    new Set([
+      "unnormalized_address",
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+    ]),
+  ),
+);
+
+// Keep the raw surface schema-aligned by carrying the nullable normalized field
+// set so the unnormalized oneOf branch still satisfies required key presence.
 const RAW_SCHEMA_CORE_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Align the raw payload with the county address schema using only the
-      // raw-friendly fields so we don't partially satisfy the normalized
-      // branch and trigger oneOf validation errors when structured data is
-      // missing.
       ...MINIMAL_RAW_ADDRESS_FIELDS,
     ]),
   ),
