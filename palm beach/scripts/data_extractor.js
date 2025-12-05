@@ -84969,3 +84969,139 @@ process.on("exit", () => {
     console.error("Deterministic final address/relationship scrub failed:", error);
   }
 });
+
+// Final safety net: emit a single valid address branch (prefer normalized only
+// when the full schema surface is present, otherwise the lean unnormalized
+// variant) and force all address relationships to explicit null payloads so
+// the UR hydration step can populate them later.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    let finalAddress = null;
+    if (
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+    ) {
+      const normalizedCandidate = sources.find((source) =>
+        hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+      if (normalizedCandidate) {
+        const normalized =
+          (typeof buildNormalizedAddressOutputForSchema === "function" &&
+            buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+          { ...normalizedCandidate };
+        if (normalized && typeof normalized === "object") {
+          if (
+            Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+          ) {
+            delete normalized.unnormalized_address;
+          }
+          finalAddress = normalized;
+        }
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(sources) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+        resolveFirstMeaningfulAddressField("full_address", sources) ||
+        resolveFirstMeaningfulAddressField("site_address", sources) ||
+        resolveFirstMeaningfulAddressField("address", sources) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sources.map((source) => source && source.request_identifier),
+          ...sources.map((source) => source && source.parcel_id),
+          ...sources.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sources.map((source) => source && source.source_http_request),
+        );
+
+        finalAddress = { unnormalized_address: trimmedRaw };
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (sourceHttpRequest) {
+          const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+          if (prepared) {
+            finalAddress.source_http_request = deepClone(prepared);
+          }
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const normalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+
+      if (normalizedSurface) {
+        if (
+          Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+        ) {
+          delete finalAddress.unnormalized_address;
+        }
+      } else {
+        const cleaned =
+          enforceUnnormalizedAddressFieldAllowlist({ ...finalAddress }) || {};
+        collapseRawAddressToUnnormalizedOnly(cleaned);
+        finalAddress = cleaned;
+      }
+
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    if (
+      !propertyPayload.relationships ||
+      typeof propertyPayload.relationships !== "object" ||
+      Array.isArray(propertyPayload.relationships)
+    ) {
+      propertyPayload.relationships = {};
+    }
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      ensureDir(dirPath);
+      relationshipBases.forEach((baseName) => {
+        const relPath = path.join(dirPath, `${baseName}.json`);
+        try {
+          fs.writeFileSync(relPath, "null\n");
+        } catch {
+          removeFileIfExists(relPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Terminal county address finalizer failed:", error);
+  }
+});
