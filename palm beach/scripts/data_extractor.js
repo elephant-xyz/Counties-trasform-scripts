@@ -24,7 +24,11 @@ let ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
 let ADDRESS_ONE_OF_FINALIZED = false;
 
 function allowNormalizedAddressOutput() {
-  return !FORCE_RAW_ONLY_ADDRESS_OUTPUT && !forceRawAddressVariantOutput;
+  return (
+    !FORCE_RAW_ONLY_ADDRESS_OUTPUT &&
+    !forceRawAddressVariantOutput &&
+    !ENFORCE_UNNORMALIZED_ONLY_ADDRESS
+  );
 }
 
 const COUNTY_REQUIRED_NORMALIZED_FIELDS = [
@@ -1952,9 +1956,9 @@ const ADDRESS_RELATIONSHIP_NULL_BASENAMES = Object.freeze([
   "address_has_fact_sheet",
   "relationship_address_has_fact_sheet",
 ]);
-const RELATIONSHIP_SUPPRESSED_BASENAMES = new Set(
-  ADDRESS_RELATIONSHIP_BASENAMES.map((name) => name.toLowerCase()),
-);
+// Do not suppress address relationship placeholders; emit explicit nulls so
+// downstream UR generators own these links without validation noise.
+const RELATIONSHIP_SUPPRESSED_BASENAMES = new Set();
 // Always emit explicit null placeholders so downstream systems can safely
 // hydrate the UR-based relationships without tripping validation.
 const RELATIONSHIP_PLACEHOLDER_BASENAMES = new Set(
