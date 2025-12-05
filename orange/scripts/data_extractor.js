@@ -5959,6 +5959,155 @@ delete layoutContent.space_type_indexer;
       `Unmapped DOR codes encountered: ${Array.from(missingDorCodes).join(", ")}`,
     );
   }
+
+  // CRITICAL: Final cleanup pass to remove orphaned person/company files
+  // This is a safeguard to ensure no "Unused data JSON file" errors
+  // even if there are bugs in the person/company creation logic above
+  try {
+    const allFilesInData = fs.readdirSync(dataDir);
+
+    // Find all person and company files
+    const personFiles = allFilesInData.filter(f => /^person_\d+\.json$/.test(f));
+    const companyFiles = allFilesInData.filter(f => /^company_\d+\.json$/.test(f));
+
+    // CRITICAL: If there are no sales_history files, remove ALL person and company files immediately
+    // This is the most common cause of orphaned files
+    const salesHistoryFilesExist = allFilesInData.some(f => /^sales_history_\d+\.json$/.test(f));
+    if (!salesHistoryFilesExist && (personFiles.length > 0 || companyFiles.length > 0)) {
+      console.warn(`CRITICAL CLEANUP: No sales_history files found - removing all ${personFiles.length} person and ${companyFiles.length} company files`);
+
+      personFiles.forEach(personFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, personFile));
+          console.log(`✓ Removed ${personFile} (no sales_history files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${personFile}:`, e.message);
+        }
+      });
+
+      companyFiles.forEach(companyFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, companyFile));
+          console.log(`✓ Removed ${companyFile} (no sales_history files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${companyFile}:`, e.message);
+        }
+      });
+
+      // Also remove any relationship files that reference persons or companies
+      const allRelFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      allRelFiles.forEach(relFile => {
+        if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+          try {
+            fs.unlinkSync(path.join(dataDir, relFile));
+            console.log(`✓ Removed ${relFile} (no sales_history files exist)`);
+          } catch (e) {
+            console.error(`✗ Failed to remove ${relFile}:`, e.message);
+          }
+        }
+      });
+
+      console.log(`Cleanup complete: Removed all person/company files and their relationships`);
+      return; // Exit cleanup early
+    }
+
+    if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup check: Found ${personFiles.length} person files and ${companyFiles.length} company files`);
+    }
+
+    // Find all relationship files
+    const relationshipFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+
+    // Build a set of all referenced entity files (person/company) that have VALID relationships
+    // A valid relationship is one where BOTH endpoints exist
+    const referencedEntityFiles = new Set();
+    const invalidRelationshipFiles = [];
+
+    relationshipFiles.forEach(relFile => {
+      try {
+        const relPath = path.join(dataDir, relFile);
+        const relContent = JSON.parse(fs.readFileSync(relPath, 'utf8'));
+
+        // Extract file names from relationship endpoints
+        const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+        const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+        // Verify both endpoints exist before considering this a valid reference
+        const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+        const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+        // Only add entity files if BOTH endpoints of the relationship exist
+        if (fromExists && toExists) {
+          // Check if they reference person or company files
+          if (/^person_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^person_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+          if (/^company_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^company_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+        } else {
+          // Mark this relationship file for removal
+          invalidRelationshipFiles.push({
+            file: relFile,
+            fromPath,
+            toPath,
+            fromExists,
+            toExists
+          });
+        }
+      } catch (e) {
+        console.error(`Error reading relationship file ${relFile}:`, e.message);
+      }
+    });
+
+    // Remove invalid relationship files (those with missing endpoints)
+    invalidRelationshipFiles.forEach(({ file, fromPath, toPath, fromExists, toExists }) => {
+      try {
+        fs.unlinkSync(path.join(dataDir, file));
+        const missingEndpoint = !fromExists ? fromPath : toPath;
+        console.warn(`✓ Removed invalid relationship ${file} (missing endpoint: ${missingEndpoint})`);
+      } catch (e) {
+        console.error(`✗ Failed to remove invalid relationship ${file}:`, e.message);
+      }
+    });
+
+    // Delete orphaned person files
+    let removedPersonCount = 0;
+    personFiles.forEach(personFile => {
+      if (!referencedEntityFiles.has(personFile)) {
+        const orphanPath = path.join(dataDir, personFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned person file: ${personFile} (not referenced by any valid relationship)`);
+          removedPersonCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned person file ${personFile}:`, e.message);
+        }
+      }
+    });
+
+    // Delete orphaned company files
+    let removedCompanyCount = 0;
+    companyFiles.forEach(companyFile => {
+      if (!referencedEntityFiles.has(companyFile)) {
+        const orphanPath = path.join(dataDir, companyFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned company file: ${companyFile} (not referenced by any valid relationship)`);
+          removedCompanyCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned company file ${companyFile}:`, e.message);
+        }
+      }
+    });
+
+    if (removedPersonCount > 0 || removedCompanyCount > 0) {
+      console.log(`Cleanup complete: Removed ${removedPersonCount} person files and ${removedCompanyCount} company files`);
+    } else if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup complete: All ${personFiles.length} person files and ${companyFiles.length} company files have valid relationships`);
+    }
+  } catch (cleanupError) {
+    console.error('✗ Error during final cleanup of orphaned files:', cleanupError.message);
+    console.error('Stack trace:', cleanupError.stack);
+  }
 }
 
 main();
