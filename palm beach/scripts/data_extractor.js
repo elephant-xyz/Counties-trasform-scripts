@@ -72839,6 +72839,21 @@ run()
           fs.writeFileSync(relPath, "null\n");
         });
       });
+      try {
+        // Clear earlier exit listeners that might reintroduce invalid relationship
+        // payloads, then collapse the address to a single valid schema branch.
+        process.removeAllListeners("exit");
+        applyTerminalAddressReducer();
+        process.on("exit", applyTerminalAddressReducer);
+      } catch (reducerError) {
+        console.error(
+          "Failed to enforce terminal address reducer during finalization:",
+          reducerError,
+        );
+        if (!process.exitCode) {
+          process.exitCode = 1;
+        }
+      }
     } catch (error) {
       console.error("Failed to emit final raw address payload:", error);
       if (!process.exitCode) {
@@ -86248,5 +86263,129 @@ process.on("exit", () => {
     });
   } catch (error) {
     console.error("Final deterministic address sanitizer failed:", error);
+  }
+});
+
+function applyTerminalAddressReducer() {
+  const dataDir = path.join("data");
+  const relationshipsDir = path.join("relationships");
+  ensureDir(dataDir);
+  ensureDir(relationshipsDir);
+
+  const addressPath = path.join(dataDir, "address.json");
+  const propertyPath = path.join(dataDir, "property.json");
+
+  const sourcePool = [
+    readJSONIfExists(addressPath),
+    readJSONIfExists("unnormalized_address.json"),
+    readJSONIfExists("property_seed.json"),
+  ].filter(
+    (source) => source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const normalizedCandidate =
+    allowNormalizedAddressOutput() &&
+    sourcePool.find(
+      (source) =>
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+    );
+
+  let addressOutput = null;
+
+  if (normalizedCandidate) {
+    addressOutput =
+      (typeof buildNormalizedAddressOutputForSchema === "function" &&
+        buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+      { ...normalizedCandidate };
+    if (
+      addressOutput &&
+      typeof addressOutput === "object" &&
+      Object.prototype.hasOwnProperty.call(addressOutput, "unnormalized_address")
+    ) {
+      delete addressOutput.unnormalized_address;
+    }
+  } else {
+    const rawValue =
+      resolveRawAddressStringFromSources(sourcePool) ||
+      resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
+      resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
+      resolveFirstMeaningfulAddressField("address", sourcePool) ||
+      null;
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (trimmedRaw) {
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        ...sourcePool.map((source) => source && source.request_identifier),
+        ...sourcePool.map((source) => source && source.parcel_id),
+        ...sourcePool.map((source) => source && source.parcel_identifier),
+      );
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        ...sourcePool.map((source) => source && source.source_http_request),
+      );
+      addressOutput = {
+        unnormalized_address: trimmedRaw,
+        request_identifier:
+          requestIdentifier === undefined ? null : requestIdentifier,
+      };
+      const prepared =
+        sourceHttpRequest &&
+        typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+      if (prepared) {
+        addressOutput.source_http_request = deepClone(prepared);
+      }
+    }
+  }
+
+  if (addressOutput && typeof addressOutput === "object") {
+    nativeWriteFileSync(
+      addressPath,
+      `${JSON.stringify(addressOutput, null, 2)}\n`,
+    );
+    ADDRESS_FINALIZATION_COMPLETE = true;
+  } else {
+    removeFileIfExists(addressPath);
+  }
+
+  if (fs.existsSync(propertyPath)) {
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    if (
+      !propertyPayload.relationships ||
+      typeof propertyPayload.relationships !== "object"
+    ) {
+      propertyPayload.relationships = {};
+    }
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    nativeWriteFileSync(
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+  }
+
+  const relBases = [
+    "property_has_address",
+    "relationship_property_has_address",
+    "address_has_fact_sheet",
+    "relationship_address_has_fact_sheet",
+  ];
+  [dataDir, relationshipsDir].forEach((dirPath) => {
+    relBases.forEach((base) => {
+      removeFileIfExists(path.join(dirPath, `${base}.json`));
+    });
+  });
+
+  return addressOutput;
+}
+
+// Ultimate guardrail: choose a single valid oneOf branch (normalized only when
+// fully populated, otherwise a lean unnormalized payload) and strip generated
+// relationship files so UR hydration can populate them downstream.
+process.on("exit", () => {
+  try {
+    applyTerminalAddressReducer();
+  } catch (error) {
+    console.error("Terminal county address reducer failed:", error);
   }
 });
