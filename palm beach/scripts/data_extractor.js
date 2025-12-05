@@ -130,11 +130,11 @@ const NORMALIZED_ADDRESS_FIELDS = [
 const RAW_SCHEMA_CORE_FIELDS = Object.freeze(
   Array.from(
     new Set([
-      // Align the raw payload with the county address schema so every
-      // oneOf-required field is present (nullable) even when we only have an
-      // unnormalized string from the source.
+      // Align the raw payload with the county address schema using only the
+      // raw-friendly fields so we don't partially satisfy the normalized
+      // branch and trigger oneOf validation errors when structured data is
+      // missing.
       ...MINIMAL_RAW_ADDRESS_FIELDS,
-      ...NORMALIZED_ADDRESS_FIELDS,
     ]),
   ),
 );
