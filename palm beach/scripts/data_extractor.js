@@ -85570,73 +85570,98 @@ process.on("exit", () => {
     const addressPath = path.join(dataDir, "address.json");
     const propertyPath = path.join(dataDir, "property.json");
 
-    const addressPayload = readJSONIfExists(addressPath);
-    const normalizedSurface =
-      addressPayload &&
-      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
-      hasStrictCountyNormalizedSchemaCoverage({ ...addressPayload });
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
 
-    if (addressPayload && typeof addressPayload === "object") {
-      if (normalizedSurface) {
-        // Preserve only normalized schema fields plus request metadata.
-        const allowed = new Set([
-          ...NORMALIZED_ADDRESS_FIELDS,
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      sourcePool.find((source) =>
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(sourcePool) ||
+        resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
+        resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
+        resolveFirstMeaningfulAddressField("address", sourcePool) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sourcePool.map((source) => source && source.request_identifier),
+          ...sourcePool.map((source) => source && source.parcel_id),
+          ...sourcePool.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sourcePool.map((source) => source && source.source_http_request),
+        );
+        const rawPayload = {
+          unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+        };
+        if (sourceHttpRequest) {
+          rawPayload.source_http_request = deepClone(
+            prepareSourceHttpRequest(sourceHttpRequest),
+          );
+        }
+        const allowedRawFields = new Set([
+          "unnormalized_address",
           "request_identifier",
           "source_http_request",
         ]);
-        const cleaned = {};
-        allowed.forEach((field) => {
-          if (Object.prototype.hasOwnProperty.call(addressPayload, field)) {
-            cleaned[field] = addressPayload[field];
+        Object.keys(rawPayload).forEach((key) => {
+          if (!allowedRawFields.has(key)) {
+            delete rawPayload[key];
           }
         });
-        removeFileIfExists(addressPath);
-        writeJSON(addressPath, cleaned);
-      } else {
-        const rawValue =
-          typeof addressPayload.unnormalized_address === "string"
-            ? addressPayload.unnormalized_address.trim()
-            : "";
-        if (!rawValue.length) {
-          removeFileIfExists(addressPath);
-        } else {
-          const cleaned = {
-            unnormalized_address: rawValue,
-            request_identifier: Object.prototype.hasOwnProperty.call(
-              addressPayload,
-              "request_identifier",
-            )
-              ? addressPayload.request_identifier
-              : null,
-            source_http_request: addressPayload.source_http_request
-              ? deepClone(prepareSourceHttpRequest(addressPayload.source_http_request))
-              : null,
-          };
-          removeFileIfExists(addressPath);
-          writeJSON(addressPath, cleaned);
-        }
+        finalAddress = rawPayload;
       }
+    }
+
+    if (finalAddress) {
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
     } else {
       removeFileIfExists(addressPath);
     }
 
-    const propertyPayload = readJSONIfExists(propertyPath);
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
     if (
-      propertyPayload &&
-      typeof propertyPayload === "object" &&
-      !Array.isArray(propertyPayload)
+      !propertyPayload.relationships ||
+      typeof propertyPayload.relationships !== "object" ||
+      Array.isArray(propertyPayload.relationships)
     ) {
-      if (
-        !propertyPayload.relationships ||
-        typeof propertyPayload.relationships !== "object" ||
-        Array.isArray(propertyPayload.relationships)
-      ) {
-        propertyPayload.relationships = {};
-      }
-      propertyPayload.relationships.property_has_address = null;
-      propertyPayload.relationships.address_has_fact_sheet = null;
-      writeJSON(propertyPath, propertyPayload);
+      propertyPayload.relationships = {};
     }
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
 
     const relationshipBases = [
       "property_has_address",
@@ -85645,10 +85670,14 @@ process.on("exit", () => {
       "relationship_address_has_fact_sheet",
     ];
     [dataDir, relationshipsDir].forEach((dirPath) => {
+      ensureDir(dirPath);
       relationshipBases.forEach((baseName) => {
-        removeFileIfExists(path.join(dirPath, `${baseName}.json`));
+        const relPath = path.join(dirPath, `${baseName}.json`);
+        originalWriteFileSync.call(fs, relPath, "null\n");
       });
     });
+
+    ADDRESS_ONE_OF_FINALIZED = true;
   } catch (error) {
     console.error("Terminal county address scrub failed:", error);
   }
