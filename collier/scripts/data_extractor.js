@@ -955,11 +955,6 @@ function main() {
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
       if (lay && Object.keys(lay).length > 0) {
-        // Ensure space_index is an integer
-        if (lay.space_index === null || lay.space_index === undefined) {
-          lay.space_index = layoutIdx;
-        }
-
         // Ensure is_finished is a boolean
         if (typeof lay.is_finished !== "boolean") {
           // Default: exterior spaces are not finished, interior spaces are finished
@@ -1024,7 +1019,6 @@ function main() {
         decor_elements: null,
         design_style: null,
         fixture_finish_quality: null,
-        floor_level: null,
         flooring_installation_date: null,
         flooring_material_type: null,
         flooring_wear: null,
@@ -1049,7 +1043,6 @@ function main() {
         size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
         spa_installation_date: null,
         spa_type: null,
-        space_index: idx, // Use the layout index as space_index
         space_type_index: "1",
         space_type: spaceType,
         story_type: null,
@@ -1058,8 +1051,7 @@ function main() {
         visible_damage: null,
         window_design_type: null,
         window_material_type: null,
-        window_treatment_type: 123456789,
-        non_existing_field: null,
+        window_treatment_type: null,
         ...customFields, // Override with specific values
       };
     };
