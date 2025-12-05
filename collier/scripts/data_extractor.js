@@ -1234,10 +1234,23 @@ function main() {
     structureObj.number_of_buildings = buildingTypes.size;
   }
 
-  // Always write structure.json with all required fields
+  // Always write structure_1.json with all required fields
   fs.writeFileSync(
-    path.join(dataDir, "structure.json"),
+    path.join(dataDir, "structure_1.json"),
     JSON.stringify(structureObj, null, 2),
+  );
+
+  // Create relationship from property to structure
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_property_has_structure_1.json"),
+    JSON.stringify(
+      {
+        from: { "/": "./property.json" },
+        to: { "/": "./structure_1.json" },
+      },
+      null,
+      2,
+    ),
   );
 
   // Tax from Summary and History
