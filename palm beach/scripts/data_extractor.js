@@ -2582,7 +2582,24 @@ function writeSchemaAlignedAddress(addressPath, payload) {
   const schemaReadyPayload =
     ensureRawAddressFieldCompleteness(finalizedPayload) || finalizedPayload;
 
-  hydrateNormalizedFieldSurface(schemaReadyPayload);
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...schemaReadyPayload });
+
+  if (hasNormalizedSurface) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        schemaReadyPayload,
+        "unnormalized_address",
+      )
+    ) {
+      delete schemaReadyPayload.unnormalized_address;
+    }
+    hydrateNormalizedFieldSurface(schemaReadyPayload);
+  } else {
+    collapseRawAddressToUnnormalizedOnly(schemaReadyPayload);
+    applyRawAddressPresenceDefaults(schemaReadyPayload);
+  }
 
   try {
     originalWriteFileSync.call(
@@ -2654,14 +2671,30 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
         } else {
           delete ensuredPayload.__preserve_structured_fields;
         }
-        const schemaAlignedPayload =
+        let schemaAlignedPayload =
           alignAddressPayloadToSchemaVariant(ensuredPayload) ||
           ensuredPayload;
-        hydrateNormalizedFieldSurface(schemaAlignedPayload);
-        if (!preserveStructured) {
+        let schemaAlignedHasNormalizedSurface =
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({
+            ...schemaAlignedPayload,
+          });
+
+        if (schemaAlignedHasNormalizedSurface) {
+          if (
+            Object.prototype.hasOwnProperty.call(
+              schemaAlignedPayload,
+              "unnormalized_address",
+            )
+          ) {
+            delete schemaAlignedPayload.unnormalized_address;
+          }
+          hydrateNormalizedFieldSurface(schemaAlignedPayload);
+        } else {
+          collapseRawAddressToUnnormalizedOnly(schemaAlignedPayload);
           applyRawAddressPresenceDefaults(schemaAlignedPayload);
         }
-        const schemaAlignedHasNormalizedSurface =
+        schemaAlignedHasNormalizedSurface =
           typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
           hasStrictCountyNormalizedSchemaCoverage({
             ...schemaAlignedPayload,
@@ -2713,10 +2746,26 @@ originalWriteFileSync = function guardedWriteFileSync(targetPath, data, ...args)
     }
 
     if (payload && typeof payload === "object") {
-      const aligned =
+      let aligned =
         alignAddressPayloadToSchemaVariant(payload) || payload;
-      hydrateNormalizedFieldSurface(aligned);
-      const hasNormalizedSurface =
+      let hasNormalizedSurface =
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...aligned });
+      if (hasNormalizedSurface) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            aligned,
+            "unnormalized_address",
+          )
+        ) {
+          delete aligned.unnormalized_address;
+        }
+        hydrateNormalizedFieldSurface(aligned);
+      } else {
+        collapseRawAddressToUnnormalizedOnly(aligned);
+        applyRawAddressPresenceDefaults(aligned);
+      }
+      hasNormalizedSurface =
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
         hasStrictCountyNormalizedSchemaCoverage({ ...aligned });
       const finalPayload = hasNormalizedSurface
