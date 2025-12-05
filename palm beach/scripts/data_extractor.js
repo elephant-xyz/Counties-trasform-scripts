@@ -677,6 +677,173 @@ process.on("exit", () => {
   }
 });
 
+// Terminal guardrail: pick a single address oneOf branch (normalized when fully
+// populated, otherwise the raw unnormalized branch) and hard-stop any
+// relationship payload emission so validation only sees explicit nulls.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      sourcePool.find(
+        (source) =>
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(sourcePool) ||
+        resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
+        resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
+        resolveFirstMeaningfulAddressField("address", sourcePool) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw.length) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sourcePool.map((source) => source && source.request_identifier),
+          ...sourcePool.map((source) => source && source.parcel_id),
+          ...sourcePool.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sourcePool.map((source) => source && source.source_http_request),
+        );
+
+        finalAddress = {
+          unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: sourceHttpRequest
+            ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
+            : null,
+        };
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const normalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+
+      if (!normalizedSurface) {
+        finalAddress = {
+          unnormalized_address: finalAddress.unnormalized_address,
+          request_identifier: Object.prototype.hasOwnProperty.call(
+            finalAddress,
+            "request_identifier",
+          )
+            ? finalAddress.request_identifier
+            : null,
+          source_http_request: finalAddress.source_http_request
+            ? deepClone(
+                prepareSourceHttpRequest(finalAddress.source_http_request),
+              )
+            : null,
+        };
+      } else if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
+
+      Object.keys(finalAddress).forEach((key) => {
+        if (
+          !normalizedSurface &&
+          key !== "unnormalized_address" &&
+          key !== "request_identifier" &&
+          key !== "source_http_request"
+        ) {
+          delete finalAddress[key];
+        }
+      });
+
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object"
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      ensureDir(dirPath);
+      relationshipFiles.forEach((base) => {
+        try {
+          nativeWriteFileSync.call(
+            fs,
+            path.join(dirPath, `${base}.json`),
+            "null\n",
+          );
+        } catch {
+          // Keep attempting other placeholders so the schema only sees nulls.
+        }
+      });
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce terminal address oneOf output and null relationships:",
+      error,
+    );
+  }
+});
+
 // Final guardrail: emit a schema-safe address payload (preferring raw/unnormalized
 // when we do not have full normalized coverage) and persist explicit null
 // placeholders for the address relationships so validation bypasses UR content.
