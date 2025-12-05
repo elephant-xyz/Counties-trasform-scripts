@@ -6108,6 +6108,74 @@ delete layoutContent.space_type_indexer;
     console.error('✗ Error during final cleanup of orphaned files:', cleanupError.message);
     console.error('Stack trace:', cleanupError.stack);
   }
+
+  // ============================================================================
+  // ABSOLUTE FINAL SAFEGUARD: Remove ANY company/person files without relationships
+  // This runs UNCONDITIONALLY at the very end to guarantee no orphaned files
+  // ============================================================================
+  try {
+    const absoluteFinalFiles = fs.readdirSync(dataDir);
+    const absoluteFinalPersonFiles = absoluteFinalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const absoluteFinalCompanyFiles = absoluteFinalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    // Only proceed if there are person or company files
+    if (absoluteFinalPersonFiles.length > 0 || absoluteFinalCompanyFiles.length > 0) {
+      // Build set of all files referenced by ANY relationship
+      const absoluteFinalRelFiles = absoluteFinalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      const absoluteFinalReferencedFiles = new Set();
+
+      absoluteFinalRelFiles.forEach(relFile => {
+        try {
+          const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, relFile), 'utf8'));
+          if (relContent && relContent.from && relContent.from["/"] && relContent.to && relContent.to["/"]) {
+            const fromPath = relContent.from["/"].replace(/^\.\//, '');
+            const toPath = relContent.to["/"].replace(/^\.\//, '');
+
+            // Add person/company files that are referenced
+            if (/^person_\d+\.json$/.test(fromPath)) absoluteFinalReferencedFiles.add(fromPath);
+            if (/^person_\d+\.json$/.test(toPath)) absoluteFinalReferencedFiles.add(toPath);
+            if (/^company_\d+\.json$/.test(fromPath)) absoluteFinalReferencedFiles.add(fromPath);
+            if (/^company_\d+\.json$/.test(toPath)) absoluteFinalReferencedFiles.add(toPath);
+          }
+        } catch (e) {
+          // Skip invalid relationship files
+        }
+      });
+
+      // Remove any person files not referenced
+      let absoluteFinalRemovedCount = 0;
+      absoluteFinalPersonFiles.forEach(personFile => {
+        if (!absoluteFinalReferencedFiles.has(personFile)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, personFile));
+            console.warn(`✓ ABSOLUTE FINAL: Removed orphaned ${personFile}`);
+            absoluteFinalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${personFile}:`, e.message);
+          }
+        }
+      });
+
+      // Remove any company files not referenced
+      absoluteFinalCompanyFiles.forEach(companyFile => {
+        if (!absoluteFinalReferencedFiles.has(companyFile)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, companyFile));
+            console.warn(`✓ ABSOLUTE FINAL: Removed orphaned ${companyFile}`);
+            absoluteFinalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${companyFile}:`, e.message);
+          }
+        }
+      });
+
+      if (absoluteFinalRemovedCount > 0) {
+        console.log(`✓ Absolute final safeguard: Removed ${absoluteFinalRemovedCount} orphaned files`);
+      }
+    }
+  } catch (absoluteFinalError) {
+    console.error('✗ Error in absolute final safeguard:', absoluteFinalError.message);
+  }
 }
 
 main();
