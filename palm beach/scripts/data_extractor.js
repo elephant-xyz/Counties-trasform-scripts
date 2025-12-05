@@ -70,16 +70,8 @@ const COUNTY_ADDRESS_ENSURE_FIELDS = [
 ];
 
 const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
-  // Track the coarse locality fields we can usually hydrate even when the
-  // source only provides an unnormalized string. These align with the raw
-  // branch of the schema, so we avoid forcing unused structured fields.
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
+  // Keep raw submissions minimal so they clearly satisfy the unnormalized
+  // oneOf branch without introducing partially structured fields.
 ]);
 
 const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
@@ -91,15 +83,7 @@ const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
   ),
 );
 
-const RAW_FALLBACK_COPY_FIELDS = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "county_name",
-  "country_code",
-]);
+const RAW_FALLBACK_COPY_FIELDS = Object.freeze([]);
 
 const NORMALIZED_ADDRESS_FIELDS = [
   "latitude",
@@ -165,9 +149,8 @@ const RAW_PREFERRED_FIELD_WHITELIST = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
-      ...RAW_SCHEMA_CORE_FIELDS,
-      "municipality_name",
       "request_identifier",
+      "source_http_request",
     ]),
   ),
 );
@@ -434,6 +417,25 @@ process.on("exit", () => {
       process.exitCode = 1;
     }
   }
+});
+
+setImmediate(() => {
+  process.on("exit", () => {
+    try {
+      const dataDir = path.join("data");
+      const relationshipsDir = path.join("relationships");
+      trimFinalRawAddressOutput({
+        addressPath: path.join(dataDir, "address.json"),
+        propertyPath: path.join(dataDir, "property.json"),
+        relationshipDirs: [dataDir, relationshipsDir],
+      });
+    } catch (error) {
+      console.error("Failed to trim final raw address output:", error);
+      if (!process.exitCode) {
+        process.exitCode = 1;
+      }
+    }
+  });
 });
 
 process.on("exit", () => {
@@ -75429,10 +75431,6 @@ function enforceMinimalCountyAddressAndRelationships(options = {}) {
     projected.source_http_request = null;
   }
 
-  if (!projected.postal_code) {
-    projected.plus_four_postal_code = null;
-  }
-
   nativeWriteFileSync.call(
     fs,
     addressPath,
@@ -75798,6 +75796,52 @@ function enforceFinalRawAddressAndRelationships(options = {}) {
     enforceNullPropertyAddressRelationships(propertyPath);
   }
   persistNullAddressRelationshipFiles(relationshipDirs);
+}
+
+function trimFinalRawAddressOutput(options = {}) {
+  const {
+    addressPath = path.join("data", "address.json"),
+    propertyPath = path.join("data", "property.json"),
+    relationshipDirs = [path.join("data"), path.join("relationships")],
+  } = options || {};
+
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return;
+  }
+
+  const hasNormalizedSurface =
+    typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+    hasStrictCountyNormalizedSchemaCoverage({ ...payload });
+  if (hasNormalizedSurface) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    return;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+  const trimmed = {
+    unnormalized_address: rawValue,
+    request_identifier: safeNullIfEmpty(payload.request_identifier),
+    source_http_request: preparedSource ? deepClone(preparedSource) : null,
+  };
+  if (!Object.prototype.hasOwnProperty.call(trimmed, "request_identifier")) {
+    trimmed.request_identifier = null;
+  }
+
+  writeAddressJSONBypass(addressPath, trimmed);
+  if (propertyPath) {
+    enforceNullPropertyAddressRelationships(propertyPath);
+  }
+  if (Array.isArray(relationshipDirs) && relationshipDirs.length) {
+    persistNullAddressRelationshipFiles(relationshipDirs);
+  }
 }
 
 function forceAddressRelationshipNullOutputs(directories = []) {
@@ -81757,22 +81801,7 @@ process.on("exit", () => {
   }
 });
 
-const RAW_TERMINAL_ADDRESS_FIELDS = Object.freeze([
-  "city_name",
-  "municipality_name",
-  "county_name",
-  "state_code",
-  "postal_code",
-  "plus_four_postal_code",
-  "country_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-  "latitude",
-  "longitude",
-]);
+const RAW_TERMINAL_ADDRESS_FIELDS = Object.freeze([]);
 
 function projectTerminalRawAddressSurface(payload) {
   if (!payload || typeof payload !== "object") {
