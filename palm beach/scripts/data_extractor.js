@@ -86190,30 +86190,39 @@ process.on("exit", () => {
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
 
       if (!hasNormalizedSurface) {
-        // Keep the raw oneOf branch lean: only preserve unnormalized text and
-        // minimal metadata so validation cannot pivot to the normalized schema.
-        const minimalRaw = {
-          unnormalized_address: finalAddress.unnormalized_address,
-          request_identifier: Object.prototype.hasOwnProperty.call(
-            finalAddress,
-            "request_identifier",
-          )
-            ? finalAddress.request_identifier
-            : null,
-        };
-        if (
-          Object.prototype.hasOwnProperty.call(finalAddress, "source_http_request") &&
-          finalAddress.source_http_request
-        ) {
-          const prepared =
-            typeof prepareSourceHttpRequest === "function"
-              ? prepareSourceHttpRequest(finalAddress.source_http_request)
-              : finalAddress.source_http_request;
-          if (prepared) {
-            minimalRaw.source_http_request = deepClone(prepared);
+        // Keep the raw oneOf branch on the schema-aligned surface (include the
+        // normalized keys as nullable) so validation can target the correct
+        // unnormalized variant.
+        const snapshot =
+          buildTerminalRawSubmissionSnapshot({ ...finalAddress }) || null;
+        if (snapshot) {
+          finalAddress = snapshot;
+        } else {
+          const minimalRaw = {
+            unnormalized_address: finalAddress.unnormalized_address,
+            request_identifier: Object.prototype.hasOwnProperty.call(
+              finalAddress,
+              "request_identifier",
+            )
+              ? finalAddress.request_identifier
+              : null,
+          };
+          if (
+            Object.prototype.hasOwnProperty.call(
+              finalAddress,
+              "source_http_request",
+            ) && finalAddress.source_http_request
+          ) {
+            const prepared =
+              typeof prepareSourceHttpRequest === "function"
+                ? prepareSourceHttpRequest(finalAddress.source_http_request)
+                : finalAddress.source_http_request;
+            if (prepared) {
+              minimalRaw.source_http_request = deepClone(prepared);
+            }
           }
+          finalAddress = minimalRaw;
         }
-        finalAddress = minimalRaw;
       } else if (
         Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
       ) {
@@ -86322,7 +86331,7 @@ function applyTerminalAddressReducer() {
       const sourceHttpRequest = resolveSourceHttpRequestCandidate(
         ...sourcePool.map((source) => source && source.source_http_request),
       );
-      addressOutput = {
+      const baseRaw = {
         unnormalized_address: trimmedRaw,
         request_identifier:
           requestIdentifier === undefined ? null : requestIdentifier,
@@ -86333,8 +86342,10 @@ function applyTerminalAddressReducer() {
           ? prepareSourceHttpRequest(sourceHttpRequest)
           : sourceHttpRequest;
       if (prepared) {
-        addressOutput.source_http_request = deepClone(prepared);
+        baseRaw.source_http_request = deepClone(prepared);
       }
+      addressOutput =
+        buildTerminalRawSubmissionSnapshot({ ...baseRaw }) || baseRaw;
     }
   }
 
