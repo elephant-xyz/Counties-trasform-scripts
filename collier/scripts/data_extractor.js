@@ -937,6 +937,19 @@ function main() {
       path.join(dataDir, "utility.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
+
+    // Create relationship from property to utility
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_utility_1.json"),
+      JSON.stringify(
+        {
+          from: { "/": "./property.json" },
+          to: { "/": "./utility.json" },
+        },
+        null,
+        2,
+      ),
+    );
   }
 
   // Layouts from owners/layout_data.json
