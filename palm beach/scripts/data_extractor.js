@@ -85511,3 +85511,99 @@ process.on("exit", () => {
     );
   }
 });
+
+// Final deterministic scrub: keep address on a single valid oneOf branch and
+// drop any relationship payloads so UR hydration can handle them downstream.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const addressPayload = readJSONIfExists(addressPath);
+    const normalizedSurface =
+      addressPayload &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...addressPayload });
+
+    if (addressPayload && typeof addressPayload === "object") {
+      if (normalizedSurface) {
+        // Preserve only normalized schema fields plus request metadata.
+        const allowed = new Set([
+          ...NORMALIZED_ADDRESS_FIELDS,
+          "request_identifier",
+          "source_http_request",
+        ]);
+        const cleaned = {};
+        allowed.forEach((field) => {
+          if (Object.prototype.hasOwnProperty.call(addressPayload, field)) {
+            cleaned[field] = addressPayload[field];
+          }
+        });
+        removeFileIfExists(addressPath);
+        writeJSON(addressPath, cleaned);
+      } else {
+        const rawValue =
+          typeof addressPayload.unnormalized_address === "string"
+            ? addressPayload.unnormalized_address.trim()
+            : "";
+        if (!rawValue.length) {
+          removeFileIfExists(addressPath);
+        } else {
+          const cleaned = {
+            unnormalized_address: rawValue,
+            request_identifier: Object.prototype.hasOwnProperty.call(
+              addressPayload,
+              "request_identifier",
+            )
+              ? addressPayload.request_identifier
+              : null,
+            source_http_request: addressPayload.source_http_request
+              ? deepClone(prepareSourceHttpRequest(addressPayload.source_http_request))
+              : null,
+          };
+          removeFileIfExists(addressPath);
+          writeJSON(addressPath, cleaned);
+        }
+      }
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath);
+    if (
+      propertyPayload &&
+      typeof propertyPayload === "object" &&
+      !Array.isArray(propertyPayload)
+    ) {
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object" ||
+        Array.isArray(propertyPayload.relationships)
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      writeJSON(propertyPath, propertyPayload);
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      relationshipBases.forEach((baseName) => {
+        removeFileIfExists(path.join(dirPath, `${baseName}.json`));
+      });
+    });
+  } catch (error) {
+    console.error("Terminal county address scrub failed:", error);
+  }
+});
