@@ -83649,7 +83649,11 @@ process.on("exit", () => {
           (typeof buildNormalizedAddressOutputForSchema === "function" &&
             buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
           { ...normalizedCandidate };
-        if (normalized && typeof normalized === "object") {
+        if (
+          normalized &&
+          typeof normalized === "object" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...normalized })
+        ) {
           if (
             Object.prototype.hasOwnProperty.call(
               normalized,
@@ -83683,29 +83687,27 @@ process.on("exit", () => {
 
         finalAddress = {
           unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: sourceHttpRequest
+            ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
+            : null,
         };
-        if (requestIdentifier !== undefined) {
-          finalAddress.request_identifier =
-            requestIdentifier === null ? null : requestIdentifier;
-        }
-        if (sourceHttpRequest) {
-          finalAddress.source_http_request = deepClone(
-            prepareSourceHttpRequest(sourceHttpRequest),
-          );
-        }
       }
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const cleaned =
-        enforceUnnormalizedAddressFieldAllowlist({ ...finalAddress }) || null;
-      if (cleaned) {
-        // Strip any structured fields so the payload stays on the raw oneOf branch
-        COUNTY_STRUCTURED_ADDRESS_REQUIRED_FIELDS.forEach((field) => {
-          if (field !== "unnormalized_address" && field in cleaned) {
-            delete cleaned[field];
-          }
-        });
+      const normalizedSurface =
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress }) &&
+        allowNormalizedAddressOutput();
+      const cleaned = normalizedSurface
+        ? { ...finalAddress }
+        : enforceUnnormalizedAddressFieldAllowlist({ ...finalAddress });
+
+      if (cleaned && typeof cleaned === "object") {
+        if (!normalizedSurface) {
+          collapseRawAddressToUnnormalizedOnly(cleaned);
+        }
         writeJSON(addressPath, cleaned);
       } else {
         removeFileIfExists(addressPath);
@@ -83715,10 +83717,8 @@ process.on("exit", () => {
     }
 
     enforceNullPropertyAddressRelationships(propertyPath);
-    relationshipBases.forEach((baseName) => {
-      removeFileIfExists(path.join(dataDir, `${baseName}.json`));
-      removeFileIfExists(path.join(relationshipsDir, `${baseName}.json`));
-    });
+    // Persist explicit nulls so validation stays on the null relationship branch.
+    persistNullAddressRelationshipFiles([dataDir, relationshipsDir]);
   } catch (error) {
     console.error(
       "Failed to enforce terminal address oneOf and null relationships:",
