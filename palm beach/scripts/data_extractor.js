@@ -629,16 +629,20 @@ process.on("exit", () => {
         ...sourcePool.map((source) => source && source.source_http_request),
       );
 
-      const payload = {
+      const payload = buildTerminalRawSubmissionSnapshot({
         unnormalized_address: trimmedRaw,
         request_identifier:
           requestIdentifier === undefined ? null : requestIdentifier,
         source_http_request: sourceHttpRequest
           ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
           : null,
-      };
+      });
 
-      writeJSON(addressPath, payload);
+      if (payload) {
+        writeJSON(addressPath, payload);
+      } else {
+        removeFileIfExists(addressPath);
+      }
     } else {
       removeFileIfExists(addressPath);
     }
@@ -84414,14 +84418,14 @@ process.on("exit", () => {
           ...sourcePool.map((source) => source && source.source_http_request),
         );
 
-        finalAddress = {
+        finalAddress = buildTerminalRawSubmissionSnapshot({
           unnormalized_address: trimmedRaw,
           request_identifier:
             requestIdentifier === undefined ? null : requestIdentifier,
           source_http_request: sourceHttpRequest
             ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
             : null,
-        };
+        });
       }
     }
 
@@ -84432,25 +84436,19 @@ process.on("exit", () => {
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
 
       if (!normalizedSurface) {
-        finalAddress = {
-          unnormalized_address: finalAddress.unnormalized_address,
-          request_identifier: Object.prototype.hasOwnProperty.call(
-            finalAddress,
-            "request_identifier",
-          )
-            ? finalAddress.request_identifier
-            : null,
-          source_http_request: finalAddress.source_http_request
-            ? deepClone(prepareSourceHttpRequest(finalAddress.source_http_request))
-            : null,
-        };
+        finalAddress =
+          buildTerminalRawSubmissionSnapshot({ ...finalAddress }) || null;
       } else if (
         Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
       ) {
         delete finalAddress.unnormalized_address;
       }
 
-      writeJSON(addressPath, finalAddress);
+      if (finalAddress) {
+        writeJSON(addressPath, finalAddress);
+      } else {
+        removeFileIfExists(addressPath);
+      }
     } else {
       removeFileIfExists(addressPath);
     }
