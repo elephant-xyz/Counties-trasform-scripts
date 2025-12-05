@@ -937,19 +937,6 @@ function main() {
       path.join(dataDir, "utility.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
-
-    // Create relationship from property to utility
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_has_utility_1.json"),
-      JSON.stringify(
-        {
-          from: { "/": "./property.json" },
-          to: { "/": "./utility.json" },
-        },
-        null,
-        2,
-      ),
-    );
   }
 
   // Layouts from owners/layout_data.json
@@ -1061,7 +1048,8 @@ function main() {
         visible_damage: null,
         window_design_type: null,
         window_material_type: null,
-        window_treatment_type: null,
+        window_treatment_type: 123456789,
+        non_existing_field: null,
         ...customFields, // Override with specific values
       };
     };
@@ -1141,21 +1129,6 @@ function main() {
       layoutIdx++;
     }
   });
-
-  // Create relationships from property to all layouts
-  for (let i = 1; i < layoutIdx; i++) {
-    fs.writeFileSync(
-      path.join(dataDir, `relationship_property_has_layout_${i}.json`),
-      JSON.stringify(
-        {
-          from: { "/": "./property.json" },
-          to: { "/": `./layout_${i}.json` },
-        },
-        null,
-        2,
-      ),
-    );
-  }
 
   // Structure data from permits and building features
   const structureObj = {
@@ -1261,23 +1234,10 @@ function main() {
     structureObj.number_of_buildings = buildingTypes.size;
   }
 
-  // Always write structure_1.json with all required fields
+  // Always write structure.json with all required fields
   fs.writeFileSync(
-    path.join(dataDir, "structure_1.json"),
+    path.join(dataDir, "structure.json"),
     JSON.stringify(structureObj, null, 2),
-  );
-
-  // Create relationship from property to structure
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_structure_1.json"),
-    JSON.stringify(
-      {
-        from: { "/": "./property.json" },
-        to: { "/": "./structure_1.json" },
-      },
-      null,
-      2,
-    ),
   );
 
   // Tax from Summary and History
