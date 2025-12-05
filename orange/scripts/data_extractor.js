@@ -646,7 +646,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: normalizedLast,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         // Store removed designations if any, for debugging or further processing
@@ -673,7 +673,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: last,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         _removed_designations: removedDesignations,
@@ -696,12 +696,36 @@ function parsePersonName(raw, contextHint) {
       type: "person",
       first_name: first,
       last_name: last,
-      middle_name: middle,
+      middle_name: cleanNameField(middle),
       prefix_name: processed.prefix || null,
       suffix_name: processed.suffix || null,
       _removed_designations: removedDesignations,
     };
   return null;
+}
+
+// Helper to clean and validate person name fields according to Elephant schema pattern
+function cleanNameField(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+
+  // Remove any characters that don't match the pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  // Keep only letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '').replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) return null;
+
+  // Must start with a letter (uppercase after conversion)
+  if (!/^[a-zA-Z]/.test(cleaned)) return null;
+
+  // Ensure first letter is uppercase
+  const result = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  // Verify final result matches the pattern
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  return result;
 }
 
 function ownerNormKey(owner) {
@@ -5283,7 +5307,7 @@ delete layoutContent.space_type_indexer;
             birth_date: null,
             first_name: first,
             last_name: last,
-            middle_name: middle,
+            middle_name: cleanNameField(middle),
             prefix_name: prefixName,
             suffix_name: suffixName,
             us_citizenship_status: null,
@@ -5397,7 +5421,7 @@ delete layoutContent.space_type_indexer;
                   birth_date: null,
                   first_name: firstName,
                   last_name: lastName,
-                  middle_name: middleName,
+                  middle_name: cleanNameField(middleName),
                   prefix_name: prefixName,
                   suffix_name: suffixName,
                   us_citizenship_status: null,
