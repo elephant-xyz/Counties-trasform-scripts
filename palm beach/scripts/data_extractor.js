@@ -78113,7 +78113,6 @@ function buildFinalAddressOneOfPayload(options = {}) {
     request_identifier:
       requestIdentifier === undefined ? null : requestIdentifier,
     source_http_request: preparedSource || null,
-    __force_raw_variant: true,
   };
 
   return enforceUnnormalizedAddressFieldAllowlist(rawPayload);
@@ -83440,14 +83439,41 @@ process.on("exit", () => {
         seedPath: "property_seed.json",
       }) || null;
 
-    if (finalAddress) {
+    if (finalAddress && typeof finalAddress === "object") {
+      [
+        RAW_ADDRESS_DERIVED_FLAG,
+        RAW_MINIMAL_SURFACE_FLAG,
+        "__force_raw_variant",
+        "__raw_minimal_surface",
+        "__preserve_request_metadata",
+        "__preserve_structured_fields",
+      ].forEach((metaKey) => {
+        if (Object.prototype.hasOwnProperty.call(finalAddress, metaKey)) {
+          delete finalAddress[metaKey];
+        }
+      });
       writeJSON(addressPath, finalAddress);
+      const hasNormalizedSurface =
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+      if (!hasNormalizedSurface) {
+        enforceMinimalRawAddressPayload(addressPath);
+      }
     } else {
       removeFileIfExists(addressPath);
     }
 
     enforceNullPropertyAddressRelationships(propertyPath);
-    writeNullAddressRelationshipPlaceholders([dataDir, relationshipsDir]);
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((baseName) => {
+      removeFileIfExists(path.join(dataDir, `${baseName}.json`));
+      removeFileIfExists(path.join(relationshipsDir, `${baseName}.json`));
+    });
   } catch (error) {
     console.error(
       "Failed to enforce terminal address oneOf and null relationships:",
