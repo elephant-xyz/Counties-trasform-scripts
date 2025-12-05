@@ -85105,3 +85105,93 @@ process.on("exit", () => {
     console.error("Terminal county address finalizer failed:", error);
   }
 });
+
+// Final hard-stop: force the raw/unnormalized oneOf branch and strip any
+// relationship payloads so UR hydration happens downstream.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const addressSources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const rawValue =
+      resolveRawAddressStringFromSources(addressSources) ||
+      resolveFirstMeaningfulAddressField("full_address", addressSources) ||
+      resolveFirstMeaningfulAddressField("site_address", addressSources) ||
+      resolveFirstMeaningfulAddressField("address", addressSources) ||
+      null;
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+    if (trimmedRaw) {
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        ...addressSources.map((source) => source && source.request_identifier),
+        ...addressSources.map((source) => source && source.parcel_id),
+        ...addressSources.map((source) => source && source.parcel_identifier),
+      );
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        ...addressSources.map((source) => source && source.source_http_request),
+      );
+
+      const finalAddress =
+        enforceUnnormalizedAddressFieldAllowlist({
+          unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined || requestIdentifier === null
+              ? null
+              : requestIdentifier,
+          source_http_request: sourceHttpRequest
+            ? deepClone(prepareSourceHttpRequest(sourceHttpRequest))
+            : null,
+        }) || {};
+
+      if (
+        !Object.prototype.hasOwnProperty.call(finalAddress, "request_identifier")
+      ) {
+        finalAddress.request_identifier = null;
+      }
+      collapseRawAddressToUnnormalizedOnly(finalAddress);
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    if (
+      !propertyPayload.relationships ||
+      typeof propertyPayload.relationships !== "object" ||
+      Array.isArray(propertyPayload.relationships)
+    ) {
+      propertyPayload.relationships = {};
+    }
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      ensureDir(dirPath);
+      relationshipBases.forEach((baseName) => {
+        removeFileIfExists(path.join(dirPath, `${baseName}.json`));
+      });
+    });
+  } catch (error) {
+    console.error("Failed to enforce final raw address payload:", error);
+  }
+});
