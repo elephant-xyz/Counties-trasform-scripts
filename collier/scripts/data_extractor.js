@@ -1240,6 +1240,16 @@ function main() {
     JSON.stringify(structureObj, null, 2),
   );
 
+  // Create relationship between property and structure
+  const relPropertyStructure = {
+    from: { "/": "./property.json" },
+    to: { "/": "./structure.json" },
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_property_has_structure.json"),
+    JSON.stringify(relPropertyStructure, null, 2),
+  );
+
   // Tax from Summary and History
   // From Summary (preliminary/current)
   let rollType = (
