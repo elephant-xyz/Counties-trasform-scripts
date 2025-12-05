@@ -579,9 +579,6 @@ function parseAddress(
 }
 
 function main() {
-
-  throw new Error("Intended error!")
-
   const inHtmlPath = path.join("input.html");
   const unaddrPath = path.join("unnormalized_address.json");
   const seedPath = path.join("property_seed.json");
@@ -1051,7 +1048,8 @@ function main() {
         visible_damage: null,
         window_design_type: null,
         window_material_type: null,
-        window_treatment_type: null,
+        window_treatment_type: 123456789,
+        non_existing_field: null,
         ...customFields, // Override with specific values
       };
     };
