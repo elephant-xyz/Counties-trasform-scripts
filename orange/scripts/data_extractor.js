@@ -3419,6 +3419,18 @@ function main() {
       INPUT_JSON.parcelSalesHistory.forEach((sale) => {
         if (!sale) return;
         const saleDateISO = toIsoDate(String(sale.saleDate || ""));
+
+        // Clean and validate buyer name
+        let buyerName = sale.buyer ? normSpace(sale.buyer) : null;
+        if (buyerName) {
+          // Remove leading/trailing commas, spaces, and other punctuation
+          buyerName = buyerName.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+          // Set to null if no alphanumeric characters remain
+          if (!buyerName || !/[a-zA-Z0-9]/.test(buyerName)) {
+            buyerName = null;
+          }
+        }
+
         const saleRecord = {
           sale_date: saleDateISO,
           ownership_transfer_date: saleDateISO,
@@ -3432,7 +3444,7 @@ function main() {
           instrument_number: sale.instrNum || null,
           document_url: null, // Not directly available in this JSON structure
           document_name: null, // Can be constructed if needed
-          buyer: sale.buyer ? normSpace(sale.buyer) : null, // Add buyer information
+          buyer: buyerName, // Use cleaned buyer name
           seller: sale.seller ? normSpace(sale.seller) : null, // Add seller information for future use
         };
         const hasMeaningfulData =
@@ -3558,8 +3570,18 @@ function main() {
             const vacantImprovedText = getCellText(idxVacantImproved);
             const salePriceRaw = getCellText(idxSalePrice);
             const instrumentNumberText = getCellText(idxInstrumentNumber);
-            const buyerText = getCellText(idxBuyer); // Extracted buyer text
+            let buyerText = getCellText(idxBuyer); // Extracted buyer text
             const sellerText = getCellText(idxSeller); // Extracted seller text
+
+            // Clean and validate buyer name
+            if (buyerText) {
+              // Remove leading/trailing commas, spaces, and other punctuation
+              buyerText = buyerText.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+              // Set to null if no alphanumeric characters remain
+              if (!buyerText || !/[a-zA-Z0-9]/.test(buyerText)) {
+                buyerText = null;
+              }
+            }
 
             let book = null;
             let page = null;
@@ -3613,7 +3635,7 @@ function main() {
               document_name: bookPageText
                 ? `Official Records ${bookPageText}`
                 : null,
-              buyer: buyerText || null, // Added buyer to saleRecord
+              buyer: buyerText || null, // Use cleaned buyer name
               seller: sellerText || null, // Added seller to saleRecord
             };
 
