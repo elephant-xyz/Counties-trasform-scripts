@@ -85866,16 +85866,32 @@ process.on("exit", () => {
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
 
-      if (!hasNormalizedSurface) {
-        Object.keys(finalAddress).forEach((key) => {
-          if (!RAW_UNNORMALIZED_SURFACE_FIELD_SET.has(key)) {
-            delete finalAddress[key];
-          }
-        });
-      } else if (
-        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
-      ) {
-        delete finalAddress.unnormalized_address;
+      if (hasNormalizedSurface) {
+        if (
+          Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+        ) {
+          delete finalAddress.unnormalized_address;
+        }
+        hydrateNormalizedFieldSurface(finalAddress);
+      } else {
+        enforceRawVariantAllowedFields(finalAddress);
+        collapseRawAddressToUnnormalizedOnly(finalAddress);
+        if (
+          !Object.prototype.hasOwnProperty.call(
+            finalAddress,
+            "request_identifier",
+          )
+        ) {
+          finalAddress.request_identifier = null;
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(
+            finalAddress,
+            "source_http_request",
+          )
+        ) {
+          finalAddress.source_http_request = null;
+        }
       }
 
       nativeWriteFileSync(
