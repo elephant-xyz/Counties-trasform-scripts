@@ -419,6 +419,112 @@ process.on("exit", () => {
   }
 });
 
+process.on("exit", () => {
+  // Final guardrail: emit a schema-safe address payload and strip relationship files
+  // so downstream UR generation can hydrate them without our placeholders.
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || null;
+    const seedSource = readJSONIfExists("property_seed.json") || null;
+    const currentAddress = readJSONIfExists(addressPath) || null;
+    const sources = [currentAddress, unnormalizedSource, seedSource].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    let finalAddress = null;
+    const hasNormalizedSurface =
+      currentAddress &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...currentAddress });
+
+    if (hasNormalizedSurface) {
+      const normalizedCandidate =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...currentAddress })) ||
+        { ...currentAddress };
+      if (normalizedCandidate && typeof normalizedCandidate === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedCandidate,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedCandidate.unnormalized_address;
+        }
+        hydrateNormalizedFieldSurface(normalizedCandidate);
+        finalAddress = normalizedCandidate;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(sources) ||
+        resolveFirstMeaningfulAddressField("full_address", sources) ||
+        null;
+      const trimmedRaw =
+        typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw.length) {
+        finalAddress = { unnormalized_address: trimmedRaw };
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          currentAddress && currentAddress.request_identifier,
+          unnormalizedSource && unnormalizedSource.request_identifier,
+          seedSource && seedSource.request_identifier,
+          seedSource && seedSource.parcel_id,
+        );
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          currentAddress && currentAddress.source_http_request,
+          unnormalizedSource && unnormalizedSource.source_http_request,
+          seedSource && seedSource.source_http_request,
+        );
+        if (sourceHttpRequest) {
+          finalAddress.source_http_request = deepClone(
+            prepareSourceHttpRequest(sourceHttpRequest),
+          );
+        }
+        Object.keys(finalAddress).forEach((key) => {
+          if (!RAW_UNNORMALIZED_SURFACE_FIELD_SET.has(key)) {
+            delete finalAddress[key];
+          }
+        });
+      }
+    }
+
+    if (finalAddress) {
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      removeFileIfExists(path.join(dataDir, `${base}.json`));
+      removeFileIfExists(path.join(relationshipsDir, `${base}.json`));
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce terminal county address payload and relationship cleanup:",
+      error,
+    );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 setImmediate(() => {
   process.on("exit", () => {
     try {
