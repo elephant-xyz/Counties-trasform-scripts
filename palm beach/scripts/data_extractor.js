@@ -86317,6 +86317,7 @@ function applyTerminalAddressReducer() {
   } else {
     const rawValue =
       resolveRawAddressStringFromSources(sourcePool) ||
+      resolveFirstMeaningfulAddressField("unnormalized_address", sourcePool) ||
       resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
       resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
       resolveFirstMeaningfulAddressField("address", sourcePool) ||
@@ -86341,11 +86342,12 @@ function applyTerminalAddressReducer() {
         typeof prepareSourceHttpRequest === "function"
           ? prepareSourceHttpRequest(sourceHttpRequest)
           : sourceHttpRequest;
-      if (prepared) {
-        baseRaw.source_http_request = deepClone(prepared);
-      }
-      addressOutput =
-        buildTerminalRawSubmissionSnapshot({ ...baseRaw }) || baseRaw;
+      addressOutput = {
+        ...baseRaw,
+        source_http_request: prepared
+          ? deepClone(prepared)
+          : null,
+      };
     }
   }
 
