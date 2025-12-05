@@ -937,14 +937,6 @@ function main() {
       path.join(dataDir, "utility.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
-    // Create relationship from property to utility
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_has_utility.json"),
-      JSON.stringify({
-        from: { "/": "./property.json" },
-        to: { "/": "./utility.json" }
-      }, null, 2),
-    );
   }
 
   // Layouts from owners/layout_data.json
@@ -1056,7 +1048,8 @@ function main() {
         visible_damage: null,
         window_design_type: null,
         window_material_type: null,
-        window_treatment_type: null,
+        window_treatment_type: 123456789,
+        non_existing_field: null,
         ...customFields, // Override with specific values
       };
     };
@@ -1245,15 +1238,6 @@ function main() {
   fs.writeFileSync(
     path.join(dataDir, "structure.json"),
     JSON.stringify(structureObj, null, 2),
-  );
-
-  // Write relationship from property to structure
-  fs.writeFileSync(
-    path.join(dataDir, "relationship_property_has_structure.json"),
-    JSON.stringify({
-      from: { "/": "./property.json" },
-      to: { "/": "./structure.json" }
-    }, null, 2),
   );
 
   // Tax from Summary and History
