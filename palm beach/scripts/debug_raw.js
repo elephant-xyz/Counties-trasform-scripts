@@ -8328,6 +8328,140 @@ function formatNamePart(part) {
   return PERSON_NAME_PATTERN.test(cleaned) ? cleaned : null;
 }
 
+// Final guard: emit a single address oneOf branch (normalized only when fully
+// populated, otherwise a lean raw payload) and force relationship placeholders
+// to null so UR hydration can occur downstream.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate = sources.find((source) =>
+      hasNormalizedCountyCoverage({ ...source }),
+    );
+
+    let finalAddress = null;
+    if (normalizedCandidate) {
+      const normalized =
+        buildNormalizedAddressOutputForSchema({ ...normalizedCandidate }) || {
+          ...normalizedCandidate,
+        };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue = resolveRawAddressStringFromSources(sources);
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestIdentifierFromSources(sources);
+        const sourceHttpRequest = resolveSourceHttpRequest(
+          ...sources.map((source) => source && source.source_http_request),
+        );
+        finalAddress = { unnormalized_address: trimmedRaw };
+        if (requestIdentifier !== undefined && requestIdentifier !== null) {
+          finalAddress.request_identifier = requestIdentifier;
+        }
+        if (sourceHttpRequest) {
+          const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+          if (prepared) {
+            finalAddress.source_http_request = deepClone(prepared);
+          }
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const normalizedSurface = hasNormalizedCountyCoverage({ ...finalAddress });
+      if (!normalizedSurface) {
+        const rawAllow = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllow.has(key)) {
+            delete finalAddress[key];
+          }
+        });
+        if (
+          typeof finalAddress.unnormalized_address === "string" &&
+          finalAddress.unnormalized_address.trim()
+        ) {
+          finalAddress.unnormalized_address =
+            finalAddress.unnormalized_address.trim();
+        }
+      }
+      originalWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      const relationships =
+        propertyPayload && typeof propertyPayload.relationships === "object"
+          ? propertyPayload.relationships
+          : {};
+      propertyPayload.relationships = {
+        ...relationships,
+        property_has_address: null,
+        address_has_fact_sheet: null,
+      };
+      originalWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((baseName) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const targetPath = path.join(dirPath, `${baseName}.json`);
+        try {
+          ensureDir(path.dirname(targetPath));
+          fs.writeFileSync(targetPath, "null\n");
+        } catch {
+          removeFileIfExists(targetPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final address stabilization failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
