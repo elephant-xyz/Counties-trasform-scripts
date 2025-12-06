@@ -87332,7 +87332,7 @@ process.on("exit", () => {
       (source) => source && typeof source === "object" && !Array.isArray(source),
     );
 
-    const normalizedCandidate =
+    const strictNormalizedCandidate =
       allowNormalizedAddressOutput() &&
       candidateSources.find(
         (source) =>
@@ -87340,6 +87340,12 @@ process.on("exit", () => {
           typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
           hasStrictCountyNormalizedSchemaCoverage({ ...source }),
       );
+    const normalizedCandidate =
+      strictNormalizedCandidate &&
+      Number.isFinite(parseCoordinate(strictNormalizedCandidate.latitude)) &&
+      Number.isFinite(parseCoordinate(strictNormalizedCandidate.longitude))
+        ? strictNormalizedCandidate
+        : null;
 
     const buildRawValue = () => {
       const firstString = (...values) => {
@@ -87350,13 +87356,17 @@ process.on("exit", () => {
         }
         return null;
       };
-      return firstString(
-        ...candidateSources.map((source) => source.unnormalized_address),
-        ...candidateSources.map((source) => source.full_address),
-        resolveRawAddressStringFromSources
-          ? resolveRawAddressStringFromSources(candidateSources)
-          : null,
-      );
+      const explicitRaw =
+        firstString(
+          ...candidateSources.map((source) => source.unnormalized_address),
+          ...candidateSources.map((source) => source.full_address),
+        ) || null;
+      if (explicitRaw) {
+        return explicitRaw;
+      }
+      return resolveRawAddressStringFromSources
+        ? resolveRawAddressStringFromSources(candidateSources)
+        : null;
     };
 
     const requestIdentifier = resolveRequestIdentifierCandidate(
@@ -87389,19 +87399,22 @@ process.on("exit", () => {
     if (!finalAddress) {
       const rawValue = buildRawValue();
       if (rawValue) {
+        const allowed = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
         finalAddress = {
           unnormalized_address: rawValue,
           request_identifier:
             requestIdentifier === undefined ? null : requestIdentifier,
           source_http_request: preparedRequest ? deepClone(preparedRequest) : null,
         };
-        const allowed = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
         Object.keys(finalAddress).forEach((key) => {
           if (!allowed.has(key)) delete finalAddress[key];
+          if (key === "unnormalized_address" && typeof finalAddress[key] === "string") {
+            finalAddress[key] = finalAddress[key].trim();
+          }
         });
       }
     }
