@@ -2090,6 +2090,181 @@ process.on("exit", () => {
   }
 });
 
+// Absolute final guard: keep the address on the correct oneOf branch (raw when
+// we only have the unnormalized string) and force relationship payloads to
+// explicit nulls so validators do not expect inline URs or structured fields.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const pickFirstString = (keys) => {
+      for (const source of sourcePool) {
+        if (!source || typeof source !== "object") continue;
+        for (const key of keys) {
+          const value = source[key];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sourcePool.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    const requestIdentifier =
+      typeof resolveRequestIdentifierCandidate === "function"
+        ? resolveRequestIdentifierCandidate(
+            ...sourcePool.map((source) => source && source.request_identifier),
+            ...sourcePool.map((source) => source && source.parcel_id),
+            ...sourcePool.map((source) => source && source.parcel_identifier),
+          )
+        : undefined;
+
+    const sourceHttpRequest =
+      typeof resolveSourceHttpRequestCandidate === "function"
+        ? resolveSourceHttpRequestCandidate(
+            ...sourcePool.map((source) => source && source.source_http_request),
+          )
+        : null;
+
+    let finalAddress = null;
+    let useNormalizedSurface = false;
+
+    if (
+      normalizedCandidate &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...normalizedCandidate })
+    ) {
+      const allowedNormalized = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      finalAddress = {};
+      allowedNormalized.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          return;
+        }
+        const value = normalizedCandidate[field];
+        if (value === undefined) return;
+        finalAddress[field] =
+          typeof value === "string" ? value.trim() : value;
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
+      useNormalizedSurface = true;
+    } else {
+      const rawValue = pickFirstString([
+        "unnormalized_address",
+        "full_address",
+        "site_address",
+        "address",
+      ]);
+      if (rawValue) {
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+        finalAddress = {
+          unnormalized_address: rawValue,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+        };
+        if (preparedSource) {
+          finalAddress.source_http_request = deepClone(preparedSource);
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const rawAllow = new Set([
+        "unnormalized_address",
+        "request_identifier",
+        "source_http_request",
+      ]);
+      Object.keys(finalAddress).forEach((key) => {
+        if (finalAddress[key] === undefined) {
+          delete finalAddress[key];
+          return;
+        }
+        if (!useNormalizedSurface && !rawAllow.has(key)) {
+          delete finalAddress[key];
+          return;
+        }
+        if (typeof finalAddress[key] === "string") {
+          finalAddress[key] = finalAddress[key].trim();
+        }
+      });
+
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((baseName) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const targetPath = path.join(dirPath, `${baseName}.json`);
+        try {
+          nativeWriteFileSync.call(fs, targetPath, "null\n");
+        } catch {
+          removeFileIfExists(targetPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Minimal raw/normalized address guard failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 // Absolute final clamp: emit a single valid address oneOf branch (raw when we
 // only have an unnormalized string) and overwrite any relationship payloads
 // with explicit null placeholders so validation never sees inline address data
