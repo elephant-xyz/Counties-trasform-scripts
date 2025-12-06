@@ -510,6 +510,186 @@ process.on("exit", () => {
   }
 });
 
+// Final authoritative clamp: keep address on exactly one valid oneOf branch and
+// ensure address relationships stay null so downstream UR generation owns them.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const pickFirstString = (keys) => {
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const key of keys) {
+          const value = source[key];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    const requestIdentifier =
+      typeof resolveRequestIdentifierCandidate === "function"
+        ? resolveRequestIdentifierCandidate(
+            ...sources.map((source) => source && source.request_identifier),
+            ...sources.map((source) => source && source.parcel_id),
+            ...sources.map((source) => source && source.parcel_identifier),
+          )
+        : sources.find(
+            (source) =>
+              source && Object.prototype.hasOwnProperty.call(source, "request_identifier"),
+          )?.request_identifier;
+
+    const sourceHttpRequest =
+      typeof resolveSourceHttpRequestCandidate === "function"
+        ? resolveSourceHttpRequestCandidate(
+            ...sources.map((source) => source && source.source_http_request),
+          )
+        : sources.find(
+            (source) =>
+              source &&
+              typeof source.source_http_request === "object" &&
+              source.source_http_request,
+          )?.source_http_request || null;
+
+    let finalAddress = null;
+    let normalizedSurface = false;
+
+    if (
+      normalizedCandidate &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...normalizedCandidate })
+    ) {
+      const allowedNormalized = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      finalAddress = {};
+      allowedNormalized.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          return;
+        }
+        const value = normalizedCandidate[field];
+        if (value === undefined) {
+          return;
+        }
+        finalAddress[field] =
+          typeof value === "string" && value.trim() ? value.trim() : value;
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
+      normalizedSurface = true;
+    } else {
+      const rawValue = pickFirstString([
+        "unnormalized_address",
+        "full_address",
+        "site_address",
+        "address",
+      ]);
+      if (rawValue) {
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+        finalAddress = { unnormalized_address: rawValue };
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (preparedSource) {
+          finalAddress.source_http_request = deepClone(preparedSource);
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      if (!normalizedSurface) {
+        const rawAllow = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllow.has(key) || finalAddress[key] === undefined) {
+            delete finalAddress[key];
+          } else if (
+            key === "unnormalized_address" &&
+            typeof finalAddress[key] === "string"
+          ) {
+            finalAddress[key] = finalAddress[key].trim();
+          }
+        });
+      }
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Authoritative county address/relationship clamp failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 // Final deterministic clamp: pick exactly one address oneOf branch (only emit
 // normalized when the strict schema surface is present, otherwise fall back to
 // the minimal raw/unnormalized form) and force address relationships to null so
