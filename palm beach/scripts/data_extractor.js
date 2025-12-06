@@ -86721,8 +86721,17 @@ function enforceRawAddressAndRelationshipNulls() {
     ) {
       propertyPayload.relationships = {};
     }
+    const allowedRelationshipKeys = new Set([
+      "property_has_address",
+      "address_has_fact_sheet",
+    ]);
     propertyPayload.relationships.property_has_address = null;
     propertyPayload.relationships.address_has_fact_sheet = null;
+    Object.keys(propertyPayload.relationships).forEach((key) => {
+      if (!allowedRelationshipKeys.has(key)) {
+        delete propertyPayload.relationships[key];
+      }
+    });
     nativeWriteFileSync.call(
       fs,
       propertyPath,
@@ -87124,8 +87133,17 @@ function canonicalizeAddressAndRelationships() {
     ) {
       propertyPayload.relationships = {};
     }
+    const allowedRelationshipKeys = new Set([
+      "property_has_address",
+      "address_has_fact_sheet",
+    ]);
     propertyPayload.relationships.property_has_address = null;
     propertyPayload.relationships.address_has_fact_sheet = null;
+    Object.keys(propertyPayload.relationships).forEach((key) => {
+      if (!allowedRelationshipKeys.has(key)) {
+        delete propertyPayload.relationships[key];
+      }
+    });
     nativeWriteFileSync.call(
       fs,
       propertyPath,
