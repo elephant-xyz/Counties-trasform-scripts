@@ -1381,6 +1381,212 @@ process.on("exit", () => {
   }
 });
 
+// Safety valve to emit exactly one valid address oneOf branch and null-out
+// address relationships so downstream UR population can safely occur without
+// validation noise.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const pickFirstString = (keys) => {
+      for (const source of sourcePool) {
+        if (!source || typeof source !== "object") continue;
+        for (const key of keys) {
+          const value = source[key];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const resolveRequestId = () => {
+      if (typeof resolveRequestIdentifierCandidate === "function") {
+        return resolveRequestIdentifierCandidate(
+          ...sourcePool.map((source) => source && source.request_identifier),
+          ...sourcePool.map((source) => source && source.parcel_id),
+          ...sourcePool.map((source) => source && source.parcel_identifier),
+        );
+      }
+      for (const source of sourcePool) {
+        if (
+          source &&
+          typeof source === "object" &&
+          source.request_identifier !== undefined
+        ) {
+          return source.request_identifier;
+        }
+      }
+      return undefined;
+    };
+
+    const resolveSourceHttp = () => {
+      const candidate =
+        (typeof resolveSourceHttpRequestCandidate === "function" &&
+          resolveSourceHttpRequestCandidate(
+            ...sourcePool.map((source) => source && source.source_http_request),
+          )) ||
+        sourcePool.find(
+          (source) =>
+            source &&
+            typeof source === "object" &&
+            source.source_http_request &&
+            typeof source.source_http_request === "object",
+        )?.source_http_request ||
+        null;
+      if (!candidate) return null;
+      if (typeof prepareSourceHttpRequest === "function") {
+        return prepareSourceHttpRequest(candidate) || null;
+      }
+      return deepClone(candidate);
+    };
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sourcePool.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (
+        normalized &&
+        typeof normalized === "object" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalized })
+      ) {
+        const allowedNormalizedFields = new Set([
+          ...NORMALIZED_ADDRESS_FIELDS,
+          "request_identifier",
+          "source_http_request",
+        ]);
+        finalAddress = {};
+        allowedNormalizedFields.forEach((key) => {
+          if (!Object.prototype.hasOwnProperty.call(normalized, key)) return;
+          const value = normalized[key];
+          if (value === undefined) return;
+          if (typeof value === "string") {
+            if (value.trim()) {
+              finalAddress[key] = value.trim();
+            } else if (value === null) {
+              finalAddress[key] = null;
+            }
+          } else if (value !== undefined) {
+            finalAddress[key] = value;
+          }
+        });
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        (typeof resolveRawAddressStringFromSources === "function" &&
+          resolveRawAddressStringFromSources(sourcePool)) ||
+        pickFirstString([
+          "unnormalized_address",
+          "full_address",
+          "site_address",
+          "address",
+        ]);
+      const trimmedRaw =
+        typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : "";
+
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestId();
+        const sourceHttpRequest = resolveSourceHttp();
+        finalAddress = {
+          unnormalized_address: trimmedRaw,
+        };
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (sourceHttpRequest) {
+          finalAddress.source_http_request = deepClone(sourceHttpRequest);
+        }
+        const rawAllowed = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllowed.has(key)) {
+            delete finalAddress[key];
+          }
+        });
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const serialized = `${JSON.stringify(finalAddress, null, 2)}\n`;
+      nativeWriteFileSync.call(fs, addressPath, serialized);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    const relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships = {
+      ...relationships,
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        try {
+          nativeWriteFileSync.call(
+            fs,
+            path.join(dirPath, `${base}.json`),
+            "null\n",
+          );
+        } catch {
+          // Avoid throwing during shutdown.
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Terminal address/relationship safety valve failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 // Final clamp: emit a single valid address payload (prefer normalized only when
 // the strict schema surface is satisfied, otherwise fall back to the minimal
 // unnormalized branch) and force address relationships to explicit nulls so the
