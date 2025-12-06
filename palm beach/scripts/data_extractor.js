@@ -16043,6 +16043,10 @@ function buildTerminalRawSubmissionSnapshot(address) {
       : null;
   }
 
+  // Keep the raw payload on the unnormalized oneOf branch by dropping any
+  // structured fields that may have been inferred during hydration.
+  enforceRawVariantAllowedFields(snapshot);
+
   RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
     if (field === "unnormalized_address") {
       return;
@@ -86834,6 +86838,7 @@ function enforceRawAddressAndRelationshipNulls() {
       hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
     if (!hasNormalizedSurface) {
       collapseRawAddressToUnnormalizedOnly(finalAddress);
+      enforceRawVariantAllowedFields(finalAddress);
     } else if (
       Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
     ) {
