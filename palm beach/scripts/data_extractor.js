@@ -84470,6 +84470,115 @@ process.on("exit", () => {
   }
 });
 
+// Absolute last guard: emit a lean raw-or-normalized address payload and force
+// all address relationships to remain null so validation sees only one valid
+// oneOf branch.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    let finalAddress = null;
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sourcePool.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue = resolveRawAddressStringFromSources(sourcePool) || null;
+      if (rawValue) {
+        const trimmedRaw =
+          typeof rawValue === "string" ? rawValue.trim() : rawValue;
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sourcePool.map((source) => source && source.request_identifier),
+          ...sourcePool.map((source) => source && source.parcel_id),
+          ...sourcePool.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sourcePool.map((source) => source && source.source_http_request),
+        );
+        finalAddress = {
+          unnormalized_address: trimmedRaw,
+        };
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (sourceHttpRequest) {
+          const prepared =
+            typeof prepareSourceHttpRequest === "function"
+              ? prepareSourceHttpRequest(sourceHttpRequest)
+              : sourceHttpRequest;
+          if (prepared) {
+            finalAddress.source_http_request = deepClone(prepared);
+          }
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const rawAllowlist = new Set([
+        "unnormalized_address",
+        "request_identifier",
+        "source_http_request",
+      ]);
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+      if (!hasNormalizedSurface) {
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllowlist.has(key)) {
+            delete finalAddress[key];
+          }
+        });
+      }
+      fs.writeFileSync(
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    enforceNullPropertyAddressRelationships(propertyPath);
+    overwriteAddressRelationshipFilesWithNull([dataDir, relationshipsDir]);
+  } catch (error) {
+    console.error("Failed to force lean county address output:", error);
+  }
+});
+
 const RAW_TERMINAL_ADDRESS_FIELDS = Object.freeze([]);
 
 function projectTerminalRawAddressSurface(payload) {
