@@ -6110,11 +6110,75 @@ delete layoutContent.space_type_indexer;
   }
 
   // ============================================================================
+  // FINAL VERIFICATION PASS: Remove any orphaned person/company files
+  // ============================================================================
+  try {
+    console.log('\n=== FINAL VERIFICATION PASS ===');
+    const finalFiles = fs.readdirSync(dataDir);
+    const finalPersonFiles = finalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const finalCompanyFiles = finalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (finalPersonFiles.length === 0 && finalCompanyFiles.length === 0) {
+      console.log('No person or company files found - verification complete ✓');
+    } else {
+      console.log(`Verifying ${finalPersonFiles.length} person files and ${finalCompanyFiles.length} company files...`);
+
+      // Build final set of referenced entity files from ALL relationship files
+      const finalRelFiles = finalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      const finalReferencedEntities = new Set();
+
+      finalRelFiles.forEach(relFile => {
+        try {
+          const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, relFile), 'utf8'));
+          const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+          const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+          // Only count as referenced if BOTH endpoints exist
+          const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+          const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+          if (fromExists && toExists) {
+            if (/^(person|company)_\d+\.json$/.test(fromPath)) finalReferencedEntities.add(fromPath);
+            if (/^(person|company)_\d+\.json$/.test(toPath)) finalReferencedEntities.add(toPath);
+          }
+        } catch (e) {
+          // Ignore invalid relationship files
+        }
+      });
+
+      // Remove any orphaned files
+      let finalRemovedCount = 0;
+
+      [...finalPersonFiles, ...finalCompanyFiles].forEach(entityFile => {
+        if (!finalReferencedEntities.has(entityFile)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, entityFile));
+            console.warn(`✓ FINAL CLEANUP: Removed orphaned ${entityFile}`);
+            finalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${entityFile}:`, e.message);
+          }
+        }
+      });
+
+      if (finalRemovedCount > 0) {
+        console.log(`Final verification: Removed ${finalRemovedCount} orphaned entity files`);
+      } else {
+        console.log(`Final verification: All entity files have valid relationships ✓`);
+      }
+    }
+    console.log('=== END FINAL VERIFICATION PASS ===\n');
+  } catch (finalError) {
+    console.error('✗ Error during final verification pass:', finalError.message);
+  }
+
+  // ============================================================================
   // CRITICAL: UNCONDITIONAL person/company file removal for County data group
   // The County data group does NOT support person/company entities or relationships
   // ALL person and company files must be removed unconditionally to prevent validation errors
   // ============================================================================
   try {
+    console.log('\n=== UNCONDITIONAL CLEANUP (County/Unknown data group) ===');
     const finalAllFiles = fs.readdirSync(dataDir);
     const finalPersonFiles = finalAllFiles.filter(f => /^person_\d+\.json$/.test(f));
     const finalCompanyFiles = finalAllFiles.filter(f => /^company_\d+\.json$/.test(f));
@@ -6160,8 +6224,68 @@ delete layoutContent.space_type_indexer;
     } else {
       console.log(`✓ Unconditional cleanup complete: No person/company files found`);
     }
+    console.log('=== END UNCONDITIONAL CLEANUP ===\n');
   } catch (unconditionalCleanupError) {
     console.error('✗ Error during unconditional cleanup:', unconditionalCleanupError.message);
+  }
+
+  // ============================================================================
+  // ABSOLUTE FINAL SAFEGUARD: One last check to ensure NO person/company files remain
+  // This catches any edge cases that might have been missed by previous cleanup passes
+  // ============================================================================
+  try {
+    console.log('\n=== ABSOLUTE FINAL SAFEGUARD ===');
+    const absoluteFinalFiles = fs.readdirSync(dataDir);
+    const absolutePersonFiles = absoluteFinalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const absoluteCompanyFiles = absoluteFinalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (absolutePersonFiles.length === 0 && absoluteCompanyFiles.length === 0) {
+      console.log('No person or company files found - safeguard complete ✓');
+    } else {
+      console.warn(`CRITICAL: Found ${absolutePersonFiles.length} person and ${absoluteCompanyFiles.length} company files after all cleanup passes`);
+      console.warn('Removing ALL remaining person and company files...');
+
+      let absoluteRemovedCount = 0;
+
+      absolutePersonFiles.forEach(personFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, personFile));
+          console.warn(`✓ Removed ${personFile} (absolute final safeguard)`);
+          absoluteRemovedCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove ${personFile}:`, e.message);
+        }
+      });
+
+      absoluteCompanyFiles.forEach(companyFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, companyFile));
+          console.warn(`✓ Removed ${companyFile} (absolute final safeguard)`);
+          absoluteRemovedCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove ${companyFile}:`, e.message);
+        }
+      });
+
+      // Also remove any remaining relationship files that reference persons or companies
+      const absoluteRelFiles = absoluteFinalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      absoluteRelFiles.forEach(relFile => {
+        if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+          try {
+            fs.unlinkSync(path.join(dataDir, relFile));
+            console.warn(`✓ Removed ${relFile} (references person/company)`);
+            absoluteRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${relFile}:`, e.message);
+          }
+        }
+      });
+
+      console.log(`Absolute safeguard: Removed ${absoluteRemovedCount} files total`);
+    }
+    console.log('=== END ABSOLUTE FINAL SAFEGUARD ===\n');
+  } catch (safeguardError) {
+    console.error('✗ Error during absolute final safeguard:', safeguardError.message);
   }
 }
 
