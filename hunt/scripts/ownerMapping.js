@@ -3,7 +3,7 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Read input HTML
-const html = fs.readFileSync(path.resolve("input", "20324.html"), "utf8");
+const html = fs.readFileSync(path.resolve("input", "20320.html"), "utf8");
 const $ = cheerio.load(html);
 
 // Helpers

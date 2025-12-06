@@ -2176,7 +2176,7 @@ function main() {
   // This must run at the BEGINNING to clean up files created by the aggregator after our last run
   removeInvalidPropertyTaxRelationships("data");
 
-  const htmlPath = path.join("input", "20324.html");
+  const htmlPath = path.join("input", "20320.html");
   const ownersPath = path.join("owners", "owner_data.json");
   const utilsPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
