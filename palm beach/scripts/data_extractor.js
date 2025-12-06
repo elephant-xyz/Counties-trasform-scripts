@@ -241,6 +241,7 @@ function persistAddressNative(addressPath, payload) {
     };
   }
 
+  ensureAddressFieldSurface(sanitized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
   stripAddressMetaFields(sanitized);
   nativeWriteFileSync.call(
     fs,
@@ -15889,6 +15890,8 @@ function buildTerminalRawSubmissionSnapshot(address) {
     }
   });
 
+  ensureAddressFieldSurface(snapshot, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+  stripAddressMetaFields(snapshot);
   return snapshot;
 }
 
@@ -72953,6 +72956,7 @@ run()
         process.removeAllListeners("exit");
         applyTerminalAddressReducer();
         process.on("exit", applyTerminalAddressReducer);
+        process.on("exit", canonicalizeAddressAndRelationships);
       } catch (reducerError) {
         console.error(
           "Failed to enforce terminal address reducer during finalization:",
@@ -86989,3 +86993,128 @@ process.on("exit", () => {
     console.error("Failed to strip address metadata before exit:", error);
   }
 });
+
+// Final canonicalizer: emit a schema-friendly address payload (normalized only
+// when fully covered, otherwise raw with required fields nulled) and enforce
+// null relationship placeholders so UR hydration can populate them later.
+function canonicalizeAddressAndRelationships() {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const addressSources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      addressSources.find(
+        (source) =>
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        buildNormalizedAddressOutputForSchema({ ...normalizedCandidate }) ||
+        null;
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        ensureAddressFieldSurface(normalized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+        stripAddressMetaFields(normalized);
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(addressSources) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", addressSources) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...addressSources.map((source) => source && source.request_identifier),
+          ...addressSources.map((source) => source && source.parcel_id),
+          ...addressSources.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...addressSources.map((source) => source && source.source_http_request),
+        );
+        const preparedRequest = sourceHttpRequest
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : null;
+
+        finalAddress = {
+          unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: preparedRequest ? deepClone(preparedRequest) : null,
+        };
+
+        ensureAddressFieldSurface(finalAddress, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+        stripAddressMetaFields(finalAddress);
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    if (
+      !propertyPayload.relationships ||
+      typeof propertyPayload.relationships !== "object"
+    ) {
+      propertyPayload.relationships = {};
+    }
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      relationshipFiles.forEach((baseName) => {
+        removeFileIfExists(path.join(dirPath, `${baseName}.json`));
+      });
+    });
+  } catch (error) {
+    console.error(
+      "Final county address/relationship sanitizer failed:",
+      error,
+    );
+  }
+}
+
+process.on("exit", canonicalizeAddressAndRelationships);
