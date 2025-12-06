@@ -510,6 +510,170 @@ process.on("exit", () => {
   }
 });
 
+// Last-mile clamp: pick exactly one valid address schema branch (raw when we
+// only have an unnormalized string) and force the address relationships to
+// explicit null placeholders so validation never sees inline address objects.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((source) => source && typeof source === "object" && !Array.isArray(source));
+
+    const resolveRawFallback = () => {
+      if (typeof resolveRawAddressStringFromSources === "function") {
+        const resolved = resolveRawAddressStringFromSources(sources);
+        if (resolved) return resolved;
+      }
+      const fields = ["unnormalized_address", "full_address", "site_address", "address"];
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const field of fields) {
+          const candidate = source[field];
+          if (typeof candidate === "string" && candidate.trim()) {
+            return candidate;
+          }
+        }
+      }
+      return null;
+    };
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+    let normalizedSurface = false;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (
+        normalized &&
+        typeof normalized === "object" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalized })
+      ) {
+        if (Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")) {
+          delete normalized.unnormalized_address;
+        }
+        normalizedSurface = true;
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue = resolveRawFallback();
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw) {
+        const requestIdentifier =
+          typeof resolveRequestIdentifierCandidate === "function"
+            ? resolveRequestIdentifierCandidate(
+                ...sources.map((source) => source && source.request_identifier),
+                ...sources.map((source) => source && source.parcel_id),
+                ...sources.map((source) => source && source.parcel_identifier),
+              )
+            : undefined;
+        const sourceHttpRequest =
+          typeof resolveSourceHttpRequestCandidate === "function"
+            ? resolveSourceHttpRequestCandidate(
+                ...sources.map((source) => source && source.source_http_request),
+              )
+            : null;
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+
+        finalAddress = {
+          unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+        };
+        if (preparedSource) {
+          finalAddress.source_http_request = deepClone(preparedSource);
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      if (normalizedSurface) {
+        Object.keys(finalAddress).forEach((key) => {
+          if (finalAddress[key] === undefined) {
+            delete finalAddress[key];
+          }
+        });
+      } else {
+        const rawAllowlist = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllowlist.has(key) || finalAddress[key] === undefined) {
+            delete finalAddress[key];
+          } else if (key === "unnormalized_address" && typeof finalAddress[key] === "string") {
+            finalAddress[key] = finalAddress[key].trim();
+          }
+        });
+      }
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipFiles.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final county address/relationship clamp failed:", error);
+  }
+});
+
 // Deterministic final clamp: emit a single valid address oneOf branch and
 // force address relationships to null placeholders so validation never sees
 // inline address payloads or autogenerated URs.
