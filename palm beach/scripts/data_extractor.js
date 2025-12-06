@@ -241,7 +241,9 @@ function persistAddressNative(addressPath, payload) {
     };
   }
 
-  ensureAddressFieldSurface(sanitized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+  if (hasNormalizedSurface) {
+    ensureAddressFieldSurface(sanitized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+  }
   stripAddressMetaFields(sanitized);
   nativeWriteFileSync.call(
     fs,
@@ -15890,7 +15892,6 @@ function buildTerminalRawSubmissionSnapshot(address) {
     }
   });
 
-  ensureAddressFieldSurface(snapshot, COUNTY_REQUIRED_NORMALIZED_FIELDS);
   stripAddressMetaFields(snapshot);
   return snapshot;
 }
@@ -87035,7 +87036,6 @@ function canonicalizeAddressAndRelationships() {
         ) {
           delete normalized.unnormalized_address;
         }
-        ensureAddressFieldSurface(normalized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
         stripAddressMetaFields(normalized);
         finalAddress = normalized;
       }
@@ -87068,7 +87068,16 @@ function canonicalizeAddressAndRelationships() {
           source_http_request: preparedRequest ? deepClone(preparedRequest) : null,
         };
 
-        ensureAddressFieldSurface(finalAddress, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+        const rawAllowedFields = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllowedFields.has(key)) {
+            delete finalAddress[key];
+          }
+        });
         stripAddressMetaFields(finalAddress);
       }
     }
@@ -87106,7 +87115,12 @@ function canonicalizeAddressAndRelationships() {
     ];
     [dataDir, relationshipsDir].forEach((dirPath) => {
       relationshipFiles.forEach((baseName) => {
-        removeFileIfExists(path.join(dirPath, `${baseName}.json`));
+        const targetPath = path.join(dirPath, `${baseName}.json`);
+        try {
+          nativeWriteFileSync.call(fs, targetPath, "null\n");
+        } catch {
+          removeFileIfExists(targetPath);
+        }
       });
     });
   } catch (error) {
