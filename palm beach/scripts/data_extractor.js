@@ -87765,17 +87765,32 @@ process.on("exit", () => {
           delete finalAddress.unnormalized_address;
         }
       } else {
-        const rawFieldFill = Array.isArray(NORMALIZED_ADDRESS_FIELDS)
-          ? NORMALIZED_ADDRESS_FIELDS
-          : [];
-        rawFieldFill.forEach((field) => {
-          if (field === "unnormalized_address") {
-            return;
-          }
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            finalAddress[field] = null;
+        // Keep the raw branch lean so it matches the unnormalized oneOf surface.
+        const rawOnly = {
+          unnormalized_address: finalAddress.unnormalized_address,
+        };
+
+        if (
+          Object.prototype.hasOwnProperty.call(finalAddress, "request_identifier")
+        ) {
+          rawOnly.request_identifier = finalAddress.request_identifier;
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(finalAddress, "source_http_request")
+        ) {
+          rawOnly.source_http_request = deepClone(
+            finalAddress.source_http_request,
+          );
+        }
+
+        Object.keys(rawOnly).forEach((key) => {
+          if (rawOnly[key] === undefined) {
+            delete rawOnly[key];
           }
         });
+
+        finalAddress = rawOnly;
       }
 
       nativeWriteFileSync.call(
