@@ -2195,6 +2195,95 @@ process.on("exit", () => {
   }
 });
 
+// Absolute finalizer to keep address on the raw oneOf branch and ensure address
+// relationships stay null (URs are populated downstream).
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const rawValue =
+      resolveRawAddressStringFromSources(sourcePool) ||
+      resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
+      resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
+      resolveFirstMeaningfulAddressField("address", sourcePool) ||
+      null;
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+    const requestIdentifier = resolveRequestIdentifierCandidate(
+      ...sourcePool.map((source) => source && source.request_identifier),
+      ...sourcePool.map((source) => source && source.parcel_id),
+      ...sourcePool.map((source) => source && source.parcel_identifier),
+    );
+
+    if (trimmedRaw.length) {
+      const finalRaw = {
+        unnormalized_address: trimmedRaw,
+      };
+      if (requestIdentifier !== undefined) {
+        finalRaw.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalRaw, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      propertyPayload.relationships =
+        propertyPayload && typeof propertyPayload.relationships === "object"
+          ? propertyPayload.relationships
+          : {};
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const relPath = path.join(dirPath, `${base}.json`);
+        try {
+          nativeWriteFileSync.call(fs, relPath, "null\n");
+        } catch {
+          removeFileIfExists(relPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Terminal raw/relationship enforcement failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 process.on("exit", () => {
   try {
     enforceTerminalAddressOneOfCompliance({
