@@ -86342,11 +86342,13 @@ function applyTerminalAddressReducer() {
         typeof prepareSourceHttpRequest === "function"
           ? prepareSourceHttpRequest(sourceHttpRequest)
           : sourceHttpRequest;
-      addressOutput = {
+      const rawPayload = buildTerminalRawSubmissionSnapshot({
         ...baseRaw,
-        source_http_request: prepared
-          ? deepClone(prepared)
-          : null,
+        source_http_request: prepared ? deepClone(prepared) : null,
+      });
+      addressOutput = rawPayload || {
+        ...baseRaw,
+        source_http_request: prepared ? deepClone(prepared) : null,
       };
     }
   }
