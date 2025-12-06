@@ -70234,6 +70234,80 @@ function finalizePalmBeachAddressPayload() {
   return true;
 }
 
+const TERMINAL_ADDRESS_RELATIONSHIP_BASENAMES = Object.freeze([
+  "property_has_address",
+  "relationship_property_has_address",
+  "address_has_fact_sheet",
+  "relationship_address_has_fact_sheet",
+]);
+
+function sanitizeRawAddressPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    return null;
+  }
+
+  const sanitized = {
+    unnormalized_address: rawValue,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const identifier = safeNullIfEmpty(payload.request_identifier);
+    sanitized.request_identifier =
+      identifier === undefined ? null : identifier;
+  }
+
+  if (
+    payload.source_http_request &&
+    typeof payload.source_http_request === "object"
+  ) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    if (prepared) {
+      sanitized.source_http_request = deepClone(prepared);
+    }
+  }
+
+  return sanitized;
+}
+
+function enforcePropertyAddressRelationshipNulls(propertyPath) {
+  if (!propertyPath || !fs.existsSync(propertyPath)) {
+    return;
+  }
+  const payload = readJSONIfExists(propertyPath) || {};
+  if (!payload.relationships || typeof payload.relationships !== "object") {
+    payload.relationships = {};
+  }
+  TERMINAL_ADDRESS_RELATIONSHIP_BASENAMES.forEach((base) => {
+    payload.relationships[base] = null;
+  });
+  fs.writeFileSync(propertyPath, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+function writeNullRelationshipPlaceholders(dirPaths = []) {
+  const targets = Array.isArray(dirPaths) ? dirPaths : [];
+  targets.forEach((dirPath) => {
+    if (!dirPath) return;
+    ensureDir(dirPath);
+    TERMINAL_ADDRESS_RELATIONSHIP_BASENAMES.forEach((base) => {
+      const targetPath = path.join(dirPath, `${base}.json`);
+      try {
+        removeFileIfExists(targetPath);
+        fs.writeFileSync(targetPath, "null\n");
+      } catch {
+        removeFileIfExists(targetPath);
+      }
+    });
+  });
+}
+
 async function run() {
   await main();
   const finalizeLeanAddressOutput = () => {
@@ -72780,7 +72854,7 @@ run()
           delete finalAddress.unnormalized_address;
         }
       } else if (rawCandidate) {
-        finalAddress = {
+        finalAddress = sanitizeRawAddressPayload({
           unnormalized_address: rawCandidate,
           request_identifier:
             safeNullIfEmpty(unnormalizedSource.request_identifier) ||
@@ -72790,7 +72864,7 @@ run()
             prepareSourceHttpRequest(unnormalizedSource.source_http_request) ||
             prepareSourceHttpRequest(seedSource.source_http_request) ||
             null,
-        };
+        });
       }
 
       if (finalAddress) {
@@ -72803,32 +72877,8 @@ run()
         removeFileIfExists(addressPath);
       }
 
-      const propertyPayload = readJSONIfExists(propertyPath) || {};
-      if (
-        !propertyPayload.relationships ||
-        typeof propertyPayload.relationships !== "object"
-      ) {
-        propertyPayload.relationships = {};
-      }
-      propertyPayload.relationships.property_has_address = null;
-      propertyPayload.relationships.address_has_fact_sheet = null;
-      fs.writeFileSync(
-        propertyPath,
-        `${JSON.stringify(propertyPayload, null, 2)}\n`,
-      );
-
-      const relNames = [
-        "property_has_address",
-        "relationship_property_has_address",
-        "address_has_fact_sheet",
-        "relationship_address_has_fact_sheet",
-      ];
-      [dataDir, relationshipsDir].forEach((dirPath) => {
-        relNames.forEach((baseName) => {
-          const relPath = path.join(dirPath, `${baseName}.json`);
-          fs.writeFileSync(relPath, "null\n");
-        });
-      });
+      enforcePropertyAddressRelationshipNulls(propertyPath);
+      writeNullRelationshipPlaceholders([dataDir, relationshipsDir]);
       try {
         // Clear earlier exit listeners that might reintroduce invalid relationship
         // payloads, then collapse the address to a single valid schema branch.
