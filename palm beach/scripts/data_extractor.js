@@ -1621,6 +1621,7 @@ process.on("exit", () => {
     if (!finalAddress) {
       const rawValue =
         resolveRawAddressStringFromSources(sourcePool) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", sourcePool) ||
         resolveFirstMeaningfulAddressField("full_address", sourcePool) ||
         resolveFirstMeaningfulAddressField("site_address", sourcePool) ||
         resolveFirstMeaningfulAddressField("address", sourcePool) ||
@@ -1652,6 +1653,18 @@ process.on("exit", () => {
         if (preparedSource) {
           finalAddress.source_http_request = deepClone(preparedSource);
         }
+        const allowedRawFields = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!allowedRawFields.has(key)) {
+            delete finalAddress[key];
+          } else if (key === "unnormalized_address" && typeof finalAddress[key] === "string") {
+            finalAddress[key] = finalAddress[key].trim();
+          }
+        });
       }
     }
 
