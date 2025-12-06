@@ -4,6 +4,11 @@ const cheerio = require("cheerio");
 
 let INPUT_JSON = null;
 
+// CRITICAL: Person/Company File Generation Control
+// Set to false to disable creating person/company files (prevents orphaned files)
+// When false, NO person_*.json or company_*.json files will be created
+const ENABLE_PERSON_COMPANY_FILES = false;
+
 // --- Start of original owner_data.js content ---
 
 function normSpace(s) {
@@ -5547,6 +5552,9 @@ delete layoutContent.space_type_indexer;
     }
   });
 
+  // CRITICAL: Only create person/company files if explicitly enabled
+  // This prevents orphaned files and validation errors
+  if (ENABLE_PERSON_COMPANY_FILES) {
   // Create person files - person class exists in County data group
   personsToCreate.forEach((person, idx) => {
     const personFileName = `person_${idx + 1}.json`;
@@ -5716,6 +5724,7 @@ delete layoutContent.space_type_indexer;
       }
     }
   });
+  } // End of if (ENABLE_PERSON_COMPANY_FILES)
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
@@ -6203,19 +6212,61 @@ delete layoutContent.space_type_indexer;
   }
 
   // ============================================================================
-  // DISABLED: UNCONDITIONAL person/company file removal
-  // The County data group DOES support person/company entities and relationships
-  // Person and company files should be kept if they have valid relationships
+  // CONDITIONAL: UNCONDITIONAL person/company file removal
+  // When ENABLE_PERSON_COMPANY_FILES is false, remove ALL person/company files
+  // This prevents orphaned files and validation errors
   // ============================================================================
-  // Unconditional cleanup is DISABLED because:
-  // 1. County data group supports person and company classes (verified via Elephant MCP)
-  // 2. Current owners should be linked to mailing_address via relationships
-  // 3. Buyers should be linked to sales_history via relationships
-  console.log('\n=== UNCONDITIONAL CLEANUP: DISABLED (County data group supports person/company entities) ===\n');
+  if (!ENABLE_PERSON_COMPANY_FILES) {
+    try {
+      console.log('\n=== UNCONDITIONAL CLEANUP (ENABLE_PERSON_COMPANY_FILES = false) ===');
+      const unconditionalFiles = fs.readdirSync(dataDir);
+      const unconditionalPersonFiles = unconditionalFiles.filter(f => /^person_\d+\.json$/.test(f));
+      const unconditionalCompanyFiles = unconditionalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+      if (unconditionalPersonFiles.length > 0 || unconditionalCompanyFiles.length > 0) {
+        console.warn(`CRITICAL: Found ${unconditionalPersonFiles.length} person and ${unconditionalCompanyFiles.length} company files even though ENABLE_PERSON_COMPANY_FILES is false`);
+        console.warn('Removing ALL person and company files as ENABLE_PERSON_COMPANY_FILES = false...');
+
+        let unconditionalRemovedCount = 0;
+
+        [...unconditionalPersonFiles, ...unconditionalCompanyFiles].forEach(file => {
+          try {
+            const filePath = path.join(dataDir, file);
+            fs.unlinkSync(filePath);
+            console.warn(`✓ Removed ${file}`);
+            unconditionalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${file}:`, e.message);
+          }
+        });
+
+        // Also remove any relationship files that reference persons or companies
+        const unconditionalRelFiles = unconditionalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+        unconditionalRelFiles.forEach(relFile => {
+          if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+            try {
+              fs.unlinkSync(path.join(dataDir, relFile));
+              console.warn(`✓ Removed ${relFile} (references person/company)`);
+              unconditionalRemovedCount++;
+            } catch (e) {
+              console.error(`✗ Failed to remove ${relFile}:`, e.message);
+            }
+          }
+        });
+
+        console.log(`Unconditional cleanup: Removed ${unconditionalRemovedCount} files`);
+      } else {
+        console.log('No person or company files found - cleanup not needed ✓');
+      }
+      console.log('=== END UNCONDITIONAL CLEANUP ===\n');
+    } catch (unconditionalError) {
+      console.error('✗ Error during unconditional cleanup:', unconditionalError.message);
+    }
+  }
 
   // ============================================================================
-  // DISABLED: ABSOLUTE FINAL SAFEGUARD
-  // This safeguard was removing all person/company files, but County data group supports them
+  // DISABLED: ABSOLUTE FINAL SAFEGUARD (only runs when ENABLE_PERSON_COMPANY_FILES is true)
+  // When the flag is true, person/company files should be kept if they have valid relationships
   // ============================================================================
   // Final verification: Check that person/company files with relationships are preserved
   try {
