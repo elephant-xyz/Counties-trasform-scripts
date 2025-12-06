@@ -299,6 +299,12 @@ function isAddressJsonPath(targetPath) {
   return path.basename(normalized) === "address.json";
 }
 
+function isPropertyJsonPath(targetPath) {
+  if (typeof targetPath !== "string") return false;
+  const normalized = path.normalize(targetPath);
+  return path.basename(normalized) === "property.json";
+}
+
 function writeAddressJSONBypass(addressPath, payload) {
   if (!addressPath || !payload || typeof payload !== "object") {
     return;
@@ -2916,6 +2922,25 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
       }
     } catch {
       // Fall through to the original implementation on parse/sanitize failures.
+    }
+  }
+
+  if (isPropertyJsonPath(targetPath)) {
+    try {
+      let payload = data;
+      if (typeof data === "string" || Buffer.isBuffer(data)) {
+        const text = Buffer.isBuffer(data) ? data.toString("utf8") : data;
+        payload = JSON.parse(text);
+      } else if (payload && typeof payload === "object") {
+        payload = deepClone(payload);
+      }
+      if (payload && typeof payload === "object") {
+        ensureRelationshipFieldsAreNull(payload);
+        const serialized = `${JSON.stringify(payload, null, 2)}\n`;
+        return originalWriteFileSync.call(fs, targetPath, serialized, ...args);
+      }
+    } catch {
+      // Fall through on parse failures so the native writer can handle them.
     }
   }
 
