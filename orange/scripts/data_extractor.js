@@ -5688,34 +5688,34 @@ delete layoutContent.space_type_indexer;
     }
   }
 
-  // DO NOT remove unused person/company files - no such files are created
-  // personFiles.forEach((personFile, idx) => {
-  //   const personIndex = idx + 1;
-  //   if (!usedPersonIndices.has(personIndex)) {
-  //     const filePath = path.join(dataDir, personFile);
-  //     try {
-  //       if (fs.existsSync(filePath)) {
-  //         fs.unlinkSync(filePath);
-  //       }
-  //     } catch (e) {
-  //       // Ignore errors during cleanup
-  //     }
-  //   }
-  // });
-  //
-  // companyFiles.forEach((companyFile, idx) => {
-  //   const companyIndex = idx + 1;
-  //   if (!usedCompanyIndices.has(companyIndex)) {
-  //     const filePath = path.join(dataDir, companyFile);
-  //     try {
-  //       if (fs.existsSync(filePath)) {
-  //         fs.unlinkSync(filePath);
-  //       }
-  //     } catch (e) {
-  //       // Ignore errors during cleanup
-  //     }
-  //   }
-  // });
+  // Remove unused person/company files that don't have relationships
+  personFiles.forEach((personFile, idx) => {
+    const personIndex = idx + 1;
+    if (!usedPersonIndices.has(personIndex)) {
+      const filePath = path.join(dataDir, personFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  });
+
+  companyFiles.forEach((companyFile, idx) => {
+    const companyIndex = idx + 1;
+    if (!usedCompanyIndices.has(companyIndex)) {
+      const filePath = path.join(dataDir, companyFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  });
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
