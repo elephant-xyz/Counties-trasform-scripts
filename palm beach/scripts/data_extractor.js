@@ -76651,12 +76651,15 @@ run()
 
       enforcePropertyAddressRelationshipNulls(propertyPath);
       writeNullRelationshipPlaceholders([dataDir, relationshipsDir]);
+      // Normalize the terminal address/relationship surface immediately so we
+      // do not depend on later exit hooks or auto-generated URs.
+      canonicalizeAddressAndRelationships();
       try {
         // Clear earlier exit listeners that might reintroduce invalid relationship
         // payloads, then collapse the address to a single valid schema branch.
         process.removeAllListeners("exit");
-        applyTerminalAddressReducer();
-        process.on("exit", applyTerminalAddressReducer);
+        // Keep a single deterministic exit guard in case shutdown happens before
+        // the output is read.
         process.on("exit", canonicalizeAddressAndRelationships);
       } catch (reducerError) {
         console.error(
