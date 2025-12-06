@@ -86657,3 +86657,181 @@ process.on("exit", () => {
     );
   }
 });
+
+// Absolute last guardrail: force the address onto a single valid schema branch
+// (raw when we only have an unnormalized string) and wipe any relationship
+// payloads so UR hydration can populate them later.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      sources.find(
+        (source) =>
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    const firstString = (...values) => {
+      for (const value of values) {
+        if (typeof value !== "string") continue;
+        const trimmed = value.trim();
+        if (trimmed.length) {
+          return trimmed;
+        }
+      }
+      return null;
+    };
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        firstString(
+          ...sources.map((source) => source && source.unnormalized_address),
+          ...sources.map((source) => source && source.full_address),
+          ...sources.map((source) => source && source.site_address),
+          ...sources.map((source) => source && source.address),
+        ) || null;
+
+      if (rawValue) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sources.map((source) => source && source.request_identifier),
+          ...sources.map((source) => source && source.parcel_id),
+          ...sources.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sources.map((source) => source && source.source_http_request),
+        );
+        const preparedRequest = sourceHttpRequest
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : null;
+
+        finalAddress = {
+          unnormalized_address: rawValue,
+        };
+
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (preparedRequest) {
+          finalAddress.source_http_request = deepClone(preparedRequest);
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+
+      const minimalRawSurface = finalAddress && !hasNormalizedSurface;
+      const payloadToPersist = minimalRawSurface
+        ? {
+            unnormalized_address: finalAddress.unnormalized_address,
+            request_identifier: Object.prototype.hasOwnProperty.call(
+              finalAddress,
+              "request_identifier",
+            )
+              ? finalAddress.request_identifier
+              : null,
+            source_http_request: finalAddress.source_http_request
+              ? deepClone(finalAddress.source_http_request)
+              : undefined,
+          }
+        : { ...finalAddress };
+
+      if (payloadToPersist && typeof payloadToPersist === "object") {
+        Object.keys(payloadToPersist).forEach((key) => {
+          if (payloadToPersist[key] === undefined) {
+            delete payloadToPersist[key];
+          }
+        });
+
+        if (
+          minimalRawSurface &&
+          Object.prototype.hasOwnProperty.call(payloadToPersist, "request_identifier") &&
+          payloadToPersist.request_identifier === undefined
+        ) {
+          payloadToPersist.request_identifier = null;
+        }
+
+        nativeWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(payloadToPersist, null, 2)}\n`,
+        );
+      } else {
+        removeFileIfExists(addressPath);
+      }
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object"
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      relationshipBases.forEach((baseName) => {
+        removeFileIfExists(path.join(dirPath, `${baseName}.json`));
+      });
+    });
+  } catch (error) {
+    console.error(
+      "Failed to enforce minimal county address payload and null relationships:",
+      error,
+    );
+  }
+});
