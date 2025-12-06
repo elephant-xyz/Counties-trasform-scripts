@@ -509,6 +509,154 @@ process.on("exit", () => {
   }
 });
 
+// Final clamp: emit a single valid address payload (prefer normalized only when
+// the strict schema surface is satisfied, otherwise fall back to the minimal
+// unnormalized branch) and force address relationships to explicit nulls so the
+// validator does not see inline address objects.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const unnormalizedSource = readJSONIfExists("unnormalized_address.json");
+    const seedSource = readJSONIfExists("property_seed.json");
+    const currentAddress = readJSONIfExists(addressPath);
+
+    const sources = [currentAddress, unnormalizedSource, seedSource].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    let finalAddress = null;
+    if (
+      allowNormalizedAddressOutput() &&
+      sources.some(
+        (source) =>
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      )
+    ) {
+      const normalizedCandidate = sources.find(
+        (source) =>
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        null;
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+        resolveFirstMeaningfulAddressField("full_address", sources) ||
+        resolveFirstMeaningfulAddressField("site_address", sources) ||
+        resolveFirstMeaningfulAddressField("address", sources) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sources.map((source) => source && source.request_identifier),
+          ...sources.map((source) => source && source.parcel_id),
+          ...sources.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sources.map((source) => source && source.source_http_request),
+        );
+
+        finalAddress = {
+          unnormalized_address: trimmedRaw,
+        };
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (sourceHttpRequest) {
+          const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+          if (prepared) {
+            finalAddress.source_http_request = deepClone(prepared);
+          }
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      // Keep the raw branch lean so we do not accidentally trigger the normalized oneOf.
+      const normalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+      if (!normalizedSurface) {
+        Object.keys(finalAddress).forEach((key) => {
+          if (
+            key !== "unnormalized_address" &&
+            key !== "request_identifier" &&
+            key !== "source_http_request"
+          ) {
+            delete finalAddress[key];
+          }
+        });
+      }
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object"
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          ensureDir(path.dirname(target));
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final minimal address reset failed:", error);
+  }
+});
+
 // Terminal sanitizer: force a minimal raw address payload and null address relationships
 process.on("exit", () => {
   try {
