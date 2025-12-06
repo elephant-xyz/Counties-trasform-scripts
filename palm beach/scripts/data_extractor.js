@@ -87328,59 +87328,85 @@ process.on("exit", () => {
     const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
     const seedSource = readJSONIfExists("property_seed.json") || {};
 
-    const firstString = (...values) => {
-      for (const value of values) {
-        if (typeof value !== "string") continue;
-        const trimmed = value.trim();
-        if (trimmed.length) return trimmed;
-      }
-      return null;
+    const candidateSources = [currentAddress, unnormalizedSource, seedSource].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      candidateSources.find(
+        (source) =>
+          source &&
+          typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+          hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    const buildRawValue = () => {
+      const firstString = (...values) => {
+        for (const value of values) {
+          if (typeof value !== "string") continue;
+          const trimmed = value.trim();
+          if (trimmed.length) return trimmed;
+        }
+        return null;
+      };
+      return firstString(
+        ...candidateSources.map((source) => source.unnormalized_address),
+        ...candidateSources.map((source) => source.full_address),
+        resolveRawAddressStringFromSources
+          ? resolveRawAddressStringFromSources(candidateSources)
+          : null,
+      );
     };
 
-    const rawValue = firstString(
-      currentAddress.unnormalized_address,
-      currentAddress.full_address,
-      unnormalizedSource.unnormalized_address,
-      unnormalizedSource.full_address,
-      seedSource.unnormalized_address,
-      seedSource.full_address,
-    );
-
     const requestIdentifier = resolveRequestIdentifierCandidate(
-      currentAddress.request_identifier,
-      unnormalizedSource.request_identifier,
-      seedSource.request_identifier,
-      seedSource.parcel_id,
-      seedSource.parcel_identifier,
+      ...candidateSources.map((source) => source && source.request_identifier),
+      seedSource && seedSource.parcel_id,
+      seedSource && seedSource.parcel_identifier,
     );
     const sourceHttpRequest = resolveSourceHttpRequestCandidate(
-      currentAddress.source_http_request,
-      unnormalizedSource.source_http_request,
-      seedSource.source_http_request,
+      ...candidateSources.map((source) => source && source.source_http_request),
     );
     const preparedRequest = sourceHttpRequest
       ? prepareSourceHttpRequest(sourceHttpRequest)
       : null;
 
-    if (rawValue) {
-      const finalAddress = {
-        unnormalized_address: rawValue,
-      };
-      if (requestIdentifier !== undefined) {
-        finalAddress.request_identifier =
-          requestIdentifier === null ? null : requestIdentifier;
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
       }
-      if (preparedRequest) {
-        finalAddress.source_http_request = deepClone(preparedRequest);
+    }
+
+    if (!finalAddress) {
+      const rawValue = buildRawValue();
+      if (rawValue) {
+        finalAddress = {
+          unnormalized_address: rawValue,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: preparedRequest ? deepClone(preparedRequest) : null,
+        };
+        const allowed = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!allowed.has(key)) delete finalAddress[key];
+        });
       }
-      const allowed = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
-      Object.keys(finalAddress).forEach((key) => {
-        if (!allowed.has(key)) delete finalAddress[key];
-      });
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
       nativeWriteFileSync.call(
         fs,
         addressPath,
@@ -87414,17 +87440,22 @@ process.on("exit", () => {
       "relationship_address_has_fact_sheet",
     ];
     relationshipBases.forEach((base) => {
-      const dataPath = path.join(dataDir, `${base}.json`);
-      const relPath = path.join(relationshipsDir, `${base}.json`);
+      removeFileIfExists(path.join(dataDir, `${base}.json`));
+      removeFileIfExists(path.join(relationshipsDir, `${base}.json`));
       try {
-        nativeWriteFileSync.call(fs, dataPath, "null\n");
+        nativeWriteFileSync.call(fs, path.join(dataDir, `${base}.json`), "null\n");
       } catch {
-        removeFileIfExists(dataPath);
+        // If we cannot persist the placeholder, ensure nothing stale remains.
+        removeFileIfExists(path.join(dataDir, `${base}.json`));
       }
       try {
-        nativeWriteFileSync.call(fs, relPath, "null\n");
+        nativeWriteFileSync.call(
+          fs,
+          path.join(relationshipsDir, `${base}.json`),
+          "null\n",
+        );
       } catch {
-        removeFileIfExists(relPath);
+        removeFileIfExists(path.join(relationshipsDir, `${base}.json`));
       }
     });
   } catch (error) {
