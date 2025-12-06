@@ -20,7 +20,7 @@ let ADDRESS_FINALIZATION_COMPLETE = false;
 let normalizedAddressOverrideApplied = false;
 let FINAL_NORMALIZED_ADDRESS_PAYLOAD = null;
 let FINAL_ADDRESS_WRITE_LOCKED = false;
-let ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
+let ENFORCE_UNNORMALIZED_ONLY_ADDRESS = true;
 let ADDRESS_ONE_OF_FINALIZED = false;
 
 function allowNormalizedAddressOutput() {
@@ -2084,6 +2084,94 @@ process.on("exit", () => {
     });
   } catch (error) {
     console.error("Terminal raw-only address finalizer failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
+// Ultimate guardrail: force the raw/unnormalized address variant and null
+// address relationships so we cleanly satisfy the address oneOf and avoid
+// emitting inline UR stubs. This runs last to override any earlier writes.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (src) => src && typeof src === "object" && !Array.isArray(src),
+    );
+
+    const rawValue =
+      resolveRawAddressStringFromSources(sources) ||
+      resolveFirstMeaningfulAddressField("full_address", sources) ||
+      resolveFirstMeaningfulAddressField("site_address", sources) ||
+      resolveFirstMeaningfulAddressField("address", sources) ||
+      null;
+
+    if (typeof rawValue === "string" && rawValue.trim()) {
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        ...sources.map((source) => source && source.request_identifier),
+        ...sources.map((source) => source && source.parcel_id),
+        ...sources.map((source) => source && source.parcel_identifier),
+      );
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        ...sources.map((source) => source && source.source_http_request),
+      );
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+
+      const finalAddress = {
+        unnormalized_address: rawValue.trim(),
+        request_identifier:
+          requestIdentifier === undefined ? null : requestIdentifier,
+      };
+      if (preparedSource) {
+        finalAddress.source_http_request = deepClone(preparedSource);
+      }
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          writeJSON(target, null);
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Ultimate raw address/relationship clamp failed:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
