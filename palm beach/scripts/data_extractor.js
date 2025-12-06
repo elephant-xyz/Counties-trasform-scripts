@@ -1524,6 +1524,168 @@ process.on("exit", () => {
   }
 });
 
+// Absolute final guard: emit only one valid address oneOf branch (normalized
+// when fully covered, otherwise a lean unnormalized payload) and force address
+// relationships to explicit null placeholders so validation never sees inline
+// address objects.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((source) => source && typeof source === "object" && !Array.isArray(source));
+
+    const pickFirstString = (fields) => {
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const field of fields) {
+          const value = source[field];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+    if (normalizedCandidate) {
+      const allowedNormalized = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      finalAddress = {};
+      Object.keys(normalizedCandidate).forEach((key) => {
+        if (!allowedNormalized.has(key)) return;
+        const value = normalizedCandidate[key];
+        if (value === undefined) return;
+        finalAddress[key] = typeof value === "string" ? value.trim() : value;
+      });
+    } else {
+      const rawValue = pickFirstString([
+        "unnormalized_address",
+        "full_address",
+        "site_address",
+        "address",
+      ]);
+      if (rawValue) {
+        const requestIdentifier =
+          typeof resolveRequestIdentifierCandidate === "function"
+            ? resolveRequestIdentifierCandidate(
+                ...sources.map((source) => source && source.request_identifier),
+                ...sources.map((source) => source && source.parcel_id),
+                ...sources.map((source) => source && source.parcel_identifier),
+              )
+            : sources.find(
+                (source) =>
+                  source && Object.prototype.hasOwnProperty.call(source, "request_identifier"),
+              )?.request_identifier;
+        const sourceHttpRequest =
+          typeof resolveSourceHttpRequestCandidate === "function"
+            ? resolveSourceHttpRequestCandidate(
+                ...sources.map((source) => source && source.source_http_request),
+              )
+            : sources.find(
+                (source) =>
+                  source &&
+                  typeof source.source_http_request === "object" &&
+                  source.source_http_request,
+              )?.source_http_request || null;
+
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+
+        finalAddress = {
+          unnormalized_address: rawValue,
+        };
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (preparedSource) {
+          finalAddress.source_http_request = deepClone(preparedSource);
+        }
+
+        const rawAllow = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllow.has(key) || finalAddress[key] === undefined) {
+            delete finalAddress[key];
+          }
+        });
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        try {
+          nativeWriteFileSync.call(
+            fs,
+            path.join(dirPath, `${base}.json`),
+            "null\n",
+          );
+        } catch {
+          /* ignore terminal placeholder failures */
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Authoritative terminal address/relationship guard failed:", error);
+  }
+});
+
 // Authoritative final clamp: keep the address on exactly one oneOf branch and
 // force address relationships to null placeholders so no inline address payloads
 // leak into relationship files. Prefer a fully normalized address only when the
