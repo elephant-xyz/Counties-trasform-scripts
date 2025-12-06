@@ -1103,7 +1103,7 @@ function extractFromHtml(htmlPath) {
 
   // Parcel identifier: use parcel_id from property_seed.json, NOT property ID
   const parcelIdentifier =
-    readJson("property_seed.json").parcel_id || propertyId || null;
+    readJson(path.join("input", "property_seed.json")).parcel_id || propertyId || null;
 
   // Map property_usage_type based on land description (will be extracted from Property Land section)
   // This will be populated after land panel extraction
@@ -2176,11 +2176,11 @@ function main() {
   // This must run at the BEGINNING to clean up files created by the aggregator after our last run
   removeInvalidPropertyTaxRelationships("data");
 
-  const htmlPath = "input.html";
+  const htmlPath = path.join("input", "20324.html");
   const ownersPath = path.join("owners", "owner_data.json");
   const utilsPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
-  const unnormalizedAddrPath = "unnormalized_address.json";
+  const unnormalizedAddrPath = path.join("input", "unnormalized_address.json");
 
   const { property, lot, taxes, deeds, deedParties, files, situs, salesHistory, owner, layouts, taxJurisdictions, exemptions, propertyId } =
     extractFromHtml(htmlPath);
@@ -2191,12 +2191,21 @@ function main() {
   // Write lot.json
   writeJson(path.join("data", "lot.json"), lot);
 
+  // Create relationship from property to lot
+  writeJson(
+    path.join("data", "relationship_property_has_lot.json"),
+    {
+      from: { "/": "./property.json" },
+      to: { "/": "./lot.json" }
+    }
+  );
+
   // Initialize counters and maps for person/company files
   let personIdCounter = 1;
   let companyIdCounter = 1;
   const granteesToPersonId = new Map();
   const granteesToCompanyId = new Map();
-  const propertySeed = readJson("property_seed.json");
+  const propertySeed = readJson(path.join("input", "property_seed.json"));
 
   // Create person and company files for ALL grantees from deed history FIRST
   for (const granteeName of deedParties) {
@@ -2249,7 +2258,7 @@ function main() {
 
       if (!ownerCompanyId) {
         // Create new company file for owner
-        const propertySeedData = readJson("property_seed.json");
+        const propertySeedData = readJson(path.join("input", "property_seed.json"));
         // Normalize company name (replace & with "and" if entity keywords present)
         const normalizedCompanyName = normalizeCompanyName(owner.owner_name);
         const companyData = {
@@ -2636,6 +2645,15 @@ function main() {
   // Address
   const address = parseAddress(unnormalizedAddrPath, situs);
   writeJson(path.join("data", "address.json"), address);
+
+  // Create relationship from property to address
+  writeJson(
+    path.join("data", "relationship_property_has_address.json"),
+    {
+      from: { "/": "./property.json" },
+      to: { "/": "./address.json" }
+    }
+  );
 
   // Files (Appraisal Notice)
   files.forEach((f, idx) => {

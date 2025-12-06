@@ -135,7 +135,7 @@ function mapStructure($) {
 }
 
 function main() {
-  const inputPath = path.join(process.cwd(), "input.html");
+  const inputPath = path.join(process.cwd(), "input", "20324.html");
   const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
 
