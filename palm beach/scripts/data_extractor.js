@@ -509,6 +509,103 @@ process.on("exit", () => {
   }
 });
 
+// Terminal sanitizer: force a minimal raw address payload and null address relationships
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const currentAddress = readJSONIfExists(addressPath) || null;
+    const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || null;
+    const seedSource = readJSONIfExists("property_seed.json") || null;
+
+    const addressSources = [currentAddress, unnormalizedSource, seedSource].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const rawValue =
+      resolveRawAddressStringFromSources(addressSources) ||
+      resolveFirstMeaningfulAddressField("full_address", addressSources) ||
+      resolveFirstMeaningfulAddressField("site_address", addressSources) ||
+      resolveFirstMeaningfulAddressField("address", addressSources) ||
+      null;
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+    if (trimmedRaw) {
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        ...addressSources.map((source) => source && source.request_identifier),
+        seedSource && seedSource.parcel_id,
+      );
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        ...addressSources.map((source) => source && source.source_http_request),
+      );
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : null;
+
+      const minimalAddress = {
+        unnormalized_address: trimmedRaw,
+      };
+      if (requestIdentifier !== undefined) {
+        minimalAddress.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+      if (preparedSource) {
+        minimalAddress.source_http_request = deepClone(preparedSource);
+      }
+
+      Object.keys(minimalAddress).forEach((key) => {
+        if (minimalAddress[key] === undefined) {
+          delete minimalAddress[key];
+        }
+      });
+
+      fs.writeFileSync(addressPath, `${JSON.stringify(minimalAddress, null, 2)}\n`);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      propertyPayload.relationships =
+        propertyPayload && typeof propertyPayload.relationships === "object"
+          ? propertyPayload.relationships
+          : {};
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      fs.writeFileSync(propertyPath, `${JSON.stringify(propertyPayload, null, 2)}\n`);
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const targetPath = path.join(dirPath, `${base}.json`);
+        try {
+          fs.writeFileSync(targetPath, "null\n");
+        } catch {
+          removeFileIfExists(targetPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final county address/relationship sanitizer failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 // Final override: pick a single address oneOf branch (prefer normalized only
 // when the strict schema surface is satisfied, otherwise emit the raw
 // unnormalized branch) and force all address relationships to explicit nulls so
