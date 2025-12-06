@@ -86367,6 +86367,38 @@ function applyTerminalAddressReducer() {
   }
 
   if (addressOutput && typeof addressOutput === "object") {
+    const hasNormalizedSurface =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...addressOutput });
+
+    if (hasNormalizedSurface) {
+      if (
+        Object.prototype.hasOwnProperty.call(addressOutput, "unnormalized_address")
+      ) {
+        delete addressOutput.unnormalized_address;
+      }
+    } else {
+      const rawAligned =
+        enforceUnnormalizedAddressFieldAllowlist({ ...addressOutput }) ||
+        { ...addressOutput };
+      collapseRawAddressToUnnormalizedOnly(rawAligned);
+      addressOutput = rawAligned;
+    }
+
+    if (
+      RAW_ADDRESS_TERMINAL_FIELD_SET &&
+      RAW_ADDRESS_TERMINAL_FIELD_SET.size &&
+      addressOutput &&
+      typeof addressOutput === "object"
+    ) {
+      Object.keys(addressOutput).forEach((key) => {
+        if (!RAW_ADDRESS_TERMINAL_FIELD_SET.has(key)) {
+          delete addressOutput[key];
+        }
+      });
+    }
+
     nativeWriteFileSync(
       addressPath,
       `${JSON.stringify(addressOutput, null, 2)}\n`,
