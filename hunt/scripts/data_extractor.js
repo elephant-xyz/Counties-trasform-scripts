@@ -26,28 +26,11 @@ function parseCurrencyToNumber(text) {
 
 function titleCaseName(name) {
   if (!name) return name;
-
-  // Convert to string and lowercase
-  let result = String(name).toLowerCase();
-
-  // Remove or collapse consecutive separators to comply with pattern
-  // Pattern doesn't allow "St. John" (period + space), convert to "St.John" or "St John"
-  // For readability, we'll keep one space between parts and remove extra separators
-  result = result
-    .replace(/([.,])\s+/g, '$1') // Remove space after comma or period (e.g., "St. John" → "St.John")
-    .replace(/\s*-\s*/g, '-')     // Remove spaces around hyphens (e.g., "Mary - Anne" → "Mary-Anne")
-    .replace(/\s{2,}/g, ' ');     // Collapse multiple spaces to single space
-
-  // Capitalize the first character
-  result = result.charAt(0).toUpperCase() + result.slice(1);
-
-  // Capitalize after special characters: space, hyphen, apostrophe, comma, period
-  // Pattern: [ \-',.] followed by a letter
-  result = result.replace(/([ \-',.])[a-z]/g, (match) => {
-    return match.charAt(0) + match.charAt(1).toUpperCase();
-  });
-
-  return result;
+  return String(name)
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function validateSuffixName(suffix) {

@@ -10,32 +10,6 @@ const $ = cheerio.load(html);
 const normSpace = (s) => (s || "").replace(/\s+/g, " ").trim();
 const isAllCaps = (s) => !!s && s === s.toUpperCase();
 
-function titleCaseName(name) {
-  if (!name) return name;
-
-  // Convert to string and lowercase
-  let result = String(name).toLowerCase();
-
-  // Remove or collapse consecutive separators to comply with pattern
-  // Pattern doesn't allow "St. John" (period + space), convert to "St.John" or "St John"
-  // For readability, we'll keep one space between parts and remove extra separators
-  result = result
-    .replace(/([.,])\s+/g, '$1') // Remove space after comma or period (e.g., "St. John" → "St.John")
-    .replace(/\s*-\s*/g, '-')     // Remove spaces around hyphens (e.g., "Mary - Anne" → "Mary-Anne")
-    .replace(/\s{2,}/g, ' ');     // Collapse multiple spaces to single space
-
-  // Capitalize the first character
-  result = result.charAt(0).toUpperCase() + result.slice(1);
-
-  // Capitalize after special characters: space, hyphen, apostrophe, comma, period
-  // Pattern: [ \-',.] followed by a letter
-  result = result.replace(/([ \-',.])[a-z]/g, (match) => {
-    return match.charAt(0) + match.charAt(1).toUpperCase();
-  });
-
-  return result;
-}
-
 const companyKeywords = [
   "inc",
   "llc",
@@ -89,17 +63,21 @@ function sanitizeMiddleName(middle) {
   const withoutParens = trimmed.replace(/\([^)]*\)/g, '').trim();
   if (withoutParens === '') return null;
 
-  // Apply titleCaseName to ensure proper capitalization
-  const formatted = titleCaseName(withoutParens);
-
-  // Validate against pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
-  if (!pattern.test(formatted)) {
-    // If it still doesn't match after formatting, return null
+  // Ensure middle name starts with uppercase letter and contains only valid characters
+  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(withoutParens)) {
+    // Try to fix it by capitalizing first letter if it's lowercase
+    if (/^[a-z]/.test(withoutParens)) {
+      const fixed = withoutParens.charAt(0).toUpperCase() + withoutParens.slice(1);
+      if (/^[A-Z][a-zA-Z\s\-',.]*$/.test(fixed)) {
+        return fixed;
+      }
+    }
+    // If it contains invalid characters or can't be fixed, return null
     return null;
   }
 
-  return formatted;
+  return withoutParens;
 }
 
 function normalizePersonKey(p) {
@@ -138,8 +116,8 @@ function parsePersonSingle(raw) {
       valid: true,
       owner: {
         type: "person",
-        first_name: titleCaseName(first) || null,
-        last_name: titleCaseName(normSpace(last)) || null,
+        first_name: first || null,
+        last_name: normSpace(last) || null,
         middle_name: middle,
       },
     };
@@ -161,8 +139,8 @@ function parsePersonSingle(raw) {
       valid: true,
       owner: {
         type: "person",
-        first_name: titleCaseName(first) || null,
-        last_name: titleCaseName(last) || null,
+        first_name: first || null,
+        last_name: last || null,
         middle_name: middle,
       },
     };
@@ -177,8 +155,8 @@ function parsePersonSingle(raw) {
     valid: true,
     owner: {
       type: "person",
-      first_name: titleCaseName(first) || null,
-      last_name: titleCaseName(last) || null,
+      first_name: first || null,
+      last_name: last || null,
       middle_name: middle,
     },
   };
@@ -210,15 +188,15 @@ function parseAmpersandPersons(raw) {
     if (first1)
       owners.push({
         type: "person",
-        first_name: titleCaseName(first1) || null,
-        last_name: titleCaseName(sharedLast) || null,
+        first_name: first1 || null,
+        last_name: sharedLast || null,
         middle_name: null,
       });
     if (first2)
       owners.push({
         type: "person",
-        first_name: titleCaseName(first2) || null,
-        last_name: titleCaseName(sharedLast) || null,
+        first_name: first2 || null,
+        last_name: sharedLast || null,
         middle_name: null,
       });
     return owners;
