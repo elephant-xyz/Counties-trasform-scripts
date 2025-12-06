@@ -114,7 +114,12 @@ const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
 
 // Keep the raw surface minimal; structured fields live only on the normalized
 // branch.
-const RAW_SCHEMA_CORE_FIELDS = Object.freeze([]);
+// Carry the normalized field surface (as nullable) even on the raw branch so
+// the payload satisfies the schema's oneOf requirements without demanding
+// values the source doesn't provide.
+const RAW_SCHEMA_CORE_FIELDS = Object.freeze([
+  ...NORMALIZED_ADDRESS_FIELDS,
+]);
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
@@ -225,7 +230,7 @@ function persistAddressNative(addressPath, payload) {
       delete sanitized.unnormalized_address;
     }
   } else {
-    sanitized = {
+    const baseRaw = {
       unnormalized_address: safeNullIfEmpty(cloned.unnormalized_address),
       request_identifier: Object.prototype.hasOwnProperty.call(
         cloned,
@@ -239,10 +244,23 @@ function persistAddressNative(addressPath, payload) {
         ? deepClone(cloned.source_http_request)
         : null,
     };
+    sanitized =
+      buildTerminalRawSubmissionSnapshot(baseRaw) || {
+        ...baseRaw,
+      };
   }
 
   if (hasNormalizedSurface) {
     ensureAddressFieldSurface(sanitized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+  } else if (Array.isArray(NORMALIZED_ADDRESS_FIELDS)) {
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        return;
+      }
+      if (!Object.prototype.hasOwnProperty.call(sanitized, field)) {
+        sanitized[field] = null;
+      }
+    });
   }
   stripAddressMetaFields(sanitized);
   nativeWriteFileSync.call(
@@ -590,6 +608,12 @@ process.on("exit", () => {
           }
         });
       }
+      console.error(
+        "[debug] raw allowed fields count",
+        Array.isArray(RAW_ADDRESS_ALLOWED_FIELDS)
+          ? RAW_ADDRESS_ALLOWED_FIELDS.length
+          : "n/a",
+      );
       nativeWriteFileSync.call(
         fs,
         addressPath,
@@ -86858,6 +86882,7 @@ function applyTerminalAddressReducer() {
       "unnormalized_address",
       "request_identifier",
       "source_http_request",
+      ...NORMALIZED_ADDRESS_FIELDS,
     ]);
     const hasNormalizedSurface =
       allowNormalizedAddressOutput() &&
@@ -86876,11 +86901,12 @@ function applyTerminalAddressReducer() {
           delete addressOutput[key];
         }
       });
-      collapseRawAddressToUnnormalizedOnly(addressOutput);
-      if (
-        typeof addressOutput.unnormalized_address === "string" &&
-        addressOutput.unnormalized_address.trim()
-      ) {
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(addressOutput, field)) {
+          addressOutput[field] = null;
+        }
+      });
+      if (typeof addressOutput.unnormalized_address === "string") {
         addressOutput.unnormalized_address =
           addressOutput.unnormalized_address.trim();
       }
@@ -87448,10 +87474,19 @@ function canonicalizeAddressAndRelationships() {
           "unnormalized_address",
           "request_identifier",
           "source_http_request",
+          ...NORMALIZED_ADDRESS_FIELDS,
         ]);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowedFields.has(key)) {
             delete finalAddress[key];
+          }
+        });
+        NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+          if (field === "unnormalized_address") {
+            return;
+          }
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
           }
         });
         stripAddressMetaFields(finalAddress);
@@ -87605,28 +87640,47 @@ process.on("exit", () => {
 
     if (!finalAddress) {
       const rawValue = buildRawValue();
-      if (rawValue) {
-        const allowed = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
-        finalAddress = {
-          unnormalized_address: rawValue,
+      const trimmedRaw =
+        typeof rawValue === "string" ? rawValue.trim() : rawValue;
+      if (trimmedRaw) {
+        const baseRaw = {
+          unnormalized_address: trimmedRaw,
           request_identifier:
             requestIdentifier === undefined ? null : requestIdentifier,
           source_http_request: preparedRequest ? deepClone(preparedRequest) : null,
         };
-        Object.keys(finalAddress).forEach((key) => {
-          if (!allowed.has(key)) delete finalAddress[key];
-          if (key === "unnormalized_address" && typeof finalAddress[key] === "string") {
-            finalAddress[key] = finalAddress[key].trim();
-          }
-        });
+        const snapshot =
+          buildTerminalRawSubmissionSnapshot(baseRaw) || { ...baseRaw };
+        finalAddress = stripAddressMetaFields(snapshot);
       }
     }
 
     if (finalAddress && typeof finalAddress === "object") {
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+
+      if (hasNormalizedSurface) {
+        if (
+          Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+        ) {
+          delete finalAddress.unnormalized_address;
+        }
+      } else {
+        const rawFieldFill = Array.isArray(NORMALIZED_ADDRESS_FIELDS)
+          ? NORMALIZED_ADDRESS_FIELDS
+          : [];
+        rawFieldFill.forEach((field) => {
+          if (field === "unnormalized_address") {
+            return;
+          }
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        });
+      }
+
       nativeWriteFileSync.call(
         fs,
         addressPath,
