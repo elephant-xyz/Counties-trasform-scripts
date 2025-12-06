@@ -86439,6 +86439,7 @@ function applyTerminalAddressReducer() {
           delete addressOutput[key];
         }
       });
+      collapseRawAddressToUnnormalizedOnly(addressOutput);
       if (
         typeof addressOutput.unnormalized_address === "string" &&
         addressOutput.unnormalized_address.trim()
@@ -86475,6 +86476,28 @@ function applyTerminalAddressReducer() {
 
   removeAddressRelationshipArtifacts(dataDir);
   removeAddressRelationshipArtifacts(relationshipsDir);
+
+  const relationshipPlaceholders = [
+    "property_has_address",
+    "relationship_property_has_address",
+    "address_has_fact_sheet",
+    "relationship_address_has_fact_sheet",
+  ];
+
+  relationshipPlaceholders.forEach((baseName) => {
+    const dataTarget = path.join(dataDir, `${baseName}.json`);
+    const relTarget = path.join(relationshipsDir, `${baseName}.json`);
+    try {
+      nativeWriteFileSync(dataTarget, "null\n");
+    } catch {
+      removeFileIfExists(dataTarget);
+    }
+    try {
+      nativeWriteFileSync(relTarget, "null\n");
+    } catch {
+      removeFileIfExists(relTarget);
+    }
+  });
 
   return addressOutput;
 }
