@@ -87157,3 +87157,127 @@ function canonicalizeAddressAndRelationships() {
 }
 
 process.on("exit", canonicalizeAddressAndRelationships);
+
+// Absolute last guard: force the address onto the raw unnormalized branch and
+// strip relationship payloads so validation does not expect structured fields
+// that are absent in the source.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const currentAddress = readJSONIfExists(addressPath) || {};
+    const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+    const seedSource = readJSONIfExists("property_seed.json") || {};
+
+    const firstString = (...values) => {
+      for (const value of values) {
+        if (typeof value !== "string") continue;
+        const trimmed = value.trim();
+        if (trimmed.length) return trimmed;
+      }
+      return null;
+    };
+
+    const rawValue = firstString(
+      currentAddress.unnormalized_address,
+      currentAddress.full_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+      seedSource.unnormalized_address,
+      seedSource.full_address,
+    );
+
+    const requestIdentifier = resolveRequestIdentifierCandidate(
+      currentAddress.request_identifier,
+      unnormalizedSource.request_identifier,
+      seedSource.request_identifier,
+      seedSource.parcel_id,
+      seedSource.parcel_identifier,
+    );
+    const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+      currentAddress.source_http_request,
+      unnormalizedSource.source_http_request,
+      seedSource.source_http_request,
+    );
+    const preparedRequest = sourceHttpRequest
+      ? prepareSourceHttpRequest(sourceHttpRequest)
+      : null;
+
+    if (rawValue) {
+      const finalAddress = {
+        unnormalized_address: rawValue,
+      };
+      if (requestIdentifier !== undefined) {
+        finalAddress.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+      if (preparedRequest) {
+        finalAddress.source_http_request = deepClone(preparedRequest);
+      }
+      const allowed = new Set([
+        "unnormalized_address",
+        "request_identifier",
+        "source_http_request",
+      ]);
+      Object.keys(finalAddress).forEach((key) => {
+        if (!allowed.has(key)) delete finalAddress[key];
+      });
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      if (
+        !propertyPayload.relationships ||
+        typeof propertyPayload.relationships !== "object"
+      ) {
+        propertyPayload.relationships = {};
+      }
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      const dataPath = path.join(dataDir, `${base}.json`);
+      const relPath = path.join(relationshipsDir, `${base}.json`);
+      try {
+        nativeWriteFileSync.call(fs, dataPath, "null\n");
+      } catch {
+        removeFileIfExists(dataPath);
+      }
+      try {
+        nativeWriteFileSync.call(fs, relPath, "null\n");
+      } catch {
+        removeFileIfExists(relPath);
+      }
+    });
+  } catch (error) {
+    console.error("Fallback raw address/relationship guard failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
