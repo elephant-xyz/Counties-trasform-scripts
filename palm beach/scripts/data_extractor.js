@@ -100,36 +100,26 @@ const NORMALIZED_ADDRESS_FIELDS = [
 ];
 
 const MINIMAL_RAW_ADDRESS_FIELDS = Object.freeze([
-  // Preserve the full normalized field surface (nullable) on raw outputs so we
-  // satisfy the schema's required keys even when we only have an
-  // unnormalized_address from the source.
-  ...NORMALIZED_ADDRESS_FIELDS,
+  // Keep the raw branch lean so it cleanly targets the unnormalized oneOf
+  // variant without pulling in structured fields.
 ]);
 
 const COUNTY_RAW_ENSURE_FIELDS = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
     ]),
   ),
 );
 
-// Keep the raw surface schema-aligned by carrying the nullable normalized field
-// set so the unnormalized oneOf branch still satisfies required key presence.
-const RAW_SCHEMA_CORE_FIELDS = Object.freeze(
-  Array.from(
-    new Set([
-      ...MINIMAL_RAW_ADDRESS_FIELDS,
-    ]),
-  ),
-);
+// Keep the raw surface minimal; structured fields live only on the normalized
+// branch.
+const RAW_SCHEMA_CORE_FIELDS = Object.freeze([]);
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
     new Set([
       "unnormalized_address",
-      ...RAW_SCHEMA_CORE_FIELDS,
     ]),
   ),
 );
@@ -75276,6 +75266,9 @@ function forceAddressOneOfAndNullRelationships() {
   ensureDir(dataDir);
   ensureDir(relationshipsDir);
 
+  removeAddressRelationshipArtifacts(dataDir);
+  removeAddressRelationshipArtifacts(relationshipsDir);
+
   const addressPath = path.join(dataDir, "address.json");
   const propertyPath = path.join(dataDir, "property.json");
   const existingPayload = readJSONIfExists(addressPath) || null;
@@ -86280,6 +86273,26 @@ function applyTerminalAddressReducer() {
   const relationshipsDir = path.join("relationships");
   ensureDir(dataDir);
   ensureDir(relationshipsDir);
+
+  const removeAddressRelationshipArtifacts = (dirPath) => {
+    if (!dirPath || !fs.existsSync(dirPath)) {
+      return;
+    }
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      entries.forEach((entry) => {
+        if (!entry.isFile()) return;
+        const shouldRemove =
+          entry.name.includes("property_has_address") ||
+          entry.name.includes("address_has_fact_sheet");
+        if (shouldRemove) {
+          removeFileIfExists(path.join(dirPath, entry.name));
+        }
+      });
+    } catch {
+      // Best-effort cleanup; ignore read errors.
+    }
+  };
 
   const addressPath = path.join(dataDir, "address.json");
   const propertyPath = path.join(dataDir, "property.json");
