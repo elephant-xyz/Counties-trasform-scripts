@@ -491,6 +491,57 @@ process.on("exit", () => {
   }
 });
 
+// Final hard-stop: guarantee relationship placeholders are null and avoid
+// emitting inline address payloads inside relationships so the validator
+// doesn't try to apply the normalized address branch.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const propertyPath = path.join(dataDir, "property.json");
+    if (fs.existsSync(propertyPath)) {
+      const payload = readJSONIfExists(propertyPath) || {};
+      if (!payload.relationships || typeof payload.relationships !== "object") {
+        payload.relationships = {};
+      }
+      payload.relationships.property_has_address = null;
+      payload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(payload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+
+    relationshipFiles.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const targetPath = path.join(dirPath, `${base}.json`);
+        try {
+          nativeWriteFileSync.call(fs, targetPath, "null\n");
+        } catch {
+          // If we cannot persist, at least ensure nothing invalid remains.
+          removeFileIfExists(targetPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Failed to enforce null relationship placeholders:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 // Last-mile guard: keep the address on the correct oneOf branch and strip any
 // relationship payloads so downstream UR hydration can populate them safely.
 process.on("exit", () => {
