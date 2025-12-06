@@ -96,7 +96,7 @@ function looksLikeCompany(name) {
 }
 
 function splitTokens(raw) {
-  return normSpace(raw).split(/\s+/).filter(Boolean);
+  return normSpace(raw).split(/\s+/).filter((w) => w && /[A-Za-z]/.test(w));
 }
 
 function parsePersonSingle(raw) {

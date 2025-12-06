@@ -104,8 +104,8 @@ function parsePersonNames(nameStr) {
       // Check if this is ALL CAPS format (CAD style)
       const isAllCaps = cleaned.replace(/&/g, " ").trim() === cleaned.replace(/&/g, " ").trim().toUpperCase();
 
-      const part1Words = parts[0].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
-      const part2Words = parts[1].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
+      const part1Words = parts[0].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0 && /[A-Za-z]/.test(w));
+      const part2Words = parts[1].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0 && /[A-Za-z]/.test(w));
 
       // Heuristic: If CAD format (ALL CAPS) and first part has 2+ words and second part has 1+ word
       // Then assume shared last name: "LASTNAME FIRSTNAME1 & FIRSTNAME2" or "LASTNAME FIRSTNAME1 MIDDLEINITIAL & FIRSTNAME2"
@@ -180,7 +180,7 @@ function parsePersonNames(nameStr) {
   // Helper function to parse a single person name with smart format detection
   function parseSinglePersonName(nameStr) {
     let cleaned = nameStr.replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim();
-    const words = cleaned.split(" ").filter(w => w.length > 0);
+    const words = cleaned.split(" ").filter(w => w.length > 0 && /[A-Za-z]/.test(w));
 
     if (words.length === 0) return null;
 
@@ -291,7 +291,7 @@ function parsePersonNames(nameStr) {
   // Keep only: letters, spaces, hyphens, apostrophes, commas, periods
   cleaned = cleaned.replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim();
 
-  const words = cleaned.split(" ").filter((w) => w.length > 0);
+  const words = cleaned.split(" ").filter((w) => w.length > 0 && /[A-Za-z]/.test(w));
 
   if (words.length === 0) return [];
 
