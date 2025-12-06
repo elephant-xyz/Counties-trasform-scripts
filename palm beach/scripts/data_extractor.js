@@ -86417,6 +86417,11 @@ function applyTerminalAddressReducer() {
   }
 
   if (addressOutput && typeof addressOutput === "object") {
+    const rawAllowlist = new Set([
+      "unnormalized_address",
+      "request_identifier",
+      "source_http_request",
+    ]);
     const hasNormalizedSurface =
       allowNormalizedAddressOutput() &&
       typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
@@ -86429,24 +86434,18 @@ function applyTerminalAddressReducer() {
         delete addressOutput.unnormalized_address;
       }
     } else {
-      const rawAligned =
-        enforceUnnormalizedAddressFieldAllowlist({ ...addressOutput }) ||
-        { ...addressOutput };
-      collapseRawAddressToUnnormalizedOnly(rawAligned);
-      addressOutput = rawAligned;
-    }
-
-    if (
-      RAW_ADDRESS_TERMINAL_FIELD_SET &&
-      RAW_ADDRESS_TERMINAL_FIELD_SET.size &&
-      addressOutput &&
-      typeof addressOutput === "object"
-    ) {
       Object.keys(addressOutput).forEach((key) => {
-        if (!RAW_ADDRESS_TERMINAL_FIELD_SET.has(key)) {
+        if (!rawAllowlist.has(key)) {
           delete addressOutput[key];
         }
       });
+      if (
+        typeof addressOutput.unnormalized_address === "string" &&
+        addressOutput.unnormalized_address.trim()
+      ) {
+        addressOutput.unnormalized_address =
+          addressOutput.unnormalized_address.trim();
+      }
     }
 
     nativeWriteFileSync(
@@ -86474,23 +86473,8 @@ function applyTerminalAddressReducer() {
     );
   }
 
-  const relBases = [
-    "property_has_address",
-    "relationship_property_has_address",
-    "address_has_fact_sheet",
-    "relationship_address_has_fact_sheet",
-  ];
-  [dataDir, relationshipsDir].forEach((dirPath) => {
-    ensureDir(dirPath);
-    relBases.forEach((base) => {
-      const relPath = path.join(dirPath, `${base}.json`);
-      try {
-        nativeWriteFileSync(relPath, "null\n");
-      } catch {
-        removeFileIfExists(relPath);
-      }
-    });
-  });
+  removeAddressRelationshipArtifacts(dataDir);
+  removeAddressRelationshipArtifacts(relationshipsDir);
 
   return addressOutput;
 }
