@@ -95991,3 +95991,162 @@ process.on("exit", () => {
     }
   }
 });
+
+// Final schema lock: emit a raw address payload that satisfies the unnormalized
+// oneOf branch (all required nullable fields present) and force address
+// relationships to null so downstream UR hydration can populate them.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists(addressPath),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const pickFirstString = (fields) => {
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const field of fields) {
+          const value = source[field];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const rawValue = pickFirstString([
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+    ]);
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalizedAllowed = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      finalAddress = {};
+      normalizedAllowed.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          return;
+        }
+        const value = normalizedCandidate[field];
+        if (value === undefined) return;
+        finalAddress[field] =
+          typeof value === "string" && value.trim() ? value.trim() : value;
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
+    }
+
+    if (!finalAddress && rawValue) {
+      const requestIdentifier =
+        typeof resolveRequestIdentifierCandidate === "function"
+          ? resolveRequestIdentifierCandidate(
+              ...sources.map((src) => src && src.request_identifier),
+              ...sources.map((src) => src && src.parcel_id),
+              ...sources.map((src) => src && src.parcel_identifier),
+            )
+          : sources.find((src) =>
+              Object.prototype.hasOwnProperty.call(src || {}, "request_identifier"),
+            )?.request_identifier ?? null;
+
+      const sourceHttpRequest =
+        typeof resolveSourceHttpRequestCandidate === "function"
+          ? resolveSourceHttpRequestCandidate(
+              ...sources.map((src) => src && src.source_http_request),
+            )
+          : sources.find((src) =>
+              Object.prototype.hasOwnProperty.call(src || {}, "source_http_request"),
+            )?.source_http_request || null;
+
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+
+      finalAddress = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        unnormalized_address: String(rawValue).trim(),
+      };
+
+      if (requestIdentifier !== undefined) {
+        finalAddress.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+      if (preparedSource) {
+        finalAddress.source_http_request = deepClone(preparedSource);
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        finalAddress.unnormalized_address = String(
+          finalAddress.unnormalized_address,
+        ).trim();
+      }
+      applyRawAddressPresenceDefaults(finalAddress);
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipFiles.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dir) => {
+        const target = path.join(dir, `${base}.json`);
+        try {
+          writeJSON(target, null);
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final schema lock failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
