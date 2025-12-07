@@ -6491,6 +6491,45 @@ process.on("exit", () => {
     }
 
     if (finalAddress) {
+      const normalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress }) &&
+        !Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address");
+
+      if (normalizedSurface) {
+        const allowed = new Set([
+          ...NORMALIZED_ADDRESS_FIELDS,
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!allowed.has(key)) {
+            delete finalAddress[key];
+            return;
+          }
+          if (typeof finalAddress[key] === "string") {
+            finalAddress[key] = finalAddress[key].trim();
+          }
+        });
+      } else {
+        RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        });
+        const allowed = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!allowed.has(key)) {
+            delete finalAddress[key];
+            return;
+          }
+          if (typeof finalAddress[key] === "string") {
+            finalAddress[key] = finalAddress[key].trim();
+          }
+        });
+      }
+
       writeJSON(addressPath, finalAddress);
     } else {
       removeFileIfExists(addressPath);
@@ -95936,7 +95975,13 @@ process.on("exit", () => {
     ];
     relationshipFiles.forEach((base) => {
       [dataDir, relationshipsDir].forEach((dir) => {
-        removeFileIfExists(path.join(dir, `${base}.json`));
+        const target = path.join(dir, `${base}.json`);
+        try {
+          ensureDir(dir);
+          writeJSON(target, null);
+        } catch {
+          removeFileIfExists(target);
+        }
       });
     });
   } catch (error) {
