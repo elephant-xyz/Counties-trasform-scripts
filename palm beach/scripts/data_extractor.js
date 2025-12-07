@@ -96150,3 +96150,155 @@ process.on("exit", () => {
     }
   }
 });
+
+// Authoritative final clamp: keep address on a single valid oneOf branch and
+// leave address relationships as null placeholders so validators never see
+// inline relationship payloads or partial normalized fields.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((src) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...src }),
+          )
+        : null;
+
+    let finalAddress = null;
+
+    if (
+      normalizedCandidate &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...normalizedCandidate })
+    ) {
+      const allowed = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      finalAddress = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      allowed.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          return;
+        }
+        const value = normalizedCandidate[field];
+        if (value === undefined) return;
+        finalAddress[field] =
+          typeof value === "string" && value.trim() ? value.trim() : value;
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(sources) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+        resolveFirstMeaningfulAddressField("full_address", sources) ||
+        resolveFirstMeaningfulAddressField("site_address", sources) ||
+        resolveFirstMeaningfulAddressField("address", sources) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+      if (trimmedRaw) {
+        finalAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+        finalAddress.unnormalized_address = trimmedRaw;
+
+        const requestIdentifier =
+          typeof resolveRequestIdentifierCandidate === "function"
+            ? resolveRequestIdentifierCandidate(
+                ...sources.map((src) => src && src.request_identifier),
+                ...sources.map((src) => src && src.parcel_id),
+                ...sources.map((src) => src && src.parcel_identifier),
+              )
+            : sources.find((src) =>
+                Object.prototype.hasOwnProperty.call(
+                  src || {},
+                  "request_identifier",
+                ),
+              )?.request_identifier;
+
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+
+        const sourceHttpRequest =
+          typeof resolveSourceHttpRequestCandidate === "function"
+            ? resolveSourceHttpRequestCandidate(
+                ...sources.map((src) => src && src.source_http_request),
+              )
+            : sources.find((src) =>
+                Object.prototype.hasOwnProperty.call(
+                  src || {},
+                  "source_http_request",
+                ),
+              )?.source_http_request || null;
+        const prepared =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+        if (prepared) {
+          finalAddress.source_http_request = deepClone(prepared);
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships = {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipFiles.forEach((base) => {
+      const target = path.join(relationshipsDir, `${base}.json`);
+      try {
+        nativeWriteFileSync.call(fs, target, "null\n");
+      } catch {
+        removeFileIfExists(target);
+      }
+    });
+  } catch (error) {
+    console.error("Authoritative final County address clamp failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
