@@ -93866,21 +93866,55 @@ process.on("exit", () => {
           delete finalAddress.unnormalized_address;
         }
       } else {
+        // Force the raw oneOf branch by emitting the full nullable surface the
+        // county schema requires, even when we only have an unnormalized string.
         const rawAllowed = new Set([
-          "unnormalized_address",
+          ...RAW_ADDRESS_OUTPUT_FIELDS,
           "request_identifier",
           "source_http_request",
         ]);
-        Object.keys(finalAddress).forEach((key) => {
-          if (!rawAllowed.has(key)) {
-            delete finalAddress[key];
-            return;
+        const rawSurface =
+          enforceRawAddressSchemaSurface(
+            { ...finalAddress },
+            RAW_ADDRESS_OUTPUT_FIELDS,
+          ) || null;
+        const resolvedRaw =
+          rawSurface ||
+          (typeof finalAddress.unnormalized_address === "string" &&
+          finalAddress.unnormalized_address.trim().length
+            ? { unnormalized_address: finalAddress.unnormalized_address.trim() }
+            : null);
+        if (resolvedRaw) {
+          RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+            if (!Object.prototype.hasOwnProperty.call(resolvedRaw, field)) {
+              resolvedRaw[field] = null;
+            }
+          });
+          if (
+            Object.prototype.hasOwnProperty.call(finalAddress, "request_identifier")
+          ) {
+            resolvedRaw.request_identifier = finalAddress.request_identifier ?? null;
           }
-          const value = finalAddress[key];
-          if (typeof value === "string") {
-            finalAddress[key] = value.trim();
+          if (
+            Object.prototype.hasOwnProperty.call(finalAddress, "source_http_request")
+          ) {
+            resolvedRaw.source_http_request = deepClone(
+              finalAddress.source_http_request,
+            );
           }
-        });
+          Object.keys(resolvedRaw).forEach((key) => {
+            if (!rawAllowed.has(key)) {
+              delete resolvedRaw[key];
+              return;
+            }
+            if (typeof resolvedRaw[key] === "string") {
+              resolvedRaw[key] = resolvedRaw[key].trim();
+            }
+          });
+          finalAddress = resolvedRaw;
+        } else {
+          finalAddress = null;
+        }
       }
       nativeWriteFileSync(
         addressPath,
