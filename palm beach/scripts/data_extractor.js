@@ -90856,12 +90856,6 @@ function applyTerminalAddressReducer() {
   }
 
   if (addressOutput && typeof addressOutput === "object") {
-    const rawAllowlist = new Set([
-      "unnormalized_address",
-      "request_identifier",
-      "source_http_request",
-      ...NORMALIZED_ADDRESS_FIELDS,
-    ]);
     const hasNormalizedSurface =
       allowNormalizedAddressOutput() &&
       typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
@@ -90874,20 +90868,35 @@ function applyTerminalAddressReducer() {
         delete addressOutput.unnormalized_address;
       }
     } else {
-      Object.keys(addressOutput).forEach((key) => {
-        if (!rawAllowlist.has(key)) {
-          delete addressOutput[key];
-        }
-      });
-      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-        if (!Object.prototype.hasOwnProperty.call(addressOutput, field)) {
-          addressOutput[field] = null;
-        }
-      });
+      // Raw branch: keep only the lean unnormalized surface so we satisfy the
+      // raw oneOf variant and avoid sprinkling normalized fields that trigger
+      // missing-required validation errors.
+      const rawOnly = {};
       if (typeof addressOutput.unnormalized_address === "string") {
-        addressOutput.unnormalized_address =
-          addressOutput.unnormalized_address.trim();
+        const trimmed = addressOutput.unnormalized_address.trim();
+        if (trimmed) {
+          rawOnly.unnormalized_address = trimmed;
+        }
+      } else if (
+        Object.prototype.hasOwnProperty.call(addressOutput, "unnormalized_address")
+      ) {
+        rawOnly.unnormalized_address = addressOutput.unnormalized_address;
       }
+
+      if (Object.prototype.hasOwnProperty.call(addressOutput, "request_identifier")) {
+        rawOnly.request_identifier =
+          addressOutput.request_identifier === undefined
+            ? null
+            : addressOutput.request_identifier;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(addressOutput, "source_http_request")) {
+        rawOnly.source_http_request = deepClone(
+          addressOutput.source_http_request,
+        );
+      }
+
+      addressOutput = rawOnly;
     }
 
     nativeWriteFileSync(
