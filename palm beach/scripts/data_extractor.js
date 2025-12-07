@@ -94139,31 +94139,30 @@ process.on("exit", () => {
                   source.source_http_request,
               )?.source_http_request || null;
 
-        finalAddress = {
-          unnormalized_address: rawValue,
-        };
-        if (requestIdentifier !== undefined) {
-          finalAddress.request_identifier =
-            requestIdentifier === null ? null : requestIdentifier;
-        }
-        if (sourceHttpRequest) {
-          finalAddress.source_http_request = deepClone(sourceHttpRequest);
-        }
+        const rawPayload =
+          buildStrictMinimalRawAddressPayload(rawValue, {
+            fieldSources: sources,
+            defaultCountyName: titleCaseCounty("Palm Beach"),
+            defaultStateCode: "FL",
+            defaultCountryCode: "US",
+            requestIdentifier,
+            sourceHttpRequest,
+          }) ||
+          ensureRawAddressRequiredCoverage(
+            {
+              unnormalized_address: rawValue,
+              request_identifier:
+                requestIdentifier === undefined ? null : requestIdentifier,
+              source_http_request: sourceHttpRequest
+                ? deepClone(sourceHttpRequest)
+                : null,
+            },
+            rawValue,
+          );
 
-        const rawAllowed = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
-        Object.keys(finalAddress).forEach((key) => {
-          if (!rawAllowed.has(key) || finalAddress[key] === undefined) {
-            delete finalAddress[key];
-            return;
-          }
-          if (typeof finalAddress[key] === "string") {
-            finalAddress[key] = finalAddress[key].trim();
-          }
-        });
+        if (rawPayload && typeof rawPayload === "object") {
+          finalAddress = rawPayload;
+        }
       }
     }
 
