@@ -2090,6 +2090,174 @@ process.on("exit", () => {
   }
 });
 
+// Post-terminal clamp: keep address on a single valid oneOf branch (prefer the
+// lean raw/unnormalized variant) and overwrite all address relationship payloads
+// with explicit nulls so validators never see partial inline objects.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sourcePool = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+      sourcePool.find((source) =>
+        hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+      );
+
+    let finalAddress = null;
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawCandidates = [];
+      sourcePool.forEach((source) => {
+        ["unnormalized_address", "full_address", "site_address", "address"].forEach(
+          (field) => {
+            const value = source && source[field];
+            if (typeof value === "string" && value.trim()) {
+              rawCandidates.push(value.trim());
+            }
+          },
+        );
+      });
+      const rawValue = rawCandidates.find(Boolean);
+      if (rawValue) {
+        const requestIdentifier =
+          (typeof resolveRequestIdentifierCandidate === "function" &&
+            resolveRequestIdentifierCandidate(
+              ...sourcePool.map((source) => source && source.request_identifier),
+              ...sourcePool.map((source) => source && source.parcel_id),
+              ...sourcePool.map((source) => source && source.parcel_identifier),
+            )) ||
+          null;
+        const sourceHttpRequest =
+          (typeof resolveSourceHttpRequestCandidate === "function" &&
+            resolveSourceHttpRequestCandidate(
+              ...sourcePool.map((source) => source && source.source_http_request),
+            )) ||
+          null;
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+        const rawOnly = {
+          unnormalized_address: rawValue,
+        };
+        if (requestIdentifier !== undefined) {
+          rawOnly.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        if (preparedSource) {
+          rawOnly.source_http_request = deepClone(preparedSource);
+        }
+        finalAddress = rawOnly;
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const allowedRawKeys = new Set([
+        "unnormalized_address",
+        "request_identifier",
+        "source_http_request",
+      ]);
+      const rawSurface = {};
+      Object.entries(finalAddress).forEach(([key, value]) => {
+        if (value === undefined) return;
+        if (allowedRawKeys.has(key)) {
+          rawSurface[key] = value;
+        }
+      });
+
+      const normalizedSurface =
+        normalizedCandidate && allowNormalizedAddressOutput()
+          ? finalAddress
+          : null;
+      const terminalPayload =
+        normalizedSurface &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalizedSurface })
+          ? normalizedSurface
+          : rawSurface;
+
+      if (terminalPayload && Object.keys(terminalPayload).length) {
+        nativeWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(terminalPayload, null, 2)}\n`,
+        );
+      } else {
+        removeFileIfExists(addressPath);
+      }
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath);
+    if (propertyPayload && typeof propertyPayload === "object") {
+      propertyPayload.relationships =
+        propertyPayload.relationships &&
+        typeof propertyPayload.relationships === "object"
+          ? propertyPayload.relationships
+          : {};
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      nativeWriteFileSync.call(
+        fs,
+        propertyPath,
+        `${JSON.stringify(propertyPayload, null, 2)}\n`,
+      );
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Post-terminal county address/relationship sanitizer failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 // Ultimate guardrail: pick a single valid address oneOf branch (normalized only
 // when fully populated, otherwise a lean unnormalized payload) and guarantee
 // relationship placeholders stay null so downstream UR hydration can populate
