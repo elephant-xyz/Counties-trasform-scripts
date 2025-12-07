@@ -265,15 +265,31 @@ function persistAddressNative(addressPath, payload) {
         ? deepClone(cloned.source_http_request)
         : null,
     };
-    sanitized =
-      buildTerminalRawSubmissionSnapshot(baseRaw) || {
-        ...baseRaw,
-      };
+    const hydratedRaw =
+      ensureRawAddressRequiredCoverage(
+        { ...baseRaw },
+        baseRaw.unnormalized_address,
+      ) || buildTerminalRawSubmissionSnapshot(baseRaw);
+
+    if (
+      !hydratedRaw ||
+      !hasMeaningfulAddressValue(hydratedRaw.unnormalized_address)
+    ) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    sanitized = { ...hydratedRaw };
   }
 
   if (hasNormalizedSurface) {
     ensureAddressFieldSurface(sanitized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
   } else {
+    sanitized =
+      ensureRawAddressRequiredCoverage(
+        { ...sanitized },
+        sanitized.unnormalized_address,
+      ) || sanitized;
     const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
     Object.keys(sanitized).forEach((key) => {
       if (!rawAllowlist.has(key)) {
@@ -94891,29 +94907,44 @@ process.on("exit", () => {
             ? prepareSourceHttpRequest(sourceHttp)
             : sourceHttp;
 
-        // Pad the raw payload with every nullable field so it satisfies the raw
-        // address oneOf branch even when we only have an unnormalized string.
-        finalAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-        RAW_ADDRESS_TEMPLATE_FIELDS.forEach((field) => {
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            finalAddress[field] = null;
-          }
-        });
-        finalAddress.unnormalized_address = trimmedRaw;
-        finalAddress.request_identifier =
-          requestIdentifier === undefined ? null : requestIdentifier;
-        finalAddress.source_http_request = preparedSource
-          ? deepClone(preparedSource)
-          : null;
+        const rawSeed =
+          typeof aggregateRawSourcesForUnnormalizedSurface === "function"
+            ? aggregateRawSourcesForUnnormalizedSurface(sourcePool)
+            : {};
 
-        Object.keys(finalAddress).forEach((key) => {
-          const value = finalAddress[key];
-          if (value === undefined) {
-            delete finalAddress[key];
-          } else if (typeof value === "string") {
-            finalAddress[key] = value.trim();
-          }
-        });
+        const baseRaw = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...rawSeed,
+          unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: preparedSource
+            ? deepClone(preparedSource)
+            : null,
+        };
+
+        const ensuredRaw =
+          ensureRawAddressRequiredCoverage(
+            { ...baseRaw },
+            trimmedRaw,
+          ) || buildTerminalRawSubmissionSnapshot(baseRaw);
+
+        if (
+          ensuredRaw &&
+          hasMeaningfulAddressValue(ensuredRaw.unnormalized_address)
+        ) {
+          const preparedRaw =
+            typeof enforceRawVariantAllowedFields === "function"
+              ? enforceRawVariantAllowedFields({ ...ensuredRaw })
+              : { ...ensuredRaw };
+          const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
+          Object.keys(preparedRaw).forEach((key) => {
+            if (!rawAllowlist.has(key)) {
+              delete preparedRaw[key];
+            }
+          });
+          finalAddress = preparedRaw;
+        }
       }
     }
 
