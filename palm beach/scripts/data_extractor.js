@@ -93956,3 +93956,85 @@ process.on("exit", () => {
     console.error("Ultimate address/relationship finalizer failed:", error);
   }
 });
+
+// Absolute last guard: keep the address on exactly one schema branch by
+// hydrating the raw surface with the full nullable field set when we only have
+// an unnormalized string, and force address relationships to explicit nulls so
+// downstream UR generation owns them.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    if (fs.existsSync(addressPath)) {
+      const rawPayload = readJSONIfExists(addressPath) || {};
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...rawPayload });
+
+      if (!hasNormalizedSurface) {
+        const merged = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...rawPayload,
+        };
+        const rawAllowed = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
+        RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(merged, field)) {
+            merged[field] = null;
+          }
+        });
+        if (merged.unnormalized_address != null) {
+          merged.unnormalized_address = safeNullIfEmpty(
+            merged.unnormalized_address,
+          );
+        }
+        Object.keys(merged).forEach((key) => {
+          if (!rawAllowed.has(key)) {
+            delete merged[key];
+            return;
+          }
+          if (typeof merged[key] === "string") {
+            merged[key] = merged[key].trim();
+          }
+        });
+        writeJSON(addressPath, merged);
+      }
+    }
+
+    if (fs.existsSync(propertyPath)) {
+      const propertyPayload = readJSONIfExists(propertyPath) || {};
+      propertyPayload.relationships =
+        propertyPayload && typeof propertyPayload.relationships === "object"
+          ? propertyPayload.relationships
+          : {};
+      propertyPayload.relationships.property_has_address = null;
+      propertyPayload.relationships.address_has_fact_sheet = null;
+      writeJSON(propertyPath, propertyPayload);
+    }
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          writeJSON(target, null);
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Terminal address/relationship guard failed:", error);
+  }
+});
