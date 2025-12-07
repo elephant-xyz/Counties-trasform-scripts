@@ -92718,47 +92718,10 @@ function ultimateRawAddressGuard() {
         "address",
       ]);
 
-    if (rawValue) {
-      const REQUIRED_NULLABLE_FIELDS = [
-        "latitude",
-        "longitude",
-        "plus_four_postal_code",
-        "street_name",
-        "street_post_directional_text",
-        "street_pre_directional_text",
-        "street_number",
-        "street_suffix_type",
-        "unit_identifier",
-        "route_number",
-        "township",
-        "range",
-        "section",
-        "block",
-        "lot",
-        "postal_code",
-        "city_name",
-        "state_code",
-        "county_name",
-        "country_code",
-      ];
-      const finalAddress = { unnormalized_address: rawValue };
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
 
-      REQUIRED_NULLABLE_FIELDS.forEach((field) => {
-        if (Object.prototype.hasOwnProperty.call(finalAddress, field)) return;
-        let candidate =
-          typeof pickAddressFieldFromSources === "function"
-            ? pickAddressFieldFromSources(field, sources)
-            : null;
-        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-          const numeric = parseCoordinate(candidate);
-          candidate = Number.isFinite(numeric) ? numeric : null;
-        } else if (candidate === undefined) {
-          candidate = null;
-        } else if (typeof candidate === "string" && !candidate.trim()) {
-          candidate = null;
-        }
-        finalAddress[field] = candidate === undefined ? null : candidate;
-      });
+    if (trimmedRaw) {
+      const finalAddress = { unnormalized_address: trimmedRaw };
 
       const requestIdentifier =
         typeof resolveRequestIdentifierCandidate === "function"
@@ -92768,10 +92731,10 @@ function ultimateRawAddressGuard() {
               ...sources.map((source) => source && source.parcel_identifier),
             )
           : undefined;
-      finalAddress.request_identifier =
-        requestIdentifier === undefined || requestIdentifier === null
-          ? null
-          : requestIdentifier;
+      if (requestIdentifier !== undefined) {
+        finalAddress.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
 
       const sourceHttpRequest =
         typeof resolveSourceHttpRequestCandidate === "function"
@@ -92784,10 +92747,6 @@ function ultimateRawAddressGuard() {
         : null;
       if (preparedRequest) {
         finalAddress.source_http_request = deepClone(preparedRequest);
-      } else if (
-        !Object.prototype.hasOwnProperty.call(finalAddress, "source_http_request")
-      ) {
-        finalAddress.source_http_request = null;
       }
 
       nativeWriteFileSync.call(
@@ -92907,37 +92866,15 @@ process.on("exit", () => {
     normalizedAllowlist.add("request_identifier");
     normalizedAllowlist.add("source_http_request");
 
-    const requiredNullable = [
-      "latitude",
-      "longitude",
-      "plus_four_postal_code",
-      "street_name",
-      "street_post_directional_text",
-      "street_pre_directional_text",
-      "street_number",
-      "street_suffix_type",
-      "unit_identifier",
-      "route_number",
-      "township",
-      "range",
-      "section",
-      "block",
-      "lot",
-      "postal_code",
-      "city_name",
-      "state_code",
-      "county_name",
-      "country_code",
-    ];
-
     let finalAddress = null;
+    let normalizedSurface = false;
 
-    if (
-      normalizedCandidate &&
-      hasStrictCountyNormalizedSchemaCoverage({ ...normalizedCandidate })
-    ) {
-      finalAddress = {};
-      normalizedAllowlist.forEach((field) => {
+      if (
+        normalizedCandidate &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalizedCandidate })
+      ) {
+        finalAddress = {};
+        normalizedAllowlist.forEach((field) => {
         if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
           return;
         }
@@ -92951,6 +92888,7 @@ process.on("exit", () => {
       ) {
         delete finalAddress.unnormalized_address;
       }
+      normalizedSurface = true;
     }
 
     if (!finalAddress) {
@@ -92960,9 +92898,10 @@ process.on("exit", () => {
         "site_address",
         "address",
       ]);
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
 
-      if (rawValue) {
-        finalAddress = { unnormalized_address: rawValue };
+      if (trimmedRaw) {
+        finalAddress = { unnormalized_address: trimmedRaw };
 
         const requestIdentifier =
           typeof resolveRequestIdentifierCandidate === "function"
@@ -92974,10 +92913,10 @@ process.on("exit", () => {
             : sources.find((source) =>
                 Object.prototype.hasOwnProperty.call(source || {}, "request_identifier"),
               )?.request_identifier;
-        finalAddress.request_identifier =
-          requestIdentifier === undefined || requestIdentifier === null
-            ? null
-            : requestIdentifier;
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
 
         const sourceHttpRequest =
           typeof resolveSourceHttpRequestCandidate === "function"
@@ -92998,22 +92937,28 @@ process.on("exit", () => {
         if (preparedSource) {
           finalAddress.source_http_request = deepClone(preparedSource);
         }
-
-        requiredNullable.forEach((field) => {
-          if (Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            return;
-          }
-          const candidate = pickFirstString([field]);
-          if (candidate !== null) {
-            finalAddress[field] = candidate;
-          } else {
-            finalAddress[field] = null;
-          }
-        });
       }
     }
 
     if (finalAddress && typeof finalAddress === "object" && !Array.isArray(finalAddress)) {
+      if (!normalizedSurface) {
+        const rawAllowlist = new Set([
+          "unnormalized_address",
+          "request_identifier",
+          "source_http_request",
+        ]);
+        Object.keys(finalAddress).forEach((key) => {
+          if (!rawAllowlist.has(key) || finalAddress[key] === undefined) {
+            delete finalAddress[key];
+            return;
+          }
+          if (typeof finalAddress[key] === "string") {
+            const trimmed = finalAddress[key].trim();
+            finalAddress[key] = trimmed.length ? trimmed : null;
+          }
+        });
+      }
+
       nativeWriteFileSync.call(
         fs,
         addressPath,
