@@ -20,7 +20,7 @@ let ADDRESS_FINALIZATION_COMPLETE = false;
 let normalizedAddressOverrideApplied = false;
 let FINAL_NORMALIZED_ADDRESS_PAYLOAD = null;
 let FINAL_ADDRESS_WRITE_LOCKED = false;
-let ENFORCE_UNNORMALIZED_ONLY_ADDRESS = true;
+let ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
 let ADDRESS_ONE_OF_FINALIZED = false;
 
 function allowNormalizedAddressOutput() {
@@ -120,6 +120,29 @@ const RAW_SCHEMA_CORE_FIELDS = Object.freeze([
   "source_http_request",
 ]);
 
+const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze([
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "postal_code",
+  "city_name",
+  "state_code",
+  "county_name",
+  "country_code",
+]);
+
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
     new Set([
@@ -144,9 +167,8 @@ const RAW_VARIANT_FORBIDDEN_FIELD_SET = new Set(
 const RAW_PREFERRED_FIELD_WHITELIST = Object.freeze(
   Array.from(
     new Set([
-      "unnormalized_address",
-      "request_identifier",
-      "source_http_request",
+      ...RAW_SCHEMA_CORE_FIELDS,
+      ...RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS,
     ]),
   ),
 );
@@ -252,11 +274,7 @@ function persistAddressNative(addressPath, payload) {
   if (hasNormalizedSurface) {
     ensureAddressFieldSurface(sanitized, COUNTY_REQUIRED_NORMALIZED_FIELDS);
   } else {
-    const rawAllowlist = new Set([
-      "unnormalized_address",
-      "request_identifier",
-      "source_http_request",
-    ]);
+    const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
     Object.keys(sanitized).forEach((key) => {
       if (!rawAllowlist.has(key)) {
         delete sanitized[key];
@@ -629,11 +647,7 @@ process.on("exit", () => {
 
     if (finalAddress && typeof finalAddress === "object") {
       if (!normalizedSurface) {
-        const rawAllowed = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowed = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowed.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -822,11 +836,7 @@ process.on("exit", () => {
           delete finalAddress.unnormalized_address;
         }
       } else {
-        const rawAllow = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllow = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllow.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -1001,11 +1011,7 @@ process.on("exit", () => {
 
     if (finalAddress && typeof finalAddress === "object") {
       if (!normalizedSurface) {
-        const rawAllow = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllow = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllow.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -1158,11 +1164,7 @@ process.on("exit", () => {
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
       if (!hasNormalizedSurface) {
-        const rawAllow = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllow = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllow.has(key)) {
             delete finalAddress[key];
@@ -1317,11 +1319,7 @@ process.on("exit", () => {
           }
         });
       } else {
-        const rawAllowlist = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowlist.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -1458,11 +1456,7 @@ process.on("exit", () => {
           }
         }
 
-        const rawAllowlist = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowlist.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -1595,11 +1589,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const rawAllowlist = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
       const hasNormalizedSurface =
         allowNormalizedAddressOutput() &&
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
@@ -1872,11 +1862,7 @@ setImmediate(() => {
       }
 
       if (finalAddress && typeof finalAddress === "object") {
-        const rawAllowlist = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         const normalizedSurface =
           allowNormalizedAddressOutput() &&
           typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
@@ -2026,11 +2012,7 @@ process.on("exit", () => {
         if (preparedSource) {
           finalAddress.source_http_request = deepClone(preparedSource);
         }
-        const allowedRawFields = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const allowedRawFields = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!allowedRawFields.has(key)) {
             delete finalAddress[key];
@@ -2087,6 +2069,105 @@ process.on("exit", () => {
     if (!process.exitCode) {
       process.exitCode = 1;
     }
+  }
+});
+
+// Final safeguard: keep address payloads on a valid raw oneOf branch and leave
+// address relationships null for downstream UR hydration.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const rawValue =
+      resolveRawAddressStringFromSources(sources) ||
+      resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+      resolveFirstMeaningfulAddressField("full_address", sources) ||
+      resolveFirstMeaningfulAddressField("site_address", sources) ||
+      resolveFirstMeaningfulAddressField("address", sources) ||
+      null;
+
+    if (rawValue) {
+      const finalAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      finalAddress.unnormalized_address = String(rawValue).trim();
+
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        ...sources.map((source) => source && source.request_identifier),
+        ...sources.map((source) => source && source.parcel_id),
+        ...sources.map((source) => source && source.parcel_identifier),
+      );
+      if (requestIdentifier !== undefined) {
+        finalAddress.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        ...sources.map((source) => source && source.source_http_request),
+      );
+      if (sourceHttpRequest) {
+        const prepared = prepareSourceHttpRequest(sourceHttpRequest);
+        finalAddress.source_http_request = prepared ? deepClone(prepared) : null;
+      }
+
+      RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+        const candidate = pickAddressFieldFromSources(field, sources);
+        if (candidate === undefined || candidate === null) {
+          return;
+        }
+        const sanitized = sanitizeAddressFieldValue
+          ? sanitizeAddressFieldValue(field, candidate)
+          : candidate;
+        if (sanitized === undefined || sanitized === null) {
+          return;
+        }
+        finalAddress[field] =
+          typeof sanitized === "string" && !sanitized.trim().length
+            ? null
+            : sanitized;
+      });
+
+      applyRawAddressPresenceDefaults(finalAddress);
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipFiles.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dir) => {
+        writeJSON(path.join(dir, `${base}.json`), null);
+      });
+    });
+  } catch (error) {
+    console.error("Final raw address padding failed:", error);
   }
 });
 
@@ -2181,11 +2262,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const allowedRawKeys = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const allowedRawKeys = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
       const rawSurface = {};
       Object.entries(finalAddress).forEach(([key, value]) => {
         if (value === undefined) return;
@@ -2359,11 +2436,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const rawAllowed = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const rawAllowed = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
       const normalizedAllowed = new Set([
         ...NORMALIZED_ADDRESS_FIELDS,
         "request_identifier",
@@ -2652,11 +2725,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const rawAllow = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const rawAllow = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
       Object.keys(finalAddress).forEach((key) => {
         if (finalAddress[key] === undefined) {
           delete finalAddress[key];
@@ -2816,11 +2885,7 @@ process.on("exit", () => {
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
       if (!hasNormalizedSurface) {
-        const rawAllow = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllow = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllow.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -2978,11 +3043,7 @@ process.on("exit", () => {
           finalAddress.source_http_request = deepClone(preparedSource);
         }
 
-        const rawAllow = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllow = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllow.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -3347,11 +3408,7 @@ process.on("exit", () => {
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
       if (!normalizedSurface) {
-        const rawAllowed = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowed = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowed.has(key) || finalAddress[key] === undefined) {
             delete finalAddress[key];
@@ -3516,11 +3573,7 @@ process.on("exit", () => {
           finalAddress.source_http_request = deepClone(preparedSource);
         }
 
-        const rawAllowlist = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowlist.has(key)) {
             delete finalAddress[key];
@@ -3656,11 +3709,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const rawAllow = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const rawAllow = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
       const isNormalized =
         normalizedCandidate &&
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
@@ -3874,11 +3923,7 @@ process.on("exit", () => {
         if (sourceHttpRequest) {
           finalAddress.source_http_request = deepClone(sourceHttpRequest);
         }
-        const rawAllowed = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowed = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowed.has(key)) {
             delete finalAddress[key];
@@ -14685,20 +14730,7 @@ function buildSimpleRawAddressPayload(sources = []) {
   const payload = {
     unnormalized_address: rawValue,
   };
-  const rawAllowedFields = [
-    "city_name",
-    "municipality_name",
-    "county_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "country_code",
-    "section",
-    "township",
-    "range",
-    "block",
-    "lot",
-  ];
+  const rawAllowedFields = Array.from(RAW_ADDRESS_ALLOWED_FIELDS);
   rawAllowedFields.forEach((field) => {
     const value = pickAddressFieldFromSources(field, candidateSources);
     if (value !== null && value !== undefined) {
@@ -18334,7 +18366,12 @@ function stripNormalizedFieldsFromRawPayload(address) {
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Object.freeze(
-  Array.from(new Set([...RAW_SCHEMA_CORE_FIELDS])),
+  Array.from(
+    new Set([
+      ...RAW_SCHEMA_CORE_FIELDS,
+      ...RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS,
+    ]),
+  ),
 );
 const RAW_TERMINAL_FIELD_LIST = Object.freeze(
   Array.from(
@@ -18347,7 +18384,11 @@ const RAW_TERMINAL_FIELD_LIST = Object.freeze(
 const RAW_TERMINAL_FIELD_SET = new Set(RAW_TERMINAL_FIELD_LIST);
 const RAW_VARIANT_OPTIONAL_PRESERVABLE_FIELDS = Object.freeze(
   Array.from(
-    new Set([...MINIMAL_RAW_ADDRESS_FIELDS, ...RAW_FALLBACK_COPY_FIELDS]),
+    new Set([
+      ...MINIMAL_RAW_ADDRESS_FIELDS,
+      ...RAW_FALLBACK_COPY_FIELDS,
+      ...RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS,
+    ]),
   ),
 );
 const RAW_VARIANT_OPTIONAL_FIELD_SET = new Set(
@@ -18896,6 +18937,25 @@ function enforceMinimalRawAddressSurface(address) {
     delete address[key];
   });
 
+  RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(address, field)) {
+      address[field] = null;
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      address[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (address[field] === undefined) {
+      address[field] = null;
+      return;
+    }
+    if (typeof address[field] === "string" && !address[field].trim().length) {
+      address[field] = null;
+    }
+  });
+
   return address;
 }
 
@@ -18941,6 +19001,27 @@ function applyRawAddressPresenceDefaults(address) {
     });
 
     enforceMinimalRawAddressSurface(address);
+    RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+      if (!Object.prototype.hasOwnProperty.call(address, field)) {
+        address[field] = null;
+        return;
+      }
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(address[field]);
+        address[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (address[field] === undefined) {
+        address[field] = null;
+        return;
+      }
+      if (
+        typeof address[field] === "string" &&
+        !address[field].trim().length
+      ) {
+        address[field] = null;
+      }
+    });
     return address;
   }
 
@@ -20351,11 +20432,7 @@ const RAW_MINIMAL_ADDRESS_FIELDS = [
 ];
 const RAW_MINIMAL_ADDRESS_FIELD_SET = new Set(RAW_MINIMAL_ADDRESS_FIELDS);
 
-const RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS = new Set([
-  "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
-]);
+const RAW_ADDRESS_SCHEMA_RAW_ONLY_FIELDS = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
 
 const RAW_ADDRESS_TEMPLATE_FIELDS = Object.freeze(
   Array.from(
@@ -87669,11 +87746,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const rawAllowlist = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
       const hasNormalizedSurface =
         allowNormalizedAddressOutput() &&
         typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
@@ -89431,11 +89504,7 @@ process.on("exit", () => {
           delete finalAddress.unnormalized_address;
         }
       } else {
-        const rawAllowlist = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const rawAllowlist = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(finalAddress).forEach((key) => {
           if (!rawAllowlist.has(key)) {
             delete finalAddress[key];
@@ -89581,11 +89650,7 @@ process.on("exit", () => {
             rawPayload.source_http_request = deepClone(prepared);
           }
         }
-        const allowedRawKeys = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const allowedRawKeys = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(rawPayload).forEach((key) => {
           if (!allowedRawKeys.has(key)) {
             delete rawPayload[key];
@@ -90278,11 +90343,7 @@ process.on("exit", () => {
             prepareSourceHttpRequest(sourceHttpRequest),
           );
         }
-        const allowedRawFields = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
+        const allowedRawFields = new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
         Object.keys(rawPayload).forEach((key) => {
           if (!allowedRawFields.has(key)) {
             delete rawPayload[key];
