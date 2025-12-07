@@ -94534,10 +94534,10 @@ process.on("exit", () => {
   }
 });
 
-// Ultimate minimal clamp: always emit the lean raw address (only the
-// unnormalized string plus request/source metadata) and force related
-// relationships to explicit null placeholders so validation stays on the raw
-// oneOf branch.
+// Ultimate minimal clamp: always emit the raw address on the unnormalized
+// oneOf branch with every nullable schema field present (as null when
+// unknown), and force related relationships to explicit null placeholders so
+// validation stays on the raw branch.
 process.on("exit", () => {
   try {
     const dataDir = path.join("data");
@@ -94569,44 +94569,114 @@ process.on("exit", () => {
       return null;
     };
 
-    const rawValue =
-      (typeof resolveRawAddressStringFromSources === "function" &&
-        resolveRawAddressStringFromSources(sourcePool)) ||
-      pickFirstString([
-        "unnormalized_address",
-        "full_address",
-        "site_address",
-        "address",
-      ]);
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sourcePool.find((src) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...src }),
+          )
+        : null;
 
     let finalAddress = null;
-    if (rawValue) {
-      const requestIdentifier =
-        typeof resolveRequestIdentifierCandidate === "function"
-          ? resolveRequestIdentifierCandidate(
-              ...sourcePool.map((src) => src && src.request_identifier),
-              ...sourcePool.map((src) => src && src.parcel_id),
-              ...sourcePool.map((src) => src && src.parcel_identifier),
-            )
-          : undefined;
-      const sourceHttp =
-        typeof resolveSourceHttpRequestCandidate === "function"
-          ? resolveSourceHttpRequestCandidate(
-              ...sourcePool.map((src) => src && src.source_http_request),
-            )
-          : null;
-      const preparedSource =
-        sourceHttp && typeof prepareSourceHttpRequest === "function"
-          ? prepareSourceHttpRequest(sourceHttp)
-          : sourceHttp;
 
-      finalAddress = { unnormalized_address: rawValue };
-      if (requestIdentifier !== undefined) {
-        finalAddress.request_identifier =
-          requestIdentifier === null ? null : requestIdentifier;
+    if (normalizedCandidate) {
+      const allowedNormalized = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      const normalizedPayload = {};
+      allowedNormalized.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          return;
+        }
+        const value = normalizedCandidate[field];
+        if (value === undefined) return;
+        normalizedPayload[field] =
+          typeof value === "string" ? value.trim() : value;
+      });
+      if (
+        normalizedPayload &&
+        typeof normalizedPayload === "object" &&
+        Object.keys(normalizedPayload).length &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalizedPayload })
+      ) {
+        if (
+          Object.prototype.hasOwnProperty.call(normalizedPayload, "unnormalized_address")
+        ) {
+          delete normalizedPayload.unnormalized_address;
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(normalizedPayload, "source_http_request")
+        ) {
+          const prepared = prepareSourceHttpRequest(
+            normalizedPayload.source_http_request,
+          );
+          normalizedPayload.source_http_request = prepared
+            ? deepClone(prepared)
+            : null;
+        }
+        finalAddress = normalizedPayload;
       }
-      if (preparedSource) {
-        finalAddress.source_http_request = deepClone(preparedSource);
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        (typeof resolveRawAddressStringFromSources === "function" &&
+          resolveRawAddressStringFromSources(sourcePool)) ||
+        pickFirstString([
+          "unnormalized_address",
+          "full_address",
+          "site_address",
+          "address",
+        ]);
+
+      const trimmedRaw =
+        typeof rawValue === "string" && rawValue.trim() ? rawValue.trim() : "";
+
+      if (trimmedRaw) {
+        const requestIdentifier =
+          typeof resolveRequestIdentifierCandidate === "function"
+            ? resolveRequestIdentifierCandidate(
+                ...sourcePool.map((src) => src && src.request_identifier),
+                ...sourcePool.map((src) => src && src.parcel_id),
+                ...sourcePool.map((src) => src && src.parcel_identifier),
+              )
+            : undefined;
+        const sourceHttp =
+          typeof resolveSourceHttpRequestCandidate === "function"
+            ? resolveSourceHttpRequestCandidate(
+                ...sourcePool.map((src) => src && src.source_http_request),
+              )
+            : null;
+        const preparedSource =
+          sourceHttp && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttp)
+            : sourceHttp;
+
+        // Pad the raw payload with every nullable field so it satisfies the raw
+        // address oneOf branch even when we only have an unnormalized string.
+        finalAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+        RAW_ADDRESS_TEMPLATE_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        });
+        finalAddress.unnormalized_address = trimmedRaw;
+        finalAddress.request_identifier =
+          requestIdentifier === undefined ? null : requestIdentifier;
+        finalAddress.source_http_request = preparedSource
+          ? deepClone(preparedSource)
+          : null;
+
+        Object.keys(finalAddress).forEach((key) => {
+          const value = finalAddress[key];
+          if (value === undefined) {
+            delete finalAddress[key];
+          } else if (typeof value === "string") {
+            finalAddress[key] = value.trim();
+          }
+        });
       }
     }
 
