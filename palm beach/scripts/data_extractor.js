@@ -22042,7 +22042,10 @@ function pruneAddressToMinimalRawFields(address, metadataSources = []) {
     address.source_http_request,
   );
 
+  // Always return the full raw schema surface so the payload cleanly matches
+  // the unnormalized oneOf branch instead of failing required field checks.
   return {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
     request_identifier:
       requestIdentifier === undefined ? null : requestIdentifier,
