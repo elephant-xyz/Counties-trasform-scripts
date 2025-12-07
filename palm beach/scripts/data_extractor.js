@@ -93188,3 +93188,164 @@ process.on("exit", () => {
     console.error("Final schema clamp failed:", error);
   }
 });
+
+// County terminal normalizer: keep address on a single valid oneOf branch and
+// leave address relationships empty for downstream UR hydration.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalizedAllowed = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      const normalized = {};
+      normalizedAllowed.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          return;
+        }
+        const value = normalizedCandidate[field];
+        if (value === undefined) {
+          return;
+        }
+        normalized[field] = typeof value === "string" ? value.trim() : value;
+      });
+      if (
+        hasStrictCountyNormalizedSchemaCoverage({ ...normalized }) &&
+        Object.keys(normalized).length
+      ) {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    }
+
+    if (!finalAddress) {
+      const rawValue =
+        resolveRawAddressStringFromSources(sources) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+        resolveFirstMeaningfulAddressField("full_address", sources) ||
+        resolveFirstMeaningfulAddressField("site_address", sources) ||
+        resolveFirstMeaningfulAddressField("address", sources) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (trimmedRaw) {
+        finalAddress = { unnormalized_address: trimmedRaw };
+        const requestIdentifier =
+          typeof resolveRequestIdentifierCandidate === "function"
+            ? resolveRequestIdentifierCandidate(
+                ...sources.map((source) => source && source.request_identifier),
+                ...sources.map((source) => source && source.parcel_id),
+                ...sources.map((source) => source && source.parcel_identifier),
+              )
+            : undefined;
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+        const sourceHttpRequest =
+          typeof resolveSourceHttpRequestCandidate === "function"
+            ? resolveSourceHttpRequestCandidate(
+                ...sources.map((source) => source && source.source_http_request),
+              )
+            : null;
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+        if (preparedSource) {
+          finalAddress.source_http_request = deepClone(preparedSource);
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const allowedRaw = new Set([
+        "unnormalized_address",
+        "request_identifier",
+        "source_http_request",
+      ]);
+      const allowedNormalized = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+      const allowedFields = hasNormalizedSurface
+        ? allowedNormalized
+        : allowedRaw;
+      Object.keys(finalAddress).forEach((key) => {
+        if (!allowedFields.has(key) || finalAddress[key] === undefined) {
+          delete finalAddress[key];
+          return;
+        }
+        if (typeof finalAddress[key] === "string") {
+          finalAddress[key] = finalAddress[key].trim();
+        }
+      });
+      if (!hasNormalizedSurface && !hasMeaningfulAddressValue(finalAddress.unnormalized_address)) {
+        removeFileIfExists(addressPath);
+      } else {
+        writeJSON(addressPath, finalAddress);
+      }
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipFiles.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        try {
+          writeJSON(path.join(dirPath, `${base}.json`), null);
+        } catch {
+          removeFileIfExists(path.join(dirPath, `${base}.json`));
+        }
+      });
+    });
+  } catch (error) {
+    console.error("County terminal address/relationship normalizer failed:", error);
+  }
+});
