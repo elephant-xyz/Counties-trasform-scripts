@@ -286,19 +286,109 @@ function enforceMinimalRawAddressSurface(addressPath) {
     return;
   }
 
-  const finalPayload = { unnormalized_address: rawValue };
+  const hasNormalizedSurface =
+    typeof hasStrictCountyCoverage === "function" &&
+    hasStrictCountyCoverage({ ...payload });
+  if (hasNormalizedSurface) {
+    const normalizedCandidate =
+      (typeof buildNormalizedAddressOutputForSchema === "function" &&
+        buildNormalizedAddressOutputForSchema({ ...payload })) ||
+      { ...payload };
+    const allowedNormalized = new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      "request_identifier",
+      "source_http_request",
+    ]);
+    const normalizedOutput = {};
+    allowedNormalized.forEach((field) => {
+      if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+        return;
+      }
+      let value = normalizedCandidate[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOutput[field] = value;
+    });
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOutput, "source_http_request")
+    ) {
+      const prepared = prepareSourceHttpRequest(
+        normalizedOutput.source_http_request,
+      );
+      normalizedOutput.source_http_request = prepared ? prepared : null;
+    }
+    fs.writeFileSync(
+      addressPath,
+      `${JSON.stringify(normalizedOutput, null, 2)}\n`,
+    );
+    return;
+  }
+
+  const finalPayload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: rawValue,
+  };
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      return;
+    }
+    if (field === "request_identifier" || field === "source_http_request") {
+      return;
+    }
+    let value = payload[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      value = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    } else if (value === undefined) {
+      value = null;
+    }
+    finalPayload[field] = value;
+  });
 
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
     const identifier = safeNullIfEmpty(payload.request_identifier);
     finalPayload.request_identifier =
       identifier === undefined ? null : identifier;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(finalPayload, "request_identifier")
+  ) {
+    finalPayload.request_identifier = null;
   }
 
-  if (payload.source_http_request) {
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    if (prepared) {
-      finalPayload.source_http_request = prepared;
-    }
+    finalPayload.source_http_request = prepared ? prepared : null;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(finalPayload, "source_http_request")
+  ) {
+    finalPayload.source_http_request = null;
+  }
+
+  if (!finalPayload.postal_code) {
+    finalPayload.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(finalPayload.state_code) &&
+    !hasMeaningfulAddressValue(finalPayload.country_code)
+  ) {
+    finalPayload.country_code = "US";
+  }
+
+  if ((finalPayload.latitude == null) !== (finalPayload.longitude == null)) {
+    finalPayload.latitude = null;
+    finalPayload.longitude = null;
   }
 
   fs.writeFileSync(addressPath, `${JSON.stringify(finalPayload, null, 2)}\n`);
@@ -5050,7 +5140,30 @@ function hasNormalizedCountyCoverage(address) {
 // Keep the raw branch lean so oneOf validation selects the unnormalized path
 // when we only have a raw string. Structured locality fields stay out of the
 // raw payload; downstream normalization can hydrate them when available.
-const RAW_MINIMAL_ADDRESS_FIELDS = [];
+const RAW_MINIMAL_ADDRESS_FIELDS = [
+  "request_identifier",
+  "source_http_request",
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "postal_code",
+  "city_name",
+  "state_code",
+  "county_name",
+  "country_code",
+];
 
 // Fields that may accompany the raw (unnormalized) address payload. Keep the
 // list aligned with the schema requirements so every nullable property remains
