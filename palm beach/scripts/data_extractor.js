@@ -587,27 +587,27 @@ process.on("exit", () => {
         : null;
 
     if (typeof rawValue === "string" && rawValue.trim()) {
-      const finalAddress = {
-        unnormalized_address: rawValue.trim(),
-      };
-      if (requestIdentifier !== undefined) {
-        finalAddress.request_identifier =
-          requestIdentifier === null ? null : requestIdentifier;
+      const compliantRaw =
+        buildSchemaCompliantRawAddress({
+          unnormalized_address: rawValue.trim(),
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: sourceHttpRequest
+            ? typeof prepareSourceHttpRequest === "function"
+              ? prepareSourceHttpRequest(sourceHttpRequest)
+              : sourceHttpRequest
+            : null,
+        }) || null;
+
+      if (compliantRaw) {
+        nativeWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(compliantRaw, null, 2)}\n`,
+        );
+      } else {
+        removeFileIfExists(addressPath);
       }
-      if (sourceHttpRequest) {
-        const prepared =
-          typeof prepareSourceHttpRequest === "function"
-            ? prepareSourceHttpRequest(sourceHttpRequest)
-            : sourceHttpRequest;
-        if (prepared) {
-          finalAddress.source_http_request = deepClone(prepared);
-        }
-      }
-      nativeWriteFileSync.call(
-        fs,
-        addressPath,
-        `${JSON.stringify(finalAddress, null, 2)}\n`,
-      );
     } else {
       removeFileIfExists(addressPath);
     }
@@ -699,27 +699,23 @@ process.on("exit", () => {
           Object.prototype.hasOwnProperty.call(src, "source_http_request"),
       )?.source_http_request || null;
 
-    let finalAddress = null;
     const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
-    if (trimmedRaw) {
-      const preparedSource =
-        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
-          ? prepareSourceHttpRequest(sourceHttpRequest)
-          : sourceHttpRequest;
-
-      finalAddress = {
+    const finalAddress =
+      trimmedRaw &&
+      buildSchemaCompliantRawAddress({
         unnormalized_address: trimmedRaw,
-      };
-      if (requestIdentifier !== undefined) {
-        finalAddress.request_identifier =
-          typeof requestIdentifier === "string"
-            ? requestIdentifier.trim() || null
-            : requestIdentifier;
-      }
-      if (preparedSource) {
-        finalAddress.source_http_request = deepClone(preparedSource);
-      }
-    }
+        request_identifier:
+          requestIdentifier === undefined
+            ? null
+            : typeof requestIdentifier === "string"
+              ? requestIdentifier.trim() || null
+              : requestIdentifier,
+        source_http_request:
+          sourceHttpRequest &&
+          (typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest),
+      });
 
     if (finalAddress && typeof finalAddress === "object") {
       nativeWriteFileSync.call(
