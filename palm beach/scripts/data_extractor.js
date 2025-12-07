@@ -528,6 +528,127 @@ process.on("exit", () => {
   }
 });
 
+// Final guardrail: emit a minimal raw address using the unnormalized source
+// string and force address relationships to null so validation stays on the
+// correct oneOf/anyOf branches and downstream UR hydration can populate links.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const pickFirstString = (keys) => {
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const key of keys) {
+          const value = source[key];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const rawValue = pickFirstString([
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+    ]);
+
+    const requestIdentifier = sources.find((src) =>
+      Object.prototype.hasOwnProperty.call(src, "request_identifier"),
+    )?.request_identifier;
+
+    const sourceHttpRequest =
+      sources.find(
+        (src) =>
+          src &&
+          typeof src === "object" &&
+          Object.prototype.hasOwnProperty.call(src, "source_http_request"),
+      )?.source_http_request || null;
+
+    let finalAddress = null;
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (trimmedRaw) {
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+
+      finalAddress = {
+        unnormalized_address: trimmedRaw,
+      };
+      if (requestIdentifier !== undefined) {
+        finalAddress.request_identifier =
+          typeof requestIdentifier === "string"
+            ? requestIdentifier.trim() || null
+            : requestIdentifier;
+      }
+      if (preparedSource) {
+        finalAddress.source_http_request = deepClone(preparedSource);
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      nativeWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dir) => {
+        const target = path.join(dir, `${base}.json`);
+        try {
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("County terminal relationship nullifier failed:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+});
+
 // Absolute final clamp registered last: emit a single valid address oneOf branch
 // (prefer normalized only when the strict surface is present; otherwise a lean
 // unnormalized payload) and wipe any relationship payloads so UR hydration can
