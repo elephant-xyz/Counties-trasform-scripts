@@ -75579,6 +75579,7 @@ function sanitizeRawAddressPayload(payload) {
   }
 
   const sanitized = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
@@ -75586,6 +75587,8 @@ function sanitizeRawAddressPayload(payload) {
     const identifier = safeNullIfEmpty(payload.request_identifier);
     sanitized.request_identifier =
       identifier === undefined ? null : identifier;
+  } else if (!Object.prototype.hasOwnProperty.call(sanitized, "request_identifier")) {
+    sanitized.request_identifier = null;
   }
 
   if (
@@ -75598,7 +75601,16 @@ function sanitizeRawAddressPayload(payload) {
     }
   }
 
-  return sanitized;
+  const hydrated =
+    ensureRawAddressRequiredCoverage({ ...sanitized }, rawValue) || sanitized;
+  const allowed = new Set(RAW_PREFERRED_FIELD_WHITELIST);
+  Object.keys(hydrated).forEach((key) => {
+    if (!allowed.has(key)) {
+      delete hydrated[key];
+    }
+  });
+
+  return hydrated;
 }
 
 function enforcePropertyAddressRelationshipNulls(propertyPath) {

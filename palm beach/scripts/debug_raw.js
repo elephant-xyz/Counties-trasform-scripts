@@ -6692,6 +6692,7 @@ function ensureRawAddressRequiredCoverage(payload, rawValue) {
   }
 
   const candidate = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
   };
 
@@ -6703,18 +6704,18 @@ function ensureRawAddressRequiredCoverage(payload, rawValue) {
         ? sanitizeAddressFieldValue(field, payload[field])
         : payload[field];
 
-      if (sanitized === undefined || sanitized === null) {
+      if (sanitized === undefined) {
         continue;
       }
 
       if (typeof sanitized === "string") {
         const trimmed = sanitized.trim();
-        if (!trimmed.length) continue;
-        candidate[field] = trimmed;
+        candidate[field] = trimmed.length ? trimmed : null;
         continue;
       }
 
-      candidate[field] = sanitized;
+      candidate[field] =
+        sanitized === null ? null : sanitized;
     }
 
     if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
@@ -6737,6 +6738,19 @@ function ensureRawAddressRequiredCoverage(payload, rawValue) {
     candidate.request_identifier = null;
   }
 
+  if (!candidate.postal_code) {
+    candidate.plus_four_postal_code = null;
+  }
+
+  if (candidate.state_code && !candidate.country_code) {
+    candidate.country_code = "US";
+  }
+
+  if ((candidate.latitude == null) !== (candidate.longitude == null)) {
+    candidate.latitude = null;
+    candidate.longitude = null;
+  }
+
   return candidate;
 }
 
@@ -6751,54 +6765,9 @@ function composeMinimalRawAddress(address) {
     return null;
   }
 
-  const minimal = {
-    unnormalized_address: trimmedUnnormalized,
-  };
-
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(address, field)) continue;
-
-    const value = address[field];
-    if (value === undefined || value === null) continue;
-
-    const normalizedValue = normalizeAddressFieldForSchema(field, value);
-    if (normalizedValue === undefined || normalizedValue === null) continue;
-
-    if (typeof normalizedValue === "string") {
-      const trimmed = normalizedValue.trim();
-      if (!trimmed.length) continue;
-      minimal[field] = trimmed;
-      continue;
-    }
-
-    minimal[field] = normalizedValue;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "request_identifier")) {
-    const trimmed = safeNullIfEmpty(address.request_identifier);
-    minimal.request_identifier =
-      trimmed === undefined ? null : trimmed === null ? null : trimmed;
-  }
-
-  if (Object.prototype.hasOwnProperty.call(address, "source_http_request")) {
-    const prepared =
-      typeof prepareSourceHttpRequest === "function"
-        ? prepareSourceHttpRequest(address.source_http_request)
-        : address.source_http_request;
-    if (prepared) {
-      minimal.source_http_request = deepClone(prepared);
-    }
-  }
-
-  if (minimal.state_code && !minimal.country_code) {
-    minimal.country_code = "US";
-  }
-
-  if (!Object.prototype.hasOwnProperty.call(minimal, "request_identifier")) {
-    minimal.request_identifier = null;
-  }
-
-  return minimal;
+  const hydrated =
+    ensureRawAddressRequiredCoverage(address, trimmedUnnormalized) || null;
+  return hydrated;
 }
 
 function forceRawAddressVariantForFinalOutput(addressFilePath, options = {}) {
