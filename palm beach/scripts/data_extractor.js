@@ -2024,11 +2024,64 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      nativeWriteFileSync.call(
-        fs,
-        addressPath,
-        `${JSON.stringify(finalAddress, null, 2)}\n`,
-      );
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+
+      if (hasNormalizedSurface) {
+        const normalizedAllowed = new Set([
+          ...NORMALIZED_ADDRESS_FIELDS,
+          "request_identifier",
+          "source_http_request",
+        ]);
+        const normalizedOutput = {};
+        normalizedAllowed.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            return;
+          }
+          const value = finalAddress[field];
+          if (value === undefined) return;
+          normalizedOutput[field] =
+            typeof value === "string" ? value.trim() : value;
+        });
+        if (
+          Object.prototype.hasOwnProperty.call(normalizedOutput, "unnormalized_address")
+        ) {
+          delete normalizedOutput.unnormalized_address;
+        }
+        nativeWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(normalizedOutput, null, 2)}\n`,
+        );
+      } else {
+        const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...finalAddress };
+        const rawAllowed = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
+        Object.keys(rawOutput).forEach((key) => {
+          if (!rawAllowed.has(key)) {
+            delete rawOutput[key];
+            return;
+          }
+          if (rawOutput[key] === undefined) {
+            rawOutput[key] = null;
+          } else if (typeof rawOutput[key] === "string") {
+            rawOutput[key] = rawOutput[key].trim();
+          }
+        });
+        if (
+          !hasMeaningfulAddressValue(rawOutput.unnormalized_address) &&
+          !hasNormalizedSurface
+        ) {
+          removeFileIfExists(addressPath);
+        } else {
+          nativeWriteFileSync.call(
+            fs,
+            addressPath,
+            `${JSON.stringify(rawOutput, null, 2)}\n`,
+          );
+        }
+      }
     } else {
       removeFileIfExists(addressPath);
     }
