@@ -92983,19 +92983,34 @@ process.on("exit", () => {
 
     if (finalAddress && typeof finalAddress === "object" && !Array.isArray(finalAddress)) {
       if (!normalizedSurface) {
-        const rawAllowlist = new Set([
-          "unnormalized_address",
-          "request_identifier",
-          "source_http_request",
-        ]);
-        Object.keys(finalAddress).forEach((key) => {
-          if (!rawAllowlist.has(key) || finalAddress[key] === undefined) {
-            delete finalAddress[key];
+        // Keep the raw payload on the unnormalized oneOf branch by padding the
+        // schema-required nullable fields (lat/long, grid components, etc.) and
+        // pruning anything outside the allowed raw surface.
+        const rawAllowlist =
+          RAW_UNNORMALIZED_SURFACE_FIELD_SET && RAW_UNNORMALIZED_SURFACE_FIELD_SET.size
+            ? RAW_UNNORMALIZED_SURFACE_FIELD_SET
+            : new Set(RAW_ADDRESS_MINIMAL_FIELD_ALLOWLIST);
+        const padded = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...finalAddress,
+        };
+        Object.keys(padded).forEach((key) => {
+          if (!rawAllowlist.has(key) || padded[key] === undefined) {
+            delete padded[key];
             return;
           }
-          if (typeof finalAddress[key] === "string") {
-            const trimmed = finalAddress[key].trim();
-            finalAddress[key] = trimmed.length ? trimmed : null;
+          if (typeof padded[key] === "string") {
+            const trimmed = padded[key].trim();
+            padded[key] = trimmed.length ? trimmed : null;
+          }
+        });
+        finalAddress = padded;
+      } else {
+        Object.keys(finalAddress).forEach((key) => {
+          if (finalAddress[key] === undefined) {
+            delete finalAddress[key];
+          } else if (typeof finalAddress[key] === "string") {
+            finalAddress[key] = finalAddress[key].trim();
           }
         });
       }
