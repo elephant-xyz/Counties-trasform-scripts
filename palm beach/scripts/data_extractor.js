@@ -75215,7 +75215,18 @@ function enforceMinimalRawAddressFinalState() {
       : null;
 
     if (trimmedRaw) {
-      const finalAddress = {
+      const baseline =
+        sourcePool.find(
+          (source) =>
+            source &&
+            typeof source === "object" &&
+            !Array.isArray(source) &&
+            hasMeaningfulAddressValue(source.unnormalized_address),
+        ) ||
+        sourcePool[0] ||
+        {};
+      let finalAddress = {
+        ...baseline,
         unnormalized_address: trimmedRaw,
       };
       if (requestIdentifier !== undefined) {
@@ -75225,6 +75236,9 @@ function enforceMinimalRawAddressFinalState() {
       if (preparedRequest) {
         finalAddress.source_http_request = deepClone(preparedRequest);
       }
+
+      finalAddress =
+        ensureRawAddressRequiredCoverage(finalAddress, trimmedRaw) || finalAddress;
 
       Object.keys(finalAddress).forEach((key) => {
         if (!RAW_PREFERRED_FIELD_WHITELIST.includes(key)) {
@@ -92079,17 +92093,31 @@ function canonicalizeAddressAndRelationships() {
           ? prepareSourceHttpRequest(sourceHttpRequest)
           : null;
 
-        finalAddress = {
+        const baselineSource =
+          addressSources.find(
+            (source) =>
+              source &&
+              typeof source === "object" &&
+              !Array.isArray(source) &&
+              hasMeaningfulAddressValue(source.unnormalized_address),
+          ) ||
+          addressSources[0] ||
+          {};
+        const rawAddress = {
+          ...baselineSource,
           unnormalized_address: trimmedRaw,
         };
         if (requestIdentifier !== undefined) {
-          finalAddress.request_identifier =
+          rawAddress.request_identifier =
             requestIdentifier === null ? null : requestIdentifier;
         }
         if (preparedRequest) {
-          finalAddress.source_http_request = deepClone(preparedRequest);
+          rawAddress.source_http_request = deepClone(preparedRequest);
         }
-        stripAddressMetaFields(finalAddress);
+        const hydratedRaw =
+          ensureRawAddressRequiredCoverage(rawAddress, trimmedRaw) || rawAddress;
+        stripAddressMetaFields(hydratedRaw);
+        finalAddress = hydratedRaw;
       }
     }
 
@@ -92721,7 +92749,17 @@ function ultimateRawAddressGuard() {
     const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
 
     if (trimmedRaw) {
-      const finalAddress = { unnormalized_address: trimmedRaw };
+      const baseline =
+        sources.find(
+          (source) =>
+            source &&
+            typeof source === "object" &&
+            !Array.isArray(source) &&
+            hasMeaningfulAddressValue(source.unnormalized_address),
+        ) ||
+        sources[0] ||
+        {};
+      let finalAddress = { ...baseline, unnormalized_address: trimmedRaw };
 
       const requestIdentifier =
         typeof resolveRequestIdentifierCandidate === "function"
@@ -92748,6 +92786,9 @@ function ultimateRawAddressGuard() {
       if (preparedRequest) {
         finalAddress.source_http_request = deepClone(preparedRequest);
       }
+
+      finalAddress =
+        ensureRawAddressRequiredCoverage(finalAddress, trimmedRaw) || finalAddress;
 
       nativeWriteFileSync.call(
         fs,
