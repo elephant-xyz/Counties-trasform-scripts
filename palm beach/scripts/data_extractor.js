@@ -94200,3 +94200,186 @@ process.on("exit", () => {
     console.error("Final minimalist address guard failed:", error);
   }
 });
+
+// Ultimate deterministic clamp: emit exactly one address schema branch (prefer
+// normalized only when the strict County surface is fully present, otherwise
+// emit the raw/unnormalized variant with all nullable fields set) and force all
+// address relationships to explicit null placeholders so validators never see
+// inline objects or URs.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      const allowedNormalized = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      const normalizedPayload = {};
+      allowedNormalized.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalized, field)) return;
+        const value = normalized[field];
+        if (value === undefined) return;
+        normalizedPayload[field] =
+          typeof value === "string" ? value.trim() : value;
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(normalizedPayload, "unnormalized_address")
+      ) {
+        delete normalizedPayload.unnormalized_address;
+      }
+      if (Object.keys(normalizedPayload).length) {
+        finalAddress = normalizedPayload;
+      }
+    }
+
+    if (!finalAddress) {
+      const pickFirstString = (fields, pool) => {
+        for (const source of pool) {
+          if (!source || typeof source !== "object") continue;
+          for (const field of fields) {
+            const value = source[field];
+            if (typeof value === "string" && value.trim()) {
+              return value.trim();
+            }
+          }
+        }
+        return null;
+      };
+
+      const rawValue =
+        (typeof resolveRawAddressStringFromSources === "function" &&
+          resolveRawAddressStringFromSources(sources)) ||
+        pickFirstString(
+          ["unnormalized_address", "full_address", "site_address", "address"],
+          sources,
+        );
+
+      if (rawValue) {
+        const requestIdentifier =
+          typeof resolveRequestIdentifierCandidate === "function"
+            ? resolveRequestIdentifierCandidate(
+                ...sources.map((source) => source && source.request_identifier),
+                ...sources.map((source) => source && source.parcel_id),
+                ...sources.map((source) => source && source.parcel_identifier),
+              )
+            : undefined;
+        const sourceHttpRequest =
+          typeof resolveSourceHttpRequestCandidate === "function"
+            ? resolveSourceHttpRequestCandidate(
+                ...sources.map((source) => source && source.source_http_request),
+              )
+            : null;
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+
+        const rawPayload = { unnormalized_address: rawValue };
+        RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+          if (Object.prototype.hasOwnProperty.call(rawPayload, field)) {
+            return;
+          }
+          const candidate =
+            typeof pickAddressFieldFromSources === "function"
+              ? pickAddressFieldFromSources(field, sources)
+              : undefined;
+          let value = candidate;
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const parsed = parseCoordinate(candidate);
+            value = Number.isFinite(parsed) ? parsed : null;
+          } else if (typeof value === "string" && !value.trim()) {
+            value = null;
+          } else if (value === undefined) {
+            value = null;
+          }
+          rawPayload[field] = value;
+        });
+
+        rawPayload.request_identifier =
+          requestIdentifier === undefined
+            ? null
+            : requestIdentifier === null
+              ? null
+              : requestIdentifier;
+        rawPayload.source_http_request = preparedSource
+          ? deepClone(preparedSource)
+          : null;
+
+        const allowedRaw = new Set([
+          ...RAW_ADDRESS_ALLOWED_FIELDS,
+          "request_identifier",
+          "source_http_request",
+          "unnormalized_address",
+        ]);
+        Object.keys(rawPayload).forEach((key) => {
+          if (!allowedRaw.has(key)) {
+            delete rawPayload[key];
+          }
+        });
+        finalAddress = rawPayload;
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      writeJSON(addressPath, finalAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? propertyPayload.relationships
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipFiles.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        try {
+          writeJSON(path.join(dirPath, `${base}.json`), null);
+        } catch {
+          removeFileIfExists(path.join(dirPath, `${base}.json`));
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Ultimate deterministic address clamp failed:", error);
+  }
+});
