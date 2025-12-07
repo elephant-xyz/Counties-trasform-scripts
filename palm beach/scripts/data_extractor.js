@@ -76674,6 +76674,131 @@ async function run() {
       process.exitCode = 1;
     }
   }
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (src) => src && typeof src === "object" && !Array.isArray(src),
+    );
+
+    const pickRawAddress = () => {
+      const rawFields = [
+        "unnormalized_address",
+        "full_address",
+        "site_address",
+        "address",
+      ];
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const field of rawFields) {
+          const value = source[field];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const resolvedRawAddress =
+      (typeof resolveRawAddressStringFromSources === "function" &&
+        resolveRawAddressStringFromSources(sources)) ||
+      pickRawAddress();
+
+    const requestIdentifier =
+      typeof resolveRequestIdentifierCandidate === "function"
+        ? resolveRequestIdentifierCandidate(
+            ...sources.map((src) => src && src.request_identifier),
+            ...sources.map((src) => src && src.parcel_id),
+            ...sources.map((src) => src && src.parcel_identifier),
+          )
+        : sources.find((src) =>
+            Object.prototype.hasOwnProperty.call(src || {}, "request_identifier"),
+          )?.request_identifier ?? null;
+
+    const sourceHttpRequest =
+      typeof resolveSourceHttpRequestCandidate === "function"
+        ? resolveSourceHttpRequestCandidate(
+            ...sources.map((src) => src && src.source_http_request),
+          )
+        : sources.find((src) =>
+            Object.prototype.hasOwnProperty.call(src || {}, "source_http_request"),
+          )?.source_http_request || null;
+
+    const preparedSource =
+      sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+        ? prepareSourceHttpRequest(sourceHttpRequest)
+        : sourceHttpRequest;
+
+    const fallbackCounty =
+      sources.find((src) =>
+        Object.prototype.hasOwnProperty.call(src || {}, "county_name"),
+      )?.county_name || titleCaseCounty("Palm Beach");
+    const fallbackCountry =
+      sources.find((src) =>
+        Object.prototype.hasOwnProperty.call(src || {}, "country_code"),
+      )?.country_code || "US";
+
+    let finalRawAddress =
+      resolvedRawAddress &&
+      ensureRawAddressSchemaDefaults({
+        unnormalized_address: String(resolvedRawAddress).trim(),
+        request_identifier: requestIdentifier === undefined ? null : requestIdentifier,
+        source_http_request: preparedSource || null,
+        county_name: fallbackCounty,
+        country_code: fallbackCountry,
+      });
+
+    if (finalRawAddress && typeof finalRawAddress === "object") {
+      ensureAddressFieldSurface(finalRawAddress, RAW_ADDRESS_TEMPLATE_FIELDS);
+      writeJSON(addressPath, finalRawAddress);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships = {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    };
+    writeJSON(propertyPath, propertyPayload);
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    relationshipFiles.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dir) => {
+        const target = path.join(dir, `${base}.json`);
+        try {
+          ensureDir(dir);
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error(
+      "Failed to finalize raw address and null relationships:",
+      error,
+    );
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
   return;
   try {
     const dataDir = path.join("data");
