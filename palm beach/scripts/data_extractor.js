@@ -20525,7 +20525,12 @@ function buildTerminalRawSubmissionSnapshot(address) {
     return null;
   }
 
+  // Start from the full raw schema surface so all nullable required fields
+  // (street grid, coordinates, etc.) are present even when the source only
+  // provides an unnormalized string. This keeps validation on the raw oneOf
+  // branch instead of reporting missing normalized fields.
   const snapshot = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
   };
 
@@ -93706,5 +93711,32 @@ process.on("exit", () => {
       "Terminal county address/relationship resolver failed:",
       error,
     );
+  }
+});
+
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    const relationshipBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+
+    relationshipBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          ensureDir(path.dirname(target));
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final relationship nullifier failed:", error);
   }
 });
