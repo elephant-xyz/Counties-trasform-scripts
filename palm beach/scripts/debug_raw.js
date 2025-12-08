@@ -568,7 +568,7 @@ function finalizeCountyAddressOutput(addressPath, options = {}) {
 
   let finalAddress = null;
 
-  if (hasNormalizedCountyCoverage(payload)) {
+  if (hasCompleteNormalizedAddress(payload)) {
     const normalized = buildNormalizedAddressOutputForSchema({ ...payload });
     if (normalized) {
       finalAddress = normalized;
@@ -576,34 +576,20 @@ function finalizeCountyAddressOutput(addressPath, options = {}) {
   }
 
   if (!finalAddress && resolvedRaw) {
-    const resolvedRequestIdentifier = resolveFirstNonEmptyString([
-      payload.request_identifier,
-      ...requestIdentifierCandidates,
-    ]);
-    const sourceHttpRequest = resolveSourceHttpRequest(
-      payload.source_http_request,
-      ...sourceHttpRequestCandidates,
+    const resolvedRequestIdentifier = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        payload.request_identifier,
+        ...requestIdentifierCandidates,
+      ]),
     );
 
-    const rawSeed = {
-      ...payload,
+    finalAddress = {
       unnormalized_address: resolvedRaw,
     };
 
-    if (resolvedRequestIdentifier !== null) {
-      rawSeed.request_identifier = resolvedRequestIdentifier;
-    } else if (
-      !Object.prototype.hasOwnProperty.call(rawSeed, "request_identifier")
-    ) {
-      rawSeed.request_identifier = null;
+    if (resolvedRequestIdentifier !== undefined) {
+      finalAddress.request_identifier = resolvedRequestIdentifier;
     }
-    if (sourceHttpRequest) {
-      rawSeed.source_http_request = sourceHttpRequest;
-    }
-
-    finalAddress =
-      ensureRawAddressRequiredCoverage(rawSeed, resolvedRaw) ||
-      buildRawAddressOutputForSchema(resolvedRaw, rawSeed);
   }
 
   if (finalAddress) {
@@ -868,42 +854,26 @@ function sanitizeAddressPayloadForWrite(payload) {
     normalizedCandidate.country_code = "US";
   }
 
-  if (trimmedUnnormalized.length) {
-    const rawSeed = {
-      ...normalizedCandidate,
-      unnormalized_address: trimmedUnnormalized,
-    };
+  const normalizedCoverage = hasCompleteNormalizedAddress(normalizedCandidate);
 
-    if (!rawSeed.postal_code) {
-      rawSeed.plus_four_postal_code = null;
+  if (trimmedUnnormalized.length && !normalizedCoverage) {
+    const minimalRaw = { unnormalized_address: trimmedUnnormalized };
+    if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+      const requestId = safeNullIfEmpty(payload.request_identifier);
+      minimalRaw.request_identifier =
+        requestId === undefined ? null : requestId;
     }
-
-    if (rawSeed.state_code && !rawSeed.country_code) {
-      rawSeed.country_code = "US";
-    }
-
-    const surfaced =
-      ensureAddressOutputFieldPresence(rawSeed) || rawSeed;
-
-    return stripAddressRequestMetadata(surfaced);
+    return minimalRaw;
   }
 
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(normalizedCandidate[field]),
-  );
-
-  if (hasNormalizedCoverage) {
+  if (normalizedCoverage) {
     const surfaced =
       ensureAddressOutputFieldPresence(normalizedCandidate) ||
       normalizedCandidate;
     return stripAddressRequestMetadata(surfaced);
   }
 
-  const surfaced =
-    ensureAddressOutputFieldPresence(normalizedCandidate) ||
-    normalizedCandidate;
-
-  return stripAddressRequestMetadata(surfaced);
+  return stripAddressRequestMetadata(normalizedCandidate);
 }
 
 function writeJSON(p, obj) {
@@ -915,9 +885,16 @@ function writeJSON(p, obj) {
     typeof obj === "object"
   ) {
     payload = sanitizeAddressPayloadForWrite(obj);
-    if (payload && typeof payload === "object") {
-      const completed =
-        ensureAddressOutputFieldPresence(payload) || payload;
+    const rawOnlyPayload =
+      payload &&
+      typeof payload === "object" &&
+      typeof payload.unnormalized_address === "string" &&
+      !hasCompleteNormalizedAddress(payload) &&
+      Object.keys(payload).every((key) =>
+        ["unnormalized_address", "request_identifier"].includes(key),
+      );
+    if (payload && typeof payload === "object" && !rawOnlyPayload) {
+      const completed = ensureAddressOutputFieldPresence(payload) || payload;
       if (completed && typeof completed === "object") {
         payload = completed;
       }
@@ -5341,21 +5318,6 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
-
-function hasNormalizedCountyCoverage(address) {
-  if (!address || typeof address !== "object") {
-    return false;
-  }
-
-  return COUNTY_NORMALIZED_REQUIRED_FIELDS.every((field) => {
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      return Number.isFinite(parseCoordinate(address[field]));
-    }
-    return hasMeaningfulAddressValue(address[field]);
-  });
-}
-
 // Keep the raw branch lean so oneOf validation selects the unnormalized path
 // when we only have a raw string. Structured locality fields stay out of the
 // raw payload; downstream normalization can hydrate them when available.
@@ -5423,6 +5385,16 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
+const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
+  "street_number",
+  "street_name",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
+];
+
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
@@ -5433,15 +5405,7 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   "street_post_directional_text",
 ]);
 
-const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
-  "street_number",
-  "street_name",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-];
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -5496,6 +5460,16 @@ function hasCompleteNormalizedAddress(address) {
     }
   }
   return true;
+}
+
+function hasNormalizedCountyCoverage(address) {
+  if (!address || typeof address !== "object") {
+    return false;
+  }
+
+  return COUNTY_NORMALIZED_REQUIRED_FIELDS.every((field) =>
+    hasMeaningfulAddressValue(address[field]),
+  );
 }
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
