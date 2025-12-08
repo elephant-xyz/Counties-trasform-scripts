@@ -196,12 +196,10 @@ const RAW_SCHEMA_CORE_FIELDS = Object.freeze([
   "source_http_request",
 ]);
 
-// The raw/unnormalized oneOf branch still requires the normalized surface keys
-// to exist (nullable). Surface them here so the raw payload satisfies the
-// schema without forcing structured values we don't have.
-const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze(
-  Array.from(new Set([...COUNTY_REQUIRED_NORMALIZED_FIELDS])),
-);
+// The raw/unnormalized oneOf branch should stay lean: only the unnormalized
+// string plus request metadata. Avoid pulling in normalized fields so we stay
+// on the raw schema branch when normalized coverage is absent.
+const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze([]);
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
@@ -28155,13 +28153,6 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
   }
   candidate.unnormalized_address = trimmedUnnormalized;
 
-  if (
-    hasMeaningfulAddressValue(candidate.state_code) &&
-    !hasMeaningfulAddressValue(candidate.country_code)
-  ) {
-    candidate.country_code = "US";
-  }
-
   for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(candidate, field)) {
       candidate[field] = null;
@@ -28186,20 +28177,12 @@ function ensureRawAddressRequiredCoverage(rawAddress, unnormalizedValue) {
     }
   }
 
-  if (!candidate.postal_code) {
-    candidate.plus_four_postal_code = null;
-  }
-
-  backfillNormalizedAddressFields(candidate, {
-    unnormalized: trimmedUnnormalized,
+  const allowed = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
+  Object.keys(candidate).forEach((key) => {
+    if (!allowed.has(key)) {
+      delete candidate[key];
+    }
   });
-
-  const hasLatitude = Number.isFinite(candidate.latitude);
-  const hasLongitude = Number.isFinite(candidate.longitude);
-  if (hasLatitude !== hasLongitude) {
-    candidate.latitude = null;
-    candidate.longitude = null;
-  }
 
   return candidate;
 }
@@ -97231,7 +97214,6 @@ function buildFinalRawAddressPayload(rawValue, options = {}) {
   const {
     requestIdentifier = undefined,
     sourceHttpRequest = undefined,
-    fieldSources = [],
   } = options || {};
 
   const payload = {
@@ -97250,43 +97232,21 @@ function buildFinalRawAddressPayload(rawValue, options = {}) {
     payload.source_http_request = prepared ? deepClone(prepared) : null;
   }
 
-  const localityFields = [
-    "city_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "county_name",
-    "country_code",
-  ];
-  const localitySources = Array.isArray(fieldSources)
-    ? fieldSources.filter((src) => src && typeof src === "object")
-    : [];
-  localityFields.forEach((field) => {
-    for (const source of localitySources) {
-      if (
-        source &&
-        Object.prototype.hasOwnProperty.call(source, field) &&
-        hasMeaningfulAddressValue(source[field])
-      ) {
-        const value = source[field];
-        payload[field] = typeof value === "string" ? value.trim() : value;
-        break;
-      }
-    }
-  });
-
-  COUNTY_REQUIRED_NORMALIZED_FIELDS.forEach((field) => {
-    if (field === "unnormalized_address") return;
+  const allowed = new Set(RAW_ADDRESS_OUTPUT_FIELDS);
+  RAW_ADDRESS_OUTPUT_FIELDS.forEach((field) => {
     if (!Object.prototype.hasOwnProperty.call(payload, field)) {
       payload[field] = null;
+    }
+  });
+  Object.keys(payload).forEach((key) => {
+    if (!allowed.has(key)) {
+      delete payload[key];
       return;
     }
-    if (payload[field] === undefined) {
-      payload[field] = null;
-      return;
-    }
-    if (typeof payload[field] === "string" && !payload[field].trim().length) {
-      payload[field] = null;
+    if (payload[key] === undefined) {
+      payload[key] = null;
+    } else if (typeof payload[key] === "string") {
+      payload[key] = payload[key].trim();
     }
   });
 
