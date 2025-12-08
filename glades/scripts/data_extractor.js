@@ -1521,7 +1521,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
   //Person processing and mapping creation.
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date entries as they are not associated with any sale
+    if (dateKey.startsWith('unknown_date')) return;
+
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1530,8 +1533,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             first_name: o.first_name,
             middle_name: o.middle_name,
             last_name: o.last_name,
-            prefix_name: o.prefix_name,
-            suffix_name: o.suffix_name,
+            prefix_name: o.prefix_name || null,
+            suffix_name: o.suffix_name || null,
           });
         else {
           const existing = personMap.get(k);
@@ -1548,8 +1551,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   first_name: p.first_name ? formatNameForSchema(p.first_name) : null,
   middle_name: p.middle_name ? formatMiddleNameForSchema(p.middle_name) : null,
   last_name: p.last_name ? formatNameForSchema(p.last_name) : null,
-  prefix_name: p.prefix_name,
-  suffix_name: p.suffix_name,
+  prefix_name: p.prefix_name || null,
+  suffix_name: p.suffix_name || null,
   us_citizenship_status: null,
   veteran_status: null,
   }));
@@ -1560,7 +1563,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
   //Company processing and mapping creation.
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date entries as they are not associated with any sale
+    if (dateKey.startsWith('unknown_date')) return;
+
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim());
@@ -2190,50 +2196,53 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   attemptWriteAddressAndGeometry(unnormalized, secTwpRng);
 
-  //Mailing Address
-  const mailingAddressRaw = extractMailingAddress($)
-  console.log("MAILING--",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-  // Create mailing address relationships with current owners
+  // Mailing Address - Only create if there are current owners to link it to
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (owners) {
     const key = `property_${parcelId}`;
     const record = owners[key];
-    if (record && record.owners_by_date && record.owners_by_date['current']) {
-      const currentOwners = record.owners_by_date['current'];
-      let relCounter = 0;
-      currentOwners.forEach((owner) => {
-        if (owner.type === "person") {
-          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": "./mailing_address.json" },
-              }
-            );
+    if (record && record.owners_by_date && record.owners_by_date['current'] && record.owners_by_date['current'].length > 0) {
+      const mailingAddressRaw = extractMailingAddress($);
+      console.log("MAILING--", mailingAddressRaw);
+
+      if (mailingAddressRaw) {
+        const mailingAddressOutput = {
+          ...appendSourceInfo(seed),
+          unnormalized_address: mailingAddressRaw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+        };
+        writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+        // Create mailing address relationships with current owners
+        const currentOwners = record.owners_by_date['current'];
+        let relCounter = 0;
+        currentOwners.forEach((owner) => {
+          if (owner.type === "person") {
+            const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+            if (pIdx) {
+              relCounter++;
+              writeJSON(
+                path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+                {
+                  from: { "/": `./person_${pIdx}.json` },
+                  to: { "/": "./mailing_address.json" },
+                }
+              );
+            }
+          } else if (owner.type === "company") {
+            const cIdx = findCompanyIndexByName(owner.name);
+            if (cIdx) {
+              relCounter++;
+              writeJSON(
+                path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+                {
+                  from: { "/": `./company_${cIdx}.json` },
+                  to: { "/": "./mailing_address.json" }
+                }
+              );
+            }
           }
-        } else if (owner.type === "company") {
-          const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": "./mailing_address.json" }
-              }
-            );
-          }
-        }
-      });
+        });
+      }
     }
   }
   
