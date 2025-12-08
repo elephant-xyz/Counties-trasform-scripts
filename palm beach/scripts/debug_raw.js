@@ -502,21 +502,41 @@ function finalizeAddressForSchema(addressPath, options = {}) {
     return;
   }
 
-  // Emit a lean raw variant so the address oneOf selects the unnormalized
-  // branch. Avoid mixing in partial normalized fields that would force the
-  // normalized branch and trigger missing-property validation errors.
-  const rawOutput = { unnormalized_address: trimmedRaw };
+  // Emit a raw variant that keeps the full schema surface (all nullable
+  // normalized fields) so the oneOf raw branch stays satisfied while still
+  // carrying the unnormalized source string.
+  const rawOutputSeed = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: trimmedRaw,
+  };
+
+  const candidateSources = [payload, unnormalizedSource, seedSource];
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    for (const source of candidateSources) {
+      if (
+        source &&
+        typeof source === "object" &&
+        Object.prototype.hasOwnProperty.call(source, field)
+      ) {
+        rawOutputSeed[field] = source[field];
+        break;
+      }
+    }
+  }
 
   const cleanedRequestId = resolveTrimmedString(requestIdentifier);
   if (cleanedRequestId !== null) {
-    rawOutput.request_identifier = cleanedRequestId;
+    rawOutputSeed.request_identifier = cleanedRequestId;
   }
   if (sourceHttpRequest) {
     const prepared = prepareSourceHttpRequest(sourceHttpRequest);
-    rawOutput.source_http_request = prepared ? prepared : null;
+    rawOutputSeed.source_http_request = prepared ? prepared : null;
   }
 
-  fs.writeFileSync(addressPath, `${JSON.stringify(rawOutput, null, 2)}\n`);
+  const surfacedRaw =
+    pruneRawVariantToSchemaSurface(rawOutputSeed) || rawOutputSeed;
+
+  fs.writeFileSync(addressPath, `${JSON.stringify(surfacedRaw, null, 2)}\n`);
 }
 
 const ADDRESS_FALLBACK_CONTEXT = {
