@@ -6,11 +6,57 @@ const { fetch } = require("undici");
 process.setMaxListeners(0);
 
 const baseWriteFileSync = fs.writeFileSync;
+// Relationship payloads for address should stay null so downstream UR hydration
+// can populate them; forcing them here avoids emitting inline address objects
+// that violate the oneOf surface.
+const RELATIONSHIP_PLACEHOLDER_BASENAMES = new Set([
+  "property_has_address.json",
+  "relationship_property_has_address.json",
+  "address_has_fact_sheet.json",
+  "relationship_address_has_fact_sheet.json",
+]);
 let nativeWriteFileSync = function patchedNativeWriteFileSync(
   targetPath,
   data,
   ...args
 ) {
+  const baseName = typeof targetPath === "string" ? path.basename(targetPath) : "";
+  if (RELATIONSHIP_PLACEHOLDER_BASENAMES.has(baseName)) {
+    try {
+      ensureDir(path.dirname(targetPath));
+      return baseWriteFileSync.call(fs, targetPath, "null\n", ...args);
+    } catch {
+      return;
+    }
+  }
+
+  if (isPropertyJsonPath(targetPath)) {
+    try {
+      const payload =
+        typeof data === "string" || Buffer.isBuffer(data)
+          ? JSON.parse(Buffer.isBuffer(data) ? data.toString("utf8") : data)
+          : data;
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return baseWriteFileSync.call(fs, targetPath, data, ...args);
+      }
+      const sanitized = { ...payload };
+      sanitized.relationships =
+        sanitized && typeof sanitized.relationships === "object"
+          ? { ...sanitized.relationships }
+          : {};
+      sanitized.relationships.property_has_address = null;
+      sanitized.relationships.address_has_fact_sheet = null;
+      return baseWriteFileSync.call(
+        fs,
+        targetPath,
+        `${JSON.stringify(sanitized, null, 2)}\n`,
+        ...args,
+      );
+    } catch {
+      // Fall back to the base writer on parse failures.
+    }
+  }
+
   if (isAddressJsonPath(targetPath)) {
     try {
       let payload = data;
