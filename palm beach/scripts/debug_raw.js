@@ -11508,6 +11508,27 @@ async function main() {
     }
   }
 
+  try {
+    const stabilizedRaw = enforceFinalRawAddressSkeleton(addressOutputPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: formattedCountyName || countyName || "Palm Beach",
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+    if (stabilizedRaw) {
+      enforcePropertyRelationshipNulls(propertyFilePath);
+      relationshipDirs.forEach((dirPath) => {
+        ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+      });
+    }
+  } catch (error) {
+    console.error("Failed to stabilize final raw address skeleton:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
   console.log("All mapping scripts completed successfully");
 }
 
