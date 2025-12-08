@@ -1108,6 +1108,7 @@ function main() {
       zoning: zoning,
     };
     writeJSON(path.join(dataDir, "property.json"), property);
+    writeJSON(path.join(dataDir, "parcel.json"), {parcel_identifier: parcelIdentifier || ""});
   
 
   // address.json
