@@ -250,21 +250,30 @@ function enforceAddressSchemaBranchChoice(addressPath) {
   }
 
   const rawOutput = {
+    ...payload,
     unnormalized_address: rawCandidate,
   };
 
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
     const sanitizedIdentifier = safeNullIfEmpty(payload.request_identifier);
     rawOutput.request_identifier =
-      sanitizedIdentifier === null ? null : sanitizedIdentifier;
+      sanitizedIdentifier === undefined ? null : sanitizedIdentifier;
   }
 
   const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
   if (preparedSource) {
     rawOutput.source_http_request = preparedSource;
+  } else if (Object.prototype.hasOwnProperty.call(rawOutput, "source_http_request")) {
+    rawOutput.source_http_request = null;
   }
 
-  writeJSON(addressPath, rawOutput);
+  const alignedRaw =
+    ensureRawAddressSchemaDefaults(rawOutput) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...rawOutput,
+    };
+
+  writeJSON(addressPath, alignedRaw);
 }
 
 function enforceMinimalRawAddressSurface(addressPath) {
@@ -9916,42 +9925,6 @@ async function main() {
           delete normalizedSurface.unnormalized_address;
         }
         preparedAddress = normalizedSurface;
-        addressVariant = "normalized";
-      }
-    }
-
-    if (!preparedAddress && baseRawCandidate) {
-      const promotedNormalized = promoteRawAddressToNormalized(
-        baseRawCandidate,
-        {
-          fallbackSources: [
-            addressForOutput,
-            normalizedSnapshot,
-            baseAddressSeed,
-          ].filter(
-            (candidate) => candidate && typeof candidate === "object",
-          ),
-          stateFallback: inferredStateCode || countyInferredStateCode || "FL",
-          countyFallback:
-            formattedCountyName || countyName || defaultCounty || null,
-          municipalityFallback: normalizedMunicipality,
-          postalFallback:
-            fallbackPostalValue ||
-            postalCode ||
-            (parsedUnnormalizedCityState && parsedUnnormalizedCityState.postal) ||
-            null,
-          plus4Fallback:
-            fallbackPlus4Value ||
-            (parsedUnnormalizedCityState && parsedUnnormalizedCityState.plus4) ||
-            null,
-          coordinateFallback: coordinateOverride,
-          requestIdentifier: trimmedRequestIdentifier || undefined,
-          sourceHttpRequest: sourceHttpCandidate || undefined,
-        },
-      );
-
-      if (promotedNormalized) {
-        preparedAddress = { ...promotedNormalized };
         addressVariant = "normalized";
       }
     }
