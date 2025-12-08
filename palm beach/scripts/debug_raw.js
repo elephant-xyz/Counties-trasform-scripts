@@ -8913,6 +8913,109 @@ function forceRawOneOfCompliance(
   }
 }
 
+function enforceAddressOneOfVariant(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const hasNormalized =
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...payload });
+
+  if (hasNormalized) {
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...payload });
+    if (!normalizedSurface) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    const allowedFields = new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      "request_identifier",
+      "source_http_request",
+    ]);
+    const finalNormalized = {};
+
+    allowedFields.forEach((field) => {
+      if (!Object.prototype.hasOwnProperty.call(normalizedSurface, field)) {
+        finalNormalized[field] = null;
+        return;
+      }
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      finalNormalized[field] = value;
+    });
+
+    if (
+      Object.prototype.hasOwnProperty.call(finalNormalized, "unnormalized_address")
+    ) {
+      delete finalNormalized.unnormalized_address;
+    }
+    writeJSON(addressPath, finalNormalized);
+    return;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawSurface =
+    ensureRawAddressRequiredCoverage({ ...payload }, rawValue) ||
+    ensureRawAddressSchemaDefaults({
+      ...payload,
+      unnormalized_address: rawValue,
+    }) ||
+    null;
+  if (!rawSurface) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const finalRaw = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...rawSurface,
+    unnormalized_address: rawValue,
+  };
+
+  ADDRESS_COORDINATE_FIELDS.forEach((field) => {
+    const numeric = parseCoordinate(finalRaw[field]);
+    finalRaw[field] = Number.isFinite(numeric) ? numeric : null;
+  });
+
+  if (!finalRaw.postal_code) {
+    finalRaw.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(finalRaw.state_code) &&
+    !hasMeaningfulAddressValue(finalRaw.country_code)
+  ) {
+    finalRaw.country_code = "US";
+  }
+
+  writeJSON(addressPath, finalRaw);
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -11666,6 +11769,19 @@ async function main() {
     }
   } catch (error) {
     console.error("Failed to finalize raw address surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    enforceAddressOneOfVariant(addressOutputPath);
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    relationshipDirs.forEach((dirPath) => {
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+  } catch (error) {
+    console.error("Failed to enforce final address oneOf variant:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
