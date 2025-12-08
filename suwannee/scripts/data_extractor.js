@@ -1128,18 +1128,17 @@ function extractOwnerMailingAddress($) {
 }
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
-  let hasOwnerMailingAddress = false;
+  let mailingAddressObj = null;
   const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
   const county_name = inputCounty || null;
   if (mailingAddress) {
-    const mailingAddressObj = {
+    mailingAddressObj = {
       unnormalized_address: mailingAddress,
     };
-    writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
-    hasOwnerMailingAddress = true;
+    // Don't write the file here - it will be written when relationships are created
   }
   if (siteAddress) {
     const addressObj = {
@@ -1157,7 +1156,7 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
                 from: { "/": `./property.json` },
               });
   }
-  return hasOwnerMailingAddress;
+  return mailingAddressObj;
 }
 
 function extractTaxes($) {
@@ -1615,7 +1614,7 @@ function main() {
     const secTwpRng = extractSecTwpRng($);
     const addressText = extractAddressText($);
     const mailingAddress = extractOwnerMailingAddress($);
-    const hasOwnerMailingAddress = attemptWriteAddress(unAddr, secTwpRng, addressText, mailingAddress);
+    const mailingAddressObj = attemptWriteAddress(unAddr, secTwpRng, addressText, mailingAddress);
 
     // Taxes
     const taxes = extractTaxes($);
@@ -1681,7 +1680,9 @@ function main() {
           to: { "/": `./${ownerFiles.companyFiles[0]}` },
           from: { "/": "./sales_1.json" },
         });
-        if (hasOwnerMailingAddress) {
+        if (mailingAddressObj) {
+          // Write the mailing_address.json file here
+          writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
           writeJson(
             path.join(
               "data",
@@ -1701,8 +1702,10 @@ function main() {
             to: { "/": `./${personFile}` },
             from: { "/": "./sales_1.json" },
           });
-          if (hasOwnerMailingAddress && index === 0) {
+          if (mailingAddressObj && index === 0) {
             // Only create mailing address relationship for the first person
+            // Write the mailing_address.json file here
+            writeJson(path.join("data", "mailing_address.json"), mailingAddressObj);
             writeJson(
               path.join(
                 "data",
