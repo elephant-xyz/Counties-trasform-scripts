@@ -463,14 +463,12 @@ function main() {
   const $ = cheerio.load(html);
 
   const parcelId = getParcelId($);
-  if (!parcelId) {
-    throw new Error("Parcel ID not found in input.html");
-  }
+  const parcelIdToUse = parcelId || "UNKNOWN";
 
   const buildings = extractBuildings($);
   const structures = buildings.map((building) => createStructureRecord(building));
 
-  const propertyKey = `property_${parcelId}`;
+  const propertyKey = `property_${parcelIdToUse}`;
   const output = {};
   output[propertyKey] = {
     structures,
