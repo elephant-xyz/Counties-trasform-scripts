@@ -1667,12 +1667,16 @@ function main() {
     const parcelDashed =
       extractParcelId($) || (propSeed && propSeed.parcel_id) || "";
     const parcelFlat = parcelDashed.replace(/[-]/g, "");
-    const ownerFiles = writeOwners(
-      ownerData,
-      dataDir,
-      parcelDashed,
-      parcelFlat,
-    );
+    // Only create owner files if there are sales to link them to
+    let ownerFiles = { companyFiles: [], personFiles: [] };
+    if (sales.length > 0) {
+      ownerFiles = writeOwners(
+        ownerData,
+        dataDir,
+        parcelDashed,
+        parcelFlat,
+      );
+    }
     // Relationship sales -> owner (company or person) using first sale
     if (sales.length > 0) {
       if (ownerFiles.companyFiles.length > 0) {
