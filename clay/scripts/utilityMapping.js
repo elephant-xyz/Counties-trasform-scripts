@@ -54,35 +54,67 @@ function collectBuildings($) {
   return buildings;
 }
 
-function inferHVAC(buildings) {
+function inferHVAC(building) {
   let cooling_system_type = null;
   let heating_system_type = null;
+  let hvac_system_configuration = null;
+  let hvac_equipment_component = null;
+  let hvac_condensing_unit_present = null;
 
-  buildings.forEach((b) => {
-    const ac = (b["Air Conditioning"] || "").toUpperCase();
-    const heat = (b["Heat"] || "").toUpperCase();
-    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
-    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
-      heating_system_type = "Central";
-  });
+  const ac = (building["Air Conditioning"] || "").toUpperCase();
+  const heat = (building["Heat"] || "").toUpperCase();
+  const heatingType = (building["Heating Type"] || "").toUpperCase();
+  
+  if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
+  
+  // Map heating system types
+  const heatText = `${heat} ${heatingType}`.toUpperCase();
+  if (heatText.includes("ELECTRIC") && heatText.includes("FURNACE")) heating_system_type = "ElectricFurnace";
+  else if (heatText.includes("ELECTRIC")) heating_system_type = "Electric";
+  else if (heatText.includes("GAS") && heatText.includes("FURNACE")) heating_system_type = "GasFurnace";
+  else if (heatText.includes("GAS")) heating_system_type = "Gas";
+  else if (heatText.includes("DUCTLESS")) heating_system_type = "Ductless";
+  else if (heatText.includes("RADIANT")) heating_system_type = "Radiant";
+  else if (heatText.includes("SOLAR")) heating_system_type = "Solar";
+  else if (heatText.includes("HEAT PUMP")) heating_system_type = "HeatPump";
+  else if (heatText.includes("CENTRAL") || heatText.includes("AIR DUCTED") || heatText.includes("ENG F AIR")) heating_system_type = "Central";
+  else if (heatText.includes("BASEBOARD")) heating_system_type = "Baseboard";
 
   if (cooling_system_type === "CentralAir") {
     hvac_system_configuration = "SplitSystem";
     hvac_equipment_component = "CondenserAndAirHandler";
-    hvac_condensing_unit_present = "Yes";
+    hvac_condensing_unit_present = true;
   }
 
   return {
     cooling_system_type,
-    heating_system_type
+    heating_system_type,
+    hvac_system_configuration,
+    hvac_equipment_component,
+    hvac_condensing_unit_present
   };
 }
 
-function buildUtilityRecord($, buildings) {
-  const hvac = inferHVAC(buildings);
-  const rec = {
-    cooling_system_type: hvac.cooling_system_type,
-    heating_system_type: hvac.heating_system_type,
+function defaultUtility(parcelId, buildingNumber, totalBuildings) {
+  return {
+    source_http_request: {
+      method: "GET",
+      url: "https://qpublic.schneidercorp.com/application.aspx",
+      multiValueQueryString: {
+        AppID: ["1207"],
+        LayerID: ["36374"],
+        PageTypeID: ["4"],
+        PageID: ["13872"],
+        Q: ["47389550"],
+        KeyValue: [parcelId]
+      }
+    },
+    request_identifier: parcelId,
+    building_number: buildingNumber,
+    utility_index: buildingNumber,
+    // number_of_buildings: totalBuildings,
+    cooling_system_type: null,
+    heating_system_type: null,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -122,8 +154,24 @@ function buildUtilityRecord($, buildings) {
     water_heater_model: null,
     well_installation_date: null,
   };
+}
 
-  return rec;
+function buildUtilityFromBuilding(building, idx, totalBuildings, parcelId) {
+  const buildingNumber = idx + 1;
+  const base = defaultUtility(parcelId, buildingNumber, totalBuildings);
+  const hvac = inferHVAC(building);
+
+  return {
+    ...base,
+    ...hvac,
+  };
+}
+
+function buildUtilitiesFromBuildings(buildings, parcelId) {
+  const totalBuildings = buildings.length || null;
+  return buildings.map((b, idx) =>
+    buildUtilityFromBuilding(b, idx, totalBuildings, parcelId),
+  );
 }
 
 function main() {
@@ -132,13 +180,13 @@ function main() {
   const parcelId = getParcelId($);
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const utilitiesRecord = buildUtilityRecord($, buildings);
+  const utilities = buildUtilitiesFromBuildings(buildings, parcelId);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = utilitiesRecord;
+  outObj[`property_${parcelId}`] = { utilities };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
