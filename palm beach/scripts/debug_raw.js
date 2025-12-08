@@ -6770,6 +6770,119 @@ function composeMinimalRawAddress(address) {
   return hydrated;
 }
 
+function enforceRawAddressSchemaDefaults(payload) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    return null;
+  }
+
+  const result = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: trimmedRaw };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      continue;
+    }
+
+    let value = payload[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      result[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      result[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+
+    result[field] = value === undefined ? result[field] : value;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(result, "request_identifier")) {
+    result.request_identifier = null;
+  }
+
+  if (!result.postal_code) {
+    result.plus_four_postal_code = null;
+  }
+
+  if (result.state_code && !result.country_code) {
+    result.country_code = "US";
+  }
+
+  if ((result.latitude == null) !== (result.longitude == null)) {
+    result.latitude = null;
+    result.longitude = null;
+  }
+
+  return result;
+}
+
+function enforceRawVariantAllowedFields(payload) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const trimmedRaw =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!trimmedRaw.length) {
+    return null;
+  }
+
+  const pruned = { unnormalized_address: trimmedRaw };
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    let value = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      pruned[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+
+    if (field === "source_http_request" && value) {
+      const prepared = prepareSourceHttpRequest(value);
+      pruned[field] = prepared ? deepClone(prepared) : null;
+      return;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      pruned[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+
+    pruned[field] = value === undefined ? null : value;
+  });
+
+  if (!Object.prototype.hasOwnProperty.call(pruned, "request_identifier")) {
+    pruned.request_identifier = null;
+  }
+
+  if (!pruned.postal_code) {
+    pruned.plus_four_postal_code = null;
+  }
+
+  if (pruned.state_code && !pruned.country_code) {
+    pruned.country_code = "US";
+  }
+
+  if ((pruned.latitude == null) !== (pruned.longitude == null)) {
+    pruned.latitude = null;
+    pruned.longitude = null;
+  }
+
+  return pruned;
+}
+
 function forceRawAddressVariantForFinalOutput(addressFilePath, options = {}) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
