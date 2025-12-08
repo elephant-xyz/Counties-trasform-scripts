@@ -5,7 +5,67 @@ const { fetch } = require("undici");
 
 process.setMaxListeners(0);
 
-const nativeWriteFileSync = fs.writeFileSync;
+const baseWriteFileSync = fs.writeFileSync;
+let nativeWriteFileSync = function patchedNativeWriteFileSync(
+  targetPath,
+  data,
+  ...args
+) {
+  if (isAddressJsonPath(targetPath)) {
+    try {
+      let payload = data;
+      if (typeof data === "string" || Buffer.isBuffer(data)) {
+        const text = Buffer.isBuffer(data) ? data.toString("utf8") : data;
+        payload = JSON.parse(text);
+      }
+      const source =
+        payload && typeof payload === "object" && !Array.isArray(payload)
+          ? payload
+          : {};
+      const rawValue =
+        resolveRawAddressStringFromSources([source]) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", [source]) ||
+        resolveFirstMeaningfulAddressField("full_address", [source]) ||
+        resolveFirstMeaningfulAddressField("site_address", [source]) ||
+        resolveFirstMeaningfulAddressField("address", [source]) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (!trimmedRaw) {
+        removeFileIfExists(targetPath);
+        return;
+      }
+
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        source.request_identifier,
+        source.parcel_id,
+        source.parcel_identifier,
+      );
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        source.source_http_request,
+      );
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+
+      const minimal = { unnormalized_address: trimmedRaw };
+      if (requestIdentifier !== undefined) {
+        minimal.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+      if (preparedSource) {
+        minimal.source_http_request = deepClone(preparedSource);
+      }
+
+      const serialized = `${JSON.stringify(minimal, null, 2)}\n`;
+      return baseWriteFileSync.call(fs, targetPath, serialized, ...args);
+    } catch {
+      // Fall back to the base writer on parse failures.
+    }
+  }
+
+  return baseWriteFileSync.call(fs, targetPath, data, ...args);
+};
 let originalWriteFileSync = nativeWriteFileSync;
 let addressWriteLocked = false;
 let forceRawAddressVariantOutput = false;
@@ -120,28 +180,10 @@ const RAW_SCHEMA_CORE_FIELDS = Object.freeze([
   "source_http_request",
 ]);
 
-const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze([
-  "latitude",
-  "longitude",
-  "plus_four_postal_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "postal_code",
-  "city_name",
-  "state_code",
-  "county_name",
-  "country_code",
-]);
+// The raw/unnormalized oneOf branch should stay lean so it does not trigger
+// the normalized schema requirements. Keep this empty to avoid padding the raw
+// payload with partially populated normalized fields.
+const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze([]);
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
@@ -2687,6 +2729,7 @@ process.on("exit", () => {
 setImmediate(() => {
   process.on("exit", () => {
     try {
+      console.log("[terminal raw override] enforcing minimal raw address");
       const dataDir = path.join("data");
       const relationshipsDir = path.join("relationships");
       ensureDir(dataDir);
@@ -4892,7 +4935,7 @@ process.on("exit", () => {
 
     if (finalAddress && typeof finalAddress === "object") {
       const serialized = `${JSON.stringify(finalAddress, null, 2)}\n`;
-      nativeWriteFileSync.call(fs, addressPath, serialized);
+      originalWriteFileSync.call(fs, addressPath, serialized);
     } else {
       removeFileIfExists(addressPath);
     }
@@ -10005,7 +10048,7 @@ originalWriteFileSync = function guardedWriteFileSync(targetPath, data, ...args)
     return nativeWriteFileSync.call(fs, targetPath, data, ...args);
   }
 
-  if (ADDRESS_ONE_OF_FINALIZED) {
+  if (ADDRESS_ONE_OF_FINALIZED || addressWriteLocked) {
     return;
   }
 
@@ -10019,33 +10062,46 @@ originalWriteFileSync = function guardedWriteFileSync(targetPath, data, ...args)
     }
 
     if (payload && typeof payload === "object") {
-      let aligned =
-        alignAddressPayloadToSchemaVariant(payload) || payload;
-      let hasNormalizedSurface =
-        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
-        hasStrictCountyNormalizedSchemaCoverage({ ...aligned });
-      if (hasNormalizedSurface) {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            aligned,
-            "unnormalized_address",
-          )
-        ) {
-          delete aligned.unnormalized_address;
-        }
-        hydrateNormalizedFieldSurface(aligned);
-      } else {
-        collapseRawAddressToUnnormalizedOnly(aligned);
-        applyRawAddressPresenceDefaults(aligned);
+      const source =
+        payload && typeof payload === "object" && !Array.isArray(payload)
+          ? payload
+          : {};
+      const rawValue =
+        resolveRawAddressStringFromSources([source]) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", [source]) ||
+        resolveFirstMeaningfulAddressField("full_address", [source]) ||
+        resolveFirstMeaningfulAddressField("site_address", [source]) ||
+        resolveFirstMeaningfulAddressField("address", [source]) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (!trimmedRaw) {
+        removeFileIfExists(targetPath);
+        return;
       }
-      hasNormalizedSurface =
-        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
-        hasStrictCountyNormalizedSchemaCoverage({ ...aligned });
-      const finalPayload = hasNormalizedSurface
-        ? aligned
-        : buildTerminalRawSubmissionSnapshot(aligned) || aligned;
-      stripAddressMetaFields(finalPayload);
-      const serialized = `${JSON.stringify(finalPayload, null, 2)}\n`;
+
+      const requestIdentifier = resolveRequestIdentifierCandidate(
+        source.request_identifier,
+        source.parcel_id,
+        source.parcel_identifier,
+      );
+      const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+        source.source_http_request,
+      );
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+
+      const minimal = { unnormalized_address: trimmedRaw };
+      if (requestIdentifier !== undefined) {
+        minimal.request_identifier =
+          requestIdentifier === null ? null : requestIdentifier;
+      }
+      if (preparedSource) {
+        minimal.source_http_request = deepClone(preparedSource);
+      }
+
+      const serialized = `${JSON.stringify(minimal, null, 2)}\n`;
       return nativeWriteFileSync.call(fs, targetPath, serialized, ...args);
     }
   } catch {
@@ -16217,6 +16273,59 @@ function writeJSON(p, obj) {
     obj &&
     typeof obj === "object" &&
     obj.__preserve_structured_fields === true;
+
+  if (isAddressFile) {
+    const source =
+      obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+    const sources = [source];
+    const rawValue =
+      resolveRawAddressStringFromSources(sources) ||
+      resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+      resolveFirstMeaningfulAddressField("full_address", sources) ||
+      resolveFirstMeaningfulAddressField("site_address", sources) ||
+      resolveFirstMeaningfulAddressField("address", sources) ||
+      null;
+    const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+    if (!trimmedRaw) {
+      removeFileIfExists(normalizedPath || p);
+      return;
+    }
+
+    const requestIdentifier = resolveRequestIdentifierCandidate(
+      source.request_identifier,
+      source.parcel_id,
+      source.parcel_identifier,
+    );
+    const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+      source.source_http_request,
+    );
+    const preparedSource =
+      sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+        ? prepareSourceHttpRequest(sourceHttpRequest)
+        : sourceHttpRequest;
+
+    const payload = { unnormalized_address: trimmedRaw };
+    if (requestIdentifier !== undefined) {
+      payload.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+    if (preparedSource) {
+      payload.source_http_request = deepClone(preparedSource);
+    }
+
+    const allowed = new Set(RAW_SCHEMA_CORE_FIELDS);
+    Object.keys(payload).forEach((key) => {
+      if (!allowed.has(key) || payload[key] === undefined) {
+        delete payload[key];
+      } else if (typeof payload[key] === "string") {
+        payload[key] = payload[key].trim();
+      }
+    });
+
+    fs.writeFileSync(normalizedPath || p, `${JSON.stringify(payload, null, 2)}\n`);
+    return;
+  }
 
   if (isAddressFile) {
     const sanitized = sanitizeAddressPayloadForWrite(obj);
@@ -98379,8 +98488,9 @@ process.on("exit", () => {
             ? prepareSourceHttpRequest(sourceHttpRequest)
             : sourceHttpRequest;
 
-        const rawPayload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-        rawPayload.unnormalized_address = trimmedRaw;
+        // Build a lean raw payload so we stay on the unnormalized oneOf branch
+        // when we only have a raw string from the source.
+        const rawPayload = { unnormalized_address: trimmedRaw };
         if (requestIdentifier !== undefined) {
           rawPayload.request_identifier =
             requestIdentifier === null ? null : requestIdentifier;
@@ -98394,7 +98504,7 @@ process.on("exit", () => {
 
     if (finalAddress && typeof finalAddress === "object") {
       const allowedRaw = new Set([
-        ...RAW_ADDRESS_OUTPUT_FIELDS,
+        "unnormalized_address",
         "request_identifier",
         "source_http_request",
       ]);
@@ -98409,17 +98519,6 @@ process.on("exit", () => {
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress }) &&
         !Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address");
       const allowlist = isNormalizedSurface ? allowedNormalized : allowedRaw;
-
-      if (!isNormalizedSurface) {
-        // Ensure every required nullable field exists so the raw oneOf branch
-        // sees the complete surface even when the source only provides an
-        // unnormalized string.
-        allowlist.forEach((field) => {
-          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
-            finalAddress[field] = null;
-          }
-        });
-      }
 
       Object.keys(finalAddress).forEach((key) => {
         if (!allowlist.has(key) || finalAddress[key] === undefined) {
