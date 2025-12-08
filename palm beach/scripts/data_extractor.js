@@ -199,7 +199,12 @@ const RAW_SCHEMA_CORE_FIELDS = Object.freeze([
 // The raw/unnormalized oneOf branch should stay lean: only the unnormalized
 // string plus request metadata. Avoid pulling in normalized fields so we stay
 // on the raw schema branch when normalized coverage is absent.
-const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze([]);
+const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze(
+  // County schema still expects the normalized surface keys to exist (nullable)
+  // on the raw/unnormalized oneOf branch, so pre-populate them with nulls to
+  // satisfy required properties when we only have an unnormalized string.
+  Array.from(new Set([...NORMALIZED_ADDRESS_FIELDS])),
+);
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
