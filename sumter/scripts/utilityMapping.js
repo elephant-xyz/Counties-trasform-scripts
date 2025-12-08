@@ -5,12 +5,14 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const projectRoot = path.resolve(__dirname, "../../../..");
+
 function readHtml(filepath) {
   const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Data";
 
 function textTrim(s) {
@@ -184,7 +186,8 @@ function aggregateUtilities(utilities) {
 }
 
 function main() {
-  const inputPath = path.resolve("input.html");
+  process.chdir(projectRoot);
+  const inputPath = path.join(projectRoot, "input/N03-009.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
   // if (!parcelId) throw new Error("Parcel ID not found");
@@ -193,7 +196,7 @@ function main() {
   const aggregate = aggregateUtilities(utilities);
   aggregate.utilities = utilities;
 
-  const outDir = path.resolve("owners");
+  const outDir = path.join(projectRoot, "owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};

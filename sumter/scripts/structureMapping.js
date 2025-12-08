@@ -5,12 +5,14 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+const projectRoot = path.resolve(__dirname, "../../../..");
+
 function readHtml(filepath) {
   const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Data";
 
 function textTrim(s) {
@@ -327,7 +329,8 @@ function buildStructureRecords(buildings) {
 }
 
 function main() {
-  const inputPath = path.resolve("input.html");
+  process.chdir(projectRoot);
+  const inputPath = path.join(projectRoot, "input/N03-009.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
   // if (!parcelId) {
@@ -336,11 +339,11 @@ function main() {
   const buildings = collectBuildings($);
   const structures = buildStructureRecords(buildings);
 
-  const outDir = path.resolve("owners");
+  const outDir = path.join(projectRoot, "owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "structure_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = structures;
+  outObj[`property_${parcelId}`] = { structures };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath} with ${structures.length} structure entries`);
 }
