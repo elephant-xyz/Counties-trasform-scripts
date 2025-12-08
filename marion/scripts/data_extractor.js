@@ -563,7 +563,7 @@ const DEFAULT_PROPERTY_CLASS = {
   property_usage_type: "Unknown",
   structure_form: null,
   number_of_units_type: null,
-  build_status: null,
+  build_status: "Improved",
 };
 
 function mapPropertyClass(pc) {
@@ -1070,8 +1070,8 @@ function main() {
       : null);
   const key_part = requestIdentifier ?? parcelIdentifier ?? parcelIdFromPage ?? null;
   const key = `property_${key_part}`;
-  const util = utilsData[key];
-  const struct = structuresData[key];
+  const util = utilsData ? utilsData[key] : null;
+  const struct = structuresData ? structuresData[key] : null;
   
   try {
     const seedCsvPath = path.join(".", "input.csv");
@@ -1304,6 +1304,12 @@ function main() {
     view: null,
   };
   writeJSON(path.join(dataDir, "lot.json"), lot);
+
+  // property_has_lot relationship
+  writeJSON(path.join(dataDir, "relationship_property_has_lot.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  });
 
   // // structure.json (minimal)
   // const struct = {
