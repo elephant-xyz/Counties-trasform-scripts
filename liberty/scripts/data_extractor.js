@@ -2003,22 +2003,6 @@ function writePropertyUtilityLotStructureFromExtraFeatures($, parcelId) {
   }
 }
 
-function extractMailingAddress($) {
-  // Primary selector
-  const primaryAddress = $('#ctlBodyPane_ctl01_ctl01_rptOwner_ctl00_lblOwnerAddress').html();
-  if (primaryAddress) {
-    return primaryAddress.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
-  }
-  
-  // Fallback to existing selectors
-  const parts = [];
-  $('[id*="lblAddress"], [id*="lblAptUnit"], [id*="lblCityStateZip"]').each((i, el) => {
-    const text = $(el).text().trim();
-    if (text) parts.push(text);
-  });
-  return parts.length > 0 ? parts.join(', ') : null;
-}
-
 function main() {
   ensureDir("data");
   const $ = loadHTML();
@@ -2060,55 +2044,10 @@ function main() {
   // console.log("SEC-TWP-RNG--", secTwpRng);
   attemptWriteAddressAndGeometry(unnormalized, secTwpRng);
 
+  // Note: Mailing address generation has been removed as it creates unused files
+  // without valid relationship classes in the Elephant schema. If needed, this should
+  // use the standard relationship pattern with makeRelationshipFilename() function.
 
-  //Mailing Address
-  const mailingAddressRaw = extractMailingAddress($)
-  console.log("MAILING--",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-  // Create mailing address relationships with current owners
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (owners) {
-    const key = `property_${parcelId}`;
-    const record = owners[key];
-    if (record && record.owners_by_date && record.owners_by_date['current']) {
-      const currentOwners = record.owners_by_date['current'];
-      // console.log("CURRENT-",currentOwners)
-      let relCounter = 0;
-      currentOwners.forEach((owner) => {
-        if (owner.type === "person") {
-          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": "./mailing_address.json" },
-              }
-            );
-          }
-        } else if (owner.type === "company") {
-          const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": "./mailing_address.json" }
-              }
-            );
-          }
-        }
-      });
-    }
-  }
-  
   // Create integrated lot.json with extra features
   if (parcelId) {
     writePropertyUtilityLotStructureFromExtraFeatures($, parcelId);

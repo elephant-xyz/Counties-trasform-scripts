@@ -621,19 +621,14 @@ function main() {
 
   // Property JSON
   const property = {
-    livable_floor_area: null,
     parcel_identifier: parcelId,
     property_legal_description_text: legalText,
     property_structure_built_year: null,
     property_type: null,
     property_usage_type: null,
-    area_under_air: null,
     historic_designation: undefined,
     number_of_units: null,
-    number_of_units_type: null,
-    property_effective_built_year: null,
     subdivision: subdivision || null,
-    total_area: null,
     zoning: null,
   };
 
@@ -720,14 +715,6 @@ function main() {
   });
 
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
-  // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
-  if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
-    property.livable_floor_area = String(totalBaseArea);
-    property.area_under_air = String(totalBaseArea);
-  }
-  if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
-    property.total_area = String(totalAdjArea);
-  }
 
   // Write property.json
   fs.writeFileSync(
@@ -754,6 +741,16 @@ function main() {
     JSON.stringify(addressObj, null, 2),
   );
 
+  // Create relationship from property to address
+  const relPropertyAddress = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_property_address_1.json"),
+    JSON.stringify(relPropertyAddress, null, 2),
+  );
+
   // Sales + Deeds - from Summary sales table
   const saleRows = [];
   $("#SalesAdditional tr").each((i, el) => {
@@ -773,7 +770,9 @@ function main() {
 
   // Create deed and file files for every sale row (even $0)
   saleRows.forEach((row, idx) => {
-    const deedObj = {};
+    const deedObj = {
+      request_identifier: folio || null,
+    };
     fs.writeFileSync(
       path.join(dataDir, `deed_${idx + 1}.json`),
       JSON.stringify(deedObj, null, 2),
@@ -808,6 +807,7 @@ function main() {
     const saleObj = {
       ownership_transfer_date: s.iso,
       purchase_price_amount: s.amount || 0, // Use 0 if amount is 0
+      request_identifier: folio || null,
     };
     fs.writeFileSync(
       path.join(dataDir, `sales_${idx + 1}.json`),
@@ -932,34 +932,42 @@ function main() {
 
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
-  // if (utilsEntry) {
-  //   fs.writeFileSync(
-  //     path.join(dataDir, "utility.json"),
-  //     JSON.stringify(utilsEntry, null, 2),
-  //   );
-  // }
+  if (utilsEntry) {
+    fs.writeFileSync(
+      path.join(dataDir, "utility.json"),
+      JSON.stringify(utilsEntry, null, 2),
+    );
+
+    // Create relationship from property to utility
+    const relPropertyUtility = {
+      from: { "/": "./property.json" },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_has_utility_1.json"),
+      JSON.stringify(relPropertyUtility, null, 2),
+    );
+  }
 
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
   const layoutEntry = layouts[ownerKey];
+  const layoutFiles = []; // Track layout files for relationships
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
       if (lay && Object.keys(lay).length > 0) {
-        // Ensure space_index is an integer
-        if (lay.space_index === null || lay.space_index === undefined) {
-          lay.space_index = layoutIdx;
-        }
-
         // Ensure is_finished is a boolean
         if (typeof lay.is_finished !== "boolean") {
           // Default: exterior spaces are not finished, interior spaces are finished
           lay.is_finished = lay.is_exterior === false;
         }
 
+        const layoutFilename = `layout_${layoutIdx}.json`;
         fs.writeFileSync(
-          path.join(dataDir, `layout_${layoutIdx}.json`),
+          path.join(dataDir, layoutFilename),
           JSON.stringify(lay, null, 2),
         );
+        layoutFiles.push(layoutFilename);
         layoutIdx++;
       }
     }
@@ -1014,7 +1022,6 @@ function main() {
         decor_elements: null,
         design_style: null,
         fixture_finish_quality: null,
-        floor_level: null,
         flooring_installation_date: null,
         flooring_material_type: null,
         flooring_wear: null,
@@ -1039,7 +1046,6 @@ function main() {
         size_square_feet: area && !isNaN(area) && area > 0 ? area : null,
         spa_installation_date: null,
         spa_type: null,
-        space_index: idx, // Use the layout index as space_index
         space_type_index: "1",
         space_type: spaceType,
         story_type: null,
@@ -1121,12 +1127,26 @@ function main() {
 
     // Write layout file if we created one
     if (layoutObj) {
+      const layoutFilename = `layout_${layoutIdx}.json`;
       fs.writeFileSync(
-        path.join(dataDir, `layout_${layoutIdx}.json`),
+        path.join(dataDir, layoutFilename),
         JSON.stringify(layoutObj, null, 2),
       );
+      layoutFiles.push(layoutFilename);
       layoutIdx++;
     }
+  });
+
+  // Create relationships from property to all layout files
+  layoutFiles.forEach((layoutFilename, idx) => {
+    const relPropertyLayout = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${layoutFilename}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_layout_${idx + 1}.json`),
+      JSON.stringify(relPropertyLayout, null, 2),
+    );
   });
 
   // Structure data from permits and building features
@@ -1239,6 +1259,16 @@ function main() {
     JSON.stringify(structureObj, null, 2),
   );
 
+  // Create relationship from property to structure
+  const relPropertyStructure = {
+    from: { "/": "./property.json" },
+    to: { "/": "./structure.json" },
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_property_structure_1.json"),
+    JSON.stringify(relPropertyStructure, null, 2),
+  );
+
   // Tax from Summary and History
   // From Summary (preliminary/current)
   let rollType = (
@@ -1269,6 +1299,7 @@ function main() {
       $("#TblAdValoremAdditionalTotal #TotalAdvTaxes").first().text(),
     );
 
+  const taxFiles = []; // Track tax files for relationships
   if (ty != null && (land != null || impr != null || just != null)) {
     const monthly = yearly != null ? round2(yearly / 12) : null;
     const taxObj = {
@@ -1290,6 +1321,7 @@ function main() {
       path.join(dataDir, "tax_1.json"),
       JSON.stringify(taxObj, null, 2),
     );
+    taxFiles.push("tax_1.json");
   }
 
   // From History (Tab6) for multiple years
@@ -1357,9 +1389,23 @@ function main() {
       yearly_tax_amount: rec.yearlyH != null ? rec.yearlyH : null,
     };
     const outIdx = rec.idx; // 1..5 corresponds to 2025..2021
+    const taxFilename = `tax_${outIdx}.json`;
     fs.writeFileSync(
-      path.join(dataDir, `tax_${outIdx}.json`),
+      path.join(dataDir, taxFilename),
       JSON.stringify(taxObj, null, 2),
+    );
+    taxFiles.push(taxFilename);
+  });
+
+  // Create relationships from property to all tax files
+  taxFiles.forEach((taxFilename, idx) => {
+    const relPropertyTax = {
+      from: { "/": "./property.json" },
+      to: { "/": `./${taxFilename}` },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, `relationship_property_tax_${idx + 1}.json`),
+      JSON.stringify(relPropertyTax, null, 2),
     );
   });
 }

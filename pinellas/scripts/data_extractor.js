@@ -1591,9 +1591,19 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
 }, {});
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.property_type;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
     return propertyTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1601,9 +1611,19 @@ function mapPropertyTypeFromUseCode(code) {
 
 function mapOwnershipEstateTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.ownership_estate_type;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
     return ownershipEstateTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1611,9 +1631,19 @@ function mapOwnershipEstateTypeFromUseCode(code) {
 
 function mapBuildStatusFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.build_status;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
     return buildStatusByUseCode[normalizedInput];
   }
   return null;
@@ -1621,9 +1651,19 @@ function mapBuildStatusFromUseCode(code) {
 
 function mapStructureFormFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.structure_form;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
     return structureFormByUseCode[normalizedInput];
   }
   return null;
@@ -1631,9 +1671,19 @@ function mapStructureFormFromUseCode(code) {
 
 function mapPropertyUsageTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.property_usage_type;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
     return propertyUsageTypeByUseCode[normalizedInput];
   }
   return null;

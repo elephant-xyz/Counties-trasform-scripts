@@ -5522,14 +5522,16 @@ delete layoutContent.space_type_indexer;
   // Add current owner keys ONLY if mailing address exists
   // These will have company/person_has_mailing_address relationships
   // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
-  if (mailingAddressFile) {
-    const currentOwners = ownerKeysByDate.get('current');
-    if (currentOwners) {
-      currentOwners.forEach((ownerKey) => {
-        usedOwnerKeys.add(ownerKey);
-      });
-    }
-  }
+  // REMOVED: Since mailing_address.json is not being created (person and company classes
+  // don't exist), we don't add current owner keys.
+  // if (mailingAddressFile) {
+  //   const currentOwners = ownerKeysByDate.get('current');
+  //   if (currentOwners) {
+  //     currentOwners.forEach((ownerKey) => {
+  //       usedOwnerKeys.add(ownerKey);
+  //     });
+  //   }
+  // }
 
   // Person and Company files are NOT part of the Sales_History data group schema
   // Owner information is stored separately in owners/owner_data.json
