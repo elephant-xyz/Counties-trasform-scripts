@@ -583,12 +583,30 @@ function finalizeCountyAddressOutput(addressPath, options = {}) {
       ]),
     );
 
-    finalAddress = {
+    const resolvedSourceHttpRequest =
+      payload.source_http_request ||
+      sourceHttpRequestCandidates.find(
+        (candidate) => candidate && typeof candidate === "object",
+      );
+
+    const rawSeed = {
+      ...payload,
       unnormalized_address: resolvedRaw,
     };
 
     if (resolvedRequestIdentifier !== undefined) {
-      finalAddress.request_identifier = resolvedRequestIdentifier;
+      rawSeed.request_identifier = resolvedRequestIdentifier;
+    }
+    if (resolvedSourceHttpRequest !== undefined) {
+      rawSeed.source_http_request = resolvedSourceHttpRequest || null;
+    }
+
+    const rawOutput =
+      ensureRawAddressSchemaDefaults(rawSeed) ||
+      buildRawAddressOutputForSchema(resolvedRaw, rawSeed);
+
+    if (rawOutput) {
+      finalAddress = rawOutput;
     }
   }
 
@@ -9185,6 +9203,10 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
+    relationships: {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
