@@ -158,6 +158,7 @@ const COMPANY_NAME_KEYWORD_PATTERNS = [
   ["associatn"],
   ["authority"],
   ["bank"],
+  ["bcc"],
   ["board"],
   ["capital"],
   ["center"],
@@ -176,6 +177,7 @@ const COMPANY_NAME_KEYWORD_PATTERNS = [
   ["corp"],
   ["corporation"],
   ["council"],
+  ["county"],
   ["credit", "union"],
   ["development"],
   ["district"],
@@ -2407,15 +2409,6 @@ function textNormalize(value) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
-function normalizeCompanyName(name) {
-  if (!name) return "";
-  // Normalize whitespace
-  let normalized = name.replace(/\s+/g, " ").trim();
-  // Remove trailing punctuation (commas, periods, etc.)
-  normalized = normalized.replace(/[,\.;:]+$/g, "");
-  return normalized.trim();
-}
-
 function toNumber(value) {
   if (value == null) return null;
   const clean = String(value).replace(/[^0-9.\-]/g, "");
@@ -2967,25 +2960,25 @@ function main() {
         result.propertyLocationRaw = locationParts.join(", ");
       }
 
-      // const mailingLines = [];
-      // const mailingLine1 = normSpace(generalProfile.mailAddress || "");
-      // const mailingCity = normSpace(generalProfile.mailCity || "");
-      // const mailingState = normSpace(generalProfile.mailState || "");
-      // const mailingZip = normSpace(generalProfile.mailZip || "");
-      // if (mailingLine1) mailingLines.push(mailingLine1);
-      // const mailingLine2Parts = [];
-      // if (mailingCity) mailingLine2Parts.push(mailingCity);
-      // if (mailingState) mailingLine2Parts.push(mailingState);
-      // let mailingLine2 = mailingLine2Parts.join(", ");
-      // if (mailingZip) {
-      //   mailingLine2 = mailingLine2
-      //     ? `${mailingLine2} ${mailingZip}`
-      //     : mailingZip;
-      // }
-      // if (mailingLine2) mailingLines.push(mailingLine2);
-      // if (mailingLines.length) {
-      //   result.mailingAddressLines = mailingLines;
-      // }
+      const mailingLines = [];
+      const mailingLine1 = normSpace(generalProfile.mailAddress || "");
+      const mailingCity = normSpace(generalProfile.mailCity || "");
+      const mailingState = normSpace(generalProfile.mailState || "");
+      const mailingZip = normSpace(generalProfile.mailZip || "");
+      if (mailingLine1) mailingLines.push(mailingLine1);
+      const mailingLine2Parts = [];
+      if (mailingCity) mailingLine2Parts.push(mailingCity);
+      if (mailingState) mailingLine2Parts.push(mailingState);
+      let mailingLine2 = mailingLine2Parts.join(", ");
+      if (mailingZip) {
+        mailingLine2 = mailingLine2
+          ? `${mailingLine2} ${mailingZip}`
+          : mailingZip;
+      }
+      if (mailingLine2) mailingLines.push(mailingLine2);
+      if (mailingLines.length) {
+        result.mailingAddressLines = mailingLines;
+      }
 
       if (
         INPUT_JSON.parcelLegalDescription &&
@@ -4232,6 +4225,7 @@ function buildPropertyJson() {
     };
   }
 
+  const addr = parseAddress();
   const rawPropertyAddress = (general.propertyLocationRaw ||
     addrSeed.full_address ||
     "")
@@ -4240,16 +4234,13 @@ function buildPropertyJson() {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Use unnormalized_address approach since source provides full_address
+  // Use unnormalized_address since source provides it
   const addr = {
     unnormalized_address: rawPropertyAddress || null,
     latitude: addrSeed.latitude || null,
     longitude: addrSeed.longitude || null,
-    county_name: addrSeed.county_jurisdiction || null,
     country_code: "US",
-    township: null,
-    range: null,
-    section: null,
+    county_name: addrSeed.county_jurisdiction || null,
     request_identifier: propSeed.request_identifier || null,
     source_http_request: propSeed.source_http_request || null,
   };
@@ -4263,144 +4254,13 @@ function buildPropertyJson() {
 
     const raw = normalizedLines.join(", ");
 
-    let cityLineIndex = -1;
-    for (let i = normalizedLines.length - 1; i >= 0; i -= 1) {
-      if (/\d{5}/.test(normalizedLines[i]) || /[A-Z]{2}\b/.test(normalizedLines[i])) {
-        cityLineIndex = i;
-        break;
-      }
-    }
-
-    let cityLine = cityLineIndex >= 0 ? normalizedLines[cityLineIndex] : null;
-    const addressSegments =
-      cityLineIndex >= 0
-        ? normalizedLines.slice(0, cityLineIndex)
-        : normalizedLines.slice();
-    const trailingSegments =
-      cityLineIndex >= 0 ? normalizedLines.slice(cityLineIndex + 1) : [];
-
-    let cityName = null;
-    let stateCode = null;
-    let postalCode = null;
-    let plusFour = null;
-
-    if (cityLine) {
-      const zipMatch = cityLine.match(/(\d{5})(?:-?(\d{4}))?/);
-      if (zipMatch) {
-        postalCode = zipMatch[1];
-        plusFour = zipMatch[2] || null;
-        cityLine = cityLine.slice(0, zipMatch.index).trim();
-      }
-
-      const parts = cityLine
-        .replace(/,+/g, " ")
-        .split(/\s+/)
-        .filter(Boolean);
-      if (parts.length) {
-        const possibleState = parts[parts.length - 1];
-        if (/^[A-Z]{2}$/i.test(possibleState)) {
-          stateCode = possibleState.toUpperCase();
-          parts.pop();
-        }
-        if (parts.length) {
-          cityName = parts.join(" ").toUpperCase();
-        }
-      }
-    }
-
-    const streetRaw = addressSegments.concat(trailingSegments).join(", ");
-    let streetNumber = null;
-    let streetName = null;
-    let streetSuffix = null;
-    if (streetRaw) {
-      const normalizedStreet = streetRaw.replace(/\s+/g, " ").trim();
-      const streetMatch = normalizedStreet.match(/^(\d+)\s+(.*)$/);
-      if (streetMatch) {
-        streetNumber = streetMatch[1];
-        let remainder = streetMatch[2].trim();
-        const parts = remainder.split(/\s+/);
-        if (parts.length > 1) {
-          const suffixCandidate = parts[parts.length - 1].replace(/\./g, "").toUpperCase();
-          const suffixAlias = {
-            AVENUE: "Ave",
-            AVE: "Ave",
-            STREET: "St",
-            ST: "St",
-            ROAD: "Rd",
-            RD: "Rd",
-            DRIVE: "Dr",
-            DR: "Dr",
-            COURT: "Ct",
-            CT: "Ct",
-            LANE: "Ln",
-            LN: "Ln",
-            CIRCLE: "Cir",
-            CIR: "Cir",
-            BOULEVARD: "Blvd",
-            BLVD: "Blvd",
-            WAY: "Way",
-            TERRACE: "Ter",
-            TER: "Ter",
-            PLACE: "Pl",
-            PL: "Pl",
-            HIGHWAY: "Hwy",
-            HWY: "Hwy",
-            PARKWAY: "Pkwy",
-            PKWY: "Pkwy",
-            TRAIL: "Trl",
-            TRL: "Trl",
-            LOOP: "Loop",
-            POINT: "Pt",
-            PT: "Pt",
-            SQUARE: "Sq",
-            SQ: "Sq",
-            COVE: "Cv",
-            CV: "Cv",
-            RUN: "Run",
-            BEND: "Bnd",
-            BND: "Bnd",
-          };
-          const mappedSuffix =
-            suffixAlias[suffixCandidate] ||
-            (suffixCandidate.length
-              ? suffixCandidate[0] +
-                suffixCandidate.slice(1).toLowerCase()
-              : null);
-          if (mappedSuffix && parts.length > 1) {
-            parts.pop();
-            streetSuffix = mappedSuffix;
-          }
-          remainder = parts.join(" ");
-        }
-        streetName = remainder.toUpperCase();
-      } else {
-        streetName = normalizedStreet.toUpperCase();
-      }
-    }
-
+    // Use unnormalized_address since source provides it
     return {
-      street_number: streetNumber || null,
-      street_pre_directional_text: null,
-      street_name: streetName || null,
-      street_suffix_type: streetSuffix || null,
-      street_post_directional_text: null,
-      unit_identifier: null,
-      city_name: cityName || null,
-      municipality_name: null,
-      state_code: stateCode || null,
-      postal_code: postalCode || null,
-      plus_four_postal_code: plusFour || null,
-      county_name: addrSeed.county_jurisdiction || null,
-      country_code: "US",
+      unnormalized_address: raw,
       latitude: null,
       longitude: null,
-      route_number: null,
-      township: null,
-      range: null,
-      section: null,
-      block: null,
-      lot: null,
-      unnormalized_address: raw,
+      country_code: "US",
+      county_name: addrSeed.county_jurisdiction || null,
       request_identifier: propSeed.request_identifier || null,
       source_http_request: propSeed.source_http_request || null,
     };
@@ -4410,32 +4270,6 @@ function buildPropertyJson() {
     general.mailingAddressLines || null,
   );
   const mailingAddressFile = mailingAddress ? "mailing_address.json" : null;
-  if (mailingAddress) {
-    const rawMailing = (general.mailingAddressLines || [])
-      .map((line) => (line || "").replace(/\s+/g, " ").trim())
-      .filter((line) => line)
-      .join(", ")
-      .trim();
-    mailingAddress.unnormalized_address = rawMailing || null;
-    // Extract latitude and longitude from addrSeed for mailing address if available
-    mailingAddress.latitude =  null;
-    mailingAddress.longitude =  null;
-
-    const mailingAddressKeys = new Set([
-      "unnormalized_address",
-      "latitude",
-      "longitude",
-      "request_identifier",
-      "source_http_request",
-    ]);
-    // Object.keys(mailingAddress).forEach((key) => {
-    //   if (!mailingAddressKeys.has(key)) {
-    //     mailingAddress[key] = null;
-    //   }
-    // });
-    mailingAddress.request_identifier = propSeed.request_identifier || null;
-    mailingAddress.source_http_request = propSeed.source_http_request || null;
-  }
 
   function createRelationshipFileName(fromFile, toFile, suffix = null) {
     const fromBase = fromFile.replace(/\.json$/i, "");
@@ -4446,9 +4280,14 @@ function buildPropertyJson() {
 
   // Write address.json
   writeJSON(path.join(dataDir, "address.json"), addr);
-  if (mailingAddressFile) {
-    writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
-  }
+
+  // REMOVED: mailing_address.json creation
+  // NOTE: Person and company classes do not exist in this datagroup, so there are no
+  // relationships that can reference the mailing_address. Writing this file would result
+  // in an "Unused data JSON file detected" error.
+  // if (mailingAddressFile) {
+  //   writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
+  // }
 
   // property.json
   const property = buildPropertyJson();
@@ -4456,12 +4295,6 @@ function buildPropertyJson() {
     if (property[k] === undefined) delete property[k];
   });
   writeJSON(path.join(dataDir, "property.json"), property);
-
-  // Create property_has_address relationship
-  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
-    from: { "/": "./property.json" },
-    to: { "/": "./address.json" },
-  });
   const propertyTypeValue = property.property_type || null;
   const isLandProperty =
     propertyTypeValue === "LandParcel" ||
@@ -5463,7 +5296,7 @@ delete layoutContent.space_type_indexer;
       } else if (ownerType === "company") {
         const rawName = owner.name || owner.company_name || owner.organization_name;
         if (!rawName) return;
-        const normalized = normalizeCompanyName(rawName);
+        const normalized = rawName.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
         if (!normalized) return;
         const key = `company:${normalized.toLowerCase()}`;
         if (seenOwners.has(key)) return;
@@ -5476,22 +5309,18 @@ delete layoutContent.space_type_indexer;
       }
     };
 
-    // Only process owners from ownersByDate if there's a mailing address file to link them to
-    // Otherwise, they'll be unused files. Buyers are processed separately during sales processing.
-    if (mailingAddressFile) {
-      Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
-        console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
-        const ownersArray = Array.isArray(entry)
-          ? entry
-          : entry && typeof entry === "object" && entry.type
-          ? [entry]
-          : [];
-        ownersArray.forEach((owner) => {
-          const ownerKey = pushOwner(owner);
-          if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
-        });
+    Object.entries(ownersByDate).forEach(([dateKey, entry]) => {
+      console.log(`Iterating ownersByDate: dateKey='${dateKey}', entry type='${Array.isArray(entry) ? 'array' : typeof entry}'`); // DEBUG LOG
+      const ownersArray = Array.isArray(entry)
+        ? entry
+        : entry && typeof entry === "object" && entry.type
+        ? [entry]
+        : [];
+      ownersArray.forEach((owner) => {
+        const ownerKey = pushOwner(owner);
+        if (ownerKey) registerOwnerForDate(dateKey, ownerKey);
       });
-    }
+    });
   }
 
   // sales_history_*.json, deed_*.json, file_*.json + relationships + buyer processing
@@ -5536,20 +5365,15 @@ delete layoutContent.space_type_indexer;
         if (buyer) {
           // Create buyer key similar to owner key creation
           let buyerKey = null;
+          let normalizedCompanyName = null;
           if (buyer.type === "company") {
-            const normalized = normalizeCompanyName(buyer.name);
-            buyerKey = `company:${normalized.toLowerCase()}`;
+            normalizedCompanyName = buyer.name.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
+            buyerKey = `company:${normalizedCompanyName.toLowerCase()}`;
           } else {
-            // Use pipe separator to match owner key format (line 5434-5437)
-            const first = properCaseName(buyer.first_name || null);
-            const last = properCaseName(buyer.last_name || null);
-            const middle = buyer.middle_name || null;
-            const prefixName = buyer.prefix_name || null;
-            const suffixName = buyer.suffix_name || null;
-            const parts = [first, middle, last, prefixName, suffixName]
+            const parts = [buyer.first_name, buyer.middle_name, buyer.last_name]
               .map((part) => (part || "").trim().toLowerCase())
               .filter(Boolean);
-            buyerKey = `person:${parts.join("|")}`;
+            buyerKey = `person:${parts.join(" ")}`;
           }
 
           if (buyerKey) {
@@ -5559,25 +5383,31 @@ delete layoutContent.space_type_indexer;
             // Add to global owner tracking for file creation
             if (!seenOwners.has(buyerKey)) {
               if (buyer.type === "company") {
-                const normalized = normalizeCompanyName(buyer.name);
                 seenOwners.set(buyerKey, {
                   type: "company",
-                  payload: { name: normalized },
+                  payload: { name: normalizedCompanyName },
                 });
               } else {
-                // Reuse the variables defined above for key creation
+                const firstName = properCaseName(buyer.first_name || null);
+                const lastName = properCaseName(buyer.last_name || null);
+                if (!firstName || !lastName) return;
+                const middleName = buyer.middle_name ? buyer.middle_name : null;
+                const prefixName = buyer.prefix_name ? buyer.prefix_name : null;
+                const suffixName = buyer.suffix_name ? buyer.suffix_name : null;
+                const personPayload = {
+                  birth_date: null,
+                  first_name: firstName,
+                  last_name: lastName,
+                  middle_name: middleName,
+                  prefix_name: prefixName,
+                  suffix_name: suffixName,
+                  us_citizenship_status: null,
+                  veteran_status: null,
+                };
+
                 seenOwners.set(buyerKey, {
                   type: "person",
-                  payload: {
-                    birth_date: null,
-                    first_name: first,
-                    last_name: last,
-                    middle_name: middle,
-                    prefix_name: prefixName,
-                    suffix_name: suffixName,
-                    us_citizenship_status: null,
-                    veteran_status: null,
-                  },
+                  payload: personPayload,
                 });
               }
             }
@@ -5629,85 +5459,113 @@ delete layoutContent.space_type_indexer;
     fileFiles.push(fileFileName);
   });
 
-  // Determine which owner keys will have relationships
-  const ownerKeysWithRelationships = new Set();
+  // Determine which owner keys will be used in relationships
+  // CRITICAL: Only create entity files for owners that will have relationships.
+  // This prevents "Unused data JSON file detected" validation errors.
+  const usedOwnerKeys = new Set();
 
-  // Track owners that will link to mailing address
-  if (mailingAddressFile) {
-    ownerKeysByDate.forEach((keys) => {
-      keys.forEach((key) => ownerKeysWithRelationships.add(key));
-    });
-  }
-
-  // Track buyers that will link to sales
-  allBuyerOwnerKeys.forEach((key) => ownerKeysWithRelationships.add(key));
-
-  console.log("Owner keys with relationships:", Array.from(ownerKeysWithRelationships)); // DEBUG LOG
-
-  // Now that all owners (including buyers from sales) are collected in seenOwners, create their files
-  // Only create files for owners that have at least one relationship
-  let personIndex = 1;
-  let companyIndex = 1;
-  const ownerEntries = [];
-  seenOwners.forEach((info, key) => {
-    ownerEntries.push([key, info]);
-  });
-
-  ownerEntries.forEach(([key, info]) => {
-    // Only create file if this owner has a relationship
-    if (!ownerKeysWithRelationships.has(key)) {
-      console.log("Skipping owner without relationships:", key); // DEBUG LOG
-      return;
-    }
-
-    if (info.type === "person") {
-      const file = `person_${personIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      personFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      personIndex += 1;
-      console.log("Created person file:", file, info.payload); // DEBUG LOG
-    } else if (info.type === "company") {
-      const file = `company_${companyIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      companyFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      companyIndex += 1;
-      console.log("Created company file:", file, info.payload); // DEBUG LOG
-    }
-  });
-
-  console.log("All person files created:", personFiles); // DEBUG LOG
-  console.log("All company files created:", companyFiles); // DEBUG LOG
-
-  // Update salesBuyerFiles with actual file names after owner files are created
+  // Add buyer keys from sales - these will have sales_history_has_company/person relationships
   salesBuyerFiles.forEach((saleInfo) => {
     saleInfo.buyerKeys.forEach((buyerKey) => {
-      const buyerFile = ownerKeyToFile.get(buyerKey);
-      if (buyerFile) {
-        saleInfo.buyerFiles.push(buyerFile);
-      }
+      usedOwnerKeys.add(buyerKey);
     });
   });
 
-  if (mailingAddressFile) {
-    personFiles.forEach((pf) => {
-      const rel = {
-        from: { "/": `./${pf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(pf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
-    });
-    companyFiles.forEach((cf) => {
-      const rel = {
-        from: { "/": `./${cf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(cf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
-    });
-  }
+  // Add current owner keys ONLY if mailing address exists
+  // These will have company/person_has_mailing_address relationships
+  // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
+  // REMOVED: Since mailing_address.json is not being created (person and company classes
+  // don't exist), we don't add current owner keys.
+  // if (mailingAddressFile) {
+  //   const currentOwners = ownerKeysByDate.get('current');
+  //   if (currentOwners) {
+  //     currentOwners.forEach((ownerKey) => {
+  //       usedOwnerKeys.add(ownerKey);
+  //     });
+  //   }
+  // }
+
+  // Person and Company files are NOT part of the Sales_History data group schema
+  // Owner information is stored separately in owners/owner_data.json
+  // Do not create person or company files in the data/ directory
+  const requestIdentifier = propSeed.request_identifier || null;
+
+  // NOTE: person and company classes exist in the County datagroup, but NOT in Sales_History
+  // Separate persons and companies from usedOwnerKeys (tracked for debugging, but files not created)
+  const personsToCreate = [];
+  const companiesToCreate = [];
+
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      personsToCreate.push(ownerData.payload);
+    } else if (ownerData.type === "company") {
+      companiesToCreate.push(ownerData.payload);
+    }
+  });
+
+  // DO NOT create person files - person class does not exist in Sales_History data group
+  // personsToCreate.forEach((person, idx) => {
+  //   const personFileName = `person_${idx + 1}.json`;
+  //   const personObj = {
+  //     first_name: person.first_name,
+  //     last_name: person.last_name,
+  //     middle_name: person.middle_name,
+  //     prefix_name: person.prefix_name,
+  //     suffix_name: person.suffix_name,
+  //     birth_date: person.birth_date,
+  //     us_citizenship_status: person.us_citizenship_status,
+  //     veteran_status: person.veteran_status,
+  //     request_identifier: requestIdentifier,
+  //   };
+  //   // Remove undefined values
+  //   Object.keys(personObj).forEach((key) => {
+  //     if (personObj[key] === undefined) delete personObj[key];
+  //   });
+  //   writeJSON(path.join(dataDir, personFileName), personObj);
+  //   personFiles.push(personFileName);
+  // });
+
+  // DO NOT create company files - company class does not exist in Sales_History data group
+  // companiesToCreate.forEach((company, idx) => {
+  //   const companyFileName = `company_${idx + 1}.json`;
+  //   const companyObj = {
+  //     name: company.name,
+  //     request_identifier: requestIdentifier,
+  //   };
+  //   // Remove undefined values
+  //   Object.keys(companyObj).forEach((key) => {
+  //     if (companyObj[key] === undefined) delete companyObj[key];
+  //   });
+  //   writeJSON(path.join(dataDir, companyFileName), companyObj);
+  //   companyFiles.push(companyFileName);
+  // });
+
+  // DO NOT create a mapping from ownerKey to file index - no person/company files are created
+  // const ownerKeyToFileIndex = new Map();
+  // usedOwnerKeys.forEach((ownerKey) => {
+  //   const ownerData = seenOwners.get(ownerKey);
+  //   if (!ownerData) return;
+  //
+  //   if (ownerData.type === "person") {
+  //     const idx = personsToCreate.findIndex((p) =>
+  //       p.first_name === ownerData.payload.first_name &&
+  //       p.last_name === ownerData.payload.last_name
+  //     );
+  //     if (idx >= 0) {
+  //       ownerKeyToFileIndex.set(ownerKey, { type: "person", index: idx + 1 });
+  //     }
+  //   } else if (ownerData.type === "company") {
+  //     const idx = companiesToCreate.findIndex((c) =>
+  //       c.name === ownerData.payload.name
+  //     );
+  //     if (idx >= 0) {
+  //       ownerKeyToFileIndex.set(ownerKey, { type: "company", index: idx + 1 });
+  //     }
+  //   }
+  // });
 
   // relationship_deed_file_*.json (file → deed)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
@@ -5719,15 +5577,74 @@ delete layoutContent.space_type_indexer;
     writeRelationshipFile(salesHistoryFiles[i], deedFiles[i]);
   }
 
-  // Create relationships between sales and their specific buyers
-  salesBuyerFiles.forEach((saleInfo) => {
-    if (saleInfo.buyerFiles.length > 0) {
-      saleInfo.buyerFiles.forEach((buyerFile, idx) => {
-        const suffix = saleInfo.buyerFiles.length === 1 ? null : `buyer_${idx + 1}`;
-        writeRelationshipFile(saleInfo.saleFile, buyerFile, suffix);
-      });
-    }
-  });
+  // DO NOT create sales-buyer relationships - person and company classes don't exist in Sales_History data group
+  // Sales_History data group only has: file, property, and sales_history classes
+  // Buyer information is stored in owners/owner_data.json, not as separate entity files
+  // const usedPersonIndices = new Set();
+  // const usedCompanyIndices = new Set();
+  //
+  // salesBuyerFiles.forEach((saleInfo) => {
+  //   let personCounter = 0;
+  //   let companyCounter = 0;
+  //   const seenInThisSale = new Set();
+  //
+  //   saleInfo.buyerKeys.forEach((buyerKey) => {
+  //     if (seenInThisSale.has(buyerKey)) return;
+  //     seenInThisSale.add(buyerKey);
+  //
+  //     const fileInfo = ownerKeyToFileIndex.get(buyerKey);
+  //     if (!fileInfo) return;
+  //
+  //     if (fileInfo.type === "person") {
+  //       personCounter++;
+  //       usedPersonIndices.add(fileInfo.index);
+  //       const relObj = {
+  //         from: { "/": `./${saleInfo.saleFile}` },
+  //         to: { "/": `./person_${fileInfo.index}.json` },
+  //       };
+  //       const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_person_${personCounter}.json`;
+  //       writeJSON(path.join(dataDir, relFileName), relObj);
+  //     } else if (fileInfo.type === "company") {
+  //       companyCounter++;
+  //       usedCompanyIndices.add(fileInfo.index);
+  //       const relObj = {
+  //         from: { "/": `./${saleInfo.saleFile}` },
+  //         to: { "/": `./company_${fileInfo.index}.json` },
+  //       };
+  //       const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_company_${companyCounter}.json`;
+  //       writeJSON(path.join(dataDir, relFileName), relObj);
+  //     }
+  //   });
+  // });
+
+  // DO NOT remove unused person/company files - no such files are created
+  // personFiles.forEach((personFile, idx) => {
+  //   const personIndex = idx + 1;
+  //   if (!usedPersonIndices.has(personIndex)) {
+  //     const filePath = path.join(dataDir, personFile);
+  //     try {
+  //       if (fs.existsSync(filePath)) {
+  //         fs.unlinkSync(filePath);
+  //       }
+  //     } catch (e) {
+  //       // Ignore errors during cleanup
+  //     }
+  //   }
+  // });
+  //
+  // companyFiles.forEach((companyFile, idx) => {
+  //   const companyIndex = idx + 1;
+  //   if (!usedCompanyIndices.has(companyIndex)) {
+  //     const filePath = path.join(dataDir, companyFile);
+  //     try {
+  //       if (fs.existsSync(filePath)) {
+  //         fs.unlinkSync(filePath);
+  //       }
+  //     } catch (e) {
+  //       // Ignore errors during cleanup
+  //     }
+  //   }
+  // });
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
