@@ -5334,6 +5334,229 @@ process.on("exit", () => {
   }
 });
 
+// Last-pass guard to keep address payload on a single valid oneOf branch and
+// prevent relationship URs from being emitted (downstream hydration owns them).
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const pickField = (field) => {
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+        const value = source[field];
+        if (value === undefined || value === null) continue;
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          if (!trimmed) continue;
+          return trimmed;
+        }
+        return value;
+      }
+      return null;
+    };
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const allowedNormalized = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      finalAddress = {};
+      allowedNormalized.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          const value = normalizedCandidate[field];
+          if (value !== undefined) {
+            finalAddress[field] =
+              typeof value === "string" ? value.trim() : value;
+          } else {
+            finalAddress[field] = null;
+          }
+        } else {
+          finalAddress[field] = null;
+        }
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
+    } else {
+      const rawValue =
+        (typeof resolveRawAddressStringFromSources === "function" &&
+          resolveRawAddressStringFromSources(sources)) ||
+        pickField("unnormalized_address") ||
+        pickField("full_address") ||
+        pickField("site_address") ||
+        pickField("address") ||
+        null;
+
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+      if (trimmedRaw) {
+        finalAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+        finalAddress.unnormalized_address = trimmedRaw;
+
+        const requestIdentifier =
+          typeof resolveRequestIdentifierCandidate === "function"
+            ? resolveRequestIdentifierCandidate(
+                ...sources.map((source) => source && source.request_identifier),
+                ...sources.map((source) => source && source.parcel_id),
+                ...sources.map((source) => source && source.parcel_identifier),
+              )
+            : pickField("request_identifier");
+        if (requestIdentifier !== undefined) {
+          finalAddress.request_identifier =
+            requestIdentifier === null ? null : requestIdentifier;
+        }
+
+        const sourceHttpRequest =
+          typeof resolveSourceHttpRequestCandidate === "function"
+            ? resolveSourceHttpRequestCandidate(
+                ...sources.map((source) => source && source.source_http_request),
+              )
+            : pickField("source_http_request");
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+        if (preparedSource !== undefined) {
+          finalAddress.source_http_request = preparedSource
+            ? deepClone(preparedSource)
+            : null;
+        }
+
+        RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+          const candidate = pickField(field);
+          if (candidate === undefined || candidate === null) {
+            if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+              finalAddress[field] = null;
+            }
+            return;
+          }
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric =
+              typeof parseCoordinate === "function"
+                ? parseCoordinate(candidate)
+                : Number(candidate);
+            if (Number.isFinite(numeric)) {
+              finalAddress[field] = numeric;
+            } else if (
+              !Object.prototype.hasOwnProperty.call(finalAddress, field)
+            ) {
+              finalAddress[field] = null;
+            }
+            return;
+          }
+          finalAddress[field] =
+            typeof candidate === "string" ? candidate.trim() : candidate;
+        });
+
+        if (!finalAddress.postal_code) {
+          finalAddress.plus_four_postal_code = null;
+        }
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const normalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress }) &&
+        !Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address");
+      const allowlist = normalizedSurface
+        ? new Set([
+            ...NORMALIZED_ADDRESS_FIELDS,
+            "request_identifier",
+            "source_http_request",
+          ])
+        : new Set([...RAW_ADDRESS_TEMPLATE_FIELDS]);
+
+      Object.keys(finalAddress).forEach((key) => {
+        if (!allowlist.has(key) || finalAddress[key] === undefined) {
+          delete finalAddress[key];
+          return;
+        }
+        if (typeof finalAddress[key] === "string") {
+          finalAddress[key] = finalAddress[key].trim();
+        }
+      });
+
+      if (
+        !normalizedSurface &&
+        !hasMeaningfulAddressValue(finalAddress.unnormalized_address)
+      ) {
+        removeFileIfExists(addressPath);
+      } else {
+        nativeWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(finalAddress, null, 2)}\n`,
+        );
+      }
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? { ...propertyPayload.relationships }
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const placeholderBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    placeholderBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final address oneOf normalizer failed:", error);
+  }
+});
+
 // Ultimate schema lock: force a single valid address oneOf branch (use the
 // normalized surface only when the strict County schema is fully covered,
 // otherwise emit the raw/unnormalized payload with every required nullable
