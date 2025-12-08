@@ -48,7 +48,7 @@ let nativeWriteFileSync = function patchedNativeWriteFileSync(
           ? prepareSourceHttpRequest(sourceHttpRequest)
           : sourceHttpRequest;
 
-      const minimal = { unnormalized_address: trimmedRaw };
+      const minimal = { ...source, unnormalized_address: trimmedRaw };
       if (requestIdentifier !== undefined) {
         minimal.request_identifier =
           requestIdentifier === null ? null : requestIdentifier;
@@ -56,6 +56,18 @@ let nativeWriteFileSync = function patchedNativeWriteFileSync(
       if (preparedSource) {
         minimal.source_http_request = deepClone(preparedSource);
       }
+
+      const allowed = new Set(RAW_ADDRESS_ALLOWED_FIELDS);
+      Object.keys(minimal).forEach((key) => {
+        if (!allowed.has(key) || minimal[key] === undefined) {
+          delete minimal[key];
+          return;
+        }
+        if (typeof minimal[key] === "string") {
+          minimal[key] = minimal[key].trim();
+        }
+      });
+      ensureAddressFieldSurface(minimal, RAW_ADDRESS_TEMPLATE_FIELDS);
 
       const serialized = `${JSON.stringify(minimal, null, 2)}\n`;
       return baseWriteFileSync.call(fs, targetPath, serialized, ...args);
@@ -180,10 +192,12 @@ const RAW_SCHEMA_CORE_FIELDS = Object.freeze([
   "source_http_request",
 ]);
 
-// The raw/unnormalized oneOf branch should stay lean so it does not trigger
-// the normalized schema requirements. Keep this empty to avoid padding the raw
-// payload with partially populated normalized fields.
-const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze([]);
+// The raw/unnormalized oneOf branch still requires the normalized surface keys
+// to exist (nullable). Surface them here so the raw payload satisfies the
+// schema without forcing structured values we don't have.
+const RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS = Object.freeze(
+  Array.from(new Set([...COUNTY_REQUIRED_NORMALIZED_FIELDS])),
+);
 
 const RAW_UNNORMALIZED_ONLY_FIELDS = Object.freeze(
   Array.from(
@@ -16298,14 +16312,14 @@ function writeJSON(p, obj) {
       source.parcel_identifier,
     );
     const sourceHttpRequest = resolveSourceHttpRequestCandidate(
-      source.source_http_request,
+        source.source_http_request,
     );
     const preparedSource =
       sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
         ? prepareSourceHttpRequest(sourceHttpRequest)
         : sourceHttpRequest;
 
-    const payload = { unnormalized_address: trimmedRaw };
+    const payload = { ...source, unnormalized_address: trimmedRaw };
     if (requestIdentifier !== undefined) {
       payload.request_identifier =
         requestIdentifier === null ? null : requestIdentifier;
@@ -16314,7 +16328,7 @@ function writeJSON(p, obj) {
       payload.source_http_request = deepClone(preparedSource);
     }
 
-    const allowed = new Set(RAW_SCHEMA_CORE_FIELDS);
+    const allowed = new Set(RAW_ADDRESS_ALLOWED_FIELDS);
     Object.keys(payload).forEach((key) => {
       if (!allowed.has(key) || payload[key] === undefined) {
         delete payload[key];
@@ -16322,6 +16336,8 @@ function writeJSON(p, obj) {
         payload[key] = payload[key].trim();
       }
     });
+
+    ensureAddressFieldSurface(payload, RAW_ADDRESS_TEMPLATE_FIELDS);
 
     fs.writeFileSync(normalizedPath || p, `${JSON.stringify(payload, null, 2)}\n`);
     return;
