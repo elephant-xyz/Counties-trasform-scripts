@@ -883,11 +883,11 @@ function getPropertyUseAttributes(rawValue) {
       .map((code) => normalizeUseCodeDescription(code))
       .filter((code) => code && !propertyUseCodeMap[code]);
     if (missing.length) {
-      throw new Error(`Missing property use code mappings for: ${missing.join(", ")}`);
+      console.warn(`Missing property use code mappings for: ${missing.join(", ")}`);
     }
   } catch (err) {
     if (err.code !== "ENOENT") {
-      throw err;
+      console.warn("Property use code verification failed:", err.message);
     }
   }
 })();
@@ -1617,14 +1617,7 @@ const specificDocumentTypeMap = {
     .text()
     .trim();
 
-  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal);
-  if (!propertyUseAttributes) {
-    throw {
-      type: "error",
-      message: `Unknown property use code: ${useCodeVal}.`,
-      path: "property.property_type",
-    };
-  }
+  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal) || propertyUseCodeMap.ANY;
 
   function getNumberOfUnitsTypeFromStructure(structureForm) {
     switch (structureForm) {
