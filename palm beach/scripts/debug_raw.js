@@ -875,13 +875,23 @@ function sanitizeAddressPayloadForWrite(payload) {
   const normalizedCoverage = hasCompleteNormalizedAddress(normalizedCandidate);
 
   if (trimmedUnnormalized.length && !normalizedCoverage) {
-    const minimalRaw = { unnormalized_address: trimmedUnnormalized };
+    const rawSeed = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...payload,
+      unnormalized_address: trimmedUnnormalized,
+    };
+
     if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
       const requestId = safeNullIfEmpty(payload.request_identifier);
-      minimalRaw.request_identifier =
-        requestId === undefined ? null : requestId;
+      rawSeed.request_identifier = requestId === undefined ? null : requestId;
     }
-    return minimalRaw;
+
+    const surfacedRaw =
+      ensureAddressOutputFieldPresence(rawSeed) ||
+      ensureRawAddressSchemaDefaults(rawSeed) ||
+      rawSeed;
+
+    return stripAddressRequestMetadata(surfacedRaw);
   }
 
   if (normalizedCoverage) {
@@ -903,15 +913,7 @@ function writeJSON(p, obj) {
     typeof obj === "object"
   ) {
     payload = sanitizeAddressPayloadForWrite(obj);
-    const rawOnlyPayload =
-      payload &&
-      typeof payload === "object" &&
-      typeof payload.unnormalized_address === "string" &&
-      !hasCompleteNormalizedAddress(payload) &&
-      Object.keys(payload).every((key) =>
-        ["unnormalized_address", "request_identifier"].includes(key),
-      );
-    if (payload && typeof payload === "object" && !rawOnlyPayload) {
+    if (payload && typeof payload === "object") {
       const completed = ensureAddressOutputFieldPresence(payload) || payload;
       if (completed && typeof completed === "object") {
         payload = completed;
