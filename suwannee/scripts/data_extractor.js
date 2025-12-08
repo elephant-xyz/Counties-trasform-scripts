@@ -1556,8 +1556,8 @@ function createGeometryClass(geometryInstances) {
       geometry.polygon = polygon;
     }
     writeJson(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJson(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
-        from: { "/": `./parcel.json` },
+    writeJson(path.join("data", `relationship_property_to_geometry_${geomIndex}.json`), {
+        from: { "/": `./property.json` },
         to: { "/": `./geometry_${geomIndex}.json` },
     });
     geomIndex++;
