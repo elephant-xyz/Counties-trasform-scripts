@@ -2401,8 +2401,8 @@ async function main() {
       first_name: o.first_name || "",
       last_name: o.last_name || "",
       middle_name: o.middle_name || null,
-      prefix_name: null,
-      suffix_name: null,
+      prefix_name: o.prefix_name || null,
+      suffix_name: o.suffix_name || null,
       us_citizenship_status: null,
       veteran_status: null,
     };
