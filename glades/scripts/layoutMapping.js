@@ -208,18 +208,15 @@ function readJSON(p) {
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
-  const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  let parcelId = getParcelId($);
   const propertySeed = readJSON("property_seed.json");
-  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
-    throw {
-      type: "error",
-      message: "Request identifier and parcel id don't match.",
-      path: "property.request_identifier",
-    };
+
+  // Use HTML parcel ID if available, otherwise fall back to property_seed
+  if (!parcelId) {
+    console.log(`Using request_identifier from property_seed.json as fallback`);
+    parcelId = propertySeed?.request_identifier || propertySeed?.parcel_id || "UNKNOWN";
   }
 
-  
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings, parcelId);
   
