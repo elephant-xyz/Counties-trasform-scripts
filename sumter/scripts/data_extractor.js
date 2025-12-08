@@ -2146,10 +2146,10 @@ function main() {
     ...appendSourceInfo(seed),
     unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
   };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-  
+
   // Create mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
+  let mailingAddressHasRelationships = false;
   if (owners) {
     const key = `property_${parcelId}`;
     const record = owners[key];
@@ -2161,6 +2161,7 @@ function main() {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
           if (pIdx) {
             relCounter++;
+            mailingAddressHasRelationships = true;
             writeJSON(
               path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
               {
@@ -2173,6 +2174,7 @@ function main() {
           const cIdx = findCompanyIndexByName(owner.name);
           if (cIdx) {
             relCounter++;
+            mailingAddressHasRelationships = true;
             writeJSON(
               path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
               {
@@ -2184,6 +2186,11 @@ function main() {
         }
       });
     }
+  }
+
+  // Only write mailing_address.json if we created relationships for it
+  if (mailingAddressHasRelationships) {
+    writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
   }  
 
 
