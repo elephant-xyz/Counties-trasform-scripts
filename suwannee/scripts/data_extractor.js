@@ -1694,22 +1694,27 @@ function main() {
           );
         }
       } else if (ownerFiles.personFiles.length > 0) {
-        writeJson(path.join(dataDir, "relationship_sales_person.json"), {
-          to: { "/": `./${ownerFiles.personFiles[0]}` },
-          from: { "/": "./sales_1.json" },
+        // Create relationships for ALL person files, not just the first one
+        ownerFiles.personFiles.forEach((personFile, index) => {
+          const suffix = ownerFiles.personFiles.length > 1 ? `_${index + 1}` : "";
+          writeJson(path.join(dataDir, `relationship_sales_person${suffix}.json`), {
+            to: { "/": `./${personFile}` },
+            from: { "/": "./sales_1.json" },
+          });
+          if (hasOwnerMailingAddress && index === 0) {
+            // Only create mailing address relationship for the first person
+            writeJson(
+              path.join(
+                "data",
+                `relationship_person_has_mailing_address.json`,
+              ),
+              {
+                from: { "/": `./${personFile}` },
+                to: { "/": `./mailing_address.json` },
+              },
+            );
+          }
         });
-        if (hasOwnerMailingAddress) {
-          writeJson(
-            path.join(
-              "data",
-              `relationship_person_has_mailing_address.json`,
-            ),
-            {
-              from: { "/": `./${ownerFiles.personFiles[0]}` },
-              to: { "/": `./mailing_address.json` },
-            },
-          );
-        }
       }
     }
 
