@@ -5273,6 +5273,228 @@ process.on("exit", () => {
   }
 });
 
+// Final schema guard: keep address on a single valid oneOf branch (prefer a
+// fully normalized surface only when the strict coverage is present; otherwise
+// emit the raw unnormalized variant with every required nullable field) and
+// force address relationships to explicit null placeholders so no URs are
+// generated here.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const pickFirstString = (fields) => {
+      for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const field of fields) {
+          const value = source[field];
+          if (typeof value === "string" && value.trim()) {
+            return value.trim();
+          }
+        }
+      }
+      return null;
+    };
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((src) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...src }),
+          )
+        : null;
+
+    const requestIdentifier = (() => {
+      for (const source of sources) {
+        if (
+          source &&
+          Object.prototype.hasOwnProperty.call(source, "request_identifier")
+        ) {
+          return source.request_identifier;
+        }
+        if (
+          source &&
+          Object.prototype.hasOwnProperty.call(source, "parcel_id")
+        ) {
+          return source.parcel_id;
+        }
+        if (
+          source &&
+          Object.prototype.hasOwnProperty.call(source, "parcel_identifier")
+        ) {
+          return source.parcel_identifier;
+        }
+      }
+      return undefined;
+    })();
+
+    const sourceHttpRequest = (() => {
+      for (const source of sources) {
+        if (
+          source &&
+          typeof source.source_http_request === "object" &&
+          source.source_http_request
+        ) {
+          return source.source_http_request;
+        }
+      }
+      return null;
+    })();
+
+    const rawValue = pickFirstString([
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+    ]);
+
+    let finalAddress = null;
+    if (
+      normalizedCandidate &&
+      hasStrictCountyNormalizedSchemaCoverage({ ...normalizedCandidate })
+    ) {
+      const normalizedAllowed = new Set([
+        ...NORMALIZED_ADDRESS_FIELDS,
+        "request_identifier",
+        "source_http_request",
+      ]);
+      finalAddress = {};
+      normalizedAllowed.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedCandidate, field)) {
+          return;
+        }
+        const value = normalizedCandidate[field];
+        if (value === undefined) return;
+        finalAddress[field] =
+          typeof value === "string" && value.trim() ? value.trim() : value;
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+      ) {
+        delete finalAddress.unnormalized_address;
+      }
+    }
+
+    if (!finalAddress && rawValue) {
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+      finalAddress = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        unnormalized_address: rawValue,
+        request_identifier:
+          requestIdentifier === undefined ? null : requestIdentifier,
+        source_http_request: preparedSource
+          ? deepClone(preparedSource)
+          : null,
+      };
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const isNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress }) &&
+        !Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address");
+
+      const allowedFields = new Set(
+        isNormalizedSurface
+          ? [...NORMALIZED_ADDRESS_FIELDS, "request_identifier", "source_http_request"]
+          : [...RAW_ADDRESS_OUTPUT_FIELDS, "request_identifier", "source_http_request"],
+      );
+
+      if (!isNormalizedSurface) {
+        allowedFields.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        });
+        finalAddress.unnormalized_address = hasMeaningfulAddressValue(
+          finalAddress.unnormalized_address,
+        )
+          ? String(finalAddress.unnormalized_address).trim()
+          : null;
+        if (
+          (finalAddress.latitude == null) !== (finalAddress.longitude == null)
+        ) {
+          finalAddress.latitude = null;
+          finalAddress.longitude = null;
+        }
+      }
+
+      Object.keys(finalAddress).forEach((key) => {
+        if (!allowedFields.has(key) || finalAddress[key] === undefined) {
+          delete finalAddress[key];
+          return;
+        }
+        if (typeof finalAddress[key] === "string") {
+          finalAddress[key] = finalAddress[key].trim();
+        }
+      });
+
+      const hasRaw =
+        !isNormalizedSurface && hasMeaningfulAddressValue(finalAddress.unnormalized_address);
+
+      if (isNormalizedSurface || hasRaw) {
+        nativeWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(finalAddress, null, 2)}\n`,
+        );
+      } else {
+        removeFileIfExists(addressPath);
+      }
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? { ...propertyPayload.relationships }
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    nativeWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const placeholderBases = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    placeholderBases.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          ensureDir(dirPath);
+          nativeWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final county address/relationship guard failed:", error);
+  }
+});
+
 // Definitive county clamp: pick exactly one address oneOf branch (prefer a
 // fully normalized surface only when the strict schema coverage exists; otherwise
 // emit the raw unnormalized payload with every required nullable field present)
