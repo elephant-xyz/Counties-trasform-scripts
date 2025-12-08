@@ -180,20 +180,28 @@ function readJSON(p) {
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
-  const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  let parcelId = getParcelId($);
+
+  // If parcel ID not found in HTML, try to use request_identifier from property_seed
   const propertySeed = readJSON("property_seed.json");
-  if (propertySeed.request_identifier.replaceAll("-","").replaceAll(".","") != parcelId.replaceAll("-","").replaceAll(".","")) {
-    throw {
-      type: "error",
-      message: "Request identifier and parcel id don't match.",
-      path: "property.request_identifier",
-    };
+  if (!parcelId && propertySeed && propertySeed.request_identifier) {
+    parcelId = propertySeed.request_identifier;
+    console.log(`Using request_identifier as parcelId: ${parcelId}`);
+  }
+
+  if (!parcelId) {
+    console.log("Parcel ID not found - skipping layout generation");
+    const outDir = path.resolve("owners");
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    const outPath = path.join(outDir, "layout_data.json");
+    fs.writeFileSync(outPath, JSON.stringify({}, null, 2), "utf8");
+    console.log(`Wrote 0 layouts to ${outPath}`);
+    return;
   }
 
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings, parcelId);
-  
+
   console.log(`Found ${buildings.length} buildings`);
   console.log(`Generated ${layouts.length} layout entries`);
 

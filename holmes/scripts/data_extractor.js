@@ -1135,49 +1135,6 @@ function textTrim(s) {
   return (s || "").replace(/\s+/g, " ").trim();
 }
 
-function cleanRawName(raw) {
-  let s = (raw || "").replace(/\s+/g, " ").trim();
-  if (!s) return "";
-  const noisePatterns = [
-    /\bET\s*AL\b/gi,
-    /\bETAL\b/gi,
-    /\bET\s*UX\b/gi,
-    /\bET\s*VIR\b/gi,
-    /\bET\s+UXOR\b/gi,
-    /\bTRUSTEE[S]?\b/gi,
-    /\bTTEE[S]?\b/gi,
-    /\bU\/A\b/gi,
-    /\bU\/D\/T\b/gi,
-    /\bAKA\b/gi,
-    /\bA\/K\/A\b/gi,
-    /\bFBO\b/gi,
-    /\bC\/O\b/gi,
-    /\b%\s*INTEREST\b/gi,
-    /\b\d{1,3}%\b/gi,
-    /\b\d{1,3}%\s*INTEREST\b/gi,
-  ];
-  noisePatterns.forEach((re) => {
-    s = s.replace(re, " ");
-  });
-  s = s.replace(/[(),]/g, " ").replace(/\s+/g, " ").trim();
-  s = s
-    .replace(/^(&|and)\s+/i, "")
-    .replace(/\s+(&|and)$/i, "")
-    .trim();
-  // If a trailing bare number remains right after a company suffix, drop it
-  const companySuffix =
-    "(?:LLC|L\\.L\\.C|INC|CORP|CO|COMPANY|LTD|TRUST|LP|LLP|PLC|PLLC)";
-  const trailingNumAfterCo = new RegExp(
-    `^(.*?\\b${companySuffix}\\b)\\s+\\d{1,3}$`,
-    "i",
-  );
-  const m = s.match(trailingNumAfterCo);
-  if (m) {
-    s = m[1].trim();
-  }
-  return s;
-}
-
 function writeJSON(p, obj) {
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
@@ -1890,7 +1847,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
     const currentOwners = ownersByDate["current"] || [];
-
+    
     currentOwners.forEach((owner) => {
       // Check if this owner already has a relationship with sales_1
       const alreadyLinked = ownersOnFirstSale.some(existingOwner => {
@@ -1902,7 +1859,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
         return false;
       });
-
+      
       if (!alreadyLinked) {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
@@ -1938,72 +1895,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       }
     });
   }
-
-  // Handle companies/persons in unknown_date_X entries (typically grantors/sellers)
-  // Link them to the sales where they appear as grantors
-  Object.keys(ownersByDate).forEach(dateKey => {
-    if (/^unknown_date_\d+$/.test(dateKey)) {
-      const unknownOwners = ownersByDate[dateKey] || [];
-      unknownOwners.forEach(owner => {
-        // Find which sale this owner appears in as grantor
-        sales.forEach((rec, idx) => {
-          const grantor = (rec.grantor || "").trim();
-          if (!grantor) return;
-
-          let isMatch = false;
-          if (owner.type === "company") {
-            const normalizedGrantor = cleanRawName(grantor);
-            const normalizedOwnerName = (owner.name || "").trim();
-            if (normalizedGrantor.toUpperCase() === normalizedOwnerName.toUpperCase()) {
-              isMatch = true;
-            }
-          } else if (owner.type === "person") {
-            // Check if grantor contains this person's name
-            const grantorUpper = grantor.toUpperCase();
-            const firstUpper = (owner.first_name || "").toUpperCase();
-            const lastUpper = (owner.last_name || "").toUpperCase();
-            if (firstUpper && lastUpper && grantorUpper.includes(firstUpper) && grantorUpper.includes(lastUpper)) {
-              isMatch = true;
-            }
-          }
-
-          if (isMatch) {
-            if (owner.type === "company") {
-              const cIdx = findCompanyIndexByName(owner.name);
-              if (cIdx) {
-                relCompanyCounter++;
-                writeJSON(
-                  path.join(
-                    "data",
-                    `relationship_sales_company_${relCompanyCounter}.json`,
-                  ),
-                  {
-                    from: { "/": `./sales_${idx + 1}.json` },
-                    to: { "/": `./company_${cIdx}.json` }
-                  },
-                );
-              }
-            } else if (owner.type === "person") {
-              const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-              if (pIdx) {
-                relPersonCounter++;
-                writeJSON(
-                  path.join(
-                    "data",
-                    `relationship_sales_person_${relPersonCounter}.json`,
-                  ),
-                  {
-                    from: { "/": `./sales_${idx + 1}.json` },
-                    to: { "/": `./person_${pIdx}.json` }
-                  },
-                );
-              }
-            }
-          }
-        });
-      });
-    }
-  });
 }
 
 function writeTaxes($, parcelId) {
@@ -2674,7 +2565,7 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
   // const plus_four_postal_code = plus4 || null;
 
   // Per evaluator expectation, set county_name from input jurisdiction
-  const inputCounty = (unnorm && unnorm.county_jurisdiction ? unnorm.county_jurisdiction : "").trim();
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
   const county_name = inputCounty || "Holmes" || null;
 
   const address = {
@@ -2690,8 +2581,8 @@ function attemptWriteAddressAndGeometry(unnorm, secTwpRng, $) {
   //Geometry creation
   const geometry = {
     ...appendSourceInfo(seed),
-    latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-    longitude: unnorm && unnorm.longitude ? unnorm.longitude : null
+    latitude: unnorm.latitude || null,
+    longitude: unnorm.longitude || null
   };
   writeJSON(path.join("data", "geometry.json"), geometry);
   
@@ -2748,7 +2639,52 @@ function main() {
   // console.log(secTwpRng)
   attemptWriteAddressAndGeometry(unnormalized, secTwpRng, $);
 
-  // Mailing address is not generated as it's not a valid class in the Elephant schema
+  //Mailing Address
+  const mailingAddressRaw = extractMailingAddress($)
+  console.log("MAILING--",mailingAddressRaw);
+  const mailingAddressOutput = {
+    ...appendSourceInfo(seed),
+    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+  };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+
+  // Create mailing address relationships with current owners
+  const owners = readJSON(path.join("owners", "owner_data.json"));
+  if (owners) {
+    const key = `property_${parcelId}`;
+    const record = owners[key];
+    if (record && record.owners_by_date && record.owners_by_date['current']) {
+      const currentOwners = record.owners_by_date['current'];
+      let relCounter = 0;
+      currentOwners.forEach((owner) => {
+        if (owner.type === "person") {
+          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+          if (pIdx) {
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./person_${pIdx}.json` },
+                to: { "/": "./mailing_address.json" },
+              }
+            );
+          }
+        } else if (owner.type === "company") {
+          const cIdx = findCompanyIndexByName(owner.name);
+          if (cIdx) {
+            relCounter++;
+            writeJSON(
+              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
+              {
+                from: { "/": `./company_${cIdx}.json` },
+                to: { "/": "./mailing_address.json" }
+              }
+            );
+          }
+        }
+      });
+    }
+  }
 
 
 }
