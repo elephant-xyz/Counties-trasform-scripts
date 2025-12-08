@@ -4978,11 +4978,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const allowedRaw = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const allowedRaw = new Set(RAW_ADDRESS_ALLOWED_FIELDS);
       const allowedNormalized = new Set([
         ...NORMALIZED_ADDRESS_FIELDS,
         "request_identifier",
@@ -4994,6 +4990,14 @@ process.on("exit", () => {
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress }) &&
         !Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address");
       const allowlist = isNormalizedSurface ? allowedNormalized : allowedRaw;
+
+      if (!isNormalizedSurface) {
+        RAW_ADDRESS_REQUIRED_NULLABLE_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        });
+      }
 
       Object.keys(finalAddress).forEach((key) => {
         if (!allowlist.has(key) || finalAddress[key] === undefined) {
