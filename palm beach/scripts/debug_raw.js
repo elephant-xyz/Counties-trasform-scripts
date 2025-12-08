@@ -502,21 +502,10 @@ function finalizeAddressForSchema(addressPath, options = {}) {
     return;
   }
 
+  // Emit a lean raw variant so the address oneOf selects the unnormalized
+  // branch. Avoid mixing in partial normalized fields that would force the
+  // normalized branch and trigger missing-property validation errors.
   const rawOutput = { unnormalized_address: trimmedRaw };
-
-  const latitude = parseCoordinate(payload.latitude);
-  const longitude = parseCoordinate(payload.longitude);
-  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    rawOutput.latitude = latitude;
-    rawOutput.longitude = longitude;
-  }
-
-  ["postal_code", "plus_four_postal_code", "city_name", "state_code", "county_name", "country_code"].forEach(
-    (field) => {
-      const value = resolveTrimmedString(payload[field]);
-      if (value) rawOutput[field] = value;
-    },
-  );
 
   const cleanedRequestId = resolveTrimmedString(requestIdentifier);
   if (cleanedRequestId !== null) {
