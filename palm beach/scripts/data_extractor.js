@@ -95,6 +95,10 @@ let FINAL_ADDRESS_WRITE_LOCKED = false;
 let ENFORCE_UNNORMALIZED_ONLY_ADDRESS = false;
 let ADDRESS_ONE_OF_FINALIZED = false;
 
+// Route all writes through the patched writer so address files always pick the
+// correct oneOf surface and carry the required nullable fields.
+fs.writeFileSync = nativeWriteFileSync;
+
 function allowNormalizedAddressOutput() {
   return (
     !FORCE_RAW_ONLY_ADDRESS_OUTPUT &&
@@ -99195,26 +99199,27 @@ process.on("exit", () => {
             ? prepareSourceHttpRequest(sourceHttpRequest)
             : sourceHttpRequest;
 
-        // Build a lean raw payload so we stay on the unnormalized oneOf branch
-        // when we only have a raw string from the source.
-        const rawPayload = { unnormalized_address: trimmedRaw };
+        // Build a schema-shaped raw payload (all required nullable fields
+        // present) so the unnormalized oneOf branch validates.
+        const rawPayload = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          unnormalized_address: trimmedRaw,
+        };
         if (requestIdentifier !== undefined) {
           rawPayload.request_identifier =
             requestIdentifier === null ? null : requestIdentifier;
         }
-        if (preparedSource) {
-          rawPayload.source_http_request = deepClone(preparedSource);
+        if (preparedSource !== undefined) {
+          rawPayload.source_http_request = preparedSource
+            ? deepClone(preparedSource)
+            : null;
         }
         finalAddress = rawPayload;
       }
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const allowedRaw = new Set([
-        "unnormalized_address",
-        "request_identifier",
-        "source_http_request",
-      ]);
+      const allowedRaw = new Set(RAW_ADDRESS_TEMPLATE_FIELDS);
       const allowedNormalized = new Set([
         ...NORMALIZED_ADDRESS_FIELDS,
         "request_identifier",
