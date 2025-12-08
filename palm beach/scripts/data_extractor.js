@@ -1008,7 +1008,7 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      nativeWriteFileSync.call(
+      baseWriteFileSync.call(
         fs,
         addressPath,
         `${JSON.stringify(finalAddress, null, 2)}\n`,
@@ -1025,7 +1025,7 @@ process.on("exit", () => {
     propertyPayload.relationships.property_has_address = null;
     propertyPayload.relationships.address_has_fact_sheet = null;
 
-    nativeWriteFileSync.call(
+    baseWriteFileSync.call(
       fs,
       propertyPath,
       `${JSON.stringify(propertyPayload, null, 2)}\n`,
@@ -5284,11 +5284,76 @@ process.on("exit", () => {
         }
       });
 
-      const hasRawValue = hasMeaningfulAddressValue(finalAddress.unnormalized_address);
-      if (!isNormalizedSurface && !hasRawValue) {
-        removeFileIfExists(addressPath);
-      } else if (Object.keys(finalAddress).length) {
-        nativeWriteFileSync.call(
+      if (!isNormalizedSurface) {
+        const hasRawValue = hasMeaningfulAddressValue(
+          finalAddress.unnormalized_address,
+        );
+        if (!hasRawValue) {
+          finalAddress = null;
+        } else {
+
+          // Keep the raw branch lean and clearly on the unnormalized oneOf
+          // variant: carry metadata, drop partial structured fields, but still
+          // surface the required normalized keys as explicit nulls so validation
+          // sees them present.
+          const rawOutput = {
+            unnormalized_address: finalAddress.unnormalized_address,
+          };
+
+          if (Object.prototype.hasOwnProperty.call(finalAddress, "request_identifier")) {
+            rawOutput.request_identifier =
+              finalAddress.request_identifier === undefined
+                ? null
+                : finalAddress.request_identifier;
+          }
+          if (Object.prototype.hasOwnProperty.call(finalAddress, "source_http_request")) {
+            rawOutput.source_http_request =
+              finalAddress.source_http_request === undefined
+                ? null
+                : finalAddress.source_http_request;
+          }
+
+          const localityCarryFields = [
+            "city_name",
+            "state_code",
+            "postal_code",
+            "plus_four_postal_code",
+            "county_name",
+            "country_code",
+          ];
+          localityCarryFields.forEach((field) => {
+            if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) return;
+            const value = finalAddress[field];
+            if (hasMeaningfulAddressValue(value)) {
+              rawOutput[field] = typeof value === "string" ? value.trim() : value;
+            }
+          });
+
+          COUNTY_REQUIRED_NORMALIZED_FIELDS.forEach((field) => {
+            if (field === "unnormalized_address") return;
+            if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
+              rawOutput[field] = null;
+              return;
+            }
+            if (rawOutput[field] === undefined) {
+              rawOutput[field] = null;
+              return;
+            }
+            if (typeof rawOutput[field] === "string" && !rawOutput[field].trim().length) {
+              rawOutput[field] = null;
+            }
+          });
+
+          finalAddress = rawOutput;
+        }
+      }
+
+      if (
+        finalAddress &&
+        typeof finalAddress === "object" &&
+        Object.keys(finalAddress).length
+      ) {
+        baseWriteFileSync.call(
           fs,
           addressPath,
           `${JSON.stringify(finalAddress, null, 2)}\n`,
@@ -5307,7 +5372,7 @@ process.on("exit", () => {
         : {};
     propertyPayload.relationships.property_has_address = null;
     propertyPayload.relationships.address_has_fact_sheet = null;
-    nativeWriteFileSync.call(
+    baseWriteFileSync.call(
       fs,
       propertyPath,
       `${JSON.stringify(propertyPayload, null, 2)}\n`,
@@ -5323,7 +5388,7 @@ process.on("exit", () => {
       [dataDir, relationshipsDir].forEach((dirPath) => {
         const target = path.join(dirPath, `${base}.json`);
         try {
-          nativeWriteFileSync.call(fs, target, "null\n");
+          baseWriteFileSync.call(fs, target, "null\n");
         } catch {
           removeFileIfExists(target);
         }
@@ -5331,6 +5396,97 @@ process.on("exit", () => {
     });
   } catch (error) {
     console.error("Terminal unnormalized address clamp failed:", error);
+  }
+});
+
+// Final override: drop all exit listeners and emit a single raw address payload
+// with required nullable fields plus null relationship placeholders.
+process.removeAllListeners("exit");
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter(
+      (source) => source && typeof source === "object" && !Array.isArray(source),
+    );
+
+    const rawValue =
+      resolveRawAddressStringFromSources(sources) ||
+      resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+      resolveFirstMeaningfulAddressField("full_address", sources) ||
+      resolveFirstMeaningfulAddressField("site_address", sources) ||
+      resolveFirstMeaningfulAddressField("address", sources) ||
+      null;
+
+    const requestIdentifier = resolveRequestIdentifierCandidate(
+      ...sources.map((source) => source && source.request_identifier),
+      ...sources.map((source) => source && source.parcel_id),
+      ...sources.map((source) => source && source.parcel_identifier),
+    );
+    const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+      ...sources.map((source) => source && source.source_http_request),
+    );
+
+    const rawPayload =
+      buildFinalRawAddressPayload(rawValue, {
+        requestIdentifier,
+        sourceHttpRequest,
+        fieldSources: sources,
+      }) || null;
+
+    if (rawPayload) {
+      baseWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(rawPayload, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    if (
+      !propertyPayload.relationships ||
+      typeof propertyPayload.relationships !== "object"
+    ) {
+      propertyPayload.relationships = {};
+    }
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    baseWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const relationshipFiles = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      relationshipFiles.forEach((baseName) => {
+        const targetPath = path.join(dirPath, `${baseName}.json`);
+        try {
+          baseWriteFileSync.call(fs, targetPath, "null\n");
+        } catch {
+          removeFileIfExists(targetPath);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Final county address override failed:", error);
   }
 });
 
@@ -79575,42 +79731,22 @@ function enforceMinimalRawAddressFinalState() {
       : null;
 
     if (trimmedRaw) {
-      const baseline =
-        sourcePool.find(
-          (source) =>
-            source &&
-            typeof source === "object" &&
-            !Array.isArray(source) &&
-            hasMeaningfulAddressValue(source.unnormalized_address),
-        ) ||
-        sourcePool[0] ||
-        {};
-      let finalAddress = {
-        ...baseline,
-        unnormalized_address: trimmedRaw,
-      };
-      if (requestIdentifier !== undefined) {
-        finalAddress.request_identifier =
-          requestIdentifier === null ? null : requestIdentifier;
+      const finalAddress =
+        buildFinalRawAddressPayload(trimmedRaw, {
+          requestIdentifier,
+          sourceHttpRequest: preparedRequest,
+          fieldSources: sourcePool,
+        }) || null;
+
+      if (finalAddress) {
+        baseWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(finalAddress, null, 2)}\n`,
+        );
+      } else {
+        removeFileIfExists(addressPath);
       }
-      if (preparedRequest) {
-        finalAddress.source_http_request = deepClone(preparedRequest);
-      }
-
-      finalAddress =
-        ensureRawAddressRequiredCoverage(finalAddress, trimmedRaw) || finalAddress;
-
-      Object.keys(finalAddress).forEach((key) => {
-        if (!RAW_PREFERRED_FIELD_WHITELIST.includes(key)) {
-          delete finalAddress[key];
-        }
-      });
-
-      nativeWriteFileSync.call(
-        fs,
-        addressPath,
-        `${JSON.stringify(finalAddress, null, 2)}\n`,
-      );
     } else {
       removeFileIfExists(addressPath);
     }
@@ -79624,7 +79760,7 @@ function enforceMinimalRawAddressFinalState() {
     }
     propertyPayload.relationships.property_has_address = null;
     propertyPayload.relationships.address_has_fact_sheet = null;
-    nativeWriteFileSync.call(
+    baseWriteFileSync.call(
       fs,
       propertyPath,
       `${JSON.stringify(propertyPayload, null, 2)}\n`,
@@ -79640,7 +79776,7 @@ function enforceMinimalRawAddressFinalState() {
       relationshipBases.forEach((base) => {
         const targetPath = path.join(dirPath, `${base}.json`);
         try {
-          nativeWriteFileSync.call(fs, targetPath, "null\n");
+          baseWriteFileSync.call(fs, targetPath, "null\n");
         } catch {
           removeFileIfExists(targetPath);
         }
@@ -96515,6 +96651,77 @@ process.on("exit", () => {
 // Final canonicalizer: emit a schema-friendly address payload (normalized only
 // when fully covered, otherwise raw with required fields nulled) and enforce
 // null relationship placeholders so UR hydration can populate them later.
+
+function buildFinalRawAddressPayload(rawValue, options = {}) {
+  const trimmed =
+    typeof rawValue === "string" ? rawValue.trim() : rawValue || null;
+  if (!trimmed) return null;
+
+  const {
+    requestIdentifier = undefined,
+    sourceHttpRequest = undefined,
+    fieldSources = [],
+  } = options || {};
+
+  const payload = {
+    unnormalized_address: trimmed,
+  };
+
+  if (requestIdentifier !== undefined) {
+    payload.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
+  }
+
+  if (sourceHttpRequest !== undefined) {
+    const prepared = sourceHttpRequest
+      ? prepareSourceHttpRequest(sourceHttpRequest)
+      : null;
+    payload.source_http_request = prepared ? deepClone(prepared) : null;
+  }
+
+  const localityFields = [
+    "city_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "county_name",
+    "country_code",
+  ];
+  const localitySources = Array.isArray(fieldSources)
+    ? fieldSources.filter((src) => src && typeof src === "object")
+    : [];
+  localityFields.forEach((field) => {
+    for (const source of localitySources) {
+      if (
+        source &&
+        Object.prototype.hasOwnProperty.call(source, field) &&
+        hasMeaningfulAddressValue(source[field])
+      ) {
+        const value = source[field];
+        payload[field] = typeof value === "string" ? value.trim() : value;
+        break;
+      }
+    }
+  });
+
+  COUNTY_REQUIRED_NORMALIZED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") return;
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      payload[field] = null;
+      return;
+    }
+    if (payload[field] === undefined) {
+      payload[field] = null;
+      return;
+    }
+    if (typeof payload[field] === "string" && !payload[field].trim().length) {
+      payload[field] = null;
+    }
+  });
+
+  return payload;
+}
+
 function canonicalizeAddressAndRelationships() {
   try {
     const dataDir = path.join("data");
@@ -96574,35 +96781,15 @@ function canonicalizeAddressAndRelationships() {
         const sourceHttpRequest = resolveSourceHttpRequestCandidate(
           ...addressSources.map((source) => source && source.source_http_request),
         );
-        const preparedRequest = sourceHttpRequest
-          ? prepareSourceHttpRequest(sourceHttpRequest)
-          : null;
 
-        const baselineSource =
-          addressSources.find(
-            (source) =>
-              source &&
-              typeof source === "object" &&
-              !Array.isArray(source) &&
-              hasMeaningfulAddressValue(source.unnormalized_address),
-          ) ||
-          addressSources[0] ||
-          {};
-        const rawAddress = {
-          ...baselineSource,
-          unnormalized_address: trimmedRaw,
-        };
-        if (requestIdentifier !== undefined) {
-          rawAddress.request_identifier =
-            requestIdentifier === null ? null : requestIdentifier;
-        }
-        if (preparedRequest) {
-          rawAddress.source_http_request = deepClone(preparedRequest);
-        }
-        const hydratedRaw =
-          ensureRawAddressRequiredCoverage(rawAddress, trimmedRaw) || rawAddress;
-        stripAddressMetaFields(hydratedRaw);
-        finalAddress = hydratedRaw;
+        const rawPayload =
+          buildFinalRawAddressPayload(trimmedRaw, {
+            requestIdentifier,
+            sourceHttpRequest,
+            fieldSources: addressSources,
+          }) || null;
+
+        finalAddress = rawPayload ? stripAddressMetaFields(rawPayload) : null;
       }
     }
 
@@ -96650,7 +96837,7 @@ function canonicalizeAddressAndRelationships() {
       relationshipFiles.forEach((baseName) => {
         const targetPath = path.join(dirPath, `${baseName}.json`);
         try {
-          nativeWriteFileSync.call(fs, targetPath, "null\n");
+          baseWriteFileSync.call(fs, targetPath, "null\n");
         } catch {
           removeFileIfExists(targetPath);
         }
@@ -96756,15 +96943,12 @@ process.on("exit", () => {
       const trimmedRaw =
         typeof rawValue === "string" ? rawValue.trim() : rawValue;
       if (trimmedRaw) {
-        const baseRaw = {
-          unnormalized_address: trimmedRaw,
-          request_identifier:
-            requestIdentifier === undefined ? null : requestIdentifier,
-          source_http_request: preparedRequest ? deepClone(preparedRequest) : null,
-        };
-        const snapshot =
-          buildTerminalRawSubmissionSnapshot(baseRaw) || { ...baseRaw };
-        finalAddress = stripAddressMetaFields(snapshot);
+        finalAddress =
+          buildFinalRawAddressPayload(trimmedRaw, {
+            requestIdentifier,
+            sourceHttpRequest: preparedRequest,
+            fieldSources: candidateSources,
+          }) || null;
       }
     }
 
@@ -96781,35 +96965,26 @@ process.on("exit", () => {
           delete finalAddress.unnormalized_address;
         }
       } else {
-        // Keep the raw branch lean so it matches the unnormalized oneOf surface.
-        const rawOnly = {
-          unnormalized_address: finalAddress.unnormalized_address,
-        };
-
-        if (
-          Object.prototype.hasOwnProperty.call(finalAddress, "request_identifier")
-        ) {
-          rawOnly.request_identifier = finalAddress.request_identifier;
-        }
-
-        if (
-          Object.prototype.hasOwnProperty.call(finalAddress, "source_http_request")
-        ) {
-          rawOnly.source_http_request = deepClone(
-            finalAddress.source_http_request,
-          );
-        }
-
-        Object.keys(rawOnly).forEach((key) => {
-          if (rawOnly[key] === undefined) {
-            delete rawOnly[key];
+        COUNTY_REQUIRED_NORMALIZED_FIELDS.forEach((field) => {
+          if (field === "unnormalized_address") return;
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+            return;
+          }
+          if (finalAddress[field] === undefined) {
+            finalAddress[field] = null;
+            return;
+          }
+          if (
+            typeof finalAddress[field] === "string" &&
+            !finalAddress[field].trim().length
+          ) {
+            finalAddress[field] = null;
           }
         });
-
-        finalAddress = rawOnly;
       }
 
-      nativeWriteFileSync.call(
+      baseWriteFileSync.call(
         fs,
         addressPath,
         `${JSON.stringify(finalAddress, null, 2)}\n`,
@@ -96845,13 +97020,13 @@ process.on("exit", () => {
       removeFileIfExists(path.join(dataDir, `${base}.json`));
       removeFileIfExists(path.join(relationshipsDir, `${base}.json`));
       try {
-        nativeWriteFileSync.call(fs, path.join(dataDir, `${base}.json`), "null\n");
+        baseWriteFileSync.call(fs, path.join(dataDir, `${base}.json`), "null\n");
       } catch {
         // If we cannot persist the placeholder, ensure nothing stale remains.
         removeFileIfExists(path.join(dataDir, `${base}.json`));
       }
       try {
-        nativeWriteFileSync.call(
+        baseWriteFileSync.call(
           fs,
           path.join(relationshipsDir, `${base}.json`),
           "null\n",
@@ -100457,11 +100632,71 @@ process.on("exit", () => {
         }
       });
 
-      const hasRawValue = hasMeaningfulAddressValue(finalAddress.unnormalized_address);
-      if (!isNormalizedSurface && !hasRawValue) {
-        removeFileIfExists(addressPath);
-      } else if (Object.keys(finalAddress).length) {
-        nativeWriteFileSync.call(
+      if (!isNormalizedSurface) {
+        const hasRawValue = hasMeaningfulAddressValue(
+          finalAddress.unnormalized_address,
+        );
+        if (!hasRawValue) {
+          finalAddress = null;
+        } else {
+          const rawOutput = {
+            unnormalized_address: finalAddress.unnormalized_address,
+          };
+
+          if (Object.prototype.hasOwnProperty.call(finalAddress, "request_identifier")) {
+            rawOutput.request_identifier =
+              finalAddress.request_identifier === undefined
+                ? null
+                : finalAddress.request_identifier;
+          }
+          if (Object.prototype.hasOwnProperty.call(finalAddress, "source_http_request")) {
+            rawOutput.source_http_request =
+              finalAddress.source_http_request === undefined
+                ? null
+                : finalAddress.source_http_request;
+          }
+
+          const localityCarryFields = [
+            "city_name",
+            "state_code",
+            "postal_code",
+            "plus_four_postal_code",
+            "county_name",
+            "country_code",
+          ];
+          localityCarryFields.forEach((field) => {
+            if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) return;
+            const value = finalAddress[field];
+            if (hasMeaningfulAddressValue(value)) {
+              rawOutput[field] = typeof value === "string" ? value.trim() : value;
+            }
+          });
+
+          COUNTY_REQUIRED_NORMALIZED_FIELDS.forEach((field) => {
+            if (field === "unnormalized_address") return;
+            if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
+              rawOutput[field] = null;
+              return;
+            }
+            if (rawOutput[field] === undefined) {
+              rawOutput[field] = null;
+              return;
+            }
+            if (typeof rawOutput[field] === "string" && !rawOutput[field].trim().length) {
+              rawOutput[field] = null;
+            }
+          });
+
+          finalAddress = rawOutput;
+        }
+      }
+
+      if (
+        finalAddress &&
+        typeof finalAddress === "object" &&
+        Object.keys(finalAddress).length
+      ) {
+        baseWriteFileSync.call(
           fs,
           addressPath,
           `${JSON.stringify(finalAddress, null, 2)}\n`,
@@ -100480,7 +100715,7 @@ process.on("exit", () => {
         : {};
     propertyPayload.relationships.property_has_address = null;
     propertyPayload.relationships.address_has_fact_sheet = null;
-    nativeWriteFileSync.call(
+    baseWriteFileSync.call(
       fs,
       propertyPath,
       `${JSON.stringify(propertyPayload, null, 2)}\n`,
@@ -100496,7 +100731,7 @@ process.on("exit", () => {
       [dataDir, relationshipsDir].forEach((dirPath) => {
         const target = path.join(dirPath, `${base}.json`);
         try {
-          nativeWriteFileSync.call(fs, target, "null\n");
+          baseWriteFileSync.call(fs, target, "null\n");
         } catch {
           removeFileIfExists(target);
         }
