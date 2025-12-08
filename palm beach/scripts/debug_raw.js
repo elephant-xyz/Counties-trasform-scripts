@@ -8470,31 +8470,68 @@ process.on("exit", () => {
     }
 
     if (finalAddress && typeof finalAddress === "object") {
-      const normalizedSurface = hasNormalizedCountyCoverage({ ...finalAddress });
-      if (!normalizedSurface) {
-        const rawAllow = new Set([
-          "unnormalized_address",
+      const normalizedSurface =
+        typeof hasNormalizedCountyCoverage === "function" &&
+        hasNormalizedCountyCoverage({ ...finalAddress });
+
+      if (normalizedSurface) {
+        const allowedNormalized = new Set([
+          ...NORMALIZED_ADDRESS_FIELDS,
           "request_identifier",
           "source_http_request",
         ]);
-        Object.keys(finalAddress).forEach((key) => {
-          if (!rawAllow.has(key)) {
-            delete finalAddress[key];
+        const normalizedPayload = {};
+        allowedNormalized.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            return;
           }
+          let value = finalAddress[field];
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            value = Number.isFinite(numeric) ? numeric : null;
+          } else if (typeof value === "string") {
+            value = value.trim() || null;
+          } else if (value === undefined) {
+            value = null;
+          }
+          normalizedPayload[field] = value;
         });
         if (
-          typeof finalAddress.unnormalized_address === "string" &&
-          finalAddress.unnormalized_address.trim()
+          Object.prototype.hasOwnProperty.call(normalizedPayload, "unnormalized_address")
         ) {
-          finalAddress.unnormalized_address =
-            finalAddress.unnormalized_address.trim();
+          delete normalizedPayload.unnormalized_address;
+        }
+        originalWriteFileSync.call(
+          fs,
+          addressPath,
+          `${JSON.stringify(normalizedPayload, null, 2)}\n`,
+        );
+      } else {
+        const hydratedRaw =
+          ensureRawAddressRequiredCoverage(
+            { ...finalAddress },
+            finalAddress.unnormalized_address,
+          ) ||
+          composeMinimalRawAddress(finalAddress);
+        const hasRawValue =
+          hydratedRaw &&
+          typeof hydratedRaw.unnormalized_address === "string" &&
+          hydratedRaw.unnormalized_address.trim().length;
+
+        if (!hydratedRaw || !hasRawValue) {
+          removeFileIfExists(addressPath);
+        } else {
+          const stabilizedRaw =
+            enforceRawAddressSchemaDefaults(hydratedRaw) || hydratedRaw;
+          const prunedRaw =
+            enforceRawVariantAllowedFields(stabilizedRaw) || stabilizedRaw;
+          originalWriteFileSync.call(
+            fs,
+            addressPath,
+            `${JSON.stringify(prunedRaw, null, 2)}\n`,
+          );
         }
       }
-      originalWriteFileSync.call(
-        fs,
-        addressPath,
-        `${JSON.stringify(finalAddress, null, 2)}\n`,
-      );
     } else {
       removeFileIfExists(addressPath);
     }
