@@ -3,7 +3,7 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Read input HTML
-const html = fs.readFileSync(path.resolve("input", "20451.html"), "utf8");
+const html = fs.readFileSync(path.resolve("input.html"), "utf8");
 const $ = cheerio.load(html);
 
 // Helpers
@@ -96,7 +96,7 @@ function looksLikeCompany(name) {
 }
 
 function splitTokens(raw) {
-  return normSpace(raw).split(/\s+/).filter((w) => w && /[A-Za-z]/.test(w));
+  return normSpace(raw).split(/\s+/).filter(Boolean);
 }
 
 function parsePersonSingle(raw) {

@@ -78,7 +78,7 @@ function mapUtilities($) {
 }
 
 function main() {
-  const inputPath = path.join(process.cwd(), "input", "20451.html");
+  const inputPath = path.join(process.cwd(), "input.html");
   const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
 

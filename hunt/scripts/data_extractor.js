@@ -104,8 +104,8 @@ function parsePersonNames(nameStr) {
       // Check if this is ALL CAPS format (CAD style)
       const isAllCaps = cleaned.replace(/&/g, " ").trim() === cleaned.replace(/&/g, " ").trim().toUpperCase();
 
-      const part1Words = parts[0].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0 && /[A-Za-z]/.test(w));
-      const part2Words = parts[1].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0 && /[A-Za-z]/.test(w));
+      const part1Words = parts[0].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
+      const part2Words = parts[1].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
 
       // Heuristic: If CAD format (ALL CAPS) and first part has 2+ words and second part has 1+ word
       // Then assume shared last name: "LASTNAME FIRSTNAME1 & FIRSTNAME2" or "LASTNAME FIRSTNAME1 MIDDLEINITIAL & FIRSTNAME2"
@@ -180,7 +180,7 @@ function parsePersonNames(nameStr) {
   // Helper function to parse a single person name with smart format detection
   function parseSinglePersonName(nameStr) {
     let cleaned = nameStr.replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim();
-    const words = cleaned.split(" ").filter(w => w.length > 0 && /[A-Za-z]/.test(w));
+    const words = cleaned.split(" ").filter(w => w.length > 0);
 
     if (words.length === 0) return null;
 
@@ -291,7 +291,7 @@ function parsePersonNames(nameStr) {
   // Keep only: letters, spaces, hyphens, apostrophes, commas, periods
   cleaned = cleaned.replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim();
 
-  const words = cleaned.split(" ").filter((w) => w.length > 0 && /[A-Za-z]/.test(w));
+  const words = cleaned.split(" ").filter((w) => w.length > 0);
 
   if (words.length === 0) return [];
 
@@ -1103,7 +1103,7 @@ function extractFromHtml(htmlPath) {
 
   // Parcel identifier: use parcel_id from property_seed.json, NOT property ID
   const parcelIdentifier =
-    readJson(path.join("input", "property_seed.json")).parcel_id || propertyId || null;
+    readJson("property_seed.json").parcel_id || propertyId || null;
 
   // Map property_usage_type based on land description (will be extracted from Property Land section)
   // This will be populated after land panel extraction
@@ -2176,11 +2176,11 @@ function main() {
   // This must run at the BEGINNING to clean up files created by the aggregator after our last run
   removeInvalidPropertyTaxRelationships("data");
 
-  const htmlPath = path.join("input", "20451.html");
+  const htmlPath = "input.html";
   const ownersPath = path.join("owners", "owner_data.json");
   const utilsPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
-  const unnormalizedAddrPath = path.join("input", "unnormalized_address.json");
+  const unnormalizedAddrPath = "unnormalized_address.json";
 
   const { property, lot, taxes, deeds, deedParties, files, situs, salesHistory, owner, layouts, taxJurisdictions, exemptions, propertyId } =
     extractFromHtml(htmlPath);
@@ -2191,21 +2191,12 @@ function main() {
   // Write lot.json
   writeJson(path.join("data", "lot.json"), lot);
 
-  // Create relationship from property to lot
-  writeJson(
-    path.join("data", "relationship_property_has_lot.json"),
-    {
-      from: { "/": "./property.json" },
-      to: { "/": "./lot.json" }
-    }
-  );
-
   // Initialize counters and maps for person/company files
   let personIdCounter = 1;
   let companyIdCounter = 1;
   const granteesToPersonId = new Map();
   const granteesToCompanyId = new Map();
-  const propertySeed = readJson(path.join("input", "property_seed.json"));
+  const propertySeed = readJson("property_seed.json");
 
   // Create person and company files for ALL grantees from deed history FIRST
   for (const granteeName of deedParties) {
@@ -2258,7 +2249,7 @@ function main() {
 
       if (!ownerCompanyId) {
         // Create new company file for owner
-        const propertySeedData = readJson(path.join("input", "property_seed.json"));
+        const propertySeedData = readJson("property_seed.json");
         // Normalize company name (replace & with "and" if entity keywords present)
         const normalizedCompanyName = normalizeCompanyName(owner.owner_name);
         const companyData = {
@@ -2645,15 +2636,6 @@ function main() {
   // Address
   const address = parseAddress(unnormalizedAddrPath, situs);
   writeJson(path.join("data", "address.json"), address);
-
-  // Create relationship from property to address
-  writeJson(
-    path.join("data", "relationship_property_has_address.json"),
-    {
-      from: { "/": "./property.json" },
-      to: { "/": "./address.json" }
-    }
-  );
 
   // Files (Appraisal Notice)
   files.forEach((f, idx) => {
