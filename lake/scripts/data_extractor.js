@@ -835,10 +835,32 @@ function main() {
     };
   }
 
-  const addr = parseAddress();
+  // Build unnormalized address for address.json
+  const unnormalizedAddressStr = (general.propertyLocationRaw || addrSeed.full_address || "")
+    .replace(/\r/g, "")
+    .replace(/\n/g, ", ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const addr = {
+    unnormalized_address: unnormalizedAddressStr || null,
+    section: null,
+    township: null,
+    range: null,
+    county_name: addrSeed.county_jurisdiction || null,
+    country_code: "US",
+    latitude: null,
+    longitude: null,
+  };
 
   // Write address.json
   writeJSON(path.join(dataDir, "address.json"), addr);
+
+  // Create relationship_property_has_address.json
+  writeJSON(path.join(dataDir, "relationship_property_has_address.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  });
 
   // property.json
   const property = buildPropertyJson();
@@ -900,70 +922,48 @@ function main() {
     }
   }
 
-  // structure.json — include parsed stories and exterior wall mapping
-  const structure = {
-    architectural_style_type: null,
-    attachment_type: null,
-    exterior_wall_material_primary:
-      bx.structure.exterior_wall_material_primary || null,
-    exterior_wall_material_secondary:
-      bx.structure.exterior_wall_material_secondary || null,
-    exterior_wall_condition: null,
-    exterior_wall_insulation_type: null,
-    flooring_material_primary: null,
-    flooring_material_secondary: null,
-    subfloor_material: null,
-    flooring_condition: null,
-    interior_wall_structure_material: null,
-    interior_wall_surface_material_primary: null,
-    interior_wall_surface_material_secondary: null,
-    interior_wall_finish_primary: null,
-    interior_wall_finish_secondary: null,
-    interior_wall_condition: null,
-    roof_covering_material: null,
-    roof_underlayment_type: null,
-    roof_structure_material: null,
-    roof_design_type: null,
-    roof_condition: null,
-    roof_age_years: null,
-    gutters_material: null,
-    gutters_condition: null,
-    roof_material_type: null,
-    foundation_type: null,
-    foundation_material: null,
-    foundation_waterproofing: null,
-    foundation_condition: null,
-    ceiling_structure_material: null,
-    ceiling_surface_material: null,
-    ceiling_insulation_type: null,
-    ceiling_height_average: null,
-    ceiling_condition: null,
-    exterior_door_material: null,
-    interior_door_material: null,
-    window_frame_material: null,
-    window_glazing_type: null,
-    window_operation_type: null,
-    window_screen_material: null,
-    primary_framing_material: bx.structure.primary_framing_material || null,
-    secondary_framing_material: null,
-    structural_damage_indicators: null,
-    number_of_stories: bx.structure.number_of_stories || null,
-    finished_base_area: null,
-    finished_basement_area: null,
-    finished_upper_story_area: null,
-    unfinished_base_area: null,
-    unfinished_basement_area: null,
-    unfinished_upper_story_area: null,
-    roof_date: null,
-  };
-  writeJSON(path.join(dataDir, "structure.json"), structure);
+  // Read structure data from owners/structure_data.json
+  let structureData = null;
+  try {
+    structureData = fs.existsSync(path.join("owners", "structure_data.json"))
+      ? readJSON(path.join("owners", "structure_data.json"))
+      : null;
+  } catch (e) {
+    structureData = null;
+  }
 
-  // utility.json from utilities_data
+  // Structure handling - write structure_1.json from owners data
+  if (structureData && ownerKey && structureData[ownerKey]) {
+    const structure = {
+      ...structureData[ownerKey],
+      // Merge with parsed data
+      exterior_wall_material_primary:
+        structureData[ownerKey].exterior_wall_material_primary ||
+        bx.structure.exterior_wall_material_primary ||
+        null,
+      exterior_wall_material_secondary:
+        structureData[ownerKey].exterior_wall_material_secondary ||
+        bx.structure.exterior_wall_material_secondary ||
+        null,
+      primary_framing_material:
+        structureData[ownerKey].primary_framing_material ||
+        bx.structure.primary_framing_material ||
+        null,
+      number_of_stories:
+        structureData[ownerKey].number_of_stories ||
+        bx.structure.number_of_stories ||
+        null,
+    };
+    writeJSON(path.join(dataDir, "structure_1.json"), structure);
+  }
+
+  // Utility handling - write utility_1.json from utilities_data
   if (utilitiesData && ownerKey && utilitiesData[ownerKey]) {
-    writeJSON(path.join(dataDir, "utility.json"), utilitiesData[ownerKey]);
+    writeJSON(path.join(dataDir, "utility_1.json"), utilitiesData[ownerKey]);
   }
 
   // layout_*.json from layout_data
+  let layoutCount = 0;
   if (
     layoutData &&
     ownerKey &&
@@ -974,11 +974,46 @@ function main() {
     layouts.forEach((lay, idx) => {
       const name = `layout_${idx + 1}.json`;
       writeJSON(path.join(dataDir, name), lay);
+      layoutCount++;
     });
+
+    // Create relationships: layout→structure and layout→utility
+    // For single building, connect layout_1 to structure_1 and utility_1
+    if (layoutCount > 0) {
+      if (fs.existsSync(path.join(dataDir, "structure_1.json"))) {
+        writeJSON(path.join(dataDir, "relationship_layout_1_has_structure_1.json"), {
+          from: { "/": "./layout_1.json" },
+          to: { "/": "./structure_1.json" },
+        });
+      }
+      if (fs.existsSync(path.join(dataDir, "utility_1.json"))) {
+        writeJSON(path.join(dataDir, "relationship_layout_1_has_utility_1.json"), {
+          from: { "/": "./layout_1.json" },
+          to: { "/": "./utility_1.json" },
+        });
+      }
+    }
+  }
+
+  // If no layouts, connect structure and utility directly to property
+  if (layoutCount === 0) {
+    if (fs.existsSync(path.join(dataDir, "structure_1.json"))) {
+      writeJSON(path.join(dataDir, "relationship_property_has_structure_1.json"), {
+        from: { "/": "./property.json" },
+        to: { "/": "./structure_1.json" },
+      });
+    }
+    if (fs.existsSync(path.join(dataDir, "utility_1.json"))) {
+      writeJSON(path.join(dataDir, "relationship_property_has_utility_1.json"), {
+        from: { "/": "./property.json" },
+        to: { "/": "./utility_1.json" },
+      });
+    }
   }
 
   // Owners: person_*.json or company_*.json
   let personFiles = [];
+  let companyFiles = [];
   if (
     ownerData &&
     ownerKey &&
@@ -1019,17 +1054,18 @@ function main() {
         const company = { name: o.name || null };
         const file = `company_${compIndex}.json`;
         writeJSON(path.join(dataDir, file), company);
+        companyFiles.push(file);
         compIndex++;
       });
     }
   }
 
-  // sales_*.json, deed_*.json, file_*.json + relationships
+  // sales_history_*.json, deed_*.json, file_*.json + relationships
   const salesFiles = [];
   const deedFiles = [];
   const fileFiles = [];
   bx.sales.forEach((s, i) => {
-    const sName = `sales_${i + 1}.json`;
+    const sName = `sales_history_${i + 1}.json`;
     writeJSON(path.join(dataDir, sName), {
       ownership_transfer_date: s.ownership_transfer_date || null,
       purchase_price_amount:
@@ -1080,6 +1116,30 @@ function main() {
       const relName = `relationship_sales_person_${idx + 1}.json`;
       writeJSON(path.join(dataDir, relName), rel);
     });
+  }
+
+  // relationship_sales_history_*_buyer_company_*.json for companies to most recent sale
+  if (companyFiles.length > 0 && salesFiles.length > 0) {
+    const recentSalesFile = salesFiles[0];
+    companyFiles.forEach((cf, idx) => {
+      const rel = {
+        from: { "/": `./${recentSalesFile}` },
+        to: { "/": `./${cf}` },
+      };
+      const saleIdx = 1; // Most recent sale is sales_history_1.json
+      const relName = `relationship_sales_history_${saleIdx}_buyer_company_${idx + 1}.json`;
+      writeJSON(path.join(dataDir, relName), rel);
+    });
+  } else if (companyFiles.length > 0 && salesFiles.length === 0) {
+    // If there are companies but no sales, remove the company files
+    // as they would be orphaned without relationships
+    companyFiles.forEach((cf) => {
+      const companyPath = path.join(dataDir, cf);
+      if (fs.existsSync(companyPath)) {
+        fs.unlinkSync(companyPath);
+      }
+    });
+    companyFiles = [];
   }
 }
 
