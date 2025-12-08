@@ -15,8 +15,8 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
-const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_divSummary table tbody tr";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const OVERALL_DETAILS_TABLE_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_divSummary table tbody tr";
 const BUILDING_SECTION_TITLE = "Building Data";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales tbody tr";
 const VALUATION_TABLE_SELECTOR = "#ctlBodyPane_ctl09_ctl01_grdValuation_grdYearData";
@@ -68,8 +68,7 @@ function textOf($el) {
 }
 
 function loadHTML() {
-  const projectRoot = path.resolve(__dirname, "../../../..");
-  const html = fs.readFileSync(path.join(projectRoot, "input/N03-009.html"), "utf8");
+  const html = fs.readFileSync("input.html", "utf8");
   return cheerio.load(html);
 }
 
@@ -767,20 +766,16 @@ const propertyTypeMapping = [
 
 
 function extractLegalDescription($) {
-  const text = $('#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl09_pnlSingleValue span').text().trim();
+  const text = $('#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl09_pnlSingleValue span').text().trim();
   return text ? text.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : null;
 }
 
 function extractUseCode($) {
   let code = null;
   $(OVERALL_DETAILS_TABLE_SELECTOR).each((i, tr) => {
-    const $tr = $(tr);
-    const label = textOf($tr.find("td strong").first());
-    if ((label || "").toLowerCase().includes("property usage")) {
-      const tds = $tr.find("td");
-      if (tds.length >= 2) {
-        code = textOf($(tds[1]).find("span"));
-      }
+    const th = textOf($(tr).find("th strong"));
+    if ((th || "").toLowerCase().includes("property usage")) { // Changed from "property use code"
+      code = textOf($(tr).find("td span"));
     }
   });
   return code || null;
@@ -999,8 +994,7 @@ function mapInstrumentToDeedType(instr) {
   return "Miscellaneous";
 }
 
-const projectRoot = path.resolve(__dirname, "../../../..");
-const seed = readJSON(path.join(projectRoot, "input/property_seed.json"));
+const seed = readJSON("property_seed.json");
 const appendSourceInfo = (seed) => ({
   source_http_request: {
     method: "GET",
@@ -1907,7 +1901,7 @@ function extractMailingAddress($) {
 
 
 function extractSecTwpRng($) {
-  const value = $('#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl07_pnlSingleValue').text().trim();
+  const value = $('#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl07_pnlSingleValue').text().trim();
   if (!value) return { section: null, township: null, range: null };
   const m = value.match(/^(\d+)-(\w+)-(\w+)$/);
   if (!m) return { section: null, township: null, range: null };
@@ -2101,18 +2095,11 @@ function attemptWriteAddressandGeometry(unnorm, secTwpRng) {
 }
 
 function main() {
-  const projectRoot = path.resolve(__dirname, "../../../..");
-  const dataDir = path.join(projectRoot, "data");
-  ensureDir(dataDir);
-
-  // Change to project root so all relative paths work correctly
-  const originalCwd = process.cwd();
-  process.chdir(projectRoot);
-
+  ensureDir("data");
   const $ = loadHTML();
 
-  const propertySeed = readJSON(path.join(projectRoot, "input/property_seed.json"));
-  const unnormalized = readJSON(path.join(projectRoot, "input/unnormalized_address.json"));
+  const propertySeed = readJSON("property_seed.json");
+  const unnormalized = readJSON("unnormalized_address.json");
 
   const parcelFromHTML = getParcelId($);
   // console.log("-----",parcelFromHTML)

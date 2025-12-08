@@ -3,12 +3,11 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Read HTML input
-const projectRoot = path.resolve(__dirname, "../../../..");
-const htmlPath = path.join(projectRoot, "input/N03-009.html");
+const htmlPath = path.join(process.cwd(), "input.html");
 const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
 // const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl01_mSection .sdw1-owners-container";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales tbody tr";
 

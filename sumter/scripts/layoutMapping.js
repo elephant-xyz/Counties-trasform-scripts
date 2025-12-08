@@ -5,14 +5,12 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-const projectRoot = path.resolve(__dirname, "../../../..");
-
 function readHtml(filepath) {
   const html = fs.readFileSync(filepath, "utf8");
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Data";
 
 function textTrim(s) {
@@ -170,13 +168,12 @@ function readJSON(p) {
 }
 
 function main() {
-  process.chdir(projectRoot);
-  const inputPath = path.join(projectRoot, "input/N03-009.html");
+  const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
 
   //CHECK if the prepared site was for the correct seed parcelid.
-  const propertySeed = readJSON(path.join(projectRoot, "input/property_seed.json"));
+  const propertySeed = readJSON("property_seed.json");
   if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
     throw {
       type: "error",
