@@ -5351,16 +5351,16 @@ process.on("exit", () => {
         }
       }
 
-      if (
-        finalAddress &&
-        typeof finalAddress === "object" &&
-        Object.keys(finalAddress).length
-      ) {
-        baseWriteFileSync.call(
-          fs,
-          addressPath,
-          `${JSON.stringify(finalAddress, null, 2)}\n`,
-        );
+      if (finalAddress && typeof finalAddress === "object") {
+        if (isNormalizedSurface) {
+          ensureAddressFieldSurface(finalAddress, COUNTY_REQUIRED_NORMALIZED_FIELDS);
+        } else {
+          ensureAddressFieldSurface(finalAddress, RAW_ADDRESS_TEMPLATE_FIELDS);
+        }
+      }
+
+      if (finalAddress && typeof finalAddress === "object" && Object.keys(finalAddress).length) {
+        baseWriteFileSync.call(fs, addressPath, `${JSON.stringify(finalAddress, null, 2)}\n`);
       } else {
         removeFileIfExists(addressPath);
       }
