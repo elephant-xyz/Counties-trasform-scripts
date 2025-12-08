@@ -97191,20 +97191,22 @@ process.on("exit", () => {
             ? prepareSourceHttpRequest(sourceHttpRequest)
             : sourceHttpRequest;
 
-        finalAddress = { unnormalized_address: trimmedRaw };
+        const rawPayload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+        rawPayload.unnormalized_address = trimmedRaw;
         if (requestIdentifier !== undefined) {
-          finalAddress.request_identifier =
+          rawPayload.request_identifier =
             requestIdentifier === null ? null : requestIdentifier;
         }
         if (preparedSource) {
-          finalAddress.source_http_request = deepClone(preparedSource);
+          rawPayload.source_http_request = deepClone(preparedSource);
         }
+        finalAddress = rawPayload;
       }
     }
 
     if (finalAddress && typeof finalAddress === "object") {
       const allowedRaw = new Set([
-        "unnormalized_address",
+        ...RAW_ADDRESS_OUTPUT_FIELDS,
         "request_identifier",
         "source_http_request",
       ]);
@@ -97219,6 +97221,17 @@ process.on("exit", () => {
         hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress }) &&
         !Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address");
       const allowlist = isNormalizedSurface ? allowedNormalized : allowedRaw;
+
+      if (!isNormalizedSurface) {
+        // Ensure every required nullable field exists so the raw oneOf branch
+        // sees the complete surface even when the source only provides an
+        // unnormalized string.
+        allowlist.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalAddress, field)) {
+            finalAddress[field] = null;
+          }
+        });
+      }
 
       Object.keys(finalAddress).forEach((key) => {
         if (!allowlist.has(key) || finalAddress[key] === undefined) {
