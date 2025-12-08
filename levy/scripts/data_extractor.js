@@ -441,7 +441,24 @@ function tokenizeNamePart(part) {
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(token => {
+      // Remove continuation markers from tokens (e.g., "GERARDO-CONT" -> "GERARDO")
+      return token.replace(/[\-]*(cont|continued)[\-]*$/i, '').trim();
+    })
+    .filter(token => {
+      if (!token) return false;
+      // Filter out standalone continuation markers
+      const upperToken = token.toUpperCase();
+      if (upperToken === 'CONT' || upperToken === '-CONT-' || upperToken === 'CONTINUED') {
+        return false;
+      }
+      // Filter out tokens that are only hyphens or special characters
+      if (/^[\-]+$/.test(token)) {
+        return false;
+      }
+      return true;
+    });
 }
 
 function buildPersonFromTokens(tokens, fallbackLastName) {
@@ -2667,6 +2684,15 @@ function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
 
+  // Remove mailing_address.json if it exists from previous runs
+  // (not part of the County data group schema)
+  const mailingAddressPath = path.join(dataDir, "mailing_address.json");
+  if (fs.existsSync(mailingAddressPath)) {
+    try {
+      fs.unlinkSync(mailingAddressPath);
+    } catch {}
+  }
+
   const html = readText("input.html");
   const $ = cheerio.load(html);
 
@@ -2784,10 +2810,46 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+    // Validate names against the pattern: must start with uppercase letter
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+    // Validate and clean first_name
+    let validFirstName = firstName;
+    if (validFirstName && !namePattern.test(validFirstName)) {
+      // Try to clean it by removing leading/trailing hyphens and special chars
+      validFirstName = validFirstName.replace(/^[\-]+|[\-]+$/g, '').trim();
+      // If still invalid after cleaning, set to null
+      if (!validFirstName || !namePattern.test(validFirstName)) {
+        validFirstName = null;
+      }
+    }
+
+    // Validate and clean last_name
+    let validLastName = lastName;
+    if (validLastName && !namePattern.test(validLastName)) {
+      // Try to clean it by removing leading/trailing hyphens and special chars
+      validLastName = validLastName.replace(/^[\-]+|[\-]+$/g, '').trim();
+      // If still invalid after cleaning, set to null
+      if (!validLastName || !namePattern.test(validLastName)) {
+        validLastName = null;
+      }
+    }
+
+    // Skip if both first and last names are invalid
+    if (!validFirstName && !validLastName) {
+      return null;
+    }
+
+    // Set default empty string if name is null but we have at least one valid name
+    const finalFirstName = validFirstName || "";
+    const finalLastName = validLastName || "";
+
+    // Validate middle_name against the pattern
+    const middleName = middleRaw && namePattern.test(middleRaw) ? middleRaw : null;
+
     const key =
-      firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+      finalFirstName || finalLastName
+        ? `${finalFirstName.toLowerCase()}|${middleRaw.toLowerCase()}|${finalLastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2798,8 +2860,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: finalFirstName,
+      last_name: finalLastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
@@ -4005,32 +4067,6 @@ const structureItems = (() => {
         (ownerMailingInfo.rawAddresses &&
           ownerMailingInfo.rawAddresses[0]))) ||
     null;
-  const mailingAddressFilename = "mailing_address.json";
-  const mailingAddressPath = `./${mailingAddressFilename}`;
-  const mailingAddressObj = {
-    unnormalized_address: primaryMailingAddress || null,
-    source_http_request: clone(defaultSourceHttpRequest),
-    request_identifier: requestIdentifier,
-    latitude: null,
-    longitude: null,
-  };
-  writeJSON(path.join(dataDir, mailingAddressFilename), mailingAddressObj);
-  const canonicalMailingPath = mailingAddressPath;
-
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -4053,70 +4089,7 @@ const structureItems = (() => {
     }
   }
 
-  const currentOwnerEntities = [];
-  currentOwners.forEach((owner, idx) => {
-    if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-    }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
-
-    if (owner.type === "person") {
-      const normalizedPerson = normalizeOwner(owner, ownersByDate);
-      const personPath = createPersonRecord(normalizedPerson);
-      if (personPath) {
-        currentOwnerEntities.push({
-          type: "person",
-          path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-          canonicalMailingPath,
-        });
-      }
-    } else if (owner.type === "company") {
-      const companyPath = createCompanyRecord(owner.name || "");
-      if (companyPath) {
-        currentOwnerEntities.push({
-          type: "company",
-          path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-          canonicalMailingPath,
-        });
-      }
-    }
-  });
-
-  const mailingRelationshipKeys = new Set();
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path) return;
-    const targets = [];
-    if (entity.mailingPath) targets.push(entity.mailingPath);
-    if (entity.canonicalMailingPath) targets.push(entity.canonicalMailingPath);
-    targets.forEach((targetPath) => {
-      if (!targetPath) return;
-      const relKey = `${entity.path}|${targetPath}`;
-      if (mailingRelationshipKeys.has(relKey)) return;
-      mailingRelationshipKeys.add(relKey);
-      const relFilename = makeRelationshipFilename(entity.path, targetPath);
-      if (!relFilename) return;
-      const relObj = {
-        from: { "/": entity.path },
-        to: { "/": targetPath },
-      };
-      writeJSON(path.join(dataDir, relFilename), relObj);
-    });
-  });
+  // Note: mailing_address.json creation removed as it's not part of the expected schema for this data group
 
   const work = parseValuationsWorking($);
   if (work) {
@@ -4156,7 +4129,10 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, `tax_${rec.year}.json`), tax);
   });
 
+  // Parse sales first to determine if we should create current owner entities
   const sales = parseSales($);
+
+  // Note: currentOwnerEntities will be created later, only if we have a valid sale to link them to
   const salesSorted = sales.sort(
     (a, b) => new Date(toISOFromMDY(b.date)) - new Date(toISOFromMDY(a.date)),
   );
@@ -4365,7 +4341,35 @@ const structureItems = (() => {
   }
 
   const latestSaleRef = saleFileRefs.length ? saleFileRefs[0] : null;
+
+  // Only create current owner entities if we have a valid sale to link them to
+  const currentOwnerEntities = [];
   if (latestSaleRef && latestSaleRef.salesPath) {
+    // Create person/company records for current owners
+    currentOwners.forEach((owner) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+
+    // Link current owner entities to the latest sale
     currentOwnerEntities.forEach((entity) => {
       if (!entity.path) return;
       addSaleOwnerRelation(latestSaleRef.salesPath, entity.path);
