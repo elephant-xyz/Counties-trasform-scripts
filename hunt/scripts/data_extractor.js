@@ -1467,6 +1467,18 @@ function extractFromHtml(htmlPath) {
           deedObj.book = String(book);
         }
 
+        // Add _raw data for debugging
+        deedObj._raw = {
+          date: dateText,
+          typeCode,
+          description: desc,
+          grantor,
+          grantee,
+        };
+        if (volume) deedObj._raw.volume = String(volume);
+        if (page) deedObj._raw.page = String(page);
+        if (book) deedObj._raw.book = String(book);
+
         deeds.push(deedObj);
 
         // Store ALL deed records (not just transfer deeds) for processing
