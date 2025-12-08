@@ -11631,6 +11631,46 @@ async function main() {
     }
   }
 
+  try {
+    const finalAddress = readJSONIfExists(addressOutputPath) || {};
+    const normalizedSurface = ensureNormalizedAddressSchemaSurface
+      ? ensureNormalizedAddressSchemaSurface({ ...finalAddress })
+      : { ...finalAddress };
+    const hasNormalizedCoverage = hasCompleteNormalizedAddress(
+      normalizedSurface,
+    );
+
+    if (!hasNormalizedCoverage) {
+      const rawAddressCandidate = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          finalAddress.unnormalized_address,
+          ...finalUnnormalizedCandidates,
+          unAddr && unAddr.full_address,
+          unAddr && unAddr.unnormalized_address,
+        ]),
+      );
+
+      if (rawAddressCandidate) {
+        const rawSurface = ensureRawAddressSchemaDefaults({
+          ...finalAddress,
+          unnormalized_address: rawAddressCandidate,
+        });
+        if (rawSurface) {
+          writeJSON(addressOutputPath, rawSurface);
+          enforcePropertyRelationshipNulls(propertyFilePath);
+          relationshipDirs.forEach((dirPath) => {
+            ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Failed to finalize raw address surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
   console.log("All mapping scripts completed successfully");
 }
 
