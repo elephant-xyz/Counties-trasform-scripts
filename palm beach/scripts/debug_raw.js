@@ -8579,6 +8579,128 @@ process.on("exit", () => {
   }
 });
 
+function forceRawOneOfCompliance(
+  addressPath,
+  propertyPath,
+  relationshipDirs = [],
+) {
+  if (!addressPath) return;
+
+  const sources = [
+    readJSONIfExists(addressPath),
+    readJSONIfExists("unnormalized_address.json"),
+    readJSONIfExists("property_seed.json"),
+  ].filter(
+    (source) => source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const pickFirstString = (fields) => {
+    for (const source of sources) {
+      if (!source || typeof source !== "object") continue;
+      for (const field of fields) {
+        const value = source[field];
+        if (typeof value === "string" && value.trim()) {
+          return value.trim();
+        }
+      }
+    }
+    return null;
+  };
+
+  const normalizedCandidate = sources.find((source) =>
+    hasNormalizedCountyCoverage({ ...source }),
+  );
+
+  let finalAddress = null;
+  if (
+    normalizedCandidate &&
+    hasNormalizedCountyCoverage({ ...normalizedCandidate })
+  ) {
+    const allowedNormalized = new Set([
+      ...NORMALIZED_ADDRESS_FIELDS,
+      "request_identifier",
+      "source_http_request",
+    ]);
+    finalAddress = {};
+    allowedNormalized.forEach((field) => {
+      let value = normalizedCandidate[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      finalAddress[field] = value;
+    });
+    if (
+      Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+    ) {
+      delete finalAddress.unnormalized_address;
+    }
+  }
+
+  if (!finalAddress) {
+    const rawValue = pickFirstString([
+      "unnormalized_address",
+      "full_address",
+      "site_address",
+      "address",
+    ]);
+    if (rawValue) {
+      const requestIdentifier = resolveRequestIdentifierFromSources(sources);
+      const sourceHttpRequest = resolveSourceHttpRequest(
+        ...sources.map((source) => source && source.source_http_request),
+      );
+      const preparedSource =
+        sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+          ? prepareSourceHttpRequest(sourceHttpRequest)
+          : sourceHttpRequest;
+
+      finalAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (
+          !Object.prototype.hasOwnProperty.call(finalAddress, field) ||
+          finalAddress[field] === undefined
+        ) {
+          finalAddress[field] = null;
+        }
+      });
+      finalAddress.unnormalized_address = rawValue.trim();
+      finalAddress.request_identifier =
+        requestIdentifier === undefined ? null : requestIdentifier;
+      finalAddress.source_http_request = preparedSource
+        ? deepClone(preparedSource)
+        : null;
+
+      if (!finalAddress.postal_code) {
+        finalAddress.plus_four_postal_code = null;
+      }
+      if ((finalAddress.latitude == null) !== (finalAddress.longitude == null)) {
+        finalAddress.latitude = null;
+        finalAddress.longitude = null;
+      }
+    }
+  }
+
+  if (finalAddress && typeof finalAddress === "object") {
+    writeJSON(addressPath, finalAddress);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+
+  if (propertyPath) {
+    enforcePropertyRelationshipNulls(propertyPath);
+  }
+  if (Array.isArray(relationshipDirs) && relationshipDirs.length) {
+    relationshipDirs.forEach((dirPath) => {
+      ensureNullRelationshipPlaceholders(dirPath, ADDRESS_RELATIONSHIP_BASENAMES);
+    });
+  }
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -11259,6 +11381,15 @@ async function main() {
     });
   } catch (error) {
     console.error("Failed to enforce minimal raw address surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    forceRawOneOfCompliance(addressOutputPath, propertyFilePath, relationshipDirs);
+  } catch (error) {
+    console.error("Failed to force final raw/normalized address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
