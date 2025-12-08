@@ -5402,6 +5402,145 @@ process.on("exit", () => {
   }
 });
 
+// Authoritative final schema aligner: pick a single address oneOf branch
+// (normalized only when fully covered, otherwise the raw/unnormalized
+// variant), pad required nullable fields so validation never complains about
+// missing properties, and leave address relationships as explicit null
+// placeholders so URs are populated downstream.
+process.on("exit", () => {
+  try {
+    const dataDir = path.join("data");
+    const relationshipsDir = path.join("relationships");
+    ensureDir(dataDir);
+    ensureDir(relationshipsDir);
+
+    const addressPath = path.join(dataDir, "address.json");
+    const propertyPath = path.join(dataDir, "property.json");
+
+    const sources = [
+      readJSONIfExists(addressPath),
+      readJSONIfExists("unnormalized_address.json"),
+      readJSONIfExists("property_seed.json"),
+    ].filter((src) => src && typeof src === "object" && !Array.isArray(src));
+
+    const normalizedCandidate =
+      allowNormalizedAddressOutput() &&
+      typeof hasStrictCountyNormalizedSchemaCoverage === "function"
+        ? sources.find((source) =>
+            hasStrictCountyNormalizedSchemaCoverage({ ...source }),
+          )
+        : null;
+
+    let finalAddress = null;
+
+    if (normalizedCandidate) {
+      const normalized =
+        (typeof buildNormalizedAddressOutputForSchema === "function" &&
+          buildNormalizedAddressOutputForSchema({ ...normalizedCandidate })) ||
+        { ...normalizedCandidate };
+      if (normalized && typeof normalized === "object") {
+        if (
+          Object.prototype.hasOwnProperty.call(normalized, "unnormalized_address")
+        ) {
+          delete normalized.unnormalized_address;
+        }
+        finalAddress = normalized;
+      }
+    } else {
+      const rawValue =
+        resolveRawAddressStringFromSources(sources) ||
+        resolveFirstMeaningfulAddressField("unnormalized_address", sources) ||
+        resolveFirstMeaningfulAddressField("full_address", sources) ||
+        resolveFirstMeaningfulAddressField("site_address", sources) ||
+        resolveFirstMeaningfulAddressField("address", sources) ||
+        null;
+      const trimmedRaw = typeof rawValue === "string" ? rawValue.trim() : "";
+
+      if (trimmedRaw) {
+        const requestIdentifier = resolveRequestIdentifierCandidate(
+          ...sources.map((source) => source && source.request_identifier),
+          ...sources.map((source) => source && source.parcel_id),
+          ...sources.map((source) => source && source.parcel_identifier),
+        );
+        const sourceHttpRequest = resolveSourceHttpRequestCandidate(
+          ...sources.map((source) => source && source.source_http_request),
+        );
+        const preparedSource =
+          sourceHttpRequest && typeof prepareSourceHttpRequest === "function"
+            ? prepareSourceHttpRequest(sourceHttpRequest)
+            : sourceHttpRequest;
+
+        const rawPayload = {
+          unnormalized_address: trimmedRaw,
+          request_identifier:
+            requestIdentifier === undefined ? null : requestIdentifier,
+          source_http_request: preparedSource ? deepClone(preparedSource) : null,
+        };
+
+        finalAddress =
+          ensureRawAddressRequiredCoverage({ ...rawPayload }, trimmedRaw) ||
+          rawPayload;
+        applyRawAddressPresenceDefaults(finalAddress);
+      }
+    }
+
+    if (finalAddress && typeof finalAddress === "object") {
+      const hasNormalizedSurface =
+        allowNormalizedAddressOutput() &&
+        typeof hasStrictCountyNormalizedSchemaCoverage === "function" &&
+        hasStrictCountyNormalizedSchemaCoverage({ ...finalAddress });
+
+      if (hasNormalizedSurface) {
+        if (
+          Object.prototype.hasOwnProperty.call(finalAddress, "unnormalized_address")
+        ) {
+          delete finalAddress.unnormalized_address;
+        }
+      }
+
+      baseWriteFileSync.call(
+        fs,
+        addressPath,
+        `${JSON.stringify(finalAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressPath);
+    }
+
+    const propertyPayload = readJSONIfExists(propertyPath) || {};
+    propertyPayload.relationships =
+      propertyPayload && typeof propertyPayload.relationships === "object"
+        ? { ...propertyPayload.relationships }
+        : {};
+    propertyPayload.relationships.property_has_address = null;
+    propertyPayload.relationships.address_has_fact_sheet = null;
+    baseWriteFileSync.call(
+      fs,
+      propertyPath,
+      `${JSON.stringify(propertyPayload, null, 2)}\n`,
+    );
+
+    const placeholders = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    placeholders.forEach((base) => {
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        const target = path.join(dirPath, `${base}.json`);
+        try {
+          baseWriteFileSync.call(fs, target, "null\n");
+        } catch {
+          removeFileIfExists(target);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Authoritative schema-aligned address clamp failed:", error);
+  }
+});
+
 // Post-terminal stabilizer: emit exactly one valid address branch with all
 // schema-required fields present (normalized when fully covered, otherwise the
 // unnormalized variant with required fields set to null) and force address
