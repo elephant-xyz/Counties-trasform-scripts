@@ -863,6 +863,20 @@ const propertyUseCodeAliases = {
   MULTIFAM10: "MULTIFAM",
 };
 
+function findUseCodeKeyBySubstring(haystack, keys, skip = new Set()) {
+  if (!haystack) return null;
+  let bestKey = null;
+  for (const key of keys) {
+    if (skip.has(key)) continue;
+    if (haystack.includes(key)) {
+      if (!bestKey || key.length > bestKey.length) {
+        bestKey = key;
+      }
+    }
+  }
+  return bestKey;
+}
+
 function getPropertyUseAttributes(rawValue) {
   const normalized = normalizeUseCodeDescription(rawValue);
   if (!normalized) return null;
@@ -870,6 +884,23 @@ function getPropertyUseAttributes(rawValue) {
   if (direct) return direct;
   const aliasKey = propertyUseCodeAliases[normalized];
   if (aliasKey) return propertyUseCodeMap[aliasKey];
+  const haystacks = new Set();
+  haystacks.add(normalized);
+  if (rawValue != null) {
+    const collapsed = String(rawValue)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (collapsed) haystacks.add(collapsed);
+  }
+  const mapKeys = Object.keys(propertyUseCodeMap);
+  const aliasKeys = Object.keys(propertyUseCodeAliases);
+  const skipKeys = new Set(["ANY"]);
+  for (const hay of haystacks) {
+    const matchKey = findUseCodeKeyBySubstring(hay, mapKeys, skipKeys);
+    if (matchKey) return propertyUseCodeMap[matchKey];
+    const aliasMatch = findUseCodeKeyBySubstring(hay, aliasKeys);
+    if (aliasMatch) return propertyUseCodeMap[propertyUseCodeAliases[aliasMatch]];
+  }
   return null;
 }
 
@@ -880,8 +911,10 @@ function getPropertyUseAttributes(rawValue) {
     const raw = fs.readFileSync(codesPath, "utf8");
     const codes = JSON.parse(raw);
     const missing = codes
-      .map((code) => normalizeUseCodeDescription(code))
-      .filter((code) => code && !propertyUseCodeMap[code]);
+      .map((code) => ({ code, mapped: getPropertyUseAttributes(code) }))
+      .filter(({ mapped }) => !mapped)
+      .map(({ code }) => normalizeUseCodeDescription(code))
+      .filter(Boolean);
     if (missing.length) {
       console.warn(`Missing property use code mappings for: ${missing.join(", ")}`);
     }
