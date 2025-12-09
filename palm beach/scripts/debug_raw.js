@@ -7837,22 +7837,46 @@ function ensureAddressOutputCoverage(address) {
   }
 
   if (hasUnnormalized) {
-    const result = { unnormalized_address: trimmedUnnormalized };
+    const result = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedUnnormalized,
+    };
 
-    if (Object.prototype.hasOwnProperty.call(cloned, "request_identifier")) {
-      const requestId = safeNullIfEmpty(cloned.request_identifier);
-      result.request_identifier = requestId === undefined ? null : requestId;
-    } else {
-      result.request_identifier = null;
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (!Object.prototype.hasOwnProperty.call(cloned, field)) {
+        return;
+      }
+      if (field === "source_http_request") {
+        const preparedSource = prepareSourceHttpRequest(
+          cloned.source_http_request,
+        );
+        result.source_http_request = preparedSource
+          ? deepClone(preparedSource)
+          : null;
+        return;
+      }
+
+      let value = cloned[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      result[field] = value;
+    });
+
+    if (!hasMeaningfulAddressValue(result.postal_code)) {
+      result.plus_four_postal_code = null;
     }
-
-    if (Object.prototype.hasOwnProperty.call(cloned, "source_http_request")) {
-      const preparedSource = prepareSourceHttpRequest(
-        cloned.source_http_request,
-      );
-      result.source_http_request = preparedSource ? deepClone(preparedSource) : null;
-    } else {
-      result.source_http_request = null;
+    if (
+      hasMeaningfulAddressValue(result.state_code) &&
+      !hasMeaningfulAddressValue(result.country_code)
+    ) {
+      result.country_code = "US";
     }
 
     return result;
