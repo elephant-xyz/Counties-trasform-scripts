@@ -1245,6 +1245,112 @@ function enforceAddressFieldDefaults(addressFilePath) {
   writeJSON(addressFilePath, payload);
 }
 
+function finalizeAddressOneOfSelection(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath) || {};
+  const rawCandidates = Array.isArray(options.rawCandidates)
+    ? options.rawCandidates.filter(Boolean)
+    : [];
+  const requestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      ...(options.requestIdentifierCandidates || []),
+    ]),
+  );
+  const preparedSourceHttp = prepareSourceHttpRequest(
+    resolveSourceHttpRequest(
+      payload.source_http_request,
+      ...(options.sourceHttpRequestCandidates || []),
+    ),
+  );
+  const defaultCounty =
+    titleCaseCounty(options.defaultCountyName || "") || null;
+  const defaultState = options.defaultStateCode || null;
+  const defaultCountry = options.defaultCountryCode || "US";
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const hasNormalized =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (hasNormalized) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      let candidate = normalizedSurface[field];
+      if (!candidate && field === "county_name") candidate = defaultCounty;
+      if (!candidate && field === "state_code") candidate = defaultState;
+      if (!candidate && field === "country_code") candidate = defaultCountry;
+      normalizedOut[field] = sanitizeAddressFieldValue(field, candidate);
+    }
+
+    if (!normalizedOut.postal_code) normalizedOut.plus_four_postal_code = null;
+    if (normalizedOut.state_code && !normalizedOut.country_code) {
+      normalizedOut.country_code = defaultCountry;
+    }
+    if (
+      (normalizedOut.latitude == null && normalizedOut.longitude != null) ||
+      (normalizedOut.latitude != null && normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+
+    normalizedOut.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
+    normalizedOut.source_http_request =
+      preparedSourceHttp === undefined ? null : preparedSourceHttp;
+
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      ...rawCandidates,
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    let candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (field === "county_name" && !candidate) candidate = defaultCounty;
+    if (field === "state_code" && !candidate) candidate = defaultState;
+    if (field === "country_code" && !candidate) candidate = defaultCountry;
+    if (field === "request_identifier" && requestIdentifier !== undefined) {
+      candidate = requestIdentifier;
+    }
+    if (field === "source_http_request" && preparedSourceHttp !== undefined) {
+      candidate = preparedSourceHttp;
+    }
+
+    rawOut[field] = sanitizeAddressFieldValue(field, candidate);
+  }
+
+  if (!rawOut.postal_code) rawOut.plus_four_postal_code = null;
+  if (rawOut.state_code && !rawOut.country_code) {
+    rawOut.country_code = defaultCountry;
+  }
+  if (
+    (rawOut.latitude == null && rawOut.longitude != null) ||
+    (rawOut.latitude != null && rawOut.longitude == null)
+  ) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  writeJSON(addressPath, rawOut);
+}
+
 // Preserve the raw oneOf branch and required field surface when only an unnormalized
 // address string is available from the source.
 function enforceRawAddressSurface(addressFilePath) {
@@ -14581,6 +14687,45 @@ async function main() {
     enforcePropertyRelationshipNulls(propertyFilePath);
   } catch (error) {
     console.error("Failed to rewrite final raw address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    finalizeAddressOneOfSelection(addressOutputPath, {
+      rawCandidates: [
+        ...finalUnnormalizedCandidates,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.unnormalized_address,
+        unAddr && unAddr.full_address,
+      ],
+      requestIdentifierCandidates: [
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+      defaultCountyName: formattedCountyName || countyName || "Palm Beach",
+      defaultStateCode: countyInferredStateCode || resolvedStateUpper || "FL",
+      defaultCountryCode: "US",
+    });
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+    });
+  } catch (error) {
+    console.error("Failed to enforce final address oneOf selection:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
