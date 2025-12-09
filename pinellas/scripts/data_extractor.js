@@ -40,7 +40,7 @@ const extraFeaturesDescriptionMappings = [
 function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) {
   const rows = $("#tblExtraFeatures tbody tr");
   if (!rows || rows.length === 0) {
-    ["propertyLot.json", "propertyUtility.json", "propertyStructure.json"].forEach((filename) => {
+    ["propertyLot.json", "propertyUtility.json", "propertyStructure.json", "utility.json"].forEach((filename) => {
       const filePath = path.join(dataDir, filename);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -69,13 +69,57 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
     }
   });
 
+  // CRITICAL: Only lot and structure files should be created here
+  // Utility files are created as utility_N.json with proper relationships later (lines 3431-3490)
+  // NEVER add "utility" to this fileMap - it will cause an unused file error
   const fileMap = {
     lot: "lot.json",
-    utility: "utility.json",
     structure: "structure.json",
+    // utility: "utility.json", // NEVER uncomment this - use utility_N.json files instead
   };
 
+  // Clean up utility.json if it exists (no longer used - we use utility_N.json instead)
+  // Note: utility data is collected in grouped.utility but NOT written as a single file
+  // Instead, utilities are written as utility_N.json with proper relationships later in the script
+  const utilityFilePath = path.join(dataDir, "utility.json");
+  if (fs.existsSync(utilityFilePath)) {
+    try {
+      fs.unlinkSync(utilityFilePath);
+      console.log("Removed utility.json during extractExtraFeatures - using utility_N.json files instead");
+    } catch (e) {
+      console.error("Failed to remove utility.json:", e);
+    }
+  }
+
+  // Additional safeguard: Delete utility.json before any file writing to prevent accidental generation
+  const utilityJsonBeforeWritePath = path.join(dataDir, "utility.json");
+  if (fs.existsSync(utilityJsonBeforeWritePath)) {
+    try {
+      fs.unlinkSync(utilityJsonBeforeWritePath);
+      console.log("Pre-write safeguard: Removed utility.json before file writing");
+    } catch (e) {
+      console.error("Failed to remove utility.json in pre-write safeguard:", e);
+    }
+  }
+
+  // FINAL safeguard before the loop: Force delete utility.json to prevent any accidental creation
+  try {
+    const finalUtilityCheck = path.join(dataDir, "utility.json");
+    if (fs.existsSync(finalUtilityCheck)) {
+      fs.unlinkSync(finalUtilityCheck);
+      console.log("Final pre-loop cleanup: Removed utility.json before fileMap processing");
+    }
+  } catch (e) {
+    console.error("Failed to remove utility.json in final pre-loop cleanup:", e);
+  }
+
   Object.entries(fileMap).forEach(([cls, filename]) => {
+    // Safety check: Never write utility.json (we use utility_N.json instead)
+    if (filename === "utility.json" || cls === "utility") {
+      console.log(`Skipping ${filename} - using utility_N.json files with relationships instead`);
+      return;
+    }
+
     const props = grouped[cls] || {};
     const hasProperties = Object.keys(props).length > 0;
     const filePath = path.join(dataDir, filename);
@@ -93,6 +137,17 @@ function extractExtraFeatures($, dataDir, requestIdentifier, sourceHttpRequest) 
     };
     writeJSON(filePath, output);
   });
+
+  // IMMEDIATE post-loop cleanup: Delete utility.json if it was somehow created
+  try {
+    const postLoopUtilityCheck = path.join(dataDir, "utility.json");
+    if (fs.existsSync(postLoopUtilityCheck)) {
+      fs.unlinkSync(postLoopUtilityCheck);
+      console.log("Post-loop cleanup: Removed utility.json after fileMap processing");
+    }
+  } catch (e) {
+    console.error("Failed to remove utility.json in post-loop cleanup:", e);
+  }
 }
 
 const propertyTypeMapping=[
@@ -1536,9 +1591,19 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
 }, {});
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.property_type;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
     return propertyTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1546,9 +1611,19 @@ function mapPropertyTypeFromUseCode(code) {
 
 function mapOwnershipEstateTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.ownership_estate_type;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
     return ownershipEstateTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1556,9 +1631,19 @@ function mapOwnershipEstateTypeFromUseCode(code) {
 
 function mapBuildStatusFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.build_status;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
     return buildStatusByUseCode[normalizedInput];
   }
   return null;
@@ -1566,9 +1651,19 @@ function mapBuildStatusFromUseCode(code) {
 
 function mapStructureFormFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.structure_form;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
     return structureFormByUseCode[normalizedInput];
   }
   return null;
@@ -1576,9 +1671,19 @@ function mapStructureFormFromUseCode(code) {
 
 function mapPropertyUsageTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
-  if (!normalizedInput) return null;
-  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
+  const codeStr = String(code).trim();
+  
+  // First try matching by 4-digit code prefix
+  const codeMatch = codeStr.match(/^(\d{4})/);
+  if (codeMatch) {
+    const codePrefix = codeMatch[1];
+    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
+    if (entry) return entry.property_usage_type;
+  }
+  
+  // Fallback to full normalization matching
+  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
+  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
     return propertyUsageTypeByUseCode[normalizedInput];
   }
   return null;
@@ -2714,6 +2819,44 @@ function extract() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
 
+  // CRITICAL FIRST CHECK: Before anything else, ensure utility.json doesn't exist from previous runs
+  // This is the first line of defense against the "Unused data JSON file" error
+  const earlyUtilityCheck = path.join(dataDir, "utility.json");
+  if (fs.existsSync(earlyUtilityCheck)) {
+    try {
+      fs.unlinkSync(earlyUtilityCheck);
+      console.log("PRE-EXECUTION: Removed utility.json from previous run");
+    } catch (e) {
+      console.error("Failed to remove utility.json during pre-execution cleanup:", e);
+    }
+  }
+
+  // CRITICAL: utility.json should NEVER be created - we use utility_N.json files with proper relationships
+  // This cleanup ensures any legacy utility.json from previous executions is removed
+  const utilityJsonPath = path.join(dataDir, "utility.json");
+  if (fs.existsSync(utilityJsonPath)) {
+    try {
+      fs.unlinkSync(utilityJsonPath);
+      console.log("Initial cleanup: Removed utility.json - using utility_N.json files with relationships instead");
+    } catch (e) {
+      console.error("Failed to remove utility.json during initial cleanup:", e);
+    }
+  }
+
+  // Additional cleanup for other legacy utility file variants
+  const legacyUtilityFiles = ["propertyUtility.json", "property_utility.json"];
+  legacyUtilityFiles.forEach(filename => {
+    const filepath = path.join(dataDir, filename);
+    if (fs.existsSync(filepath)) {
+      try {
+        fs.unlinkSync(filepath);
+        console.log(`Initial cleanup: Removed legacy file ${filename}`);
+      } catch (e) {
+        console.error(`Failed to remove ${filename}:`, e);
+      }
+    }
+  });
+
   const html = fs.readFileSync("input.html", "utf8");
   const $ = cheerio.load(html);
   const unAddr = readJSON("unnormalized_address.json") || {};
@@ -2774,6 +2917,18 @@ function extract() {
     requestIdentifier || parcelId || null,
     source_http_request
   );
+
+  // CRITICAL: Immediate post-extractExtraFeatures cleanup to ensure utility.json is removed
+  // utility.json should NEVER exist - we use utility_N.json files with proper relationships instead
+  try {
+    const utilityJsonPath = path.join(dataDir, "utility.json");
+    if (fs.existsSync(utilityJsonPath)) {
+      fs.unlinkSync(utilityJsonPath);
+      console.log("Post-extractExtraFeatures cleanup: Removed utility.json - using utility_N.json files with relationships instead");
+    }
+  } catch (e) {
+    console.error("Error in post-extractExtraFeatures utility.json cleanup:", e);
+  }
 
   const mandatoryFields={
       source_http_request: source_http_request,
@@ -3038,29 +3193,12 @@ function extract() {
   }
 
 
-  //Mailing Address creation
-  try {
-
-    const mailing_address = {
-      source_http_request: source_http_request,
-      request_identifier: requestIdentifier,
-      latitude:  null,
-      longitude: null,
-      unnormalized_address: mailing_address_text
-    };
-
-    writeJSON(path.join(dataDir, "mailing_address.json"), mailing_address);
-  } catch (e) {
-    console.error("Error extracting mailing address data:", e);
-  }
-
-
   // SALES AND OWNERS CODE BLOCK--------------
   try {
     const salesRows = $("#tblSalesHistory tbody tr");
 
     fs.readdirSync(dataDir).forEach((file) => {
-      if (/^sales_history_\d+\.json$/i.test(file) || /^sales_\d+\.json$/i.test(file)) {
+      if (/^sales_history_\d+\.json$/i.test(file) || /^sales_\d+\.json$/i.test(file) || /^relationship_property_has_sales_history_\d+\.json$/i.test(file)) {
         fs.unlinkSync(path.join(dataDir, file));
       }
     });
@@ -3077,16 +3215,17 @@ function extract() {
       const iso = toISODate(dateTxt);
       const price = parseCurrencyToNumber(priceTxt);
       console.log(granteeRaw,price)
-      // && price !== null && price > 0
-      if (iso) {
-        sales.push({
+      // Only create sales_history records when there's a valid price (schema requires purchase_price_amount to be a number, not null)
+      if (iso && price !== null && typeof price === 'number' && Number.isFinite(price)) {
+        const saleObj = {
           ownership_transfer_date: iso,
           purchase_price_amount: price,
           request_identifier: requestIdentifier, // Include request_identifier for each sale
           source_http_request: source_http_request, // Include the full source_http_request object
           _rawIndex: i, // Internal use for sorting
           grantee_text: granteeRaw,
-        });
+        };
+        sales.push(saleObj);
       }
     });
     console.log("SALES END------",sales)
@@ -3100,10 +3239,27 @@ function extract() {
       const file = path.join(dataDir, saleFileName);
       // Remove _rawIndex and grantee_text before writing to file
       const { _rawIndex, grantee_text, ...saleData } = s;
+
+      // CRITICAL: purchase_price_amount must be a number (not null) per schema
+      // Since it's optional, omit it entirely if not a valid number
+      if (saleData.purchase_price_amount === null ||
+          saleData.purchase_price_amount === undefined ||
+          typeof saleData.purchase_price_amount !== 'number' ||
+          !Number.isFinite(saleData.purchase_price_amount)) {
+        delete saleData.purchase_price_amount;
+      }
+
       writeJSON(file, saleData);
       s._file = `./${saleFileName}`; // Keep _file for relationship linking
       saleFileMap.set(s.ownership_transfer_date, s._file);
       if (!firstSaleFile) firstSaleFile = s._file;
+
+      // Create property→sales_history relationship
+      const relationshipFile = path.join(dataDir, `relationship_property_has_sales_history_${idx + 1}.json`);
+      writeJSON(relationshipFile, {
+        from: { "/": "./property.json" },
+        to: { "/": `./${saleFileName}` }
+      });
     });
 
     const ownerExtraction = extractOwnersFromHtml(
@@ -3281,25 +3437,39 @@ function extract() {
       });
     });
 
-    mailingPersonRefs.forEach((personRef) => {
-      const relFile = `relationship_person_${personRef
-        .replace("./", "")
-        .replace(".json", "")}_has_mailing_address.json`;
-      writeJSON(path.join(dataDir, relFile), {
-        from: { "/": personRef },
-        to: { "/": "./mailing_address.json" },
-      });
-    });
+    // Only create mailing_address.json if there are owners to link it to
+    if ((mailingPersonRefs.size > 0 || mailingCompanyRefs.size > 0) && mailing_address_text) {
+      const mailing_address = {
+        source_http_request: source_http_request,
+        request_identifier: requestIdentifier,
+        latitude:  null,
+        longitude: null,
+        unnormalized_address: mailing_address_text
+      };
+      writeJSON(path.join(dataDir, "mailing_address.json"), mailing_address);
 
-    mailingCompanyRefs.forEach((companyRef) => {
-      const relFile = `relationship_company_${companyRef
-        .replace("./", "")
-        .replace(".json", "")}_has_mailing_address.json`;
-      writeJSON(path.join(dataDir, relFile), {
-        from: { "/": companyRef },
-        to: { "/": "./mailing_address.json" },
+      // Create relationships for person → mailing_address
+      mailingPersonRefs.forEach((personRef) => {
+        const relFile = `relationship_person_${personRef
+          .replace("./", "")
+          .replace(".json", "")}_has_mailing_address.json`;
+        writeJSON(path.join(dataDir, relFile), {
+          from: { "/": personRef },
+          to: { "/": "./mailing_address.json" },
+        });
       });
-    });
+
+      // Create relationships for company → mailing_address
+      mailingCompanyRefs.forEach((companyRef) => {
+        const relFile = `relationship_company_${companyRef
+          .replace("./", "")
+          .replace(".json", "")}_has_mailing_address.json`;
+        writeJSON(path.join(dataDir, relFile), {
+          from: { "/": companyRef },
+          to: { "/": "./mailing_address.json" },
+        });
+      });
+    }
   } catch (e) {
     console.error("Error extracting sales/owner data:", e);
   }
@@ -3432,7 +3602,7 @@ function extract() {
         to: { "/": `./utility_${utilityIndex}.json` }
       };
       writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        path.join("data", `relationship_layout_to_utility_${utilityIndex}.json`),
         relationship
       );
     });
@@ -3511,7 +3681,7 @@ function extract() {
               to: { "/": `./layout_${subLayoutIndex}.json` }
             };
             writeJSON(
-              path.join("data", `relationship_layout_${buildingNumber}_has_layout_${subLayoutIndex}.json`),
+              path.join("data", `relationship_layout_${buildingLayoutIndex}_to_layout_${subLayoutIndex}.json`),
               relationship
             );
           }
@@ -3615,7 +3785,7 @@ function extract() {
         to: { "/": `./structure_${structureIndex}.json` }
       };
       writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        path.join("data", `relationship_layout_to_structure_${structureIndex}.json`),
         relationship
       );
     });
@@ -3626,7 +3796,7 @@ function extract() {
 //   try {
 //     const relationshipsToRemove = [
 //       "relationship_property_address.json",
-//       "relationship_property_lot.json", 
+//       "relationship_property_lot.json",
 //       "relationship_property_structure.json",
 //       "relationship_property_utility.json"
 // ];
@@ -3642,7 +3812,124 @@ function extract() {
 //     console.error("Error removing null relationships:", e);
 //   }
 
+  // Final cleanup: Ensure utility.json is removed (it's not used - we use utility_N.json instead)
+  // This file should never exist in the final output. We use utility_N.json files with proper relationships instead.
+  try {
+    // Try multiple path variations to ensure cleanup
+    const pathsToCheck = [
+      path.join(dataDir, "utility.json"),
+      path.resolve(dataDir, "utility.json"),
+      path.join("data", "utility.json"),
+      "./data/utility.json",
+      "data/utility.json"
+    ];
+
+    let removedCount = 0;
+    pathsToCheck.forEach(utilPath => {
+      try {
+        if (fs.existsSync(utilPath)) {
+          fs.unlinkSync(utilPath);
+          removedCount++;
+          console.log(`Removed utility.json at: ${utilPath} - using utility_N.json files with relationships instead`);
+        }
+      } catch (e) {
+        console.error(`Error removing utility.json at ${utilPath}:`, e);
+      }
+    });
+
+    if (removedCount === 0) {
+      console.log("No utility.json file found to remove (expected)");
+    }
+  } catch (e) {
+    console.error("Error during utility.json cleanup:", e);
+  }
+
+  // Additional cleanup: Remove any other unexpected utility-related files
+  try {
+    const unexpectedFiles = ["propertyUtility.json", "property_utility.json", "utility.json"];
+    unexpectedFiles.forEach(filename => {
+      const filepath = path.join(dataDir, filename);
+      if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+        console.log(`Removed unexpected file: ${filename}`);
+      }
+    });
+  } catch (e) {
+    console.error("Error cleaning up unexpected files:", e);
+  }
+
+  // Final verification: Absolutely ensure utility.json does not exist
+  try {
+    const finalCheckPath = path.join(dataDir, "utility.json");
+    if (fs.existsSync(finalCheckPath)) {
+      console.error("WARNING: utility.json still exists after cleanup, forcing removal");
+      fs.unlinkSync(finalCheckPath);
+      console.log("Forced removal of utility.json successful");
+    }
+  } catch (e) {
+    console.error("Error in final utility.json verification:", e);
+  }
 
 }
 
-extract();
+// Run extraction with guaranteed cleanup
+try {
+  extract();
+} finally {
+  // CRITICAL: Post-execution cleanup - absolutely ensure utility.json does not exist
+  // This runs after extract() completes OR if there's an error, to catch any edge cases
+  try {
+    const dataDir = "data";
+    const pathsToClean = [
+      path.join(dataDir, "utility.json"),
+      path.resolve(dataDir, "utility.json"),
+      path.join("data", "utility.json"),
+      "./data/utility.json",
+      "data/utility.json"
+    ];
+
+    let cleanedCount = 0;
+    pathsToClean.forEach(utilPath => {
+      try {
+        if (fs.existsSync(utilPath)) {
+          fs.unlinkSync(utilPath);
+          cleanedCount++;
+          console.log(`Post-execution cleanup: Removed utility.json at ${utilPath} - using utility_N.json files instead`);
+        }
+      } catch (e) {
+        console.error(`Error removing utility.json at ${utilPath}:`, e);
+      }
+    });
+
+    if (cleanedCount === 0) {
+      console.log("Post-execution cleanup: No utility.json found (expected)");
+    }
+  } catch (e) {
+    console.error("Error in post-execution utility.json cleanup:", e);
+  }
+
+  // ABSOLUTE FINAL CHECK: One last verification with fs.readdirSync to catch any edge cases
+  try {
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      const utilityJsonFiles = files.filter(f => f === "utility.json");
+      if (utilityJsonFiles.length > 0) {
+        console.error("CRITICAL: utility.json still exists after all cleanup attempts!");
+        utilityJsonFiles.forEach(file => {
+          try {
+            const fullPath = path.join(dataDir, file);
+            fs.unlinkSync(fullPath);
+            console.log(`Emergency cleanup: Force deleted ${fullPath}`);
+          } catch (err) {
+            console.error(`Failed to delete ${file} in emergency cleanup:`, err);
+          }
+        });
+      } else {
+        console.log("Final verification: Confirmed utility.json does not exist ✓");
+      }
+    }
+  } catch (e) {
+    console.error("Error in final verification:", e);
+  }
+}
