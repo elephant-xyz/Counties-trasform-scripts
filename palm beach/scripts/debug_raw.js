@@ -5500,15 +5500,23 @@ const ADDRESS_SCHEMA_FIELDS = [
 // Keep the raw branch aligned with the schema: emit every nullable address
 // field so the raw (unnormalized) oneOf option is satisfied without requiring
 // downstream normalization. The unnormalized string drives the branch choice.
-const RAW_MINIMAL_ADDRESS_FIELDS = ["request_identifier", "source_http_request"];
+const RAW_MINIMAL_ADDRESS_FIELDS = [
+  ...NORMALIZED_ADDRESS_FIELDS,
+  "request_identifier",
+  "source_http_request",
+];
 
 // Fields that may accompany the raw (unnormalized) address payload. Keep the
 // list aligned with the schema requirements so every nullable property remains
 // present—even when we only have an unnormalized string available.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_ALLOWED_FIELDS = RAW_MINIMAL_ADDRESS_FIELDS.filter(
-  (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set(
+    RAW_MINIMAL_ADDRESS_FIELDS.filter(
+      (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
+    ),
+  ),
 );
 
 const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
