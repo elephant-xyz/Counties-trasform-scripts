@@ -1116,6 +1116,16 @@ function main() {
       const relName = `relationship_sales_person_${idx + 1}.json`;
       writeJSON(path.join(dataDir, relName), rel);
     });
+  } else if (personFiles.length > 0 && salesFiles.length === 0) {
+    // If there are persons but no sales, remove the person files
+    // as they would be orphaned without relationships
+    personFiles.forEach((pf) => {
+      const personPath = path.join(dataDir, pf);
+      if (fs.existsSync(personPath)) {
+        fs.unlinkSync(personPath);
+      }
+    });
+    personFiles = [];
   }
 
   // relationship_sales_history_*_buyer_company_*.json for companies to most recent sale
