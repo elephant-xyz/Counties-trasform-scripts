@@ -195,9 +195,13 @@ function extractOwnerCandidates($) {
     const ownerLines = cleanOwner.split(/\n/).map(line => norm(line)).filter(Boolean);
     ownerLines.forEach(line => {
       // Filter out address lines (contains zip code, common street suffixes, or starts with a number)
-      if (!/\b(\d{5})(?:-\d{4})?$/.test(line) &&
-          !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-          !/^\d+\s/.test(line)) {
+      // BUT: Allow lines that start with numbers if they are company names (e.g., "3039 HIGHWAY 70 LLC")
+      const startsWithNumber = /^\d+\s/.test(line);
+      const looksLikeCompany = isCompanyName(line);
+      const isAddress = /\b(\d{5})(?:-\d{4})?$/.test(line) ||
+                        /\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) ||
+                        (startsWithNumber && !looksLikeCompany);
+      if (!isAddress) {
         cand.push(line);
       }
     });
@@ -215,10 +219,13 @@ function extractOwnerCandidates($) {
             // Split by <br> tags to get individual owner names
             const ownerLines = boldText.split(/\n/).map(line => norm(line)).filter(Boolean);
             ownerLines.forEach(line => {
-              // Filter out address lines
-              if (!/\b(\d{5})(?:-\d{4})?$/.test(line) &&
-                  !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-                  !/^\d+\s/.test(line)) {
+              // Filter out address lines (but allow company names that start with numbers)
+              const startsWithNumber = /^\d+\s/.test(line);
+              const looksLikeCompany = isCompanyName(line);
+              const isAddress = /\b(\d{5})(?:-\d{4})?$/.test(line) ||
+                                /\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) ||
+                                (startsWithNumber && !looksLikeCompany);
+              if (!isAddress) {
                 cand.push(line);
               }
             });

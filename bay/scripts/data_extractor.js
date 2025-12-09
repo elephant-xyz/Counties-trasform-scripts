@@ -1024,7 +1024,10 @@ function extractLegalDescription($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th strong"));
+    if (th === null) {
+      th = textOf($(tr).find("td strong"));
+    }
     if ((th || "").toLowerCase().includes("legal description")) {
       desc = textOf($(tr).find("td span"));
     }
@@ -1037,7 +1040,10 @@ function extractUseCode($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th strong"));
+    if (th === null) {
+      th = textOf($(tr).find("td strong"));
+    }
     if ((th || "").toLowerCase().includes("property use code")) {
       code = textOf($(tr).find("td span"));
     }
@@ -2551,7 +2557,10 @@ function extractSecTwpRng($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th strong"));
+    if (th === null) {
+      th = textOf($(tr).find("td strong"));
+    }
     if ((th || "").toLowerCase().includes("sec/twp/rng")) {
       value = textOf($(tr).find("td span"));
     }
@@ -2568,7 +2577,10 @@ function extractAddressText($) {
   $(
     OVERALL_DETAILS_TABLE_SELECTOR,
   ).each((i, tr) => {
-    const th = textOf($(tr).find("th strong"));
+    let th = textOf($(tr).find("th strong"));
+    if (th === null) {
+      th = textOf($(tr).find("td strong"));
+    }
     if ((th || "").toLowerCase().includes("address")) {
       foundAddressText = true;
       add = textOf($(tr).find("td span")).replace(/  +/g, ' ');

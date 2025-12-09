@@ -1,6 +1,6 @@
 // Utility extractor per Elephant Lexicon schema
 // - Reads input.html
-// - Uses embedded Remix context and visible tables to infer HVAC, plumbing, electrical basics
+// - Iterates per building to emit utility entries
 // - Writes owners/utilities_data.json
 
 const fs = require("fs");
@@ -21,19 +21,33 @@ function extractRemixContext($) {
   let json = null;
   $("script").each((i, el) => {
     const txt = $(el).html() || "";
-    const m = txt.match(/window\.__remixContext\s*=\s*(\{[\s\S]*?\});?/);
-    if (m && !json) {
+    const match = txt.match(/window\.__remixContext\s*=\s*(\{[\s\S]*\});?/);
+    if (match && !json) {
+      const candidate = match[1];
       try {
-        json = JSON.parse(m[1]);
-      } catch {
-        json = null;
+        json = JSON.parse(candidate);
+      } catch (err) {
+        // Retry without trailing semicolon if present
+        try {
+          const trimmed = candidate.trim().replace(/;$/, "");
+          json = JSON.parse(trimmed);
+        } catch {
+          json = null;
+        }
       }
     }
   });
   return json;
 }
 
-function getPropertyId($, remix) {
+function getLoaderData(remix) {
+  if (!remix || !remix.state || !remix.state.loaderData) return {};
+  const data = remix.state.loaderData;
+  return data["routes/_index"] || data["routes/mineral"] || {};
+}
+
+function getPropertyId($, remix, propertySeed) {
+  if (propertySeed && propertySeed.parcel_id) return propertySeed.parcel_id;
   try {
     const id = remix.state.loaderData["routes/_index"].parcelInformation.number;
     if (id) return id.trim();
@@ -45,120 +59,128 @@ function getPropertyId($, remix) {
   return m ? m[0] : "unknown_id";
 }
 
-function textOfCell(rows, label) {
-  const row = rows.filter((i, el) =>
-    cheerio
-      .load(el)('th,td[role="cell"]')
-      .first()
-      .text()
-      .trim()
-      .toLowerCase()
-      .startsWith(label.toLowerCase()),
-  );
-  if (!row.length) return null;
-  const td = cheerio.load(row[0])('td[role="cell"]');
-  return (td.text() || "").trim() || null;
+function clone(obj) {
+  return obj ? JSON.parse(JSON.stringify(obj)) : null;
 }
 
-function extractUtility($, remix) {
-  const util = {
-    cooling_system_type: null,
-    heating_system_type: null,
-    public_utility_type: null,
-    sewer_type: null,
-    water_source_type: null,
-    plumbing_system_type: null,
-    plumbing_system_type_other_description: null,
-    electrical_panel_capacity: null,
-    electrical_wiring_type: null,
-    hvac_condensing_unit_present: null,
-    electrical_wiring_type_other_description: null,
-    solar_panel_present: false,
-    solar_panel_type: null,
-    solar_panel_type_other_description: null,
-    smart_home_features: null,
-    smart_home_features_other_description: null,
-    hvac_unit_condition: null,
-    solar_inverter_visible: false,
-    hvac_unit_issues: null,
-  };
+function mapCooling(description) {
+  const text = (description || "").toUpperCase();
+  if (!text) return null;
+  if (/GEOTHERM/.test(text)) return "GeothermalCooling";
+  if (/DUCTLESS|MINI SPLIT/.test(text)) return "Ductless";
+  if (/WHOLE HOUSE/.test(text)) return "WholeHouseFan";
+  if (/CEILING FANS?/.test(text)) return text.includes("FANS")
+    ? "CeilingFans"
+    : "CeilingFan";
+  if (/WINDOW|WALL UNIT/.test(text)) return "WindowAirConditioner";
+  if (/ZONED|ZONE/.test(text)) return "Zoned";
+  if (/HYBRID/.test(text)) return "Hybrid";
+  if (/ELECTRIC/.test(text)) return "Electric";
+  if (/CENTRAL/.test(text)) return "CentralAir";
+  return null;
+}
 
-  // Prefer embedded component tags
-  try {
-    const comps =
-      remix.state.loaderData["routes/_index"].buildings.components || [];
-    const heat = comps.find(
-      (c) =>
-        c.category &&
-        (c.category.description || "").toUpperCase().includes("HEATING"),
-    );
-    const ac = comps.find(
-      (c) =>
-        c.category &&
-        (c.category.description || "")
-          .toUpperCase()
-          .includes("AIR CONDITIONING"),
-    );
+function mapHeating(description) {
+  const text = (description || "").toUpperCase();
+  if (!text) return null;
+  if (/ELECTRIC FURNACE/.test(text)) return "ElectricFurnace";
+  if (/GAS FURNACE/.test(text)) return "GasFurnace";
+  if (/HEAT PUMP/.test(text)) return "HeatPump";
+  if (/DUCTLESS|MINI SPLIT/.test(text)) return "Ductless";
+  if (/RADIANT/.test(text)) return "Radiant";
+  if (/SOLAR/.test(text)) return "Solar";
+  if (/BASEBOARD/.test(text)) return "Baseboard";
+  if (/FORCED AIR|CENTRAL/.test(text)) return "Central";
+  if (/GAS/.test(text)) return "Gas";
+  if (/ELECTRIC/.test(text)) return "Electric";
+  return null;
+}
 
-    if (
-      !util.cooling_system_type &&
-      ac &&
-      /CENTRAL/i.test(ac.description || "")
-    )
-      util.cooling_system_type = "CentralAir";
-    if (
-      !util.heating_system_type &&
-      heat &&
-      /FORCED AIR/i.test(heat.description || "")
-    )
-      util.heating_system_type = "Central";
-  } catch {}
+function findComponent(components, buildingKey, categoryText) {
+  const target = (categoryText || "").toUpperCase();
+  return components.find((comp) => {
+    const matchesBuilding =
+      buildingKey == null ||
+      comp.buildingKey === buildingKey ||
+      comp.uniqueKey === buildingKey;
+    const matchesCategory = (comp.category?.description || "")
+      .toUpperCase()
+      .includes(target);
+    return matchesBuilding && matchesCategory;
+  });
+}
 
-  // Fallback to visible Building table rows (Heat Type / A/C Type)
-  try {
-    const buildingTable = $("caption")
-      .filter((i, el) =>
-        $(el).text().trim().toUpperCase().startsWith("BUILDING"),
-      )
-      .first()
-      .closest("table");
-    if (buildingTable && buildingTable.length) {
-      const rows = buildingTable.find("tbody > tr");
-      const heatType = textOfCell(rows, "Heat Type");
-      const acType = textOfCell(rows, "A/C Type");
+function buildUtilities(remixData, propertySeed) {
+  const buildings = remixData?.buildings || {};
+  const units = Array.isArray(buildings.units) ? buildings.units : [];
+  const components = Array.isArray(buildings.components)
+    ? buildings.components
+    : [];
 
-      if (!util.cooling_system_type && /CENTRAL/i.test(acType || ""))
-        util.cooling_system_type = "CentralAir";
-      if (
-        !util.heating_system_type &&
-        /(FORCED AIR|CENTRAL)/i.test(heatType || "")
-      )
-        util.heating_system_type = "Central";
-    }
-  } catch {}
+  if (!units.length) {
+    return [];
+  }
 
+  const baseRequest = clone(propertySeed?.source_http_request);
+  const baseIdentifier = propertySeed?.request_identifier || propertySeed?.parcel_id || null;
 
-  // Leave unknowns as null or false where appropriate due to lack of explicit evidence
-  return util;
+  return units.map((unit, idx) => {
+    const buildingKey = unit.buildingKey || unit.uniqueKey || null;
+    const heatComp = findComponent(components, buildingKey, "HEATING");
+    const acComp = findComponent(components, buildingKey, "AIR CONDITIONING");
+
+    return {
+      source_http_request: clone(baseRequest),
+      request_identifier: baseIdentifier
+        ? `${baseIdentifier}__utility_${idx + 1}`
+        : null,
+      cooling_system_type: mapCooling(acComp?.description),
+      heating_system_type: mapHeating(heatComp?.description),
+      public_utility_type: null,
+      sewer_type: null,
+      water_source_type: null,
+      plumbing_system_type: null,
+      plumbing_system_type_other_description: null,
+      electrical_panel_capacity: null,
+      electrical_wiring_type: null,
+      hvac_condensing_unit_present: null,
+      electrical_wiring_type_other_description: null,
+      solar_panel_present: false,
+      solar_panel_type: null,
+      solar_panel_type_other_description: null,
+      smart_home_features: null,
+      smart_home_features_other_description: null,
+      hvac_unit_condition: null,
+      solar_inverter_visible: false,
+      hvac_unit_issues: null,
+      building_number: idx + 1,
+      utility_index: idx + 1,
+    };
+  });
 }
 
 (function main() {
   try {
     const $ = loadHtml();
     const remix = extractRemixContext($) || {};
+    const loaderData = getLoaderData(remix);
     const propertySeed = readJSON("property_seed.json");
-    const id = propertySeed["parcel_id"];
-    const utility = extractUtility($, remix);
+    const parcelId = getPropertyId($, remix, propertySeed);
+    const utilities = buildUtilities(loaderData, propertySeed);
 
     const outDir = path.resolve("owners");
     if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
     const outPath = path.join(outDir, "utilities_data.json");
 
     const payload = {};
-    payload[`property_${id}`] = utility;
+    payload[`property_${parcelId}`] = { utilities };
 
     fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
-    console.log(`Wrote utilities data for ${id} -> ${outPath}`);
+    console.log(
+      `Wrote ${utilities.length} utilit${
+        utilities.length === 1 ? "y" : "ies"
+      } for ${parcelId} -> ${outPath}`,
+    );
   } catch (err) {
     console.error("Utility mapping failed:", err.message);
     process.exitCode = 1;

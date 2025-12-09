@@ -1441,6 +1441,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
+  people = validPeople; // Update people array to match the files being created
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
@@ -1916,19 +1917,9 @@ function attemptWriteAddressAndGeometry($, unnorm, secTwpRng) {
 }
 
 
-function extractMailingAddress($) {
-  const addressParts = [];
-  
-  // Find all spans that contain address information
-  $('[id*="sprAddress"][id*="_lblSuppressed"]').each(function() {
-    const text = textOf($(this));
-    if (text && text.trim()) {
-      addressParts.push(text.trim());
-    }
-  });
-  
-  return addressParts.length > 0 ? addressParts.join(' ') : null;
-}
+// extractMailingAddress function removed - there are no valid relationship classes
+// in Elephant schema to connect person/company to mailing_address
+// The mailing address data should be handled differently
 
 
 function main() {
@@ -1970,54 +1961,6 @@ function main() {
   const secTwpRng = extractSecTwpRng($);
   // console.log(secTwpRng)
   attemptWriteAddressAndGeometry($, unnormalized, secTwpRng);
-
-  //Mailing Address
-  const mailingAddressRaw = extractMailingAddress($)
-  console.log("MAILING--",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-
-  // Create mailing address relationships with current owners
-  const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (owners) {
-    const key = `property_${parcelId}`;
-    const record = owners[key];
-    if (record && record.owners_by_date && record.owners_by_date['current']) {
-      const currentOwners = record.owners_by_date['current'];
-      let relCounter = 0;
-      currentOwners.forEach((owner) => {
-        if (owner.type === "person") {
-          const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
-          if (pIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_person_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./person_${pIdx}.json` },
-                to: { "/": "./mailing_address.json" },
-              }
-            );
-          }
-        } else if (owner.type === "company") {
-          const cIdx = findCompanyIndexByName(owner.name);
-          if (cIdx) {
-            relCounter++;
-            writeJSON(
-              path.join("data", `relationship_company_has_mailing_address_${relCounter}.json`),
-              {
-                from: { "/": `./company_${cIdx}.json` },
-                to: { "/": "./mailing_address.json" }
-              }
-            );
-          }
-        }
-      });
-    }
-  }
-  
 }
 
 if (require.main === module) {
