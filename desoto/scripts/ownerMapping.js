@@ -1,6 +1,7 @@
 // ownerMapping.js
 // Transform input.html into owners/owner_data.json using cheerio only for HTML parsing
 
+
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
@@ -85,7 +86,11 @@ function formatNameToPattern(name) {
 // Build owner object(s) from a raw string
 function buildOwnersFromRaw(raw) {
   const owners = [];
-  const s = norm(raw);
+  let s = norm(raw);
+  if (!s) return owners;
+
+  // Remove continuation markers early
+  s = s.replace(/\s*-CONT-?\s*/gi, " ").trim();
   if (!s) return owners;
 
   // Exclude lines that clearly are not owner names
@@ -115,7 +120,9 @@ function buildOwnersFromRaw(raw) {
 
 function buildPersonFromSingleName(s) {
   const out = [];
-  const cleaned = s.replace(/\s{2,}/g, " ");
+  // Remove continuation markers and other non-name patterns
+  let cleaned = s.replace(/\s{2,}/g, " ");
+  cleaned = cleaned.replace(/\s*-CONT-?\s*/gi, " ").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
 
   if (parts.length < 2) {
@@ -188,9 +195,13 @@ function extractOwnerCandidates($) {
     const ownerLines = cleanOwner.split(/\n/).map(line => norm(line)).filter(Boolean);
     ownerLines.forEach(line => {
       // Filter out address lines (contains zip code, common street suffixes, or starts with a number)
-      if (!/\b(\d{5})(?:-\d{4})?$/.test(line) &&
-          !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-          !/^\d+\s/.test(line)) {
+      // BUT: Allow lines that start with numbers if they are company names (e.g., "3039 HIGHWAY 70 LLC")
+      const startsWithNumber = /^\d+\s/.test(line);
+      const looksLikeCompany = isCompanyName(line);
+      const isAddress = /\b(\d{5})(?:-\d{4})?$/.test(line) ||
+                        /\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) ||
+                        (startsWithNumber && !looksLikeCompany);
+      if (!isAddress) {
         cand.push(line);
       }
     });
@@ -208,10 +219,13 @@ function extractOwnerCandidates($) {
             // Split by <br> tags to get individual owner names
             const ownerLines = boldText.split(/\n/).map(line => norm(line)).filter(Boolean);
             ownerLines.forEach(line => {
-              // Filter out address lines
-              if (!/\b(\d{5})(?:-\d{4})?$/.test(line) &&
-                  !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-                  !/^\d+\s/.test(line)) {
+              // Filter out address lines (but allow company names that start with numbers)
+              const startsWithNumber = /^\d+\s/.test(line);
+              const looksLikeCompany = isCompanyName(line);
+              const isAddress = /\b(\d{5})(?:-\d{4})?$/.test(line) ||
+                                /\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) ||
+                                (startsWithNumber && !looksLikeCompany);
+              if (!isAddress) {
                 cand.push(line);
               }
             });
