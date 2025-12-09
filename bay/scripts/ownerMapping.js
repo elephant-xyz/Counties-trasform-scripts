@@ -15,51 +15,6 @@ const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales_grdFlat tbody tr
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
 const normalizeName = (s) => txt(s).toLowerCase();
 
-function cleanRawName(raw) {
-  let s = (raw || "").replace(/\s+/g, " ").trim();
-  if (!s) return "";
-  const noisePatterns = [
-    /\bET\s*AL\b/gi,
-    /\bETAL\b/gi,
-    /\bET\s*UX\b/gi,
-    /\bET\s*VIR\b/gi,
-    /\bET\s+UXOR\b/gi,
-    /\bTRUSTEE[S]?\b/gi,
-    /\bTTEE[S]?\b/gi,
-    /\bU\/A\b/gi,
-    /\bU\/D\/T\b/gi,
-    /\bAKA\b/gi,
-    /\bA\/K\/A\b/gi,
-    /\bFBO\b/gi,
-    /\bC\/O\b/gi,
-    /\b%\s*INTEREST\b/gi,
-    /\b\d{1,3}%\b/gi,
-    /\b\d{1,3}%\s*INTEREST\b/gi,
-    /\bJR\.?\b/gi,
-    /\bSR\.?\b/gi,
-  ];
-  noisePatterns.forEach((re) => {
-    s = s.replace(re, " ");
-  });
-  s = s.replace(/[(),]/g, " ").replace(/\s+/g, " ").trim();
-  s = s
-    .replace(/^(&|and)\s+/i, "")
-    .replace(/\s+(&|and)$/i, "")
-    .trim();
-  // If a trailing bare number remains right after a company suffix, drop it
-  const companySuffix =
-    "(?:LLC|L\\.L\\.C|INC|CORP|CO|COMPANY|LTD|TRUST|LP|LLP|PLC|PLLC)";
-  const trailingNumAfterCo = new RegExp(
-    `^(.*?\\b${companySuffix}\\b)\\s+\\d{1,3}$`,
-    "i",
-  );
-  const m = s.match(trailingNumAfterCo);
-  if (m) {
-    s = m[1].trim();
-  }
-  return s;
-}
-
 function normalizeWhitespace(str) {
   return (str || "")
     .replace(/\s+/g, " ")
@@ -67,18 +22,265 @@ function normalizeWhitespace(str) {
     .trim();
 }
 
+function normalizeComparisonToken(token) {
+  return (token || "").toLowerCase().replace(/[^a-z]/g, "");
+}
+
+function escapeRegex(str) {
+  return (str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const NAME_PREFIXES = new Set(
+  [
+    "mr",
+    "mrs",
+    "ms",
+    "miss",
+    "dr",
+    "doctor",
+    "rev",
+    "reverend",
+    "father",
+    "pastor",
+    "sir",
+    "madam",
+    "lady",
+    "lord",
+    "judge",
+    "justice",
+    "hon",
+    "honorable",
+    "prof",
+    "professor",
+    "capt",
+    "captain",
+    "cpt",
+    "sgt",
+    "sergeant",
+    "lt",
+    "lieutenant",
+    "col",
+    "colonel",
+    "maj",
+    "major",
+    "cmdr",
+    "commander",
+    "ofc",
+    "officer",
+    "imam",
+    "rabbi",
+    "bishop",
+    "elder",
+    "pastora",
+  ].map(normalizeComparisonToken),
+);
+
+const NAME_SUFFIXES = new Set(
+  [
+    "jr",
+    "sr",
+    "ii",
+    "iii",
+    "iv",
+    "v",
+    "vi",
+    "vii",
+    "esq",
+    "esquire",
+    "md",
+    "phd",
+    "dds",
+    "dmd",
+    "do",
+    "od",
+    "jd",
+    "mba",
+    "rn",
+    "cpa",
+    "pe",
+    "dvm",
+    "ret",
+    "retired",
+  ].map(normalizeComparisonToken),
+);
+
+const SURNAME_PREFIXES = new Set(
+  [
+    "de",
+    "del",
+    "de la",
+    "de las",
+    "de los",
+    "di",
+    "da",
+    "dos",
+    "du",
+    "le",
+    "la",
+    "los",
+    "las",
+    "van",
+    "von",
+    "der",
+    "den",
+    "ter",
+    "ten",
+    "mac",
+    "mc",
+    "st",
+    "st.",
+    "saint",
+    "san",
+    "santa",
+    "bin",
+    "al",
+    "ibn",
+    "abu",
+    "ben",
+  ].map(normalizeComparisonToken),
+);
+
 function cleanInvalidCharsFromName(raw) {
   let parsedName = normalizeWhitespace(raw)
-    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
-    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^A-Za-z\-', .]/g, "")
     .trim();
-  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+  while (/^[\-', .]/i.test(parsedName)) {
     parsedName = parsedName.slice(1);
   }
-  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+  while (/[\-', .]$/i.test(parsedName)) {
     parsedName = parsedName.slice(0, parsedName.length - 1);
   }
   return parsedName;
+}
+
+function cleanCompanyString(raw) {
+  let s = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  s = s.replace(/\s+,/g, ",").replace(/,\s+/g, ", ");
+  s = s.replace(/[,;]+$/g, "").trim();
+  return s;
+}
+
+function cleanRawName(raw) {
+  let s = normalizeWhitespace(raw);
+  if (!s) return "";
+  s = s.replace(/\([^)]*\)/g, " ");
+  const dropTrailingPatterns = [
+    /\b(?:FKA|F\/K\/A|AKA|A\/K\/A|NKA|N\/K\/A)\b.*$/gi,
+  ];
+  dropTrailingPatterns.forEach((re) => {
+    s = s.replace(re, " ");
+  });
+  const noisePatterns = [
+    /\bET\s*AL\b/gi,
+    /\bETAL\b/gi,
+    /\bET\s*UX\b/gi,
+    /\bET\s*VIR\b/gi,
+    /\bET\s+UXOR\b/gi,
+    /\bU\/A\b/gi,
+    /\bU\/D\/T\b/gi,
+    /\bFBO\b/gi,
+    /\bC\/O\b/gi,
+    /\bH\s*&\s*W\b/gi,
+    /\bH\/W\b/gi,
+    /\bHUSBAND\b/gi,
+    /\bWIFE\b/gi,
+    /\bINT(?:ER(?:EST)?)?\b/gi,
+    /\bCOMMUNITY\s+PROPERTY\b/gi,
+    /\bJT\s+TEN\b/gi,
+    /\bTENANTS?\s+BY\s+THE\s+ENTIRETY\b/gi,
+    /\bTENANTS?\s+IN\s+COMMON\b/gi,
+    /\bMAR(?:RIED|\.?)\b/gi,
+    /\bA\/W\b/gi,
+    /\bS\/H\b/gi,
+    /\bD\/B\/A\b/gi,
+  ];
+  noisePatterns.forEach((re) => {
+    s = s.replace(re, " ");
+  });
+  s = s.replace(/\d{1,3}%/gi, " ");
+  s = s.replace(/\b\d{1,3}%\s*INT(?:ER(?:EST)?)?\b/gi, " ");
+  s = s.replace(/\b\d+(?:\.\d+)?\s*PCT\b/gi, " ");
+  s = s.replace(/\d+(?:\.\d+)?%?/gi, (match) =>
+    match.includes("%") ? " " : match,
+  );
+  s = s.replace(/\s+/g, " ").trim();
+  s = s
+    .replace(/^(&|and)\s+/i, "")
+    .replace(/\s+(&|and)$/i, "")
+    .trim();
+  return s;
+}
+
+function tokenizeNameSection(segment) {
+  const normalized = normalizeWhitespace(
+    segment
+      .replace(/[\u2019]/g, "'")
+      .replace(/\./g, " ")
+      .replace(/[^A-Za-z0-9'&\- ]+/g, " "),
+  );
+  if (!normalized) return [];
+  return normalized
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function stripLeadingPrefixes(tokens) {
+  const out = [...tokens];
+  while (out.length > 0) {
+    const norm = normalizeComparisonToken(out[0]);
+    if (norm && NAME_PREFIXES.has(norm)) {
+      out.shift();
+    } else {
+      break;
+    }
+  }
+  return out;
+}
+
+function stripTrailingSuffixes(tokens) {
+  const out = [...tokens];
+  while (out.length > 0) {
+    const norm = normalizeComparisonToken(out[out.length - 1]);
+    if (norm && NAME_SUFFIXES.has(norm)) {
+      out.pop();
+    } else {
+      break;
+    }
+  }
+  return out;
+}
+
+function formatLastNameTokens(tokens) {
+  if (!tokens || tokens.length === 0) return "";
+  let surname = tokens.join(" ").trim();
+  surname = surname.replace(/\bMC\s+(?=[A-Z])/gi, (m) =>
+    m.replace(/\s+/, ""),
+  );
+  surname = surname.replace(/\bMAC\s+(?=[A-Z])/gi, (m) =>
+    m.replace(/\s+/, ""),
+  );
+  surname = surname.replace(/\bO'\s+(?=[A-Z])/gi, "O'");
+  return cleanInvalidCharsFromName(surname);
+}
+
+function extractLastNameTokens(tokens) {
+  if (!tokens.length) return [];
+  const result = [tokens[tokens.length - 1]];
+  for (let i = tokens.length - 2; i >= 0; i -= 1) {
+    const candidate = tokens[i];
+    const norm = normalizeComparisonToken(candidate);
+    if (norm && SURNAME_PREFIXES.has(norm)) {
+      result.unshift(candidate);
+    } else {
+      break;
+    }
+  }
+  return result;
 }
 
 const COMPANY_KEYWORDS = [
@@ -95,6 +297,7 @@ const COMPANY_KEYWORDS = [
   "services",
   "trust",
   "tr",
+  "trustee",
   "associates",
   "association",
   "holdings",
@@ -109,55 +312,366 @@ const COMPANY_KEYWORDS = [
   "school",
   "university",
   "authority",
+  "properties",
+  "realty",
+  "management",
+  "investments",
+  "fund",
+  "estate",
 ];
 
 
 function isCompanyName(name) {
   const n = name.toLowerCase();
   return COMPANY_KEYWORDS.some((kw) =>
-    new RegExp(`(^|\\b)${kw}(\\b|\.$)`, "i").test(n),
+    new RegExp(`(^|\\b)${kw}(\\b|\\.|$)`, "i").test(n),
   );
 }
 
-function splitCompositeNames(name) {
-  const cleaned = cleanRawName(name);
+const COMPOSITE_SPLIT_REGEX =
+  /(?:\s+\band\b\s+|\s*&\s*|\s*\/\s*|\s*;\s*|\s*\+\s*)/i;
+
+function splitCompositeNames(raw) {
+  const cleaned = cleanRawName(raw);
   if (!cleaned) return [];
-  const parts = cleaned
-    .split(/\s*&\s*|\s+and\s+/i)
-    .map((p) => p.trim())
-    .filter(Boolean);
-  return parts;
+  const compositeHasComma = /,/.test(cleaned);
+  if (isCompanyName(cleaned)) {
+    return [
+      {
+        raw: cleaned,
+        hasComma: compositeHasComma,
+        index: 0,
+        compositeHasComma,
+        inheritedLastName: null,
+      },
+    ];
+  }
+  const protectedAmpersand = cleaned.replace(/(\S)&(\S)/g, "$1@@AMP@@$2");
+  const parts = protectedAmpersand
+    .split(COMPOSITE_SPLIT_REGEX)
+    .map((segment) =>
+      normalizeWhitespace(segment.replace(/@@AMP@@/g, "&")),
+    )
+    .filter(Boolean)
+    .map((segment, idx) => ({
+      raw: segment,
+      hasComma: segment.includes(","),
+      index: idx,
+      compositeHasComma,
+    }));
+  let inheritedLastName = null;
+  return parts.map((part) => {
+    const result = { ...part, inheritedLastName: null };
+    if (part.hasComma) {
+      const candidate = extractCandidateLastName(part.raw);
+      if (candidate) {
+        inheritedLastName = candidate;
+      }
+    } else if (inheritedLastName) {
+      const pattern = new RegExp(`\\b${escapeRegex(inheritedLastName)}\\b`, "i");
+      if (!pattern.test(part.raw)) {
+        result.inheritedLastName = inheritedLastName;
+      }
+    }
+    return result;
+  });
 }
 
-function classifyOwner(raw) {
-  const cleaned = cleanRawName(raw);
+function extractCandidateLastName(partText) {
+  if (!partText) return null;
+  if (partText.includes(",")) {
+    const [lastSegment] = partText.split(",");
+    const lastTokens = stripTrailingSuffixes(tokenizeNameSection(lastSegment));
+    const surname = formatLastNameTokens(
+      lastTokens.length ? lastTokens : tokenizeNameSection(lastSegment),
+    );
+    if (surname && normalizeComparisonToken(surname).length > 1) {
+      return surname;
+    }
+  }
+  let tokens = tokenizeNameSection(partText);
+  if (!tokens.length) return null;
+  tokens = stripLeadingPrefixes(tokens);
+  tokens = stripTrailingSuffixes(tokens);
+  if (!tokens.length) return null;
+  const surnameTokens = extractLastNameTokens(tokens);
+  const surname = formatLastNameTokens(surnameTokens);
+  if (surname && normalizeComparisonToken(surname).length > 1) {
+    return surname;
+  }
+  return null;
+}
+
+function collectCandidateLastNames(parts) {
+  const seen = new Set();
+  const candidates = [];
+  for (const part of parts) {
+    const candidate = extractCandidateLastName(part.raw);
+    if (!candidate) continue;
+    const norm = normalizeName(candidate);
+    if (!seen.has(norm) && norm.length > 1) {
+      seen.add(norm);
+      candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
+function pickFallbackLastName(candidateLastNames, currentLastName) {
+  if (!candidateLastNames || candidateLastNames.length === 0) return null;
+  const currentNorm = normalizeComparisonToken(currentLastName || "");
+  for (const candidate of candidateLastNames) {
+    if (!candidate) continue;
+    const norm = normalizeComparisonToken(candidate);
+    if (!norm || norm.length <= 1) continue;
+    if (currentNorm && norm === currentNorm && currentNorm.length > 1) {
+      return cleanInvalidCharsFromName(candidate);
+    }
+    if (!currentNorm || norm !== currentNorm) {
+      return cleanInvalidCharsFromName(candidate);
+    }
+  }
+  return null;
+}
+
+function classifyOwner(part, candidateLastNames) {
+  const cleaned = normalizeWhitespace(part.raw);
   if (!cleaned) {
-    return { valid: false, reason: "empty_after_clean", raw };
+    return { valid: false, reason: "empty_after_clean", raw: part.raw };
   }
   if (isCompanyName(cleaned)) {
-    return { valid: true, owner: { type: "company", name: cleaned } };
-  }
-  const tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
-  if (tokens.length < 2) {
-    return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  }
-  const first = cleanInvalidCharsFromName(tokens[0]);
-  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
-  const middleTokens = tokens.slice(1, -1);
-  // if (/^[A-Za-z]$/.test(last)) {
-  //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
-  // }
-  const middle = cleanInvalidCharsFromName(middleTokens.join(" ").trim());
-  if (first && last) {
-    const person = {
-      type: "person",
-      first_name: first,
-      last_name: last,
-      middle_name: middle ? middle : null,
+    return {
+      valid: true,
+      owner: {
+        type: "company",
+        name: cleanCompanyString(cleaned),
+      },
     };
-    return { valid: true, owner: person };
   }
-  return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
+
+  const fallbackLastNames = candidateLastNames || [];
+  const fallbackNorms = new Set(
+    fallbackLastNames
+      .map((ln) => normalizeComparisonToken(ln))
+      .filter((norm) => norm && norm.length > 1),
+  );
+  const hasComma = part.hasComma || cleaned.includes(",");
+
+  if (hasComma) {
+    const sections = cleaned.split(",");
+    const lastSegment = sections.shift();
+    const restSegment = sections.join(" ");
+    let lastTokens = stripTrailingSuffixes(tokenizeNameSection(lastSegment));
+    if (!lastTokens.length) {
+      lastTokens = tokenizeNameSection(lastSegment);
+    }
+    const lastTokensSnapshot = [...lastTokens];
+    let givenTokens = tokenizeNameSection(restSegment);
+    givenTokens = stripLeadingPrefixes(givenTokens);
+    givenTokens = stripTrailingSuffixes(givenTokens);
+    if (!givenTokens.length) {
+      givenTokens = tokenizeNameSection(restSegment);
+    }
+    if (!givenTokens.length) {
+      return {
+        valid: false,
+        reason: "person_missing_first_name",
+        raw: cleaned,
+      };
+    }
+    const firstRaw = givenTokens.shift();
+    const firstName = cleanInvalidCharsFromName(firstRaw);
+    const middleTokens = givenTokens
+      .map(cleanInvalidCharsFromName)
+      .filter(Boolean);
+    let lastName = formatLastNameTokens(lastTokens);
+    let fallbackApplied = false;
+    if (!lastName || normalizeComparisonToken(lastName).length <= 1) {
+      const fallback = pickFallbackLastName(fallbackLastNames, lastName);
+      if (fallback) {
+        lastName = fallback;
+        fallbackApplied = true;
+      }
+    }
+    if (!lastName || normalizeComparisonToken(lastName).length <= 1) {
+      return {
+        valid: false,
+        reason: "person_missing_last_name",
+        raw: cleaned,
+      };
+    }
+    if (!firstName) {
+      return {
+        valid: false,
+        reason: "person_missing_first_name",
+        raw: cleaned,
+      };
+    }
+    let middleNameValue = middleTokens.length
+      ? cleanInvalidCharsFromName(middleTokens.join(" "))
+      : null;
+    if (fallbackApplied && lastTokensSnapshot.length) {
+      const fallbackMiddleRaw = cleanInvalidCharsFromName(
+        lastTokensSnapshot.join(" "),
+      );
+      const fallbackMiddleNorm = normalizeComparisonToken(fallbackMiddleRaw);
+      if (fallbackMiddleNorm) {
+        if (middleNameValue) {
+          if (normalizeComparisonToken(middleNameValue) !== fallbackMiddleNorm) {
+            middleNameValue = `${middleNameValue} ${fallbackMiddleRaw}`.trim();
+          }
+        } else {
+          middleNameValue = fallbackMiddleRaw;
+        }
+      }
+    }
+    return {
+      valid: true,
+      owner: {
+        type: "person",
+        first_name: firstName,
+        last_name: lastName,
+        middle_name: middleNameValue ? middleNameValue : null,
+      },
+    };
+  }
+
+  let tokens = tokenizeNameSection(cleaned);
+  if (!tokens.length) {
+    return { valid: false, reason: "unparseable_or_empty", raw: cleaned };
+  }
+  tokens = stripLeadingPrefixes(tokens);
+  tokens = stripTrailingSuffixes(tokens);
+  if (!tokens.length) {
+    tokens = tokenizeNameSection(cleaned);
+  }
+  const tokenCount = tokens.length;
+  if (tokenCount === 0) {
+    return { valid: false, reason: "unparseable_or_empty", raw: cleaned };
+  }
+  if (tokenCount === 1) {
+    const firstName = cleanInvalidCharsFromName(tokens[0]);
+    let lastNameCandidate = null;
+    if (part.inheritedLastName) {
+      lastNameCandidate = cleanInvalidCharsFromName(part.inheritedLastName);
+    }
+    if (!lastNameCandidate) {
+      lastNameCandidate = pickFallbackLastName(fallbackLastNames);
+    }
+    if (lastNameCandidate) {
+      return {
+        valid: true,
+        owner: {
+          type: "person",
+          first_name: firstName,
+          last_name: lastNameCandidate,
+          middle_name: null,
+        },
+      };
+    }
+    return {
+      valid: false,
+      reason: "person_missing_last_name",
+      raw: cleaned,
+    };
+  }
+
+  const surnameTokens = extractLastNameTokens(tokens);
+  const surnameTokensSnapshot = [...surnameTokens];
+  const remainingTokens = tokens.slice(0, tokenCount - surnameTokens.length);
+  if (!remainingTokens.length) {
+    return {
+      valid: false,
+      reason: "person_missing_first_name",
+      raw: cleaned,
+    };
+  }
+  const firstName = cleanInvalidCharsFromName(remainingTokens.shift());
+  const middleTokens = remainingTokens
+    .map(cleanInvalidCharsFromName)
+    .filter(Boolean);
+  let lastName = formatLastNameTokens(surnameTokens);
+  let fallbackApplied = false;
+  let updatedLastNorm = normalizeComparisonToken(lastName);
+  const inheritedNorm = normalizeComparisonToken(part.inheritedLastName);
+  if (
+    part.inheritedLastName &&
+    inheritedNorm &&
+    (!updatedLastNorm || updatedLastNorm !== inheritedNorm) &&
+    (tokenCount <= 2 ||
+      !new RegExp(`\\b${escapeRegex(part.inheritedLastName)}\\b`, "i").test(
+        part.raw,
+      ))
+  ) {
+    lastName = cleanInvalidCharsFromName(part.inheritedLastName);
+    fallbackApplied = true;
+    updatedLastNorm = normalizeComparisonToken(lastName);
+  }
+  if (!lastName || !updatedLastNorm || updatedLastNorm.length <= 1) {
+    const fallback = pickFallbackLastName(fallbackLastNames, lastName);
+    if (fallback) {
+      lastName = fallback;
+      fallbackApplied = true;
+      updatedLastNorm = normalizeComparisonToken(lastName);
+    }
+  }
+  if (
+    !fallbackApplied &&
+    tokenCount <= 2 &&
+    fallbackNorms.size >= 1 &&
+    (!updatedLastNorm || !fallbackNorms.has(updatedLastNorm)) &&
+    part.compositeHasComma
+  ) {
+    const fallback = pickFallbackLastName(fallbackLastNames, lastName);
+    if (fallback) {
+      lastName = fallback;
+      fallbackApplied = true;
+      updatedLastNorm = normalizeComparisonToken(lastName);
+    }
+  }
+  if (!lastName || !updatedLastNorm || updatedLastNorm.length <= 1) {
+    return {
+      valid: false,
+      reason: "person_missing_last_name",
+      raw: cleaned,
+    };
+  }
+  if (!firstName) {
+    return {
+      valid: false,
+      reason: "person_missing_first_name",
+      raw: cleaned,
+    };
+  }
+
+  let middleNameValue = middleTokens.length
+    ? cleanInvalidCharsFromName(middleTokens.join(" "))
+    : null;
+  if (fallbackApplied && surnameTokensSnapshot.length) {
+    const fallbackMiddleRaw = cleanInvalidCharsFromName(
+      surnameTokensSnapshot.join(" "),
+    );
+    const fallbackMiddleNorm = normalizeComparisonToken(fallbackMiddleRaw);
+    if (fallbackMiddleNorm) {
+      if (middleNameValue) {
+        if (normalizeComparisonToken(middleNameValue) !== fallbackMiddleNorm) {
+          middleNameValue = `${middleNameValue} ${fallbackMiddleRaw}`.trim();
+        }
+      } else {
+        middleNameValue = fallbackMiddleRaw;
+      }
+    }
+  }
+
+  return {
+    valid: true,
+    owner: {
+      type: "person",
+      first_name: firstName,
+      last_name: lastName,
+      middle_name: middleNameValue ? middleNameValue : null,
+    },
+  };
 }
 
 function dedupeOwners(owners) {
@@ -229,21 +743,32 @@ function extractSalesOwnersByDate($) {
   return { map, priorOwners };
 }
 
-function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
+function resolveOwnersFromRawStrings(rawEntries, invalidCollector) {
   const owners = [];
-  for (const raw of rawStrings) {
-    const parts = splitCompositeNames(raw);
-    if (parts.length === 0) {
-      invalidCollector.push({ raw, reason: "unparseable_or_empty" });
-      continue;
+  for (const entry of rawEntries) {
+    let parts;
+    if (
+      entry &&
+      typeof entry === "object" &&
+      Object.prototype.hasOwnProperty.call(entry, "raw")
+    ) {
+      parts = [entry];
+    } else {
+      const raw = entry;
+      parts = splitCompositeNames(raw);
+      if (parts.length === 0) {
+        invalidCollector.push({ raw, reason: "unparseable_or_empty" });
+        continue;
+      }
     }
+    const candidateLastNames = collectCandidateLastNames(parts);
     for (const part of parts) {
-      const res = classifyOwner(part);
+      const res = classifyOwner(part, candidateLastNames);
       if (res.valid) {
         owners.push(res.owner);
       } else {
         invalidCollector.push({
-          raw: part,
+          raw: part.raw,
           reason: res.reason || "invalid_owner",
         });
       }
@@ -281,8 +806,13 @@ if (priorOwners && priorOwners.length > 0) {
   const placeholderRaw = [];
   for (const p of priorOwners) {
     const parts = splitCompositeNames(p);
+    if (parts.length === 0) {
+      invalid_owners.push({ raw: p, reason: "unparseable_or_empty" });
+      continue;
+    }
+    const candidateLastNames = collectCandidateLastNames(parts);
     for (const part of parts) {
-      const res = classifyOwner(part);
+      const res = classifyOwner(part, candidateLastNames);
       if (res.valid) {
         const o = res.owner;
         let key;
@@ -294,7 +824,7 @@ if (priorOwners && priorOwners.length > 0) {
         }
       } else {
         invalid_owners.push({
-          raw: part,
+          raw: part.raw,
           reason: res.reason || "invalid_owner",
         });
       }

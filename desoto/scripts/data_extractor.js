@@ -75,7 +75,9 @@ function normalizeCompanyKey(name) {
 }
 
 function buildPersonFromSingleName(s) {
-  const cleaned = norm(s);
+  // Remove continuation markers
+  let cleaned = norm(s);
+  cleaned = cleaned.replace(/\s*-CONT-?\s*/gi, " ").trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
   if (parts.length < 2) {
     return [
@@ -140,7 +142,11 @@ function buildPersonFromSingleName(s) {
 
 function buildEntitiesFromRaw(raw) {
   const all = [];
-  const s = norm(raw);
+  let s = norm(raw);
+  if (!s) return all;
+
+  // Remove continuation markers
+  s = s.replace(/\s*-CONT-?\s*/gi, " ").trim();
   if (!s) return all;
 
   if (/^(c\/o|care of)\b/i.test(s)) return all;

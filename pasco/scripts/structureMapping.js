@@ -93,23 +93,23 @@ const EXTERIOR_WALL_CODE_MAP = {
 
 const INTERIOR_FLOOR_CODE_MAP = {
   "01": "Sheet Vinyl",
-  "02": "Concrete",
-  "03": "Concrete",
+  "02": "Polished Concrete",
+  "03": "Polished Concrete",
   "04": "Ceramic Tile",
   "05": "Ceramic Tile",
   "06": "Ceramic Tile",
   "07": "Sheet Vinyl",
   "08": "Solid Hardwood",
-  "09": "Stone",
+  "09": "Natural Stone Tile",
   "10": "Ceramic Tile",
   "11": "Solid Hardwood",
   "12": "Solid Hardwood",
   "13": "Carpet",
   "14": "Ceramic Tile",
-  "15": "Stone",
-  "16": "Concrete",
-  "17": "Stone",
-  "18": "Stone",
+  "15": "Natural Stone Tile",
+  "16": "Polished Concrete",
+  "17": "Natural Stone Tile",
+  "18": "Natural Stone Tile",
   "19": "Ceramic Tile",
   "20": "Laminate",
 };
@@ -193,11 +193,12 @@ function mapInteriorFloorValue(value) {
   if (upper.includes("CARPET")) return "Carpet";
   if (upper.includes("HARDWOOD")) return "Solid Hardwood";
   if (upper.includes("VINYL")) return "Sheet Vinyl";
-  if (upper.includes("TILE")) return "Ceramic Tile";
+  if (upper.includes("TILE") && !upper.includes("CONCRETE")) return "Ceramic Tile";
   if (upper.includes("LAMINATE")) return "Laminate";
-  if (upper.includes("SLATE")) return "Stone";
-  if (upper.includes("MARBLE")) return "Stone";
-  if (upper.includes("CONCRETE")) return "Concrete";
+  if (upper.includes("SLATE")) return "Natural Stone Tile";
+  if (upper.includes("MARBLE")) return "Natural Stone Tile";
+  // Handle all concrete variations (Finished Concrete, Concrete, Polished Concrete, etc.)
+  if (upper.includes("CONCRETE")) return "Polished Concrete";
   return null;
 }
 
@@ -300,11 +301,35 @@ function mapStructuralFrameValue(value) {
 
   const interiorSurfacePrimary = mapInteriorWallValue(intWall1);
   const flooringPrimary = mapInteriorFloorValue(floor1);
-  const flooringSecondary =
+  let flooringSecondary =
     mapInteriorFloorValue(floor2) ||
     (floor2 && floor2.toLowerCase() !== "none"
       ? mapInteriorFloorValue(floor2)
       : null);
+
+  // flooring_material_secondary has restricted enum - convert invalid values
+  const VALID_SECONDARY_FLOORING = [
+    "Solid Hardwood",
+    "Engineered Hardwood",
+    "Laminate",
+    "Luxury Vinyl Plank",
+    "Ceramic Tile",
+    "Carpet",
+    "Area Rugs",
+    "Transition Strips",
+    null
+  ];
+
+  if (flooringSecondary && !VALID_SECONDARY_FLOORING.includes(flooringSecondary)) {
+    // Map invalid values to closest valid enum or null
+    if (flooringSecondary === "Polished Concrete" || flooringSecondary === "Natural Stone Tile" || flooringSecondary === "Porcelain Tile") {
+      flooringSecondary = "Ceramic Tile";
+    } else if (flooringSecondary === "Sheet Vinyl") {
+      flooringSecondary = "Luxury Vinyl Plank";
+    } else {
+      flooringSecondary = null;
+    }
+  }
 
   const roofDesign = mapRoofStructureValue(roofStruct);
   const roofCoverMapping = mapRoofCoverValue(roofCover);
