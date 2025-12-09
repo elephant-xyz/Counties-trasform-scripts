@@ -1105,15 +1105,16 @@ function main() {
     writeJSON(path.join(dataDir, relName), rel);
   }
 
-  // relationship_sales_person_*.json for current owners to most recent sale
+  // relationship_sales_history_*_buyer_person_*.json for current owners to most recent sale
   if (personFiles.length > 0 && salesFiles.length > 0) {
     const recentSalesFile = salesFiles[0];
+    const saleIdx = 1; // Most recent sale is sales_history_1.json
     personFiles.forEach((pf, idx) => {
       const rel = {
-        to: { "/": `./${pf}` },
         from: { "/": `./${recentSalesFile}` },
+        to: { "/": `./${pf}` },
       };
-      const relName = `relationship_sales_person_${idx + 1}.json`;
+      const relName = `relationship_sales_history_${saleIdx}_buyer_person_${idx + 1}.json`;
       writeJSON(path.join(dataDir, relName), rel);
     });
   } else if (personFiles.length > 0 && salesFiles.length === 0) {
