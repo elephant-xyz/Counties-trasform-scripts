@@ -9835,6 +9835,100 @@ function formatNamePart(part) {
   return PERSON_NAME_PATTERN.test(cleaned) ? cleaned : null;
 }
 
+// Force an address payload onto the raw branch with full schema surface so the
+// oneOf selection never fails when only an unnormalized string is available.
+function rewriteAddressAsRawVariant(addressPath, options = {}) {
+  if (!addressPath) return;
+
+  const {
+    propertyPayload = {},
+    unnormalizedSource = {},
+    seedSource = {},
+    existingAddress = {},
+  } = options;
+
+  const rawAddress = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingAddress.unnormalized_address,
+      propertyPayload.unnormalized_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+    ]),
+  );
+  if (!rawAddress) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const payload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawAddress };
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (field === "county_name") continue; // handled separately below
+    const sources = [existingAddress, propertyPayload, unnormalizedSource, seedSource];
+    let candidate;
+    for (const src of sources) {
+      if (candidate !== undefined) break;
+      if (src && Object.prototype.hasOwnProperty.call(src, field)) {
+        candidate = src[field];
+      }
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      payload[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      payload[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+    payload[field] = candidate === undefined || candidate === null ? null : candidate;
+  }
+
+  const countyCandidate = titleCaseCounty(
+    safeNullIfEmpty(
+      existingAddress.county_name ||
+        propertyPayload.county_name ||
+        unnormalizedSource.county_name ||
+        unnormalizedSource.county_jurisdiction ||
+        seedSource.county_name,
+    ),
+  );
+  payload.county_name = countyCandidate || null;
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingAddress.request_identifier,
+      propertyPayload.request_identifier,
+      unnormalizedSource.request_identifier,
+      seedSource.request_identifier,
+    ]),
+  );
+  payload.request_identifier =
+    resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    existingAddress.source_http_request,
+    propertyPayload.source_http_request,
+    unnormalizedSource.source_http_request,
+    seedSource.source_http_request,
+  );
+  payload.source_http_request = resolvedSourceHttp ? deepClone(resolvedSourceHttp) : null;
+
+  if (payload.state_code && !payload.country_code) {
+    payload.country_code = "US";
+  }
+  if (!payload.postal_code) {
+    payload.plus_four_postal_code = null;
+  }
+  if ((payload.latitude == null) !== (payload.longitude == null)) {
+    payload.latitude = null;
+    payload.longitude = null;
+  }
+
+  writeJSON(addressPath, payload);
+}
+
 // Final guard: emit a single address oneOf branch (normalized only when fully
 // populated, otherwise a lean raw payload) and force relationship placeholders
 // to null so UR hydration can occur downstream.
@@ -9863,36 +9957,26 @@ process.on("exit", () => {
           "Palm Beach",
       ),
     );
-    const sourceHttpRequest = resolveSourceHttpRequest(
-      existingAddress.source_http_request,
-      propertyPayload.source_http_request,
-      unnormalizedSource.source_http_request,
-      seedSource.source_http_request,
-    );
-
-    enforceAddressOneOfResolution(addressPath, {
-      rawCandidates: [
-        existingAddress.unnormalized_address,
-        propertyPayload && propertyPayload.unnormalized_address,
-        unnormalizedSource && unnormalizedSource.unnormalized_address,
-        unnormalizedSource && unnormalizedSource.full_address,
-      ],
-      requestIdentifier:
-        propertyPayload.request_identifier ||
-        existingAddress.request_identifier ||
-        unnormalizedSource.request_identifier ||
-        seedSource.request_identifier ||
-        null,
-      sourceHttpRequest,
-      defaultCountyName: countyCandidate,
-      defaultCountryCode: "US",
-      seed: seedSource,
+    rewriteAddressAsRawVariant(addressPath, {
+      propertyPayload,
+      unnormalizedSource,
+      seedSource,
+      existingAddress,
     });
     enforceRawAddressSurface(addressPath);
     ensureRawAddressFieldPresence(addressPath);
 
+    const stabilizedProperty =
+      propertyPayload && typeof propertyPayload === "object" ? { ...propertyPayload } : {};
+    if (!stabilizedProperty.relationships || typeof stabilizedProperty.relationships !== "object") {
+      stabilizedProperty.relationships = {};
+    }
+    stabilizedProperty.relationships.property_has_address = null;
+    stabilizedProperty.relationships.address_has_fact_sheet = null;
+    writeJSON(propertyPath, stabilizedProperty);
     enforcePropertyRelationshipNulls(propertyPath);
     [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
       ensureNullRelationshipPlaceholders(
         dirPath,
         Array.from(RELATIONSHIP_AUTOGENERATED_BASENAMES),
