@@ -103,8 +103,9 @@ function formatNameToPattern(name) {
     .trim();
 
   // Validate the result matches the required pattern: must start with uppercase letter
-  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // followed by lowercase letters, with optional delimiters followed by letter + lowercase
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   if (!result || !namePattern.test(result)) {
     return null;
   }
