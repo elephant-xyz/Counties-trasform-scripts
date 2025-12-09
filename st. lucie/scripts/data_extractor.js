@@ -48,66 +48,181 @@ function normalizeOwnerKey(name) {
 }
 
 const COMPANY_NAME_REGEX =
-  /\b(assn|association|bank|church|company|co\b|corp|corporation|enterprises|foundation|group|holdings|inc\b|investments|llc\b|llp\b|ltd\b|management|partners|partnership|properties|realty|solutions|trust)\b/i;
+  /\b(assn|association|bank|church|company|co\b|corp|corporation|enterprises|foundation|group|holdings|inc\b|investments|llc\b|llp\b|ltd\b|management|partners|partnership|properties|realty|solutions|trust|federal|mortgage|loan|loans|credit union|national|financial|insurance|services|agency|authority|commission|department|bureau|administration|government|municipal|state|county|city|district)\b/i;
 
 function guessOwnerType(name) {
   if (!name) return "person";
   return COMPANY_NAME_REGEX.test(name) ? "company" : "person";
 }
 
+/**
+ * Normalize a person name to match the Elephant schema pattern:
+ * ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+ *
+ * This means:
+ * - First letter uppercase, rest lowercase
+ * - After separators (space, hyphen, apostrophe, comma, period),
+ *   capitalize the next letter and lowercase the rest
+ */
+function normalizePersonName(name) {
+  if (!name || typeof name !== 'string') return null;
+
+  let trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
+  // Use a loop to ensure all parenthetical content is removed
+  let previousLength;
+  do {
+    previousLength = trimmed.length;
+    trimmed = trimmed.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  } while (trimmed.length < previousLength && trimmed.length > 0);
+
+  if (!trimmed) return null;
+
+  // Remove any remaining parentheses that might be unmatched
+  trimmed = trimmed.replace(/[()]/g, '').trim();
+  if (!trimmed) return null;
+
+  // First, filter out any characters that are not letters or allowed separators
+  // Allowed: letters (a-zA-Z) and separators (space, hyphen, apostrophe, comma, period)
+  const filtered = trimmed.replace(/[^a-zA-Z \-',.]/g, '').trim();
+  if (!filtered) return null;
+
+  // Split by separators while keeping them
+  const separators = /[ \-',.]/;
+  const parts = [];
+  let currentPart = '';
+
+  for (let i = 0; i < filtered.length; i++) {
+    const char = filtered[i];
+    if (separators.test(char)) {
+      if (currentPart) {
+        parts.push(currentPart);
+      }
+      parts.push(char);
+      currentPart = '';
+    } else {
+      currentPart += char;
+    }
+  }
+  if (currentPart) {
+    parts.push(currentPart);
+  }
+
+  // Remove any trailing separators from the parts array
+  while (parts.length > 0 && separators.test(parts[parts.length - 1])) {
+    parts.pop();
+  }
+
+  // Remove any leading separators from the parts array
+  while (parts.length > 0 && separators.test(parts[0])) {
+    parts.shift();
+  }
+
+  // Normalize each part: capitalize first letter, lowercase the rest
+  const normalized = parts.map((part, index) => {
+    if (separators.test(part)) {
+      return part; // Keep separators as-is
+    }
+    if (!part) return part;
+
+    // Capitalize first letter, lowercase the rest
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join('');
+
+  return normalized || null;
+}
+
 function parsePersonNameTokens(name) {
   let cleaned = textClean(name);
   if (!cleaned) return null;
 
-  // Remove common descriptors like (EST), (TR), etc.
-  // This regex looks for words in parentheses that are common legal/estate terms
-  cleaned = cleaned.replace(/\s*\((EST|TR|ET AL|JR|SR|II|III|IV)\)\s*/gi, ' ').trim();
+  // Remove any content in parentheses (often legal/estate terms, OCR errors, etc.)
+  // This handles cases like "(lf Est)", "(EST)", "(TR)", etc.
+  cleaned = cleaned.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
   // Also remove common suffixes that might be mistaken for middle names or part of the last name
   cleaned = cleaned.replace(/,?\s*(JR|SR|II|III|IV)\.?$/i, '').trim();
 
 
   if (cleaned.includes(",")) {
     const [lastPart, rest] = cleaned.split(",", 2);
-    const restTokens = textClean(rest)
+    // Remove parenthetical content from the rest part (e.g., "(lf Est)", "(TR)", etc.)
+    let cleanedRest = textClean(rest);
+    let previousLength;
+    do {
+      previousLength = cleanedRest.length;
+      cleanedRest = cleanedRest.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+    } while (cleanedRest.length < previousLength && cleanedRest.length > 0);
+
+    const restTokens = cleanedRest
       .split(/\s+/)
       .filter(Boolean);
     if (restTokens.length === 0) {
       return {
         first_name: null,
         middle_name: null,
-        last_name: textClean(lastPart) || null,
+        last_name: normalizePersonName(textClean(lastPart)),
       };
     }
     const first = restTokens[0] || null;
     const middle =
       restTokens.length > 1 ? restTokens.slice(1).join(" ") : null;
     return {
-      first_name: first || null,
-      middle_name: middle || null,
-      last_name: textClean(lastPart) || null,
+      first_name: normalizePersonName(first),
+      middle_name: normalizePersonName(middle),
+      last_name: normalizePersonName(textClean(lastPart)),
     };
   }
 
-  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  let tokens = cleaned.split(/\s+/).filter(Boolean);
+
+  // Merge tokens that start with hyphens with the previous token
+  // This handles cases like "Spatafora -King Nicole R" where "-King" should be "Spatafora-King"
+  const mergedTokens = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.startsWith('-') && mergedTokens.length > 0) {
+      // Merge with previous token
+      mergedTokens[mergedTokens.length - 1] += token;
+    } else {
+      mergedTokens.push(token);
+    }
+  }
+  tokens = mergedTokens;
+
   if (tokens.length === 0) {
     return { first_name: null, middle_name: null, last_name: null };
   }
   if (tokens.length === 1) {
-    return { first_name: tokens[0], middle_name: null, last_name: null };
+    return { first_name: normalizePersonName(tokens[0]), middle_name: null, last_name: null };
   }
+
+  // Heuristic: If the last token is a single letter (initial), assume "Last First Middle" format
+  // This handles cases like "McManus Michael A" or "Baker Sean S" from sales tables
+  const lastToken = tokens[tokens.length - 1];
+  if (lastToken.length === 1 && /^[A-Za-z]$/.test(lastToken)) {
+    // Format is "Last First Middle" without comma
+    const last = tokens[0];
+    const first = tokens.length >= 2 ? tokens[1] : null;
+    const middle = tokens.length >= 3 ? tokens.slice(2).join(" ") || null : null;
+    return {
+      first_name: normalizePersonName(first),
+      middle_name: normalizePersonName(middle),
+      last_name: normalizePersonName(last),
+    };
+  }
+
+  // Default to "First Middle Last" format
   const first = tokens[0];
   const last = tokens[tokens.length - 1];
   const middle =
     tokens.length > 2 ? tokens.slice(1, -1).join(" ") || null : null;
 
-  // Validate middle name against the pattern if it exists
-  const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  const validatedMiddle = (middle && middleNamePattern.test(middle)) ? middle : null;
-
   return {
-    first_name: first || null,
-    middle_name: validatedMiddle, // Use the validated middle name
-    last_name: last || null,
+    first_name: normalizePersonName(first),
+    middle_name: normalizePersonName(middle),
+    last_name: normalizePersonName(last),
   };
 }
 
@@ -1652,7 +1767,11 @@ async function main() {
     }
     if (landSqft) {
       const n = Number(String(landSqft).replace(/[^0-9.\-]/g, ""));
-      if (isFinite(n)) lotOut.lot_area_sqft = Math.round(n);
+      if (isFinite(n) && n >= 1) {
+        lotOut.lot_area_sqft = Math.round(n);
+      } else {
+        lotOut.lot_area_sqft = null;
+      }
     }
     await fsp.writeFile(
       path.join("data", "lot.json"),
@@ -1777,11 +1896,26 @@ async function main() {
       if (!ownerEntry || typeof ownerEntry !== "object") return null;
       const ownerType = ownerEntry.type === "company" ? "company" : "person";
       if (ownerType === "person") {
+        const firstName = normalizePersonName(ownerEntry.first_name) ?? null;
+        const lastName = normalizePersonName(ownerEntry.last_name) ?? null;
+
+        // Ensure both first_name and last_name are valid non-empty strings
+        // as required by the Elephant person schema (minLength: 1 for both)
+        if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+          // If we don't have a valid last name, skip creating this person record
+          return null;
+        }
+
+        // If we don't have a first name, use a placeholder that matches the schema pattern
+        const validFirstName = (firstName && typeof firstName === 'string' && firstName.trim().length > 0)
+          ? firstName
+          : 'Unknown';
+
         const personData = {
           birth_date: ownerEntry.birth_date ?? null,
-          first_name: ownerEntry.first_name ?? null,
-          last_name: ownerEntry.last_name ?? null,
-          middle_name: ownerEntry.middle_name ?? null,
+          first_name: validFirstName,
+          last_name: lastName,
+          middle_name: normalizePersonName(ownerEntry.middle_name) ?? null,
           prefix_name: ownerEntry.prefix_name ?? null,
           suffix_name: ownerEntry.suffix_name ?? null,
           us_citizenship_status: ownerEntry.us_citizenship_status ?? null,
@@ -1879,9 +2013,25 @@ async function main() {
         return record;
       }
       const parsed = parsePersonNameTokens(cleaned);
+
+      // Ensure both first_name and last_name are valid non-empty strings
+      // as required by the Elephant person schema (minLength: 1 for both)
+      const firstName = parsed?.first_name;
+      const lastName = parsed?.last_name;
+
+      // If we can't extract a valid last name, don't create the person record
+      if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+        return null;
+      }
+
+      // If we don't have a first name, use a placeholder that matches the schema pattern
+      const validFirstName = (firstName && typeof firstName === 'string' && firstName.trim().length > 0)
+        ? firstName
+        : 'Unknown';
+
       const personData = {
-        first_name: parsed?.first_name ?? null,
-        last_name: parsed?.last_name ?? null,
+        first_name: validFirstName,
+        last_name: lastName,
         middle_name: parsed?.middle_name ?? null,
         // Other fields are null by default in createOwnerRecord
       };
@@ -2050,7 +2200,8 @@ async function main() {
     }
 
     // --- Mailing Address File Creation ---
-    if (mailingAddressText) {
+    // Only create mailing address file if there are current owners to link it to
+    if (mailingAddressText && currentOwnerRecordsList.length > 0) {
       // No need to break down, just store the full text in unnormalized_address
       mailingAddressOut = {
         source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
@@ -2081,6 +2232,8 @@ async function main() {
         JSON.stringify(mailingAddressOut, null, 2),
       );
       console.log("mailing_address.json created.");
+    } else if (mailingAddressText) {
+      console.log("Mailing address text found but no current owners to link it to. Skipping mailing_address.json creation.");
     }
 
 
@@ -2145,23 +2298,96 @@ async function main() {
     await removeExisting(/^person_.*\.json$/);
     await removeExisting(/^company_.*\.json$/);
     await removeExisting(/^relationship_property_has_company_.*\.json$/);
-    await removeExisting(/^relationship_sales_history_.*_has_person_.*\.json$/); 
-    await removeExisting(/^relationship_sales_history_.*_has_company_.*\.json$/); 
-    await removeExisting(/^relationship_person_.*_has_mailing_address\.json$/); 
+    await removeExisting(/^relationship_sales_person_.*\.json$/);
+    await removeExisting(/^relationship_sales_company_.*\.json$/);
+    await removeExisting(/^relationship_person_has_mailing_address_.*\.json$/);
+    await removeExisting(/^relationship_company_has_mailing_address_.*\.json$/);
 
+    // First, identify which owner records will be referenced by relationships
+    const referencedOwnerIds = new Set();
+
+    // 1. ALL current owners with mailing address (not just the first one)
+    if (mailingAddressOut && currentOwnerRecordsList.length > 0) {
+      for (const record of currentOwnerRecordsList) {
+        referencedOwnerIds.add(record.id);
+      }
+    }
+
+    // 2. Companies with property roles (only companies get property relationships, not persons)
+    for (const [recordId, roles] of ownerPropertyRoles.entries()) {
+      const record = ownerRecords.get(recordId);
+      // Only add companies, not persons, since only companies get property_has_company relationships
+      if (record && record.type === "company" && roles && roles.size > 0) {
+        referencedOwnerIds.add(recordId);
+      }
+    }
+
+    // 3. Grantors and grantees from sales
+    for (const sale of sales) {
+      if (sale._grantor_record_id) {
+        referencedOwnerIds.add(sale._grantor_record_id);
+      }
+      if (sale._grantee_record_id) {
+        referencedOwnerIds.add(sale._grantee_record_id);
+      }
+    }
+
+    // Now, only create files for referenced owners
     const ownerToFileMap = new Map();
     let personIdx = 0;
     let companyIdx = 0;
 
     for (const record of ownerRecords.values()) {
+      // Skip owners that have no relationships
+      if (!referencedOwnerIds.has(record.id)) {
+        continue;
+      }
+
       if (record.type === "person") {
+        // Validate that person has required fields before writing
+        let firstName = record.person?.first_name;
+        let lastName = record.person?.last_name;
+
+        // Ensure first_name and last_name are valid non-null strings
+        // If lastName is invalid, skip this person entirely
+        if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+          console.warn(`Skipping person record ${record.id} - missing or invalid last_name`);
+          referencedOwnerIds.delete(record.id); // Remove from referenced set
+          continue;
+        }
+
+        // If firstName is invalid, use 'Unknown' as a fallback
+        if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
+          firstName = 'Unknown';
+          console.warn(`Using 'Unknown' for person record ${record.id} - missing or invalid first_name`);
+        }
+
+        // Normalize the names to ensure they match the schema pattern
+        firstName = normalizePersonName(firstName) || 'Unknown';
+        lastName = normalizePersonName(lastName);
+
+        // Final validation after normalization
+        // Ensure lastName is a non-null, non-empty string as required by schema
+        if (!lastName || typeof lastName !== 'string' || lastName.trim().length === 0) {
+          console.warn(`Skipping person record ${record.id} - last_name normalization failed`);
+          referencedOwnerIds.delete(record.id); // Remove from referenced set
+          continue;
+        }
+
+        // Additional safety check - ensure firstName is also valid
+        if (!firstName || typeof firstName !== 'string' || firstName.trim().length === 0) {
+          console.warn(`Skipping person record ${record.id} - first_name validation failed after normalization`);
+          referencedOwnerIds.delete(record.id); // Remove from referenced set
+          continue;
+        }
+
         personIdx += 1;
         const personOut = {
           source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
           birth_date: record.person?.birth_date ?? null,
-          first_name: record.person?.first_name ?? null,
-          last_name: record.person?.last_name ?? null,
-          middle_name: record.person?.middle_name ?? null,
+          first_name: firstName,
+          last_name: lastName,
+          middle_name: normalizePersonName(record.person?.middle_name) ?? null,
           prefix_name: record.person?.prefix_name ?? null,
           suffix_name: record.person?.suffix_name ?? null,
           us_citizenship_status: record.person?.us_citizenship_status ?? null,
@@ -2198,33 +2424,55 @@ async function main() {
       }
     }
 
-    // --- Create relationship between latest owner (if person) and mailing address ---
-    // This relationship should only be created if mailingAddressOut was successfully created
-    // and ownerToFileMap is now fully populated.
-    if (currentOwnerRecord  && mailingAddressOut) {
-      const latestOwnerMeta = ownerToFileMap.get(currentOwnerRecord.id);
-      if (latestOwnerMeta) { // Ensure it's a person for this relationship
-        const relFileName = `relationship_${latestOwnerMeta.type}_${latestOwnerMeta.index}_has_mailing_address.json`;
-        const relOut = {
-          from: { "/": `./${latestOwnerMeta.fileName}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        await fsp.writeFile(
-          path.join("data", relFileName),
-          JSON.stringify(relOut, null, 2),
-        );
-        console.log(`Created mailing address relationship: ${relFileName}`);
-      } else {
-        console.log("Warning: Could not find metadata for currentOwnerRecord (or it's not a person) to create mailing address relationship.");
+    // --- Create relationships between ALL current owners and mailing address ---
+    // This relationship should be created for all current owners (both persons and companies)
+    // if mailingAddressOut was successfully created and ownerToFileMap is now fully populated.
+    if (mailingAddressOut && currentOwnerRecordsList.length > 0) {
+      let relPersonMailingCounter = 0;
+      let relCompanyMailingCounter = 0;
+
+      for (const record of currentOwnerRecordsList) {
+        const ownerMeta = ownerToFileMap.get(record.id);
+        if (ownerMeta) {
+          if (ownerMeta.type === "person") {
+            relPersonMailingCounter++;
+            const relFileName = `relationship_person_has_mailing_address_${relPersonMailingCounter}.json`;
+            const relOut = {
+              from: { "/": `./${ownerMeta.fileName}` },
+              to: { "/": "./mailing_address.json" },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+            console.log(`Created mailing address relationship: ${relFileName}`);
+          } else if (ownerMeta.type === "company") {
+            relCompanyMailingCounter++;
+            const relFileName = `relationship_company_has_mailing_address_${relCompanyMailingCounter}.json`;
+            const relOut = {
+              from: { "/": `./${ownerMeta.fileName}` },
+              to: { "/": "./mailing_address.json" },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+            console.log(`Created mailing address relationship: ${relFileName}`);
+          }
+        } else {
+          console.log(`Warning: Could not find metadata for owner record ${record.id} to create mailing address relationship.`);
+        }
       }
     } else {
-      console.log("Mailing address relationship not created. Conditions not met:", {
-        currentOwnerRecord: !!currentOwnerRecord,
-        isPerson: currentOwnerRecord?.type === "person",
-        mailingAddressOut: !!mailingAddressOut
+      console.log("Mailing address relationships not created. Conditions not met:", {
+        mailingAddressOut: !!mailingAddressOut,
+        currentOwnersCount: currentOwnerRecordsList.length
       });
     }
 
+
+    // Track which companies already have property relationships
+    const companiesWithPropertyRelationships = new Set();
 
     const propertyRelCounters = { person: 0, company: 0 };
     for (const [recordId, roles] of ownerPropertyRoles.entries()) {
@@ -2244,6 +2492,29 @@ async function main() {
             path.join("data", relFileName),
             JSON.stringify(relOut, null, 2),
           );
+          companiesWithPropertyRelationships.add(recordId);
+        }
+      }
+    }
+
+    // Ensure ALL current owner companies have property_has_company relationships
+    // This prevents unused company files
+    for (const record of currentOwnerRecordsList) {
+      if (record.type === "company") {
+        const meta = ownerToFileMap.get(record.id);
+        if (meta && !companiesWithPropertyRelationships.has(record.id)) {
+          propertyRelCounters.company += 1;
+          const relFileName = `relationship_property_has_company_${propertyRelCounters.company}_current.json`;
+          const relOut = {
+            from: { "/": "./property.json" },
+            to: { "/": `./${meta.fileName}` },
+          };
+          await fsp.writeFile(
+            path.join("data", relFileName),
+            JSON.stringify(relOut, null, 2),
+          );
+          companiesWithPropertyRelationships.add(record.id);
+          console.log(`Created property_has_company relationship for current owner: ${relFileName}`);
         }
       }
     }
@@ -2253,6 +2524,8 @@ async function main() {
     await removeExisting(/^file_.*\.json$/);
     await removeExisting(/^relationship_sales_history_.*_to_deed_.*\.json$/);
     await removeExisting(/^relationship_deed_.*_to_file_.*\.json$/);
+    await removeExisting(/^relationship_sales_person_.*\.json$/);
+    await removeExisting(/^relationship_sales_company_.*\.json$/);
     // await removeExisting(/^relationship_property_has_sales_history_.*\.json$/); // Removed this line
 
     const ALLOWED_DEED_TYPES = [
@@ -2402,6 +2675,9 @@ async function main() {
       return GENERIC_TITLE_DOCUMENT_TYPE;
     }
 
+    let relSalesPersonCounter = 0;
+    let relSalesCompanyCounter = 0;
+
     for (let i = 0; i < sales.length; i++) {
       const sale = sales[i];
       const saleFileName = `sales_history_${i + 1}.json`;
@@ -2417,6 +2693,67 @@ async function main() {
       );
 
       const deedType = mapDeedCodeToType(sale._deed_code);
+
+      // --- Create sales_history_person/company relationships ---
+      // These should be created for all sales, regardless of whether there's a deed
+      if (sale._grantor_record_id) {
+        const grantorMeta = ownerToFileMap.get(sale._grantor_record_id);
+        if (grantorMeta) {
+          if (grantorMeta.type === "person") {
+            relSalesPersonCounter++;
+            const relFileName = `relationship_sales_person_${relSalesPersonCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${grantorMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          } else if (grantorMeta.type === "company") {
+            relSalesCompanyCounter++;
+            const relFileName = `relationship_sales_company_${relSalesCompanyCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${grantorMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          }
+        }
+      }
+
+      if (sale._grantee_record_id) {
+        const granteeMeta = ownerToFileMap.get(sale._grantee_record_id);
+        if (granteeMeta) {
+          if (granteeMeta.type === "person") {
+            relSalesPersonCounter++;
+            const relFileName = `relationship_sales_person_${relSalesPersonCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${granteeMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          } else if (granteeMeta.type === "company") {
+            relSalesCompanyCounter++;
+            const relFileName = `relationship_sales_company_${relSalesCompanyCounter}.json`;
+            const relOut = {
+              from: { "/": `./${saleFileName}` },
+              to: { "/": `./${granteeMeta.fileName}` },
+            };
+            await fsp.writeFile(
+              path.join("data", relFileName),
+              JSON.stringify(relOut, null, 2),
+            );
+          }
+        }
+      }
+      // --- End of sales_history_person/company relationships ---
 
       // Only create deed.json and related files/relationships if deedType is not null
       if (deedType !== null) {
@@ -2441,41 +2778,6 @@ async function main() {
           ),
           JSON.stringify(relSalesDeed, null, 2),
         );
-
-        // --- Create sales_history_has_person/company relationships ---
-        // if (sale._grantor_record_id) {
-        //   const grantorMeta = ownerToFileMap.get(sale._grantor_record_id);
-        //   if (grantorMeta) {
-        //     const relFileName = `relationship_sales_history_${i + 1}_has_${grantorMeta.type}_${grantorMeta.index}.json`; // Removed _grantor from filename
-        //     const relOut = {
-        //       from: { "/": `./${saleFileName}` },
-        //       to: { "/": `./${grantorMeta.fileName}` },
-        //       // type: `sales_history_has_${grantorMeta.type}`, // Removed 'type' property
-        //     };
-        //     await fsp.writeFile(
-        //       path.join("data", relFileName),
-        //       JSON.stringify(relOut, null, 2),
-        //     );
-        //   }
-        // }
-
-        if (sale._grantee_record_id) {
-          const granteeMeta = ownerToFileMap.get(sale._grantee_record_id);
-          if (granteeMeta) {
-            const relFileName = `relationship_sales_history_${i + 1}_has_${granteeMeta.type}_${granteeMeta.index}.json`;
-            const relOut = {
-              from: { "/": `./${saleFileName}` },
-              to: { "/": `./${granteeMeta.fileName}` },
-              // type: `sales_history_has_${granteeMeta.type}`, // Removed 'type' property
-            };
-            await fsp.writeFile(
-              path.join("data", relFileName),
-              JSON.stringify(relOut, null, 2),
-            );
-          }
-        }
-        // --- End of sales_history_has_person/company relationships ---
-
 
         if (sale._book_page_url) {
           fileIdx += 1;
@@ -2517,6 +2819,7 @@ async function main() {
 
   // Tax extraction: clear old and create one file per year option present
   await removeExisting(/^tax_.*\.json$/);
+  await removeExisting(/^relationship_property_has_tax_.*\.json$/);
   if (!isMulti) {
     const targetTaxYear = 2025; // Only include tax for 2025
 
@@ -2560,7 +2863,7 @@ async function main() {
           buildingVal && buildingVal > 0 ? buildingVal : null,
         property_land_amount: landVal && landVal > 0 ? landVal : null,
         property_taxable_value_amount:
-          taxableVal && taxableVal > 0 ? taxableVal : null,
+          typeof taxableVal === 'number' && Number.isFinite(taxableVal) ? taxableVal : 0,
         monthly_tax_amount: null,
         period_end_date: null,
         period_start_date: null,
@@ -2572,6 +2875,19 @@ async function main() {
         path.join("data", taxFileName),
         JSON.stringify(taxOut, null, 2),
       );
+
+      // Create relationship from property to tax
+      if (propertyOut) {
+        const relFileName = `relationship_property_has_tax_${targetTaxYear}.json`;
+        const relOut = {
+          from: { "/": "./property.json" },
+          to: { "/": `./${taxFileName}` },
+        };
+        await fsp.writeFile(
+          path.join("data", relFileName),
+          JSON.stringify(relOut, null, 2),
+        );
+      }
     }
   }
 

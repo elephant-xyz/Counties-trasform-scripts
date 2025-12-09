@@ -2829,6 +2829,17 @@ function numOrNull(n) {
     : Number(n);
 }
 
+function normalizeAreaValue(value) {
+  if (value === null || value === undefined) return null;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return null;
+  if (Math.abs(numericValue) < 10) return null;
+  const asString = String(value).trim();
+  if (/\d{2,}/.test(asString)) return asString;
+  const rounded = Math.round(numericValue);
+  return rounded >= 10 ? String(rounded) : null;
+}
+
 function writeJSON(p, obj) {
   ensureDirSync(path.dirname(p));
   fs.writeFileSync(p, JSON.stringify(obj, null, 2), "utf8");
@@ -3170,11 +3181,9 @@ function main() {
         subdivision: pResp.subName || null,
         property_structure_built_year: pResp.ayb ?? null,
         property_effective_built_year: pResp.eyb ?? null,
-        area_under_air:
-          pResp.HeatedArea != null ? String(pResp.HeatedArea) : null,
+        area_under_air: normalizeAreaValue(pResp.HeatedArea),
         livable_floor_area: null,
-        total_area:
-          pResp.grossBldArea != null ? String(pResp.grossBldArea) : null,
+        total_area: normalizeAreaValue(pResp.grossBldArea),
         number_of_units: pResp.livunits ?? null,
         number_of_units_type: null,
         zoning: null,
