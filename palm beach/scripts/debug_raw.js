@@ -6416,6 +6416,85 @@ const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "county_name",
 ];
 
+// Force a raw-address payload with full schema surface so oneOf selects the
+// unnormalized branch when we only have a raw address from the source.
+function forceRawSchemaPayload(addressPath, options = {}) {
+  if (!addressPath) return;
+  const { rawAddress, fallbacks = {}, coordinates = {} } = options;
+  const existing = readJSONIfExists(addressPath) || {};
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      rawAddress,
+      existing.unnormalized_address,
+      fallbacks.unnormalized_address,
+      fallbacks.full_address,
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const payload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...existing };
+  payload.unnormalized_address = rawValue;
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "request_identifier") return;
+    if (field === "source_http_request") return;
+    if (field === "county_name") return;
+
+    let candidate = payload[field];
+    if (candidate === undefined && fallbacks[field] !== undefined) {
+      candidate = fallbacks[field];
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(
+        candidate !== undefined ? candidate : coordinates[field],
+      );
+      payload[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    payload[field] = sanitizeAddressFieldValue(field, candidate);
+  });
+
+  const resolvedCounty = titleCaseCounty(
+    safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        payload.county_name,
+        fallbacks.county_name,
+        fallbacks.county_jurisdiction,
+      ]),
+    ),
+  );
+  payload.county_name = resolvedCounty || null;
+
+  const requestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      fallbacks.request_identifier,
+    ]),
+  );
+  payload.request_identifier = requestId === undefined ? null : requestId;
+
+  const preparedSource = prepareSourceHttpRequest(
+    payload.source_http_request || fallbacks.source_http_request,
+  );
+  payload.source_http_request = preparedSource ? deepClone(preparedSource) : null;
+
+  if ((payload.latitude == null) !== (payload.longitude == null)) {
+    payload.latitude = null;
+    payload.longitude = null;
+  }
+  if (!payload.postal_code) {
+    payload.plus_four_postal_code = null;
+  }
+  if (payload.state_code && !payload.country_code) {
+    payload.country_code = "US";
+  }
+
+  originalWriteFileSync(addressPath, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
 function ensureNormalizedAddressSchemaSurface(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -14345,6 +14424,18 @@ async function main() {
       requestIdentifier: resolvedRequestId,
       sourceHttpRequest: resolvedSourceHttp,
       stateCodeFallback: countyInferredStateCode || resolvedStateUpper || null,
+    });
+    forceRawSchemaPayload(addressOutputPath, {
+      rawAddress: rawAddressValue,
+      fallbacks: {
+        unnormalized_address: unnormalizedAddressCandidate,
+        full_address: unAddr && unAddr.full_address,
+        county_name: resolvedCountyName,
+        county_jurisdiction: countyName,
+        request_identifier: resolvedRequestId,
+        source_http_request: resolvedSourceHttp,
+      },
+      coordinates: resolvedCoordinates || {},
     });
 
     removeAddressRelationshipFiles(dataDir);
