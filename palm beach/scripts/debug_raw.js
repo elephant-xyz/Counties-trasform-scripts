@@ -14731,6 +14731,37 @@ async function main() {
     }
   }
 
+  try {
+    const preparedAddress =
+      ensureAddressOutputCoverage(readJSONIfExists(addressOutputPath)) || null;
+
+    if (preparedAddress) {
+      if (
+        hasMeaningfulAddressValue(preparedAddress.state_code) &&
+        !hasMeaningfulAddressValue(preparedAddress.country_code)
+      ) {
+        preparedAddress.country_code = "US";
+      }
+      if (!hasMeaningfulAddressValue(preparedAddress.postal_code)) {
+        preparedAddress.plus_four_postal_code = null;
+      }
+      writeJSON(addressOutputPath, preparedAddress);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+  } catch (error) {
+    console.error("Failed to finalize raw address coverage for schema:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
   console.log("All mapping scripts completed successfully");
 }
 
