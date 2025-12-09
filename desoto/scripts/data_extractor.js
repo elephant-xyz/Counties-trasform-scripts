@@ -179,6 +179,9 @@ function formatNameToPattern(name) {
   if (!name) return null;
   let cleaned = name.trim();
 
+  // Return null if empty after trimming
+  if (!cleaned) return null;
+
   // Replace forward slashes with hyphens to conform to the schema pattern
   // This is a logical replacement as '/' often implies a separation similar to '-'
   cleaned = cleaned.replace(/\//g, '-');
@@ -187,7 +190,7 @@ function formatNameToPattern(name) {
   cleaned = cleaned.replace(/\s+/g, ' ');
 
   // Split by spaces, hyphens, apostrophes, commas, periods, keeping the delimiters
-  return cleaned.split(/([ \-',.])/)
+  const result = cleaned.split(/([ \-',.])/)
     .map((part) => {
       if (!part) return ''; // Handle empty parts from splitting
       if (part.match(/[ \-',.]/)) { // If it's a delimiter, return it as is
@@ -196,7 +199,17 @@ function formatNameToPattern(name) {
       // For actual name parts, capitalize the first letter and lowercase the rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     })
-    .join('');
+    .join('')
+    .trim();
+
+  // Validate the result matches the required pattern: must start with uppercase letter
+  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!result || !namePattern.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 
