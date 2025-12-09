@@ -1020,14 +1020,20 @@ function main() {
   }
 
   // Owners: person_*.json or company_*.json
+  // Note: Only generate owner files if there are sales to link them to
   let personFiles = [];
   let companyFiles = [];
+
+  // Check if there are sales first before generating owner files
+  const hasSales = bx.sales && bx.sales.length > 0;
+
   if (
     ownerData &&
     ownerKey &&
     ownerData[ownerKey] &&
     ownerData[ownerKey].owners_by_date &&
-    Array.isArray(ownerData[ownerKey].owners_by_date.current)
+    Array.isArray(ownerData[ownerKey].owners_by_date.current) &&
+    hasSales
   ) {
     const owners = ownerData[ownerKey].owners_by_date.current;
     const hasCompany = owners.some((o) => o.type === "company");
