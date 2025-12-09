@@ -375,7 +375,10 @@ function moneyToNumber(str) {
   const n = String(str).replace(/[^0-9.\-]/g, "");
   if (n === "" || n === ".") return null;
   const v = Number(n);
-  return isNaN(v) ? null : v;
+  if (isNaN(v)) return null;
+  // Validate that the value is reasonable for currency (less than 1 billion)
+  if (!Number.isFinite(v) || v > 1e9 || v < -1e9) return null;
+  return v;
 }
 
 function parseIntSafe(str) {
@@ -1738,11 +1741,11 @@ function parsePermitTable($) {
     if (!hasContent) return;
     rows.push({
       permitNumber: permitNumber || null,
-      type: cells[0] || null,
-      primary: cells[1] || null,
-      active: cells[2] || null,
-      issueDate: cells[3] || null,
-      value: cells[4] || null,
+      issueDate: cells[0] || null,
+      active: cells[1] || null,
+      value: cells[2] || null,
+      type: cells[3] || null,
+      primary: cells[4] || null,
     });
   });
   return rows;
@@ -2361,6 +2364,9 @@ const structureItems = (() => {
     writeJSON(path.join(dataDir, filename), data);
   });
 
+  // Initialize buildingLayoutsInfo early for use in utilityItems
+  const buildingLayoutsInfo = [];
+
   const utilityItems = (() => {
     const wrap = (entry, buildingIndex = null) => {
       const cleanedEntry =
@@ -2466,7 +2472,7 @@ const structureItems = (() => {
   const permitEntries = parsePermitTable($);
   permitEntries.forEach((permit, idx) => {
     const improvementType =
-      mapPermitImprovementType(permit.type) || "Other";
+      mapPermitImprovementType(permit.type) || "GeneralBuilding";
     const improvementStatus =
       mapPermitImprovementStatus(permit.active) || "Unknown";
     const permitIssueDate = toISOFromMDY(permit.issueDate);
@@ -2668,7 +2674,7 @@ const structureItems = (() => {
       })
     : [];
 
-  const buildingLayoutsInfo = [];
+  // buildingLayoutsInfo already initialized earlier
   const buildingInfoByIndex = new Map();
   const buildingMetaByIndex = new Map();
   normalizedBuildings.forEach((meta) => {
@@ -2859,8 +2865,13 @@ const structureItems = (() => {
       return "Carport";
     if (typeCode === "EUF" || (desc.includes("ELEV") && desc.includes("UNFIN")))
       return "Storage Room";
+    if (desc.includes("UTIL") && desc.includes("UNFIN")) return "Storage Room";
     if (typeCode === "FLA" || desc.includes("FLOOR LIV") || typeCode === "BAS")
       return "Living Area";
+    if (typeCode === "LLF" || (desc.includes("LOW") && desc.includes("LEV") && desc.includes("FIN")))
+      return "Basement";
+    if (typeCode.includes("GAR") && typeCode.includes("FIN")) return "Attached Garage";
+    if (typeCode === "GBF" || (desc.includes("GAR") && desc.includes("FIN") && desc.includes("BLOCK"))) return "Attached Garage";
     if (desc.includes("BED")) return "Bedroom";
     if (desc.includes("BATH")) return "Full Bathroom";
     if (desc.includes("KITCH")) return "Kitchen";
@@ -2871,7 +2882,7 @@ const structureItems = (() => {
     if (desc.includes("BALCONY")) return "Balcony";
     if (desc.includes("DECK")) return "Deck";
     if (desc.includes("PATIO")) return "Patio";
-    if (desc.includes("GARAGE")) return "Garage";
+    if (desc.includes("GARAGE") || typeCode.includes("GAR") || desc.startsWith("GAR ")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
     if (desc.includes("CARPORT")) return "Carport";
     if (desc.includes("STORAGE")) return "Storage Room";
     return null;
@@ -2908,8 +2919,7 @@ const structureItems = (() => {
         );
         (meta.subAreas || []).forEach((subArea, idx) => {
           const label =
-            mapSubAreaLayoutType(subArea) ||
-            titleCase(subArea.description || subArea.type || "Sub Area");
+            mapSubAreaLayoutType(subArea) || "Living Area";
           const targetFloorNumber = pickFloorNumber(idx);
           const alreadyExists = info.directChildLayouts.some(
             (layout) =>
@@ -3282,21 +3292,7 @@ const structureItems = (() => {
     });
   }
 
-  const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
+  // Mailing addresses are not part of the Elephant schema, so we don't generate them
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -3318,63 +3314,6 @@ const structureItems = (() => {
       }
     }
   }
-
-  const currentOwnerEntities = [];
-  currentOwners.forEach((owner, idx) => {
-    if (!owner || !owner.type) return;
-    let mailingIdx = null;
-    if (
-      ownerMailingInfo.rawAddresses[idx] != null &&
-      mailingAddressFiles.length
-    ) {
-      const rawAddr = ownerMailingInfo.rawAddresses[idx];
-      const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-    }
-    if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
-    }
-    const mailingRecord =
-      mailingIdx != null && mailingIdx >= 0
-        ? mailingAddressFiles[mailingIdx]
-        : null;
-
-    if (owner.type === "person") {
-      const normalizedPerson = normalizeOwner(owner, ownersByDate);
-      const personPath = createPersonRecord(normalizedPerson);
-      if (personPath) {
-        currentOwnerEntities.push({
-          type: "person",
-          path: personPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-        });
-      }
-    } else if (owner.type === "company") {
-      const companyPath = createCompanyRecord(owner.name || "");
-      if (companyPath) {
-        currentOwnerEntities.push({
-          type: "company",
-          path: companyPath,
-          mailingPath: mailingRecord ? mailingRecord.path : null,
-        });
-      }
-    }
-  });
-
-  const mailingRelationshipKeys = new Set();
-  currentOwnerEntities.forEach((entity) => {
-    if (!entity.path || !entity.mailingPath) return;
-    const relKey = `${entity.path}|${entity.mailingPath}`;
-    if (mailingRelationshipKeys.has(relKey)) return;
-    mailingRelationshipKeys.add(relKey);
-    const relFilename = makeRelationshipFilename(entity.path, entity.mailingPath);
-    if (!relFilename) return;
-    const relObj = {
-      from: { "/": entity.path },
-      to: { "/": entity.mailingPath },
-    };
-    writeJSON(path.join(dataDir, relFilename), relObj);
-  });
 
   const work = parseValuationsWorking($);
   if (work) {
@@ -3558,6 +3497,34 @@ const structureItems = (() => {
   }
 
   const latestSaleRef = saleFileRefs.length ? saleFileRefs[0] : null;
+
+  // Only create person/company records for current owners if there are sales to link them to
+  const currentOwnerEntities = [];
+  if (latestSaleRef && !saleBuyerStatus.get(latestSaleRef.salesPath)) {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+
+      if (owner.type === "person") {
+        const normalizedPerson = normalizeOwner(owner, ownersByDate);
+        const personPath = createPersonRecord(normalizedPerson);
+        if (personPath) {
+          currentOwnerEntities.push({
+            type: "person",
+            path: personPath,
+          });
+        }
+      } else if (owner.type === "company") {
+        const companyPath = createCompanyRecord(owner.name || "");
+        if (companyPath) {
+          currentOwnerEntities.push({
+            type: "company",
+            path: companyPath,
+          });
+        }
+      }
+    });
+  }
+
   if (
     latestSaleRef &&
     latestSaleRef.salesPath &&
