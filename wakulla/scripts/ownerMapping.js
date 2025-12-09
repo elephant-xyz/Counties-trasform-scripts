@@ -15,6 +15,100 @@ const CURRENT_OWNER_SELECTOR = ".module-content .sdw1-owners-container";
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
 const normalizeName = (s) => txt(s).toLowerCase();
 
+const PERSON_PREFIX_VALUES = [
+  "Mr.",
+  "Mrs.",
+  "Ms.",
+  "Miss",
+  "Mx.",
+  "Dr.",
+  "Prof.",
+  "Rev.",
+  "Fr.",
+  "Sr.",
+  "Br.",
+  "Capt.",
+  "Col.",
+  "Maj.",
+  "Lt.",
+  "Sgt.",
+  "Hon.",
+  "Judge",
+  "Rabbi",
+  "Imam",
+  "Sheikh",
+  "Sir",
+  "Dame",
+];
+
+const PERSON_SUFFIX_VALUES = [
+  "Jr.",
+  "Sr.",
+  "II",
+  "III",
+  "IV",
+  "PhD",
+  "MD",
+  "Esq.",
+  "JD",
+  "LLM",
+  "MBA",
+  "RN",
+  "DDS",
+  "DVM",
+  "CFA",
+  "CPA",
+  "PE",
+  "PMP",
+  "Emeritus",
+  "Ret.",
+];
+
+const normalizeAffixToken = (token) =>
+  (token || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+
+function buildAffixLookup(values, aliases = {}) {
+  const map = new Map();
+  values
+    .filter(Boolean)
+    .forEach((value) => {
+      const norm = normalizeAffixToken(value);
+      if (norm) map.set(norm, value);
+    });
+  Object.entries(aliases).forEach(([key, canonicalValue]) => {
+    const norm = normalizeAffixToken(key);
+    if (norm && canonicalValue) {
+      map.set(norm, canonicalValue);
+    }
+  });
+  return map;
+}
+
+const PREFIX_LOOKUP = buildAffixLookup(PERSON_PREFIX_VALUES, {
+  CAPTAIN: "Capt.",
+  CAPT: "Capt.",
+  COLONEL: "Col.",
+  MAJOR: "Maj.",
+  LIEUTENANT: "Lt.",
+  SERGEANT: "Sgt.",
+  DOCTOR: "Dr.",
+  PROFESSOR: "Prof.",
+  FATHER: "Fr.",
+  BROTHER: "Br.",
+  HONORABLE: "Hon.",
+  HONOR: "Hon.",
+  SHEIK: "Sheikh",
+});
+
+const SUFFIX_LOOKUP = buildAffixLookup(PERSON_SUFFIX_VALUES, {
+  JUNIOR: "Jr.",
+  JNR: "Jr.",
+  SENIOR: "Sr.",
+  SNR: "Sr.",
+  ESQUIRE: "Esq.",
+  RETIRED: "Ret.",
+});
+
 function formatNameForSchema(name) {
   if (!name) return null;
   const formatted = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
@@ -95,36 +189,74 @@ function cleanInvalidCharsFromName(raw) {
   return parsedName;
 }
 
+function extractPrefixSuffix(rawName) {
+  const tokens = normalizeWhitespace(rawName)
+    .replace(/[,]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!tokens.length) {
+    return { prefix_name: null, suffix_name: null, name_without_affixes: "" };
+  }
+  let prefix = null;
+  if (tokens.length) {
+    const firstNorm = normalizeAffixToken(tokens[0]);
+    if (firstNorm && PREFIX_LOOKUP.has(firstNorm)) {
+      prefix = PREFIX_LOOKUP.get(firstNorm);
+      tokens.shift();
+    }
+  }
+  let suffix = null;
+  while (tokens.length) {
+    const lastNorm = normalizeAffixToken(tokens[tokens.length - 1]);
+    if (lastNorm && SUFFIX_LOOKUP.has(lastNorm)) {
+      suffix = SUFFIX_LOOKUP.get(lastNorm);
+      tokens.pop();
+      break;
+    }
+    break;
+  }
+  return {
+    prefix_name: prefix,
+    suffix_name: suffix,
+    name_without_affixes: tokens.join(" "),
+  };
+}
+
 const COMPANY_KEYWORDS = [
-  "inc",
-  "llc",
-  "l.l.c",
-  "ltd",
-  "foundation",
-  "alliance",
-  "solutions",
-  "corp",
-  "co",
-  "company",
-  "services",
-  "trust",
-  "tr",
-  "associates",
-  "association",
-  "holdings",
-  "group",
-  "partners",
-  "lp",
-  "llp",
-  "plc",
-  "pllc",
-  "bank",
-  "church",
-  "school",
-  "university",
-  "authority",
-  "clerk",
-  "court",
+  // Business entity types - short forms
+  "inc", "corp", "co", "llc", "l.l.c", "ltd", "lp", "llp", "plc", "pllc", "pc", "pa", "pllp", "lllp", "rlp", "rllp",
+  // Business entity types - long forms
+  "incorporated", "corporation", "company", "limited", "partnership", "professional",
+  // Trusts and estates
+  "trust", "tr", "estate", "foundation", "fund", "endowment", "charity", "charitable",
+  // Financial institutions
+  "bank", "banking", "credit", "union", "financial", "finance", "investment", "investments",
+  "insurance", "mutual", "savings", "loan", "mortgage", "capital", "ventures", "venture",
+  // Business structures
+  "holdings", "holding", "group", "partners", "associates", "association", "alliance",
+  "consortium", "syndicate", "cooperative", "coop", "collective", "joint", "venture",
+  // Service companies
+  "solutions", "services", "consulting", "management", "development", "enterprises",
+  "systems", "technologies", "tech", "software", "hardware", "networks", "communications",
+  // Industry specific
+  "construction", "builders", "contractors", "realty", "real estate", "properties",
+  "manufacturing", "industries", "industrial", "productions", "operations", "logistics",
+  "transportation", "shipping", "freight", "delivery", "warehouse", "distribution",
+  // Institutions
+  "church", "chapel", "cathedral", "parish", "ministry", "ministries", "mission",
+  "school", "college", "university", "institute", "academy", "education", "learning",
+  "hospital", "medical", "health", "healthcare", "clinic", "center", "centre",
+  // Government
+  "government", "federal", "state", "county", "city", "municipal", "authority", "agency",
+  "department", "bureau", "commission", "board", "district", "administration", "clerk", "court",
+  // Organizations
+  "club", "society", "organization", "org", "league", "union", "federation", "council",
+  // Commercial
+  "retail", "wholesale", "trading", "imports", "exports", "sales", "marketing",
+  "energy", "oil", "gas", "electric", "power", "utilities", "water", "sewer",
+  "media", "broadcasting", "publishing", "entertainment", "studios", "productions",
+  // Professional services
+  "law", "legal", "attorneys", "lawyers", "accounting", "cpa", "engineering", "architects"
 ];
 
 
@@ -136,17 +268,17 @@ function isCompanyName(name) {
 }
 
 function splitCompositeNames(name) {
-  const cleaned = cleanRawName(name);
-  if (!cleaned) return [];
-  const parts = cleaned
+  const normalized = normalizeWhitespace(name);
+  if (!normalized) return [];
+  return normalized
     .split(/\s*&\s*|\s+and\s+/i)
     .map((p) => p.trim())
     .filter(Boolean);
-  return parts;
 }
 
 function classifyOwner(raw) {
-  const cleaned = cleanRawName(raw);
+  const { prefix_name, suffix_name, name_without_affixes } = extractPrefixSuffix(raw);
+  const cleaned = cleanRawName(name_without_affixes);
   if (!cleaned) {
     return { valid: false, reason: "empty_after_clean", raw };
   }
@@ -170,6 +302,8 @@ function classifyOwner(raw) {
       first_name: first,
       last_name: last,
       middle_name: middle ? middle : null,
+      prefix_name: prefix_name || null,
+      suffix_name: suffix_name || null,
     };
     return { valid: true, owner: person };
   }
@@ -205,11 +339,11 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).find('a').each((i, el) => {
+  // Handle multiple owner rows with flexible selector
+  $("[id*='rptOwner'][id*='lnkUpmSearchLinkSuppressed_lblSearch']").each((i, el) => {
     const ownerText = $(el).text().trim();
     if (ownerText) {
-      const t = txt(ownerText);
-      owners.push(t);
+      owners.push(txt(ownerText));
     }
   });
   return owners;
@@ -231,8 +365,8 @@ function extractSalesOwnersByDate($) {
     const dd = dm[2].padStart(2, "0");
     const yyyy = dm[3];
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    const grantee = txt(tds.eq(7).text());
-    const grantor = txt(tds.eq(6).text());
+    const grantee = txt(tds.eq(8).text());
+    const grantor = txt(tds.eq(7).text());
     if (grantee) {
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(grantee);
@@ -244,7 +378,14 @@ function extractSalesOwnersByDate($) {
 
 function resolveOwnersFromRawStrings(rawStrings, invalidCollector) {
   const owners = [];
+  const propertyStatusTerms = ['improved', 'vacant', 'unimproved', 'residential', 'commercial', 'industrial'];
+  
   for (const raw of rawStrings) {
+    // Skip property status terms
+    if (propertyStatusTerms.includes(raw.toLowerCase().trim())) {
+      continue;
+    }
+    
     const parts = splitCompositeNames(raw);
     if (parts.length === 0) {
       invalidCollector.push({ raw, reason: "unparseable_or_empty" });
