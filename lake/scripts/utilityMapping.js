@@ -69,15 +69,23 @@ function main() {
     hvac_unit_issues: hvac_unit_issues || null,
   };
 
-  const outDir = path.join(process.cwd(), "owners");
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, "utilities_data.json");
+  // Write to both owners (for data_extractor) and data (final output)
+  const ownersDir = path.join(process.cwd(), "owners");
+  fs.mkdirSync(ownersDir, { recursive: true });
+  const ownersPath = path.join(ownersDir, "utilities_data.json");
 
   const payload = {};
   payload[propKey] = utility;
 
-  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
-  console.log(`Wrote ${outPath} for ${propKey}`);
+  fs.writeFileSync(ownersPath, JSON.stringify(payload, null, 2), "utf8");
+  console.log(`Wrote ${ownersPath} for ${propKey}`);
+
+  // Also write directly to data directory as utility.json for relationships
+  const dataDir = path.join(process.cwd(), "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  const dataPath = path.join(dataDir, "utility.json");
+  fs.writeFileSync(dataPath, JSON.stringify(utility, null, 2), "utf8");
+  console.log(`Wrote ${dataPath}`);
 }
 
 try {
