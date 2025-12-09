@@ -10515,6 +10515,64 @@ function rewriteAddressAsRawVariant(addressPath, options = {}) {
     existingAddress = {},
   } = options;
 
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingAddress.request_identifier,
+      propertyPayload.request_identifier,
+      unnormalizedSource.request_identifier,
+      seedSource.request_identifier,
+    ]),
+  );
+
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    existingAddress.source_http_request,
+    propertyPayload.source_http_request,
+    unnormalizedSource.source_http_request,
+    seedSource.source_http_request,
+  );
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({
+      ...seedSource,
+      ...unnormalizedSource,
+      ...propertyPayload,
+      ...existingAddress,
+    });
+  const hasNormalizedCoverage =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+  if (hasNormalizedCoverage) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const sanitized = sanitizeAddressFieldValue(field, normalizedSurface[field]);
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        normalizedOut[field] = Number.isFinite(sanitized) ? sanitized : null;
+        continue;
+      }
+      normalizedOut[field] =
+        sanitized === undefined || sanitized === null ? null : sanitized;
+    }
+
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+
+    normalizedOut.request_identifier =
+      resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+    normalizedOut.source_http_request = resolvedSourceHttp
+      ? deepClone(resolvedSourceHttp)
+      : null;
+
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
   const rawAddress = safeNullIfEmpty(
     resolveFirstNonEmptyString([
       existingAddress.unnormalized_address,
@@ -10564,23 +10622,9 @@ function rewriteAddressAsRawVariant(addressPath, options = {}) {
   );
   payload.county_name = countyCandidate || null;
 
-  const resolvedRequestIdentifier = safeNullIfEmpty(
-    resolveFirstNonEmptyString([
-      existingAddress.request_identifier,
-      propertyPayload.request_identifier,
-      unnormalizedSource.request_identifier,
-      seedSource.request_identifier,
-    ]),
-  );
   payload.request_identifier =
     resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
 
-  const resolvedSourceHttp = resolveSourceHttpRequest(
-    existingAddress.source_http_request,
-    propertyPayload.source_http_request,
-    unnormalizedSource.source_http_request,
-    seedSource.source_http_request,
-  );
   payload.source_http_request = resolvedSourceHttp ? deepClone(resolvedSourceHttp) : null;
 
   if (payload.state_code && !payload.country_code) {
