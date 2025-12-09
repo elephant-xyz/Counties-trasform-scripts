@@ -1420,83 +1420,49 @@ function enforceRawAddressOneOfSelection(addressPath, options = {}) {
   );
 
   if (unnormalized) {
-    const rawOutput = { unnormalized_address: unnormalized };
+    const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: unnormalized };
 
-    const copyIfMeaningful = (field, value) => {
-      if (value === undefined || value === null) return;
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        if (Number.isFinite(numeric)) {
-          rawOutput[field] = numeric;
-        }
-        return;
+    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+      if (field === "request_identifier") {
+        rawOutput.request_identifier =
+          requestIdentifier === undefined ? null : requestIdentifier;
+        continue;
       }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        if (trimmed.length) {
-          rawOutput[field] = trimmed;
-        }
-        return;
+      if (field === "source_http_request") {
+        rawOutput.source_http_request = sourceHttpRequest
+          ? deepClone(sourceHttpRequest)
+          : null;
+        continue;
       }
-      if (Number.isFinite(value)) {
-        rawOutput[field] = value;
-      }
-    };
 
-    const normalizedFields = [
-      "street_number",
-      "street_name",
-      "street_pre_directional_text",
-      "street_post_directional_text",
-      "street_suffix_type",
-      "unit_identifier",
-      "route_number",
-      "city_name",
-      "municipality_name",
-      "state_code",
-      "postal_code",
-      "plus_four_postal_code",
-      "county_name",
-      "country_code",
-      "township",
-      "range",
-      "section",
-      "block",
-      "lot",
-    ];
-
-    normalizedFields.forEach((field) =>
-      copyIfMeaningful(field, payload[field]),
-    );
-
-    const parsedLat = parseCoordinate(payload.latitude);
-    const parsedLon = parseCoordinate(payload.longitude);
-    if (Number.isFinite(parsedLat) && Number.isFinite(parsedLon)) {
-      rawOutput.latitude = parsedLat;
-      rawOutput.longitude = parsedLon;
+      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : null;
+      rawOutput[field] = sanitizeAddressFieldValue(field, candidate);
     }
 
-    if (!rawOutput.country_code && options.defaultCountryCode) {
-      rawOutput.country_code = options.defaultCountryCode;
-    }
     if (!rawOutput.county_name && options.fallbackCountyName) {
       rawOutput.county_name = options.fallbackCountyName;
     }
-    if (!rawOutput.postal_code && rawOutput.plus_four_postal_code == null) {
-      delete rawOutput.plus_four_postal_code;
-    } else if (!rawOutput.postal_code && rawOutput.plus_four_postal_code) {
+
+    const parsedLat = parseCoordinate(rawOutput.latitude);
+    const parsedLon = parseCoordinate(rawOutput.longitude);
+    rawOutput.latitude = Number.isFinite(parsedLat) ? parsedLat : null;
+    rawOutput.longitude = Number.isFinite(parsedLon) ? parsedLon : null;
+    if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+      rawOutput.latitude = null;
+      rawOutput.longitude = null;
+    }
+
+    if (!rawOutput.postal_code) {
       rawOutput.plus_four_postal_code = null;
     }
 
-    if (requestIdentifier !== undefined) {
-      rawOutput.request_identifier = requestIdentifier;
-    }
-    if (sourceHttpRequest) {
-      rawOutput.source_http_request = deepClone(sourceHttpRequest);
-    } else if (
-      Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+    if (
+      hasMeaningfulAddressValue(rawOutput.state_code) &&
+      !hasMeaningfulAddressValue(rawOutput.country_code)
     ) {
-      rawOutput.source_http_request = null;
+      rawOutput.country_code = (options.defaultCountryCode || "US").toUpperCase();
     }
 
     writeJSON(addressPath, rawOutput);
