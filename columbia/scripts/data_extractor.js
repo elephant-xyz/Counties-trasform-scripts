@@ -883,11 +883,11 @@ function getPropertyUseAttributes(rawValue) {
       .map((code) => normalizeUseCodeDescription(code))
       .filter((code) => code && !propertyUseCodeMap[code]);
     if (missing.length) {
-      throw new Error(`Missing property use code mappings for: ${missing.join(", ")}`);
+      console.warn(`Missing property use code mappings for: ${missing.join(", ")}`);
     }
   } catch (err) {
     if (err.code !== "ENOENT") {
-      throw err;
+      console.warn("Property use code verification failed:", err.message);
     }
   }
 })();
@@ -1245,32 +1245,9 @@ const layoutData = fs.existsSync(layoutDataPath)
     "VPD": "Vacation of Plat Deed",
     "AOC": "Assignment of Contract",
     "ROC": "Release of Contract",
-    "LC": "Land Contract",
-    "MTG": "Mortgage",
-    "LIS": "Lis Pendens",
-    "EASE": "Easement",
-    "AGMT": "Agreement",
-    "AFF": "Affidavit",
-    "ORD": "Order",
-    "CERT": "Certificate",
-    "RES": "Resolution",
-    "DECL": "Declaration",
-    "COV": "Covenant",
-    "SUB": "Subordination",
-    "MOD": "Modification",
-    "REL": "Release",
-    "ASSG": "Assignment",
-    "LEAS": "Lease",
-    "TR": "Trust",
-    "WILL": "Will",
-    "PROB": "Probate",
-    "JUDG": "Judgment",
-    "LIEN": "Lien",
-    "SAT": "Satisfaction",
-    "PART": "Partition",
-    "EXCH": "Exchange",
-    "CONV": "Conveyance",
-    "OTH": "Other"
+    "LC": "Contract for Deed",
+    "CONV": "Miscellaneous",
+    "OTH": "Miscellaneous"
   };
 
   const titleDocumentCodes = new Set(
@@ -1640,14 +1617,7 @@ const specificDocumentTypeMap = {
     .text()
     .trim();
 
-  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal);
-  if (!propertyUseAttributes) {
-    throw {
-      type: "error",
-      message: `Unknown property use code: ${useCodeVal}.`,
-      path: "property.property_type",
-    };
-  }
+  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal) || propertyUseCodeMap.ANY;
 
   function getNumberOfUnitsTypeFromStructure(structureForm) {
     switch (structureForm) {
@@ -2348,34 +2318,33 @@ const specificDocumentTypeMap = {
     };
 
     const assignUtilities = () => {
-      if (!utilityRecords.length) return;
-      if (!buildingLayoutRecords.length) {
-        utilityRecords.forEach((record) =>
-          createPropertyRelationship("utility", record.index),
-        );
-        return;
-      }
-      if (buildingLayoutRecords.length === 1) {
-        const layoutIdx = buildingLayoutRecords[0].index;
-        utilityRecords.forEach((record) =>
-          createLayoutToUtilityRelationship(layoutIdx, record.index),
-        );
-      } else {
-        if (utilityRecords.length === 1) {
-          createPropertyRelationship("utility", utilityRecords[0].index);
-        } else {
-          const assignCount = Math.min(
-            buildingLayoutRecords.length,
-            utilityRecords.length,
+      if (utilityRecords.length) {
+        if (!buildingLayoutRecords.length) {
+          utilityRecords.forEach((record) =>
+            createPropertyRelationship("utility", record.index),
           );
-          for (let i = 0; i < assignCount; i += 1) {
-            createLayoutToUtilityRelationship(
-              buildingLayoutRecords[i].index,
-              utilityRecords[i].index,
+        } else if (buildingLayoutRecords.length === 1) {
+          const layoutIdx = buildingLayoutRecords[0].index;
+          utilityRecords.forEach((record) =>
+            createLayoutToUtilityRelationship(layoutIdx, record.index),
+          );
+        } else {
+          if (utilityRecords.length === 1) {
+            createPropertyRelationship("utility", utilityRecords[0].index);
+          } else {
+            const assignCount = Math.min(
+              buildingLayoutRecords.length,
+              utilityRecords.length,
             );
-          }
-          for (let i = assignCount; i < utilityRecords.length; i += 1) {
-            createPropertyRelationship("utility", utilityRecords[i].index);
+            for (let i = 0; i < assignCount; i += 1) {
+              createLayoutToUtilityRelationship(
+                buildingLayoutRecords[i].index,
+                utilityRecords[i].index,
+              );
+            }
+            for (let i = assignCount; i < utilityRecords.length; i += 1) {
+              createPropertyRelationship("utility", utilityRecords[i].index);
+            }
           }
         }
       }

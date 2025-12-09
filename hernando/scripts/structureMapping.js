@@ -134,6 +134,7 @@ function main() {
     window_operation_type: null,
     window_screen_material: null,
   };
+  
 
   const outDir = path.join(process.cwd(), "owners");
   fs.mkdirSync(outDir, { recursive: true });

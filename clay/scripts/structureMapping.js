@@ -1,5 +1,5 @@
 // Structure mapping script
-// Reads input.html, parses building and summary data using cheerio, and writes owners/structure_data.json
+// Reads input.html, parses building-level data using cheerio, and writes owners/structure_data.json per building
 
 const fs = require("fs");
 const path = require("path");
@@ -76,7 +76,7 @@ function mapExteriorMaterials(tokens) {
   return out;
 }
 
-function mapInteriorSurface(tokens) {
+function mapInteriorSurfacePrimary(tokens) {
   const out = [];
   tokens.forEach((tok) => {
     const t = tok.toUpperCase().trim();
@@ -94,6 +94,40 @@ function mapInteriorSurface(tokens) {
     if (t.includes("GLASS")) out.push("Glass Panels");
     if (t.includes("CONCRETE")) out.push("Concrete");
     if (t.includes("MINIMUM")) out.push("Drywall");
+  });
+  return out;
+}
+
+function mapInteriorSurfaceSecondary(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase().trim();
+    if (t.includes("WAINSCOT")) out.push("Wainscoting");
+    if (t.includes("CHAIR") && t.includes("RAIL")) out.push("Chair Rail");
+    if (t.includes("CROWN") && t.includes("MOLD")) out.push("Crown Molding");
+    if (t.includes("BASEBOARD")) out.push("Baseboards");
+    if (t.includes("WOOD") && t.includes("TRIM")) out.push("Wood Trim");
+    if (t.includes("STONE") && t.includes("ACCENT")) out.push("Stone Accent");
+    if (t.includes("TILE") && t.includes("ACCENT")) out.push("Tile Accent");
+    if (t.includes("METAL") && t.includes("ACCENT")) out.push("Metal Accent");
+    if (t.includes("GLASS") && t.includes("INSERT")) out.push("Glass Insert");
+    if (t.includes("DECORATIVE") && t.includes("PANEL")) out.push("Decorative Panels");
+    if (t.includes("FEATURE") && t.includes("WALL")) out.push("Feature Wall Material");
+  });
+  return out;
+}
+
+function mapExteriorWallSecondary(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase().trim();
+    if (t.includes("BRICK") && t.includes("ACCENT")) out.push("Brick Accent");
+    if (t.includes("STONE") && t.includes("ACCENT")) out.push("Stone Accent");
+    if (t.includes("WOOD") && t.includes("TRIM")) out.push("Wood Trim");
+    if (t.includes("METAL") && t.includes("TRIM")) out.push("Metal Trim");
+    if (t.includes("STUCCO") && t.includes("ACCENT")) out.push("Stucco Accent");
+    if (t.includes("VINYL") && t.includes("ACCENT")) out.push("Vinyl Accent");
+    if (t.includes("DECORATIVE") && t.includes("BLOCK")) out.push("Decorative Block");
   });
   return out;
 }
@@ -121,15 +155,30 @@ function mapFlooring(tokens) {
   return out;
 }
 
+function mapFlooringSecondary(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase().trim();
+    if (t.includes("HARDWOOD") && t.includes("SOLID")) out.push("Solid Hardwood");
+    if (t.includes("HARDWOOD") && t.includes("ENGINEERED")) out.push("Engineered Hardwood");
+    if (t.includes("LAMINATE")) out.push("Laminate");
+    if (t.includes("LVP") || (t.includes("LUXURY") && t.includes("VINYL"))) out.push("Luxury Vinyl Plank");
+    if (t.includes("CERAMIC")) out.push("Ceramic Tile");
+    if (t.includes("CARPET")) out.push("Carpet");
+    if (t.includes("AREA") && t.includes("RUG")) out.push("Area Rugs");
+    if (t.includes("TRANSITION") && t.includes("STRIP")) out.push("Transition Strips");
+  });
+  return out;
+}
+
 function parseNumber(val) {
   if (val == null) return null;
   const n = Number(String(val).replace(/[,]/g, "").trim());
   return Number.isFinite(n) ? n : null;
 }
 
-function buildStructureRecord($, buildings, parcelId) {
-  // Defaults per schema requirements (all present, many null)
-  const rec = {
+function defaultStructure(parcelId, buildingNumber, totalBuildings) {
+  return {
     source_http_request: {
       method: "GET",
       url: "https://qpublic.schneidercorp.com/application.aspx",
@@ -143,6 +192,9 @@ function buildStructureRecord($, buildings, parcelId) {
       }
     },
     request_identifier: parcelId,
+    building_number: buildingNumber,
+    structure_index: buildingNumber,
+    // number_of_buildings: totalBuildings,
     architectural_style_type: null,
     attachment_type: null,
     ceiling_condition: null,
@@ -205,116 +257,120 @@ function buildStructureRecord($, buildings, parcelId) {
     window_operation_type: null,
     window_screen_material: null,
   };
+}
 
-  // Aggregate from buildings
-  const extTokens = [];
-  const intWallTokens = [];
-  const floorTokens = [];
+function buildStructureFromBuilding(building, idx, totalBuildings, parcelId) {
+  const buildingNumber = idx + 1;
+  const rec = defaultStructure(parcelId, buildingNumber, totalBuildings);
+
+  const extTokens = building["Exterior Walls"]
+    ? building["Exterior Walls"].split(";").map((s) => s.trim())
+    : [];
+  const intWallTokens = building["Interior Walls"]
+    ? building["Interior Walls"].split(";").map((s) => s.trim())
+    : [];
+  const floorTokens = building["Flooring Type"]
+    ? building["Flooring Type"].split(";").map((s) => s.trim())
+    : [];
   const roofTokens = [];
-  const frameTokens = [];
-  const stories = [];
+  if (building["Roof Coverage"]) roofTokens.push(building["Roof Coverage"]);
+  if (building["Roof Type"]) roofTokens.push(building["Roof Type"]);
+  const frameTokens = building["Frame"] ? [building["Frame"]] : [];
 
-  buildings.forEach((b) => {
-    if (b["Exterior Walls"])
-      extTokens.push(...b["Exterior Walls"].split(";").map((s) => s.trim()));
-    if (b["Interior Walls"])
-      intWallTokens.push(
-        ...b["Interior Walls"].split(";").map((s) => s.trim()),
-      );
-    if (b["Flooring Type"])
-      floorTokens.push(...b["Flooring Type"].split(";").map((s) => s.trim()));
-    if (b["Roof Coverage"]) roofTokens.push(b["Roof Coverage"]);
-    if (b["Roof Type"]) roofTokens.push(b["Roof Type"]);
-    if (b["Frame"]) frameTokens.push(b["Frame"]);
-    if (b["Stories"]) {
-      const st = parseNumber(b["Stories"]);
-      if (st != null) stories.push(st);
-    }
-  });
-
-  // Exterior materials
+  // Exterior materials (map to Structure enum)
   const ext = mapExteriorMaterials(extTokens);
+  const extSecondary = mapExteriorWallSecondary(extTokens);
   if (ext.length) {
-    // Choose primary material as the most common/first detected
     rec.exterior_wall_material_primary = ext[0] || null;
   }
-
-  // Interior wall surface
-  const intSurf = mapInteriorSurface(intWallTokens);
-  if (intSurf.length) {
-    rec.interior_wall_surface_material_primary = intSurf[0] || null;
+  if (extSecondary.length) {
+    rec.exterior_wall_material_secondary = extSecondary[0] || null;
   }
 
-  // Flooring
+  // Interior wall surface (map to Structure enum)
+  const intSurfPrimary = mapInteriorSurfacePrimary(intWallTokens);
+  const intSurfSecondary = mapInteriorSurfaceSecondary(intWallTokens);
+  if (intSurfPrimary.length) {
+    rec.interior_wall_surface_material_primary = intSurfPrimary[0] || null;
+  }
+  if (intSurfSecondary.length) {
+    rec.interior_wall_surface_material_secondary = intSurfSecondary[0] || null;
+  }
+
+  // Flooring (map to Structure enum)
   const floors = mapFlooring(floorTokens);
+  const flooringSecondary = mapFlooringSecondary(floorTokens);
   if (floors.length) {
     rec.flooring_material_primary = floors[0] || null;
   }
-
-  // Roof covering and type mapping
-  if (roofTokens.length) {
-    const u = roofTokens.join(" ").toUpperCase();
-    // Roof covering material
-    if (u.includes("3-TAB") && u.includes("SHINGLE")) rec.roof_covering_material = "3-Tab Asphalt Shingle";
-    else if (u.includes("SHINGLE")) rec.roof_covering_material = "Architectural Asphalt Shingle";
-    if (u.includes("METAL") && u.includes("STANDING")) rec.roof_covering_material = "Metal Standing Seam";
-    else if (u.includes("METAL") && u.includes("CORRUGATED")) rec.roof_covering_material = "Metal Corrugated";
-    if (u.includes("CLAY") && u.includes("TILE")) rec.roof_covering_material = "Clay Tile";
-    if (u.includes("CONCRETE") && u.includes("TILE")) rec.roof_covering_material = "Concrete Tile";
-    if (u.includes("SLATE")) rec.roof_covering_material = "Natural Slate";
-    if (u.includes("WOOD") && u.includes("SHAKE")) rec.roof_covering_material = "Wood Shake";
-    if (u.includes("WOOD") && u.includes("SHINGLE")) rec.roof_covering_material = "Wood Shingle";
-    if (u.includes("TPO")) rec.roof_covering_material = "TPO Membrane";
-    if (u.includes("EPDM")) rec.roof_covering_material = "EPDM Membrane";
-    
-    // Roof structure material
-    if (u.includes("WOOD TRUSS")) rec.roof_structure_material = "Wood Truss";
-    if (u.includes("WOOD RAFTER")) rec.roof_structure_material = "Wood Rafter";
-    if (u.includes("STEEL TRUSS")) rec.roof_structure_material = "Steel Truss";
-    if (u.includes("CONCRETE BEAM")) rec.roof_structure_material = "Concrete Beam";
-    
-    // Roof design type
-    if (u.includes("GABLE")) rec.roof_design_type = "Gable";
-    if (u.includes("HIP")) rec.roof_design_type = "Hip";
-    if (u.includes("FLAT")) rec.roof_design_type = "Flat";
-    if (u.includes("MANSARD")) rec.roof_design_type = "Mansard";
-    if (u.includes("GAMBREL")) rec.roof_design_type = "Gambrel";
-    if (u.includes("SHED")) rec.roof_design_type = "Shed";
+  if (flooringSecondary.length) {
+    rec.flooring_material_secondary = flooringSecondary[0] || null;
   }
 
-  // Framing
+  // Roof covering, structure, and design (map to Structure enums)
+  if (roofTokens.length) {
+    const u = roofTokens.join(" ").toUpperCase();
+    if (u.includes("3-TAB") && u.includes("SHINGLE")) rec.roof_covering_material = "3-Tab Asphalt Shingle";
+    else if (u.includes("SHINGLE")) rec.roof_covering_material = "Architectural Asphalt Shingle";
+    if (!rec.roof_covering_material && u.includes("METAL") && u.includes("STANDING"))
+      rec.roof_covering_material = "Metal Standing Seam";
+    else if (!rec.roof_covering_material && u.includes("METAL") && u.includes("CORRUGATED"))
+      rec.roof_covering_material = "Metal Corrugated";
+    if (!rec.roof_covering_material && u.includes("CLAY") && u.includes("TILE")) rec.roof_covering_material = "Clay Tile";
+    if (!rec.roof_covering_material && u.includes("CONCRETE") && u.includes("TILE")) rec.roof_covering_material = "Concrete Tile";
+    if (!rec.roof_covering_material && u.includes("SLATE")) rec.roof_covering_material = "Natural Slate";
+    if (!rec.roof_covering_material && u.includes("WOOD") && u.includes("SHAKE")) rec.roof_covering_material = "Wood Shake";
+    if (!rec.roof_covering_material && u.includes("WOOD") && u.includes("SHINGLE")) rec.roof_covering_material = "Wood Shingle";
+    if (!rec.roof_covering_material && u.includes("TPO")) rec.roof_covering_material = "TPO Membrane";
+    if (!rec.roof_covering_material && u.includes("EPDM")) rec.roof_covering_material = "EPDM Membrane";
+
+    if (u.includes("WOOD TRUSS")) rec.roof_structure_material = "Wood Truss";
+    else if (u.includes("WOOD RAFTER")) rec.roof_structure_material = "Wood Rafter";
+    else if (u.includes("STEEL TRUSS")) rec.roof_structure_material = "Steel Truss";
+    else if (u.includes("CONCRETE BEAM")) rec.roof_structure_material = "Concrete Beam";
+
+    if (u.includes("GABLE")) rec.roof_design_type = "Gable";
+    else if (u.includes("HIP")) rec.roof_design_type = "Hip";
+    else if (u.includes("FLAT")) rec.roof_design_type = "Flat";
+    else if (u.includes("MANSARD")) rec.roof_design_type = "Mansard";
+    else if (u.includes("GAMBREL")) rec.roof_design_type = "Gambrel";
+    else if (u.includes("SHED")) rec.roof_design_type = "Shed";
+  }
+
+  // Framing (map to Structure enum)
   const frameStr = frameTokens.join(" ").toUpperCase();
   if (frameStr.includes("WOOD")) {
     rec.primary_framing_material = "Wood Frame";
     rec.interior_wall_structure_material = "Wood Frame";
     rec.interior_wall_structure_material_primary = "Wood Frame";
-  }
-  if (frameStr.includes("STEEL")) {
+  } else if (frameStr.includes("STEEL")) {
     rec.primary_framing_material = "Steel Frame";
     rec.interior_wall_structure_material = "Steel Frame";
     rec.interior_wall_structure_material_primary = "Steel Frame";
-  }
-  if (frameStr.includes("MASONRY")) {
+  } else if (frameStr.includes("MASONRY")) {
     rec.primary_framing_material = "Masonry";
     rec.interior_wall_structure_material = "Concrete Block";
     rec.interior_wall_structure_material_primary = "Concrete Block";
-  }
-  if (frameStr.includes("CONCRETE")) {
+  } else if (frameStr.includes("CONCRETE")) {
     rec.primary_framing_material = "Poured Concrete";
     rec.interior_wall_structure_material = "Concrete Block";
     rec.interior_wall_structure_material_primary = "Concrete Block";
   }
 
-  // Stories
-  if (stories.length) {
-    // Use max stories across buildings
-    rec.number_of_stories = Math.max(...stories);
+  const storiesText = building["Stories"] || "";
+  const storiesMatch = storiesText.match(/([0-9.]+)/);
+  if (storiesMatch) {
+    rec.number_of_stories = parseFloat(storiesMatch[1]);
   }
 
-  // Subfloor unknown; if any heated area present and FL likely slab, but leave null to avoid assumption
-  // rec.subfloor_material = null;
-
   return rec;
+}
+
+function buildStructuresFromBuildings(buildings, parcelId) {
+  const totalBuildings = buildings.length || null;
+  return buildings.map((b, idx) =>
+    buildStructureFromBuilding(b, idx, totalBuildings, parcelId),
+  );
 }
 
 function main() {
@@ -325,13 +381,13 @@ function main() {
     throw new Error("Parcel ID not found");
   }
   const buildings = collectBuildings($);
-  const structureRecord = buildStructureRecord($, buildings, parcelId);
+  const structures = buildStructuresFromBuildings(buildings, parcelId);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "structure_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = structureRecord;
+  outObj[`property_${parcelId}`] = { structures };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
