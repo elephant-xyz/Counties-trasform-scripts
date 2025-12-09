@@ -883,12 +883,10 @@ function sanitizeAddressPayloadForWrite(payload) {
     normalizedCandidate.country_code = "US";
   }
 
-  const normalizedCoverage = hasCompleteNormalizedAddress(normalizedCandidate);
+  const normalizedCoverage = hasNormalizedCountyCoverage(normalizedCandidate);
 
   if (trimmedUnnormalized.length && !normalizedCoverage) {
     const rawSeed = {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      ...payload,
       unnormalized_address: trimmedUnnormalized,
     };
 
@@ -897,12 +895,16 @@ function sanitizeAddressPayloadForWrite(payload) {
       rawSeed.request_identifier = requestId === undefined ? null : requestId;
     }
 
-    const surfacedRaw =
-      ensureAddressOutputFieldPresence(rawSeed) ||
-      ensureRawAddressSchemaDefaults(rawSeed) ||
-      rawSeed;
+    if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+      const preparedSource = prepareSourceHttpRequest(
+        payload.source_http_request,
+      );
+      rawSeed.source_http_request = preparedSource
+        ? deepClone(preparedSource)
+        : null;
+    }
 
-    return stripAddressRequestMetadata(surfacedRaw);
+    return stripAddressRequestMetadata(rawSeed);
   }
 
   if (normalizedCoverage) {
@@ -5464,11 +5466,7 @@ const ADDRESS_SCHEMA_FIELDS = [
 // Keep the raw branch aligned with the schema: emit every nullable address
 // field so the raw (unnormalized) oneOf option is satisfied without requiring
 // downstream normalization. The unnormalized string drives the branch choice.
-const RAW_MINIMAL_ADDRESS_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
-  "request_identifier",
-  "source_http_request",
-];
+const RAW_MINIMAL_ADDRESS_FIELDS = ["request_identifier", "source_http_request"];
 
 // Fields that may accompany the raw (unnormalized) address payload. Keep the
 // list aligned with the schema requirements so every nullable property remains
@@ -5529,7 +5527,7 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   "street_post_directional_text",
 ]);
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS];
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
@@ -5591,9 +5589,13 @@ function hasNormalizedCountyCoverage(address) {
     return false;
   }
 
-  return COUNTY_NORMALIZED_REQUIRED_FIELDS.every((field) =>
-    hasMeaningfulAddressValue(address[field]),
-  );
+  return COUNTY_NORMALIZED_REQUIRED_FIELDS.every((field) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(address[field]);
+      return Number.isFinite(numeric);
+    }
+    return hasMeaningfulAddressValue(address[field]);
+  });
 }
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
@@ -7495,70 +7497,13 @@ function enforceTerminalAddressBranch(addressPath, options = {}) {
     return;
   }
 
-  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
-
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-    if (field === "request_identifier") {
-      rawOutput.request_identifier =
-        resolvedRequestId === undefined ? null : resolvedRequestId;
-      return;
-    }
-    if (field === "source_http_request") {
-      rawOutput.source_http_request = resolvedSourceRequest
-        ? deepClone(resolvedSourceRequest)
-        : null;
-      return;
-    }
-
-    const candidate = resolveCandidateString(
-      existingPayload[field],
-      unnormalizedSource[field],
-      seedSource[field],
-    );
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(candidate);
-      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
-      return;
-    }
-
-    if (candidate === undefined) {
-      rawOutput[field] = null;
-      return;
-    }
-
-    if (typeof candidate === "string") {
-      const trimmed = candidate.trim();
-      rawOutput[field] = trimmed.length ? trimmed : null;
-      return;
-    }
-
-    rawOutput[field] = candidate === undefined ? null : candidate;
-  });
-
-  if (!rawOutput.county_name && defaultCountyName) {
-    rawOutput.county_name = titleCaseCounty(defaultCountyName);
-  }
-  if (!rawOutput.state_code && defaultStateCode) {
-    rawOutput.state_code = defaultStateCode.toUpperCase();
-  }
-
-  if (
-    hasMeaningfulAddressValue(rawOutput.state_code) &&
-    !hasMeaningfulAddressValue(rawOutput.country_code)
-  ) {
-    rawOutput.country_code = (defaultCountryCode || "US").toUpperCase();
-  } else if (!rawOutput.country_code && defaultCountryCode) {
-    rawOutput.country_code = defaultCountryCode.toUpperCase();
-  }
-
-  if (!rawOutput.postal_code) {
-    rawOutput.plus_four_postal_code = null;
-  }
-  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
-    rawOutput.latitude = null;
-    rawOutput.longitude = null;
-  }
+  const rawOutput = {
+    unnormalized_address: rawValue.trim(),
+    request_identifier: resolvedRequestId === undefined ? null : resolvedRequestId,
+    source_http_request: resolvedSourceRequest
+      ? deepClone(resolvedSourceRequest)
+      : null,
+  };
 
   writeJSON(addressPath, rawOutput);
 }
@@ -7849,12 +7794,30 @@ function ensureAddressOutputCoverage(address) {
     return null;
   }
 
-  const baseFields = hasUnnormalized
-    ? RAW_ADDRESS_OUTPUT_FIELDS
-    : NORMALIZED_ADDRESS_FIELDS;
-  const orderedFields = hasUnnormalized
-    ? ["unnormalized_address", ...RAW_ADDRESS_OUTPUT_FIELDS]
-    : [...NORMALIZED_ADDRESS_FIELDS];
+  if (hasUnnormalized) {
+    const result = { unnormalized_address: trimmedUnnormalized };
+
+    if (Object.prototype.hasOwnProperty.call(cloned, "request_identifier")) {
+      const requestId = safeNullIfEmpty(cloned.request_identifier);
+      result.request_identifier = requestId === undefined ? null : requestId;
+    } else {
+      result.request_identifier = null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(cloned, "source_http_request")) {
+      const preparedSource = prepareSourceHttpRequest(
+        cloned.source_http_request,
+      );
+      result.source_http_request = preparedSource ? deepClone(preparedSource) : null;
+    } else {
+      result.source_http_request = null;
+    }
+
+    return result;
+  }
+
+  const baseFields = NORMALIZED_ADDRESS_FIELDS;
+  const orderedFields = [...NORMALIZED_ADDRESS_FIELDS];
 
   const result = {};
 
