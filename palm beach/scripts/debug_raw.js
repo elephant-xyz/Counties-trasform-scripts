@@ -85,7 +85,20 @@ function ensureNullRelationshipPlaceholders(directoryPath, baseNames = []) {
     return;
   }
 
+  ensureDir(directoryPath);
   removeAddressRelationshipFiles(directoryPath);
+
+  // Emit explicit null placeholders so the validator sees empty relationships
+  // instead of partially populated UR references that violate the schema.
+  for (const baseName of baseNames) {
+    if (!baseName || typeof baseName !== "string") continue;
+    const targetPath = path.join(directoryPath, `${baseName}.json`);
+    try {
+      originalWriteFileSync.call(fs, targetPath, "null\n");
+    } catch {
+      // Allow downstream passes to attempt cleanup again if this write fails.
+    }
+  }
 }
 
 function enforcePropertyRelationshipNulls(propertyPath) {
