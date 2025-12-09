@@ -1536,7 +1536,7 @@ function extractValuation($) {
   });
 }
 
-function writeProperty($, parcelId) {
+function writeProperty($, parcelId, propertySeed) {
   const legal = extractLegalDescription($);
   const useCode = extractUseCode($);
   const propertyMapping = mapPropertyTypeFromUseCode(useCode);
@@ -1550,6 +1550,9 @@ function writeProperty($, parcelId) {
   const years = extractBuildingYears($);
   const totalArea = extractAreas($);
 
+  const requestIdentifier = (propertySeed && (propertySeed.request_identifier || propertySeed.parcel_id)) || parcelId || null;
+  const sourceHttpRequest = (propertySeed && propertySeed.source_http_request) || null;
+
   const property = {
     parcel_identifier: parcelId || "",
     property_legal_description_text: legal || null,
@@ -1562,16 +1565,23 @@ function writeProperty($, parcelId) {
     number_of_units: null,
     subdivision: null,
     zoning: null,
+    request_identifier: requestIdentifier,
   };
+  if (sourceHttpRequest) {
+    property.source_http_request = sourceHttpRequest;
+  }
   writeJSON(path.join("data", "property.json"), property);
 }
 
-function writeSalesDeedsFilesAndRelationships($) {
+function writeSalesDeedsFilesAndRelationships($, propertySeed) {
   const sales = extractSales($);
+  const requestIdentifier = (propertySeed && (propertySeed.request_identifier || propertySeed.parcel_id)) || null;
+  const sourceHttpRequest = (propertySeed && propertySeed.source_http_request) || null;
+
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_deed)(?:_\d+)?\.json$/.test(f)) {
+      if (/^relationship_(deed_file|sales_deed|sales_history_)(?:_\d+)?\.json$/.test(f) || /^sales_history_\d+\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -1582,11 +1592,21 @@ function writeSalesDeedsFilesAndRelationships($) {
     const saleObj = {
       ownership_transfer_date: parseDateToISO(s.saleDate),
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
+      request_identifier: requestIdentifier,
     };
-    writeJSON(path.join("data", `sales_${idx}.json`), saleObj);
+    if (sourceHttpRequest) {
+      saleObj.source_http_request = sourceHttpRequest;
+    }
+    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     const deedType = mapInstrumentToDeedType(s.instrument);
-    let deed = { deed_type: deedType };
+    let deed = {
+      deed_type: deedType,
+      request_identifier: requestIdentifier,
+    };
+    if (sourceHttpRequest) {
+      deed.source_http_request = sourceHttpRequest;
+    }
     if (s.book) {
       deed.book = s.book.split("\n")[0];
     }
@@ -1602,7 +1622,11 @@ function writeSalesDeedsFilesAndRelationships($) {
       ipfs_url: null,
       name: fileName ? `Deed ${fileName}` : "Deed Document",
       original_url: s.link || null,
+      request_identifier: requestIdentifier,
     };
+    if (sourceHttpRequest) {
+      file.source_http_request = sourceHttpRequest;
+    }
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
     const relDeedFile = {
@@ -1610,16 +1634,16 @@ function writeSalesDeedsFilesAndRelationships($) {
       to: { "/": `./file_${idx}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_deed_file_${idx}.json`),
+      path.join("data", `relationship_deed_${idx}_has_file_${idx}.json`),
       relDeedFile,
     );
 
     const relSalesDeed = {
-      from: { "/": `./sales_${idx}.json` },
+      from: { "/": `./sales_history_${idx}.json` },
       to: { "/": `./deed_${idx}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_deed_${idx}.json`),
+      path.join("data", `relationship_sales_history_${idx}_has_deed_${idx}.json`),
       relSalesDeed,
     );
   });
@@ -1654,7 +1678,9 @@ function titleCaseName(s) {
     .join(" ");
 }
 
-function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress) {
+function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress, propertySeed) {
+  const sourceHttpRequest = (propertySeed && propertySeed.source_http_request) || null;
+
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
@@ -1680,17 +1706,23 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       }
     });
   });
-  people = Array.from(personMap.values()).map((p) => ({
-    first_name: p.first_name ? titleCaseName(p.first_name) : null,
-    middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-    last_name: p.last_name ? titleCaseName(p.last_name) : null,
-    birth_date: null,
-    prefix_name: null,
-    suffix_name: null,
-    us_citizenship_status: null,
-    veteran_status: null,
-    request_identifier: parcelId,
-  }));
+  people = Array.from(personMap.values()).map((p) => {
+    const person = {
+      first_name: p.first_name ? titleCaseName(p.first_name) : null,
+      middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+      last_name: p.last_name ? titleCaseName(p.last_name) : null,
+      birth_date: null,
+      prefix_name: null,
+      suffix_name: null,
+      us_citizenship_status: null,
+      veteran_status: null,
+      request_identifier: parcelId,
+    };
+    if (sourceHttpRequest) {
+      person.source_http_request = sourceHttpRequest;
+    }
+    return person;
+  });
   people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
@@ -1701,10 +1733,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({
-    name: n,
-    request_identifier: parcelId,
-  }));
+  companies = Array.from(companyNames).map((n) => {
+    const company = {
+      name: n,
+      request_identifier: parcelId,
+    };
+    if (sourceHttpRequest) {
+      company.source_http_request = sourceHttpRequest;
+    }
+    return company;
+  });
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
@@ -1729,11 +1767,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_person_${relPersonCounter}.json`,
+              `relationship_sales_history_${idx + 1}_has_person_${relPersonCounter}.json`,
             ),
             {
               to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
+              from: { "/": `./sales_history_${idx + 1}.json` },
             },
           );
         }
@@ -1748,11 +1786,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_company_${relCompanyCounter}.json`,
+              `relationship_sales_history_${idx + 1}_has_company_${relCompanyCounter}.json`,
             ),
             {
               to: { "/": `./company_${cIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
+              from: { "/": `./sales_history_${idx + 1}.json` },
             },
           );
         }
@@ -1882,7 +1920,10 @@ function extractHistoricalValuation($) {
   // });
 }
 
-function writeTaxes($) {
+function writeTaxes($, propertySeed) {
+  const requestIdentifier = (propertySeed && (propertySeed.request_identifier || propertySeed.parcel_id)) || null;
+  const sourceHttpRequest = (propertySeed && propertySeed.source_http_request) || null;
+
   const vals = extractValuation($);
   vals.forEach((v) => {
     const taxObj = {
@@ -1896,7 +1937,11 @@ function writeTaxes($) {
       monthly_tax_amount: null,
       period_end_date: null,
       period_start_date: null,
+      request_identifier: requestIdentifier,
     };
+    if (sourceHttpRequest) {
+      taxObj.source_http_request = sourceHttpRequest;
+    }
     writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
   });
   if (HISTORICAL_VALUATION_TABLE_SELECTOR) {
@@ -1913,7 +1958,11 @@ function writeTaxes($) {
         monthly_tax_amount: null,
         period_end_date: null,
         period_start_date: null,
+        request_identifier: requestIdentifier,
       };
+      if (sourceHttpRequest) {
+        taxObj.source_http_request = sourceHttpRequest;
+      }
       writeJSON(path.join("data", `tax_${v.year}.json`), taxObj);
     });
   }
@@ -1958,14 +2007,21 @@ function extractOwnerMailingAddress($) {
   return textOf($(OWNER_MAILING_ADDRESS_SELECTOR)).replace(/  +/g, ' ');;
 }
 
-function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
+function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress, propertySeed) {
+  const requestIdentifier = (propertySeed && (propertySeed.request_identifier || propertySeed.parcel_id)) || null;
+  const sourceHttpRequest = (propertySeed && propertySeed.source_http_request) || null;
+
   let hasOwnerMailingAddress = false;
   if (mailingAddress) {
     const mailingAddressObj = {
       latitude: null,
       longitude: null,
       unnormalized_address: mailingAddress,
+      request_identifier: requestIdentifier,
     };
+    if (sourceHttpRequest) {
+      mailingAddressObj.source_http_request = sourceHttpRequest;
+    }
     writeJSON(path.join("data", "mailing_address.json"), mailingAddressObj);
     hasOwnerMailingAddress = true;
   }
@@ -1974,7 +2030,11 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
       latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
       longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
       unnormalized_address: siteAddress,
+      request_identifier: requestIdentifier,
     };
+    if (sourceHttpRequest) {
+      addressObj.source_http_request = sourceHttpRequest;
+    }
     writeJSON(path.join("data", "address.json"), addressObj);
     writeJSON(path.join("data", "relationship_property_has_address.json"), {
                 to: { "/": `./address.json` },
@@ -2091,21 +2151,24 @@ function main() {
     util = key && utilitiesData[key] ? utilitiesData[key] : null;
   }
 
-  if (parcelId) writeProperty($, parcelId);
+  if (parcelId) writeProperty($, parcelId, propertySeed);
 
   const sales = extractSales($);
-  writeSalesDeedsFilesAndRelationships($);
+  writeSalesDeedsFilesAndRelationships($, propertySeed);
 
-  writeTaxes($);
+  writeTaxes($, propertySeed);
 
   const secTwpRng = extractSecTwpRng($);
   const addressText = extractAddressText($);
   const mailingAddress = extractOwnerMailingAddress($);
-  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress);
+  const hasOwnerMailingAddress = attemptWriteAddress(unnormalized, secTwpRng, addressText, mailingAddress, propertySeed);
 
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
+    writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress, propertySeed);
     // Layout extraction from owners/layout_data.json
+    const requestIdentifier = (propertySeed && (propertySeed.request_identifier || propertySeed.parcel_id)) || parcelId || null;
+    const sourceHttpRequest = (propertySeed && propertySeed.source_http_request) || null;
+
     if (layoutData) {
       const lset =
         key && layoutData[key] && Array.isArray(layoutData[key].layouts)
@@ -2159,7 +2222,11 @@ function main() {
           spa_installation_date: l.spa_installation_date ?? null,
           story_type: l.story_type ?? null,
           total_area_sq_ft: l.total_area_sq_ft ?? null,
+          request_identifier: requestIdentifier,
         };
+        if (sourceHttpRequest) {
+          layoutOut.source_http_request = sourceHttpRequest;
+        }
         writeJSON(path.join("data", `layout_${idx}.json`), layoutOut);
         if (l.space_type === "Building") {
           const building_number = l.building_number;
@@ -2177,7 +2244,11 @@ function main() {
         }
         if (util && l.space_type === "Building") {
           if (l.building_number && l.building_number.toString() in util) {
-            writeJSON(path.join("data", `utility_${idx}.json`), util[l.building_number.toString()]);
+            const utilityObj = { ...util[l.building_number.toString()], request_identifier: requestIdentifier };
+            if (sourceHttpRequest) {
+              utilityObj.source_http_request = sourceHttpRequest;
+            }
+            writeJSON(path.join("data", `utility_${idx}.json`), utilityObj);
             writeJSON(path.join("data", `relationship_layout_to_utility_${idx}.json`), {
                       to: { "/": `./utility_${idx}.json` },
                       from: { "/": `./layout_${idx}.json` },
@@ -2186,7 +2257,11 @@ function main() {
         }
         if (struct && l.space_type === "Building") {
           if (l.building_number && l.building_number.toString() in struct) {
-            writeJSON(path.join("data", `structure_${idx}.json`), struct[l.building_number.toString()]);
+            const structureObj = { ...struct[l.building_number.toString()], request_identifier: requestIdentifier };
+            if (sourceHttpRequest) {
+              structureObj.source_http_request = sourceHttpRequest;
+            }
+            writeJSON(path.join("data", `structure_${idx}.json`), structureObj);
             writeJSON(path.join("data", `relationship_layout_to_structure_${idx}.json`), {
                       to: { "/": `./structure_${idx}.json` },
                       from: { "/": `./layout_${idx}.json` },
