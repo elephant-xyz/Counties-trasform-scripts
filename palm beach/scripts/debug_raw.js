@@ -11102,26 +11102,49 @@ function enforceAddressOneOfResolution(addressPath, options = {}) {
   }
 
   const rawOut = {
-    unnormalized_address: rawValue.trim(),
-    request_identifier: requestIdentifier || null,
-    source_http_request: preparedSource,
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
   };
 
-  RAW_ONE_OF_MINIMAL_FIELDS.forEach((field) => {
-    let candidate =
-      payload[field] ??
-      options[field] ??
-      (options.seed && options.seed[field]) ??
-      null;
-    if (field === "latitude" || field === "longitude") {
-      const num = parseCoordinate(candidate);
-      candidate = Number.isFinite(num) ? num : null;
-    } else if (typeof candidate === "string") {
-      candidate = sanitizeAddressFieldValue(field, candidate);
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "request_identifier") {
+      rawOut.request_identifier =
+        requestIdentifier === undefined ? null : requestIdentifier || null;
+      return;
     }
-    rawOut[field] =
-      candidate === undefined ? null : candidate === "" ? null : candidate;
+    if (field === "source_http_request") {
+      rawOut.source_http_request = preparedSource
+        ? deepClone(preparedSource)
+        : null;
+      return;
+    }
+
+    let candidate = null;
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      candidate = payload[field];
+    } else if (options && Object.prototype.hasOwnProperty.call(options, field)) {
+      candidate = options[field];
+    } else if (options.seed && Object.prototype.hasOwnProperty.call(options.seed, field)) {
+      candidate = options.seed[field];
+    }
+
+    const sanitized = sanitizeAddressFieldValue
+      ? sanitizeAddressFieldValue(field, candidate)
+      : candidate;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const num = parseCoordinate(sanitized);
+      rawOut[field] = Number.isFinite(num) ? num : null;
+      return;
+    }
+
+    if (sanitized === undefined || sanitized === "") {
+      rawOut[field] = null;
+      return;
+    }
+    rawOut[field] = sanitized === null ? null : sanitized;
   });
+
+  rawOut.unnormalized_address = rawValue.trim();
 
   if (!rawOut.country_code) {
     rawOut.country_code =
