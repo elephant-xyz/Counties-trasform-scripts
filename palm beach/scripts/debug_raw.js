@@ -9451,15 +9451,33 @@ function enforceAddressBranchForOneOf(addressPath) {
     return;
   }
 
-  const rawOut = {
+  const rawSeed = {
+    ...payload,
     unnormalized_address: rawValue,
-    request_identifier:
-      safeNullIfEmpty(payload.request_identifier) ?? null,
-    source_http_request:
-      prepareSourceHttpRequest(payload.source_http_request) || null,
   };
+  const rawSurface =
+    (typeof ensureRawAddressSchemaDefaults === "function" &&
+      ensureRawAddressSchemaDefaults(rawSeed)) ||
+    composeMinimalRawAddress(rawSeed) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: rawValue,
+    };
 
-  writeJSON(addressPath, rawOut);
+  if ((rawSurface.latitude == null) !== (rawSurface.longitude == null)) {
+    rawSurface.latitude = null;
+    rawSurface.longitude = null;
+  }
+  if (!rawSurface.postal_code) {
+    rawSurface.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawSurface.state_code) &&
+    !hasMeaningfulAddressValue(rawSurface.country_code)
+  ) {
+    rawSurface.country_code = "US";
+  }
+
+  writeJSON(addressPath, rawSurface);
 }
 
 function forceRawOneOfCompliance(
