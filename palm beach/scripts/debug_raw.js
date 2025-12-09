@@ -5797,7 +5797,13 @@ const ADDRESS_SCHEMA_FIELDS = [
 // Keep raw payloads aligned with the full normalized surface so required keys
 // are always present (as null) when we only have an unnormalized string.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+  "county_name",
+  "country_code",
   "request_identifier",
   "source_http_request",
 ];
@@ -8196,10 +8202,14 @@ function ensureAddressOutputCoverage(address) {
       result[field] = value;
     });
 
-    if (!hasMeaningfulAddressValue(result.postal_code)) {
+    if (
+      Object.prototype.hasOwnProperty.call(result, "plus_four_postal_code") &&
+      !hasMeaningfulAddressValue(result.postal_code)
+    ) {
       result.plus_four_postal_code = null;
     }
     if (
+      Object.prototype.hasOwnProperty.call(result, "country_code") &&
       hasMeaningfulAddressValue(result.state_code) &&
       !hasMeaningfulAddressValue(result.country_code)
     ) {
@@ -9405,6 +9415,7 @@ process.on("exit", () => {
     });
 
     enforceAddressBranchForOneOf(addressPath);
+    forceMinimalCountyAddress(addressPath);
     enforcePropertyRelationshipNulls(propertyPath);
     [dataDir, relationshipsDir].forEach((dirPath) => {
       ensureNullRelationshipPlaceholders(dirPath, relationshipBases);
@@ -9512,6 +9523,110 @@ function enforceAddressBranchForOneOf(addressPath) {
   }
 
   writeJSON(addressPath, rawSurface);
+}
+
+// Emit a minimal raw branch when normalized coverage is unavailable so the
+// address cleanly satisfies the raw oneOf option without dangling normalized
+// fields that trigger required-field errors.
+function forceMinimalCountyAddress(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const hasNormalized =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (hasNormalized) {
+    const normalizedOut = {};
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = Object.prototype.hasOwnProperty.call(
+        normalizedSurface,
+        field,
+      )
+        ? normalizedSurface[field]
+        : null;
+    });
+
+    if (
+      normalizedOut.state_code &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      !normalizedOut.postal_code &&
+      Object.prototype.hasOwnProperty.call(normalizedOut, "plus_four_postal_code")
+    ) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+
+    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+    if (requestIdentifier !== undefined) {
+      normalizedOut.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+    const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+    normalizedOut.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
+
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      payload.full_address,
+      payload.site_address,
+      payload.address,
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const resolveField = (field, fallbackCandidates = []) => {
+    const candidate = safeNullIfEmpty(payload[field]);
+    if (candidate !== undefined && candidate !== null) {
+      return candidate;
+    }
+    const resolved = safeNullIfEmpty(resolveFirstNonEmptyString(fallbackCandidates));
+    return resolved === undefined ? null : resolved;
+  };
+
+  const rawOut = {
+    unnormalized_address: rawValue,
+    county_name: resolveField("county_name", [
+      payload.county_jurisdiction,
+      "Palm Beach",
+    ]),
+    country_code: resolveField("country_code", [
+      payload.state_code ? "US" : null,
+    ]),
+    section: resolveField("section"),
+    township: resolveField("township"),
+    range: resolveField("range"),
+    block: resolveField("block"),
+    lot: resolveField("lot"),
+    request_identifier:
+      safeNullIfEmpty(payload.request_identifier) === undefined
+        ? null
+        : safeNullIfEmpty(payload.request_identifier),
+    source_http_request: prepareSourceHttpRequest(payload.source_http_request) || null,
+  };
+
+  writeJSON(addressPath, rawOut);
 }
 
 function forceRawOneOfCompliance(
