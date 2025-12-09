@@ -80,6 +80,27 @@ function sanitizeMiddleName(middle) {
   return withoutParens;
 }
 
+function titleCaseName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (trimmed === '') return null;
+
+  // Convert to title case: First letter uppercase, rest lowercase
+  // Pattern for first/last names: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const titleCased = trimmed
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+  // Validate against the required pattern
+  if (!/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(titleCased)) {
+    return null;
+  }
+
+  return titleCased;
+}
+
 function normalizePersonKey(p) {
   const parts = [p.last_name || "", p.first_name || "", p.middle_name || ""]
     .map((x) => normSpace(x).toLowerCase())
@@ -116,8 +137,8 @@ function parsePersonSingle(raw) {
       valid: true,
       owner: {
         type: "person",
-        first_name: first || null,
-        last_name: normSpace(last) || null,
+        first_name: titleCaseName(first),
+        last_name: titleCaseName(normSpace(last)),
         middle_name: middle,
       },
     };
@@ -139,8 +160,8 @@ function parsePersonSingle(raw) {
       valid: true,
       owner: {
         type: "person",
-        first_name: first || null,
-        last_name: last || null,
+        first_name: titleCaseName(first),
+        last_name: titleCaseName(last),
         middle_name: middle,
       },
     };
@@ -155,8 +176,8 @@ function parsePersonSingle(raw) {
     valid: true,
     owner: {
       type: "person",
-      first_name: first || null,
-      last_name: last || null,
+      first_name: titleCaseName(first),
+      last_name: titleCaseName(last),
       middle_name: middle,
     },
   };
@@ -188,15 +209,15 @@ function parseAmpersandPersons(raw) {
     if (first1)
       owners.push({
         type: "person",
-        first_name: first1 || null,
-        last_name: sharedLast || null,
+        first_name: titleCaseName(first1),
+        last_name: titleCaseName(sharedLast),
         middle_name: null,
       });
     if (first2)
       owners.push({
         type: "person",
-        first_name: first2 || null,
-        last_name: sharedLast || null,
+        first_name: titleCaseName(first2),
+        last_name: titleCaseName(sharedLast),
         middle_name: null,
       });
     return owners;
