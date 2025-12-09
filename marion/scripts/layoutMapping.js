@@ -549,7 +549,16 @@ function buildLayouts($) {
 }
 
 (function main() {
-  const inputPath = path.join(process.cwd(), "input.html");
+  // Find HTML file dynamically
+  let htmlFile = "input.html";
+  if (!fs.existsSync(htmlFile)) {
+    const files = fs.readdirSync(".");
+    const htmlFiles = files.filter(f => f.endsWith(".html"));
+    if (htmlFiles.length > 0) {
+      htmlFile = htmlFiles[0];
+    }
+  }
+  const inputPath = path.join(process.cwd(), htmlFile);
   const html = fs.readFileSync(inputPath, "utf8");
   const $ = cheerio.load(html);
   const id = getPrimeKey($, html);
