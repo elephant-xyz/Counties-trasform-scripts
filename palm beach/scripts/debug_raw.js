@@ -875,30 +875,25 @@ function sanitizeAddressPayloadForWrite(payload) {
   const normalizedCoverage = hasNormalizedCountyCoverage(normalizedCandidate);
 
   if (trimmedUnnormalized.length && !normalizedCoverage) {
-    const rawSeed = {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      ...payload,
+    const rawOut = {
       unnormalized_address: trimmedUnnormalized,
     };
 
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-      const hasField = Object.prototype.hasOwnProperty.call(payload, field);
-      const candidate = hasField ? payload[field] : rawSeed[field];
-      rawSeed[field] = sanitizeAddressFieldValue(field, candidate);
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "request_identifier") ||
+      payload.request_identifier != null
+    ) {
+      const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+      rawOut.request_identifier =
+        requestIdentifier === undefined ? null : requestIdentifier;
     }
 
-    if (!rawSeed.postal_code) {
-      rawSeed.plus_four_postal_code = null;
-    }
-    if (rawSeed.state_code && !rawSeed.country_code) {
-      rawSeed.country_code = "US";
-    }
-    if ((rawSeed.latitude == null) !== (rawSeed.longitude == null)) {
-      rawSeed.latitude = null;
-      rawSeed.longitude = null;
+    if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+      const prepared = prepareSourceHttpRequest(payload.source_http_request);
+      rawOut.source_http_request = prepared ? deepClone(prepared) : null;
     }
 
-    return stripAddressRequestMetadata(rawSeed);
+    return stripAddressRequestMetadata(rawOut);
   }
 
   if (normalizedCoverage) {
@@ -920,7 +915,14 @@ function writeJSON(p, obj) {
     typeof obj === "object"
   ) {
     payload = sanitizeAddressPayloadForWrite(obj);
-    if (payload && typeof payload === "object") {
+    const shouldEnforceSurface =
+      payload &&
+      typeof payload === "object" &&
+      !(
+        Object.prototype.hasOwnProperty.call(payload, "unnormalized_address") &&
+        !hasNormalizedCountyCoverage(payload)
+      );
+    if (shouldEnforceSurface) {
       const completed = ensureAddressOutputFieldPresence(payload) || payload;
       if (completed && typeof completed === "object") {
         payload = completed;
@@ -9354,6 +9356,12 @@ process.on("exit", () => {
     [dataDir, relationshipsDir].forEach((dirPath) => {
       ensureNullRelationshipPlaceholders(dirPath, relationshipBases);
     });
+
+    enforceAddressBranchForOneOf(addressPath);
+    enforcePropertyRelationshipNulls(propertyPath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      ensureNullRelationshipPlaceholders(dirPath, relationshipBases);
+    });
   } catch (error) {
     console.error("Final address stabilization failed:", error);
     if (!process.exitCode) {
@@ -9361,6 +9369,85 @@ process.on("exit", () => {
     }
   }
 });
+
+function enforceAddressBranchForOneOf(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const hasNormalized =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (hasNormalized) {
+    const normalizedOut =
+      (typeof buildNormalizedAddressOutputForSchema === "function" &&
+        buildNormalizedAddressOutputForSchema({ ...normalizedSurface })) ||
+      { ...normalizedSurface };
+
+    if (!normalizedOut || typeof normalizedOut !== "object") {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        normalizedOut,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+
+    const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+    if (requestIdentifier !== undefined) {
+      normalizedOut.request_identifier =
+        requestIdentifier === null ? null : requestIdentifier;
+    }
+
+    const preparedSource = prepareSourceHttpRequest(
+      payload.source_http_request,
+    );
+    normalizedOut.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
+
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      payload.full_address,
+      payload.site_address,
+      payload.address,
+    ]),
+  );
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = {
+    unnormalized_address: rawValue,
+    request_identifier:
+      safeNullIfEmpty(payload.request_identifier) ?? null,
+    source_http_request:
+      prepareSourceHttpRequest(payload.source_http_request) || null,
+  };
+
+  writeJSON(addressPath, rawOut);
+}
 
 function forceRawOneOfCompliance(
   addressPath,
@@ -12617,6 +12704,19 @@ async function main() {
     });
   } catch (error) {
     console.error("Failed to normalize final county address payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    enforceAddressBranchForOneOf(addressOutputPath);
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+  } catch (error) {
+    console.error("Failed to enforce final address oneOf branch selection:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
