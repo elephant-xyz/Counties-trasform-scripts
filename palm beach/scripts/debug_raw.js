@@ -6337,6 +6337,106 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+// Build a raw-address payload that always carries the full normalized surface
+// (as nullable) plus request metadata so the oneOf discriminator reliably
+// picks the raw branch when only an unnormalized string is available.
+function buildRawAddressSnapshot(options = {}) {
+  const {
+    rawCandidates = [],
+    fieldSources = [],
+    coordinateCandidates = [],
+    requestIdentifierCandidates = [],
+    sourceHttpRequestCandidates = [],
+    countyFallback = null,
+    stateFallback = null,
+    countryFallback = "US",
+  } = options;
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString(
+      Array.isArray(rawCandidates) ? rawCandidates : [],
+    ),
+  );
+  if (!rawValue) {
+    return null;
+  }
+
+  const snapshot = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+
+  const coordinate = (coordinateCandidates || []).find(
+    (candidate) =>
+      candidate &&
+      Number.isFinite(candidate.latitude) &&
+      Number.isFinite(candidate.longitude),
+  );
+
+  const sources = Array.isArray(fieldSources)
+    ? fieldSources.filter((src) => src && typeof src === "object")
+    : [];
+
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    let candidate;
+    for (const src of sources) {
+      if (Object.prototype.hasOwnProperty.call(src, field)) {
+        candidate = src[field];
+        break;
+      }
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(
+        candidate !== undefined
+          ? candidate
+          : coordinate && coordinate[field],
+      );
+      snapshot[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (!candidate) {
+      if (field === "county_name") candidate = countyFallback;
+      if (field === "state_code") candidate = stateFallback;
+      if (field === "country_code") candidate = countryFallback;
+    }
+
+    snapshot[field] = sanitizeAddressFieldValue(field, candidate);
+  }
+
+  if (!snapshot.postal_code) {
+    snapshot.plus_four_postal_code = null;
+  }
+  if (snapshot.state_code && !snapshot.country_code) {
+    snapshot.country_code = countryFallback || "US";
+  }
+  if ((snapshot.latitude == null) !== (snapshot.longitude == null)) {
+    snapshot.latitude = null;
+    snapshot.longitude = null;
+  }
+
+  const requestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString(
+      Array.isArray(requestIdentifierCandidates)
+        ? requestIdentifierCandidates
+        : [],
+    ),
+  );
+  snapshot.request_identifier =
+    requestIdentifier === undefined ? null : requestIdentifier || null;
+
+  const preparedSource = prepareSourceHttpRequest(
+    resolveSourceHttpRequest(
+      ...(Array.isArray(sourceHttpRequestCandidates)
+        ? sourceHttpRequestCandidates
+        : []),
+    ),
+  );
+  snapshot.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  return snapshot;
+}
+
 function enforceFinalAddressBranchChoice(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -15156,138 +15256,55 @@ async function main() {
   }
 
   try {
-    const currentAddress = readJSONIfExists(addressOutputPath) || {};
-    const resolvedFullAddress = safeNullIfEmpty(
-      resolveFirstNonEmptyString([
-        unAddr && (unAddr.full_address || unAddr.unnormalized_address),
-        currentAddress.full_address,
-        currentAddress.unnormalized_address,
-        addressLineCombined,
-        siteLocationLine,
+    const existingAddress = readJSONIfExists(addressOutputPath) || {};
+    const rawSnapshot = buildRawAddressSnapshot({
+      rawCandidates: [
+        ...finalUnnormalizedCandidates,
+        unnormalizedAddressCandidate,
         combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
         fullAddr,
         fullAddrInput,
-      ]),
-    );
+        existingAddress.unnormalized_address,
+        unAddr && unAddr.unnormalized_address,
+        unAddr && unAddr.full_address,
+      ],
+      fieldSources: [
+        existingAddress,
+        property,
+        unAddr,
+        seed,
+      ],
+      coordinateCandidates: [
+        { latitude: initialLatitude, longitude: initialLongitude },
+        parcelCentroid,
+      ],
+      requestIdentifierCandidates: [
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ],
+      countyFallback: formattedCountyName || countyName || "Palm Beach",
+      stateFallback: resolvedStateUpper || countyInferredStateCode || "FL",
+      countryFallback: "US",
+    });
 
-    if (resolvedFullAddress) {
-      const requestIdentifier = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          currentAddress.request_identifier,
-          trimmedRequestIdentifier,
-          parcelId,
-          seed && seed.request_identifier,
-          unAddr && unAddr.request_identifier,
-        ]),
-      );
-
-      const preparedSource = prepareSourceHttpRequest(
-        currentAddress.source_http_request ||
-          (unAddr && unAddr.source_http_request) ||
-          (seed && seed.source_http_request) ||
-          null,
-      );
-
-      const resolvedLatitude = Number.isFinite(initialLatitude)
-        ? initialLatitude
-        : parcelCentroid && Number.isFinite(parcelCentroid?.latitude)
-          ? parcelCentroid.latitude
-          : null;
-      const resolvedLongitude = Number.isFinite(initialLongitude)
-        ? initialLongitude
-        : parcelCentroid && Number.isFinite(parcelCentroid?.longitude)
-          ? parcelCentroid.longitude
-          : null;
-
-      const resolvedCountyName = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          currentAddress.county_name,
-          currentAddress.county_jurisdiction,
-          unAddr && (unAddr.county_jurisdiction || unAddr.county_name),
-          countyName,
-          formattedCountyName,
-          "Palm Beach",
-        ]),
-      );
-
-      const resolvedStateCode =
-        safeNullIfEmpty(
-          resolveFirstNonEmptyString([
-            currentAddress.state_code,
-            resolvedStateUpper,
-            countyInferredStateCode,
-            "FL",
-          ]),
-        ) || null;
-
-      const resolvedPostalCode = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          currentAddress.postal_code,
-          sanitizedPostalCode,
-          fallbackPostalValue,
-          postalCode,
-        ]),
-      );
-
-      const resolvedPlus4 = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          currentAddress.plus_four_postal_code,
-          sanitizedPlus4,
-          fallbackPlus4Value,
-          plus4,
-        ]),
-      );
-
-      const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-
-      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-        if (field === "request_identifier") {
-          rawOutput.request_identifier =
-            requestIdentifier === undefined ? null : requestIdentifier;
-          return;
-        }
-        if (field === "source_http_request") {
-          rawOutput.source_http_request = preparedSource
-            ? deepClone(preparedSource)
-            : null;
-          return;
-        }
-
-        let candidate = Object.prototype.hasOwnProperty.call(
-          currentAddress,
-          field,
-        )
-          ? currentAddress[field]
-          : null;
-
-        if (field === "latitude") candidate = resolvedLatitude;
-        if (field === "longitude") candidate = resolvedLongitude;
-        if (field === "county_name" && !candidate) candidate = resolvedCountyName;
-        if (field === "state_code" && !candidate) candidate = resolvedStateCode;
-        if (field === "postal_code" && !candidate) candidate = resolvedPostalCode;
-        if (field === "plus_four_postal_code" && !candidate) candidate = resolvedPlus4;
-
-        rawOutput[field] = sanitizeAddressFieldValue(field, candidate);
-      });
-
-      rawOutput.unnormalized_address = resolvedFullAddress;
-
-      if (!rawOutput.postal_code) {
-        rawOutput.plus_four_postal_code = null;
-      }
-      if (rawOutput.state_code && !rawOutput.country_code) {
-        rawOutput.country_code = "US";
-      }
-      if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
-        rawOutput.latitude = null;
-        rawOutput.longitude = null;
-      }
-
+    lockedAddressPath = null;
+    if (rawSnapshot) {
       originalWriteFileSync(
         addressOutputPath,
-        `${JSON.stringify(rawOutput, null, 2)}\n`,
+        `${JSON.stringify(rawSnapshot, null, 2)}\n`,
       );
       lockedAddressPath = path.resolve(addressOutputPath);
+    } else {
+      removeFileIfExists(addressOutputPath);
     }
 
     enforcePropertyRelationshipNulls(propertyFilePath);
