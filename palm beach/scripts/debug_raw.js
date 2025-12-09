@@ -5791,19 +5791,13 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch aligned with the schema: emit every nullable address
-// field so the raw (unnormalized) oneOf option is satisfied without requiring
-// downstream normalization. The unnormalized string drives the branch choice.
-// Keep raw payloads aligned with the full normalized surface so required keys
-// are always present (as null) when we only have an unnormalized string.
+// Keep the raw branch aligned with the schema: emit the full normalized
+// surface (as nullable) plus request metadata so the oneOf selection is
+// satisfied even when we only have an unnormalized string. The presence of
+// `unnormalized_address` drives the branch choice, while the normalized fields
+// stay null when we don't have structured components.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-  "county_name",
-  "country_code",
+  ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
   "source_http_request",
 ];
