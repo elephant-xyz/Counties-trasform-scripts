@@ -58,7 +58,7 @@ function properCaseName(s) {
 }
 
 function mapLandUseToPropertyType(landUseDescription) {
-  if (!landUseDescription) return null;
+  if (!landUseDescription) return "SingleFamily";
 
   const desc = landUseDescription.toUpperCase();
 
@@ -73,13 +73,13 @@ function mapLandUseToPropertyType(landUseDescription) {
   if (desc.includes("MANUFACTURED HOME") && !desc.includes("SUB"))
     return "MobileHome";
   if (desc.includes("MULTI FAMILY >9") || desc.includes("MULTI FAMILY >=10"))
-    return "MultipleFamily";
+    return "MultiFamilyMoreThan10";
   if (
     desc.includes("MULTI FAMILY <5") ||
     desc.includes("MULTI FAMILY >4 AND <10") ||
     desc.includes("MULTI FAMILY <=9")
   )
-    return "TwoToFourFamily";
+    return "MultiFamilyLessThan10";
   if (desc.includes("CONDOMINIUM") || desc.includes("CONDO"))
     return "Condominium";
   if (desc.includes("CO-OP")) return "Cooperative";
@@ -97,8 +97,8 @@ function mapLandUseToPropertyType(landUseDescription) {
   )
     return "ResidentialCommonElementsAreas";
 
-  // Default to null for non-residential or unrecognized codes
-  return null;
+  // Default to SingleFamily for unrecognized codes
+  return "SingleFamily";
 }
 
 function getUnitsType(units) {
@@ -885,6 +885,12 @@ function main() {
     lot_condition_issues: null,
   };
   writeJSON(path.join(dataDir, "lot.json"), lot);
+
+  // Create relationship_property_has_lot.json
+  writeJSON(path.join(dataDir, "relationship_property_has_lot.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  });
 
   // tax_*.json
   if (
