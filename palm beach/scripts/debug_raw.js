@@ -6150,6 +6150,22 @@ const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
   ...RAW_ADDRESS_ALLOWED_FIELDS,
 ];
 
+const RAW_ONE_OF_MINIMAL_FIELDS = new Set([
+  "latitude",
+  "longitude",
+  "postal_code",
+  "plus_four_postal_code",
+  "city_name",
+  "municipality_name",
+  "county_name",
+  "country_code",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+]);
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -9707,8 +9723,8 @@ process.on("exit", () => {
       seedSource.source_http_request,
     );
 
-    forceMinimalRawAddress(addressPath, {
-      unnormalizedCandidates: [
+    enforceAddressOneOfResolution(addressPath, {
+      rawCandidates: [
         existingAddress.unnormalized_address,
         propertyPayload && propertyPayload.unnormalized_address,
         unnormalizedSource && unnormalizedSource.unnormalized_address,
@@ -9720,24 +9736,10 @@ process.on("exit", () => {
         unnormalizedSource.request_identifier ||
         seedSource.request_identifier ||
         null,
-      requestIdentifierCandidates: [
-        propertyPayload && propertyPayload.request_identifier,
-        unnormalizedSource && unnormalizedSource.request_identifier,
-        seedSource && seedSource.request_identifier,
-      ],
       sourceHttpRequest,
-      sourceHttpRequestCandidates: [
-        propertyPayload && propertyPayload.source_http_request,
-        unnormalizedSource && unnormalizedSource.source_http_request,
-        seedSource && seedSource.source_http_request,
-      ],
-      countyName: countyCandidate,
+      defaultCountyName: countyCandidate,
       defaultCountryCode: "US",
-      coordinateCandidates: [
-        existingAddress,
-        unnormalizedSource,
-        seedSource,
-      ],
+      seed: seedSource,
     });
 
     enforcePropertyRelationshipNulls(propertyPath);
@@ -10730,6 +10732,100 @@ function forceMinimalRawAddress(addressPath, options = {}) {
     addressPath,
     `${JSON.stringify(rawOutput, null, 2)}\n`,
   );
+}
+
+function enforceAddressOneOfResolution(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath) || {};
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const hasNormalized =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const requestIdentifier = safeNullIfEmpty(
+    options.requestIdentifier ||
+      payload.request_identifier ||
+      (options.seed && options.seed.request_identifier) ||
+      null,
+  );
+  const preparedSource =
+    resolveSourceHttpRequest(
+      payload.source_http_request,
+      options.sourceHttpRequest,
+      options.seed && options.seed.source_http_request,
+    ) || null;
+
+  if (hasNormalized) {
+    const normalizedOut = {};
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      normalizedOut[field] = sanitizeAddressFieldValue(
+        field,
+        normalizedSurface[field],
+      );
+    }
+    normalizedOut.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier || null;
+    normalizedOut.source_http_request = preparedSource;
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    originalWriteFileSync(
+      addressPath,
+      `${JSON.stringify(normalizedOut, null, 2)}\n`,
+    );
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = {
+    unnormalized_address: rawValue.trim(),
+    request_identifier: requestIdentifier || null,
+    source_http_request: preparedSource,
+  };
+
+  RAW_ONE_OF_MINIMAL_FIELDS.forEach((field) => {
+    let candidate =
+      payload[field] ??
+      options[field] ??
+      (options.seed && options.seed[field]) ??
+      null;
+    if (field === "latitude" || field === "longitude") {
+      const num = parseCoordinate(candidate);
+      candidate = Number.isFinite(num) ? num : null;
+    } else if (typeof candidate === "string") {
+      candidate = sanitizeAddressFieldValue(field, candidate);
+    }
+    rawOut[field] =
+      candidate === undefined ? null : candidate === "" ? null : candidate;
+  });
+
+  if (!rawOut.country_code) {
+    rawOut.country_code =
+      options.defaultCountryCode ||
+      (options.seed && options.seed.country_code) ||
+      null;
+  }
+  if (!rawOut.county_name && options.defaultCountyName) {
+    rawOut.county_name = titleCaseCounty(options.defaultCountyName);
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
 }
 
 async function main() {
@@ -13900,6 +13996,33 @@ async function main() {
       { latitude: initialLatitude, longitude: initialLongitude },
       parcelCentroid,
     ],
+  });
+  enforceAddressOneOfResolution(addressOutputPath, {
+    rawCandidates: [
+      ...finalUnnormalizedCandidates,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.unnormalized_address,
+      unAddr && unAddr.full_address,
+    ],
+    requestIdentifier:
+      trimmedRequestIdentifier ||
+      parcelId ||
+      (seed && seed.request_identifier) ||
+      (unAddr && unAddr.request_identifier) ||
+      null,
+    sourceHttpRequest:
+      sourceHttpCandidate ||
+      (seed && seed.source_http_request) ||
+      (unAddr && unAddr.source_http_request) ||
+      null,
+    defaultCountyName: formattedCountyName || countyName || defaultCounty,
+    defaultCountryCode: "US",
+    seed,
   });
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir].forEach((dirPath) => {
