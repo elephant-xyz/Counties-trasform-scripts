@@ -5,16 +5,8 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
-// Read input file - find HTML file dynamically
-let htmlFile = "input.html";
-if (!fs.existsSync(htmlFile)) {
-  const files = fs.readdirSync(".");
-  const htmlFiles = files.filter(f => f.endsWith(".html"));
-  if (htmlFiles.length > 0) {
-    htmlFile = htmlFiles[0];
-  }
-}
-const inputPath = path.join(process.cwd(), htmlFile);
+// Read input file
+const inputPath = path.join(process.cwd(), "input.html");
 const html = fs.readFileSync(inputPath, "utf8");
 const $ = cheerio.load(html);
 
@@ -53,8 +45,8 @@ function extractPropertyId($) {
   if (!id) {
     $("*").each((i, el) => {
       const t = $(el).text();
-      if (!id && /Prime Key\s*:\s*(\d+)/i.test(t)) {
-        const m = t.match(/Prime Key\s*:\s*(\d+)/i);
+      if (!id && /Prime Key\s*:\s*([A-Za-z0-9\-]+)/i.test(t)) {
+        const m = t.match(/Prime Key\s*:\s*([A-Za-z0-9\-]+)/i);
         if (m) id = m[1];
       }
     });

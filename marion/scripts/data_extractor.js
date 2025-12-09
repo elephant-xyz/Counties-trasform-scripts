@@ -1023,17 +1023,7 @@ function main() {
   const dataDir = path.join("data");
   emptyDir(dataDir);
 
-  // Find the HTML file dynamically
-  let htmlFile = "input.html";
-  if (!fs.existsSync(htmlFile)) {
-    const files = fs.readdirSync(".");
-    const htmlFiles = files.filter(f => f.endsWith(".html"));
-    if (htmlFiles.length > 0) {
-      htmlFile = htmlFiles[0];
-    }
-  }
-
-  const inputHtml = readText(htmlFile);
+  const inputHtml = readText("input.html");
   const $ = cheerio.load(inputHtml);
   const unnorm = fs.existsSync("unnormalized_address.json")
     ? readJSON("unnormalized_address.json")
@@ -1251,8 +1241,8 @@ function main() {
     writeJSON(path.join(dataDir, `relationship_sales_deed_${i + 1}.json`), rel);
   });
 
-  if (ownersData && key) {
-    const ownerKey = key;
+  if (ownersData && parcelIdentifier) {
+    const ownerKey = `property_${parcelIdentifier}`;
     const rec = ownersData[ownerKey];
     if (
       rec &&
