@@ -1019,20 +1019,6 @@ function main() {
     }
   }
 
-  // Create relationships for standalone structure.json and utility.json (written by mapping scripts)
-  if (fs.existsSync(path.join(dataDir, "structure.json"))) {
-    writeJSON(path.join(dataDir, "relationship_property_has_structure.json"), {
-      from: { "/": "./property.json" },
-      to: { "/": "./structure.json" },
-    });
-  }
-  if (fs.existsSync(path.join(dataDir, "utility.json"))) {
-    writeJSON(path.join(dataDir, "relationship_property_has_utility.json"), {
-      from: { "/": "./property.json" },
-      to: { "/": "./utility.json" },
-    });
-  }
-
   // Owners: person_*.json or company_*.json
   let personFiles = [];
   let companyFiles = [];
@@ -1140,15 +1126,15 @@ function main() {
       writeJSON(path.join(dataDir, relName), rel);
     });
   } else if (personFiles.length > 0 && salesFiles.length === 0) {
-    // If there are persons but no sales, create direct relationship from property to person
-    personFiles.forEach((pf, idx) => {
-      const rel = {
-        from: { "/": "./property.json" },
-        to: { "/": `./${pf}` },
-      };
-      const relName = `relationship_property_person_${idx + 1}.json`;
-      writeJSON(path.join(dataDir, relName), rel);
+    // If there are persons but no sales, remove the person files
+    // as they would be orphaned without relationships
+    personFiles.forEach((pf) => {
+      const personPath = path.join(dataDir, pf);
+      if (fs.existsSync(personPath)) {
+        fs.unlinkSync(personPath);
+      }
     });
+    personFiles = [];
   }
 
   // relationship_sales_history_*_buyer_company_*.json for companies to most recent sale
@@ -1164,15 +1150,15 @@ function main() {
       writeJSON(path.join(dataDir, relName), rel);
     });
   } else if (companyFiles.length > 0 && salesFiles.length === 0) {
-    // If there are companies but no sales, create direct relationship from property to company
-    companyFiles.forEach((cf, idx) => {
-      const rel = {
-        from: { "/": "./property.json" },
-        to: { "/": `./${cf}` },
-      };
-      const relName = `relationship_property_company_${idx + 1}.json`;
-      writeJSON(path.join(dataDir, relName), rel);
+    // If there are companies but no sales, remove the company files
+    // as they would be orphaned without relationships
+    companyFiles.forEach((cf) => {
+      const companyPath = path.join(dataDir, cf);
+      if (fs.existsSync(companyPath)) {
+        fs.unlinkSync(companyPath);
+      }
     });
+    companyFiles = [];
   }
 }
 

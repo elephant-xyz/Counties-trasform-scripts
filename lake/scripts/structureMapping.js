@@ -160,23 +160,15 @@ function main() {
   // Sanity: attachment_type - prefer Detached for single-family use if land use indicates
   // The page shows Land Use: SINGLE FAMILY (0100) which typically implies detached dwelling.
 
-  // Write to both owners (for data_extractor) and data (final output)
-  const ownersDir = path.join(process.cwd(), "owners");
-  fs.mkdirSync(ownersDir, { recursive: true });
-  const ownersPath = path.join(ownersDir, "structure_data.json");
+  const outDir = path.join(process.cwd(), "owners");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "structure_data.json");
 
   const payload = {};
   payload[propKey] = structure;
 
-  fs.writeFileSync(ownersPath, JSON.stringify(payload, null, 2), "utf8");
-  console.log(`Wrote ${ownersPath} for ${propKey}`);
-
-  // Also write directly to data directory as structure.json for relationships
-  const dataDir = path.join(process.cwd(), "data");
-  fs.mkdirSync(dataDir, { recursive: true });
-  const dataPath = path.join(dataDir, "structure.json");
-  fs.writeFileSync(dataPath, JSON.stringify(structure, null, 2), "utf8");
-  console.log(`Wrote ${dataPath}`);
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
+  console.log(`Wrote ${outPath} for ${propKey}`);
 }
 
 try {
