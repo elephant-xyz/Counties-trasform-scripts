@@ -7682,13 +7682,44 @@ function enforceTerminalAddressBranch(addressPath, options = {}) {
     return;
   }
 
-  const rawOutput = {
-    unnormalized_address: rawValue.trim(),
-    request_identifier: resolvedRequestId === undefined ? null : resolvedRequestId,
-    source_http_request: resolvedSourceRequest
-      ? deepClone(resolvedSourceRequest)
-      : null,
-  };
+  const candidateSources = [existingPayload, unnormalizedSource, seedSource].filter(
+    (source) => source && typeof source === "object" && !Array.isArray(source),
+  );
+
+  const rawSeed = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    for (const source of candidateSources) {
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      rawSeed[field] = source[field];
+      break;
+    }
+  }
+
+  rawSeed.unnormalized_address = rawValue.trim();
+  rawSeed.request_identifier =
+    resolvedRequestId === undefined ? null : resolvedRequestId;
+  rawSeed.source_http_request = resolvedSourceRequest
+    ? deepClone(resolvedSourceRequest)
+    : null;
+
+  if (!rawSeed.county_name && defaultCountyName) {
+    rawSeed.county_name = titleCaseCounty(defaultCountyName);
+  }
+  if (!rawSeed.state_code && defaultStateCode) {
+    rawSeed.state_code = defaultStateCode.toUpperCase();
+  }
+  if (
+    hasMeaningfulAddressValue(rawSeed.state_code) &&
+    !hasMeaningfulAddressValue(rawSeed.country_code)
+  ) {
+    rawSeed.country_code = (defaultCountryCode || "US").toUpperCase();
+  }
+
+  const rawOutput =
+    ensureRawAddressSchemaDefaults(rawSeed) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...rawSeed,
+    };
 
   writeJSON(addressPath, rawOutput);
 }
