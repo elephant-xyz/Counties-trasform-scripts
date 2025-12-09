@@ -1701,13 +1701,18 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({ 
+  companies = Array.from(companyNames).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
+
+  // Track which persons and companies are actually used in relationships
+  const usedPersonIdx = new Set();
+  const usedCompanyIdx = new Set();
+
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -1719,6 +1724,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       .forEach((o) => {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
+          usedPersonIdx.add(pIdx);
           relPersonCounter++;
           writeJSON(
             path.join(
@@ -1737,6 +1743,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
+          usedCompanyIdx.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1760,6 +1767,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     .forEach((o) => {
       const pIdx = findPersonIndexByName(o.first_name, o.last_name);
       if (pIdx) {
+        usedPersonIdx.add(pIdx);
         relPersonCounter++;
         writeJSON(
           path.join(
@@ -1778,6 +1786,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     .forEach((o) => {
       const cIdx = findCompanyIndexByName(o.name);
       if (cIdx) {
+        usedCompanyIdx.add(cIdx);
         relCompanyCounter++;
         writeJSON(
           path.join(
@@ -1792,6 +1801,29 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       }
     });
   }
+
+  // Remove unused person and company files
+  people.forEach((p, idx) => {
+    const personIdx = idx + 1;
+    if (!usedPersonIdx.has(personIdx)) {
+      try {
+        fs.unlinkSync(path.join("data", `person_${personIdx}.json`));
+      } catch (e) {
+        // File might not exist, ignore
+      }
+    }
+  });
+
+  companies.forEach((c, idx) => {
+    const companyIdx = idx + 1;
+    if (!usedCompanyIdx.has(companyIdx)) {
+      try {
+        fs.unlinkSync(path.join("data", `company_${companyIdx}.json`));
+      } catch (e) {
+        // File might not exist, ignore
+      }
+    }
+  });
 }
 
 function extractHistoricalValuation($) {
