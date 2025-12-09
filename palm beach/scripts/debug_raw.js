@@ -15127,7 +15127,17 @@ async function main() {
     );
 
     if (resolvedFullAddress) {
-      const entryHttp = prepareSourceHttpRequest(
+      const requestIdentifier = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          currentAddress.request_identifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
+
+      const preparedSource = prepareSourceHttpRequest(
         currentAddress.source_http_request ||
           (unAddr && unAddr.source_http_request) ||
           (seed && seed.source_http_request) ||
@@ -15136,51 +15146,102 @@ async function main() {
 
       const resolvedLatitude = Number.isFinite(initialLatitude)
         ? initialLatitude
-        : parcelCentroid && Number.isFinite(parcelCentroid.latitude)
+        : parcelCentroid && Number.isFinite(parcelCentroid?.latitude)
           ? parcelCentroid.latitude
           : null;
       const resolvedLongitude = Number.isFinite(initialLongitude)
         ? initialLongitude
-        : parcelCentroid && Number.isFinite(parcelCentroid.longitude)
+        : parcelCentroid && Number.isFinite(parcelCentroid?.longitude)
           ? parcelCentroid.longitude
           : null;
 
-      const unnormalizedAddressPayload = {
-        full_address: resolvedFullAddress,
-        county_jurisdiction:
-          safeNullIfEmpty(
-            (unAddr && (unAddr.county_jurisdiction || unAddr.county_name)) ||
-              countyName ||
-              formattedCountyName ||
-              defaultCounty,
-          ) || null,
-        latitude: resolvedLatitude,
-        longitude: resolvedLongitude,
-        request_identifier:
-          safeNullIfEmpty(
-            resolveFirstNonEmptyString([
-              currentAddress.request_identifier,
-              trimmedRequestIdentifier,
-              parcelId,
-              seed && seed.request_identifier,
-              unAddr && unAddr.request_identifier,
-            ]),
-          ) || null,
-      };
+      const resolvedCountyName = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          currentAddress.county_name,
+          currentAddress.county_jurisdiction,
+          unAddr && (unAddr.county_jurisdiction || unAddr.county_name),
+          countyName,
+          formattedCountyName,
+          "Palm Beach",
+        ]),
+      );
 
-      if (entryHttp) {
-        unnormalizedAddressPayload.entry_http_request = entryHttp;
-      }
+      const resolvedStateCode =
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            currentAddress.state_code,
+            resolvedStateUpper,
+            countyInferredStateCode,
+            "FL",
+          ]),
+        ) || null;
 
-      Object.keys(unnormalizedAddressPayload).forEach((key) => {
-        if (unnormalizedAddressPayload[key] === undefined) {
-          delete unnormalizedAddressPayload[key];
+      const resolvedPostalCode = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          currentAddress.postal_code,
+          sanitizedPostalCode,
+          fallbackPostalValue,
+          postalCode,
+        ]),
+      );
+
+      const resolvedPlus4 = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          currentAddress.plus_four_postal_code,
+          sanitizedPlus4,
+          fallbackPlus4Value,
+          plus4,
+        ]),
+      );
+
+      const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "request_identifier") {
+          rawOutput.request_identifier =
+            requestIdentifier === undefined ? null : requestIdentifier;
+          return;
         }
+        if (field === "source_http_request") {
+          rawOutput.source_http_request = preparedSource
+            ? deepClone(preparedSource)
+            : null;
+          return;
+        }
+
+        let candidate = Object.prototype.hasOwnProperty.call(
+          currentAddress,
+          field,
+        )
+          ? currentAddress[field]
+          : null;
+
+        if (field === "latitude") candidate = resolvedLatitude;
+        if (field === "longitude") candidate = resolvedLongitude;
+        if (field === "county_name" && !candidate) candidate = resolvedCountyName;
+        if (field === "state_code" && !candidate) candidate = resolvedStateCode;
+        if (field === "postal_code" && !candidate) candidate = resolvedPostalCode;
+        if (field === "plus_four_postal_code" && !candidate) candidate = resolvedPlus4;
+
+        rawOutput[field] = sanitizeAddressFieldValue(field, candidate);
       });
+
+      rawOutput.unnormalized_address = resolvedFullAddress;
+
+      if (!rawOutput.postal_code) {
+        rawOutput.plus_four_postal_code = null;
+      }
+      if (rawOutput.state_code && !rawOutput.country_code) {
+        rawOutput.country_code = "US";
+      }
+      if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+        rawOutput.latitude = null;
+        rawOutput.longitude = null;
+      }
 
       originalWriteFileSync(
         addressOutputPath,
-        `${JSON.stringify(unnormalizedAddressPayload, null, 2)}\n`,
+        `${JSON.stringify(rawOutput, null, 2)}\n`,
       );
       lockedAddressPath = path.resolve(addressOutputPath);
     }
