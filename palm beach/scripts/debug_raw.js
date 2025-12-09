@@ -876,6 +876,8 @@ function sanitizeAddressPayloadForWrite(payload) {
 
   if (trimmedUnnormalized.length && !normalizedCoverage) {
     const rawOut = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...normalizedCandidate,
       unnormalized_address: trimmedUnnormalized,
     };
 
@@ -891,6 +893,17 @@ function sanitizeAddressPayloadForWrite(payload) {
     if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
       const prepared = prepareSourceHttpRequest(payload.source_http_request);
       rawOut.source_http_request = prepared ? deepClone(prepared) : null;
+    }
+
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
     }
 
     return stripAddressRequestMetadata(rawOut);
