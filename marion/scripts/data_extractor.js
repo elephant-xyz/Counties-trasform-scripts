@@ -1273,6 +1273,36 @@ function main() {
           });
         }
       });
+
+      // Create relationships between current owners and the most recent sale
+      if (sales.length > 0) {
+        const mostRecentSaleIdx = sales.length;
+        let relPersonCounter = 0;
+        let relCompanyCounter = 0;
+
+        owners.forEach((o) => {
+          if (o.type === "person") {
+            relPersonCounter += 1;
+            writeJSON(
+              path.join(dataDir, `relationship_sales_person_${relPersonCounter}.json`),
+              {
+                from: { "/": `./sales_${mostRecentSaleIdx}.json` },
+                to: { "/": `./person_${relPersonCounter}.json` },
+              }
+            );
+          }
+          if (o.type === "company") {
+            relCompanyCounter += 1;
+            writeJSON(
+              path.join(dataDir, `relationship_sales_company_${relCompanyCounter}.json`),
+              {
+                from: { "/": `./sales_${mostRecentSaleIdx}.json` },
+                to: { "/": `./company_${relCompanyCounter}.json` },
+              }
+            );
+          }
+        });
+      }
     }
   }
 
