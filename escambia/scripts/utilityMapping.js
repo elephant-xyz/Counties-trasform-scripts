@@ -10,7 +10,7 @@ function ensureDir(dir) {
 }
 
 function textNorm(t) {
-  return (t || "").replace(/\s+/g, " ").trim();
+  return (t || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function getParcelId($) {
@@ -23,27 +23,12 @@ function getParcelId($) {
   return id;
 }
 
-function parseStructuralElements($) {
-  const raw = {};
-  const buildingsTable = $("#ctl00_MasterPlaceHolder_tblBldgs");
-  buildingsTable.find("b").each((_, b) => {
-    const label = textNorm($(b).text());
-    const val = textNorm($(b).next("i").text());
-    if (label) raw[label.toUpperCase()] = val || null;
-  });
-  return raw;
+function countBuildings($) {
+  return $("#ctl00_MasterPlaceHolder_tblBldgs > tbody > tr > td > table").length;
 }
 
-function main() {
-  const inputPath = path.resolve("input.html");
-  const html = fs.readFileSync(inputPath, "utf8");
-  const $ = cheerio.load(html);
-
-  const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
-
-  // No defensible evidence for utilities beyond presence of structure. Populate required fields conservatively as null/false per schema.
-  const utilityObj = {
+function defaultUtility() {
+  return {
     cooling_system_type: null,
     heating_system_type: null,
     public_utility_type: null,
@@ -64,9 +49,28 @@ function main() {
     solar_inverter_visible: false,
     hvac_unit_issues: null,
   };
+}
 
+function main() {
+  const inputPath = path.resolve("input.html");
+  const html = fs.readFileSync(inputPath, "utf8");
+  const $ = cheerio.load(html);
+
+  const parcelId = getParcelId($);
+  const parcelIdToUse = parcelId || "UNKNOWN";
+
+  const buildingCount = countBuildings($);
+  const utilities =
+    buildingCount > 0
+      ? Array.from({ length: buildingCount }, () => defaultUtility())
+      : [];
+
+  const propertyKey = `property_${parcelIdToUse}`;
   const output = {};
-  output[`property_${parcelId}`] = utilityObj;
+  output[propertyKey] = {
+    utilities,
+    utility: utilities[0] || defaultUtility(),
+  };
 
   ensureDir(path.resolve("data"));
   ensureDir(path.resolve("owners"));
@@ -74,7 +78,7 @@ function main() {
   const outDataPath = path.resolve("data/utilities_data.json");
   const outOwnersPath = path.resolve("owners/utilities_data.json");
 
-  fs.writeFileSync(outDataPath, JSON.stringify(output, null, 2), "utf8");
+  // fs.writeFileSync(outDataPath, JSON.stringify(output, null, 2), "utf8");
   fs.writeFileSync(outOwnersPath, JSON.stringify(output, null, 2), "utf8");
 
   console.log("Utility mapping complete:", outDataPath, outOwnersPath);

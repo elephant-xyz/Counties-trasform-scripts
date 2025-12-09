@@ -12,11 +12,22 @@ const cleanText = (t) =>
     .replace(/\s+/g, " ")
     .replace(/[\u00A0\s]+/g, " ")
     .trim();
-const titleCase = (s) =>
-  s.replace(
+const titleCase = (s) => {
+  if (!s) return "";
+
+  // Handle abbreviations with periods (e.g., "D.O.T." -> "Dot")
+  // Pattern: Single letters separated by periods
+  if (/^([A-Z]\.)+[A-Z]?\.?$/i.test(s.trim())) {
+    // Remove all periods and title case the result
+    const withoutPeriods = s.replace(/\./g, '');
+    return withoutPeriods.charAt(0).toUpperCase() + withoutPeriods.slice(1).toLowerCase();
+  }
+
+  return s.replace(
     /\w\S*/g,
     (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
   );
+};
 
 // Extract property ID with preference: Prop ID -> Property ID -> Parcel ID -> unknown
 function extractPropertyId($) {
@@ -115,11 +126,37 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // Strip trailing periods before title casing to handle abbreviations like "Fl."
+  const stripTrailingPeriod = (str) => {
+    if (!str) return str;
+    return str.replace(/\.$/, '');
+  };
+
+  first = stripTrailingPeriod(first);
+  last = stripTrailingPeriod(last);
+  middle = middle ? stripTrailingPeriod(middle) : null;
+
+  const titleCasedFirst = titleCase(first || "");
+  const titleCasedLast = titleCase(last || "");
+  const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
+
+  // Validate names match the schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
+
+  // Both first_name and last_name are required and must match pattern
+  if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
+    return null;
+  }
+
+  // Validate middle_name if present - set to null if it doesn't match pattern
+  const titleCasedMiddle = titleCasedMiddleRaw && isValidName(titleCasedMiddleRaw) ? titleCasedMiddleRaw : null;
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: titleCasedFirst,
+    last_name: titleCasedLast,
+    middle_name: titleCasedMiddle,
   };
 }
 
@@ -232,13 +269,16 @@ function parseOwnersFromText(rawText) {
   // Deduplicate by normalized key
   const seen = new Set();
   const deduped = [];
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   owners.forEach((o) => {
     const key = normalizeOwnerKey(o);
     if (!key || seen.has(key)) return;
     seen.add(key);
-    // Nullify empty middle_name
-    if (o.type === "person" && (!o.middle_name || !o.middle_name.trim())) {
-      o.middle_name = null;
+    // Nullify empty or invalid middle_name
+    if (o.type === "person") {
+      if (!o.middle_name || !o.middle_name.trim() || !namePattern.test(o.middle_name)) {
+        o.middle_name = null;
+      }
     }
     deduped.push(o);
   });

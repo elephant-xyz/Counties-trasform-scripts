@@ -91,9 +91,9 @@ function splitTokens(raw) {
 
 function mapExteriorMaterial(token) {
   const upper = token.toUpperCase();
-  if (upper.includes("ALUMIN")) return "Aluminum Siding";
+  if (upper.includes("ALUMIN")) return "Metal Siding";
   if (upper.includes("BRICK")) return "Brick";
-  if (upper.includes("STONE")) return "Stone";
+  if (upper.includes("STONE")) return "Natural Stone";
   if (upper.includes("CONCRETE BLOCK") || upper.startsWith("CB")) {
     return "Concrete Block";
   }
@@ -104,8 +104,22 @@ function mapExteriorMaterial(token) {
   if (upper.includes("WOOD") || upper.includes("SIDING")) {
     return "Wood Siding";
   }
-  if (upper.includes("PRECAST")) return "Precast Concrete Panel";
-  if (upper.includes("TILE")) return "Tile";
+  if (upper.includes("PRECAST")) return "Precast Concrete";
+  if (upper.includes("TILE")) return null;
+  return null;
+}
+
+function mapExteriorMaterialSecondary(token) {
+  const upper = token.toUpperCase();
+  if (upper.includes("BRICK")) return "Brick Accent";
+  if (upper.includes("STONE")) return "Stone Accent";
+  if (upper.includes("WOOD")) return "Wood Trim";
+  if (upper.includes("METAL") || upper.includes("ALUMIN")) return "Metal Trim";
+  if (upper.includes("STUCCO")) return "Stucco Accent";
+  if (upper.includes("VINYL")) return "Vinyl Accent";
+  if (upper.includes("CONCRETE BLOCK") || upper.startsWith("CB") || upper.includes("BLOCK")) {
+    return "Decorative Block";
+  }
   return null;
 }
 
@@ -113,7 +127,7 @@ function mapInteriorMaterial(token) {
   const upper = token.toUpperCase();
   if (upper.includes("DRYWALL")) return "Drywall";
   if (upper.includes("PLASTER")) return "Plaster";
-  if (upper.includes("MASON")) return "Masonry";
+  if (upper.includes("MASON")) return "Exposed Block";
   if (upper.includes("N/A") || upper.includes("NONE")) return null;
   return null;
 }
@@ -135,7 +149,7 @@ function mapRoofDesign(val) {
   if (upper.includes("GABLE")) return "Gable";
   if (upper.includes("HIP")) return "Hip";
   if (upper.includes("REINF")) return "Flat";
-  if (upper.includes("RIGID")) return "Other";
+  if (upper.includes("RIGID")) return null;
   if (upper.includes("N/A")) return null;
   return null;
 }
@@ -155,10 +169,27 @@ function mapFloorMaterial(token) {
   if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
     return "Solid Hardwood";
   }
-  if (upper.includes("VINYL")) return "Vinyl Sheet";
+  if (upper.includes("VINYL")) return "Luxury Vinyl Plank";
   if (upper.includes("TERRAZZO")) return "Terrazzo";
-  if (upper.includes("CONCRETE")) return "Concrete";
+  if (upper.includes("CONCRETE")) return "Polished Concrete";
   if (upper.includes("CLAY") || upper.includes("TILE")) return "Ceramic Tile";
+  return null;
+}
+
+function mapFloorMaterialSecondary(token) {
+  // Valid values for flooring_material_secondary enum
+  const upper = token.toUpperCase();
+  if (upper.includes("CARPET")) return "Carpet";
+  if (upper.includes("HARDWOOD") || upper.includes("PINE") || upper.includes("SOFT WOOD")) {
+    return "Solid Hardwood";
+  }
+  if (upper.includes("ENGINEERED")) return "Engineered Hardwood";
+  if (upper.includes("LAMINATE")) return "Laminate";
+  if (upper.includes("VINYL")) return "Luxury Vinyl Plank";
+  if (upper.includes("CLAY") || upper.includes("TILE")) return "Ceramic Tile";
+  if (upper.includes("AREA RUG") || upper.includes("RUG")) return "Area Rugs";
+  if (upper.includes("TRANSITION")) return "Transition Strips";
+  // TERRAZZO and other materials not in secondary enum are not mapped
   return null;
 }
 
@@ -205,15 +236,25 @@ function parseBuildingSummaries($) {
 function buildStructureForBuilding(building, requestIdentifier) {
   const { left, right } = building;
 
-  const exteriorVals = dedupe(
-    splitTokens(left["exterior walls"]).map(mapExteriorMaterial),
-  );
+  const exteriorTokens = splitTokens(left["exterior walls"]);
+  const exteriorPrimary = exteriorTokens[0] ? mapExteriorMaterial(exteriorTokens[0]) : null;
+  const exteriorSecondary = exteriorTokens[1] ? mapExteriorMaterialSecondary(exteriorTokens[1]) : null;
+
   const interiorVals = dedupe(
     splitTokens(left["interior walls"]).map(mapInteriorMaterial),
   );
-  const floorVals = dedupe(
-    splitTokens(left["floor cover"]).map(mapFloorMaterial),
-  );
+
+  // Valid values for interior_wall_surface_material_secondary (decorative accents only)
+  const validSecondaryInterior = new Set([
+    "Wainscoting", "Chair Rail", "Crown Molding", "Baseboards", "Wood Trim",
+    "Stone Accent", "Tile Accent", "Metal Accent", "Glass Insert",
+    "Decorative Panels", "Feature Wall Material"
+  ]);
+
+  const floorTokens = splitTokens(left["floor cover"]);
+  const floorPrimary = floorTokens[0] ? mapFloorMaterial(floorTokens[0]) : null;
+  const floorSecondary = floorTokens[1] ? mapFloorMaterialSecondary(floorTokens[1]) : null;
+
   const frameVals = dedupe(
     splitTokens(left["frame"]).map(mapFrameMaterial),
   );
@@ -230,12 +271,12 @@ function buildStructureForBuilding(building, requestIdentifier) {
   const stories = parseFloatSafe(right["stories"]);
 
   return {
-    exterior_wall_material_primary: exteriorVals[0] || null,
-    exterior_wall_material_secondary: exteriorVals[1] || null,
+    exterior_wall_material_primary: exteriorPrimary,
+    exterior_wall_material_secondary: exteriorSecondary,
     interior_wall_surface_material_primary: interiorVals[0] || null,
-    interior_wall_surface_material_secondary: interiorVals[1] || null,
-    flooring_material_primary: floorVals[0] || null,
-    flooring_material_secondary: floorVals[1] || null,
+    interior_wall_surface_material_secondary: (interiorVals[1] && validSecondaryInterior.has(interiorVals[1])) ? interiorVals[1] : null,
+    flooring_material_primary: floorPrimary,
+    flooring_material_secondary: floorSecondary,
     roof_covering_material: roofCover,
     roof_material_type: roofMaterialType,
     roof_design_type: roofDesign,
