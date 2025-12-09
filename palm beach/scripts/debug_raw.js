@@ -85,16 +85,10 @@ function ensureNullRelationshipPlaceholders(directoryPath, baseNames = []) {
     return;
   }
 
-  ensureDir(directoryPath);
-  removeAddressRelationshipFiles(directoryPath);
+  // The pipeline now populates relationship files; avoid generating placeholders here.
   baseNames.forEach((baseName) => {
     const targetPath = path.join(directoryPath, `${baseName}.json`);
-    try {
-      // Bypass the patched write guard so we can deliberately emit null placeholders.
-      originalWriteFileSync(targetPath, "null\n", "utf8");
-    } catch {
-      /* Best-effort placeholder write; downstream validation will surface issues */
-    }
+    removeFileIfExists(targetPath);
   });
 }
 
@@ -6334,6 +6328,192 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
     return acc;
   }, {}),
 );
+
+function enforceFinalAddressBranchChoice(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  let payload;
+  try {
+    payload = readJSON(addressPath);
+  } catch {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const {
+    rawCandidates = [],
+    fallbackRequestIdentifier = null,
+    fallbackSourceHttpRequest = null,
+    fallbackCountyName = null,
+    fallbackStateCode = null,
+    fallbackCountryCode = "US",
+  } = options || {};
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      fallbackRequestIdentifier,
+    ]),
+  );
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+    fallbackSourceHttpRequest,
+  );
+
+  const normalizedSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  const normalizedCandidate =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+
+  if (normalizedCandidate && typeof normalizedCandidate === "object") {
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      let candidate = normalizedCandidate[field];
+      if (candidate == null && field === "county_name" && fallbackCountyName) {
+        candidate = fallbackCountyName;
+      }
+      if (candidate == null && field === "state_code" && fallbackStateCode) {
+        candidate = fallbackStateCode;
+      }
+      if (candidate == null && field === "country_code") {
+        candidate = fallbackCountryCode;
+      }
+
+      const sanitized = sanitizeAddressFieldValue(field, candidate);
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(sanitized);
+        normalizedSurface[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
+      if (sanitized === undefined || sanitized === null) {
+        normalizedSurface[field] = null;
+        continue;
+      }
+      if (typeof sanitized === "string") {
+        const trimmed = sanitized.trim();
+        normalizedSurface[field] = trimmed.length ? trimmed : null;
+        continue;
+      }
+      normalizedSurface[field] =
+        typeof sanitized === "number"
+          ? Number.isFinite(sanitized)
+            ? sanitized
+            : null
+          : sanitized;
+    }
+
+    if (!normalizedSurface.postal_code) {
+      normalizedSurface.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedSurface.state_code) &&
+      !hasMeaningfulAddressValue(normalizedSurface.country_code)
+    ) {
+      normalizedSurface.country_code = fallbackCountryCode || "US";
+    }
+  }
+
+  const hasNormalizedCoverage =
+    hasCompleteNormalizedAddress(normalizedSurface) && resolvedSourceHttp;
+  if (hasNormalizedCoverage) {
+    normalizedSurface.request_identifier =
+      resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+    normalizedSurface.source_http_request = deepClone(resolvedSourceHttp);
+    if (
+      (normalizedSurface.latitude == null) !==
+      (normalizedSurface.longitude == null)
+    ) {
+      normalizedSurface.latitude = null;
+      normalizedSurface.longitude = null;
+    }
+    writeJSON(addressPath, normalizedSurface);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      ...rawCandidates,
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (field === "request_identifier" || field === "source_http_request") {
+      continue;
+    }
+    let candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    if (candidate == null && field === "county_name" && fallbackCountyName) {
+      candidate = fallbackCountyName;
+    }
+    if (candidate == null && field === "state_code" && fallbackStateCode) {
+      candidate = fallbackStateCode;
+    }
+    if (candidate == null && field === "country_code") {
+      candidate = fallbackCountryCode;
+    }
+
+    const sanitized = sanitizeAddressFieldValue(field, candidate);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(sanitized);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+    if (sanitized === undefined || sanitized === null) {
+      rawOut[field] = null;
+      continue;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      continue;
+    }
+    rawOut[field] =
+      typeof sanitized === "number"
+        ? Number.isFinite(sanitized)
+          ? sanitized
+          : null
+        : sanitized;
+  }
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = fallbackCountryCode || "US";
+  }
+
+  rawOut.request_identifier =
+    resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+  rawOut.source_http_request = resolvedSourceHttp
+    ? deepClone(resolvedSourceHttp)
+    : null;
+
+  if (!rawOut.source_http_request) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  writeJSON(addressPath, rawOut);
+}
 
 const RAW_ADDRESS_SURFACE_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
@@ -14766,6 +14946,42 @@ async function main() {
     });
   } catch (error) {
     console.error("Failed to finalize raw address coverage for schema:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    enforceFinalAddressBranchChoice(addressOutputPath, {
+      rawCandidates: [
+        ...finalUnnormalizedCandidates,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        fullAddr,
+        fullAddrInput,
+      ],
+      fallbackRequestIdentifier:
+        trimmedRequestIdentifier ||
+        parcelId ||
+        (seed && seed.request_identifier) ||
+        (unAddr && unAddr.request_identifier) ||
+        null,
+      fallbackSourceHttpRequest: resolveSourceHttpRequest(
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ),
+      fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
+      fallbackStateCode: countyInferredStateCode || resolvedStateUpper || "FL",
+      fallbackCountryCode: "US",
+    });
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+    });
+  } catch (error) {
+    console.error("Failed to enforce final county address branch:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
