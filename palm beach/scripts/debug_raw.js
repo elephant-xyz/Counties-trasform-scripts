@@ -5501,7 +5501,17 @@ const ADDRESS_SCHEMA_FIELDS = [
 // field so the raw (unnormalized) oneOf option is satisfied without requiring
 // downstream normalization. The unnormalized string drives the branch choice.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
+  "latitude",
+  "longitude",
+  "postal_code",
+  "plus_four_postal_code",
+  "county_name",
+  "country_code",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
   "request_identifier",
   "source_http_request",
 ];
