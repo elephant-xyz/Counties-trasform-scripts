@@ -977,6 +977,14 @@ function main() {
       layoutCount++;
     });
 
+    // Create relationships: property→layout for each layout
+    for (let i = 1; i <= layoutCount; i++) {
+      writeJSON(path.join(dataDir, `relationship_property_has_layout_${i}.json`), {
+        from: { "/": "./property.json" },
+        to: { "/": `./layout_${i}.json` },
+      });
+    }
+
     // Create relationships: layout→structure and layout→utility
     // For single building, connect layout_1 to structure_1 and utility_1
     if (layoutCount > 0) {
