@@ -49,11 +49,25 @@ function main() {
   // Assume all spaces are on 1st Floor unless otherwise stated
   const defaultFloor = "1st Floor";
 
+  // Track space type counters for space_type_index
+  const spaceTypeCounters = {};
+  const getNextSpaceTypeIndex = (spaceType) => {
+    if (!spaceTypeCounters[spaceType]) {
+      spaceTypeCounters[spaceType] = 0;
+    }
+    spaceTypeCounters[spaceType]++;
+    return `1.${spaceTypeCounters[spaceType]}`;
+  };
+
+  let overallIndex = 0;
+
   // Create bedrooms
   for (let i = 1; i <= bedrooms; i++) {
+    overallIndex++;
     layouts.push({
       space_type: "Bedroom",
-      space_index: i,
+      space_index: overallIndex,
+      space_type_index: getNextSpaceTypeIndex("Bedroom"),
       flooring_material_type: null,
       size_square_feet: null,
       floor_level: defaultFloor,
@@ -89,9 +103,11 @@ function main() {
 
   // Create full bathrooms
   for (let i = 1; i <= fullBaths; i++) {
+    overallIndex++;
     layouts.push({
       space_type: "Full Bathroom",
-      space_index: i,
+      space_index: overallIndex,
+      space_type_index: getNextSpaceTypeIndex("Full Bathroom"),
       flooring_material_type: null,
       size_square_feet: null,
       floor_level: defaultFloor,
@@ -127,9 +143,11 @@ function main() {
 
   // Create half bathrooms
   for (let i = 1; i <= halfBaths; i++) {
+    overallIndex++;
     layouts.push({
       space_type: "Half Bathroom / Powder Room",
-      space_index: i,
+      space_index: overallIndex,
+      space_type_index: getNextSpaceTypeIndex("Half Bathroom / Powder Room"),
       flooring_material_type: null,
       size_square_feet: null,
       floor_level: defaultFloor,
@@ -165,9 +183,11 @@ function main() {
 
   // Optionally add a Great Room / Living area placeholder using total living area (not room size)
   if (totalLivingArea) {
+    overallIndex++;
     layouts.push({
       space_type: "Living Room",
-      space_index: bedrooms + fullBaths + halfBaths + 1,
+      space_index: overallIndex,
+      space_type_index: getNextSpaceTypeIndex("Living Room"),
       flooring_material_type: null,
       size_square_feet: null,
       floor_level: defaultFloor,
