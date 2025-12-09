@@ -1098,6 +1098,12 @@ function enforceAddressFieldDefaults(addressFilePath) {
     return normalized;
   };
 
+  const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
+  const preparedSource =
+    typeof prepareSourceHttpRequest === "function"
+      ? prepareSourceHttpRequest(payload.source_http_request)
+      : payload.source_http_request;
+
   const trimmedRaw =
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
@@ -1105,10 +1111,25 @@ function enforceAddressFieldDefaults(addressFilePath) {
   const isRawVariant = trimmedRaw.length > 0;
 
   if (isRawVariant) {
-    payload.unnormalized_address = trimmedRaw;
-  } else if (
-    Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")
-  ) {
+    const rawSurface =
+      ensureRawAddressSchemaDefaults({
+        unnormalized_address: trimmedRaw,
+        request_identifier:
+          requestIdentifier === undefined ? null : requestIdentifier,
+        source_http_request: preparedSource
+          ? deepClone(preparedSource)
+          : null,
+      }) || null;
+
+    if (rawSurface) {
+      writeJSON(addressFilePath, rawSurface);
+    } else {
+      removeFileIfExists(addressFilePath);
+    }
+    return;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "unnormalized_address")) {
     delete payload.unnormalized_address;
   }
 
@@ -1133,6 +1154,19 @@ function enforceAddressFieldDefaults(addressFilePath) {
     payload.latitude = null;
     payload.longitude = null;
   }
+
+  if (requestIdentifier !== undefined) {
+    payload.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(payload, "request_identifier")
+  ) {
+    payload.request_identifier = null;
+  }
+
+  payload.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
 
   writeJSON(addressFilePath, payload);
 }
@@ -5527,7 +5561,7 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
   "street_post_directional_text",
 ]);
 
-const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_FIELDS];
+const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS];
 
 const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
