@@ -842,15 +842,9 @@ function main() {
     .replace(/\s+/g, " ")
     .trim();
 
+  // When using unnormalized_address, only include that field (oneOf constraint)
   const addr = {
     unnormalized_address: unnormalizedAddressStr || null,
-    section: null,
-    township: null,
-    range: null,
-    county_name: addrSeed.county_jurisdiction || null,
-    country_code: "US",
-    latitude: null,
-    longitude: null,
   };
 
   // Write address.json
