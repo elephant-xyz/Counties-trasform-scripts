@@ -33,11 +33,7 @@ function parseIntSafe(str) {
 
 function validateEnum(value, allowedValues, className, propertyName) {
   if (value !== null && !allowedValues.includes(value)) {
-    throw {
-      type: "error",
-      message: `Unknown enum value ${value}.`,
-      path: `${className}.${propertyName}`,
-    };
+    return "MAPPING NOT AVAILABLE";
   }
   return value;
 }
@@ -1868,10 +1864,12 @@ function main() {
 
     const cleanedUseCode = cleanUseCode(useCodeDescription);
     if (!cleanedUseCode) {
-      throw {
-        type: "error",
-        message: "Use code not found in source HTML.",
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: null,
+        buildStatus: null,
+        structureForm: null,
+        propertyUsageType: null,
       };
     }
 
@@ -1881,10 +1879,12 @@ function main() {
     );
 
     if (!mappedType) {
-      throw {
-        type: "error",
-        message: `Use code '${useCodeDescription || cleanedUseCode}' is not mapped to property metadata.`,
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: null,
+        buildStatus: null,
+        structureForm: null,
+        propertyUsageType: null,
       };
     }
 
@@ -1892,10 +1892,40 @@ function main() {
       mappedType.property_type,
     );
     if (!normalizedPropertyType) {
-      throw {
-        type: "error",
-        message: `Unable to normalize property_type '${mappedType.property_type}' for use code '${mappedType.escambia_property_type}'.`,
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: mappedType.ownership_estate_type
+          ? validateEnum(
+              mappedType.ownership_estate_type,
+              ALLOWED_OWNERSHIP_ESTATE_TYPES,
+              "Property",
+              "ownership_estate_type",
+            )
+          : null,
+        buildStatus: mappedType.build_status
+          ? validateEnum(
+              mappedType.build_status,
+              ALLOWED_BUILD_STATUS,
+              "Property",
+              "build_status",
+            )
+          : null,
+        structureForm: mappedType.structure_form
+          ? validateEnum(
+              mappedType.structure_form,
+              ALLOWED_STRUCTURE_FORMS,
+              "Property",
+              "structure_form",
+            )
+          : null,
+        propertyUsageType: mappedType.property_usage_type
+          ? validateEnum(
+              mappedType.property_usage_type,
+              ALLOWED_PROPERTY_USAGE_TYPES,
+              "Property",
+              "property_usage_type",
+            )
+          : null,
       };
     }
 

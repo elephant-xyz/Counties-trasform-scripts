@@ -21,6 +21,33 @@ function parseNumber(val) {
   return Number.isFinite(num) ? num : null;
 }
 
+function parseInteger(val) {
+  const num = parseNumber(val);
+  if (num == null) return null;
+  return Math.round(num);
+}
+
+function parseYear(val) {
+  // Check if the original value is negative before parseNumber strips the sign
+  if (val != null && String(val).trim().startsWith('-')) return null;
+
+  const year = parseNumber(val);
+  // built_year must be >= 1 according to schema, or null
+  if (year == null) return null;
+  if (typeof year !== 'number') return null;
+  if (!Number.isFinite(year)) return null;
+  // Explicit check for 0 (which violates minimum: 1 constraint)
+  if (year === 0) return null;
+  // Ensure year is at least 1 (schema requires minimum: 1)
+  if (year < 1) return null;
+  const intYear = Math.floor(year);
+  // Explicit check for 0 after flooring
+  if (intYear === 0) return null;
+  // Double-check after flooring that we still have >= 1
+  if (intYear < 1) return null;
+  return intYear;
+}
+
 function loadJsonSafe(filePath) {
   try {
     if (fs.existsSync(filePath)) {
@@ -130,14 +157,15 @@ function buildLayouts($, requestMeta) {
     if (/bldg item/i.test(cells[0])) return;
 
     const buildingNumber = parseNumber(cells[0]);
-    const builtYear = parseNumber(cells[2]);
-    const baseSf = parseNumber(cells[3]);
-    const actualSf = parseNumber(cells[4]);
+    const builtYear = parseYear(cells[2]);
+    const baseSf = parseInteger(cells[3]);
+    const actualSf = parseInteger(cells[4]);
 
     spaceTypeIndex += 1;
     const layout = buildBaseLayout("Building", spaceTypeIndex, requestMeta);
     layout.building_number = buildingNumber;
-    layout.built_year = builtYear;
+    // Ensure built_year is only set if it's a valid year (>= 1), otherwise null
+    layout.built_year = (builtYear != null && builtYear >= 1) ? builtYear : null;
     layout.size_square_feet = actualSf;
     layout.total_area_sq_ft = actualSf;
     layout.heated_area_sq_ft = baseSf;
@@ -159,8 +187,8 @@ function buildLayouts($, requestMeta) {
 
     const code = parseNumber(cells[0]);
     const descRaw = cells[1] || null;
-    const builtYear = parseNumber(cells[2]);
-    const units = parseNumber(cells[4]);
+    const builtYear = parseYear(cells[2]);
+    const units = parseInteger(cells[4]);
 
     const mappedSpaceType = mapOutbuildingSpaceType(descRaw);
     if (!mappedSpaceType) return;
@@ -172,7 +200,8 @@ function buildLayouts($, requestMeta) {
       requestMeta,
     );
     layout.building_number = code;
-    layout.built_year = builtYear;
+    // Ensure built_year is only set if it's a valid year (>= 1), otherwise null
+    layout.built_year = (builtYear != null && builtYear >= 1) ? builtYear : null;
     layout.size_square_feet = units;
     layout.total_area_sq_ft = units;
     layout.is_exterior = true;

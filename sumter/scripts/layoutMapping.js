@@ -10,7 +10,7 @@ function readHtml(filepath) {
   return cheerio.load(html);
 }
 
-const PARCEL_SELECTOR = "#ctlBodyPane_ctl00_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
+const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummaryData_rptrDynamicColumns_ctl00_pnlSingleValue";
 const BUILDING_SECTION_TITLE = "Building Data";
 
 function textTrim(s) {
@@ -81,10 +81,11 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx) {
+function defaultLayout(space_type, space_type_index, building_number = null) {
   return {
     space_type,
-    space_index: idx,
+    space_type_index,
+    building_number,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -122,30 +123,66 @@ function defaultLayout(space_type, idx) {
 }
 
 function buildLayoutsFromBuildings(buildings) {
-  // Sum across all buildings
-  let totalBeds = 0;
-  let totalBaths = 0;
-  buildings.forEach((b) => {
-    totalBeds += toInt(b["Bedrooms"]);
-    totalBaths += toInt(b["Bathrooms"]);
-  });
-
   const layouts = [];
-  let idx = 1;
-  for (let i = 0; i < totalBeds; i++) {
-    layouts.push(defaultLayout("Bedroom", idx++));
-  }
-  for (let i = 0; i < totalBaths; i++) {
-    layouts.push(defaultLayout("Full Bathroom", idx++));
-  }
+  buildings.forEach((building, index) => {
+    const buildingNumber = index + 1;
+    const typeCounters = {};
+    // Maintain independent counters per space type so Bedroom/Bathroom numbering
+    // follows the `buildingIndex.counter` convention for each category.
+    const incrementCounter = (spaceType) => {
+      typeCounters[spaceType] = (typeCounters[spaceType] || 0) + 1;
+      return `${buildingNumber}.${typeCounters[spaceType]}`;
+    };
+
+    // Root layout for the building itself
+    layouts.push(
+      defaultLayout("Building", buildingNumber, buildingNumber),
+    );
+
+    const bathrooms = toInt(building["Bathrooms"]);
+    for (let i = 0; i < bathrooms; i++) {
+      layouts.push(
+        defaultLayout(
+          "Full Bathroom",
+          incrementCounter("Full Bathroom"),
+          buildingNumber,
+        ),
+      );
+    }
+
+    const bedrooms = toInt(building["Bedrooms"]);
+    for (let i = 0; i < bedrooms; i++) {
+      layouts.push(
+        defaultLayout("Bedroom", incrementCounter("Bedroom"), buildingNumber),
+      );
+    }
+  });
   return layouts;
+}
+function readJSON(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    return null;
+  }
 }
 
 function main() {
   const inputPath = path.resolve("input.html");
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+
+  //CHECK if the prepared site was for the correct seed parcelid.
+  const propertySeed = readJSON("property_seed.json");
+  if (propertySeed.request_identifier.replaceAll("-","") != parcelId.replaceAll("-","")) {
+    throw {
+      type: "error",
+      message: `Request identifier and parcel id don't match.Prepared Site is wrong.`,
+      path: "property.request_identifier",
+    };
+  }  
+
+  // if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
   const layouts = buildLayoutsFromBuildings(buildings);
 

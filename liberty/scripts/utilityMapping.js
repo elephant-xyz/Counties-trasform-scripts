@@ -78,35 +78,51 @@ function collectBuildings($) {
   return buildings;
 }
 
-function inferHVAC(buildings) {
-  let cooling_system_type = null;
-  let heating_system_type = null;
-
-  buildings.forEach((b) => {
-    const ac = (b["Air Conditioning"] || "").toUpperCase();
-    const heat = (b["Heat"] || "").toUpperCase();
-    if (ac.includes("CENTRAL")) cooling_system_type = "CentralAir";
-    if (heat.includes("AIR DUCTED") || heat.includes("CENTRAL"))
-      heating_system_type = "Central";
-  });
-
-  if (cooling_system_type === "CentralAir") {
-    hvac_system_configuration = "SplitSystem";
-    hvac_equipment_component = "CondenserAndAirHandler";
-    hvac_condensing_unit_present = "Yes";
-  }
-
-  return {
-    cooling_system_type,
-    heating_system_type
-  };
+function mapCoolingSystem(detail) {
+  const d = (detail || "").toUpperCase();
+  if (d.includes("CENTRAL")) return "CentralAir";
+  if (d.includes("HYBRID")) return "Hybrid";
+  if (d.includes("DUCTLESS") || d.includes("MINI SPLIT")) return "Ductless";
+  if (d.includes("WINDOW")) return "WindowAirConditioner";
+  if (d.includes("WHOLE HOUSE FAN")) return "WholeHouseFan";
+  if (d.includes("CEILING FANS")) return "CeilingFans";
+  if (d.includes("CEILING FAN")) return "CeilingFan";
+  if (d.includes("GEOTHERMAL")) return "GeothermalCooling";
+  if (d.includes("ZONED")) return "Zoned";
+  if (d.includes("ELECTRIC")) return "Electric";
+  if (d.includes("FAN")) return "CeilingFan";
+  return null;
 }
 
-function buildUtilityRecord($, buildings) {
-  const hvac = inferHVAC(buildings);
-  const rec = {
-    cooling_system_type: hvac.cooling_system_type,
-    heating_system_type: hvac.heating_system_type,
+function mapHeatingSystem(detail) {
+  const d = (detail || "").toUpperCase();
+  if (d.includes("ELECTRIC FURNACE")) return "ElectricFurnace";
+  if (d.includes("ELECTRIC")) return "Electric";
+  if (d.includes("GAS FURNACE")) return "GasFurnace";
+  if (d.includes("GAS")) return "Gas";
+  if (d.includes("DUCTLESS")) return "Ductless";
+  if (d.includes("RADIANT")) return "Radiant";
+  if (d.includes("SOLAR")) return "Solar";
+  if (d.includes("HEAT PUMP")) return "HeatPump";
+  if (d.includes("FORCED AIR") || d.includes("AIR DUCTED") || d.includes("CENTRAL"))
+    return "Central";
+  if (d.includes("BASEBOARD")) return "Baseboard";
+  return null;
+}
+
+function defaultUtility({
+  building_number = null,
+  utility_index = 1,
+  cooling_system_type = null,
+  heating_system_type = null,
+  request_identifier = null,
+}) {
+  return {
+    request_identifier,
+    building_number,
+    utility_index,
+    cooling_system_type,
+    heating_system_type,
     public_utility_type: null,
     sewer_type: null,
     water_source_type: null,
@@ -146,8 +162,23 @@ function buildUtilityRecord($, buildings) {
     water_heater_model: null,
     well_installation_date: null,
   };
+}
 
-  return rec;
+function buildUtilityRecords(parcelId, buildings) {
+  return buildings.map((building, idx) => {
+    const buildingNumber = idx + 1;
+    const cooling_system_type = mapCoolingSystem(building["Air Conditioning"]);
+    const heating_system_type = mapHeatingSystem(building["Heat"]);
+    return defaultUtility({
+      building_number: buildingNumber,
+      utility_index: buildingNumber,
+      cooling_system_type,
+      heating_system_type,
+      request_identifier: parcelId
+        ? `${parcelId}_utility_${buildingNumber}`
+        : null,
+    });
+  });
 }
 
 function main() {
@@ -156,15 +187,15 @@ function main() {
   const parcelId = getParcelId($);
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const utilitiesRecord = buildUtilityRecord($, buildings);
+  const utilities = buildUtilityRecords(parcelId, buildings);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "utilities_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = utilitiesRecord;
+  outObj[`property_${parcelId}`] = utilities;
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
-  console.log(`Wrote ${outPath}`);
+  console.log(`Wrote ${outPath} with ${utilities.length} utility entries`);
 }
 
 if (require.main === module) {
