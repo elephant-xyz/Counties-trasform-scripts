@@ -89,6 +89,12 @@ function formatNameToPattern(name) {
   // Replace multiple spaces with a single space
   cleaned = cleaned.replace(/\s+/g, ' ');
 
+  // Remove trailing delimiters (periods, commas, hyphens, apostrophes)
+  cleaned = cleaned.replace(/[ \-',.]+$/, '');
+
+  // Return null if empty after removing trailing delimiters
+  if (!cleaned) return null;
+
   // Split by spaces, hyphens, apostrophes, commas, periods, keeping the delimiters
   const result = cleaned.split(/([ \-',.])/)
     .map((part) => {
@@ -102,14 +108,17 @@ function formatNameToPattern(name) {
     .join('')
     .trim();
 
-  // Validate the result matches the required pattern: must start with uppercase letter
-  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!result || !namePattern.test(result)) {
+  // Remove any trailing delimiters that might have been added during processing
+  const finalResult = result.replace(/[ \-',.]+$/, '');
+
+  // Validate the result matches the required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!finalResult || !namePattern.test(finalResult)) {
     return null;
   }
 
-  return result;
+  return finalResult;
 }
 
 // Build owner object(s) from a raw string
