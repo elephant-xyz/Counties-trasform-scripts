@@ -631,7 +631,7 @@ const LAYOUT_REQUIRED_DEFAULTS = {
   view_type: null,
   lighting_features: null,
   condition_issues: null,
-  is_exterior: null,
+  is_exterior: false,
   pool_condition: null,
   pool_surface_type: null,
   pool_water_quality: null,
@@ -903,7 +903,7 @@ function expandBathroomRooms(totalBaths) {
           is_finished:
             typeof room.isFinished === "boolean" ? room.isFinished : false,
           is_exterior:
-            typeof room.isExterior === "boolean" ? room.isExterior : null,
+            typeof room.isExterior === "boolean" ? room.isExterior : false,
           space_index: roomIndex,
           request_identifier: requestIdentifier,
         }),
