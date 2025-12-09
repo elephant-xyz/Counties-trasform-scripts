@@ -100,6 +100,22 @@ function tokenizeNamePart(part) {
     .filter(Boolean);
 }
 
+function isValidMiddleName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
+}
+
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
+
 function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
@@ -125,11 +141,13 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  const middleNameValue = middle ? titleCase(middle) : null;
+
   return {
     type: "person",
     first_name: titleCase(first || ""),
     last_name: titleCase(last || ""),
-    middle_name: middle ? titleCase(middle) : null,
+    middle_name: middleNameValue && isValidMiddleName(middleNameValue) ? middleNameValue : null,
   };
 }
 
@@ -1412,7 +1430,13 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+
+    // Validate first_name and last_name match required pattern
+    if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+      return null;
+    }
+
+    const middleName = middleRaw && isValidMiddleName(middleRaw) ? middleRaw : null;
     const key =
       firstName || lastName
         ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
@@ -1999,6 +2023,38 @@ function main() {
     });
   }
 
+  const mapSubAreaSpaceType = (subArea) => {
+    if (!subArea) return null;
+    const typeCode = subArea.type ? String(subArea.type).toUpperCase() : "";
+    const desc = subArea.description ? String(subArea.description).toUpperCase() : "";
+
+    if (typeCode === "BAS" || desc.includes("BASE AREA")) return "Living Area";
+    if (typeCode === "FOP" || desc.includes("OPEN PORCH")) return "Open Porch";
+    if (desc.includes("SCREEN") && desc.includes("PORCH")) return "Screened Porch";
+    if (desc.includes("PORCH")) return "Porch";
+    if (desc.includes("BALCONY")) return "Balcony";
+    if (desc.includes("DECK")) return "Deck";
+    if (desc.includes("PATIO")) return "Patio";
+    if (desc.includes("GAZEBO")) return "Gazebo";
+    if (desc.includes("STORAGE")) return "Storage Room";
+    if (desc.includes("GARAGE")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
+    if (desc.includes("CARPORT")) return "Carport";
+    if (desc.includes("POOL")) return "Pool Area";
+    if (desc.includes("LANAI")) return "Lanai";
+    if (desc.includes("SUN ROOM") || desc.includes("SUNROOM")) return "Sunroom";
+    if (desc.includes("ENCLOSED PORCH")) return "Enclosed Porch";
+    if (desc.includes("OPEN PORCH")) return "Open Porch";
+    if (desc.includes("PAVILION")) return "Gazebo";
+    if (desc.includes("CABANA")) return "Enclosed Cabana";
+    if (desc.includes("BARN")) return "Barn";
+    if (desc.includes("STAIR") || desc.includes("STAIRWELL")) return null;
+
+    // If type/description is purely numeric (like "6100"), skip it
+    if (/^\d+$/.test(typeCode) || /^\d+$/.test(desc)) return null;
+
+    return null;
+  };
+
   const ensureFallbackRooms = () => {
     if (buildingLayoutsInfo.length) {
       buildingLayoutsInfo.forEach((info) => {
@@ -2029,12 +2085,11 @@ function main() {
             );
           }
           meta.subAreas.forEach((subArea) => {
-            const label = titleCase(
-              subArea.description || subArea.type || "Sub Area",
-            );
+            const mapped = mapSubAreaSpaceType(subArea);
+            if (!mapped) return;
             attachLayoutToBuilding(
               info.index,
-              createLayoutRecord(label, {
+              createLayoutRecord(mapped, {
                 floor_level: "1st Floor",
                 size_square_feet:
                   subArea.square_feet != null ? subArea.square_feet : null,

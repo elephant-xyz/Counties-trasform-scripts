@@ -62,7 +62,7 @@ function cleanName(rawName) {
 // Company detection (case-insensitive)
 const companyRegex = new RegExp(
   // includes many common company/organization indicators, including Trust/TR as requested
-  "(?:\\binc\\b|\\bincorporated\\b|\\bllc\\b|\\bl\\.?l\\.?c\\.?\\b|\\bltd\\b|\\blimited\\b|\\bfoundation\\b|\\balliance\\b|\\bsolutions\\b|\\bcorp\\b|\\bcorporation\\b|\\bco\\b|\\bcompany\\b|\\bservices\\b|\\btrust\\b|\\btr\\b|\\bassociates\\b|\\bholdings\\b|\\bpartners?\\b|\\blp\\b|\\bllp\\b|\\bpllc\\b|\\bplc\\b|\\bproperties\\b|\\brealty\\b|\\bhomes?\\b|\\bapartments?\\b|\\bestates?\\b|\\bbank\\b|\\bcredit union\\b|\\bministr(y|ies)\\b|\\bchurch\\b)",
+  "(?:\\binc\\b|\\bincorporated\\b|\\bllc\\b|\\bl\\.?l\\.?c\\.?\\b|\\bltd\\b|\\blimited\\b|\\bfoundation\\b|\\balliance\\b|\\bsolutions\\b|\\bcorp\\b|\\bcorporation\\b|\\bco\\b|\\bcompany\\b|\\bservices\\b|\\btrust\\b|\\btr\\b|\\bassociates\\b|\\bholdings\\b|\\bpartners?\\b|\\blp\\b|\\bllp\\b|\\bpllc\\b|\\bplc\\b|\\bproperties\\b|\\brealty\\b|\\bhomes?\\b|\\bapartments?\\b|\\bestates?\\b|\\bbank\\b|\\bcredit union\\b|\\bministr(y|ies)\\b|\\bchurch\\b|\\bcounty\\b|\\bstate\\b|\\bcity\\b|\\btown\\b|\\bvillage\\b|\\bgovernment\\b|\\bauthority\\b|\\bdistrict\\b|\\bdepartment\\b|\\bagency\\b|\\bbcc\\b|\\bboard\\b)",
   "i",
 );
 
