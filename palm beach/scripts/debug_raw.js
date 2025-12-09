@@ -5461,21 +5461,13 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch lean so oneOf validation selects the unnormalized path
-// when we only have a raw string. Avoid emitting structured street fields here;
-// if we later have normalized coverage, the normalized branch will hydrate
-// those instead.
+// Keep the raw branch aligned with the schema: emit every nullable address
+// field so the raw (unnormalized) oneOf option is satisfied without requiring
+// downstream normalization. The unnormalized string drives the branch choice.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
+  ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
   "source_http_request",
-  "latitude",
-  "longitude",
-  "state_code",
-  "county_name",
-  "country_code",
-  "section",
-  "township",
-  "range",
 ];
 
 // Fields that may accompany the raw (unnormalized) address payload. Keep the
