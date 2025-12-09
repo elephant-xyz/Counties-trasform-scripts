@@ -1599,7 +1599,8 @@ function forceRawAddressPayloadFromSource(addressPath, options = {}) {
   );
 
   const rawPayload = {
-    unnormalized_address: resolvedRaw,
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    unnormalized_address: resolvedRaw.trim(),
     __force_raw_variant: true,
     county_name: resolvedCounty ? titleCaseCounty(resolvedCounty) : null,
     city_name: resolvedCity ? sanitizeCityName(resolvedCity) : null,
@@ -1623,8 +1624,39 @@ function forceRawAddressPayloadFromSource(addressPath, options = {}) {
     source_http_request: preparedSource || null,
   };
 
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(rawPayload, field)) {
+      rawPayload[field] = null;
+      continue;
+    }
+
+    const value = rawPayload[field];
+    if (value === undefined) {
+      rawPayload[field] = null;
+      continue;
+    }
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawPayload[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawPayload[field] = trimmed.length ? trimmed : null;
+    }
+  }
+
   if (!rawPayload.postal_code) {
     rawPayload.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawPayload.state_code) &&
+    !hasMeaningfulAddressValue(rawPayload.country_code)
+  ) {
+    rawPayload.country_code = defaultCountryCode || "US";
   }
 
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
