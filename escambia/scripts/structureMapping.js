@@ -463,30 +463,25 @@ function main() {
   const $ = cheerio.load(html);
 
   const parcelId = getParcelId($);
-  if (!parcelId) {
-    throw new Error("Parcel ID not found in input.html");
-  }
+  const parcelIdToUse = parcelId || "UNKNOWN";
 
   const buildings = extractBuildings($);
   const structures = buildings.map((building) => createStructureRecord(building));
 
-  const propertyKey = `property_${parcelId}`;
+  const propertyKey = `property_${parcelIdToUse}`;
   const output = {};
   output[propertyKey] = {
     structures,
     structure: structures[0] || null,
   };
 
-  ensureDir(path.resolve("data"));
   ensureDir(path.resolve("owners"));
 
-  const outDataPath = path.resolve("data/structure_data.json");
   const outOwnersPath = path.resolve("owners/structure_data.json");
 
-  fs.writeFileSync(outDataPath, JSON.stringify(output, null, 2), "utf8");
   fs.writeFileSync(outOwnersPath, JSON.stringify(output, null, 2), "utf8");
 
-  console.log("Structure mapping complete:", outDataPath, outOwnersPath);
+  console.log("Structure mapping complete:", outOwnersPath);
 }
 
 if (require.main === module) {

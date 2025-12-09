@@ -135,7 +135,8 @@ function main() {
   const $ = cheerio.load(html);
   const parcelId = extractParcelId($);
   const bldg = extractBuildingData($);
-  const structure = buildStructureObject(bldg);
+  // const structure = buildStructureObject(bldg); //commenting this out as this was giving default schema which is incorrect.
+  const structure={} //as there is no structure level data for each building.keeping it {}.
 
   const outputDir = path.resolve("owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
