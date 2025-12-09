@@ -876,10 +876,24 @@ function sanitizeAddressPayloadForWrite(payload) {
 
   if (trimmedUnnormalized.length && !normalizedCoverage) {
     const rawOut = {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      ...normalizedCandidate,
       unnormalized_address: trimmedUnnormalized,
     };
+
+    const countyValue = safeNullIfEmpty(
+      payload.county_name ||
+        payload.county_jurisdiction ||
+        normalizedCandidate.county_name,
+    );
+    if (countyValue) {
+      rawOut.county_name = countyValue;
+    }
+
+    const countryValue = safeNullIfEmpty(
+      payload.country_code || normalizedCandidate.country_code,
+    );
+    if (countryValue) {
+      rawOut.country_code = countryValue;
+    }
 
     if (
       Object.prototype.hasOwnProperty.call(payload, "request_identifier") ||
@@ -888,22 +902,15 @@ function sanitizeAddressPayloadForWrite(payload) {
       const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
       rawOut.request_identifier =
         requestIdentifier === undefined ? null : requestIdentifier;
+    } else {
+      rawOut.request_identifier = null;
     }
 
     if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
       const prepared = prepareSourceHttpRequest(payload.source_http_request);
       rawOut.source_http_request = prepared ? deepClone(prepared) : null;
-    }
-
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
-    }
-
-    if (
-      hasMeaningfulAddressValue(rawOut.state_code) &&
-      !hasMeaningfulAddressValue(rawOut.country_code)
-    ) {
-      rawOut.country_code = "US";
+    } else {
+      rawOut.source_http_request = null;
     }
 
     return stripAddressRequestMetadata(rawOut);
@@ -12748,6 +12755,78 @@ async function main() {
     });
   } catch (error) {
     console.error("Failed to enforce final address oneOf branch selection:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const addressPayload = readJSONIfExists(addressOutputPath) || {};
+    const rawAddress = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        addressPayload.unnormalized_address,
+        addressLineCombined,
+        siteLocationLine,
+        combinedModelAddress,
+        unAddr && unAddr.unnormalized_address,
+        unAddr && unAddr.full_address,
+      ]),
+    );
+
+    if (rawAddress) {
+      const requestIdentifier = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          addressPayload.request_identifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
+
+      const preparedSource = prepareSourceHttpRequest(
+        addressPayload.source_http_request ||
+          (unAddr && unAddr.source_http_request) ||
+          (seed && seed.source_http_request) ||
+          null,
+      );
+
+      const countyCandidate = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          addressPayload.county_name,
+          formattedCountyName,
+          countyName,
+          unAddr && (unAddr.county_name || unAddr.county_jurisdiction),
+          "Palm Beach",
+        ]),
+      );
+
+      const rawOutput = {
+        unnormalized_address: rawAddress,
+        request_identifier:
+          requestIdentifier === undefined ? null : requestIdentifier,
+        source_http_request: preparedSource ? deepClone(preparedSource) : null,
+      };
+
+      if (countyCandidate) {
+        rawOutput.county_name = countyCandidate;
+      }
+
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(rawOutput, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+  } catch (error) {
+    console.error("Failed to emit final raw-only address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
