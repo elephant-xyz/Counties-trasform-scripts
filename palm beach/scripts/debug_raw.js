@@ -5462,31 +5462,20 @@ const ADDRESS_SCHEMA_FIELDS = [
 ];
 
 // Keep the raw branch lean so oneOf validation selects the unnormalized path
-// when we only have a raw string. Structured locality fields stay out of the
-// raw payload; downstream normalization can hydrate them when available.
+// when we only have a raw string. Avoid emitting structured street fields here;
+// if we later have normalized coverage, the normalized branch will hydrate
+// those instead.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
   "request_identifier",
   "source_http_request",
   "latitude",
   "longitude",
-  "plus_four_postal_code",
-  "street_name",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_number",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "postal_code",
-  "city_name",
   "state_code",
   "county_name",
   "country_code",
+  "section",
+  "township",
+  "range",
 ];
 
 // Fields that may accompany the raw (unnormalized) address payload. Keep the
