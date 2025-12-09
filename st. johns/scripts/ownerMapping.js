@@ -229,8 +229,9 @@ function extractSalesOwnersByDate($) {
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(grantee);
     }
-    const grantor = txt(tds.eq(tds.length - 2).text());
-    if (grantor) priorOwners.push(grantor);
+    // Note: grantors (sellers) are not tracked as they don't have relationships in the schema
+    // const grantor = txt(tds.eq(tds.length - 2).text());
+    // if (grantor) priorOwners.push(grantor);
   });
   return { map, priorOwners };
 }
@@ -271,56 +272,8 @@ for (const d of dates) {
   }
 }
 
-if (priorOwners && priorOwners.length > 0) {
-  const granteeNamesNorm = new Set();
-  Object.values(owners_by_date).forEach((arr) => {
-    arr.forEach((o) => {
-      if (o.type === "company")
-        granteeNamesNorm.add(`company:${normalizeName(o.name)}`);
-      else
-        granteeNamesNorm.add(
-          `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
-        );
-    });
-  });
-  const placeholderRaw = [];
-  for (const p of priorOwners) {
-    const parts = splitCompositeNames(p);
-    for (const part of parts) {
-      const res = classifyOwner(part);
-      if (res.valid) {
-        const o = res.owner;
-        let key;
-        if (o.type === "company") key = `company:${normalizeName(o.name)}`;
-        else
-          key = `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`;
-        if (!granteeNamesNorm.has(key)) {
-          placeholderRaw.push(part);
-        }
-      } else {
-        invalid_owners.push({
-          raw: part,
-          reason: res.reason || "invalid_owner",
-        });
-      }
-    }
-  }
-  if (placeholderRaw.length > 0) {
-    const unknownOwners = resolveOwnersFromRawStrings(
-      placeholderRaw,
-      invalid_owners,
-    );
-    if (unknownOwners.length > 0) {
-      let idx = 1;
-      let unknownKey = `unknown_date_${idx}`;
-      while (Object.prototype.hasOwnProperty.call(owners_by_date, unknownKey)) {
-        idx += 1;
-        unknownKey = `unknown_date_${idx}`;
-      }
-      owners_by_date[unknownKey] = unknownOwners;
-    }
-  }
-}
+// Removed grantor tracking logic - grantors (sellers) don't have relationships in the schema
+// Only grantees (buyers) are tracked through sales relationships
 
 const currentOwnersStructured = resolveOwnersFromRawStrings(
   currentOwnerRaw,

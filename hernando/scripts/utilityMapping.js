@@ -65,6 +65,7 @@ function main() {
     water_source_type: null,
     well_installation_date: null,
   };
+  
 
   const outDir = path.join(process.cwd(), "owners");
   fs.mkdirSync(outDir, { recursive: true });
