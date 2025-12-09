@@ -7394,6 +7394,175 @@ function enforceFinalRawAddressSkeleton(addressPath, options = {}) {
   return true;
 }
 
+function enforceTerminalAddressBranch(addressPath, options = {}) {
+  if (!addressPath) return;
+
+  const {
+    unnormalizedPath = "unnormalized_address.json",
+    seedPath = "property_seed.json",
+    defaultCountyName = null,
+    defaultStateCode = null,
+    defaultCountryCode = "US",
+  } = options || {};
+
+  const existingPayload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource = readJSONIfExists(unnormalizedPath) || {};
+  const seedSource = readJSONIfExists(seedPath) || {};
+
+  const resolveCandidateString = (...candidates) =>
+    safeNullIfEmpty(resolveFirstNonEmptyString(candidates));
+
+  const resolvedRequestId = resolveCandidateString(
+    existingPayload.request_identifier,
+    unnormalizedSource.request_identifier,
+    seedSource.request_identifier,
+  );
+
+  const resolvedSourceRequest = resolveSourceHttpRequest(
+    existingPayload.source_http_request,
+    unnormalizedSource.source_http_request,
+    seedSource.source_http_request,
+  );
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...existingPayload });
+  const hasNormalized = normalizedSurface
+    ? hasCompleteNormalizedAddress({ ...normalizedSurface })
+    : false;
+
+  if (hasNormalized && normalizedSurface) {
+    const normalizedOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOutput[field] = value;
+    });
+
+    if (!normalizedOutput.county_name && defaultCountyName) {
+      normalizedOutput.county_name = titleCaseCounty(defaultCountyName);
+    }
+    if (!normalizedOutput.state_code && defaultStateCode) {
+      normalizedOutput.state_code = defaultStateCode.toUpperCase();
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOutput.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOutput.country_code)
+    ) {
+      normalizedOutput.country_code = (defaultCountryCode || "US").toUpperCase();
+    }
+    if (!normalizedOutput.postal_code) {
+      normalizedOutput.plus_four_postal_code = null;
+    }
+    if (
+      (normalizedOutput.latitude == null) !==
+      (normalizedOutput.longitude == null)
+    ) {
+      normalizedOutput.latitude = null;
+      normalizedOutput.longitude = null;
+    }
+
+    if (resolvedRequestId !== undefined) {
+      normalizedOutput.request_identifier =
+        resolvedRequestId === undefined ? null : resolvedRequestId;
+    }
+    if (resolvedSourceRequest) {
+      normalizedOutput.source_http_request = resolvedSourceRequest;
+    }
+
+    writeJSON(addressPath, normalizedOutput);
+    return;
+  }
+
+  const rawValue = resolveCandidateString(
+    existingPayload.unnormalized_address,
+    unnormalizedSource.unnormalized_address,
+    unnormalizedSource.full_address,
+    unnormalizedSource.address,
+    unnormalizedSource.site_address,
+  );
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "request_identifier") {
+      rawOutput.request_identifier =
+        resolvedRequestId === undefined ? null : resolvedRequestId;
+      return;
+    }
+    if (field === "source_http_request") {
+      rawOutput.source_http_request = resolvedSourceRequest
+        ? deepClone(resolvedSourceRequest)
+        : null;
+      return;
+    }
+
+    const candidate = resolveCandidateString(
+      existingPayload[field],
+      unnormalizedSource[field],
+      seedSource[field],
+    );
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(candidate);
+      rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+
+    if (candidate === undefined) {
+      rawOutput[field] = null;
+      return;
+    }
+
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      rawOutput[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+
+    rawOutput[field] = candidate === undefined ? null : candidate;
+  });
+
+  if (!rawOutput.county_name && defaultCountyName) {
+    rawOutput.county_name = titleCaseCounty(defaultCountyName);
+  }
+  if (!rawOutput.state_code && defaultStateCode) {
+    rawOutput.state_code = defaultStateCode.toUpperCase();
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOutput.state_code) &&
+    !hasMeaningfulAddressValue(rawOutput.country_code)
+  ) {
+    rawOutput.country_code = (defaultCountryCode || "US").toUpperCase();
+  } else if (!rawOutput.country_code && defaultCountryCode) {
+    rawOutput.country_code = defaultCountryCode.toUpperCase();
+  }
+
+  if (!rawOutput.postal_code) {
+    rawOutput.plus_four_postal_code = null;
+  }
+  if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+    rawOutput.latitude = null;
+    rawOutput.longitude = null;
+  }
+
+  writeJSON(addressPath, rawOutput);
+}
+
 function enforceAddressOneOfSurface(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -12069,6 +12238,25 @@ async function main() {
     );
   } catch (error) {
     console.error("Failed to force terminal address oneOf compliance:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    enforceTerminalAddressBranch(addressOutputPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: formattedCountyName || countyName || "Palm Beach",
+      defaultStateCode: "FL",
+      defaultCountryCode: "US",
+    });
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    relationshipDirs.forEach((dirPath) => {
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+  } catch (error) {
+    console.error("Failed to enforce terminal address branch selection:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
