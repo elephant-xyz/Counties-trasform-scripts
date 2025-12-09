@@ -1109,6 +1109,12 @@ function main() {
     };
     writeJSON(path.join(dataDir, "property.json"), property);
     writeJSON(path.join(dataDir, "parcel.json"), {parcel_identifier: parcelIdentifier || ""});
+
+    // Create property -> parcel relationship
+    writeJSON(path.join(dataDir, "relationship_property_has_parcel.json"), {
+      from: { "/": "./property.json" },
+      to: { "/": "./parcel.json" },
+    });
   
 
   // address.json
@@ -1175,6 +1181,11 @@ function main() {
       tax.yearly_tax_amount = taxesAssess;
     }
     writeJSON(path.join(dataDir, `tax_${h.year}.json`), tax);
+    // Create property -> tax relationship
+    writeJSON(path.join(dataDir, `relationship_property_has_tax_${h.year}.json`), {
+      from: { "/": "./property.json" },
+      to: { "/": `./tax_${h.year}.json` },
+    });
   });
 
   // sales_*.json and deeds + files + relationships
@@ -1188,6 +1199,12 @@ function main() {
     };
     const salePath = path.join(dataDir, `sales_${idx + 1}.json`);
     writeJSON(salePath, salesObj);
+
+    // Create property -> sales relationship
+    writeJSON(path.join(dataDir, `relationship_property_has_sales_${idx + 1}.json`), {
+      from: { "/": "./property.json" },
+      to: { "/": `./sales_${idx + 1}.json` },
+    });
 
     // Deed mapping
     let deed_type = null;
