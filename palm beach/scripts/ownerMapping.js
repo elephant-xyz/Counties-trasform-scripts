@@ -11,14 +11,50 @@ function clean(str) {
     .trim();
 }
 
-// Utility: proper-case words (minimal)
-function properCase(s) {
-  if (!s) return s;
-  return s
+// Name normalization helpers for person parsing
+const PERSON_NAME_PATTERN = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+const MIDDLE_PLACEHOLDERS = new Set([
+  "nmi",
+  "n m i",
+  "nm",
+  "n m",
+  "no",
+  "none",
+  "no middle",
+  "no middle name",
+  "no middle initial",
+  "none recorded",
+  "unknown",
+  "na",
+  "n/a",
+  "no mn",
+]);
+
+function formatNamePart(part) {
+  if (!part) return null;
+  const cleaned = clean(part)
+    .replace(/[^A-Za-z\s\-',.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  const normalized = cleaned
     .toLowerCase()
-    .split(/\s+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+    .replace(/(^|[ \-',.])([a-z])/g, (_, prefix, char) => `${prefix}${char.toUpperCase()}`)
+    .replace(/\s+/g, " ")
+    .trim();
+  return PERSON_NAME_PATTERN.test(normalized) ? normalized : null;
+}
+
+function normalizeMiddleName(middle) {
+  if (!middle) return null;
+  const cleaned = clean(middle)
+    .replace(/[^A-Za-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  const canonical = cleaned.toLowerCase();
+  if (!canonical || MIDDLE_PLACEHOLDERS.has(canonical)) return null;
+  return formatNamePart(cleaned);
 }
 
 // Detect company tokens
@@ -58,16 +94,19 @@ function parsePersonName(raw, carryLastName, isContinuation) {
   const suffixes = ["JR", "SR", "II", "III", "IV", "V"];
 
   // If continuation after a joiner and we have carry-last-name, parse as FIRST [MIDDLE] with carried LAST
-  if (isContinuation && carryLastName) {
+  const carriedLast = formatNamePart(carryLastName);
+
+  if (isContinuation && carriedLast) {
     const parts = s.split(/\s+/).filter(Boolean);
     if (parts.length >= 1) {
-      const first = parts[0];
-      const middle = parts.length >= 2 ? parts.slice(1).join(" ") : null;
+      const first = formatNamePart(parts[0]);
+      if (!first) return null;
+      const rawMiddle = parts.length >= 2 ? parts.slice(1).join(" ") : null;
       return {
         type: "person",
-        first_name: properCase(first),
-        last_name: properCase(carryLastName),
-        middle_name: middle ? properCase(middle) : null,
+        first_name: first,
+        last_name: carriedLast,
+        middle_name: normalizeMiddleName(rawMiddle),
       };
     }
   }
@@ -93,9 +132,9 @@ function parsePersonName(raw, carryLastName, isContinuation) {
       if (parts.length >= 3) middle = parts.slice(2).join(" ");
     } else if (parts.length === 1) {
       // Only one token provided; if we have a carryLastName, assume this is FIRST
-      if (carryLastName) {
+      if (carriedLast) {
         first = parts[0];
-        last = carryLastName;
+        last = carriedLast;
       } else {
         return null;
       }
@@ -106,17 +145,27 @@ function parsePersonName(raw, carryLastName, isContinuation) {
   if (middle) {
     const midParts = middle.split(/\s+/).filter(Boolean);
     const filtered = midParts.filter(
-      (p) => !suffixes.includes(p.toUpperCase()),
+      (p) =>
+        !suffixes.includes(
+          p
+            .replace(/[^A-Za-z]/g, "")
+            .toUpperCase(),
+        ),
     );
     middle = filtered.join(" ") || null;
   }
 
-  if (!first || !last) return null;
+  const firstFormatted = formatNamePart(first);
+  const lastFormatted = formatNamePart(last);
+  if (!firstFormatted || !lastFormatted) return null;
+
+  const middleFormatted = normalizeMiddleName(middle);
+
   return {
     type: "person",
-    first_name: properCase(first),
-    last_name: properCase(last),
-    middle_name: middle ? properCase(middle) : null,
+    first_name: firstFormatted,
+    last_name: lastFormatted,
+    middle_name: middleFormatted,
   };
 }
 
@@ -311,17 +360,19 @@ currentOwnerRaws.forEach((raw) => {
 const currentDeduped = dedupOwners(currentOwners);
 ownersByDate["current"] = currentDeduped;
 
-// Compose final JSON structure
-const topKey = `property_${propertyId || "unknown_id"}`;
-const result = {};
-result[topKey] = { owners_by_date: ownersByDate };
-result.invalid_owners = invalidOwners;
+const output = {};
+output[`property_${propertyId}`] = {
+  owners_by_date: ownersByDate,
+  invalid_owners: invalidOwners,
+};
 
 // Ensure output directory and write file
 const outDir = path.join(process.cwd(), "owners");
 fs.mkdirSync(outDir, { recursive: true });
 const outPath = path.join(outDir, "owner_data.json");
-fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf-8");
+fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf-8");
 
-// Print to console
-console.log(JSON.stringify(result));
+// Print to console for debugging
+console.log(
+  JSON.stringify(output),
+);
