@@ -6343,6 +6343,69 @@ function hasNormalizedCountyCoverage(address) {
 
 const ADDRESS_COORDINATE_FIELDS = [...NORMALIZED_ADDRESS_COORDINATE_FIELDS];
 
+function writeRawAddressForSchema(options = {}) {
+  const {
+    addressPath,
+    rawAddress,
+    countyName,
+    coordinates,
+    requestIdentifier,
+    sourceHttpRequest,
+    stateCodeFallback,
+  } = options;
+
+  if (!addressPath) return;
+
+  const rawValue = safeNullIfEmpty(rawAddress);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const payload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+
+  if (!Object.prototype.hasOwnProperty.call(payload, "county_name")) {
+    payload.county_name = null;
+  }
+  if (countyName) {
+    payload.county_name = titleCaseCounty(countyName);
+  }
+
+  const latitude = parseCoordinate(coordinates && coordinates.latitude);
+  const longitude = parseCoordinate(coordinates && coordinates.longitude);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    payload.latitude = latitude;
+    payload.longitude = longitude;
+  }
+  if ((payload.latitude == null) !== (payload.longitude == null)) {
+    payload.latitude = null;
+    payload.longitude = null;
+  }
+
+  if (stateCodeFallback && !payload.state_code) {
+    payload.state_code = stateCodeFallback;
+  }
+  if (payload.state_code && !payload.country_code) {
+    payload.country_code = "US";
+  }
+  if (!payload.postal_code) {
+    payload.plus_four_postal_code = null;
+  }
+
+  if (requestIdentifier !== undefined) {
+    const normalizedRequestId = safeNullIfEmpty(requestIdentifier);
+    payload.request_identifier =
+      normalizedRequestId === undefined ? null : normalizedRequestId;
+  } else if (!Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    payload.request_identifier = null;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(sourceHttpRequest);
+  payload.source_http_request = preparedSource ? deepClone(preparedSource) : null;
+
+  originalWriteFileSync(addressPath, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
 const NORMALIZED_SCHEMA_REQUIRED_FIELDS = [
   "street_number",
   "street_name",
@@ -14157,6 +14220,54 @@ async function main() {
     }
   } catch (error) {
     console.error("Failed to finalize raw address field coverage:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const rawAddressValue = resolveFirstNonEmptyString([
+      unnormalizedAddressCandidate,
+      ...finalUnnormalizedCandidates,
+      addressLineCombined,
+      siteLocationLine,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.unnormalized_address,
+      unAddr && unAddr.full_address,
+    ]);
+    const resolvedCoordinates =
+      Number.isFinite(initialLatitude) && Number.isFinite(initialLongitude)
+        ? { latitude: initialLatitude, longitude: initialLongitude }
+        : parcelCentroid;
+    const resolvedCountyName = formattedCountyName || countyName || defaultCounty;
+    const resolvedRequestId =
+      trimmedRequestIdentifier ||
+      parcelId ||
+      (seed && seed.request_identifier) ||
+      (unAddr && unAddr.request_identifier) ||
+      null;
+    const resolvedSourceHttp =
+      sourceHttpCandidate ||
+      (seed && seed.source_http_request) ||
+      (unAddr && unAddr.source_http_request) ||
+      null;
+
+    writeRawAddressForSchema({
+      addressPath: addressOutputPath,
+      rawAddress: rawAddressValue,
+      countyName: resolvedCountyName,
+      coordinates: resolvedCoordinates,
+      requestIdentifier: resolvedRequestId,
+      sourceHttpRequest: resolvedSourceHttp,
+      stateCodeFallback: countyInferredStateCode || resolvedStateUpper || null,
+    });
+
+    removeAddressRelationshipFiles(dataDir);
+    removeAddressRelationshipFiles(relationshipsDir);
+    enforcePropertyRelationshipNulls(propertyFilePath);
+  } catch (error) {
+    console.error("Failed to rewrite final raw address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
