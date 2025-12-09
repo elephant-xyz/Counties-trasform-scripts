@@ -870,7 +870,10 @@ function sanitizeAddressPayloadForWrite(payload) {
   const normalizedCoverage = hasNormalizedCountyCoverage(normalizedCandidate);
 
   if (trimmedUnnormalized.length && !normalizedCoverage) {
-    const rawOut = { unnormalized_address: trimmedUnnormalized };
+    const rawOut = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedUnnormalized,
+    };
     const countyValue = safeNullIfEmpty(
       payload.county_name ||
         payload.county_jurisdiction ||
@@ -959,15 +962,14 @@ function sanitizeAddressPayloadForWrite(payload) {
     }
 
     const requestIdentifier = safeNullIfEmpty(payload.request_identifier);
-    if (requestIdentifier !== undefined) {
-      rawOut.request_identifier = requestIdentifier;
-    }
+    rawOut.request_identifier =
+      requestIdentifier === undefined ? rawOut.request_identifier : requestIdentifier;
     const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    if (prepared) {
-      rawOut.source_http_request = deepClone(prepared);
-    } else if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
-      rawOut.source_http_request = null;
-    }
+    rawOut.source_http_request = prepared
+      ? deepClone(prepared)
+      : Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+        ? null
+        : rawOut.source_http_request;
 
     return stripAddressRequestMetadata(rawOut);
   }
