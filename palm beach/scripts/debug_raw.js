@@ -761,8 +761,17 @@ function stripAddressRequestMetadata(address) {
       requestIdentifier === undefined ? null : requestIdentifier;
   }
 
-  if (Object.prototype.hasOwnProperty.call(working, "source_http_request")) {
-    delete working.source_http_request;
+  const hasSourceHttpRequest = Object.prototype.hasOwnProperty.call(
+    working,
+    "source_http_request",
+  );
+  const preparedSourceHttpRequest = hasSourceHttpRequest
+    ? prepareSourceHttpRequest(working.source_http_request)
+    : null;
+  if (hasSourceHttpRequest) {
+    working.source_http_request = preparedSourceHttpRequest
+      ? preparedSourceHttpRequest
+      : null;
   }
 
   const canUseNormalized =
@@ -796,23 +805,16 @@ function stripAddressRequestMetadata(address) {
       normalizedSurface.request_identifier = null;
     }
 
+    if (hasSourceHttpRequest) {
+      normalizedSurface.source_http_request = preparedSourceHttpRequest
+        ? preparedSourceHttpRequest
+        : null;
+    }
+
     return normalizedSurface;
   }
 
-  if (!rawValue.length) {
-    return working;
-  }
-
-  const minimalRaw = {
-    unnormalized_address: rawValue,
-  };
-
-  if (hasRequestIdentifier) {
-    minimalRaw.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
-  }
-
-  return minimalRaw;
+  return working;
 }
 
 function sanitizeAddressPayloadForWrite(payload) {
@@ -977,6 +979,16 @@ function enforceFinalAddressOneOfOutput(filePath) {
     normalizedSurface[field] = sanitizedValue;
   }
 
+  const requestIdentifier = Object.prototype.hasOwnProperty.call(
+    payload,
+    "request_identifier",
+  )
+    ? safeNullIfEmpty(payload.request_identifier)
+    : undefined;
+  const preparedSourceHttpRequest = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+
   if (!normalizedSurface.postal_code) {
     normalizedSurface.plus_four_postal_code = null;
   }
@@ -1019,11 +1031,21 @@ function enforceFinalAddressOneOfOutput(filePath) {
     finalOutput.country_code = "US";
   }
 
-  if (Object.prototype.hasOwnProperty.call(finalOutput, "request_identifier")) {
-    delete finalOutput.request_identifier;
+  if (requestIdentifier !== undefined) {
+    finalOutput.request_identifier =
+      requestIdentifier === undefined ? null : requestIdentifier;
+  } else if (
+    !Object.prototype.hasOwnProperty.call(finalOutput, "request_identifier")
+  ) {
+    finalOutput.request_identifier = null;
   }
-  if (Object.prototype.hasOwnProperty.call(finalOutput, "source_http_request")) {
-    delete finalOutput.source_http_request;
+
+  if (preparedSourceHttpRequest) {
+    finalOutput.source_http_request = preparedSourceHttpRequest;
+  } else if (
+    Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+  ) {
+    finalOutput.source_http_request = null;
   }
 
   fs.writeFileSync(filePath, JSON.stringify(finalOutput, null, 2));
@@ -1905,7 +1927,7 @@ function pruneRawVariantToSchemaSurface(address) {
   } else if (
     Object.prototype.hasOwnProperty.call(address, "request_identifier")
   ) {
-    delete address.request_identifier;
+    address.request_identifier = null;
   }
 
   const preparedSource = prepareSourceHttpRequest(address.source_http_request);
@@ -1914,7 +1936,7 @@ function pruneRawVariantToSchemaSurface(address) {
   } else if (
     Object.prototype.hasOwnProperty.call(address, "source_http_request")
   ) {
-    delete address.source_http_request;
+    address.source_http_request = null;
   }
 
   return address;
