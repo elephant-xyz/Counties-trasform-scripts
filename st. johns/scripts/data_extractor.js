@@ -1928,11 +1928,6 @@ function extractOwnerMailingAddress($) {
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  if (!inputCounty) {
-    inputCounty = (unnorm.county_name || "").trim();
-  }
-  const county_name = inputCounty || null;
   if (mailingAddress) {
     const mailingAddressObj = {
       latitude: null,
@@ -1944,12 +1939,8 @@ function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   }
   if (siteAddress) {
     const addressObj = {
-      county_name,
       latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
       longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
-      township: secTwpRng && secTwpRng.township ? secTwpRng.township : null,
-      range: secTwpRng && secTwpRng.range ? secTwpRng.range : null,
-      section: secTwpRng && secTwpRng.section ? secTwpRng.section : null,
       unnormalized_address: siteAddress,
     };
     writeJSON(path.join("data", "address.json"), addressObj);
