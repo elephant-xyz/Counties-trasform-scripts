@@ -6405,11 +6405,19 @@ function writeMinimalRawAddress(addressPath, options = {}) {
     removeFileIfExists(addressPath);
     return null;
   }
+  const preparedRaw =
+    enforceRawVariantAllowedFields(minimalPayload) ||
+    ensureRawAddressSchemaDefaults(minimalPayload) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...minimalPayload,
+    };
+  const finalizedRaw =
+    ensureAddressOutputFieldPresence(preparedRaw) || preparedRaw;
   originalWriteFileSync(
     addressPath,
-    `${JSON.stringify(minimalPayload, null, 2)}\n`,
+    `${JSON.stringify(finalizedRaw, null, 2)}\n`,
   );
-  return minimalPayload;
+  return finalizedRaw;
 }
 
 // Build a raw-address payload that always carries the full normalized surface
@@ -17381,9 +17389,18 @@ async function main() {
 
     if (rawOverride) {
       console.log("Raw override payload", rawOverride);
+      const normalizedRawOverride =
+        enforceRawVariantAllowedFields(rawOverride) ||
+        ensureRawAddressSchemaDefaults(rawOverride) || {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...rawOverride,
+        };
+      const finalizedRawOverride =
+        ensureAddressOutputFieldPresence(normalizedRawOverride) ||
+        normalizedRawOverride;
       originalWriteFileSync(
         addressOutputPath,
-        `${JSON.stringify(rawOverride, null, 2)}\n`,
+        `${JSON.stringify(finalizedRawOverride, null, 2)}\n`,
       );
       enforcePropertyRelationshipNulls(propertyFilePath);
       [dataDir, relationshipsDir].forEach((dirPath) => {
