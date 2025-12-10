@@ -1735,9 +1735,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     }
     return person;
   });
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
+
   const companyNames = new Set();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
@@ -1762,11 +1760,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     }
     return company;
   });
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
 
   // Track which persons and companies are actually used in relationships
+  // CHANGED: Determine which persons/companies will be used BEFORE writing files
   const usedPersonIdx = new Set();
   const usedCompanyIdx = new Set();
 
