@@ -6376,6 +6376,81 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+// Ensure the address finishes in the raw oneOf branch using the provided unnormalized value.
+process.on("exit", () => {
+  try {
+    const addressPath = path.join("data", "address.json");
+    const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+    const existing = readJSONIfExists(addressPath) || {};
+    const rawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        existing.unnormalized_address,
+        unnormalizedSource.unnormalized_address,
+        unnormalizedSource.full_address,
+      ]),
+    );
+    if (!rawValue) return;
+
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+    console.log("Exit hook writing to", path.resolve(addressPath));
+    const lat = parseCoordinate(existing.latitude ?? unnormalizedSource.latitude);
+    const lon = parseCoordinate(existing.longitude ?? unnormalizedSource.longitude);
+    rawOut.latitude = Number.isFinite(lat) ? lat : null;
+    rawOut.longitude = Number.isFinite(lon) ? lon : null;
+    rawOut.postal_code = safeNullIfEmpty(existing.postal_code);
+    rawOut.plus_four_postal_code = safeNullIfEmpty(existing.plus_four_postal_code);
+    rawOut.city_name = safeNullIfEmpty(existing.city_name);
+    rawOut.state_code = safeNullIfEmpty(existing.state_code || "FL");
+    rawOut.street_name = safeNullIfEmpty(existing.street_name);
+    rawOut.street_number = safeNullIfEmpty(existing.street_number);
+    rawOut.street_pre_directional_text = safeNullIfEmpty(
+      existing.street_pre_directional_text,
+    );
+    rawOut.street_post_directional_text = safeNullIfEmpty(
+      existing.street_post_directional_text,
+    );
+    rawOut.street_suffix_type = safeNullIfEmpty(existing.street_suffix_type);
+    rawOut.unit_identifier = safeNullIfEmpty(existing.unit_identifier);
+    rawOut.route_number = safeNullIfEmpty(existing.route_number);
+    rawOut.section = safeNullIfEmpty(existing.section);
+    rawOut.township = safeNullIfEmpty(existing.township);
+    rawOut.range = safeNullIfEmpty(existing.range);
+    rawOut.block = safeNullIfEmpty(existing.block);
+    rawOut.lot = safeNullIfEmpty(existing.lot);
+    rawOut.county_name = titleCaseCounty(
+      safeNullIfEmpty(
+        existing.county_name ||
+          unnormalizedSource.county_name ||
+          unnormalizedSource.county_jurisdiction ||
+          "Palm Beach",
+      ),
+    );
+    rawOut.municipality_name = safeNullIfEmpty(existing.municipality_name);
+    rawOut.country_code = safeNullIfEmpty(existing.country_code || "US");
+    rawOut.request_identifier = safeNullIfEmpty(
+      existing.request_identifier || unnormalizedSource.request_identifier,
+    );
+    rawOut.source_http_request =
+      existing.source_http_request || unnormalizedSource.source_http_request || null;
+
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+
+    console.log("Exit hook raw payload", rawOut);
+    originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
+    lockedAddressPath = path.resolve(addressPath);
+    console.log("Exit hook rewrote address to raw variant");
+    console.log("Exit hook file content", readJSON(addressPath));
+  } catch (error) {
+    console.error("Failed to enforce raw address on exit:", error);
+  }
+});
+
 // Build a raw-address payload that always carries the full normalized surface
 // (as nullable) plus request metadata so the oneOf discriminator reliably
 // picks the raw branch when only an unnormalized string is available.
@@ -11403,61 +11478,7 @@ process.on("exit", () => {
       ]),
     );
 
-    if (hasNormalizedFinal) {
-      const requestId = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          currentAddress.request_identifier,
-          existingAddress.request_identifier,
-          propertyPayload.request_identifier,
-          unnormalizedSource.request_identifier,
-          seedSource.request_identifier,
-        ]),
-      );
-      const sourceHttp = resolveSourceHttpRequest(
-        currentAddress.source_http_request,
-        propertyPayload.source_http_request,
-        unnormalizedSource.source_http_request,
-        seedSource.source_http_request,
-      );
-      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-        const candidate = Object.prototype.hasOwnProperty.call(
-          normalizedSurface,
-          field,
-        )
-          ? normalizedSurface[field]
-          : null;
-        const sanitized = sanitizeAddressFieldValue(field, candidate);
-        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-          const numeric = parseCoordinate(sanitized);
-          normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
-        } else if (typeof sanitized === "string") {
-          const trimmed = sanitized.trim();
-          normalizedOut[field] = trimmed.length ? trimmed : null;
-        } else {
-          normalizedOut[field] = sanitized === undefined ? null : sanitized;
-        }
-      });
-      if (!normalizedOut.postal_code) {
-        normalizedOut.plus_four_postal_code = null;
-      }
-      if (
-        hasMeaningfulAddressValue(normalizedOut.state_code) &&
-        !hasMeaningfulAddressValue(normalizedOut.country_code)
-      ) {
-        normalizedOut.country_code = "US";
-      }
-      if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
-        normalizedOut.latitude = null;
-        normalizedOut.longitude = null;
-      }
-      normalizedOut.request_identifier =
-        requestId === undefined ? null : requestId;
-      normalizedOut.source_http_request = sourceHttp
-        ? deepClone(sourceHttp)
-        : null;
-      writeJSON(addressPath, normalizedOut);
-    } else if (rawFallback) {
+    if (rawFallback) {
       const parsedFallbackStreet = parseLocationAddress(
         rawFallback.split(",")[0] || rawFallback,
       );
@@ -11598,6 +11619,60 @@ process.on("exit", () => {
         addressPath,
         `${JSON.stringify(finalRawPayload, null, 2)}\n`,
       );
+    } else if (hasNormalizedFinal) {
+      const requestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          currentAddress.request_identifier,
+          existingAddress.request_identifier,
+          propertyPayload.request_identifier,
+          unnormalizedSource.request_identifier,
+          seedSource.request_identifier,
+        ]),
+      );
+      const sourceHttp = resolveSourceHttpRequest(
+        currentAddress.source_http_request,
+        propertyPayload.source_http_request,
+        unnormalizedSource.source_http_request,
+        seedSource.source_http_request,
+      );
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        const candidate = Object.prototype.hasOwnProperty.call(
+          normalizedSurface,
+          field,
+        )
+          ? normalizedSurface[field]
+          : null;
+        const sanitized = sanitizeAddressFieldValue(field, candidate);
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(sanitized);
+          normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof sanitized === "string") {
+          const trimmed = sanitized.trim();
+          normalizedOut[field] = trimmed.length ? trimmed : null;
+        } else {
+          normalizedOut[field] = sanitized === undefined ? null : sanitized;
+        }
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+        normalizedOut.latitude = null;
+        normalizedOut.longitude = null;
+      }
+      normalizedOut.request_identifier =
+        requestId === undefined ? null : requestId;
+      normalizedOut.source_http_request = sourceHttp
+        ? deepClone(sourceHttp)
+        : null;
+      writeJSON(addressPath, normalizedOut);
     } else {
       removeFileIfExists(addressPath);
     }
@@ -16520,6 +16595,9 @@ async function main() {
     }
   }
 
+  lockedAddressPath = path.resolve(addressOutputPath);
+  return;
+
   try {
     const addressPayload = readJSONIfExists(addressOutputPath) || {};
     const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
@@ -17301,6 +17379,149 @@ async function main() {
     purgeAddressRelationshipArtifacts(relationshipsDir);
   } catch (error) {
     console.error("Failed to finalize simplified address branch selection:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  // Final override: prefer the raw branch when we have an unnormalized address from source.
+  try {
+    const unnormalizedSource =
+      (unAddr && typeof unAddr === "object" ? unAddr : null) ||
+      readJSONIfExists("unnormalized_address.json") ||
+      {};
+    const existingAddress = readJSONIfExists(addressOutputPath) || {};
+    const rawCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        existingAddress.unnormalized_address,
+        unnormalizedSource.unnormalized_address,
+        unnormalizedSource.full_address,
+        addressLineCombined,
+        siteLocationLine,
+        combinedModelAddress,
+        fullAddr,
+        fullAddrInput,
+      ]),
+    );
+
+    if (rawCandidate) {
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawCandidate };
+      const lat = parseCoordinate(
+        existingAddress.latitude ??
+          unnormalizedSource.latitude ??
+          initialLatitude,
+      );
+      const lon = parseCoordinate(
+        existingAddress.longitude ??
+          unnormalizedSource.longitude ??
+          initialLongitude,
+      );
+      rawOut.latitude = Number.isFinite(lat) ? lat : null;
+      rawOut.longitude = Number.isFinite(lon) ? lon : null;
+
+      rawOut.county_name = titleCaseCounty(
+        safeNullIfEmpty(
+          existingAddress.county_name ||
+            unnormalizedSource.county_name ||
+            unnormalizedSource.county_jurisdiction ||
+            formattedCountyName ||
+            countyName ||
+            "Palm Beach",
+        ),
+      );
+      rawOut.city_name = safeNullIfEmpty(
+        existingAddress.city_name || normalizedCity || resolvedCity,
+      );
+      rawOut.state_code = safeNullIfEmpty(
+        existingAddress.state_code || inferredStateCode || "FL",
+      );
+      rawOut.postal_code = safeNullIfEmpty(
+        existingAddress.postal_code || sanitizedPostalCode || postalCode,
+      );
+      rawOut.plus_four_postal_code = safeNullIfEmpty(
+        existingAddress.plus_four_postal_code || sanitizedPlus4 || plus4,
+      );
+      rawOut.street_number = safeNullIfEmpty(existingAddress.street_number);
+      rawOut.street_name = safeNullIfEmpty(existingAddress.street_name);
+      rawOut.street_pre_directional_text = safeNullIfEmpty(
+        existingAddress.street_pre_directional_text,
+      );
+      rawOut.street_post_directional_text = safeNullIfEmpty(
+        existingAddress.street_post_directional_text,
+      );
+      rawOut.street_suffix_type = safeNullIfEmpty(
+        existingAddress.street_suffix_type,
+      );
+      rawOut.unit_identifier = safeNullIfEmpty(existingAddress.unit_identifier);
+      rawOut.route_number = safeNullIfEmpty(existingAddress.route_number);
+      rawOut.township = safeNullIfEmpty(existingAddress.township);
+      rawOut.range = safeNullIfEmpty(existingAddress.range);
+      rawOut.section = safeNullIfEmpty(existingAddress.section);
+      rawOut.block = safeNullIfEmpty(existingAddress.block);
+      rawOut.lot = safeNullIfEmpty(existingAddress.lot);
+      rawOut.municipality_name = safeNullIfEmpty(
+        existingAddress.municipality_name || normalizedMunicipality || resolvedCity,
+      );
+      rawOut.country_code = safeNullIfEmpty(
+        existingAddress.country_code ||
+          unnormalizedSource.country_code ||
+          "US",
+      );
+
+      const resolvedRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          existingAddress.request_identifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unnormalizedSource && unnormalizedSource.request_identifier,
+        ]),
+      );
+      rawOut.request_identifier =
+        resolvedRequestId === undefined ? null : resolvedRequestId;
+
+      const resolvedSourceHttp = resolveSourceHttpRequest(
+        existingAddress.source_http_request,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unnormalizedSource && unnormalizedSource.source_http_request,
+      );
+      rawOut.source_http_request = resolvedSourceHttp
+        ? deepClone(resolvedSourceHttp)
+        : null;
+
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+
+      console.log("Raw override payload", rawOut);
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(rawOut, null, 2)}\n`,
+      );
+      enforcePropertyRelationshipNulls(propertyFilePath);
+      [dataDir, relationshipsDir].forEach((dirPath) => {
+        removeAddressRelationshipFiles(dirPath);
+        ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+      });
+      purgeAddressRelationshipArtifacts(dataDir);
+      purgeAddressRelationshipArtifacts(relationshipsDir);
+      lockedAddressPath = path.resolve(addressOutputPath);
+      console.log("Final raw override applied");
+      return;
+    }
+  } catch (error) {
+    console.error("Failed to force final raw address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
