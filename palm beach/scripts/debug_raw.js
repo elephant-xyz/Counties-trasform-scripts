@@ -6376,73 +6376,67 @@ const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+function buildMinimalRawAddressPayload(options = {}) {
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString(options.rawCandidates || []),
+  );
+  if (!rawValue) {
+    return null;
+  }
+
+  const requestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString(options.requestIdentifierCandidates || []),
+  );
+  const sourceHttp = resolveSourceHttpRequest(
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  return {
+    unnormalized_address: rawValue,
+    request_identifier: requestId === undefined ? null : requestId,
+    source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
+  };
+}
+
+function writeMinimalRawAddress(addressPath, options = {}) {
+  if (!addressPath) return null;
+  const minimalPayload = buildMinimalRawAddressPayload(options);
+  if (!minimalPayload) {
+    removeFileIfExists(addressPath);
+    return null;
+  }
+  originalWriteFileSync(
+    addressPath,
+    `${JSON.stringify(minimalPayload, null, 2)}\n`,
+  );
+  return minimalPayload;
+}
+
 // Ensure the address finishes in the raw oneOf branch using the provided unnormalized value.
 process.on("exit", () => {
   try {
     const addressPath = path.join("data", "address.json");
     const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
     const existing = readJSONIfExists(addressPath) || {};
-    const rawValue = safeNullIfEmpty(
-      resolveFirstNonEmptyString([
+    const minimalPayload = buildMinimalRawAddressPayload({
+      rawCandidates: [
         existing.unnormalized_address,
         unnormalizedSource.unnormalized_address,
         unnormalizedSource.full_address,
-      ]),
-    );
-    if (!rawValue) return;
+      ],
+      requestIdentifierCandidates: [
+        existing.request_identifier,
+        unnormalizedSource.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        existing.source_http_request,
+        unnormalizedSource.source_http_request,
+      ],
+    });
+    if (!minimalPayload) return;
 
-    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
     console.log("Exit hook writing to", path.resolve(addressPath));
-    const lat = parseCoordinate(existing.latitude ?? unnormalizedSource.latitude);
-    const lon = parseCoordinate(existing.longitude ?? unnormalizedSource.longitude);
-    rawOut.latitude = Number.isFinite(lat) ? lat : null;
-    rawOut.longitude = Number.isFinite(lon) ? lon : null;
-    rawOut.postal_code = safeNullIfEmpty(existing.postal_code);
-    rawOut.plus_four_postal_code = safeNullIfEmpty(existing.plus_four_postal_code);
-    rawOut.city_name = safeNullIfEmpty(existing.city_name);
-    rawOut.state_code = safeNullIfEmpty(existing.state_code || "FL");
-    rawOut.street_name = safeNullIfEmpty(existing.street_name);
-    rawOut.street_number = safeNullIfEmpty(existing.street_number);
-    rawOut.street_pre_directional_text = safeNullIfEmpty(
-      existing.street_pre_directional_text,
-    );
-    rawOut.street_post_directional_text = safeNullIfEmpty(
-      existing.street_post_directional_text,
-    );
-    rawOut.street_suffix_type = safeNullIfEmpty(existing.street_suffix_type);
-    rawOut.unit_identifier = safeNullIfEmpty(existing.unit_identifier);
-    rawOut.route_number = safeNullIfEmpty(existing.route_number);
-    rawOut.section = safeNullIfEmpty(existing.section);
-    rawOut.township = safeNullIfEmpty(existing.township);
-    rawOut.range = safeNullIfEmpty(existing.range);
-    rawOut.block = safeNullIfEmpty(existing.block);
-    rawOut.lot = safeNullIfEmpty(existing.lot);
-    rawOut.county_name = titleCaseCounty(
-      safeNullIfEmpty(
-        existing.county_name ||
-          unnormalizedSource.county_name ||
-          unnormalizedSource.county_jurisdiction ||
-          "Palm Beach",
-      ),
-    );
-    rawOut.municipality_name = safeNullIfEmpty(existing.municipality_name);
-    rawOut.country_code = safeNullIfEmpty(existing.country_code || "US");
-    rawOut.request_identifier = safeNullIfEmpty(
-      existing.request_identifier || unnormalizedSource.request_identifier,
-    );
-    rawOut.source_http_request =
-      existing.source_http_request || unnormalizedSource.source_http_request || null;
-
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
-    }
-    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-      rawOut.latitude = null;
-      rawOut.longitude = null;
-    }
-
-    console.log("Exit hook raw payload", rawOut);
-    originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
+    originalWriteFileSync(addressPath, `${JSON.stringify(minimalPayload, null, 2)}\n`);
     lockedAddressPath = path.resolve(addressPath);
     console.log("Exit hook rewrote address to raw variant");
     console.log("Exit hook file content", readJSON(addressPath));
@@ -17391,8 +17385,9 @@ async function main() {
       readJSONIfExists("unnormalized_address.json") ||
       {};
     const existingAddress = readJSONIfExists(addressOutputPath) || {};
-    const rawCandidate = safeNullIfEmpty(
-      resolveFirstNonEmptyString([
+
+    const rawOverride = buildMinimalRawAddressPayload({
+      rawCandidates: [
         existingAddress.unnormalized_address,
         unnormalizedSource.unnormalized_address,
         unnormalizedSource.full_address,
@@ -17401,113 +17396,27 @@ async function main() {
         combinedModelAddress,
         fullAddr,
         fullAddrInput,
-      ]),
-    );
-
-    if (rawCandidate) {
-      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawCandidate };
-      const lat = parseCoordinate(
-        existingAddress.latitude ??
-          unnormalizedSource.latitude ??
-          initialLatitude,
-      );
-      const lon = parseCoordinate(
-        existingAddress.longitude ??
-          unnormalizedSource.longitude ??
-          initialLongitude,
-      );
-      rawOut.latitude = Number.isFinite(lat) ? lat : null;
-      rawOut.longitude = Number.isFinite(lon) ? lon : null;
-
-      rawOut.county_name = titleCaseCounty(
-        safeNullIfEmpty(
-          existingAddress.county_name ||
-            unnormalizedSource.county_name ||
-            unnormalizedSource.county_jurisdiction ||
-            formattedCountyName ||
-            countyName ||
-            "Palm Beach",
-        ),
-      );
-      rawOut.city_name = safeNullIfEmpty(
-        existingAddress.city_name || normalizedCity || resolvedCity,
-      );
-      rawOut.state_code = safeNullIfEmpty(
-        existingAddress.state_code || inferredStateCode || "FL",
-      );
-      rawOut.postal_code = safeNullIfEmpty(
-        existingAddress.postal_code || sanitizedPostalCode || postalCode,
-      );
-      rawOut.plus_four_postal_code = safeNullIfEmpty(
-        existingAddress.plus_four_postal_code || sanitizedPlus4 || plus4,
-      );
-      rawOut.street_number = safeNullIfEmpty(existingAddress.street_number);
-      rawOut.street_name = safeNullIfEmpty(existingAddress.street_name);
-      rawOut.street_pre_directional_text = safeNullIfEmpty(
-        existingAddress.street_pre_directional_text,
-      );
-      rawOut.street_post_directional_text = safeNullIfEmpty(
-        existingAddress.street_post_directional_text,
-      );
-      rawOut.street_suffix_type = safeNullIfEmpty(
-        existingAddress.street_suffix_type,
-      );
-      rawOut.unit_identifier = safeNullIfEmpty(existingAddress.unit_identifier);
-      rawOut.route_number = safeNullIfEmpty(existingAddress.route_number);
-      rawOut.township = safeNullIfEmpty(existingAddress.township);
-      rawOut.range = safeNullIfEmpty(existingAddress.range);
-      rawOut.section = safeNullIfEmpty(existingAddress.section);
-      rawOut.block = safeNullIfEmpty(existingAddress.block);
-      rawOut.lot = safeNullIfEmpty(existingAddress.lot);
-      rawOut.municipality_name = safeNullIfEmpty(
-        existingAddress.municipality_name || normalizedMunicipality || resolvedCity,
-      );
-      rawOut.country_code = safeNullIfEmpty(
-        existingAddress.country_code ||
-          unnormalizedSource.country_code ||
-          "US",
-      );
-
-      const resolvedRequestId = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          existingAddress.request_identifier,
-          trimmedRequestIdentifier,
-          parcelId,
-          seed && seed.request_identifier,
-          unnormalizedSource && unnormalizedSource.request_identifier,
-        ]),
-      );
-      rawOut.request_identifier =
-        resolvedRequestId === undefined ? null : resolvedRequestId;
-
-      const resolvedSourceHttp = resolveSourceHttpRequest(
+      ],
+      requestIdentifierCandidates: [
+        existingAddress.request_identifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unnormalizedSource && unnormalizedSource.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
         existingAddress.source_http_request,
         sourceHttpCandidate,
         seed && seed.source_http_request,
         unnormalizedSource && unnormalizedSource.source_http_request,
-      );
-      rawOut.source_http_request = resolvedSourceHttp
-        ? deepClone(resolvedSourceHttp)
-        : null;
+      ],
+    });
 
-      if (!rawOut.postal_code) {
-        rawOut.plus_four_postal_code = null;
-      }
-      if (
-        hasMeaningfulAddressValue(rawOut.state_code) &&
-        !hasMeaningfulAddressValue(rawOut.country_code)
-      ) {
-        rawOut.country_code = "US";
-      }
-      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-        rawOut.latitude = null;
-        rawOut.longitude = null;
-      }
-
-      console.log("Raw override payload", rawOut);
+    if (rawOverride) {
+      console.log("Raw override payload", rawOverride);
       originalWriteFileSync(
         addressOutputPath,
-        `${JSON.stringify(rawOut, null, 2)}\n`,
+        `${JSON.stringify(rawOverride, null, 2)}\n`,
       );
       enforcePropertyRelationshipNulls(propertyFilePath);
       [dataDir, relationshipsDir].forEach((dirPath) => {
