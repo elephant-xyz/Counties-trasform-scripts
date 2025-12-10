@@ -1430,29 +1430,53 @@ function ensureRawAddressFieldPresence(addressFilePath) {
     return;
   }
 
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
-      payload[field] = null;
-    } else if (payload[field] === undefined) {
-      payload[field] = null;
+  const allowed = new Set([
+    "unnormalized_address",
+    "request_identifier",
+    "source_http_request",
+    ...RAW_ADDRESS_ALLOWED_FIELDS,
+  ]);
+
+  const cleaned = {
+    unnormalized_address: payload.unnormalized_address.trim(),
+  };
+
+  allowed.forEach((field) => {
+    if (field === "unnormalized_address") return;
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) return;
+
+    let value = payload[field];
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(value);
+      value = prepared ? deepClone(prepared) : null;
+    } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      value = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    } else if (value === undefined) {
+      value = null;
+    }
+
+    if (value !== undefined) {
+      cleaned[field] = value;
     }
   });
 
-  if (!Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    payload.request_identifier = null;
-  } else if (payload.request_identifier === undefined) {
-    payload.request_identifier = null;
+  if (!Object.prototype.hasOwnProperty.call(cleaned, "request_identifier")) {
+    cleaned.request_identifier = null;
   }
-
-  if (!Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
-    payload.source_http_request = null;
-  } else if (payload.source_http_request === undefined) {
-    payload.source_http_request = null;
+  if (!Object.prototype.hasOwnProperty.call(cleaned, "source_http_request")) {
+    cleaned.source_http_request = null;
+  }
+  if (cleaned.state_code && !cleaned.country_code) {
+    cleaned.country_code = "US";
   }
 
   originalWriteFileSync(
     addressFilePath,
-    `${JSON.stringify(payload, null, 2)}\n`,
+    `${JSON.stringify(cleaned, null, 2)}\n`,
   );
 }
 
@@ -6307,22 +6331,29 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch aligned with the schema: emit the full normalized
-// surface (as nullable) plus request metadata so the oneOf selection is
-// satisfied even when we only have an unnormalized string. The presence of
-// `unnormalized_address` drives the branch choice, while the normalized fields
-// stay null when we don't have structured components.
-// Raw variant now mirrors the normalized field surface (as nullable) to keep
-// required properties present even when only a raw string is available.
+// Keep the raw branch minimal: prefer the unnormalized surface plus only the
+// metadata and high-level location fields that the schema allows for the raw
+// variant. Avoid forcing the full normalized surface into the raw branch so the
+// oneOf discriminator can reliably pick the correct schema.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
+  "county_name",
+  "country_code",
+  "state_code",
+  "city_name",
+  "municipality_name",
+  "postal_code",
+  "plus_four_postal_code",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+  "route_number",
   "request_identifier",
   "source_http_request",
 ];
 
-// Fields that may accompany the raw (unnormalized) address payload. Keep the
-// list aligned with the schema requirements so every nullable property remains
-// present—even when we only have an unnormalized string available.
+// Fields that may accompany the raw (unnormalized) address payload.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
@@ -15266,35 +15297,7 @@ async function main() {
   });
 
   try {
-    const addressPayload = readJSONIfExists(addressOutputPath);
-    if (
-      addressPayload &&
-      typeof addressPayload === "object" &&
-      safeNullIfEmpty(addressPayload.unnormalized_address)
-    ) {
-      const normalizedFields = [...NORMALIZED_ADDRESS_FIELDS];
-      normalizedFields.forEach((field) => {
-        if (!Object.prototype.hasOwnProperty.call(addressPayload, field)) {
-          addressPayload[field] = null;
-        } else if (addressPayload[field] === undefined) {
-          addressPayload[field] = null;
-        }
-      });
-      if (!Object.prototype.hasOwnProperty.call(addressPayload, "request_identifier")) {
-        addressPayload.request_identifier = null;
-      } else if (addressPayload.request_identifier === undefined) {
-        addressPayload.request_identifier = null;
-      }
-      if (!Object.prototype.hasOwnProperty.call(addressPayload, "source_http_request")) {
-        addressPayload.source_http_request = null;
-      } else if (addressPayload.source_http_request === undefined) {
-        addressPayload.source_http_request = null;
-      }
-      originalWriteFileSync(
-        addressOutputPath,
-        `${JSON.stringify(addressPayload, null, 2)}\n`,
-      );
-    }
+    ensureRawAddressFieldPresence(addressOutputPath);
   } catch (error) {
     console.error("Failed to finalize raw address field coverage:", error);
     if (!process.exitCode) {
