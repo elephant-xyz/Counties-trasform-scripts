@@ -1591,19 +1591,9 @@ const propertyUsageTypeByUseCode = propertyTypeMapping.reduce((lookup, entry) =>
 }, {});
 function mapPropertyTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.property_type;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(propertyTypeByUseCode, normalizedInput)) {
     return propertyTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1611,19 +1601,9 @@ function mapPropertyTypeFromUseCode(code) {
 
 function mapOwnershipEstateTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.ownership_estate_type;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(ownershipEstateTypeByUseCode, normalizedInput)) {
     return ownershipEstateTypeByUseCode[normalizedInput];
   }
   return null;
@@ -1631,19 +1611,9 @@ function mapOwnershipEstateTypeFromUseCode(code) {
 
 function mapBuildStatusFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.build_status;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(buildStatusByUseCode, normalizedInput)) {
     return buildStatusByUseCode[normalizedInput];
   }
   return null;
@@ -1651,19 +1621,9 @@ function mapBuildStatusFromUseCode(code) {
 
 function mapStructureFormFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.structure_form;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(structureFormByUseCode, normalizedInput)) {
     return structureFormByUseCode[normalizedInput];
   }
   return null;
@@ -1671,19 +1631,9 @@ function mapStructureFormFromUseCode(code) {
 
 function mapPropertyUsageTypeFromUseCode(code) {
   if (!code && code !== 0) return null;
-  const codeStr = String(code).trim();
-  
-  // First try matching by 4-digit code prefix
-  const codeMatch = codeStr.match(/^(\d{4})/);
-  if (codeMatch) {
-    const codePrefix = codeMatch[1];
-    const entry = propertyTypeMapping.find(item => item.property_usecode.startsWith(codePrefix));
-    if (entry) return entry.property_usage_type;
-  }
-  
-  // Fallback to full normalization matching
-  const normalizedInput = codeStr.replace(/\s+/g, "").toUpperCase();
-  if (normalizedInput && Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
+  const normalizedInput = String(code).replace(/[\s:]+/g, "").toUpperCase();
+  if (!normalizedInput) return null;
+  if (Object.prototype.hasOwnProperty.call(propertyUsageTypeByUseCode, normalizedInput)) {
     return propertyUsageTypeByUseCode[normalizedInput];
   }
   return null;
@@ -3239,16 +3189,6 @@ function extract() {
       const file = path.join(dataDir, saleFileName);
       // Remove _rawIndex and grantee_text before writing to file
       const { _rawIndex, grantee_text, ...saleData } = s;
-
-      // CRITICAL: purchase_price_amount must be a number (not null) per schema
-      // Since it's optional, omit it entirely if not a valid number
-      if (saleData.purchase_price_amount === null ||
-          saleData.purchase_price_amount === undefined ||
-          typeof saleData.purchase_price_amount !== 'number' ||
-          !Number.isFinite(saleData.purchase_price_amount)) {
-        delete saleData.purchase_price_amount;
-      }
-
       writeJSON(file, saleData);
       s._file = `./${saleFileName}`; // Keep _file for relationship linking
       saleFileMap.set(s.ownership_transfer_date, s._file);
@@ -3447,29 +3387,27 @@ function extract() {
         unnormalized_address: mailing_address_text
       };
       writeJSON(path.join(dataDir, "mailing_address.json"), mailing_address);
-
-      // Create relationships for person → mailing_address
-      mailingPersonRefs.forEach((personRef) => {
-        const relFile = `relationship_person_${personRef
-          .replace("./", "")
-          .replace(".json", "")}_has_mailing_address.json`;
-        writeJSON(path.join(dataDir, relFile), {
-          from: { "/": personRef },
-          to: { "/": "./mailing_address.json" },
-        });
-      });
-
-      // Create relationships for company → mailing_address
-      mailingCompanyRefs.forEach((companyRef) => {
-        const relFile = `relationship_company_${companyRef
-          .replace("./", "")
-          .replace(".json", "")}_has_mailing_address.json`;
-        writeJSON(path.join(dataDir, relFile), {
-          from: { "/": companyRef },
-          to: { "/": "./mailing_address.json" },
-        });
-      });
     }
+
+    mailingPersonRefs.forEach((personRef) => {
+      const relFile = `relationship_person_${personRef
+        .replace("./", "")
+        .replace(".json", "")}_has_mailing_address.json`;
+      writeJSON(path.join(dataDir, relFile), {
+        from: { "/": personRef },
+        to: { "/": "./mailing_address.json" },
+      });
+    });
+
+    mailingCompanyRefs.forEach((companyRef) => {
+      const relFile = `relationship_company_${companyRef
+        .replace("./", "")
+        .replace(".json", "")}_has_mailing_address.json`;
+      writeJSON(path.join(dataDir, relFile), {
+        from: { "/": companyRef },
+        to: { "/": "./mailing_address.json" },
+      });
+    });
   } catch (e) {
     console.error("Error extracting sales/owner data:", e);
   }

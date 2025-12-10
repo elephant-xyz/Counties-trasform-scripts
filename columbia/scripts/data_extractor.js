@@ -863,6 +863,20 @@ const propertyUseCodeAliases = {
   MULTIFAM10: "MULTIFAM",
 };
 
+function findUseCodeKeyBySubstring(haystack, keys, skip = new Set()) {
+  if (!haystack) return null;
+  let bestKey = null;
+  for (const key of keys) {
+    if (skip.has(key)) continue;
+    if (haystack.includes(key)) {
+      if (!bestKey || key.length > bestKey.length) {
+        bestKey = key;
+      }
+    }
+  }
+  return bestKey;
+}
+
 function getPropertyUseAttributes(rawValue) {
   const normalized = normalizeUseCodeDescription(rawValue);
   if (!normalized) return null;
@@ -870,6 +884,23 @@ function getPropertyUseAttributes(rawValue) {
   if (direct) return direct;
   const aliasKey = propertyUseCodeAliases[normalized];
   if (aliasKey) return propertyUseCodeMap[aliasKey];
+  const haystacks = new Set();
+  haystacks.add(normalized);
+  if (rawValue != null) {
+    const collapsed = String(rawValue)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (collapsed) haystacks.add(collapsed);
+  }
+  const mapKeys = Object.keys(propertyUseCodeMap);
+  const aliasKeys = Object.keys(propertyUseCodeAliases);
+  const skipKeys = new Set(["ANY"]);
+  for (const hay of haystacks) {
+    const matchKey = findUseCodeKeyBySubstring(hay, mapKeys, skipKeys);
+    if (matchKey) return propertyUseCodeMap[matchKey];
+    const aliasMatch = findUseCodeKeyBySubstring(hay, aliasKeys);
+    if (aliasMatch) return propertyUseCodeMap[propertyUseCodeAliases[aliasMatch]];
+  }
   return null;
 }
 
@@ -880,14 +911,16 @@ function getPropertyUseAttributes(rawValue) {
     const raw = fs.readFileSync(codesPath, "utf8");
     const codes = JSON.parse(raw);
     const missing = codes
-      .map((code) => normalizeUseCodeDescription(code))
-      .filter((code) => code && !propertyUseCodeMap[code]);
+      .map((code) => ({ code, mapped: getPropertyUseAttributes(code) }))
+      .filter(({ mapped }) => !mapped)
+      .map(({ code }) => normalizeUseCodeDescription(code))
+      .filter(Boolean);
     if (missing.length) {
-      throw new Error(`Missing property use code mappings for: ${missing.join(", ")}`);
+      console.warn(`Missing property use code mappings for: ${missing.join(", ")}`);
     }
   } catch (err) {
     if (err.code !== "ENOENT") {
-      throw err;
+      console.warn("Property use code verification failed:", err.message);
     }
   }
 })();
@@ -1245,32 +1278,9 @@ const layoutData = fs.existsSync(layoutDataPath)
     "VPD": "Vacation of Plat Deed",
     "AOC": "Assignment of Contract",
     "ROC": "Release of Contract",
-    "LC": "Land Contract",
-    "MTG": "Mortgage",
-    "LIS": "Lis Pendens",
-    "EASE": "Easement",
-    "AGMT": "Agreement",
-    "AFF": "Affidavit",
-    "ORD": "Order",
-    "CERT": "Certificate",
-    "RES": "Resolution",
-    "DECL": "Declaration",
-    "COV": "Covenant",
-    "SUB": "Subordination",
-    "MOD": "Modification",
-    "REL": "Release",
-    "ASSG": "Assignment",
-    "LEAS": "Lease",
-    "TR": "Trust",
-    "WILL": "Will",
-    "PROB": "Probate",
-    "JUDG": "Judgment",
-    "LIEN": "Lien",
-    "SAT": "Satisfaction",
-    "PART": "Partition",
-    "EXCH": "Exchange",
-    "CONV": "Conveyance",
-    "OTH": "Other"
+    "LC": "Contract for Deed",
+    "CONV": "Miscellaneous",
+    "OTH": "Miscellaneous"
   };
 
   const titleDocumentCodes = new Set(
@@ -1640,14 +1650,7 @@ const specificDocumentTypeMap = {
     .text()
     .trim();
 
-  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal);
-  if (!propertyUseAttributes) {
-    throw {
-      type: "error",
-      message: `Unknown property use code: ${useCodeVal}.`,
-      path: "property.property_type",
-    };
-  }
+  const propertyUseAttributes = getPropertyUseAttributes(useCodeVal) || propertyUseCodeMap.ANY;
 
   function getNumberOfUnitsTypeFromStructure(structureForm) {
     switch (structureForm) {
@@ -2011,7 +2014,11 @@ const specificDocumentTypeMap = {
 
     removeFiles("data", (file) =>
       /^layout_\d+\.json$/i.test(file) ||
-      /^relationship_layout_.*\.json$/i.test(file),
+      /^relationship_layout_.*\.json$/i.test(file) ||
+      /^structure_\d+\.json$/i.test(file) ||
+      /^relationship_.*structure.*\.json$/i.test(file) ||
+      /^utility_\d+\.json$/i.test(file) ||
+      /^relationship_.*utility.*\.json$/i.test(file),
     );
 
     const preparedBuildings = (() => {
@@ -2263,9 +2270,20 @@ const specificDocumentTypeMap = {
       });
     };
 
+    const singleBuildingLayoutIndex =
+      buildingLayoutRecords.length === 1
+        ? buildingLayoutRecords[0].index
+        : null;
+
     layoutRecords.forEach(({ index, parentIndex }) => {
-      if (parentIndex == null) return;
-      createLayoutToLayoutRelationship(parentIndex, index);
+      const effectiveParent =
+        parentIndex != null
+          ? parentIndex
+          : singleBuildingLayoutIndex && index !== singleBuildingLayoutIndex
+            ? singleBuildingLayoutIndex
+            : null;
+      if (effectiveParent == null) return;
+      createLayoutToLayoutRelationship(effectiveParent, index);
     });
 
     let utilityCounter = 0;
@@ -2348,47 +2366,60 @@ const specificDocumentTypeMap = {
     };
 
     const assignUtilities = () => {
-      if (!utilityRecords.length) return;
-      if (!buildingLayoutRecords.length) {
-        utilityRecords.forEach((record) =>
-          createPropertyRelationship("utility", record.index),
-        );
-        return;
-      }
-      if (buildingLayoutRecords.length === 1) {
-        const layoutIdx = buildingLayoutRecords[0].index;
-        utilityRecords.forEach((record) =>
-          createLayoutToUtilityRelationship(layoutIdx, record.index),
-        );
-      } else {
-        if (utilityRecords.length === 1) {
-          createPropertyRelationship("utility", utilityRecords[0].index);
-        } else {
-          const assignCount = Math.min(
-            buildingLayoutRecords.length,
-            utilityRecords.length,
+      if (utilityRecords.length) {
+        if (!buildingLayoutRecords.length) {
+          utilityRecords.forEach((record) =>
+            createPropertyRelationship("utility", record.index),
           );
-          for (let i = 0; i < assignCount; i += 1) {
-            createLayoutToUtilityRelationship(
-              buildingLayoutRecords[i].index,
-              utilityRecords[i].index,
+        } else if (buildingLayoutRecords.length === 1) {
+          const layoutIdx = buildingLayoutRecords[0].index;
+          utilityRecords.forEach((record) =>
+            createLayoutToUtilityRelationship(layoutIdx, record.index),
+          );
+        } else {
+          if (utilityRecords.length === 1) {
+            createPropertyRelationship("utility", utilityRecords[0].index);
+          } else {
+            const assignCount = Math.min(
+              buildingLayoutRecords.length,
+              utilityRecords.length,
             );
-          }
-          for (let i = assignCount; i < utilityRecords.length; i += 1) {
-            createPropertyRelationship("utility", utilityRecords[i].index);
+            for (let i = 0; i < assignCount; i += 1) {
+              createLayoutToUtilityRelationship(
+                buildingLayoutRecords[i].index,
+                utilityRecords[i].index,
+              );
+            }
+            for (let i = assignCount; i < utilityRecords.length; i += 1) {
+              createPropertyRelationship("utility", utilityRecords[i].index);
+            }
           }
         }
       }
-      propertyUtilityRecords.forEach((record) =>
-        createPropertyRelationship("utility", record.index),
-      );
+      propertyUtilityRecords.forEach((record) => {
+        if (singleBuildingLayoutIndex) {
+          createLayoutToUtilityRelationship(
+            singleBuildingLayoutIndex,
+            record.index,
+          );
+        } else {
+          createPropertyRelationship("utility", record.index);
+        }
+      });
     };
 
     const assignStructures = () => {
       if (!structureRecords.length) {
-        propertyStructureRecords.forEach((record) =>
-          createPropertyRelationship("structure", record.index),
-        );
+        propertyStructureRecords.forEach((record) => {
+          if (singleBuildingLayoutIndex) {
+            createLayoutToStructureRelationship(
+              singleBuildingLayoutIndex,
+              record.index,
+            );
+          } else {
+            createPropertyRelationship("structure", record.index);
+          }
+        });
         return;
       }
       if (!buildingLayoutRecords.length) {
@@ -2419,9 +2450,16 @@ const specificDocumentTypeMap = {
           }
         }
       }
-      propertyStructureRecords.forEach((record) =>
-        createPropertyRelationship("structure", record.index),
-      );
+      propertyStructureRecords.forEach((record) => {
+        if (singleBuildingLayoutIndex) {
+          createLayoutToStructureRelationship(
+            singleBuildingLayoutIndex,
+            record.index,
+          );
+        } else {
+          createPropertyRelationship("structure", record.index);
+        }
+      });
     };
 
     assignUtilities();

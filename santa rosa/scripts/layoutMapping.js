@@ -41,10 +41,12 @@ function getPropertyId($, remix) {
   return m ? m[0] : "unknown_id";
 }
 
-function baseLayout(spaceType, index) {
+function baseLayout(spaceType, index, buildingNumber = null, overrides = {}) {
   return {
     space_type: spaceType,
-    space_index: index,
+    // space_index: index,
+    space_type_index: index,
+    building_number: buildingNumber,
     flooring_material_type: null,
     size_square_feet: null,
     floor_level: null,
@@ -75,6 +77,10 @@ function baseLayout(spaceType, index) {
     pool_condition: null,
     pool_surface_type: null,
     pool_water_quality: null,
+    total_area_sq_ft: null,
+    heated_area_sq_ft: null,
+    built_year: null,
+    ...overrides,
   };
 }
 
@@ -108,9 +114,97 @@ function mapFloorLevel(floor) {
   }
 }
 
+function toNumber(val) {
+  if (val === null || val === undefined) return null;
+  const num = parseFloat(String(val).replace(/,/g, ""));
+  return Number.isFinite(num) ? num : null;
+}
+
+function computeBathroomBreakdown(bathroomCount) {
+  const n = toNumber(bathroomCount);
+  const result = { full: 0, half: 0, threeQuarter: 0 };
+
+  if (!Number.isFinite(n) || n <= 0) return result;
+
+  const full = Math.floor(n);
+  const fractional = n - full;
+  result.full = full;
+  const roundedFraction = Math.round(fractional * 4) / 4;
+  if (roundedFraction >= 0.75) {
+    result.threeQuarter = 1;
+  } else if (roundedFraction >= 0.5) {
+    result.half = 1;
+  }
+  return result;
+}
+
+function addBuildingLayouts(layouts, buildingNumber, opts) {
+  const {
+    bathroomsCount = 0,
+    bedroomCount = 0,
+    totalArea = null,
+    heatedArea = null,
+    effectiveYearBuilt = null,
+    floorLevel = null,
+  } = opts || {};
+
+  const { full, half, threeQuarter } = computeBathroomBreakdown(bathroomsCount);
+  const baseOverrides = {
+    built_year: effectiveYearBuilt,
+    floor_level: floorLevel,
+  };
+
+  layouts.push(
+    baseLayout("Building", String(buildingNumber), buildingNumber, {
+      ...baseOverrides,
+      total_area_sq_ft: totalArea,
+      heated_area_sq_ft: heatedArea,
+      size_square_feet: totalArea,
+    }),
+  );
+
+  for (let i = 1; i <= full; i++) {
+    layouts.push(
+      baseLayout(
+        "Full Bathroom",
+        `${buildingNumber}.${i}`,
+        buildingNumber,
+        baseOverrides,
+      ),
+    );
+  }
+
+  for (let i = 1; i <= half; i++) {
+    layouts.push(
+      baseLayout(
+        "Half Bathroom / Powder Room",
+        `${buildingNumber}.${i}`,
+        buildingNumber,
+        baseOverrides,
+      ),
+    );
+  }
+
+  for (let i = 1; i <= threeQuarter; i++) {
+    layouts.push(
+      baseLayout(
+        "Three-Quarter Bathroom",
+        `${buildingNumber}.${i}`,
+        buildingNumber,
+        baseOverrides,
+      ),
+    );
+  }
+
+  for (let i = 1; i <= bedroomCount; i++) {
+    layouts.push(
+      baseLayout("Bedroom", `${buildingNumber}.${i}`, buildingNumber, baseOverrides),
+    );
+  }
+}
+
 function extractLayouts($, remix) {
   const layouts = [];
-  let space_index = 1;
   
   // Find ALL building tables, not just the first one
   const buildingTables = $("caption")
@@ -132,22 +226,18 @@ function extractLayouts($, remix) {
       : {};
     const condoInfo = remixData.condoInfo || null;
     if (condoInfo) {
-      let bathrooms = condoInfo.bathrooms ? condoInfo.bathrooms : 0;
-      let bedrooms = condoInfo.bedrooms ? condoInfo.bedrooms : 0;
-      let floorLevel = condoInfo.floor ? mapFloorLevel(condoInfo.floor) : null;
-      // Add bathrooms for this building
-      for (let i = 0; i < bathrooms; i++) {
-        let l = baseLayout("Full Bathroom", space_index++);
-        l.floor_level = floorLevel;
-        layouts.push(l);
-      }
-      
-      // Add bedrooms for this building
-      for (let i = 0; i < bedrooms; i++) {
-        let l = baseLayout("Bedroom", space_index++);
-        l.floor_level = floorLevel;
-        layouts.push(l);
-      }
+      const bathrooms = condoInfo.bathrooms ? toNumber(condoInfo.bathrooms) : 0;
+      const bedrooms = condoInfo.bedrooms ? toNumber(condoInfo.bedrooms) : 0;
+      const floorLevel = condoInfo.floor ? mapFloorLevel(condoInfo.floor) : null;
+
+      addBuildingLayouts(layouts, 1, {
+        bathroomsCount: bathrooms || 0,
+        bedroomCount: bedrooms ? Math.round(bedrooms) : 0,
+        effectiveYearBuilt: condoInfo.effectiveYearBuilt
+          ? toNumber(condoInfo.effectiveYearBuilt)
+          : null,
+        floorLevel,
+      });
     }
     return layouts;
   }
@@ -158,30 +248,23 @@ function extractLayouts($, remix) {
     const rows = $table.find("tbody > tr");
     const bathroomText = textOfCell(rows, "Bathrooms");
     const bedroomText = textOfCell(rows, "Bedrooms");
+    const totalAreaText = textOfCell(rows, "Total Area");
+    const heatedAreaText = textOfCell(rows, "Heated Area");
+    const effectiveYearBuiltText = textOfCell(rows, "Actual Year Built");
     
-    let bathrooms = 0;
-    let bedrooms = 0;
-    
-    if (bathroomText && /^\d+$/.test(bathroomText)) {
-      bathrooms = parseInt(bathroomText, 10);
-    }
-    if (bedroomText && /^\d+$/.test(bedroomText)) {
-      bedrooms = parseInt(bedroomText, 10);
-    }
+    const bathrooms = toNumber(bathroomText) || 0;
+    const bedrooms = toNumber(bedroomText) || 0;
+    const totalArea = toNumber(totalAreaText);
+    const heatedArea = toNumber(heatedAreaText);
+    const effectiveYearBuilt = toNumber(effectiveYearBuiltText);
 
-    // console.log(`Building ${buildingIndex + 1}: ${bedrooms} bedrooms, ${bathrooms} bathrooms`);
-
-    // Add bathrooms for this building
-    for (let i = 0; i < bathrooms; i++) {
-      const l = baseLayout("Full Bathroom", space_index++);
-      layouts.push(l);
-    }
-    
-    // Add bedrooms for this building
-    for (let i = 0; i < bedrooms; i++) {
-      const l = baseLayout("Bedroom", space_index++);
-      layouts.push(l);
-    }
+    addBuildingLayouts(layouts, buildingIndex + 1, {
+      bathroomsCount: bathrooms,
+      bedroomCount: bedrooms ? Math.round(bedrooms) : 0,
+      totalArea,
+      heatedArea,
+      effectiveYearBuilt,
+    });
   });
 
   // console.log(`Total layouts created: ${layouts.length}`);
