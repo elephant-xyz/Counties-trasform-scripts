@@ -8573,6 +8573,143 @@ function composeMinimalRawAddress(address) {
   return hydrated;
 }
 
+function rewriteAddressToUnnormalizedOnly(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource =
+    (options.unnormalizedPath && readJSONIfExists(options.unnormalizedPath)) ||
+    null;
+  const seedSource =
+    (options.seedPath && readJSONIfExists(options.seedPath)) || null;
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  if (normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface })) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      const candidate = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
+        ? normalizedSurface[field]
+        : null;
+      const sanitized = sanitizeAddressFieldValue
+        ? sanitizeAddressFieldValue(field, candidate)
+        : candidate;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(sanitized);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof sanitized === "string") {
+        const trimmed = sanitized.trim();
+        normalizedOut[field] = trimmed.length ? trimmed : null;
+      } else {
+        normalizedOut[field] = sanitized === undefined ? null : sanitized;
+      }
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    const normalizedRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        payload.request_identifier,
+        seedSource && seedSource.request_identifier,
+        unnormalizedSource && unnormalizedSource.request_identifier,
+        ...(options.requestIdentifierCandidates || []),
+      ]),
+    );
+    normalizedOut.request_identifier =
+      normalizedRequestId === undefined ? null : normalizedRequestId;
+    const normalizedSource = resolveSourceHttpRequest(
+      payload.source_http_request,
+      seedSource && seedSource.source_http_request,
+      unnormalizedSource &&
+        (unnormalizedSource.source_http_request ||
+          unnormalizedSource.entry_http_request),
+      ...(options.sourceHttpRequestCandidates || []),
+    );
+    normalizedOut.source_http_request = normalizedSource
+      ? deepClone(normalizedSource)
+      : null;
+    originalWriteFileSync(
+      addressPath,
+      `${JSON.stringify(normalizedOut, null, 2)}\n`,
+    );
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      payload.full_address,
+      options.rawFallback,
+      unnormalizedSource && unnormalizedSource.unnormalized_address,
+      unnormalizedSource && unnormalizedSource.full_address,
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      seedSource && seedSource.request_identifier,
+      unnormalizedSource && unnormalizedSource.request_identifier,
+      ...(options.requestIdentifierCandidates || []),
+    ]),
+  );
+  const preparedSource = resolveSourceHttpRequest(
+    payload.source_http_request,
+    seedSource && seedSource.source_http_request,
+    unnormalizedSource &&
+      (unnormalizedSource.source_http_request ||
+        unnormalizedSource.entry_http_request),
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  const countyJurisdiction = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.county_jurisdiction,
+      payload.county_name,
+      unnormalizedSource &&
+        (unnormalizedSource.county_jurisdiction || unnormalizedSource.county_name),
+      options.countyFallback,
+    ]),
+  );
+
+  const lat = parseCoordinate(
+    payload.latitude ??
+      (unnormalizedSource && unnormalizedSource.latitude),
+  );
+  const lon = parseCoordinate(
+    payload.longitude ??
+      (unnormalizedSource && unnormalizedSource.longitude),
+  );
+
+  const rawOut = {
+    unnormalized_address: rawValue,
+    full_address: rawValue,
+    county_jurisdiction: countyJurisdiction || null,
+    request_identifier: requestId === undefined ? null : requestId,
+    source_http_request: preparedSource ? deepClone(preparedSource) : null,
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lon) ? lon : null,
+  };
+
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
+}
+
 function enforceRawAddressSchemaDefaults(payload) {
   if (!payload || typeof payload !== "object") return null;
 
@@ -16596,6 +16733,41 @@ async function main() {
     purgeAddressRelationshipArtifacts(relationshipsDir);
   } catch (error) {
     console.error("Failed to enforce terminal address oneOf surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    rewriteAddressToUnnormalizedOnly(addressOutputPath, {
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      countyFallback: formattedCountyName || countyName || defaultCounty,
+      rawFallback:
+        addressLineCombined ||
+        fullAddr ||
+        unnormalizedAddressCandidate ||
+        siteLocationLine ||
+        combinedModelAddress,
+      requestIdentifierCandidates: [
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+      ],
+    });
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+    purgeAddressRelationshipArtifacts(dataDir);
+    purgeAddressRelationshipArtifacts(relationshipsDir);
+  } catch (error) {
+    console.error("Failed to rewrite address to unnormalized-only branch:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
