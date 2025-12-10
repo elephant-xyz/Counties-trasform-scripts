@@ -88,14 +88,31 @@ function normalizeOwnerKey(owner) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, " ");
+  // Replace common digit-to-letter substitutions that appear in data entry errors
+  let cleaned = name.trim()
+    .replace(/0/g, "O")  // Zero to letter O
+    .replace(/1/g, "I")  // One to letter I
+    .replace(/3/g, "E")  // Three to letter E
+    .replace(/5/g, "S")  // Five to letter S
+    .replace(/8/g, "B"); // Eight to letter B
+
+  // Normalize whitespace
+  cleaned = cleaned.replace(/\s+/g, " ");
+
+  // Remove any remaining non-letter, non-special-character symbols
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, "");
+
+  // Split by special characters while preserving them
   const parts = cleaned.split(/([ \-',.])/);
+
+  // Filter out empty strings and format each part
   return parts
     .map((part) => {
       if (!part) return "";
       if (part.match(/[ \-',.]/)) return part;
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     })
+    .filter(Boolean)
     .join("");
 }
 
