@@ -2376,8 +2376,8 @@ const specificDocumentTypeMap = {
     // Do not create structure entities when they only contain area measurements
     // Area data is already captured in layout entities
     // structuresArr.forEach((structure) => addStructure(structure, false));
-    // Do not create structure entities for extra features (carports, barns, etc.)
-    // extraStructuresArr.forEach((structure) => addStructure(structure, true));
+    // Create structure entities for extra features (carports, barns, etc.) and link them via relationships
+    extraStructuresArr.forEach((structure) => addStructure(structure, true));
 
     const createLayoutToUtilityRelationship = (layoutIdx, utilityIdx) => {
       const relName = `relationship_layout_${layoutIdx}_has_utility_${utilityIdx}.json`;
