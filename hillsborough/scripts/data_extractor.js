@@ -4131,16 +4131,6 @@ function main() {
   writeJson(path.join(dataDir, "address.json"), addressObj);
 
 
-  //Mailing address file creation
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    latitude: null,
-    longitude: null,
-    unnormalized_address: mailingAddress
-  };
-  writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
-
-
   //TAX FILES CREATION
   const taxData = extractTaxes($);
   if (taxData) {
@@ -4217,39 +4207,50 @@ function main() {
   });
 
   //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE.
-  let relIdx=0
-  currentOwners.forEach((o) => {
-    // console.log("relIdx",relIdx);
-    if (o && o.type === "person") {
-      const key = normalizeOwnerKey(o);
-      const pf = personFilesByKey[key];
-      if (pf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${pf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJson(
-          path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
-          rel,
-        );
+  // Only create mailing_address.json if there are owners to reference it
+  if (currentOwners.length > 0) {
+    const mailingAddressOutput = {
+      ...appendSourceInfo(seed),
+      latitude: null,
+      longitude: null,
+      unnormalized_address: mailingAddress
+    };
+    writeJson(path.join(dataDir, "mailing_address.json"), mailingAddressOutput);
+
+    let relIdx=0
+    currentOwners.forEach((o) => {
+      // console.log("relIdx",relIdx);
+      if (o && o.type === "person") {
+        const key = normalizeOwnerKey(o);
+        const pf = personFilesByKey[key];
+        if (pf) {
+          relIdx += 1;
+          const rel = {
+            from: { "/": `./${pf}` },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJson(
+            path.join(dataDir, `relationship_person_has_mailing_address_${relIdx}.json`),
+            rel,
+          );
+        }
+      } else if (o && o.type === "company") {
+        const key = normalizeCompanyKey(o);
+        const cf = companyFilesByKey[key];
+        if (cf) {
+          relIdx += 1;
+          const rel = {
+            from: { "/": `./${cf}` },
+            to: { "/": "./mailing_address.json" },
+          };
+          writeJson(
+            path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
+            rel,
+          );
+        }
       }
-    } else if (o && o.type === "company") {
-      const key = normalizeCompanyKey(o);
-      const cf = companyFilesByKey[key];
-      if (cf) {
-        relIdx += 1;
-        const rel = {
-          from: { "/": `./${cf}` },
-          to: { "/": "./mailing_address.json" },
-        };
-        writeJson(
-          path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
-          rel,
-        );
-      }
-    }
-  });  
+    });
+  }  
 
   //------Structure (owners/structures_data.json)---------------
   createStructureFiles(seed,propertyIdentifier);
