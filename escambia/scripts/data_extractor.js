@@ -28,9 +28,10 @@ function validatePersonName(name) {
   // Remove any leading/trailing special characters that might have been left
   const cleaned = trimmed.replace(/^[^A-Za-z]+|[^A-Za-z\s\-',.]+$/g, '').trim();
   if (!cleaned) return null;
-  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
-  // Must start with uppercase letter, followed by any letters (upper or lower), spaces, hyphens, apostrophes, commas, or periods
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Pattern from Elephant schema: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // Must start with uppercase letter, followed by lowercase letters,
+  // then optionally: space/hyphen/apostrophe/comma/period + one letter (any case) + lowercase letters
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   if (!pattern.test(cleaned)) {
     return null;
   }
