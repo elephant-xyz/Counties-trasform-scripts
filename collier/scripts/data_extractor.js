@@ -579,9 +579,6 @@ function parseAddress(
 }
 
 function main() {
-
-  // throw new Error("Intended error!")
-
   const inHtmlPath = path.join("input.html");
   const unaddrPath = path.join("unnormalized_address.json");
   const seedPath = path.join("property_seed.json");
@@ -940,6 +937,16 @@ function main() {
       path.join(dataDir, "utility.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
+
+    // Create relationship from property to utility
+    const relPropertyUtility = {
+      from: { "/": "./property.json" },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_utility_1.json"),
+      JSON.stringify(relPropertyUtility, null, 2),
+    );
   }
 
   // Layouts from owners/layout_data.json
@@ -1237,11 +1244,11 @@ function main() {
     structureObj.number_of_buildings = buildingTypes.size;
   }
 
-  // // Always write structure.json with all required fields
-  // fs.writeFileSync(
-  //   path.join(dataDir, "structure.json"),
-  //   JSON.stringify(structureObj, null, 2),
-  // );
+  // Always write structure.json with all required fields
+  fs.writeFileSync(
+    path.join(dataDir, "structure.json"),
+    JSON.stringify(structureObj, null, 2),
+  );
 
   // Create relationship from property to structure
   const relPropertyStructure = {
