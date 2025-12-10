@@ -2142,12 +2142,7 @@ function main() {
   //Mailing Address
   const mailingAddressRaw = extractMailingAddress($)
   // console.log("---",mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(seed),
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
-  
+
   // Create mailing address relationships with current owners
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (owners) {
@@ -2183,6 +2178,15 @@ function main() {
           }
         }
       });
+
+      // Only create mailing_address.json if we created at least one relationship
+      if (relCounter > 0 && mailingAddressRaw) {
+        const mailingAddressOutput = {
+          ...appendSourceInfo(seed),
+          unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+        };
+        writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+      }
     }
   }  
 
