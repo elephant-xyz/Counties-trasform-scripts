@@ -132,24 +132,32 @@ function isCompany(name) {
   return false;
 }
 
+function titleCaseName(s) {
+  if (!s) return s;
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function parsePerson(name) {
   let v = norm(name);
   if (!v) return null;
-  // If contains '&', remove it per spec and split into first/last around it
+  // If contains '&', parse each part separately and return the first valid person
   if (v.includes("&")) {
     const parts = v
       .split("&")
       .map((s) => norm(s))
       .filter(Boolean);
-    if (parts.length >= 2) {
-      const first = cleanInvalidCharsFromName(parts[0]);
-      const last = cleanInvalidCharsFromName(parts.slice(1).join(" "));
-      return {
-        type: "person",
-        first_name: first || null,
-        last_name: last || null,
-        middle_name: null,
-      };
+    // Try to parse the first part recursively (without &)
+    if (parts.length >= 1) {
+      const firstPart = parts[0];
+      // Recursively parse the first part (it might have comma-separated format)
+      const parsed = parsePerson(firstPart);
+      if (parsed) {
+        return parsed;
+      }
     }
   }
   // Handle comma separated Last, First Middle
@@ -166,9 +174,9 @@ function parsePerson(name) {
       const middle = cleanInvalidCharsFromName(tokens.join(" ")) || null;
       return {
         type: "person",
-        first_name: first || null,
-        last_name: last || null,
-        middle_name: middle && middle.length ? middle : null,
+        first_name: titleCaseName(first) || null,
+        last_name: titleCaseName(last) || null,
+        middle_name: titleCaseName(middle) || null,
       };
     }
   }
@@ -180,9 +188,9 @@ function parsePerson(name) {
     const middle = cleanInvalidCharsFromName(tokens.join(" ")) || null;
     return {
       type: "person",
-      first_name: first || null,
-      last_name: last || null,
-      middle_name: middle && middle.length ? middle : null,
+      first_name: titleCaseName(first) || null,
+      last_name: titleCaseName(last) || null,
+      middle_name: titleCaseName(middle) || null,
     };
   }
   return null;
