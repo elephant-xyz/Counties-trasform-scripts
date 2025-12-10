@@ -1924,6 +1924,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         );
       }
     });
+
+    // Remove mailing_address.json if no relationships were created
+    if (relPersonMailingCounter === 0 && relCompanyMailingCounter === 0) {
+      try {
+        fs.unlinkSync(path.join("data", "mailing_address.json"));
+      } catch (e) {
+        // File might not exist, ignore
+      }
+    }
   }
 
   // Remove unused person and company files
