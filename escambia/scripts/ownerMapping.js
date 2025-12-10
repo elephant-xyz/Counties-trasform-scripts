@@ -264,7 +264,10 @@ function splitOwnerCandidates(text) {
   parts.forEach((p) => {
     p.split(/\s+(?:and|AND|And)\s+|\s*&\s*/).forEach((x) => {
       const z = normSpace(x);
-      if (z) out.push(z);
+      // Filter out date patterns like "DATED 06-12-2024" or standalone dates
+      if (z && !/^(?:DATED\s+)?[\d\-\/]+$|^DATED\s/i.test(z)) {
+        out.push(z);
+      }
     });
   });
   return out;
