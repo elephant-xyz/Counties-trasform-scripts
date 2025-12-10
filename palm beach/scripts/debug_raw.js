@@ -15464,6 +15464,10 @@ async function main() {
 
   try {
     const addressPayload = readJSONIfExists(addressOutputPath) || {};
+    const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
+    const seedSource = (seed && typeof seed === "object" ? seed : null) ||
+      readJSONIfExists("property_seed.json") ||
+      {};
     const normalizedSurface =
       ensureNormalizedAddressSchemaSurface &&
       ensureNormalizedAddressSchemaSurface({ ...addressPayload });
@@ -15472,6 +15476,10 @@ async function main() {
     const rawValue = safeNullIfEmpty(
       resolveFirstNonEmptyString([
         addressPayload.unnormalized_address,
+        unnormalizedSource.unnormalized_address,
+        unnormalizedSource.full_address,
+        unnormalizedSource.site_address,
+        unnormalizedSource.address,
         unnormalizedAddressCandidate,
         combinedModelAddress,
         siteLocationLine,
@@ -15518,7 +15526,8 @@ async function main() {
           addressPayload.request_identifier,
           trimmedRequestIdentifier,
           parcelId,
-          seed && seed.request_identifier,
+          seedSource && seedSource.request_identifier,
+          unnormalizedSource && unnormalizedSource.request_identifier,
           unAddr && unAddr.request_identifier,
         ]),
       );
@@ -15527,7 +15536,8 @@ async function main() {
       const preparedSource = resolveSourceHttpRequest(
         addressPayload.source_http_request,
         sourceHttpCandidate,
-        seed && seed.source_http_request,
+        seedSource && seedSource.source_http_request,
+        unnormalizedSource && unnormalizedSource.source_http_request,
         unAddr && unAddr.source_http_request,
       );
       normalizedOut.source_http_request = preparedSource
@@ -15548,14 +15558,16 @@ async function main() {
           addressPayload.request_identifier,
           trimmedRequestIdentifier,
           parcelId,
-          seed && seed.request_identifier,
+          seedSource && seedSource.request_identifier,
+          unnormalizedSource && unnormalizedSource.request_identifier,
           unAddr && unAddr.request_identifier,
         ]),
       );
       const preparedSource = resolveSourceHttpRequest(
         addressPayload.source_http_request,
         sourceHttpCandidate,
-        seed && seed.source_http_request,
+        seedSource && seedSource.source_http_request,
+        unnormalizedSource && unnormalizedSource.source_http_request,
         unAddr && unAddr.source_http_request,
       );
       const rawOut =
@@ -15584,6 +15596,15 @@ async function main() {
       rawOut.source_http_request = preparedSource
         ? deepClone(preparedSource)
         : null;
+      if (!rawOut.county_name) {
+        const countyFallback = titleCaseCounty(
+          safeNullIfEmpty(rawOut.county_name) ||
+            safeNullIfEmpty(unnormalizedSource.county_jurisdiction) ||
+            safeNullIfEmpty(formattedCountyName || countyName) ||
+            "Palm Beach",
+        );
+        rawOut.county_name = countyFallback || null;
+      }
       finalizeCoordinates(rawOut);
       if (!rawOut.postal_code) {
         rawOut.plus_four_postal_code = null;
