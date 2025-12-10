@@ -6412,39 +6412,6 @@ function writeMinimalRawAddress(addressPath, options = {}) {
   return minimalPayload;
 }
 
-// Ensure the address finishes in the raw oneOf branch using the provided unnormalized value.
-process.on("exit", () => {
-  try {
-    const addressPath = path.join("data", "address.json");
-    const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
-    const existing = readJSONIfExists(addressPath) || {};
-    const minimalPayload = buildMinimalRawAddressPayload({
-      rawCandidates: [
-        existing.unnormalized_address,
-        unnormalizedSource.unnormalized_address,
-        unnormalizedSource.full_address,
-      ],
-      requestIdentifierCandidates: [
-        existing.request_identifier,
-        unnormalizedSource.request_identifier,
-      ],
-      sourceHttpRequestCandidates: [
-        existing.source_http_request,
-        unnormalizedSource.source_http_request,
-      ],
-    });
-    if (!minimalPayload) return;
-
-    console.log("Exit hook writing to", path.resolve(addressPath));
-    originalWriteFileSync(addressPath, `${JSON.stringify(minimalPayload, null, 2)}\n`);
-    lockedAddressPath = path.resolve(addressPath);
-    console.log("Exit hook rewrote address to raw variant");
-    console.log("Exit hook file content", readJSON(addressPath));
-  } catch (error) {
-    console.error("Failed to enforce raw address on exit:", error);
-  }
-});
-
 // Build a raw-address payload that always carries the full normalized surface
 // (as nullable) plus request metadata so the oneOf discriminator reliably
 // picks the raw branch when only an unnormalized string is available.
