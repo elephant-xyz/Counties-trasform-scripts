@@ -11181,177 +11181,254 @@ process.on("exit", () => {
       seedSource,
       existingAddress,
     });
-    const fallbackUnnormalized = safeNullIfEmpty(
-      resolveFirstNonEmptyString([
-        existingAddress.unnormalized_address,
-        unnormalizedSource.unnormalized_address,
-        unnormalizedSource.full_address,
-        seedSource.unnormalized_address,
-      ]),
-    );
-    if (fallbackUnnormalized) {
-      const currentAddress = readJSONIfExists(addressPath) || {};
-      if (!safeNullIfEmpty(currentAddress.unnormalized_address)) {
-        currentAddress.unnormalized_address = fallbackUnnormalized;
-        writeJSON(addressPath, currentAddress);
-      }
-    }
-    ensureRawAddressFieldPresence(addressPath);
-    forceRawCountyAddressOutput(addressPath, {
-      preferRaw: true,
-      unnormalizedCandidates: [
-        existingAddress.unnormalized_address,
-        unnormalizedSource.unnormalized_address,
-        unnormalizedSource.full_address,
-        seedSource.unnormalized_address,
-      ],
-      fieldSources: [
-        existingAddress,
-        unnormalizedSource,
-        propertyPayload,
-        seedSource,
-      ],
-      coordinateFallback: {
-        latitude: existingAddress.latitude ?? unnormalizedSource.latitude,
-        longitude: existingAddress.longitude ?? unnormalizedSource.longitude,
-      },
-      requestIdentifierCandidates: [
-        existingAddress.request_identifier,
-        unnormalizedSource.request_identifier,
-        propertyPayload.request_identifier,
-        seedSource.request_identifier,
-      ],
-      sourceHttpRequestCandidates: [
-        existingAddress.source_http_request,
-        unnormalizedSource.source_http_request,
-        propertyPayload.source_http_request,
-        seedSource.source_http_request,
-      ],
-    });
 
-    const finalRawString =
-      fallbackUnnormalized ||
-      safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          existingAddress.unnormalized_address,
-          unnormalizedSource.full_address,
-          unnormalizedSource.unnormalized_address,
-          seedSource.unnormalized_address,
-        ]),
+    const currentAddress = readJSONIfExists(addressPath) || {};
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...currentAddress });
+    const hasNormalizedFinal =
+      normalizedSurface &&
+      NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
+        hasMeaningfulAddressValue(normalizedSurface[field]),
       );
-    if (finalRawString) {
-      const parsedFallbackStreet = parseLocationAddress(
-        finalRawString.split(",")[0] || finalRawString,
-      );
-      const parsedFallbackCity = parseCityStatePostal(finalRawString);
-      const finalRawPayload = {
-        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-        unnormalized_address: finalRawString,
-      };
-      const assignFinal = (field, value) => {
-        if (
-          !Object.prototype.hasOwnProperty.call(finalRawPayload, field) ||
-          finalRawPayload[field] == null ||
-          finalRawPayload[field] === ""
-        ) {
-          if (value == null) return;
-          const trimmed =
-            typeof value === "string" ? value.trim() : value;
-          if (
-            trimmed !== undefined &&
-            trimmed !== null &&
-            String(trimmed).trim().length
-          ) {
-            finalRawPayload[field] = trimmed;
-          }
-        }
-      };
-      assignFinal("street_number", parsedFallbackStreet.streetNumber);
-      assignFinal("street_name", parsedFallbackStreet.streetName);
-      assignFinal(
-        "street_pre_directional_text",
-        parsedFallbackStreet.streetPreDirectional,
-      );
-      assignFinal(
-        "street_post_directional_text",
-        parsedFallbackStreet.streetPostDirectional,
-      );
-      assignFinal("street_suffix_type", parsedFallbackStreet.streetSuffix);
-      assignFinal("unit_identifier", parsedFallbackStreet.unitIdentifier);
-      assignFinal("route_number", parsedFallbackStreet.routeNumber);
-      assignFinal("city_name", parsedFallbackCity.city);
-      assignFinal("state_code", parsedFallbackCity.state);
-      assignFinal("postal_code", parsedFallbackCity.postal);
-      assignFinal("plus_four_postal_code", parsedFallbackCity.plus4);
-      assignFinal("county_name", unnormalizedSource.county_jurisdiction);
 
-      const resolvedLat = parseCoordinate(
+    if (hasNormalizedFinal) {
+      const requestId = safeNullIfEmpty(
         resolveFirstNonEmptyString([
-          existingAddress.latitude,
-          unnormalizedSource.latitude,
-          seedSource.latitude,
-        ]),
-      );
-      const resolvedLon = parseCoordinate(
-        resolveFirstNonEmptyString([
-          existingAddress.longitude,
-          unnormalizedSource.longitude,
-          seedSource.longitude,
-        ]),
-      );
-      finalRawPayload.latitude = Number.isFinite(resolvedLat)
-        ? resolvedLat
-        : null;
-      finalRawPayload.longitude = Number.isFinite(resolvedLon)
-        ? resolvedLon
-        : null;
-
-      if (finalRawPayload.state_code && !finalRawPayload.country_code) {
-        finalRawPayload.country_code = "US";
-      }
-      if (!finalRawPayload.postal_code) {
-        finalRawPayload.plus_four_postal_code = null;
-      }
-      if (
-        (finalRawPayload.latitude == null) !==
-        (finalRawPayload.longitude == null)
-      ) {
-        finalRawPayload.latitude = null;
-        finalRawPayload.longitude = null;
-      }
-
-      const finalRequestId = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
+          currentAddress.request_identifier,
           existingAddress.request_identifier,
           propertyPayload.request_identifier,
           unnormalizedSource.request_identifier,
           seedSource.request_identifier,
         ]),
       );
-      finalRawPayload.request_identifier =
-        finalRequestId === undefined ? null : finalRequestId;
-      const finalSourceHttp = resolveSourceHttpRequest(
-        existingAddress.source_http_request,
+      const sourceHttp = resolveSourceHttpRequest(
+        currentAddress.source_http_request,
         propertyPayload.source_http_request,
         unnormalizedSource.source_http_request,
         seedSource.source_http_request,
       );
-      finalRawPayload.source_http_request = finalSourceHttp
-        ? deepClone(finalSourceHttp)
-        : null;
-
-      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-        if (!Object.prototype.hasOwnProperty.call(finalRawPayload, field)) {
-          finalRawPayload[field] = null;
-        } else if (finalRawPayload[field] === undefined) {
-          finalRawPayload[field] = null;
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        const candidate = Object.prototype.hasOwnProperty.call(
+          normalizedSurface,
+          field,
+        )
+          ? normalizedSurface[field]
+          : null;
+        const sanitized = sanitizeAddressFieldValue(field, candidate);
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(sanitized);
+          normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof sanitized === "string") {
+          const trimmed = sanitized.trim();
+          normalizedOut[field] = trimmed.length ? trimmed : null;
+        } else {
+          normalizedOut[field] = sanitized === undefined ? null : sanitized;
         }
       });
-
-      originalWriteFileSync(
-        addressPath,
-        `${JSON.stringify(finalRawPayload, null, 2)}\n`,
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+        normalizedOut.latitude = null;
+        normalizedOut.longitude = null;
+      }
+      normalizedOut.request_identifier =
+        requestId === undefined ? null : requestId;
+      normalizedOut.source_http_request = sourceHttp
+        ? deepClone(sourceHttp)
+        : null;
+      writeJSON(addressPath, normalizedOut);
+    } else {
+      const fallbackUnnormalized = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          existingAddress.unnormalized_address,
+          unnormalizedSource.unnormalized_address,
+          unnormalizedSource.full_address,
+          seedSource.unnormalized_address,
+        ]),
       );
+      if (fallbackUnnormalized) {
+        const nextAddress = { ...currentAddress };
+        if (!safeNullIfEmpty(nextAddress.unnormalized_address)) {
+          nextAddress.unnormalized_address = fallbackUnnormalized;
+          writeJSON(addressPath, nextAddress);
+        }
+      }
+
+      ensureRawAddressFieldPresence(addressPath);
+      forceRawCountyAddressOutput(addressPath, {
+        preferRaw: true,
+        unnormalizedCandidates: [
+          currentAddress.unnormalized_address,
+          existingAddress.unnormalized_address,
+          unnormalizedSource.unnormalized_address,
+          unnormalizedSource.full_address,
+          seedSource.unnormalized_address,
+        ],
+        fieldSources: [
+          currentAddress,
+          existingAddress,
+          unnormalizedSource,
+          propertyPayload,
+          seedSource,
+        ],
+        coordinateFallback: {
+          latitude: existingAddress.latitude ?? unnormalizedSource.latitude,
+          longitude: existingAddress.longitude ?? unnormalizedSource.longitude,
+        },
+        requestIdentifierCandidates: [
+          currentAddress.request_identifier,
+          existingAddress.request_identifier,
+          unnormalizedSource.request_identifier,
+          propertyPayload.request_identifier,
+          seedSource.request_identifier,
+        ],
+        sourceHttpRequestCandidates: [
+          currentAddress.source_http_request,
+          existingAddress.source_http_request,
+          unnormalizedSource.source_http_request,
+          propertyPayload.source_http_request,
+          seedSource.source_http_request,
+        ],
+      });
+
+      const finalRawString =
+        fallbackUnnormalized ||
+        safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            currentAddress.unnormalized_address,
+            existingAddress.unnormalized_address,
+            unnormalizedSource.full_address,
+            unnormalizedSource.unnormalized_address,
+            seedSource.unnormalized_address,
+          ]),
+        );
+      if (finalRawString) {
+        const parsedFallbackStreet = parseLocationAddress(
+          finalRawString.split(",")[0] || finalRawString,
+        );
+        const parsedFallbackCity = parseCityStatePostal(finalRawString);
+        const finalRawPayload = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          unnormalized_address: finalRawString,
+        };
+        const assignFinal = (field, value) => {
+          if (
+            !Object.prototype.hasOwnProperty.call(finalRawPayload, field) ||
+            finalRawPayload[field] == null ||
+            finalRawPayload[field] === ""
+          ) {
+            if (value == null) return;
+            const trimmed =
+              typeof value === "string" ? value.trim() : value;
+            if (
+              trimmed !== undefined &&
+              trimmed !== null &&
+              String(trimmed).trim().length
+            ) {
+              finalRawPayload[field] = trimmed;
+            }
+          }
+        };
+        assignFinal("street_number", parsedFallbackStreet.streetNumber);
+        assignFinal("street_name", parsedFallbackStreet.streetName);
+        assignFinal(
+          "street_pre_directional_text",
+          parsedFallbackStreet.streetPreDirectional,
+        );
+        assignFinal(
+          "street_post_directional_text",
+          parsedFallbackStreet.streetPostDirectional,
+        );
+        assignFinal("street_suffix_type", parsedFallbackStreet.streetSuffix);
+        assignFinal("unit_identifier", parsedFallbackStreet.unitIdentifier);
+        assignFinal("route_number", parsedFallbackStreet.routeNumber);
+        assignFinal("city_name", parsedFallbackCity.city);
+        assignFinal("state_code", parsedFallbackCity.state);
+        assignFinal("postal_code", parsedFallbackCity.postal);
+        assignFinal("plus_four_postal_code", parsedFallbackCity.plus4);
+        assignFinal("county_name", unnormalizedSource.county_jurisdiction);
+
+        const resolvedLat = parseCoordinate(
+          resolveFirstNonEmptyString([
+            currentAddress.latitude,
+            existingAddress.latitude,
+            unnormalizedSource.latitude,
+            seedSource.latitude,
+          ]),
+        );
+        const resolvedLon = parseCoordinate(
+          resolveFirstNonEmptyString([
+            currentAddress.longitude,
+            existingAddress.longitude,
+            unnormalizedSource.longitude,
+            seedSource.longitude,
+          ]),
+        );
+        finalRawPayload.latitude = Number.isFinite(resolvedLat)
+          ? resolvedLat
+          : null;
+        finalRawPayload.longitude = Number.isFinite(resolvedLon)
+          ? resolvedLon
+          : null;
+
+        if (finalRawPayload.state_code && !finalRawPayload.country_code) {
+          finalRawPayload.country_code = "US";
+        }
+        if (!finalRawPayload.postal_code) {
+          finalRawPayload.plus_four_postal_code = null;
+        }
+        if (
+          (finalRawPayload.latitude == null) !==
+          (finalRawPayload.longitude == null)
+        ) {
+          finalRawPayload.latitude = null;
+          finalRawPayload.longitude = null;
+        }
+
+        const finalRequestId = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            currentAddress.request_identifier,
+            existingAddress.request_identifier,
+            propertyPayload.request_identifier,
+            unnormalizedSource.request_identifier,
+            seedSource.request_identifier,
+          ]),
+        );
+        finalRawPayload.request_identifier =
+          finalRequestId === undefined ? null : finalRequestId;
+        const finalSourceHttp = resolveSourceHttpRequest(
+          currentAddress.source_http_request,
+          existingAddress.source_http_request,
+          propertyPayload.source_http_request,
+          unnormalizedSource.source_http_request,
+          seedSource.source_http_request,
+        );
+        finalRawPayload.source_http_request = finalSourceHttp
+          ? deepClone(finalSourceHttp)
+          : null;
+
+        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(finalRawPayload, field)) {
+            finalRawPayload[field] = null;
+          } else if (finalRawPayload[field] === undefined) {
+            finalRawPayload[field] = null;
+          }
+        });
+
+        originalWriteFileSync(
+          addressPath,
+          `${JSON.stringify(finalRawPayload, null, 2)}\n`,
+        );
+      }
     }
 
     const stabilizedProperty =
