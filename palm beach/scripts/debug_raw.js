@@ -10741,6 +10741,157 @@ function rewriteAddressAsRawVariant(addressPath, options = {}) {
   writeJSON(addressPath, payload);
 }
 
+// Build a deterministic address payload that cleanly selects a single oneOf branch.
+// Prefer a fully normalized surface when available; otherwise emit the raw branch
+// with every nullable field present so required properties are never omitted.
+function finalizeAddressSchemaPayload(addressPath, options = {}) {
+  if (!addressPath) return null;
+
+  const {
+    propertyPayload = {},
+    unnormalizedSource = {},
+    seedSource = {},
+    existingAddress = {},
+  } = options;
+
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingAddress.request_identifier,
+      propertyPayload.request_identifier,
+      unnormalizedSource.request_identifier,
+      seedSource.request_identifier,
+    ]),
+  );
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    existingAddress.source_http_request,
+    propertyPayload.source_http_request,
+    unnormalizedSource.source_http_request,
+    seedSource.source_http_request,
+  );
+
+  const normalizedCandidate =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({
+      ...seedSource,
+      ...unnormalizedSource,
+      ...propertyPayload,
+      ...existingAddress,
+    });
+  const hasNormalized =
+    normalizedCandidate && hasCompleteNormalizedAddress({ ...normalizedCandidate });
+
+  if (hasNormalized) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    for (const field of NORMALIZED_ADDRESS_FIELDS) {
+      const sanitized = sanitizeAddressFieldValue
+        ? sanitizeAddressFieldValue(field, normalizedCandidate[field])
+        : normalizedCandidate[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(sanitized);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        continue;
+      }
+      if (typeof sanitized === "string") {
+        const trimmed = sanitized.trim();
+        normalizedOut[field] = trimmed.length ? trimmed : null;
+        continue;
+      }
+      normalizedOut[field] =
+        sanitized === undefined || sanitized === null ? null : sanitized;
+    }
+
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+
+    normalizedOut.request_identifier =
+      resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+    normalizedOut.source_http_request = resolvedSourceHttp
+      ? deepClone(resolvedSourceHttp)
+      : null;
+
+    writeJSON(addressPath, normalizedOut);
+    return normalizedOut;
+  }
+
+  const rawAddress = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingAddress.unnormalized_address,
+      propertyPayload.unnormalized_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+    ]),
+  );
+  if (!rawAddress) {
+    removeFileIfExists(addressPath);
+    return null;
+  }
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawAddress };
+  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(
+        resolveFirstNonEmptyString([
+          existingAddress[field],
+          propertyPayload[field],
+          unnormalizedSource[field],
+          seedSource[field],
+        ]),
+      );
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      continue;
+    }
+
+    const candidate = resolveFirstNonEmptyString([
+      existingAddress[field],
+      propertyPayload[field],
+      unnormalizedSource[field],
+      seedSource[field],
+    ]);
+    const sanitized = sanitizeAddressFieldValue
+      ? sanitizeAddressFieldValue(field, candidate)
+      : candidate;
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+    } else if (sanitized === undefined) {
+      rawOut[field] = null;
+    } else {
+      rawOut[field] = sanitized;
+    }
+  }
+
+  if (rawOut.state_code && !rawOut.country_code) {
+    rawOut.country_code = "US";
+  }
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  rawOut.request_identifier =
+    resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
+  rawOut.source_http_request = resolvedSourceHttp
+    ? deepClone(resolvedSourceHttp)
+    : null;
+
+  writeJSON(addressPath, rawOut);
+  return rawOut;
+}
+
 // Final guard: emit a single address oneOf branch (normalized only when fully
 // populated, otherwise a lean raw payload) and force relationship placeholders
 // to null so UR hydration can occur downstream.
@@ -10759,23 +10910,12 @@ process.on("exit", () => {
     const seedSource = readJSONIfExists("property_seed.json") || {};
     const existingAddress = readJSONIfExists(addressPath) || {};
 
-    const countyCandidate = titleCaseCounty(
-      safeNullIfEmpty(
-        propertyPayload.county_name ||
-          existingAddress.county_name ||
-          unnormalizedSource.county_name ||
-          unnormalizedSource.county_jurisdiction ||
-          seedSource.county_name ||
-          "Palm Beach",
-      ),
-    );
-    rewriteAddressAsRawVariant(addressPath, {
+    finalizeAddressSchemaPayload(addressPath, {
       propertyPayload,
       unnormalizedSource,
       seedSource,
       existingAddress,
     });
-    enforceRawAddressSurface(addressPath);
     ensureRawAddressFieldPresence(addressPath);
 
     const stabilizedProperty =
