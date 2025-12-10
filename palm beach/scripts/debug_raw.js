@@ -82,6 +82,23 @@ function removeAddressRelationshipFiles(directoryPath) {
   });
 }
 
+function purgeAddressRelationshipArtifacts(directoryPath) {
+  if (!directoryPath || !fs.existsSync(directoryPath)) {
+    return;
+  }
+  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const base = entry.name.toLowerCase();
+    for (const managed of ADDRESS_RELATIONSHIP_BASENAMES) {
+      if (base.startsWith(managed.toLowerCase())) {
+        removeFileIfExists(path.join(directoryPath, entry.name));
+        break;
+      }
+    }
+  }
+}
+
 function ensureNullRelationshipPlaceholders(directoryPath, baseNames = []) {
   if (!directoryPath || !Array.isArray(baseNames) || !baseNames.length) {
     return;
@@ -12036,6 +12053,8 @@ async function main() {
   ensureDir(dataDir);
   const relationshipsDir = path.join("relationships");
   ensureDir(relationshipsDir);
+  purgeAddressRelationshipArtifacts(dataDir);
+  purgeAddressRelationshipArtifacts(relationshipsDir);
   const propertyFilePath = path.join(dataDir, "property.json");
   const propertyFileRelative = "./property.json";
   const addressFileRelative = "./address.json";
@@ -15465,7 +15484,19 @@ async function main() {
       ensureNormalizedAddressSchemaSurface({ ...addressPayload });
     const hasNormalizedCoverage =
       normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
-    const rawValue = safeNullIfEmpty(addressPayload.unnormalized_address);
+    const rawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        addressPayload.unnormalized_address,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.unnormalized_address,
+        unAddr && unAddr.full_address,
+      ]),
+    );
 
     const finalizeCoordinates = (target) => {
       const lat = parseCoordinate(target.latitude);
@@ -15496,13 +15527,26 @@ async function main() {
       ) {
         normalizedOut.country_code = "US";
       }
-      const requestId = safeNullIfEmpty(addressPayload.request_identifier);
+      const requestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          addressPayload.request_identifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
       normalizedOut.request_identifier =
         requestId === undefined ? null : requestId;
-      const preparedSource = prepareSourceHttpRequest(
+      const preparedSource = resolveSourceHttpRequest(
         addressPayload.source_http_request,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
       );
-      normalizedOut.source_http_request = preparedSource ? preparedSource : null;
+      normalizedOut.source_http_request = preparedSource
+        ? deepClone(preparedSource)
+        : null;
       if (
         Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
       ) {
@@ -15513,28 +15557,47 @@ async function main() {
         `${JSON.stringify(normalizedOut, null, 2)}\n`,
       );
     } else if (rawValue) {
-      // Emit a minimal raw branch: keep the unnormalized string and only the
-      // raw-compatible fields so we satisfy the oneOf discriminator without
-      // sprinkling incomplete normalized components.
-      const requestId = safeNullIfEmpty(addressPayload.request_identifier);
-      const preparedSource = prepareSourceHttpRequest(
-        addressPayload.source_http_request,
+      const requestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          addressPayload.request_identifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
       );
-      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-        const candidate = Object.prototype.hasOwnProperty.call(
-          addressPayload,
-          field,
-        )
-          ? addressPayload[field]
-          : null;
-        rawOut[field] = sanitizeAddressFieldValue
-          ? sanitizeAddressFieldValue(field, candidate)
-          : candidate ?? null;
+      const preparedSource = resolveSourceHttpRequest(
+        addressPayload.source_http_request,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      );
+      const rawOut =
+        ensureRawAddressSchemaDefaults({
+          ...addressPayload,
+          unnormalized_address: rawValue,
+        }) || { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (!Object.prototype.hasOwnProperty.call(rawOut, field)) {
+          rawOut[field] = null;
+          return;
+        }
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(rawOut[field]);
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (typeof rawOut[field] === "string") {
+          const trimmed = rawOut[field].trim();
+          rawOut[field] = trimmed.length ? trimmed : null;
+        } else if (rawOut[field] === undefined) {
+          rawOut[field] = null;
+        }
       });
-      rawOut.unnormalized_address = rawValue;
       rawOut.request_identifier = requestId === undefined ? null : requestId;
-      rawOut.source_http_request = preparedSource ? preparedSource : null;
+      rawOut.source_http_request = preparedSource
+        ? deepClone(preparedSource)
+        : null;
       finalizeCoordinates(rawOut);
       if (!rawOut.postal_code) {
         rawOut.plus_four_postal_code = null;
@@ -15558,6 +15621,8 @@ async function main() {
       removeAddressRelationshipFiles(dirPath);
       ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
     });
+    purgeAddressRelationshipArtifacts(dataDir);
+    purgeAddressRelationshipArtifacts(relationshipsDir);
   } catch (error) {
     console.error("Failed to stabilize final address payload surface:", error);
     if (!process.exitCode) {
