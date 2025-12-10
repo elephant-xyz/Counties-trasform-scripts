@@ -1422,14 +1422,14 @@ function writeSalesDeedsFilesAndRelationships($) {
     if (deedType) deed.deed_type = deedType;
 
     // Only include book and page if they have valid non-empty values
-    const bookValue = bookPageParts[0] ? bookPageParts[0].trim() : null;
-    const pageValue = bookPageParts[1] ? bookPageParts[1].trim() : null;
+    const bookValue = bookPageParts[0] ? String(bookPageParts[0]).trim() : null;
+    const pageValue = bookPageParts[1] ? String(bookPageParts[1]).trim() : null;
 
     if (bookValue && bookValue.length > 0) {
-      deed.book = bookValue;
+      deed.book = String(bookValue);
     }
     if (pageValue && pageValue.length > 0) {
-      deed.page = pageValue;
+      deed.page = String(pageValue);
     }
 
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
