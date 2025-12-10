@@ -1396,13 +1396,6 @@ function enforceRawAddressSurface(addressFilePath) {
       stabilized[field] = null;
     }
   });
-  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-    if (!Object.prototype.hasOwnProperty.call(stabilized, field)) {
-      stabilized[field] = null;
-    } else if (stabilized[field] === undefined) {
-      stabilized[field] = null;
-    }
-  });
 
   writeJSON(addressFilePath, stabilized);
 }
@@ -1420,7 +1413,7 @@ function ensureRawAddressFieldPresence(addressFilePath) {
     return;
   }
 
-  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
     if (!Object.prototype.hasOwnProperty.call(payload, field)) {
       payload[field] = null;
     } else if (payload[field] === undefined) {
@@ -6302,8 +6295,24 @@ const ADDRESS_SCHEMA_FIELDS = [
 // satisfied even when we only have an unnormalized string. The presence of
 // `unnormalized_address` drives the branch choice, while the normalized fields
 // stay null when we don't have structured components.
+// Raw variant keeps only the coarse-grained fields plus request metadata;
+// omit street-line components so the raw oneOf branch doesn't demand
+// normalized coverage when we only have an unnormalized string.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
+  "latitude",
+  "longitude",
+  "city_name",
+  "country_code",
+  "plus_four_postal_code",
+  "postal_code",
+  "state_code",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "county_name",
+  "municipality_name",
   "request_identifier",
   "source_http_request",
 ];
@@ -10838,7 +10847,7 @@ function finalizeAddressSchemaPayload(addressPath, options = {}) {
   }
 
   const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawAddress };
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(
         resolveFirstNonEmptyString([
@@ -15514,16 +15523,34 @@ async function main() {
         `${JSON.stringify(normalizedOut, null, 2)}\n`,
       );
     } else if (rawValue) {
-      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
-      for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
-        if (field === "request_identifier" || field === "source_http_request") {
-          continue;
-        }
-        const candidate = Object.prototype.hasOwnProperty.call(addressPayload, field)
-          ? addressPayload[field]
-          : null;
-        rawOut[field] = sanitizeAddressFieldValue(field, candidate);
-      }
+      // Emit a minimal raw branch: keep the unnormalized string and only the
+      // raw-compatible fields so we satisfy the oneOf discriminator without
+      // sprinkling incomplete normalized components.
+      const requestId = safeNullIfEmpty(addressPayload.request_identifier);
+      const preparedSource = prepareSourceHttpRequest(
+        addressPayload.source_http_request,
+      );
+      const rawOut = {
+        unnormalized_address: rawValue,
+        latitude: addressPayload.latitude,
+        longitude: addressPayload.longitude,
+        postal_code: safeNullIfEmpty(addressPayload.postal_code),
+        plus_four_postal_code: safeNullIfEmpty(
+          addressPayload.plus_four_postal_code,
+        ),
+        city_name: safeNullIfEmpty(addressPayload.city_name),
+        municipality_name: safeNullIfEmpty(addressPayload.municipality_name),
+        county_name: safeNullIfEmpty(addressPayload.county_name),
+        state_code: safeNullIfEmpty(addressPayload.state_code),
+        country_code: safeNullIfEmpty(addressPayload.country_code),
+        section: safeNullIfEmpty(addressPayload.section),
+        township: safeNullIfEmpty(addressPayload.township),
+        range: safeNullIfEmpty(addressPayload.range),
+        block: safeNullIfEmpty(addressPayload.block),
+        lot: safeNullIfEmpty(addressPayload.lot),
+        request_identifier: requestId === undefined ? null : requestId,
+        source_http_request: preparedSource ? preparedSource : null,
+      };
       finalizeCoordinates(rawOut);
       if (!rawOut.postal_code) {
         rawOut.plus_four_postal_code = null;
@@ -15534,12 +15561,6 @@ async function main() {
       ) {
         rawOut.country_code = "US";
       }
-      const requestId = safeNullIfEmpty(addressPayload.request_identifier);
-      rawOut.request_identifier = requestId === undefined ? null : requestId;
-      const preparedSource = prepareSourceHttpRequest(
-        addressPayload.source_http_request,
-      );
-      rawOut.source_http_request = preparedSource ? preparedSource : null;
       originalWriteFileSync(
         addressOutputPath,
         `${JSON.stringify(rawOut, null, 2)}\n`,
