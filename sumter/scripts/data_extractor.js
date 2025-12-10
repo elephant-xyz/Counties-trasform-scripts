@@ -1417,11 +1417,21 @@ function writeSalesDeedsFilesAndRelationships($) {
     const deedType = mapInstrumentToDeedType(s.instrument);
     const bookPageParts = s.bookPage ? s.bookPage.split('/') : [null, null];
     const deed = {
-      ...appendSourceInfo(seed),
-      book: bookPageParts[0] || null,
-      page: bookPageParts[1] || null
+      ...appendSourceInfo(seed)
     };
     if (deedType) deed.deed_type = deedType;
+
+    // Only include book and page if they have valid non-empty values
+    const bookValue = bookPageParts[0] ? bookPageParts[0].trim() : null;
+    const pageValue = bookPageParts[1] ? bookPageParts[1].trim() : null;
+
+    if (bookValue && bookValue.length > 0) {
+      deed.book = bookValue;
+    }
+    if (pageValue && pageValue.length > 0) {
+      deed.page = pageValue;
+    }
+
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
