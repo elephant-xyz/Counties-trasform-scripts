@@ -2744,6 +2744,7 @@ function extractSalesHistoryEntries($) {
       file: {
         book,
         page,
+        link: bookLink,
       },
     });
   });
@@ -2785,9 +2786,27 @@ function writeSalesHistoryArtifacts($, seed, dataDir, appendSourceInfo) {
       relSD,
     );
 
+    // Build file name from book/page if available
+    let fileName = "Deed Document";
+    if (entry.file.book && entry.file.page) {
+      fileName = `Deed ${entry.file.book}/${entry.file.page}`;
+    } else if (entry.file.book) {
+      fileName = `Deed ${entry.file.book}`;
+    }
+
+    // Only include original_url if it's a valid absolute URL, otherwise set to null
+    let originalUrl = null;
+    if (entry.file.link && /^https?:\/\//i.test(entry.file.link)) {
+      originalUrl = entry.file.link;
+    }
+
     const fileObj = {
       ...appendSourceInfo(seed),
       document_type: "Title",
+      file_format: null,
+      ipfs_url: null,
+      name: fileName,
+      original_url: originalUrl,
     };
     writeJson(path.join(dataDir, fileFile), fileObj);
 
