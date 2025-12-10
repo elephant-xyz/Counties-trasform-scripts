@@ -2909,6 +2909,12 @@ function main() {
         continue;
       }
       writeOut(`sales_${i}.json`, out);
+      // Create property->sales relationship
+      const relPropertySales = {
+        from: { "/": "./property.json" },
+        to: { "/": `./sales_${i}.json` },
+      };
+      writeOut(`relationship_property_sales_${i}.json`, relPropertySales);
       let book = bookIdx >= 0 ? row[bookIdx] || null : null;
       let page = pageIdx >= 0 ? row[pageIdx] || null : null;
       let instrType = instrTypeIdx >= 0 ? row[instrTypeIdx] || null : null;
@@ -3094,7 +3100,11 @@ function main() {
         let relPersonCounter = 0;
         let relCompanyCounter = 0;
         const personMap = new Map();
-        Object.values(ownersByDate).forEach((arr) => {
+        // Only collect persons from dates that have sales records or current owners
+        const relevantDates = new Set([...Object.keys(salesOwnerMapping), 'current']);
+        Object.entries(ownersByDate).forEach(([date, arr]) => {
+          // Include persons only if they're from a sale date or current owners
+          if (!relevantDates.has(date)) return;
           (arr || []).forEach((o) => {
             if (o.type === "person") {
               const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -3131,7 +3141,10 @@ function main() {
           writeOut(`person_${loopIdx++}.json`, p);
         }
         const companyNames = new Set();
-        Object.values(ownersByDate).forEach((arr) => {
+        // Only collect companies from dates that have sales records or current owners
+        Object.entries(ownersByDate).forEach(([date, arr]) => {
+          // Include companies only if they're from a sale date or current owners
+          if (!relevantDates.has(date)) return;
           (arr || []).forEach((o) => {
             if (o.type === "company" && (o.name || "").trim())
               companyNames.add((o.name || "").trim().toUpperCase());
