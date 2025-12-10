@@ -6325,18 +6325,17 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch aligned with the schema oneOf by carrying the full
-// normalized surface (as nullable) alongside the unnormalized string. This
-// ensures required keys like latitude/longitude and street components are
-// present even when only a raw address is available.
+// Keep the raw branch aligned with the schema oneOf while prioritizing the
+// unnormalized branch when that is all we have from the source.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
+  "unnormalized_address",
   ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
   "source_http_request",
 ];
 
 // Fields that may accompany the raw (unnormalized) address payload.
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([...RAW_ADDRESS_NORMALIZED_ONLY_FIELDS]);
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
   new Set(
@@ -6346,7 +6345,7 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
   ),
 );
 
-const RAW_ADDRESS_OUTPUT_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
+const RAW_ADDRESS_OUTPUT_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
