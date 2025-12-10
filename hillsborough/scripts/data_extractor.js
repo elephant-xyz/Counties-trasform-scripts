@@ -3289,6 +3289,13 @@ function normalizeCompanyKey(o) {
   return name || null;
 }
 
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
 
 // function parseFullAddress(full) {
 //   // Example: "7405 MIRACLE LN ODESSA, FL 33556-4117"
@@ -4176,20 +4183,32 @@ function main() {
   });
   // console.log(uniquePersons,uniqueCompanies)
   // Create person files
-  uniquePersons.forEach((entry, idx) => {
+  let personIdx = 0;
+  uniquePersons.forEach((entry) => {
     const o = entry.o;
+
+    // Validate first_name and last_name before creating person
+    const firstName = o.first_name || "";
+    const lastName = o.last_name || "";
+
+    if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+      console.log(`Skipping person with invalid name: first="${firstName}", last="${lastName}"`);
+      return; // Skip this person
+    }
+
+    personIdx++;
     const person = {
       ...appendSourceInfo(seed),
       birth_date: null,
-      first_name: o.first_name || "",
-      last_name: o.last_name || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: o.middle_name || null,
       prefix_name: o.prefix_name,
       suffix_name: o.suffix_name,
       us_citizenship_status: null,
       veteran_status: null,
     };
-    const pFile = `person_${idx + 1}.json`;
+    const pFile = `person_${personIdx}.json`;
     writeJson(path.join(dataDir, pFile), person);
     personFilesByKey[entry.key] = pFile;
   });
