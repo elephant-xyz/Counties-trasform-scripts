@@ -12976,6 +12976,140 @@ function finalizeMinimalAddressOneOf(addressPath, options = {}) {
   writeJSON(addressPath, rawOut);
 }
 
+function forceAddressOneOfResolution(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath) || {};
+  const unnormalizedCandidates = [
+    payload.unnormalized_address,
+    payload.full_address,
+    ...(options.unnormalizedCandidates || []),
+  ];
+  const rawValue = safeNullIfEmpty(resolveFirstNonEmptyString(unnormalizedCandidates));
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const normalizedReady =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedReady) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      const candidate = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
+        ? normalizedSurface[field]
+        : null;
+      const sanitized = sanitizeAddressFieldValue(field, candidate);
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(sanitized);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof sanitized === "string") {
+        const trimmed = sanitized.trim();
+        normalizedOut[field] = trimmed.length ? trimmed : null;
+      } else {
+        normalizedOut[field] = sanitized === undefined ? null : sanitized;
+      }
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    const normalizedRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        payload.request_identifier,
+        options.requestIdentifier,
+        ...(options.requestIdentifierCandidates || []),
+      ]),
+    );
+    normalizedOut.request_identifier =
+      normalizedRequestId === undefined ? null : normalizedRequestId;
+    const normalizedSource = resolveSourceHttpRequest(
+      payload.source_http_request,
+      options.sourceHttpRequest,
+      ...(options.sourceHttpRequestCandidates || []),
+    );
+    normalizedOut.source_http_request = normalizedSource
+      ? deepClone(normalizedSource)
+      : null;
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const fieldSources = [
+    payload,
+    options.seedSource || {},
+    options.unnormalizedSource || {},
+    ...(options.fieldSources || []),
+  ].filter((src) => src && typeof src === "object");
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "request_identifier" || field === "source_http_request") {
+      return;
+    }
+    const candidate = resolveFirstNonEmptyString(
+      fieldSources.map((src) => Object.prototype.hasOwnProperty.call(src, field) ? src[field] : null),
+    );
+    const sanitized = sanitizeAddressFieldValue(field, candidate);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(sanitized);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = sanitized === undefined ? null : sanitized;
+  });
+
+  rawOut.request_identifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      options.requestIdentifier,
+      ...(options.requestIdentifierCandidates || []),
+    ]),
+  );
+  const rawSourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+    options.sourceHttpRequest,
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+  rawOut.source_http_request = rawSourceHttp ? deepClone(rawSourceHttp) : null;
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  writeJSON(addressPath, rawOut);
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -16971,6 +17105,55 @@ async function main() {
     purgeAddressRelationshipArtifacts(relationshipsDir);
   } catch (error) {
     console.error("Failed to finalize minimal address oneOf payload:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    forceAddressOneOfResolution(addressOutputPath, {
+      unnormalizedCandidates: [
+        ...finalUnnormalizedCandidates,
+        unAddr && unAddr.unnormalized_address,
+        unAddr && unAddr.full_address,
+        seed && seed.unnormalized_address,
+      ],
+      fieldSources: [
+        unAddr,
+        seed,
+      ],
+      requestIdentifier:
+        trimmedRequestIdentifier ||
+        parcelId ||
+        (seed && seed.request_identifier) ||
+        (unAddr && unAddr.request_identifier),
+      requestIdentifierCandidates: [
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ],
+      sourceHttpRequest:
+        sourceHttpCandidate ||
+        (seed && seed.source_http_request) ||
+        (unAddr && unAddr.source_http_request),
+      sourceHttpRequestCandidates: [
+        sourceHttpCandidate,
+        unAddr && unAddr.source_http_request,
+        seed && seed.source_http_request,
+      ],
+      seedSource: seed || {},
+      unnormalizedSource: unAddr || {},
+    });
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+    purgeAddressRelationshipArtifacts(dataDir);
+    purgeAddressRelationshipArtifacts(relationshipsDir);
+  } catch (error) {
+    console.error("Failed to stabilize terminal address oneOf selection:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
