@@ -938,27 +938,12 @@ function sanitizeAddressPayloadForWrite(payload) {
       }
     };
 
-    const rawSurfaceFields = [
-      "street_number",
-      "street_name",
-      "street_pre_directional_text",
-      "street_post_directional_text",
-      "street_suffix_type",
-      "unit_identifier",
-      "route_number",
-      "city_name",
-      "municipality_name",
-      "state_code",
-      "postal_code",
-      "plus_four_postal_code",
-      "country_code",
-      "county_name",
-      "township",
-      "range",
-      "section",
-      "block",
-      "lot",
-    ];
+    const rawSurfaceFields = RAW_ADDRESS_ALLOWED_FIELDS.filter(
+      (field) =>
+        field !== "unnormalized_address" &&
+        field !== "request_identifier" &&
+        field !== "source_http_request",
+    );
 
     rawSurfaceFields.forEach((field) => maybeAssignField(field));
 
@@ -998,6 +983,12 @@ function sanitizeAddressPayloadForWrite(payload) {
       : Object.prototype.hasOwnProperty.call(payload, "source_http_request")
         ? null
         : rawOut.source_http_request;
+
+    Object.keys(rawOut).forEach((key) => {
+      if (!RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET.has(key)) {
+        delete rawOut[key];
+      }
+    });
 
     return stripAddressRequestMetadata(rawOut);
   }
@@ -6289,6 +6280,11 @@ const STREET_SUFFIX_ENUM = [
 const NORMALIZED_ADDRESS_FIELDS = [
   "latitude",
   "longitude",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
   "city_name",
   "country_code",
   "plus_four_postal_code",
@@ -6301,11 +6297,6 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "street_suffix_type",
   "unit_identifier",
   "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
   "county_name",
   "municipality_name",
 ];
@@ -6319,7 +6310,15 @@ const ADDRESS_SCHEMA_FIELDS = [
 // unnormalized branch when that is all we have from the source.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
   "unnormalized_address",
-  ...NORMALIZED_ADDRESS_FIELDS,
+  "latitude",
+  "longitude",
+  "section",
+  "township",
+  "range",
+  "block",
+  "lot",
+  "county_name",
+  "country_code",
   "request_identifier",
   "source_http_request",
 ];
@@ -6336,26 +6335,20 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
 
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
-const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-]);
-
-// Fields that may accompany the raw (unnormalized) address payload.
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([...RAW_ADDRESS_NORMALIZED_ONLY_FIELDS]);
-
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set(
-    RAW_MINIMAL_ADDRESS_FIELDS.filter(
-      (field) => !RAW_ADDRESS_EXCLUDED_FIELDS.has(field),
-    ),
+const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set(
+  NORMALIZED_ADDRESS_FIELDS.filter(
+    (field) => !RAW_MINIMAL_ADDRESS_FIELDS.includes(field),
   ),
 );
 
-const RAW_ADDRESS_OUTPUT_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
+// Fields that may accompany the raw (unnormalized) address payload; keep this
+// minimal so the raw oneOf branch is clearly selected when only an
+// unnormalized string is available.
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([...RAW_ADDRESS_NORMALIZED_ONLY_FIELDS]);
+
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(new Set(RAW_MINIMAL_ADDRESS_FIELDS));
+
+const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS));
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
@@ -6382,7 +6375,6 @@ function buildRawAddressSnapshot(options = {}) {
     requestIdentifierCandidates = [],
     sourceHttpRequestCandidates = [],
     countyFallback = null,
-    stateFallback = null,
     countryFallback = "US",
   } = options;
 
@@ -6408,7 +6400,14 @@ function buildRawAddressSnapshot(options = {}) {
     ? fieldSources.filter((src) => src && typeof src === "object")
     : [];
 
-  for (const field of NORMALIZED_ADDRESS_FIELDS) {
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (
+      field === "unnormalized_address" ||
+      field === "request_identifier" ||
+      field === "source_http_request"
+    ) {
+      continue;
+    }
     let candidate;
     for (const src of sources) {
       if (Object.prototype.hasOwnProperty.call(src, field)) {
@@ -6429,7 +6428,6 @@ function buildRawAddressSnapshot(options = {}) {
 
     if (!candidate) {
       if (field === "county_name") candidate = countyFallback;
-      if (field === "state_code") candidate = stateFallback;
       if (field === "country_code") candidate = countryFallback;
     }
 
@@ -6829,7 +6827,7 @@ function emitFinalCountyAddressOneOf(addressPath, options = {}) {
   writeJSON(addressPath, rawOut);
 }
 
-const RAW_ADDRESS_SURFACE_FIELDS = ["unnormalized_address", ...RAW_ADDRESS_ALLOWED_FIELDS];
+const RAW_ADDRESS_SURFACE_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS));
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
@@ -6838,10 +6836,9 @@ const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 const RAW_VARIANT_SCHEMA_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
 
-const RAW_ADDRESS_RAW_VARIANT_FIELDS = [
-  "unnormalized_address",
-  ...RAW_ADDRESS_ALLOWED_FIELDS,
-];
+const RAW_ADDRESS_RAW_VARIANT_FIELDS = Array.from(
+  new Set(RAW_ADDRESS_ALLOWED_FIELDS),
+);
 
 const RAW_ONE_OF_MINIMAL_FIELDS = new Set([
   "latitude",
@@ -8472,6 +8469,12 @@ function ensureRawAddressSchemaDefaults(address) {
   if (result.state_code && !result.country_code) {
     result.country_code = "US";
   }
+
+  Object.keys(result).forEach((key) => {
+    if (!RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET.has(key)) {
+      delete result[key];
+    }
+  });
 
   return result;
 }
