@@ -136,6 +136,14 @@ function toTitleCase(str) {
     );
 }
 
+function isValidElephantName(name) {
+  // Validates against Elephant schema pattern for first_name and last_name
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!name) return false;
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return pattern.test(name);
+}
+
 function normalizeAffixKey(value) {
   return value ? value.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
 }
@@ -311,6 +319,15 @@ function classifyPersonName(name) {
 
   if (!first || !last) return null;
 
+  // Apply title case to names
+  const titleCasedFirst = toTitleCase(first);
+  const titleCasedLast = toTitleCase(last);
+
+  // Validate first and last names against Elephant schema pattern
+  if (!isValidElephantName(titleCasedFirst) || !isValidElephantName(titleCasedLast)) {
+    return null;
+  }
+
   // Validate and apply title case for middle name
   let validMiddleName = null;
   if (middle) {
@@ -322,8 +339,8 @@ function classifyPersonName(name) {
 
   return {
     type: "person",
-    first_name: toTitleCase(first),
-    last_name: toTitleCase(last),
+    first_name: titleCasedFirst,
+    last_name: titleCasedLast,
     middle_name: validMiddleName,
     prefix_name,
     suffix_name,

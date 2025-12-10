@@ -3528,6 +3528,14 @@ function isValidMiddleName(name) {
   return pattern.test(name);
 }
 
+function isValidElephantName(name) {
+  // Validates against Elephant schema pattern for first_name and last_name
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  if (!name) return false;
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  return pattern.test(name);
+}
+
 function normalizeOwnerKey(o) {
   if (!o) return null;
   const fn = (o.first_name || "").trim().toLowerCase();
@@ -4192,11 +4200,21 @@ function main() {
   // Create person files
   uniquePersons.forEach((entry, idx) => {
     const o = entry.o;
+
+    // Validate first_name and last_name before creating person file
+    const firstName = o.first_name || "";
+    const lastName = o.last_name || "";
+
+    if (!isValidElephantName(firstName) || !isValidElephantName(lastName)) {
+      // Skip this person if names don't match the Elephant schema pattern
+      return;
+    }
+
     const person = {
       ...appendSourceInfo(seed),
       birth_date: null,
-      first_name: o.first_name || "",
-      last_name: o.last_name || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: (o.middle_name && isValidMiddleName(o.middle_name)) ? o.middle_name : null,
       prefix_name: o.prefix_name || null,
       suffix_name: o.suffix_name || null,
