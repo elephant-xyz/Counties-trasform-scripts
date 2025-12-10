@@ -95,6 +95,7 @@ const COMPANY_KEYWORDS = [
   "services",
   "trust",
   "tr",
+  "estate",
   "associates",
   "association",
   "holdings",

@@ -1673,7 +1673,7 @@ function isCompanyName(name) {
   if (!name) return false;
   const COMPANY_KEYWORDS = [
     "llc", "l.l.c", "inc", "corp", "corporation", "co", "company", "ltd",
-    "limited", "trust", "lp", "llp", "l.p", "l.l.p", "pllc", "plc"
+    "limited", "trust", "estate", "lp", "llp", "l.p", "l.l.p", "pllc", "plc"
   ];
   const n = name.toLowerCase();
   return COMPANY_KEYWORDS.some((kw) =>
