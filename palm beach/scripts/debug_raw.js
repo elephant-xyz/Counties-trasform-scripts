@@ -13309,7 +13309,10 @@ function buildRawAddressFromSource(options = {}) {
     ]),
   );
 
+  // Start from the raw schema template so every nullable field required by the
+  // raw oneOf branch is present (as null when missing) instead of omitted.
   const payload = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
     request_identifier: requestId === undefined ? null : requestId,
     source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
