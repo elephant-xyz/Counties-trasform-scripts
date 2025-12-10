@@ -2014,7 +2014,11 @@ const specificDocumentTypeMap = {
 
     removeFiles("data", (file) =>
       /^layout_\d+\.json$/i.test(file) ||
-      /^relationship_layout_.*\.json$/i.test(file),
+      /^relationship_layout_.*\.json$/i.test(file) ||
+      /^structure_\d+\.json$/i.test(file) ||
+      /^relationship_.*structure.*\.json$/i.test(file) ||
+      /^utility_\d+\.json$/i.test(file) ||
+      /^relationship_.*utility.*\.json$/i.test(file),
     );
 
     const preparedBuildings = (() => {
@@ -2266,9 +2270,20 @@ const specificDocumentTypeMap = {
       });
     };
 
+    const singleBuildingLayoutIndex =
+      buildingLayoutRecords.length === 1
+        ? buildingLayoutRecords[0].index
+        : null;
+
     layoutRecords.forEach(({ index, parentIndex }) => {
-      if (parentIndex == null) return;
-      createLayoutToLayoutRelationship(parentIndex, index);
+      const effectiveParent =
+        parentIndex != null
+          ? parentIndex
+          : singleBuildingLayoutIndex && index !== singleBuildingLayoutIndex
+            ? singleBuildingLayoutIndex
+            : null;
+      if (effectiveParent == null) return;
+      createLayoutToLayoutRelationship(effectiveParent, index);
     });
 
     let utilityCounter = 0;
@@ -2381,16 +2396,30 @@ const specificDocumentTypeMap = {
           }
         }
       }
-      propertyUtilityRecords.forEach((record) =>
-        createPropertyRelationship("utility", record.index),
-      );
+      propertyUtilityRecords.forEach((record) => {
+        if (singleBuildingLayoutIndex) {
+          createLayoutToUtilityRelationship(
+            singleBuildingLayoutIndex,
+            record.index,
+          );
+        } else {
+          createPropertyRelationship("utility", record.index);
+        }
+      });
     };
 
     const assignStructures = () => {
       if (!structureRecords.length) {
-        propertyStructureRecords.forEach((record) =>
-          createPropertyRelationship("structure", record.index),
-        );
+        propertyStructureRecords.forEach((record) => {
+          if (singleBuildingLayoutIndex) {
+            createLayoutToStructureRelationship(
+              singleBuildingLayoutIndex,
+              record.index,
+            );
+          } else {
+            createPropertyRelationship("structure", record.index);
+          }
+        });
         return;
       }
       if (!buildingLayoutRecords.length) {
@@ -2421,9 +2450,16 @@ const specificDocumentTypeMap = {
           }
         }
       }
-      propertyStructureRecords.forEach((record) =>
-        createPropertyRelationship("structure", record.index),
-      );
+      propertyStructureRecords.forEach((record) => {
+        if (singleBuildingLayoutIndex) {
+          createLayoutToStructureRelationship(
+            singleBuildingLayoutIndex,
+            record.index,
+          );
+        } else {
+          createPropertyRelationship("structure", record.index);
+        }
+      });
     };
 
     assignUtilities();

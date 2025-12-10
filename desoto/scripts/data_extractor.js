@@ -179,6 +179,9 @@ function formatNameToPattern(name) {
   if (!name) return null;
   let cleaned = name.trim();
 
+  // Return null if empty after trimming
+  if (!cleaned) return null;
+
   // Replace forward slashes with hyphens to conform to the schema pattern
   // This is a logical replacement as '/' often implies a separation similar to '-'
   cleaned = cleaned.replace(/\//g, '-');
@@ -186,8 +189,14 @@ function formatNameToPattern(name) {
   // Replace multiple spaces with a single space
   cleaned = cleaned.replace(/\s+/g, ' ');
 
+  // Remove trailing delimiters (periods, commas, hyphens, apostrophes)
+  cleaned = cleaned.replace(/[ \-',.]+$/, '');
+
+  // Return null if empty after removing trailing delimiters
+  if (!cleaned) return null;
+
   // Split by spaces, hyphens, apostrophes, commas, periods, keeping the delimiters
-  return cleaned.split(/([ \-',.])/)
+  const result = cleaned.split(/([ \-',.])/)
     .map((part) => {
       if (!part) return ''; // Handle empty parts from splitting
       if (part.match(/[ \-',.]/)) { // If it's a delimiter, return it as is
@@ -196,7 +205,20 @@ function formatNameToPattern(name) {
       // For actual name parts, capitalize the first letter and lowercase the rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     })
-    .join('');
+    .join('')
+    .trim();
+
+  // Remove any trailing delimiters that might have been added during processing
+  const finalResult = result.replace(/[ \-',.]+$/, '');
+
+  // Validate the result matches the required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!finalResult || !namePattern.test(finalResult)) {
+    return null;
+  }
+
+  return finalResult;
 }
 
 
@@ -358,102 +380,7 @@ const structureData = fs.existsSync(structureDataPath)
   globalThis.__ownerCompanyFiles = ownerCompanyFiles;
   globalThis.__ownerPersonFiles = ownerPersonFiles;
 
-  // 1b) MAILING ADDRESS
-  // Pull mailing address lines from the Owner block, omitting the bolded owner names.
-  function extractMailingAddressLines($root) {
-    let lines = null;
-    $root("table.parcelDetails_insideTable tr").each((_, tr) => {
-      const tds = $root(tr).find("td");
-      if (tds.length >= 2) {
-        const label = $root(tds[0]).text().trim();
-        if (/^Owner$/i.test(label)) {
-          const cellHtml = $root(tds[1]).html() || "";
-          const htmlWithoutBold = cellHtml.replace(/<\s*\/?b[^>]*>/gi, "");
-          const parts = htmlWithoutBold
-            .split(/<br\s*\/?>/i)
-            .map((segment) => segment.replace(/<[^>]+>/g, ""))
-            .map((segment) => segment.replace(/\s+/g, " ").trim())
-            .filter(Boolean);
-          if (parts.length) {
-            // Remove leading owner name(s) if present (bold text originally)
-            const candidateLines = [];
-            parts.forEach((part, idx) => {
-              if (idx === 0) {
-                const looksLikeAddress =
-                  /^(\d+\s+.+)/.test(part) ||
-                  /^P\.?O\.?\s*BOX/i.test(part) ||
-                  /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?$/.test(part);
-                if (looksLikeAddress) candidateLines.push(part);
-              } else {
-                candidateLines.push(part);
-              }
-            });
-            lines =
-              candidateLines.length
-                ? candidateLines
-                : parts.length > 1
-                  ? parts.slice(1)
-                  : parts;
-          }
-          return false;
-        }
-      }
-      return true;
-    });
-    return lines;
-  }
-
-  const mailingAddressLines = extractMailingAddressLines($);
-  if (mailingAddressLines && mailingAddressLines.length) {
-    const unnormalizedMailingAddress = mailingAddressLines.join(", ");
-    const defaultSource =
-      propertySeed?.source_http_request ||
-      unnormalizedAddress?.source_http_request || {
-        method: "GET",
-        url:
-          propertySeed?.source_http_request?.url ||
-          unnormalizedAddress?.source_http_request?.url ||
-          "https://www.desotopa.com/gis",
-        multiValueQueryString: {},
-      };
-    const mailingAddress = {
-      source_http_request: defaultSource,
-      request_identifier:
-        propertySeed?.request_identifier ||
-        unnormalizedAddress?.request_identifier ||
-        hyphenParcel ||
-        propertySeed?.parcel_id ||
-        null,
-      unnormalized_address: unnormalizedMailingAddress,
-      latitude: null,
-      longitude: null,
-    };
-    writeJson(path.join("data", "mailing_address.json"), mailingAddress);
-
-    const mailingPath = "./mailing_address.json";
-
-    ownerCompanyFiles.forEach((companyPath) => {
-      const relName = relationshipFileName(companyPath, mailingPath);
-      writeJson(
-        path.join("data", relName),
-        {
-          from: { "/": companyPath },
-          to: { "/": mailingPath },
-        },
-      );
-    });
-
-    ownerPersonFiles.forEach((personPath) => {
-      const relName = relationshipFileName(personPath, mailingPath);
-      writeJson(
-        path.join("data", relName),
-        {
-          from: { "/": personPath },
-          to: { "/": mailingPath },
-        },
-      );
-    });
-  }
+  // Mailing address extraction removed - not supported in the current schema
 
   // 2) UTILITIES
   if (utilitiesData) {
