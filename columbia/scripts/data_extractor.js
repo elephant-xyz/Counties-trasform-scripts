@@ -2147,7 +2147,7 @@ const specificDocumentTypeMap = {
       return layoutCounter;
     };
 
-    if (!isLandProperty && preparedBuildings.length) {
+    if (preparedBuildings.length) {
       preparedBuildings.forEach((building, buildingIdx) => {
         const buildingOrder = buildingIdx + 1;
         const buildingSpaceIndex = String(buildingOrder);
