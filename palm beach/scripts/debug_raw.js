@@ -6295,24 +6295,10 @@ const ADDRESS_SCHEMA_FIELDS = [
 // satisfied even when we only have an unnormalized string. The presence of
 // `unnormalized_address` drives the branch choice, while the normalized fields
 // stay null when we don't have structured components.
-// Raw variant keeps only the coarse-grained fields plus request metadata;
-// omit street-line components so the raw oneOf branch doesn't demand
-// normalized coverage when we only have an unnormalized string.
+// Raw variant now mirrors the normalized field surface (as nullable) to keep
+// required properties present even when only a raw string is available.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
-  "latitude",
-  "longitude",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "county_name",
-  "municipality_name",
+  ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
   "source_http_request",
 ];
