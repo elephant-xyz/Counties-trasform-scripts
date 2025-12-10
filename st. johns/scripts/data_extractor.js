@@ -1456,8 +1456,8 @@ function extractSales($) {
     const page = textOf($(tds[5]));
     const bookPage = `${textOf($(tds[4]))}/${textOf($(tds[5]))}`;
     const link = $(tds[5]).find("a").last().attr("href") || null;
-    const grantor = textOf($(tds[9]));
-    const grantee = textOf($(tds[10]));
+    const grantor = textOf($(tds[8]));
+    const grantee = textOf($(tds[9]));
     out.push({
       saleDate,
       salePrice,
@@ -1669,6 +1669,18 @@ function findCompanyIndexByName(name) {
   return null;
 }
 
+function isCompanyName(name) {
+  if (!name) return false;
+  const COMPANY_KEYWORDS = [
+    "llc", "l.l.c", "inc", "corp", "corporation", "co", "company", "ltd",
+    "limited", "trust", "lp", "llp", "l.p", "l.l.p", "pllc", "plc"
+  ];
+  const n = name.toLowerCase();
+  return COMPANY_KEYWORDS.some((kw) =>
+    new RegExp(`(^|\\b)${kw}(\\b|\.$)`, "i").test(n),
+  );
+}
+
 function titleCaseName(s) {
   if (!s) return s;
   return s
@@ -1733,6 +1745,13 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
+  // Also extract companies from sales grantor field
+  (sales || []).forEach((sale) => {
+    const grantorName = (sale.grantor || "").trim();
+    if (grantorName && isCompanyName(grantorName)) {
+      companyNames.add(grantorName.toUpperCase());
+    }
+  });
   companies = Array.from(companyNames).map((n) => {
     const company = {
       name: n,
@@ -1795,6 +1814,25 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
           );
         }
       });
+    // Also create relationship for grantor if it's a company
+    const grantorName = (rec.grantor || "").trim();
+    if (grantorName && isCompanyName(grantorName)) {
+      const cIdx = findCompanyIndexByName(grantorName);
+      if (cIdx) {
+        usedCompanyIdx.add(cIdx);
+        relCompanyCounter++;
+        writeJSON(
+          path.join(
+            "data",
+            `relationship_sales_history_${idx + 1}_has_company_${relCompanyCounter}.json`,
+          ),
+          {
+            to: { "/": `./company_${cIdx}.json` },
+            from: { "/": `./sales_history_${idx + 1}.json` },
+          },
+        );
+      }
+    }
   });
   if (hasOwnerMailingAddress) {
     const currentOwner = ownersByDate["current"] || [];
