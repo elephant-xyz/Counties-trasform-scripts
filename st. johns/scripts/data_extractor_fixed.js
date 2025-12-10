@@ -1893,6 +1893,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     .forEach((o) => {
       const pIdx = findPersonIndexByName(o.first_name, o.last_name);
       if (pIdx) {
+        usedPersonIdx.add(pIdx);
         relPersonMailingCounter++;
         writeJSON(
           path.join(
@@ -1911,6 +1912,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     .forEach((o) => {
       const cIdx = findCompanyIndexByName(o.name);
       if (cIdx) {
+        usedCompanyIdx.add(cIdx);
         relCompanyMailingCounter++;
         writeJSON(
           path.join(
