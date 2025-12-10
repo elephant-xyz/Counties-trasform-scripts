@@ -95,7 +95,108 @@ function parsePersonNames(nameStr) {
   let middle_name = null;
   let suffix_name = null;
 
-  // RULE 3A: Check if the name contains '&'
+  // Helper function to detect if a special character indicates multiple persons
+  function detectMultiplePersonsSeparator(nameStr) {
+    // Check for special characters with spaces around them that likely indicate two persons
+    // Patterns: " - ", " / ", " + ", " | ", " \\ "
+    const separatorPatterns = [
+      { regex: /\s+-\s+/, char: '-' },
+      { regex: /\s+\/\s+/, char: '/' },
+      { regex: /\s+\+\s+/, char: '+' },
+      { regex: /\s+\|\s+/, char: '|' },
+      { regex: /\s+\\\s+/, char: '\\' }
+    ];
+
+    for (const pattern of separatorPatterns) {
+      if (pattern.regex.test(nameStr)) {
+        // Split by this pattern
+        const parts = nameStr.split(pattern.regex).map(s => s.trim()).filter(Boolean);
+
+        if (parts.length >= 2) {
+          // Additional heuristic: Check if each part looks like it could be a name
+          // Each part should have at least one letter
+          const allPartsValid = parts.every(part => /[A-Za-z]/.test(part));
+
+          if (allPartsValid) {
+            return { hasSeparator: true, separator: pattern.char, parts: parts };
+          }
+        }
+      }
+    }
+
+    return { hasSeparator: false };
+  }
+
+  // RULE 3A: Check for special character separators (other than &)
+  const separatorCheck = detectMultiplePersonsSeparator(cleaned);
+  if (separatorCheck.hasSeparator) {
+    const parts = separatorCheck.parts;
+
+    // Check if this is ALL CAPS format (CAD style)
+    const isAllCaps = cleaned === cleaned.toUpperCase();
+
+    // Try to determine if it's two separate persons or one person with special chars
+    // Heuristic: If both parts have 2+ words, they're likely separate full names
+    const part1Words = parts[0].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
+    const part2Words = parts[1].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
+
+    // Case 1: Both parts look like full names (2+ words each) - treat as two persons
+    if (part1Words.length >= 2 || part2Words.length >= 2) {
+      // Parse each part separately as individual persons
+      const person1 = parseSinglePersonName(parts[0]);
+      if (person1) {
+        persons.push(person1);
+      }
+
+      const person2 = parseSinglePersonName(parts[1]);
+      if (person2) {
+        persons.push(person2);
+      }
+
+      return persons;
+    }
+
+    // Case 2: First part has 2+ words, second part has 1 word - could be shared last name
+    if (isAllCaps && part1Words.length >= 2 && part2Words.length === 1) {
+      const sharedLastName = titleCaseName(part1Words[0]);
+      const firstName1 = titleCaseName(part1Words.slice(1).join(" "));
+      const firstName2 = titleCaseName(part2Words[0]);
+
+      if (firstName1) {
+        persons.push({
+          first_name: firstName1,
+          last_name: sharedLastName,
+          middle_name: null,
+          prefix_name: null,
+          suffix_name: null,
+          birth_date: null,
+          us_citizenship_status: null,
+          veteran_status: null,
+        });
+      }
+
+      if (firstName2) {
+        persons.push({
+          first_name: firstName2,
+          last_name: sharedLastName,
+          middle_name: null,
+          prefix_name: null,
+          suffix_name: null,
+          birth_date: null,
+          us_citizenship_status: null,
+          veteran_status: null,
+        });
+      }
+
+      return persons;
+    }
+
+    // Case 3: Couldn't determine pattern - remove the separator and treat as single person
+    cleaned = cleaned.replace(/\s+[-\/+|\\\s]+\s+/g, " ").replace(/\s+/g, " ").trim();
+    // Continue to single person parsing below
+  }
+
+  // RULE 3B: Check if the name contains '&'
   // NEW LOGIC: Split into TWO person objects (for human names without entity keywords)
   if (cleaned.includes("&")) {
     const parts = cleaned.split("&").map(s => s.trim()).filter(Boolean);
@@ -287,7 +388,7 @@ function parsePersonNames(nameStr) {
     };
   }
 
-  // RULE 3B: Single person without '&' - use smart format detection
+  // RULE 3C: Single person without special separators - use smart format detection
   // Keep only: letters, spaces, hyphens, apostrophes, commas, periods
   cleaned = cleaned.replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim();
 
@@ -1817,16 +1918,6 @@ function parseMailingAddress(mailingAddressText) {
     let streetPart = m[2].trim();
     const streetWords = streetPart.split(/\s+/);
 
-    if (
-      streetWords.length > 0 &&
-      ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW'].includes(
-        streetWords[0].toUpperCase(),
-      )
-    ) {
-      street_pre_directional_text = streetWords[0].toUpperCase();
-      streetWords.splice(0, 1);
-    }
-
     // Check for directionals and suffix (from right to left)
     for (let i = streetWords.length - 1; i >= 0; i--) {
       const wordUpper = streetWords[i].toUpperCase();
@@ -1866,16 +1957,6 @@ function parseMailingAddress(mailingAddressText) {
       let streetPart = m[1].trim();
       const streetWords = streetPart.split(/\s+/);
 
-      if (
-        streetWords.length > 0 &&
-        ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW'].includes(
-          streetWords[0].toUpperCase(),
-        )
-      ) {
-        street_pre_directional_text = streetWords[0].toUpperCase();
-        streetWords.splice(0, 1);
-      }
-
       for (let i = streetWords.length - 1; i >= 0; i--) {
         const wordUpper = streetWords[i].toUpperCase();
 
@@ -1910,7 +1991,7 @@ function parseMailingAddress(mailingAddressText) {
     }
   }
 
-  // Return schema-compliant address structure (without street component fields)
+  // Return schema-compliant address structure (mailing address includes unnormalized)
   return {
     source_http_request: null,
     request_identifier: null,
@@ -1966,16 +2047,6 @@ function parseAddress(unnormalizedPath, situsText) {
 
     // Extract street suffix and directionals
     const streetWords = streetPart.split(/\s+/);
-
-    if (
-      streetWords.length > 0 &&
-      ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW'].includes(
-        streetWords[0].toUpperCase(),
-      )
-    ) {
-      street_pre_directional_text = streetWords[0].toUpperCase();
-      streetWords.splice(0, 1);
-    }
 
     // Check for directionals and suffix
     for (let i = streetWords.length - 1; i >= 0; i--) {
@@ -2033,16 +2104,6 @@ function parseAddress(unnormalizedPath, situsText) {
       // Extract street suffix and directionals (same logic as above)
       const streetWords = streetPart.split(/\s+/);
 
-      if (
-        streetWords.length > 0 &&
-        ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW'].includes(
-          streetWords[0].toUpperCase(),
-        )
-      ) {
-        street_pre_directional_text = streetWords[0].toUpperCase();
-        streetWords.splice(0, 1);
-      }
-
       for (let i = streetWords.length - 1; i >= 0; i--) {
         const word = streetWords[i];
         const wordUpper = word.toUpperCase();
@@ -2099,16 +2160,6 @@ function parseAddress(unnormalizedPath, situsText) {
 
           const streetWords = streetPart.split(/\s+/);
 
-          if (
-            streetWords.length > 0 &&
-            ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW'].includes(
-              streetWords[0].toUpperCase(),
-            )
-          ) {
-            street_pre_directional_text = streetWords[0].toUpperCase();
-            streetWords.splice(0, 1);
-          }
-
           for (let i = streetWords.length - 1; i >= 0; i--) {
             const word = streetWords[i];
             const wordUpper = word.toUpperCase();
@@ -2164,11 +2215,7 @@ function parseAddress(unnormalizedPath, situsText) {
   return {
     source_http_request: addrSeed.source_http_request || null,
     request_identifier: addrSeed.request_identifier || null,
-    street_number: street_number || null,
-    street_name: street_name || null,
-    street_pre_directional_text: street_pre_directional_text || null,
-    street_post_directional_text: street_post_directional_text || null,
-    street_suffix_type: street_suffix_type || null,
+    unnormalized_address: null,
     unit_identifier: null,
     city_name: city_name || null,
     municipality_name: null,

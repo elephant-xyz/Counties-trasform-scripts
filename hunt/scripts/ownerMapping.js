@@ -183,6 +183,60 @@ function parsePersonSingle(raw) {
   };
 }
 
+function parseSpecialSeparatorPersons(raw, separator) {
+  // Split on the separator into parts
+  const separatorRegex = new RegExp(`\\s*${separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`);
+  const parts = raw
+    .split(separatorRegex)
+    .map((s) => normSpace(s))
+    .filter(Boolean);
+  if (parts.length < 2) return [];
+
+  // Similar logic to parseAmpersandPersons
+  const isUpper = isAllCaps(raw.replace(separatorRegex, " ").trim());
+  const p1Tokens = splitTokens(parts[0]);
+  const p2Tokens = splitTokens(parts[1]);
+
+  // Heuristic 1: UPPERCASE CAD style - shared last name
+  if (
+    isUpper &&
+    p1Tokens.length >= 2 &&
+    p2Tokens.length >= 1 &&
+    !(/,/.test(parts[0]) || /,/.test(parts[1]))
+  ) {
+    const sharedLast = p1Tokens[0];
+    const first1 = p1Tokens.slice(1).join(" ");
+    const first2 = p2Tokens.join(" ");
+    const owners = [];
+    if (first1)
+      owners.push({
+        type: "person",
+        first_name: titleCaseName(first1),
+        last_name: titleCaseName(sharedLast),
+        middle_name: null,
+      });
+    if (first2)
+      owners.push({
+        type: "person",
+        first_name: titleCaseName(first2),
+        last_name: titleCaseName(sharedLast),
+        middle_name: null,
+      });
+    return owners;
+  }
+
+  // Heuristic 2: Each part looks like its own full name
+  const owners = [];
+  parts.forEach((part) => {
+    const parsed = parsePersonSingle(part);
+    if (parsed.valid) {
+      parsed.owner.middle_name = sanitizeMiddleName(parsed.owner.middle_name);
+      owners.push(parsed.owner);
+    }
+  });
+  return owners;
+}
+
 function parseAmpersandPersons(raw) {
   // Split on & into parts
   const parts = raw
@@ -248,6 +302,37 @@ function classifyAndSplit(raw) {
   // Company detection first
   if (looksLikeCompany(s)) {
     return { owners: [{ type: "company", name: s }], invalids: [] };
+  }
+
+  // Check for special character separators (other than &)
+  // Patterns: " - ", " / ", " + ", " | "
+  const specialSeparators = [
+    { regex: /\s+-\s+/, char: '-' },
+    { regex: /\s+\/\s+/, char: '/' },
+    { regex: /\s+\+\s+/, char: '+' },
+    { regex: /\s+\|\s+/, char: '|' }
+  ];
+
+  for (const sep of specialSeparators) {
+    if (sep.regex.test(s)) {
+      const people = parseSpecialSeparatorPersons(s, sep.char);
+      if (people.length > 0) {
+        people.forEach((p) => {
+          p.middle_name = sanitizeMiddleName(p.middle_name);
+        });
+        return { owners: people, invalids: [] };
+      }
+      // If parsing failed, clean the separator and treat as single person
+      const cleaned = s.replace(sep.regex, " ").replace(/\s{2,}/g, " ").trim();
+      const parsed = parsePersonSingle(cleaned);
+      if (parsed.valid) {
+        const o = parsed.owner;
+        o.middle_name = sanitizeMiddleName(o.middle_name);
+        return { owners: [o], invalids: [] };
+      }
+      // If still can't parse, continue to next checks
+      break;
+    }
   }
 
   // Contains ampersand => multiple persons
