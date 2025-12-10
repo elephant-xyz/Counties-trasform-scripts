@@ -6334,6 +6334,26 @@ const RAW_MINIMAL_ADDRESS_FIELDS = [
   "source_http_request",
 ];
 
+const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
+  "street_number",
+  "street_name",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+  "county_name",
+];
+
+const RAW_SCHEMA_REQUIRED_FIELDS = [];
+
+const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "street_pre_directional_text",
+  "street_post_directional_text",
+]);
+
 // Fields that may accompany the raw (unnormalized) address payload.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([...RAW_ADDRESS_NORMALIZED_ONLY_FIELDS]);
 
@@ -6847,26 +6867,6 @@ const RAW_ONE_OF_MINIMAL_FIELDS = new Set([
   "range",
   "block",
   "lot",
-]);
-
-const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
-  "street_number",
-  "street_name",
-  "city_name",
-  "state_code",
-  "postal_code",
-  "country_code",
-  "county_name",
-];
-
-const RAW_SCHEMA_REQUIRED_FIELDS = [];
-
-const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set([
-  "street_number",
-  "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
 ]);
 
 const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS];
