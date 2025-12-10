@@ -15034,7 +15034,8 @@ async function main() {
             candidate = countyCandidate;
           }
 
-          rawOutput[field] = sanitizeAddressFieldValue(field, candidate);
+          const sanitized = sanitizeAddressFieldValue(field, candidate);
+          rawOutput[field] = sanitized === undefined ? null : sanitized;
         }
 
         rawOutput.unnormalized_address = rawAddress;
@@ -15042,7 +15043,10 @@ async function main() {
         if (!rawOutput.postal_code) {
           rawOutput.plus_four_postal_code = null;
         }
-        if (rawOutput.state_code && !rawOutput.country_code) {
+        if (
+          hasMeaningfulAddressValue(rawOutput.state_code) &&
+          !hasMeaningfulAddressValue(rawOutput.country_code)
+        ) {
           rawOutput.country_code = "US";
         }
         if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
