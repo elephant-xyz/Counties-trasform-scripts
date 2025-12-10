@@ -446,7 +446,9 @@ function cleanText(text) {
 }
 
 function titleCase(str) {
-  return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  // Only capitalize letter sequences, ignore special characters
+  // This ensures names match the pattern ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return (str || "").replace(/[A-Za-z]+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
 const COMPANY_KEYWORDS =
@@ -490,9 +492,16 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
 
-  let last = tokens[0];
-  let first = tokens[1] || null;
-  let middle = tokens.length > 2 ? tokens.slice(2).join(" ") : null;
+  // Helper to clean name parts - remove trailing periods and special chars
+  const cleanNamePart = (part) => {
+    if (!part) return part;
+    // Remove any non-letter characters except internal spaces, hyphens, apostrophes
+    return part.replace(/[^A-Za-z\s\-']/g, "").trim();
+  };
+
+  let last = cleanNamePart(tokens[0]);
+  let first = cleanNamePart(tokens[1]) || null;
+  let middle = tokens.length > 2 ? tokens.slice(2).map(cleanNamePart).join(" ").trim() : null;
 
   if (
     fallbackLastName &&
@@ -501,20 +510,23 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     tokens[0] === tokens[0].toUpperCase() &&
     tokens[1]
   ) {
-    first = tokens[0];
-    middle = tokens[1] || null;
+    first = cleanNamePart(tokens[0]);
+    middle = cleanNamePart(tokens[1]) || null;
     last = fallbackLastName;
   }
 
   if (middle) {
     const mids = middle.split(" ").filter((t) => !SUFFIXES_IGNORE.test(t));
-    middle = mids.join(" ") || null;
+    middle = mids.join(" ").trim() || null;
   }
+
+  // Don't create person if essential name parts are empty after cleaning
+  if (!first || !last) return null;
 
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
+    first_name: titleCase(first),
+    last_name: titleCase(last),
     middle_name: middle ? titleCase(middle) : null,
   };
 }
