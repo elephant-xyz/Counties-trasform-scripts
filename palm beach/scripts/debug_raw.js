@@ -8035,6 +8035,81 @@ consumePostDirectional();
   return result;
 }
 
+function buildDeterministicRawAddress(options = {}) {
+  const {
+    rawAddress,
+    streetLine,
+    cityStateLine,
+    countyName,
+    latitude,
+    longitude,
+    requestIdentifier,
+    sourceHttpRequest,
+    defaultStateCode = "FL",
+  } = options;
+
+  const rawValue = safeNullIfEmpty(rawAddress);
+  if (!rawValue) return null;
+
+  const base = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  base.unnormalized_address = rawValue;
+
+  const streetSource =
+    safeNullIfEmpty(streetLine) ||
+    (rawValue.includes(",") ? rawValue.split(",")[0] : rawValue);
+  const parsedStreet = parseLocationAddress(streetSource);
+  const cityState = parseCityStatePostal(
+    safeNullIfEmpty(cityStateLine) || rawValue,
+  );
+
+  base.street_number = safeNullIfEmpty(parsedStreet.streetNumber);
+  base.street_name = parsedStreet.streetName
+    ? parsedStreet.streetName.toUpperCase()
+    : null;
+  base.street_pre_directional_text = safeNullIfEmpty(
+    parsedStreet.streetPreDirectional,
+  );
+  base.street_post_directional_text = safeNullIfEmpty(
+    parsedStreet.streetPostDirectional,
+  );
+  base.street_suffix_type = safeNullIfEmpty(parsedStreet.streetSuffix);
+  base.unit_identifier = safeNullIfEmpty(parsedStreet.unitIdentifier);
+  base.route_number = safeNullIfEmpty(parsedStreet.routeNumber);
+
+  base.city_name = cityState.city ? cityState.city.toUpperCase() : null;
+  base.state_code = cityState.state || defaultStateCode || null;
+  base.postal_code = cityState.postal || null;
+  base.plus_four_postal_code = cityState.plus4 || null;
+  base.county_name = countyName
+    ? titleCaseCounty(countyName)
+    : titleCaseCounty("Palm Beach");
+  base.country_code = "US";
+
+  const latNum = parseCoordinate(latitude);
+  const lonNum = parseCoordinate(longitude);
+  base.latitude = Number.isFinite(latNum) ? latNum : null;
+  base.longitude = Number.isFinite(lonNum) ? lonNum : null;
+  if ((base.latitude == null) !== (base.longitude == null)) {
+    base.latitude = null;
+    base.longitude = null;
+  }
+
+  base.request_identifier =
+    requestIdentifier === undefined ? null : requestIdentifier || null;
+  const preparedSource = resolveSourceHttpRequest(sourceHttpRequest);
+  base.source_http_request = preparedSource ? deepClone(preparedSource) : null;
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    const normalized = sanitizeAddressFieldValue(field, base[field]);
+    base[field] = normalized === undefined ? null : normalized;
+  });
+
+  if (!base.postal_code) {
+    base.plus_four_postal_code = null;
+  }
+  return ensureAddressOutputFieldPresence(base) || base;
+}
+
 function sanitizePostalCode(value) {
   if (!value) return null;
   const stringValue = String(value);
@@ -17926,6 +18001,75 @@ async function main() {
     }
   } catch (error) {
     console.error("Failed to enforce exclusive address oneOf branch:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  // Deterministic raw override to satisfy address oneOf with the source's unnormalized string
+  // while keeping relationships null for downstream auto-generation.
+  try {
+    const existingAddress = readJSONIfExists(addressOutputPath) || {};
+    const rawAddressString = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        existingAddress.unnormalized_address,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+
+    if (rawAddressString) {
+      const requestIdOverride = resolveFirstNonEmptyString([
+        existingAddress.request_identifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ]);
+      const sourceHttpOverride = resolveSourceHttpRequest(
+        existingAddress.source_http_request,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      );
+      const finalRaw = buildDeterministicRawAddress({
+        rawAddress: rawAddressString,
+        streetLine: siteLocationLine || combinedModelAddress || fullAddr,
+        cityStateLine: addressLine3 || fullAddr,
+        countyName: formattedCountyName || countyName || "Palm Beach",
+        latitude:
+          Number.isFinite(initialLatitude) && Number.isFinite(initialLongitude)
+            ? initialLatitude
+            : parcelCentroid && parcelCentroid.latitude,
+        longitude:
+          Number.isFinite(initialLongitude) && Number.isFinite(initialLatitude)
+            ? initialLongitude
+            : parcelCentroid && parcelCentroid.longitude,
+        requestIdentifier: requestIdOverride,
+        sourceHttpRequest: sourceHttpOverride,
+        defaultStateCode: inferredStateCode || "FL",
+      });
+      if (finalRaw) {
+        writeJSON(addressOutputPath, finalRaw);
+      }
+    }
+
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(
+        dirPath,
+        Array.from(RELATIONSHIP_AUTOGENERATED_BASENAMES),
+      );
+      purgeAddressRelationshipArtifacts(dirPath);
+    });
+  } catch (error) {
+    console.error("Failed to apply deterministic raw override for address payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
