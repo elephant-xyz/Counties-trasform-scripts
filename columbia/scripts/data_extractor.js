@@ -2014,7 +2014,11 @@ const specificDocumentTypeMap = {
 
     removeFiles("data", (file) =>
       /^layout_\d+\.json$/i.test(file) ||
-      /^relationship_layout_.*\.json$/i.test(file),
+      /^relationship_layout_.*\.json$/i.test(file) ||
+      /^structure_\d+\.json$/i.test(file) ||
+      /^relationship_.*structure.*\.json$/i.test(file) ||
+      /^utility_\d+\.json$/i.test(file) ||
+      /^relationship_.*utility.*\.json$/i.test(file),
     );
 
     const preparedBuildings = (() => {
