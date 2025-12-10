@@ -8992,6 +8992,113 @@ function rewriteAddressToUnnormalizedOnly(addressPath, options = {}) {
   originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
 }
 
+// Trim a raw address payload down to the minimal oneOf surface when we only
+// have an unnormalized string from the source.
+function enforceMinimalRawAddressVariant(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const payload = readJSONIfExists(addressPath) || {};
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      options.rawFallback,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      options.requestIdentifier,
+      ...(options.requestIdentifierCandidates || []),
+    ]),
+  );
+  const sourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+    options.sourceHttpRequest,
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  const coordinates = Array.isArray(options.coordinateCandidates)
+    ? options.coordinateCandidates.find(
+        (candidate) =>
+          candidate &&
+          Number.isFinite(parseCoordinate(candidate.latitude)) &&
+          Number.isFinite(parseCoordinate(candidate.longitude)),
+      )
+    : null;
+
+  const optionalFieldCandidates =
+    options.fieldCandidates && typeof options.fieldCandidates === "object"
+      ? options.fieldCandidates
+      : {};
+
+  const minimal = {
+    unnormalized_address: rawValue,
+    request_identifier: requestId === undefined ? null : requestId,
+    source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
+  };
+
+  const OPTIONAL_FIELDS = [
+    "county_name",
+    "country_code",
+    "municipality_name",
+    "section",
+    "township",
+    "range",
+    "block",
+    "lot",
+    "state_code",
+    "city_name",
+    "postal_code",
+    "plus_four_postal_code",
+    "latitude",
+    "longitude",
+  ];
+
+  OPTIONAL_FIELDS.forEach((field) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(
+        payload[field] ??
+          (coordinates && coordinates[field]) ??
+          (optionalFieldCandidates[field] ?? null),
+      );
+      if (Number.isFinite(numeric)) {
+        minimal[field] = numeric;
+      }
+      return;
+    }
+
+    const resolved = resolveFirstNonEmptyString([
+      payload[field],
+      optionalFieldCandidates[field],
+      options.countyFallback && field === "county_name"
+        ? options.countyFallback
+        : null,
+    ]);
+    if (typeof resolved === "string") {
+      const trimmed = resolved.trim();
+      if (trimmed.length) {
+        minimal[field] =
+          field === "county_name" ? toTitleCase(trimmed) : trimmed;
+      }
+    }
+  });
+
+  if (minimal.state_code && !minimal.country_code) {
+    minimal.country_code = "US";
+  }
+  if (!minimal.postal_code) {
+    delete minimal.plus_four_postal_code;
+  }
+
+  writeJSON(addressPath, minimal);
+}
+
 function enforceRawAddressSchemaDefaults(payload) {
   if (!payload || typeof payload !== "object") return null;
 
@@ -18008,6 +18115,62 @@ async function main() {
     });
   } catch (error) {
     console.error("Failed to collapse address to raw variant:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    const addressPath = path.join(dataDir, "address.json");
+    enforceMinimalRawAddressVariant(addressPath, {
+      rawFallback:
+        unnormalizedAddressCandidate ||
+        combinedModelAddress ||
+        siteLocationLine ||
+        fullAddr ||
+        fullAddrInput ||
+        addressLineCombined ||
+        addressLine1,
+      rawCandidates: [
+        addressLine2,
+        addressLine3,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ],
+      requestIdentifier: trimmedRequestIdentifier || parcelId,
+      requestIdentifierCandidates: [
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ],
+      sourceHttpRequest: sourceHttpCandidate,
+      sourceHttpRequestCandidates: [
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ],
+      countyFallback: formattedCountyName || countyName || defaultCounty,
+      coordinateCandidates: [
+        { latitude: initialLatitude, longitude: initialLongitude },
+        parcelCentroid,
+      ],
+      fieldCandidates: {
+        state_code: inferredStateCode,
+        city_name: resolvedCity || normalizedCity,
+        postal_code: fallbackPostalValue || postalCode,
+        plus_four_postal_code: fallbackPlus4Value || plus4,
+        municipality_name: municipality || normalizedCity,
+      },
+    });
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(
+        dirPath,
+        Array.from(RELATIONSHIP_AUTOGENERATED_BASENAMES),
+      );
+      purgeAddressRelationshipArtifacts(dirPath);
+    });
+  } catch (error) {
+    console.error("Failed to enforce minimal raw address variant:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
