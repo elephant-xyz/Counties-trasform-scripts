@@ -3520,6 +3520,31 @@ function writeJSON(filePath, obj) {
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2));
 }
 
+function titleCaseName(name) {
+  // Converts a name to title case while preserving special patterns
+  // Handles names like "McDonald", "O'Brien", "Jean-Pierre", etc.
+  if (!name || typeof name !== 'string') return null;
+
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Split by word boundaries (spaces, hyphens, apostrophes, etc.)
+  const parts = trimmed.split(/(\s|-|'|,|\.)/);
+
+  const formatted = parts.map((part, idx) => {
+    // Keep separators as-is
+    if (/^(\s|-|'|,|\.)$/.test(part)) return part;
+
+    // Empty parts
+    if (!part) return part;
+
+    // Convert to title case: first letter uppercase, rest lowercase
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join('');
+
+  return formatted || null;
+}
+
 function isValidMiddleName(name) {
   // Validate against Elephant schema pattern for middle_name
   // Pattern requires: start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
@@ -4189,9 +4214,16 @@ function main() {
   uniquePersons.forEach((entry, idx) => {
     const o = entry.o;
 
+    // Format names using title case before validation
+    const firstName = titleCaseName(o.first_name);
+    const lastName = titleCaseName(o.last_name);
+    const middleName = titleCaseName(o.middle_name);
+
     // Validate first_name and last_name before creating person file
-    const firstName = o.first_name || "";
-    const lastName = o.last_name || "";
+    if (!firstName || !lastName) {
+      // Skip if names are empty after formatting
+      return;
+    }
 
     if (!isValidElephantName(firstName) || !isValidElephantName(lastName)) {
       // Skip this person if names don't match the Elephant schema pattern
@@ -4203,7 +4235,7 @@ function main() {
       birth_date: null,
       first_name: firstName,
       last_name: lastName,
-      middle_name: (o.middle_name && isValidMiddleName(o.middle_name)) ? o.middle_name : null,
+      middle_name: (middleName && isValidMiddleName(middleName)) ? middleName : null,
       prefix_name: o.prefix_name || null,
       suffix_name: o.suffix_name || null,
       us_citizenship_status: null,
