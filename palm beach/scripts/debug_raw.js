@@ -6331,24 +6331,12 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch minimal: prefer the unnormalized surface plus only the
-// metadata and high-level location fields that the schema allows for the raw
-// variant. Avoid forcing the full normalized surface into the raw branch so the
-// oneOf discriminator can reliably pick the correct schema.
+// Keep the raw branch aligned with the schema oneOf by carrying the full
+// normalized surface (as nullable) alongside the unnormalized string. This
+// ensures required keys like latitude/longitude and street components are
+// present even when only a raw address is available.
 const RAW_MINIMAL_ADDRESS_FIELDS = [
-  "county_name",
-  "country_code",
-  "state_code",
-  "city_name",
-  "municipality_name",
-  "postal_code",
-  "plus_four_postal_code",
-  "section",
-  "township",
-  "range",
-  "block",
-  "lot",
-  "route_number",
+  ...NORMALIZED_ADDRESS_FIELDS,
   "request_identifier",
   "source_http_request",
 ];
