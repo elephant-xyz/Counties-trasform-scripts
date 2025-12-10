@@ -1927,11 +1927,16 @@ function normalizeOwner(owner, ownersByDate) {
         c.first_name &&
         c.first_name.toLowerCase().startsWith(owner.first_name.toLowerCase())
       ) {
+        // Apply titleCase to ensure proper formatting from external data
+        const normalizedFirst = titleCase(c.first_name || owner.first_name || "");
+        const normalizedMiddle = c.middle_name != null ? titleCase(c.middle_name) : owner.middle_name;
+        const normalizedLast = titleCase(c.last_name || owner.last_name || "");
+
         return {
           ...owner,
-          first_name: c.first_name || owner.first_name,
-          middle_name:
-            c.middle_name != null ? c.middle_name : owner.middle_name,
+          first_name: normalizedFirst,
+          middle_name: normalizedMiddle,
+          last_name: normalizedLast,
         };
       }
     }
