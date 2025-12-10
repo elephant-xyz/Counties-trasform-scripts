@@ -2357,7 +2357,7 @@ const specificDocumentTypeMap = {
 
     structuresArr.forEach((structure) => addStructure(structure, false));
     // Do not create structure entities for extra features (carports, barns, etc.)
-    extraStructuresArr.forEach((structure) => addStructure(structure, true));
+    // extraStructuresArr.forEach((structure) => addStructure(structure, true));
 
     const createLayoutToUtilityRelationship = (layoutIdx, utilityIdx) => {
       const relName = `relationship_layout_${layoutIdx}_has_utility_${utilityIdx}.json`;
