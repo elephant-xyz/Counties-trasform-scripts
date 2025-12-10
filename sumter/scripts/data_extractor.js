@@ -919,6 +919,8 @@ function extractLotDetails($) {
   });
   if (lotSizeAcre == null) return null;
   const lotAreaSqft = Math.round(lotSizeAcre * 43560);
+  // Ensure lot_area_sqft is at least 1 to meet schema constraint
+  if (lotAreaSqft < 1) return null;
   return {
     lot_size_acre: lotSizeAcre,
     lot_area_sqft: lotAreaSqft,
