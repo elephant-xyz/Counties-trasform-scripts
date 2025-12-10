@@ -11730,24 +11730,41 @@ process.on("exit", () => {
           seedSource.county_name,
         ]),
       );
-      const rawOut = {
-        unnormalized_address: rawValue,
-        request_identifier: requestId === undefined ? null : requestId,
-        source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
-      };
-      if (countyCandidate) {
-        rawOut.county_name = titleCaseCounty(countyCandidate);
-        rawOut.country_code = "US";
+
+      const hydratedRaw =
+        ensureRawAddressRequiredCoverage(
+          {
+            ...existingAddress,
+            ...propertyPayload,
+            ...unnormalizedSource,
+            ...seedSource,
+            county_name: countyCandidate
+              ? titleCaseCounty(countyCandidate)
+              : existingAddress.county_name,
+          },
+          rawValue,
+        ) || {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          unnormalized_address: rawValue,
+          county_name: countyCandidate ? titleCaseCounty(countyCandidate) : null,
+        };
+
+      hydratedRaw.request_identifier =
+        requestId === undefined ? null : requestId;
+      hydratedRaw.source_http_request = sourceHttp ? deepClone(sourceHttp) : null;
+
+      if (
+        hasMeaningfulAddressValue(hydratedRaw.state_code) &&
+        !hasMeaningfulAddressValue(hydratedRaw.country_code)
+      ) {
+        hydratedRaw.country_code = "US";
+      } else if (!hasMeaningfulAddressValue(hydratedRaw.country_code)) {
+        hydratedRaw.country_code = countyCandidate ? "US" : hydratedRaw.country_code;
       }
-      Object.keys(rawOut).forEach((key) => {
-        if (rawOut[key] === null || rawOut[key] === undefined) {
-          delete rawOut[key];
-        }
-      });
 
       originalWriteFileSync(
         addressPath,
-        `${JSON.stringify(rawOut, null, 2)}\n`,
+        `${JSON.stringify(hydratedRaw, null, 2)}\n`,
       );
     } else {
       removeFileIfExists(addressPath);
@@ -18258,8 +18275,22 @@ async function main() {
       defaultCounty: formattedCountyName || countyName || "Palm Beach",
     });
 
-    if (finalRawPayload) {
-      writeJSON(addressPath, finalRawPayload);
+    const resolvedRaw = finalRawPayload
+      ? safeNullIfEmpty(finalRawPayload.unnormalized_address)
+      : null;
+
+    if (resolvedRaw) {
+      const hydratedRaw =
+        ensureRawAddressRequiredCoverage(finalRawPayload, resolvedRaw) || {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...finalRawPayload,
+          unnormalized_address: resolvedRaw,
+        };
+
+      originalWriteFileSync(
+        addressPath,
+        `${JSON.stringify(hydratedRaw, null, 2)}\n`,
+      );
     } else {
       removeFileIfExists(addressPath);
     }
