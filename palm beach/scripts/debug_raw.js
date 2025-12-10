@@ -1426,25 +1426,13 @@ function ensureRawAddressFieldPresence(addressFilePath) {
     return;
   }
 
-  if (!safeNullIfEmpty(payload.unnormalized_address)) {
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue || !String(rawValue).trim().length) {
     return;
   }
 
-  const allowed = new Set([
-    "unnormalized_address",
-    "request_identifier",
-    "source_http_request",
-    ...RAW_ADDRESS_ALLOWED_FIELDS,
-  ]);
-
-  const cleaned = {
-    unnormalized_address: payload.unnormalized_address.trim(),
-  };
-
-  allowed.forEach((field) => {
-    if (field === "unnormalized_address") return;
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) return;
-
+  const cleaned = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
     let value = payload[field];
     if (field === "source_http_request") {
       const prepared = prepareSourceHttpRequest(value);
@@ -1458,20 +1446,26 @@ function ensureRawAddressFieldPresence(addressFilePath) {
     } else if (value === undefined) {
       value = null;
     }
-
-    if (value !== undefined) {
-      cleaned[field] = value;
-    }
+    cleaned[field] = value;
   });
 
+  cleaned.unnormalized_address = String(rawValue).trim();
+
+  if (!cleaned.postal_code) {
+    cleaned.plus_four_postal_code = null;
+  }
+  if (cleaned.state_code && !cleaned.country_code) {
+    cleaned.country_code = "US";
+  }
+  if ((cleaned.latitude == null) !== (cleaned.longitude == null)) {
+    cleaned.latitude = null;
+    cleaned.longitude = null;
+  }
   if (!Object.prototype.hasOwnProperty.call(cleaned, "request_identifier")) {
     cleaned.request_identifier = null;
   }
   if (!Object.prototype.hasOwnProperty.call(cleaned, "source_http_request")) {
     cleaned.source_http_request = null;
-  }
-  if (cleaned.state_code && !cleaned.country_code) {
-    cleaned.country_code = "US";
   }
 
   originalWriteFileSync(
