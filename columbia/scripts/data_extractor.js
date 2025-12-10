@@ -2357,7 +2357,7 @@ const specificDocumentTypeMap = {
 
     structuresArr.forEach((structure) => addStructure(structure, false));
     // Do not create structure entities for extra features (carports, barns, etc.)
-    // extraStructuresArr.forEach((structure) => addStructure(structure, true));
+    extraStructuresArr.forEach((structure) => addStructure(structure, true));
 
     const createLayoutToUtilityRelationship = (layoutIdx, utilityIdx) => {
       const relName = `relationship_layout_${layoutIdx}_has_utility_${utilityIdx}.json`;
@@ -2394,7 +2394,7 @@ const specificDocumentTypeMap = {
               space_type_index: "1",
               total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
               livable_area_sq_ft: toNumber(livable) ?? null,
-              area_under_air_sq_ft: toNumber(areaUnderAir) ?? null,
+              area_under_air_sq_ft: toNumber(livable) ?? null,
               size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
               building_number: 1,
             },
@@ -2479,7 +2479,7 @@ const specificDocumentTypeMap = {
             space_type_index: "1",
             total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
             livable_area_sq_ft: toNumber(livable) ?? null,
-            area_under_air_sq_ft: toNumber(areaUnderAir) ?? null,
+            area_under_air_sq_ft: toNumber(livable) ?? null,
             size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
             building_number: 1,
           },
