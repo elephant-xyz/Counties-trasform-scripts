@@ -17722,6 +17722,84 @@ async function main() {
     }
   }
 
+  // Final guard: prefer the raw branch when we only have an unnormalized address
+  // from the source and strip any address relationships (they are auto-populated downstream).
+  try {
+    const addressPath = path.join(dataDir, "address.json");
+    const relationshipsDir = path.join("relationships");
+    const existingAddress = readJSONIfExists(addressPath) || {};
+    const normalizedCandidate =
+      ensureNormalizedAddressSchemaSurface &&
+      typeof ensureNormalizedAddressSchemaSurface === "function"
+        ? ensureNormalizedAddressSchemaSurface({ ...existingAddress })
+        : { ...existingAddress };
+    const hasNormalized = hasNormalizedCountyCoverage(normalizedCandidate);
+
+    if (!hasNormalized) {
+      const rawValue = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          existingAddress.unnormalized_address,
+          unAddr && unAddr.unnormalized_address,
+          unAddr && unAddr.full_address,
+          addressLineCombined,
+          siteLocationLine,
+          combinedModelAddress,
+          fullAddr,
+          fullAddrInput,
+        ]),
+      );
+
+      if (rawValue) {
+        const resolvedRequestId = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            existingAddress.request_identifier,
+            trimmedRequestIdentifier,
+            parcelId,
+            seed && seed.request_identifier,
+            unAddr && unAddr.request_identifier,
+          ]),
+        );
+        const preparedSource = resolveSourceHttpRequest(
+          existingAddress.source_http_request,
+          sourceHttpCandidate,
+          seed && seed.source_http_request,
+          unAddr && unAddr.source_http_request,
+        );
+        const rawOut = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          unnormalized_address: rawValue,
+          request_identifier:
+            resolvedRequestId === undefined ? null : resolvedRequestId,
+          source_http_request: preparedSource ? deepClone(preparedSource) : null,
+        };
+        writeJSON(addressPath, rawOut);
+      } else {
+        removeFileIfExists(addressPath);
+      }
+    } else {
+      if (
+        Object.prototype.hasOwnProperty.call(normalizedCandidate, "unnormalized_address")
+      ) {
+        delete normalizedCandidate.unnormalized_address;
+      }
+      const normalizedOutput =
+        ensureAddressOutputFieldPresence(normalizedCandidate) || normalizedCandidate;
+      writeJSON(addressPath, normalizedOutput);
+    }
+
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+      purgeAddressRelationshipArtifacts(dirPath);
+    });
+  } catch (error) {
+    console.error("Failed to enforce final raw address selection and relationship cleanup:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
   console.log("All mapping scripts completed successfully");
 }
 
