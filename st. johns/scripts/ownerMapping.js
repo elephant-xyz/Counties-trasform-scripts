@@ -8,7 +8,7 @@ const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl08_ctl01_lblParcelID";
-const CURRENT_OWNER_SELECTOR = '[id*="lstPrimaryOwner"][id*="lblPrimaryOwnerName"][id$="lblSearch"]';
+const CURRENT_OWNER_SELECTOR = '[id*="lstPrimaryOwner"][id*="lblPrimaryOwnerName"][id$="lnkSearch"]';
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl18_ctl01_grdSales tbody tr";
 
 // Utility helpers

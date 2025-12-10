@@ -1839,7 +1839,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   // This ensures all current owners are properly referenced via sales_history
   if (sales.length > 0) {
     const currentOwner = ownersByDate["current"] || [];
-    const mostRecentSaleIdx = sales.length;
+    const mostRecentSaleIdx = 1; // First sale in the array is the most recent (table is sorted descending)
 
     currentOwner
       .filter((o) => o.type === "person")
