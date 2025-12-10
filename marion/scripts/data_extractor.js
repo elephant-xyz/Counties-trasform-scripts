@@ -1258,7 +1258,7 @@ function main() {
     writeJSON(path.join(dataDir, `relationship_sales_history_${m.saleIndex}_has_deed.json`), rel);
   });
 
-  if (ownersData && parcelIdentifier) {
+  if (ownersData && parcelIdentifier && sales.length > 0) {
     const ownerKey = `property_${parcelIdentifier}`;
     const rec = ownersData[ownerKey];
     if (
@@ -1267,14 +1267,23 @@ function main() {
       Array.isArray(rec.owners_by_date.current)
     ) {
       const owners = rec.owners_by_date.current;
+      const mostRecentSaleIdx = sales.length;
       let companyIdx = 0;
-      let personIdx = 0
+      let personIdx = 0;
+
       owners.forEach((o) => {
         if (o.type === "company") {
           companyIdx += 1;
           writeJSON(path.join(dataDir, `company_${companyIdx}.json`), {
             name: o.name || null,
           });
+          writeJSON(
+            path.join(dataDir, `relationship_sales_history_${mostRecentSaleIdx}_buyer_company_${companyIdx}.json`),
+            {
+              from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
+              to: { "/": `./company_${companyIdx}.json` },
+            }
+          );
         }
         if (o.type === "person") {
           personIdx += 1;
@@ -1288,38 +1297,15 @@ function main() {
             us_citizenship_status: null,
             veteran_status: null,
           });
+          writeJSON(
+            path.join(dataDir, `relationship_sales_history_${mostRecentSaleIdx}_buyer_person_${personIdx}.json`),
+            {
+              from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
+              to: { "/": `./person_${personIdx}.json` },
+            }
+          );
         }
       });
-
-      // Create relationships between current owners and the most recent sale
-      if (sales.length > 0) {
-        const mostRecentSaleIdx = sales.length;
-        let relPersonCounter = 0;
-        let relCompanyCounter = 0;
-
-        owners.forEach((o) => {
-          if (o.type === "person") {
-            relPersonCounter += 1;
-            writeJSON(
-              path.join(dataDir, `relationship_sales_history_${mostRecentSaleIdx}_buyer_person_${relPersonCounter}.json`),
-              {
-                from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
-                to: { "/": `./person_${relPersonCounter}.json` },
-              }
-            );
-          }
-          if (o.type === "company") {
-            relCompanyCounter += 1;
-            writeJSON(
-              path.join(dataDir, `relationship_sales_history_${mostRecentSaleIdx}_buyer_company_${relCompanyCounter}.json`),
-              {
-                from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
-                to: { "/": `./company_${relCompanyCounter}.json` },
-              }
-            );
-          }
-        });
-      }
     }
   }
 
