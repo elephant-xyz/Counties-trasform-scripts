@@ -17939,30 +17939,56 @@ async function main() {
           minimalRaw.country_code = "US";
         }
 
-        const normalizedRaw = enforceRawVariantAllowedFields(minimalRaw) || minimalRaw;
-        const slimRaw = {
-          unnormalized_address: normalizedRaw.unnormalized_address,
-          request_identifier:
-            normalizedRaw.request_identifier === undefined
-              ? null
-              : normalizedRaw.request_identifier,
-          source_http_request: normalizedRaw.source_http_request || null,
-          county_name: normalizedRaw.county_name || null,
-          country_code: normalizedRaw.country_code || null,
-        };
-        Object.keys(slimRaw).forEach((key) => {
-          if (slimRaw[key] === null || slimRaw[key] === undefined) {
-            delete slimRaw[key];
+        const normalizedRaw =
+          enforceRawVariantAllowedFields(minimalRaw) ||
+          ensureRawAddressSchemaDefaults({
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...minimalRaw,
+          }) || { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...minimalRaw };
+
+        const rawOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...normalizedRaw };
+        RAW_ADDRESS_OUTPUT_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(rawOutput, field)) {
+            rawOutput[field] = null;
+            return;
+          }
+          const value = rawOutput[field];
+          if (value === undefined) {
+            rawOutput[field] = null;
+            return;
+          }
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            rawOutput[field] = Number.isFinite(numeric) ? numeric : null;
+            return;
+          }
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            rawOutput[field] = trimmed.length ? trimmed : null;
           }
         });
+
+        if (!rawOutput.postal_code) {
+          rawOutput.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(rawOutput.state_code) &&
+          !hasMeaningfulAddressValue(rawOutput.country_code)
+        ) {
+          rawOutput.country_code = "US";
+        }
+        if ((rawOutput.latitude == null) !== (rawOutput.longitude == null)) {
+          rawOutput.latitude = null;
+          rawOutput.longitude = null;
+        }
         console.log(
           "Writing final raw-only address payload to",
           addressPath,
-          slimRaw,
+          rawOutput,
         );
         originalWriteFileSync(
           addressPath,
-          `${JSON.stringify(slimRaw, null, 2)}\n`,
+          `${JSON.stringify(rawOutput, null, 2)}\n`,
         );
         const verifiedRaw = readJSONIfExists(addressPath);
         console.log("Final raw address on disk", verifiedRaw);
