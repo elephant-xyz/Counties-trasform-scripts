@@ -2247,6 +2247,15 @@ const specificDocumentTypeMap = {
       });
     }
 
+    // Create property-to-layout relationships for all building layouts
+    buildingLayoutRecords.forEach((buildingRecord) => {
+      const relName = `relationship_property_has_layout_${buildingRecord.index}.json`;
+      writeJson(path.join("data", relName), {
+        from: { "/": "./property.json" },
+        to: { "/": `./layout_${buildingRecord.index}.json` },
+      });
+    });
+
     if (siteFeaturesArr.length) {
       siteFeaturesArr.forEach((feature, featureIdx) => {
         const sizeSqFt =
