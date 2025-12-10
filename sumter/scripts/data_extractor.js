@@ -1418,8 +1418,8 @@ function writeSalesDeedsFilesAndRelationships($) {
     const bookPageParts = s.bookPage ? s.bookPage.split('/') : [null, null];
     const deed = {
       ...appendSourceInfo(seed),
-      book: bookPageParts[0] || null,
-      page: bookPageParts[1] || null
+      book: bookPageParts[0] ? String(bookPageParts[0]) : null,
+      page: bookPageParts[1] ? String(bookPageParts[1]) : null
     };
     if (deedType) deed.deed_type = deedType;
     writeJSON(path.join("data", `deed_${idx}.json`), deed);
