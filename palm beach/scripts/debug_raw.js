@@ -12933,10 +12933,45 @@ function finalizeMinimalAddressOneOf(addressPath, options = {}) {
   );
 
   const rawOut = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
     unnormalized_address: rawValue,
-    request_identifier: requestId === undefined ? null : requestId,
-    source_http_request: preparedSource ? deepClone(preparedSource) : null,
   };
+
+  const fieldSources = [current, unnormalizedSource, seedSource];
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "request_identifier" || field === "source_http_request") {
+      return;
+    }
+    const candidate = resolveFirstNonEmptyString(
+      fieldSources.map((src) => src && src[field]),
+    );
+    const sanitized = sanitizeAddressFieldValue(field, candidate);
+    rawOut[field] =
+      sanitized === undefined || sanitized === null ? null : sanitized;
+  });
+
+  rawOut.request_identifier =
+    requestId === undefined ? null : safeNullIfEmpty(requestId);
+  rawOut.source_http_request = preparedSource
+    ? deepClone(preparedSource)
+    : null;
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+  if (
+    (rawOut.latitude == null && rawOut.longitude != null) ||
+    (rawOut.latitude != null && rawOut.longitude == null)
+  ) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
 
   writeJSON(addressPath, rawOut);
 }
