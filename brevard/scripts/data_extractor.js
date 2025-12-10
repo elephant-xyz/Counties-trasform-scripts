@@ -4313,9 +4313,29 @@ function main() {
     }
   }
 
-  //MAILING ADDRESS FILES - Only create if there are person/company files to reference it
+  //MAILING ADDRESS FILES - Only create if there are owners to create relationships
+  // First check if we will actually create any relationships
   const hasPersonOrCompanyFiles = Object.keys(personFilesByKey).length > 0 || Object.keys(companyFilesByKey).length > 0;
-  if (mailingAddressRaw && hasPersonOrCompanyFiles) {
+  let willCreateMailingRelationships = false;
+  if (mailingAddressRaw && hasPersonOrCompanyFiles && currentOwners.length > 0) {
+    // Check if any currentOwners will actually create relationships
+    currentOwners.forEach((o) => {
+      if (o && o.type === "person") {
+        const key = normalizeOwnerKey(o);
+        if (personFilesByKey[key]) {
+          willCreateMailingRelationships = true;
+        }
+      } else if (o && o.type === "company") {
+        const key = normalizeCompanyKey(o);
+        if (companyFilesByKey[key]) {
+          willCreateMailingRelationships = true;
+        }
+      }
+    });
+  }
+
+  // Only create mailing_address.json if we're going to create relationships to it
+  if (willCreateMailingRelationships) {
     const mailingAddressOutput = {
       ...appendSourceInfo(seed),
       latitude: null,
@@ -4326,7 +4346,7 @@ function main() {
   }
 
   //OWNERS TO MAILING ADDRESS RELATIONSHIP FILE - Only create if mailing_address.json exists
-  if (mailingAddressRaw && hasPersonOrCompanyFiles) {
+  if (willCreateMailingRelationships) {
     let relIdx=0
     currentOwners.forEach((o) => {
       // console.log("relIdx",relIdx);
@@ -4354,7 +4374,7 @@ function main() {
             to: { "/": "./mailing_address.json" },
           };
           writeJSON(
-            path.join(dataDir, `relationship_company_has_mailing_address${relIdx}.json`),
+            path.join(dataDir, `relationship_company_has_mailing_address_${relIdx}.json`),
             rel,
           );
         }
