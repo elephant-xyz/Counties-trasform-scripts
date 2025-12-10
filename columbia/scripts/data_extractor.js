@@ -944,7 +944,7 @@ function formatNameToPattern(name) {
   const parts = cleaned.split(/([ \-',.])/);
 
   // Filter out empty strings and format each part
-  return parts
+  const formatted = parts
     .map((part) => {
       if (!part) return "";
       if (part.match(/[ \-',.]/)) return part;
@@ -952,9 +952,13 @@ function formatNameToPattern(name) {
     })
     .filter(Boolean)
     .join("");
+
+  // Trim the result to remove any leading/trailing whitespace
+  return formatted.trim();
 }
 
 function mapPrefixName(name) {
+  if (!name) return null;
   const prefixes = {
     'MR': 'Mr.', 'MRS': 'Mrs.', 'MS': 'Ms.', 'MISS': 'Miss', 'MX': 'Mx.',
     'DR': 'Dr.', 'PROF': 'Prof.', 'REV': 'Rev.', 'FR': 'Fr.', 'SR': 'Sr.',
@@ -962,17 +966,22 @@ function mapPrefixName(name) {
     'SGT': 'Sgt.', 'HON': 'Hon.', 'JUDGE': 'Judge', 'RABBI': 'Rabbi',
     'IMAM': 'Imam', 'SHEIKH': 'Sheikh', 'SIR': 'Sir', 'DAME': 'Dame'
   };
-  return prefixes[name?.toUpperCase()] || null;
+  // Remove dots before looking up to match ownerMapping.js behavior
+  const key = name.replace(/\./g, "").toUpperCase();
+  return prefixes[key] || null;
 }
 
 function mapSuffixName(name) {
+  if (!name) return null;
   const suffixes = {
     'JR': 'Jr.', 'SR': 'Sr.', 'II': 'II', 'III': 'III', 'IV': 'IV',
     'PHD': 'PhD', 'MD': 'MD', 'ESQ': 'Esq.', 'JD': 'JD', 'LLM': 'LLM',
     'MBA': 'MBA', 'RN': 'RN', 'DDS': 'DDS', 'DVM': 'DVM', 'CFA': 'CFA',
     'CPA': 'CPA', 'PE': 'PE', 'PMP': 'PMP', 'EMERITUS': 'Emeritus', 'RET': 'Ret.'
   };
-  return suffixes[name?.toUpperCase()] || null;
+  // Remove dots before looking up to match ownerMapping.js behavior
+  const key = name.replace(/\./g, "").toUpperCase();
+  return suffixes[key] || null;
 }
 
 function main() {
