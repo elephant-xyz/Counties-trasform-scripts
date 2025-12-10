@@ -2451,17 +2451,47 @@ const specificDocumentTypeMap = {
           }
         }
       }
-      propertyUtilityRecords.forEach((record) => {
-        if (singleBuildingLayoutIndex) {
-          createLayoutToUtilityRelationship(
-            singleBuildingLayoutIndex,
-            record.index,
+      // Handle propertyUtilityRecords - ensure they have a layout to connect to
+      if (propertyUtilityRecords.length) {
+        // If no building layouts exist, create a default one for propertyUtilityRecords
+        if (!buildingLayoutRecords.length && !singleBuildingLayoutIndex) {
+          const defaultLayoutIndex = addLayout(
+            {
+              space_type: "Building",
+              space_type_index: "1",
+              total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              livable_area_sq_ft: toNumber(livable) ?? null,
+              area_under_air_sq_ft: toNumber(livable) ?? null,
+              size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+              building_number: 1,
+            },
+            null,
           );
-        } else if (buildingLayoutRecords.length) {
-          const layoutIdx = buildingLayoutRecords[0].index;
-          createLayoutToUtilityRelationship(layoutIdx, record.index);
+          buildingLayoutRecords.push({
+            index: defaultLayoutIndex,
+            building_order: 1,
+            space_type_index: "1",
+          });
+          // Create property to layout relationship
+          const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+          writeJson(path.join("data", relName), {
+            from: { "/": "./property.json" },
+            to: { "/": `./layout_${defaultLayoutIndex}.json` },
+          });
         }
-      });
+
+        propertyUtilityRecords.forEach((record) => {
+          if (singleBuildingLayoutIndex) {
+            createLayoutToUtilityRelationship(
+              singleBuildingLayoutIndex,
+              record.index,
+            );
+          } else if (buildingLayoutRecords.length) {
+            const layoutIdx = buildingLayoutRecords[0].index;
+            createLayoutToUtilityRelationship(layoutIdx, record.index);
+          }
+        });
+      }
     };
 
     const assignStructures = () => {
