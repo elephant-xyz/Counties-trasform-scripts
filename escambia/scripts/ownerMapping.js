@@ -138,7 +138,20 @@ function isCompanyName(name) {
     "library",
     "museum",
     "park",
-    "conservancy"
+    "conservancy",
+    "dept",
+    "dept.",
+    "department",
+    "parks",
+    "recreation",
+    "plant",
+    "prairie",
+    "prarie",
+    "reserve",
+    "sanctuary",
+    "preserve",
+    "forest",
+    "wildlife"
   ];
   return kws.some((kw) => new RegExp(`(^|\\b)${kw}(\\b|\\.|$)`, "i").test(n));
 }
