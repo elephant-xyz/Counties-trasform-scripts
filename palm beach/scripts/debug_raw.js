@@ -8577,6 +8577,7 @@ function rewriteAddressToUnnormalizedOnly(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
   const payload = readJSONIfExists(addressPath) || {};
+  const preferRaw = options && options.preferRaw;
   const unnormalizedSource =
     (options.unnormalizedPath && readJSONIfExists(options.unnormalizedPath)) ||
     null;
@@ -8586,7 +8587,11 @@ function rewriteAddressToUnnormalizedOnly(addressPath, options = {}) {
   const normalizedSurface =
     ensureNormalizedAddressSchemaSurface &&
     ensureNormalizedAddressSchemaSurface({ ...payload });
-  if (normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface })) {
+  if (
+    normalizedSurface &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface }) &&
+    !preferRaw
+  ) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       const candidate = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
@@ -8692,19 +8697,67 @@ function rewriteAddressToUnnormalizedOnly(addressPath, options = {}) {
       (unnormalizedSource && unnormalizedSource.longitude),
   );
 
-  const rawOut = {
-    unnormalized_address: rawValue,
-    full_address: rawValue,
-    county_jurisdiction: countyJurisdiction || null,
-    request_identifier: requestId === undefined ? null : requestId,
-    source_http_request: preparedSource ? deepClone(preparedSource) : null,
-    latitude: Number.isFinite(lat) ? lat : null,
-    longitude: Number.isFinite(lon) ? lon : null,
-  };
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "request_identifier") {
+      rawOut.request_identifier = requestId === undefined ? null : requestId;
+      return;
+    }
+    if (field === "source_http_request") {
+      rawOut.source_http_request = preparedSource
+        ? deepClone(preparedSource)
+        : null;
+      return;
+    }
+    if (field === "latitude") {
+      rawOut.latitude = Number.isFinite(lat) ? lat : null;
+      return;
+    }
+    if (field === "longitude") {
+      rawOut.longitude = Number.isFinite(lon) ? lon : null;
+      return;
+    }
+
+    const candidate = resolveFirstNonEmptyString([
+      payload[field],
+      unnormalizedSource && unnormalizedSource[field],
+      seedSource && seedSource[field],
+    ]);
+
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      rawOut[field] = trimmed.length ? trimmed : rawOut[field];
+      return;
+    }
+
+    if (candidate !== undefined) {
+      rawOut[field] = candidate;
+    }
+  });
+
+  if (!rawOut.county_name) {
+    rawOut.county_name =
+      payload.county_name ||
+      (unnormalizedSource && unnormalizedSource.county_name) ||
+      countyJurisdiction ||
+      null;
+  }
 
   if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
     rawOut.latitude = null;
     rawOut.longitude = null;
+  }
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
   }
 
   originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
@@ -11310,6 +11363,15 @@ process.on("exit", () => {
       readJSONIfExists("unnormalized_address.json") || {};
     const seedSource = readJSONIfExists("property_seed.json") || {};
     const existingAddress = readJSONIfExists(addressPath) || {};
+    const rawPreferenceCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        existingAddress.unnormalized_address,
+        unnormalizedSource.unnormalized_address,
+        unnormalizedSource.full_address,
+        seedSource.unnormalized_address,
+      ]),
+    );
+    const preferRawOutput = Boolean(rawPreferenceCandidate);
 
     finalizeAddressSchemaPayload(addressPath, {
       propertyPayload,
@@ -11328,7 +11390,7 @@ process.on("exit", () => {
         hasMeaningfulAddressValue(normalizedSurface[field]),
       );
 
-    if (hasNormalizedFinal) {
+    if (hasNormalizedFinal && !preferRawOutput) {
       const requestId = safeNullIfEmpty(
         resolveFirstNonEmptyString([
           currentAddress.request_identifier,
@@ -11384,12 +11446,13 @@ process.on("exit", () => {
       writeJSON(addressPath, normalizedOut);
     } else {
       const fallbackUnnormalized = safeNullIfEmpty(
-        resolveFirstNonEmptyString([
-          existingAddress.unnormalized_address,
-          unnormalizedSource.unnormalized_address,
-          unnormalizedSource.full_address,
-          seedSource.unnormalized_address,
-        ]),
+        rawPreferenceCandidate ||
+          resolveFirstNonEmptyString([
+            existingAddress.unnormalized_address,
+            unnormalizedSource.unnormalized_address,
+            unnormalizedSource.full_address,
+            seedSource.unnormalized_address,
+          ]),
       );
       if (fallbackUnnormalized) {
         const nextAddress = { ...currentAddress };
@@ -11456,6 +11519,31 @@ process.on("exit", () => {
           ...RAW_ADDRESS_SCHEMA_TEMPLATE,
           unnormalized_address: finalRawString,
         };
+        const normalizedSeed =
+          (hasNormalizedFinal && normalizedSurface) || currentAddress || {};
+        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(normalizedSeed, field)) {
+            return;
+          }
+          const candidate = normalizedSeed[field];
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(candidate);
+            if (Number.isFinite(numeric)) {
+              finalRawPayload[field] = numeric;
+            }
+            return;
+          }
+          if (typeof candidate === "string") {
+            const trimmed = candidate.trim();
+            if (trimmed.length) {
+              finalRawPayload[field] = trimmed;
+            }
+            return;
+          }
+          if (candidate !== undefined && candidate !== null) {
+            finalRawPayload[field] = candidate;
+          }
+        });
         const assignFinal = (field, value) => {
           if (
             !Object.prototype.hasOwnProperty.call(finalRawPayload, field) ||
@@ -16749,6 +16837,7 @@ async function main() {
         unnormalizedAddressCandidate ||
         siteLocationLine ||
         combinedModelAddress,
+      preferRaw: true,
       requestIdentifierCandidates: [
         trimmedRequestIdentifier,
         parcelId,
