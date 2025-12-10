@@ -2078,6 +2078,18 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
+
+    // Validate first_name and last_name against required pattern
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+    // If first_name or last_name don't match the pattern, don't create the person
+    if (!firstName || !namePattern.test(firstName)) {
+      return null;
+    }
+    if (!lastName || !namePattern.test(lastName)) {
+      return null;
+    }
+
     // Validate middle_name matches pattern ^[A-Z][a-zA-Z\s\-',.]*$ or set to null
     const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
     const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
@@ -2094,8 +2106,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
