@@ -15319,6 +15319,107 @@ async function main() {
     }
   }
 
+  try {
+    const addressPayload = readJSONIfExists(addressOutputPath) || {};
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...addressPayload });
+    const hasNormalizedCoverage =
+      normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+    const rawValue = safeNullIfEmpty(addressPayload.unnormalized_address);
+
+    const finalizeCoordinates = (target) => {
+      const lat = parseCoordinate(target.latitude);
+      const lon = parseCoordinate(target.longitude);
+      target.latitude = Number.isFinite(lat) ? lat : null;
+      target.longitude = Number.isFinite(lon) ? lon : null;
+      if ((target.latitude == null) !== (target.longitude == null)) {
+        target.latitude = null;
+        target.longitude = null;
+      }
+    };
+
+    if (hasNormalizedCoverage) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      for (const field of NORMALIZED_ADDRESS_FIELDS) {
+        const candidate = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
+          ? normalizedSurface[field]
+          : null;
+        normalizedOut[field] = sanitizeAddressFieldValue(field, candidate);
+      }
+      finalizeCoordinates(normalizedOut);
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      const requestId = safeNullIfEmpty(addressPayload.request_identifier);
+      normalizedOut.request_identifier =
+        requestId === undefined ? null : requestId;
+      const preparedSource = prepareSourceHttpRequest(
+        addressPayload.source_http_request,
+      );
+      normalizedOut.source_http_request = preparedSource ? preparedSource : null;
+      if (
+        Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(normalizedOut, null, 2)}\n`,
+      );
+    } else if (rawValue) {
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+      for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+        if (field === "request_identifier" || field === "source_http_request") {
+          continue;
+        }
+        const candidate = Object.prototype.hasOwnProperty.call(addressPayload, field)
+          ? addressPayload[field]
+          : null;
+        rawOut[field] = sanitizeAddressFieldValue(field, candidate);
+      }
+      finalizeCoordinates(rawOut);
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+      const requestId = safeNullIfEmpty(addressPayload.request_identifier);
+      rawOut.request_identifier = requestId === undefined ? null : requestId;
+      const preparedSource = prepareSourceHttpRequest(
+        addressPayload.source_http_request,
+      );
+      rawOut.source_http_request = preparedSource ? preparedSource : null;
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(rawOut, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+  } catch (error) {
+    console.error("Failed to stabilize final address payload surface:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
   console.log("All mapping scripts completed successfully");
 }
 
