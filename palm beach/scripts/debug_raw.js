@@ -12848,6 +12848,99 @@ function enforceTerminalAddressOneOfSurface(addressPath) {
   removeFileIfExists(addressPath);
 }
 
+function finalizeMinimalAddressOneOf(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const current = readJSONIfExists(addressPath) || {};
+  const unnormalizedSource = options.unnormalizedSource || {};
+  const seedSource = options.seedSource || {};
+
+  const normalizedCandidate =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({
+      ...current,
+      ...seedSource,
+    });
+  const normalizedReady =
+    normalizedCandidate &&
+    hasCompleteNormalizedAddress({ ...normalizedCandidate });
+
+  if (normalizedReady) {
+    const normalizedOut =
+      buildNormalizedAddressOutputForSchema({ ...normalizedCandidate }) || null;
+    if (!normalizedOut) {
+      removeFileIfExists(addressPath);
+      return;
+    }
+
+    const requestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        current.request_identifier,
+        seedSource.request_identifier,
+        options.requestIdentifier,
+      ]),
+    );
+    normalizedOut.request_identifier =
+      requestId === undefined ? null : requestId;
+
+    const preparedSource = prepareSourceHttpRequest(
+      current.source_http_request ||
+        seedSource.source_http_request ||
+        options.sourceHttpRequest ||
+        null,
+    );
+    normalizedOut.source_http_request = preparedSource
+      ? deepClone(preparedSource)
+      : null;
+
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      current.unnormalized_address,
+      current.full_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      current.request_identifier,
+      seedSource.request_identifier,
+      options.requestIdentifier,
+    ]),
+  );
+  const preparedSource = prepareSourceHttpRequest(
+    current.source_http_request ||
+      unnormalizedSource.source_http_request ||
+      seedSource.source_http_request ||
+      options.sourceHttpRequest ||
+      null,
+  );
+
+  const rawOut = {
+    unnormalized_address: rawValue,
+    request_identifier: requestId === undefined ? null : requestId,
+    source_http_request: preparedSource ? deepClone(preparedSource) : null,
+  };
+
+  writeJSON(addressPath, rawOut);
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -16805,6 +16898,44 @@ async function main() {
     purgeAddressRelationshipArtifacts(relationshipsDir);
   } catch (error) {
     console.error("Failed to rewrite address to unnormalized-only branch:", error);
+    if (!process.exitCode) {
+      process.exitCode = 1;
+    }
+  }
+
+  try {
+    finalizeMinimalAddressOneOf(addressOutputPath, {
+      rawCandidates: [
+        addressLineCombined,
+        siteLocationLine,
+        addressLine1,
+        addressLine2,
+        addressLine3,
+        fullAddr,
+        unAddr && unAddr.unnormalized_address,
+        unAddr && unAddr.full_address,
+      ],
+      requestIdentifier:
+        trimmedRequestIdentifier ||
+        parcelId ||
+        (seed && seed.request_identifier) ||
+        (unAddr && unAddr.request_identifier),
+      sourceHttpRequest:
+        sourceHttpCandidate ||
+        (seed && seed.source_http_request) ||
+        (unAddr && unAddr.source_http_request),
+      seedSource: seed || {},
+      unnormalizedSource: unAddr || {},
+    });
+    enforcePropertyRelationshipNulls(propertyFilePath);
+    [dataDir, relationshipsDir].forEach((dirPath) => {
+      removeAddressRelationshipFiles(dirPath);
+      ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
+    });
+    purgeAddressRelationshipArtifacts(dataDir);
+    purgeAddressRelationshipArtifacts(relationshipsDir);
+  } catch (error) {
+    console.error("Failed to finalize minimal address oneOf payload:", error);
     if (!process.exitCode) {
       process.exitCode = 1;
     }
