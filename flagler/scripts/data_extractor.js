@@ -2796,9 +2796,8 @@ function main() {
   if (Array.isArray(rawLayouts) && rawLayouts.length) {
     rawLayouts.forEach((layout) => {
       const source = layout || {};
-      const { parent_building_index, ...overrides } = source;
-      const rawSpaceType =
-        overrides && overrides.space_type ? overrides.space_type : "Living Area";
+      const { parent_building_index, space_type, ...overrides } = source;
+      const rawSpaceType = space_type || "Living Area";
       const validSpaceType = validateSpaceType(rawSpaceType);
       const normalized = createLayoutRecord(validSpaceType, overrides);
       if (!normalized.floor_level) {
