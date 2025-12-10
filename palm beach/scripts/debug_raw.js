@@ -15497,6 +15497,7 @@ async function main() {
         unAddr && unAddr.full_address,
       ]),
     );
+    const hasRawValue = Boolean(rawValue);
 
     const finalizeCoordinates = (target) => {
       const lat = parseCoordinate(target.latitude);
@@ -15509,7 +15510,7 @@ async function main() {
       }
     };
 
-    if (hasNormalizedCoverage) {
+    if (!hasRawValue && hasNormalizedCoverage) {
       const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       for (const field of NORMALIZED_ADDRESS_FIELDS) {
         const candidate = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
@@ -15556,7 +15557,7 @@ async function main() {
         addressOutputPath,
         `${JSON.stringify(normalizedOut, null, 2)}\n`,
       );
-    } else if (rawValue) {
+    } else if (hasRawValue) {
       const requestId = safeNullIfEmpty(
         resolveFirstNonEmptyString([
           addressPayload.request_identifier,
