@@ -15520,27 +15520,21 @@ async function main() {
       const preparedSource = prepareSourceHttpRequest(
         addressPayload.source_http_request,
       );
-      const rawOut = {
-        unnormalized_address: rawValue,
-        latitude: addressPayload.latitude,
-        longitude: addressPayload.longitude,
-        postal_code: safeNullIfEmpty(addressPayload.postal_code),
-        plus_four_postal_code: safeNullIfEmpty(
-          addressPayload.plus_four_postal_code,
-        ),
-        city_name: safeNullIfEmpty(addressPayload.city_name),
-        municipality_name: safeNullIfEmpty(addressPayload.municipality_name),
-        county_name: safeNullIfEmpty(addressPayload.county_name),
-        state_code: safeNullIfEmpty(addressPayload.state_code),
-        country_code: safeNullIfEmpty(addressPayload.country_code),
-        section: safeNullIfEmpty(addressPayload.section),
-        township: safeNullIfEmpty(addressPayload.township),
-        range: safeNullIfEmpty(addressPayload.range),
-        block: safeNullIfEmpty(addressPayload.block),
-        lot: safeNullIfEmpty(addressPayload.lot),
-        request_identifier: requestId === undefined ? null : requestId,
-        source_http_request: preparedSource ? preparedSource : null,
-      };
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        const candidate = Object.prototype.hasOwnProperty.call(
+          addressPayload,
+          field,
+        )
+          ? addressPayload[field]
+          : null;
+        rawOut[field] = sanitizeAddressFieldValue
+          ? sanitizeAddressFieldValue(field, candidate)
+          : candidate ?? null;
+      });
+      rawOut.unnormalized_address = rawValue;
+      rawOut.request_identifier = requestId === undefined ? null : requestId;
+      rawOut.source_http_request = preparedSource ? preparedSource : null;
       finalizeCoordinates(rawOut);
       if (!rawOut.postal_code) {
         rawOut.plus_four_postal_code = null;
