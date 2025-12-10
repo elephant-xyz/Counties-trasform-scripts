@@ -2742,7 +2742,6 @@ function extractSalesHistoryEntries($) {
         instrument_number: instrumentNumber,
       },
       file: {
-        original_url: instrumentLink || bookLink || null,
         book,
         page,
       },
@@ -2789,7 +2788,6 @@ function writeSalesHistoryArtifacts($, seed, dataDir, appendSourceInfo) {
     const fileObj = {
       ...appendSourceInfo(seed),
       document_type: "Title",
-      original_url: entry.file.original_url ?? null,
     };
     writeJson(path.join(dataDir, fileFile), fileObj);
 
