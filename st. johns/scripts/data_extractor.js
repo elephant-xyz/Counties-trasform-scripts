@@ -1580,12 +1580,19 @@ function writeSalesDeedsFilesAndRelationships($, propertySeed) {
 
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
-    fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_deed|sales_history_)(?:_\d+)?\.json$/.test(f) || /^sales_history_\d+\.json$/.test(f)) {
-        fs.unlinkSync(path.join("data", f));
-      }
-    });
-  } catch (e) {}
+    if (fs.existsSync("data")) {
+      fs.readdirSync("data").forEach((f) => {
+        if (/^relationship_(deed_file|sales_deed|sales_history_)(?:_\d+)?\.json$/.test(f) || /^sales_history_\d+\.json$/.test(f)) {
+          const filePath = path.join("data", f);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      });
+    }
+  } catch (e) {
+    // Ignore errors during cleanup of old files
+  }
 
   sales.forEach((s, i) => {
     const idx = i + 1;
@@ -1929,10 +1936,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
 
     // Remove mailing_address.json if no relationships were created
     if (relPersonMailingCounter === 0 && relCompanyMailingCounter === 0) {
-      try {
-        fs.unlinkSync(path.join("data", "mailing_address.json"));
-      } catch (e) {
-        // File might not exist, ignore
+      const mailingAddressPath = path.join("data", "mailing_address.json");
+      if (fs.existsSync(mailingAddressPath)) {
+        fs.unlinkSync(mailingAddressPath);
       }
     }
   }
@@ -1941,10 +1947,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   people.forEach((p, idx) => {
     const personIdx = idx + 1;
     if (!usedPersonIdx.has(personIdx)) {
-      try {
-        fs.unlinkSync(path.join("data", `person_${personIdx}.json`));
-      } catch (e) {
-        // File might not exist, ignore
+      const personPath = path.join("data", `person_${personIdx}.json`);
+      if (fs.existsSync(personPath)) {
+        fs.unlinkSync(personPath);
       }
     }
   });
@@ -1952,10 +1957,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   companies.forEach((c, idx) => {
     const companyIdx = idx + 1;
     if (!usedCompanyIdx.has(companyIdx)) {
-      try {
-        fs.unlinkSync(path.join("data", `company_${companyIdx}.json`));
-      } catch (e) {
-        // File might not exist, ignore
+      const companyPath = path.join("data", `company_${companyIdx}.json`);
+      if (fs.existsSync(companyPath)) {
+        fs.unlinkSync(companyPath);
       }
     }
   });
