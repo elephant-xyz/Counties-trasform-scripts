@@ -15210,7 +15210,11 @@ function lockAddressToSchemaSurface(addressPath) {
     typeof payload.unnormalized_address === "string"
       ? payload.unnormalized_address.trim()
       : "";
-  const forceRaw = payload.__force_raw_variant === true;
+  // Always honor the presence of a raw address string. If the source provides an
+  // unnormalized address, keep the payload on the raw branch even when a fully
+  // normalized snapshot is available.
+  const forceRaw =
+    payload.__force_raw_variant === true || rawValue.length > 0;
 
   const normalizedCandidate =
     typeof normalizeCandidateForCoverage === "function"
@@ -18480,13 +18484,40 @@ async function main() {
     safeNullIfEmpty(resolvedRawAddress) ||
     safeNullIfEmpty(finalAddress.unnormalized_address) ||
     safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
-  const forcedAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...finalAddress };
-  forcedAddress.unnormalized_address = finalUnnormalized || null;
-  forcedAddress.request_identifier =
-    resolvedRequestIdentifier === undefined ? forcedAddress.request_identifier : resolvedRequestIdentifier;
-  forcedAddress.source_http_request = resolvedSourceHttp
-    ? deepClone(resolvedSourceHttp)
-    : forcedAddress.source_http_request || null;
+  const forcedAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      forcedAddress[field] = finalUnnormalized || null;
+      return;
+    }
+    let value = Object.prototype.hasOwnProperty.call(finalAddress, field)
+      ? finalAddress[field]
+      : null;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      forcedAddress[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(
+        resolvedSourceHttp || value,
+      );
+      forcedAddress[field] = prepared ? deepClone(prepared) : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      forcedAddress[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    forcedAddress[field] = value === undefined ? null : value;
+  });
+  if (
+    hasMeaningfulAddressValue(resolvedRequestIdentifier) &&
+    !hasMeaningfulAddressValue(forcedAddress.request_identifier)
+  ) {
+    forcedAddress.request_identifier = resolvedRequestIdentifier;
+  }
   if (!forcedAddress.postal_code) {
     forcedAddress.plus_four_postal_code = null;
   }
