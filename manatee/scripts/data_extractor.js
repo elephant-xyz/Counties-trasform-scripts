@@ -2483,12 +2483,38 @@ function findCompanyIndexByName(name) {
 }
 
 function titleCaseName(s) {
-  if (!s) return s;
-  return s
+  if (!s) return null;
+
+  // Trim leading/trailing whitespace and remove leading/trailing delimiters
+  s = s.trim().replace(/^[\s\-',.]+|[\s\-',.]+$/g, '');
+  if (!s) return null;
+
+  // Normalize consecutive delimiters (e.g., ". " or ", ") to single space
+  // This ensures names like "St. James" become "St James" to match the pattern
+  const normalized = s
     .toLowerCase()
-    .split(/\s+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+    .replace(/[\s\-',.]+/g, (match) => {
+      // If multiple delimiters, collapse to single space
+      if (match.length > 1 || match === ',') {
+        return ' ';
+      }
+      return match;
+    });
+
+  // Capitalize first letter and any letter after a delimiter
+  const result = normalized
+    .replace(/(^|[\s\-'.])([a-z])/g, (match, delimiter, letter) => {
+      return delimiter + letter.toUpperCase();
+    });
+
+  // Validate the result matches the expected pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!result || !namePattern.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 function writeJSON(p, obj) {
@@ -2909,6 +2935,12 @@ function main() {
         continue;
       }
       writeOut(`sales_${i}.json`, out);
+      // Create property->sales relationship
+      const relPropertySales = {
+        from: { "/": "./property.json" },
+        to: { "/": `./sales_${i}.json` },
+      };
+      writeOut(`relationship_property_sales_${i}.json`, relPropertySales);
       let book = bookIdx >= 0 ? row[bookIdx] || null : null;
       let page = pageIdx >= 0 ? row[pageIdx] || null : null;
       let instrType = instrTypeIdx >= 0 ? row[instrTypeIdx] || null : null;
@@ -3094,7 +3126,11 @@ function main() {
         let relPersonCounter = 0;
         let relCompanyCounter = 0;
         const personMap = new Map();
-        Object.values(ownersByDate).forEach((arr) => {
+        // Only collect persons from dates that have sales records or current owners
+        const relevantDates = new Set([...Object.keys(salesOwnerMapping), 'current']);
+        Object.entries(ownersByDate).forEach(([date, arr]) => {
+          // Include persons only if they're from a sale date or current owners
+          if (!relevantDates.has(date)) return;
           (arr || []).forEach((o) => {
             if (o.type === "person") {
               const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -3112,26 +3148,31 @@ function main() {
             }
           });
         });
-        people = Array.from(personMap.values()).map((p) => ({
-          first_name: p.first_name ? titleCaseName(p.first_name) : null,
-          middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-          last_name: p.last_name ? titleCaseName(p.last_name) : null,
-          birth_date: null,
-          prefix_name: null,
-          suffix_name: null,
-          us_citizenship_status: null,
-          veteran_status: null,
-          request_identifier: parcel.parcel_identifier,
-        }));
+        people = Array.from(personMap.values())
+          .map((p) => ({
+            first_name: p.first_name ? titleCaseName(p.first_name) : null,
+            middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+            last_name: p.last_name ? titleCaseName(p.last_name) : null,
+            birth_date: null,
+            prefix_name: null,
+            suffix_name: null,
+            us_citizenship_status: null,
+            veteran_status: null,
+            request_identifier: parcel.parcel_identifier,
+          }))
+          .filter((p) => p.first_name && p.last_name); // Only include persons with valid first and last names
         people.forEach((p, idx) => {
-          
+
         });
         let loopIdx = 1;
         for (const p of people) {
           writeOut(`person_${loopIdx++}.json`, p);
         }
         const companyNames = new Set();
-        Object.values(ownersByDate).forEach((arr) => {
+        // Only collect companies from dates that have sales records or current owners
+        Object.entries(ownersByDate).forEach(([date, arr]) => {
+          // Include companies only if they're from a sale date or current owners
+          if (!relevantDates.has(date)) return;
           (arr || []).forEach((o) => {
             if (o.type === "company" && (o.name || "").trim())
               companyNames.add((o.name || "").trim().toUpperCase());
