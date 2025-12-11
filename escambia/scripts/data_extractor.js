@@ -11,12 +11,27 @@ function readJSON(p) {
 }
 
 function toTitleCase(str) {
-  if (!str) return str;
-  return str
+  if (!str) return null;
+  const cleaned = str.trim();
+  if (!cleaned) return null;
+  return cleaned
     .toLowerCase()
     .split(/\s+/)
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join(" ");
+}
+
+function validatePersonName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Must start with uppercase letter, followed by any letters (upper or lower), spaces, hyphens, apostrophes, commas, or periods
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!pattern.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
 }
 
 function parseCurrency(str) {
@@ -2560,9 +2575,15 @@ function main() {
       if (owner.type === "person") {
         const index = personFiles.length + 1;
         const personFile = `person_${index}.json`;
-        const first = toTitleCase(owner.first_name || "");
-        const last = toTitleCase(owner.last_name || "");
-        const middle = owner.middle_name ? toTitleCase(owner.middle_name) : null;
+        const first = validatePersonName(toTitleCase(owner.first_name || ""));
+        const last = validatePersonName(toTitleCase(owner.last_name || ""));
+        const middle = owner.middle_name ? validatePersonName(toTitleCase(owner.middle_name)) : null;
+
+        // Skip person if first or last name is invalid
+        if (!first || !last) {
+          return;
+        }
+
         const prefix =
           owner.prefix_name &&
           PERSON_ALLOWED_PREFIXES.includes(owner.prefix_name)
