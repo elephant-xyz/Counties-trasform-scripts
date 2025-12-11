@@ -2484,6 +2484,11 @@ function findCompanyIndexByName(name) {
 
 function titleCaseName(s) {
   if (!s) return s;
+
+  // Trim leading/trailing whitespace and remove leading/trailing delimiters
+  s = s.trim().replace(/^[\s\-',.]+|[\s\-',.]+$/g, '');
+  if (!s) return s;
+
   // Normalize consecutive delimiters (e.g., ". " or ", ") to single space
   // This ensures names like "St. James" become "St James" to match the pattern
   const normalized = s
