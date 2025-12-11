@@ -18085,6 +18085,45 @@ async function main() {
     unAddr && unAddr.unnormalized_address,
   ].filter((candidate) => candidate !== undefined);
 
+  const resolvedRawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString(rawCandidates),
+  );
+  if (resolvedRawCandidate && !prefersRawAddressBranch) {
+    prefersRawAddressBranch = true;
+  }
+
+  if (resolvedRawCandidate) {
+    const latestAddress = readJSONIfExists(addressOutputPath) || {};
+    const rawSurface = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...latestAddress,
+      unnormalized_address: resolvedRawCandidate,
+    };
+    ADDRESS_COORDINATE_FIELDS.forEach((field) => {
+      const numeric = parseCoordinate(rawSurface[field]);
+      rawSurface[field] = Number.isFinite(numeric) ? numeric : null;
+    });
+    if (
+      (rawSurface.latitude == null) !== (rawSurface.longitude == null)
+    ) {
+      rawSurface.latitude = null;
+      rawSurface.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawSurface.state_code) &&
+      !hasMeaningfulAddressValue(rawSurface.country_code)
+    ) {
+      rawSurface.country_code = "US";
+    }
+    if (!rawSurface.postal_code) {
+      rawSurface.plus_four_postal_code = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawSurface, "__force_raw_variant")) {
+      delete rawSurface.__force_raw_variant;
+    }
+    writeJSON(addressOutputPath, rawSurface);
+  }
+
   const requestIdentifierCandidates = [
     existingAddress.request_identifier,
     trimmedRequestIdentifier,
@@ -18221,7 +18260,7 @@ async function main() {
     ],
   });
   enforcePropertyRelationshipNulls(propertyFilePath);
-  [dataDir, relationshipsDir].forEach((dirPath) => {
+  [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
     removeAddressRelationshipFiles(dirPath);
     purgeAddressRelationshipArtifacts(dirPath);
   });
