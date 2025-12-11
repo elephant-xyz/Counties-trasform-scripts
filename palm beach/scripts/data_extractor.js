@@ -2171,16 +2171,15 @@ function main() {
     });
   }
 
-  // Owners (persons/companies)
+  // Owners (persons/companies) - collect but don't write yet
   const pc = buildPersonsAndCompanies(ownerJSON, parcelId);
-  pc.persons.forEach((p, i) =>
-    writeJSON(path.join("data", `person_${i + 1}.json`), p),
-  );
-  pc.companies.forEach((c, i) =>
-    writeJSON(path.join("data", `company_${i + 1}.json`), c),
-  );
+
+  // Track which persons/companies are actually used in relationships
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
   if (hasOwnerMailingAddress) {
-    pc.personCurrentOwners.forEach((idx, i) =>
+    pc.personCurrentOwners.forEach((idx, i) => {
+      usedPersonIndices.add(idx);
       writeJSON(
         path.join(
           "data",
@@ -2190,9 +2189,10 @@ function main() {
           from: { "/": `./person_${idx}.json` },
           to: { "/": `./mailing_address.json` },
         }
-      )
-    );
-    pc.companyCurrentOwners.forEach((idx, i) =>
+      );
+    });
+    pc.companyCurrentOwners.forEach((idx, i) => {
+      usedCompanyIndices.add(idx);
       writeJSON(
         path.join(
           "data",
@@ -2202,8 +2202,8 @@ function main() {
           from: { "/": `./company_${idx}.json` },
           to: { "/": `./mailing_address.json` },
         }
-      )
-    );
+      );
+    });
   }
 
   // Relationships person/company -> sales
@@ -2231,8 +2231,14 @@ function main() {
     const g = normalizeNameForMatch(s.OwnerName);
     if (!g) return;
     if (companyNameToPath.has(g)) {
+      const companyPath = companyNameToPath.get(g);
+      // Extract company index from path like "./company_1.json"
+      const companyMatch = companyPath.match(/company_(\d+)\.json/);
+      if (companyMatch) {
+        usedCompanyIndices.add(parseInt(companyMatch[1], 10));
+      }
       const rel = {
-        to: { "/": companyNameToPath.get(g) },
+        to: { "/": companyPath },
         from: { "/": `./sales_${idx + 1}.json` },
       };
       writeJSON(
@@ -2255,6 +2261,11 @@ function main() {
         }
       }
       if (toPath) {
+        // Extract person index from path like "./person_1.json"
+        const personMatch = toPath.match(/person_(\d+)\.json/);
+        if (personMatch) {
+          usedPersonIndices.add(parseInt(personMatch[1], 10));
+        }
         const rel = {
           to: { "/": toPath },
           from: { "/": `./sales_${idx + 1}.json` },
@@ -2264,6 +2275,20 @@ function main() {
           rel,
         );
       }
+    }
+  });
+
+  // Now write only the persons and companies that are actually used in relationships
+  pc.persons.forEach((p, i) => {
+    const personIndex = i + 1;
+    if (usedPersonIndices.has(personIndex)) {
+      writeJSON(path.join("data", `person_${personIndex}.json`), p);
+    }
+  });
+  pc.companies.forEach((c, i) => {
+    const companyIndex = i + 1;
+    if (usedCompanyIndices.has(companyIndex)) {
+      writeJSON(path.join("data", `company_${companyIndex}.json`), c);
     }
   });
   // Layout extraction from owners/layout_data.json
