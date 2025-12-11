@@ -2206,79 +2206,9 @@ function main() {
     });
   }
 
-  // Relationships person/company -> sales
-  const personNameToPath = new Map();
-  pc.persons.forEach((p, i) => {
-    const nameVariants = [];
-    const f = (p.first_name || "").trim();
-    const m = (p.middle_name || "").trim();
-    const l = (p.last_name || "").trim();
-    if (f && l) {
-      // Use the capitalized names for matching
-      nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
-      nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
-      nameVariants.push(`${l} ${f}`.toUpperCase());
-    }
-    const pth = `./person_${i + 1}.json`;
-    nameVariants.forEach((v) => personNameToPath.set(v, pth));
-  });
-  const companyNameToPath = new Map();
-  pc.companies.forEach((c, i) => {
-    const nm = (c.name || "").trim().toUpperCase();
-    if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
-  });
-  sales.forEach((s, idx) => {
-    const g = normalizeNameForMatch(s.OwnerName);
-    if (!g) return;
-    if (companyNameToPath.has(g)) {
-      const companyPath = companyNameToPath.get(g);
-      // Extract company index from path like "./company_1.json"
-      const companyMatch = companyPath.match(/company_(\d+)\.json/);
-      if (companyMatch) {
-        const companyIdx = companyMatch[1];
-        usedCompanyIndices.add(parseInt(companyIdx, 10));
-        const rel = {
-          to: { "/": companyPath },
-          from: { "/": `./sales_${idx + 1}.json` },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_${idx + 1}_company_${companyIdx}.json`),
-          rel,
-        );
-      }
-    } else {
-      // try direct or swapped person match
-      let toPath = null;
-      if (personNameToPath.has(g)) {
-        toPath = personNameToPath.get(g);
-      } else {
-        const parts = g.split(/\s+/);
-        if (parts.length >= 2) {
-          const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
-            .toUpperCase()
-            .trim();
-          if (personNameToPath.has(swapped))
-            toPath = personNameToPath.get(swapped);
-        }
-      }
-      if (toPath) {
-        // Extract person index from path like "./person_1.json"
-        const personMatch = toPath.match(/person_(\d+)\.json/);
-        if (personMatch) {
-          const personIdx = personMatch[1];
-          usedPersonIndices.add(parseInt(personIdx, 10));
-          const rel = {
-            to: { "/": toPath },
-            from: { "/": `./sales_${idx + 1}.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_sales_${idx + 1}_person_${personIdx}.json`),
-            rel,
-          );
-        }
-      }
-    }
-  });
+  // Note: Do not create relationships from sales to persons/companies
+  // because persons/companies are not part of the Sales_History data group.
+  // Only persons that are current owners (with mailing addresses) should be written.
 
   // Now write only the persons and companies that are actually used in relationships
   pc.persons.forEach((p, i) => {
