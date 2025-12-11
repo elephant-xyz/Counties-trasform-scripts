@@ -305,7 +305,13 @@ function buildOwnersByDate($) {
 
     for (let idx = 0; idx < parts.length; idx++) {
       const raw = parts[idx];
-      const clean = normalizeSpace(raw.replace(/\.$/, "").replace(/\s*\([^)]*\)\s*$/, ""));
+      // Remove legal designations and parenthetical content
+      const clean = normalizeSpace(
+        raw
+          .replace(/\.$/, "")
+          .replace(/\s*\([^)]*\)\s*$/, "")
+          .replace(/\b(JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
+      ).trim();
 
       if (!clean) continue;
 

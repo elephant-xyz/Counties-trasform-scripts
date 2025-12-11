@@ -1515,9 +1515,20 @@ function validatePersonName(value, fieldName) {
 
 function formatName(name) {
   if (!name || name.trim() === "") return null;
-  const normalizedSpacing = name.trim().toLowerCase().replace(/\s+/g, " ");
+
+  // Remove any characters that don't match the pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  // Pattern allows: letters, spaces, hyphens, apostrophes, commas, periods
+  const cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+
+  if (!cleaned || cleaned.length === 0) return null;
+
+  const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
   const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
-  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
+  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ").trim();
+
+  // If the result is empty or doesn't start with a letter, return null
+  if (!sanitized || sanitized.length === 0 || !/^[A-Z]/.test(sanitized)) return null;
+
   return sanitized;
 }
 
