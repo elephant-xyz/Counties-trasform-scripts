@@ -310,7 +310,7 @@ function buildOwnersByDate($) {
         raw
           .replace(/\.$/, "")
           .replace(/\s*\([^)]*\)\s*$/, "")
-          .replace(/\b(JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
+          .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
       ).trim();
 
       if (!clean) continue;
@@ -373,7 +373,7 @@ function buildOwnersByDate($) {
 
     const personLike = cand
       .replace(
-        /\b(TRUSTEE|ET\s+AL|CUSTODIAN|AS\s+TRUSTEE|TTEE|AS\s+TTEE)\b.*$/i,
+        /\b(L\/E|TRUSTEE|ET\s+AL|CUSTODIAN|AS\s+TRUSTEE|TTEE|AS\s+TTEE)\b.*$/i,
         "",
       )
       .trim();
