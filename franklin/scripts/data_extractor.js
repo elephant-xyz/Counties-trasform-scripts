@@ -2874,33 +2874,48 @@ function main() {
     source_http_request: {
           method: "GET",
           url: seed.source_http_request.url
-        },    
-    // street_number: street_number || null,
-    // street_name: street_name || null,
-    // street_suffix_type: street_suffix_type || null,
-    // street_pre_directional_text: pre_dir || null,
-    // street_post_directional_text: post_dir || null,
-    // unit_identifier: null,
-    // city_name: (cityUpper || "").toUpperCase() || null,
-    // state_code: "FL",
-    // postal_code: postal_code || null,
-    // plus_four_postal_code: plus_four_postal_code || null,
-    // country_code: "US",
+        },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
     county_name: "Franklin",
-    latitude: unAddr.latitude ?? null,
-    longitude: unAddr.longitude ?? null,
-    // route_number: null,
     township: townshipText || null,
     range: rangeText || null,
     section: sectionText || null,
-    // block: null,
-    // lot: lotNumber || null,
-    // municipality_name: null,
     unnormalized_address: situsAddress
   };
   writeJSON(path.join("data", "address.json"), address);
   console.log(address)
-  
+
+  // Create relationship between property and address
+  writeJSON(path.join("data", "relationship_property_has_address.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  });
+
+  // Create geometry object with latitude and longitude
+  const latRaw = unAddr.latitude;
+  const lonRaw = unAddr.longitude;
+  const latNum = typeof latRaw === "number" ? latRaw : Number.parseFloat(latRaw);
+  const lonNum = typeof lonRaw === "number" ? lonRaw : Number.parseFloat(lonRaw);
+  const latitude = Number.isFinite(latNum) ? latNum : null;
+  const longitude = Number.isFinite(lonNum) ? lonNum : null;
+
+  const geometry = {
+    source_http_request: {
+      method: "GET",
+      url: seed.source_http_request.url
+    },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
+    latitude: latitude,
+    longitude: longitude
+  };
+  writeJSON(path.join("data", "geometry.json"), geometry);
+
+  // Create relationship between address and geometry
+  writeJSON(path.join("data", "relationship_address_has_geometry.json"), {
+    from: { "/": "./address.json" },
+    to: { "/": "./geometry.json" }
+  });
+
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
@@ -2969,10 +2984,7 @@ function main() {
       url: seed.source_http_request.url
     },
     request_identifier: parcelIdentifier || seed.parcel_id || "",
-    // county_name: null,
-    unnormalized_address: mailingAddr,
-    longitude: null,
-    latitude: null
+    unnormalized_address: mailingAddr
   };
   writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
   
