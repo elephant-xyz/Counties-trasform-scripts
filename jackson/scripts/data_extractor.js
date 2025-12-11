@@ -1329,6 +1329,14 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
 
+  // Remove records with keys starting with 'unknown_date_' as they cannot be linked to any sale
+  Object.keys(ownersByDate).forEach(dateKey => {
+    if (dateKey.startsWith('unknown_date_')) {
+      console.log("Removing unknown date owner:", dateKey);
+      delete ownersByDate[dateKey];
+    }
+  });
+
   // First pass: identify which persons will actually be used in relationships
   const personsToUseMap = new Map();
 
