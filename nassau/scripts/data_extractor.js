@@ -2261,26 +2261,31 @@ function main() {
       if (middleName != null) {
         middleName = validatePersonName(middleName, 'middle_name');
       }
-      
-      const person = {
-        source_http_request: {
-          method: "GET",
-          url: seed.source_http_request.url
-        },
-        request_identifier: parcelIdentifier || seed.parcel_id || "",
-        birth_date: null,
-        first_name: firstName,
-        last_name: lastName,
-        middle_name: middleName,
-        prefix_name: parsed.prefix ? validatePrefix(parsed.prefix) : null,
-        suffix_name: parsed.suffix ? validateSuffix(parsed.suffix) : null,
-        us_citizenship_status: null,
-        veteran_status: null
-      };
-      personCounter++;
-      const personFileName = `person_${personCounter}.json`;
-      writeJSON(path.join("data", personFileName), person);
-      initialPersonFiles.push(personFileName);
+
+      // Only create person if we have valid first and last names
+      if (firstName && lastName) {
+        const person = {
+          source_http_request: {
+            method: "GET",
+            url: seed.source_http_request.url
+          },
+          request_identifier: parcelIdentifier || seed.parcel_id || "",
+          birth_date: null,
+          first_name: firstName,
+          last_name: lastName,
+          middle_name: middleName,
+          prefix_name: parsed.prefix ? validatePrefix(parsed.prefix) : null,
+          suffix_name: parsed.suffix ? validateSuffix(parsed.suffix) : null,
+          us_citizenship_status: null,
+          veteran_status: null
+        };
+        personCounter++;
+        const personFileName = `person_${personCounter}.json`;
+        writeJSON(path.join("data", personFileName), person);
+        initialPersonFiles.push(personFileName);
+      } else {
+        console.log(`Warning: Skipping person with invalid name: ${owner.name} (firstName: ${firstName}, lastName: ${lastName})`);
+      }
     }
   });
   
@@ -2581,6 +2586,13 @@ function main() {
         if (middleName != null) {
           middleName = validatePersonName(middleName, 'middle_name');
         }
+
+        // Only create person if we have valid first and last names
+        if (!firstName || !lastName) {
+          console.log(`Warning: Cannot create person with invalid name - firstName: ${firstName}, lastName: ${lastName}`);
+          return null;
+        }
+
         const personObj = {
           source_http_request: {
             method: "GET",
@@ -2630,17 +2642,19 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          const rel = {
-            from: { "/": `./${sref.salesFileName}` },
-            to: { "/": `./${personFile}` },
-          };
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
-            ),
-            rel,
-          );
+          if (personFile) {
+            const rel = {
+              from: { "/": `./${sref.salesFileName}` },
+              to: { "/": `./${personFile}` },
+            };
+            writeJSON(
+              path.join(
+                "data",
+                `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
+              ),
+              rel,
+            );
+          }
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
           const rel = {
@@ -2699,14 +2713,16 @@ function main() {
       currentOwners.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          const rel = {
-            from: { "/": `./${personFile}` },
-            to: { "/": `./mailing_address.json` },
-          };
-          writeJSON(
-            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-            rel,
-          );
+          if (personFile) {
+            const rel = {
+              from: { "/": `./${personFile}` },
+              to: { "/": `./mailing_address.json` },
+            };
+            writeJSON(
+              path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
+              rel,
+            );
+          }
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
           const rel = {
