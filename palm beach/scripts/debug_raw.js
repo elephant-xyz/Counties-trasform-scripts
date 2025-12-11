@@ -12474,6 +12474,104 @@ function parseCoordinate(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function enforceRawPreferredAddressOutput(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const trimString = (value) => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  };
+
+  const hasRaw = hasMeaningfulAddressValue(payload.unnormalized_address);
+
+  if (hasRaw) {
+    const rawOut = {};
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        rawOut[field] = trimString(payload.unnormalized_address);
+        return;
+      }
+      if (field === "source_http_request") {
+        rawOut[field] = prepareSourceHttpRequest(payload.source_http_request) || null;
+        return;
+      }
+      if (field === "request_identifier") {
+        rawOut[field] = trimString(payload.request_identifier);
+        return;
+      }
+      if (field === "latitude" || field === "longitude") {
+        const numeric = parseCoordinate(payload[field]);
+        rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      rawOut[field] = hasMeaningfulAddressValue(payload[field])
+        ? payload[field]
+        : null;
+    });
+
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+
+    writeJSON(addressPath, rawOut);
+    return;
+  }
+
+  const normalizedOut = {};
+  let hasNormalizedSurface = false;
+  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+    if (field === "source_http_request") {
+      normalizedOut[field] = prepareSourceHttpRequest(payload.source_http_request) || null;
+      if (normalizedOut[field]) hasNormalizedSurface = true;
+      return;
+    }
+    if (field === "request_identifier") {
+      normalizedOut[field] = trimString(payload.request_identifier);
+      if (normalizedOut[field]) hasNormalizedSurface = true;
+      return;
+    }
+    if (field === "latitude" || field === "longitude") {
+      const numeric = parseCoordinate(payload[field]);
+      normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+      if (Number.isFinite(numeric)) hasNormalizedSurface = true;
+      return;
+    }
+    const value = hasMeaningfulAddressValue(payload[field])
+      ? payload[field]
+      : null;
+    normalizedOut[field] = value;
+    if (hasMeaningfulAddressValue(value)) {
+      hasNormalizedSurface = true;
+    }
+  });
+
+  if (!hasNormalizedSurface) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+    normalizedOut.latitude = null;
+    normalizedOut.longitude = null;
+  }
+  if (!normalizedOut.postal_code) {
+    normalizedOut.plus_four_postal_code = null;
+  }
+
+  writeJSON(addressPath, normalizedOut);
+}
+
 const MIDDLE_NAME_PLACEHOLDERS = new Set([
   "nmi",
   "n m i",
@@ -18963,6 +19061,7 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
   }
+  enforceRawPreferredAddressOutput(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
     removeAddressRelationshipFiles(dirPath);
