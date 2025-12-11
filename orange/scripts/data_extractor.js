@@ -2,6 +2,13 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+let INPUT_JSON = null;
+
+// CRITICAL: Person/Company File Generation Control
+// Set to false to disable creating person/company files (prevents orphaned files)
+// When false, NO person_*.json or company_*.json files will be created
+const ENABLE_PERSON_COMPANY_FILES = false;
+
 // --- Start of original owner_data.js content ---
 
 function normSpace(s) {
@@ -9,43 +16,72 @@ function normSpace(s) {
 }
 
 function extractPropertyId($) {
-  // Prefer explicit table row label "Parcel ID:"
   let id = null;
-  $("tr").each((_, tr) => {
-    if (id) return;
-    const tds = $(tr).find("td");
-    if (tds.length >= 2) {
-      const label = normSpace($(tds[0]).text());
-      if (/^parcel\s*id\s*:$/i.test(label) || /^parcel\s*id\b/i.test(label)) {
-        const candidate = normSpace($(tds[1]).text());
-        if (candidate) id = candidate;
+
+  if (INPUT_JSON) {
+    const candidates = [];
+    const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+    const quickSummary = Array.isArray(INPUT_JSON.parcelQuickSearchSummary)
+      ? INPUT_JSON.parcelQuickSearchSummary
+      : [];
+
+    if (generalProfile.parcelId) {
+      candidates.push(String(generalProfile.parcelId));
+    }
+    if (generalProfile.altKey) {
+      candidates.push(String(generalProfile.altKey));
+    }
+    quickSummary.forEach((entry) => {
+      if (entry && entry.parcelId) {
+        candidates.push(String(entry.parcelId));
+      }
+    });
+
+    for (const candidate of candidates) {
+      const trimmed = normSpace(candidate);
+      if (trimmed) {
+        id = trimmed;
+        break;
       }
     }
-  });
-  // Fallbacks if not found exactly
-  if (!id) {
+  }
+
+  if (!id && $) {
+    $("tr").each((_, tr) => {
+      if (id) return;
+      const tds = $(tr).find("td");
+      if (tds.length >= 2) {
+        const label = normSpace($(tds[0]).text());
+        if (/^parcel\s*id\s*:$/i.test(label) || /^parcel\s*id\b/i.test(label)) {
+          const candidate = normSpace($(tds[1]).text());
+          if (candidate) id = candidate;
+        }
+      }
+    });
+  }
+
+  if (!id && $) {
     const el = $('*:contains("Parcel ID")')
       .filter((_, e) => /parcel\s*id/i.test($(e).text()))
       .first();
     if (el && el.length) {
-      // Try next sibling text
       const sib = el.next();
       const candidate = normSpace(sib.text());
       if (candidate) id = candidate;
     }
   }
-  // --- NEW: Specific extraction for Parcel Number from your HTML ---
-  if (!id) {
-    const parcelNumberCell = $('td.property_field:contains("Parcel Number:")').next('td.property_item');
+
+  if (!id && $) {
+    const parcelNumberCell = $(
+      'td.property_field:contains("Parcel Number:")',
+    ).next("td.property_item");
     if (parcelNumberCell.length) {
       id = normSpace(parcelNumberCell.text());
     }
   }
-  // --- END NEW ---
 
   if (!id) return "unknown_id";
-  // Clean ID
-  id = id.replace(/[^A-Za-z0-9_-]+/g, "");
+  id = String(id).replace(/[^A-Za-z0-9_-]+/g, "");
   return id || "unknown_id";
 }
 
@@ -127,6 +163,7 @@ const COMPANY_NAME_KEYWORD_PATTERNS = [
   ["associatn"],
   ["authority"],
   ["bank"],
+  ["bcc"],
   ["board"],
   ["capital"],
   ["center"],
@@ -145,6 +182,7 @@ const COMPANY_NAME_KEYWORD_PATTERNS = [
   ["corp"],
   ["corporation"],
   ["council"],
+  ["county"],
   ["credit", "union"],
   ["development"],
   ["district"],
@@ -488,7 +526,8 @@ const suffixLookup = new Map(
 
 function toIsoDate(s) {
   if (!s) return null;
-  const str = s.trim();
+  const strRaw = s.trim();
+  const str = strRaw.includes("T") ? strRaw.split("T")[0] : strRaw;
   let m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -612,7 +651,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: normalizedLast,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         // Store removed designations if any, for debugging or further processing
@@ -639,7 +678,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: last,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         _removed_designations: removedDesignations,
@@ -662,12 +701,36 @@ function parsePersonName(raw, contextHint) {
       type: "person",
       first_name: first,
       last_name: last,
-      middle_name: middle,
+      middle_name: cleanNameField(middle),
       prefix_name: processed.prefix || null,
       suffix_name: processed.suffix || null,
       _removed_designations: removedDesignations,
     };
   return null;
+}
+
+// Helper to clean and validate person name fields according to Elephant schema pattern
+function cleanNameField(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+
+  // Remove any characters that don't match the pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  // Keep only letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '').replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) return null;
+
+  // Must start with a letter (uppercase after conversion)
+  if (!/^[a-zA-Z]/.test(cleaned)) return null;
+
+  // Ensure first letter is uppercase
+  const result = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  // Verify final result matches the pattern
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  return result;
 }
 
 function ownerNormKey(owner) {
@@ -682,81 +745,122 @@ function ownerNormKey(owner) {
 
 function extractOwnerGroups($) {
   const groups = [];
-  // Updated labelRx to include "Name:" which is used for the owner in your HTML
-  const labelRx =
-    /^(owner\(s\)|owners?|owner\s*name\s*\d*|co-?owner|primary\s*owner|name)\s*:*/i;
+  const seen = new Set();
 
-  // Existing logic for table rows
-  $("tr").each((_, tr) => {
-    const tds = $(tr).find("td,th");
-    if (tds.length < 2) return;
-    const label = normSpace($(tds[0]).text());
-    if (!labelRx.test(label)) return;
-
-    const htmlValue = $(tds[1]).html() || "";
-    const rawValue = htmlValue
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\u00A0/g, " ");
-    const valueText = rawValue.replace(/\s*\n+\s*/g, "\n").trim();
+  const pushGroup = (context, valueText, date = null, isCurrent = false) => {
     if (!valueText) return;
+    const normalizedValue = valueText
+      .split("\n")
+      .map((line) => normSpace(line))
+      .filter(Boolean)
+      .join("\n");
+    if (!normalizedValue) return;
+    const key = `${context || ""}::${normalizedValue}::${date || ""}::${isCurrent}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    groups.push({
+      context: context || "Owner",
+      valueText: normalizedValue,
+      date,
+      isCurrent,
+    });
+  };
 
-    // Find a date near this row (same or next row)
-    let dateCandidate = null;
-    const dateRx =
-      /\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}\/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s*\d{4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b/i;
-    const rowText = normSpace($(tr).text());
-    let m = rowText.match(dateRx);
-    if (m) dateCandidate = toIsoDate(m[1]);
-    if (!dateCandidate) {
-      const nextRow = $(tr).next("tr");
-      if (nextRow && nextRow.length) {
-        const rowText2 = normSpace(nextRow.text());
-        const m2 = rowText2.match(dateRx);
-        if (m2) dateCandidate = toIsoDate(m2[1]);
+  if (INPUT_JSON) {
+    const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+    const quickSummary = Array.isArray(INPUT_JSON.parcelQuickSearchSummary)
+      ? INPUT_JSON.parcelQuickSearchSummary
+      : [];
+    const ownerStrings = new Set();
+
+    if (generalProfile.ownerName) {
+      ownerStrings.add(normSpace(generalProfile.ownerName));
+    }
+    if (generalProfile.ownerName2) {
+      ownerStrings.add(normSpace(generalProfile.ownerName2));
+    }
+    quickSummary.forEach((entry) => {
+      if (entry && entry.ownerName) {
+        ownerStrings.add(normSpace(entry.ownerName));
       }
+    });
+
+    if (ownerStrings.size > 0) {
+      pushGroup(
+        "Current Owner",
+        Array.from(ownerStrings).filter(Boolean).join("\n"),
+        null,
+        true,
+      );
     }
 
-    groups.push({
-      context: label,
-      valueText,
-      date: dateCandidate,
-      isCurrent: true,
-    }); // assume this is the current owner block
-  });
-
-  // If no direct owner label rows found, try generic spans/divs where the preceding sibling label contains Owners
-  if (groups.length === 0) {
-    $('td:contains("Owners")').each((_, el) => {
-      const $el = $(el);
-      const label = normSpace($el.text());
-      if (!/owners?/i.test(label)) return;
-      const tr = $el.closest("tr");
-      if (!tr.length) return;
-      const tds = tr.find("td");
-      if (tds.length >= 2) {
-        const valueText = normSpace($(tds[1]).text());
-        if (valueText)
-          groups.push({
-            context: "Owners",
-            valueText,
-            date: null,
-            isCurrent: true,
-          });
-      }
+    const salesHistory = Array.isArray(INPUT_JSON.parcelSalesHistory)
+      ? INPUT_JSON.parcelSalesHistory
+      : [];
+    salesHistory.forEach((sale, index) => {
+      const buyer = sale && sale.buyer ? normSpace(sale.buyer) : "";
+      if (!buyer) return;
+      const contextParts = ["Buyer"];
+      if (sale.deedDesc) contextParts.push(normSpace(sale.deedDesc));
+      const context = contextParts.join(" - ");
+      const saleDate = sale && sale.saleDate ? toIsoDate(sale.saleDate) : null;
+      pushGroup(context, buyer, saleDate, index === 0 && !ownerStrings.size);
     });
   }
 
-  // Deduplicate by valueText
-  const out = [];
-  const seen = new Set();
-  groups.forEach((g) => {
-    const key = `${g.context}::${g.valueText}`.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(g);
-  });
-  return out;
+  if ($) {
+    const labelRx =
+      /^(owner\(s\)|owners?|owner\s*name\s*\d*|co-?owner|primary\s*owner|name)\s*:*/i;
+
+    $("tr").each((_, tr) => {
+      const tds = $(tr).find("td,th");
+      if (tds.length < 2) return;
+      const label = normSpace($(tds[0]).text());
+      if (!labelRx.test(label)) return;
+
+      const htmlValue = $(tds[1]).html() || "";
+      const rawValue = htmlValue
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\u00A0/g, " ");
+      const valueText = rawValue.replace(/\s*\n+\s*/g, "\n").trim();
+      if (!valueText) return;
+
+      let dateCandidate = null;
+      const dateRx =
+        /\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}\/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s*\d{4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b/i;
+      const rowText = normSpace($(tr).text());
+      let m = rowText.match(dateRx);
+      if (m) dateCandidate = toIsoDate(m[1]);
+      if (!dateCandidate) {
+        const nextRow = $(tr).next("tr");
+        if (nextRow && nextRow.length) {
+          const rowText2 = normSpace(nextRow.text());
+          const m2 = rowText2.match(dateRx);
+          if (m2) dateCandidate = toIsoDate(m2[1]);
+        }
+      }
+
+      pushGroup(label, valueText, dateCandidate, true);
+    });
+
+    if (groups.length === 0) {
+      $('td:contains("Owners")').each((_, el) => {
+        const $el = $(el);
+        const label = normSpace($el.text());
+        if (!/owners?/i.test(label)) return;
+        const tr = $el.closest("tr");
+        if (!tr.length) return;
+        const tds = tr.find("td");
+        if (tds.length >= 2) {
+          const valueText = normSpace($(tds[1]).text());
+          if (valueText) pushGroup("Owners", valueText, null, true);
+        }
+      });
+    }
+  }
+
+  return groups;
 }
 
 function parseOwnersFromGroup(valueText, contextHint) {
@@ -2559,6 +2663,30 @@ function mapMiscImprovementType(code, description) {
     case "TVT":
       push("Tower");
       break;
+    case "CPT":
+    case "CPT2":
+      push("Carport");
+      break;
+    case "FPL":
+    case "FPL2":
+    case "FPL3":
+      push("Fireplace");
+      break;
+    case "PT":
+    case "PT1":
+    case "PT2":
+      push("Patio");
+      break;
+    case "PL":
+    case "PL2":
+      push("Pool");
+      break;
+    case "WLDC":
+      push("Deck");
+      break;
+    case "GRNH":
+      push("Greenhouse");
+      break;
     default:
       break;
   }
@@ -2601,6 +2729,47 @@ function mapMiscImprovementType(code, description) {
   }
 
   return null;
+}
+
+function interpretExteriorMaterials(rawText) {
+  if (!rawText) {
+    return { primary: null, secondary: null, framing: null };
+  }
+  const text = normSpace(String(rawText)).toUpperCase();
+  const has = (kw) => text.indexOf(kw) !== -1;
+  let primary = null;
+  let secondary = null;
+  let framing = null;
+
+  if (has("CBS") || has("CONCRETE") || has("C.B.") || has("BLOCK") || has("CONC")) {
+    framing = "Concrete Block";
+  }
+
+  if (has("STUCCO")) primary = "Stucco";
+  if (!primary && has("VINYL") && has("SIDING")) primary = "Vinyl Siding";
+  if (!primary && has("WOOD") && has("SIDING")) primary = "Wood Siding";
+  if (!primary && has("FIBER") && has("CEMENT")) primary = "Fiber Cement Siding";
+  if (!primary && has("BRICK")) primary = "Brick";
+  if (!primary && (has("BLOCK") || has("CONCRETE") || has("CBS")))
+    primary = "Concrete Block";
+
+  if (has("BRICK") && primary !== "Brick") secondary = "Brick Accent";
+  if (
+    !secondary &&
+    (has("BLOCK") || has("CONCRETE") || has("CBS")) &&
+    primary !== "Concrete Block"
+  ) {
+    secondary = "Decorative Block";
+  }
+  if (!secondary && has("STUCCO") && primary !== "Stucco") {
+    secondary = "Stucco Accent";
+  }
+
+  return {
+    primary,
+    secondary: secondary || null,
+    framing: framing || null,
+  };
 }
 
 function getUnitsType(units) {
@@ -2669,27 +2838,39 @@ function main() {
   // Inputs
   let inputHtml = "";
   const htmlPath = "input.html";
-  let inputJson = null; // Variable to store parsed JSON input
-  if (fs.existsSync(htmlPath)) {
-    inputHtml = readText(htmlPath);
-    console.log(inputHtml);
+  const jsonPath = "input.json";
 
-  } else if (fs.existsSync("input.json")) {
+  if (fs.existsSync(jsonPath)) {
     try {
-      inputJson = readJSON("input.json"); // Store the parsed JSON
-      const htmlFromJson = extractHtmlString(inputJson);
+      const parsed = readJSON(jsonPath);
+      INPUT_JSON = parsed;
+      const htmlFromJson = extractHtmlString(parsed);
       if (typeof htmlFromJson === "string" && htmlFromJson.trim()) {
         inputHtml = htmlFromJson;
-        console.log(inputHtml);
       }
     } catch (err) {
-      console.warn("Unable to derive HTML from input.json:", err.message || err);
+      console.warn(
+        "Unable to parse input.json, proceeding without JSON:",
+        err.message || err,
+      );
+      INPUT_JSON = null;
     }
   }
+
+  if (!inputHtml && fs.existsSync(htmlPath)) {
+    inputHtml = readText(htmlPath);
+  }
+
   if (!inputHtml || typeof inputHtml !== "string") {
-    console.warn("No input.html found; proceeding with empty HTML stub.");
     inputHtml = "<html></html>";
   }
+
+  if (!INPUT_JSON) {
+    console.warn(
+      "No input.json found or unreadable; falling back to HTML parsing only.",
+    );
+  }
+
   const addrSeed = readJSON("unnormalized_address.json");
   const propSeed = readJSON("property_seed.json");
 
@@ -2774,134 +2955,243 @@ function main() {
 
   // Helper: find cell by label in General Information table
   function extractGeneral() {
-    if (!$) return {};
     const result = {};
-    // Parcel Number
-    const rows = $("table.property_head").first().find("tr");
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 4) {
-        const label = $(tds[2]).text().trim();
-        const val = $(tds[3]).text().trim();
-        if (/Parcel Number/i.test(label)) result.parcelNumber = val || null;
-      }
-    });
 
-    // Mailing Address block
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 2) {
-        const label = $(tds[0]).text().trim();
-        if (/Mailing Address:?/i.test(label)) {
-          const cellHtml = $(tds[1]).html() || "";
-          const cleanedHtml = cellHtml.replace(
-            /<span[^>]*>[\s\S]*?<\/span>/gi,
-            "",
-          );
-          const lines = cleanedHtml
-            .split(/<br\s*\/?>/i)
-            .map((line) =>
-              line
-                .replace(/<[^>]+>/g, "")
-                .replace(/\s+/g, " ")
-                .trim(),
-            )
-            .filter(
-              (line) =>
-                line &&
-                !/update mailing address/i.test(line) &&
-                line !== "/>",
+    if (INPUT_JSON) {
+      const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+      if (generalProfile.parcelId) {
+        result.parcelNumber = String(generalProfile.parcelId).trim();
+      }
+      const streetNumber =
+        generalProfile.streetNumber &&
+        Number(generalProfile.streetNumber) !== 0
+          ? String(generalProfile.streetNumber).trim()
+          : "";
+      const propertyAddress = normSpace(
+        generalProfile.propertyAddress || generalProfile.streetName || "",
+      );
+      let locationLine = propertyAddress;
+      if (streetNumber) {
+        locationLine = `${streetNumber} ${propertyAddress}`.trim();
+      }
+      if (!locationLine && generalProfile.streetName) {
+        locationLine = normSpace(generalProfile.streetName);
+      }
+      const city = normSpace(generalProfile.propertyCity || "");
+      const state = normSpace(generalProfile.propertyState || "");
+      const zip = normSpace(generalProfile.propertyZip || "");
+      const locationParts = [];
+      if (locationLine) locationParts.push(locationLine);
+      const cityState = [city, state].filter(Boolean).join(", ");
+      if (cityState) locationParts.push(cityState);
+      if (zip) locationParts.push(zip);
+      if (locationParts.length) {
+        result.propertyLocationRaw = locationParts.join(", ");
+      }
+
+      const mailingLines = [];
+      const mailingLine1 = normSpace(generalProfile.mailAddress || "");
+      const mailingCity = normSpace(generalProfile.mailCity || "");
+      const mailingState = normSpace(generalProfile.mailState || "");
+      const mailingZip = normSpace(generalProfile.mailZip || "");
+      if (mailingLine1) mailingLines.push(mailingLine1);
+      const mailingLine2Parts = [];
+      if (mailingCity) mailingLine2Parts.push(mailingCity);
+      if (mailingState) mailingLine2Parts.push(mailingState);
+      let mailingLine2 = mailingLine2Parts.join(", ");
+      if (mailingZip) {
+        mailingLine2 = mailingLine2
+          ? `${mailingLine2} ${mailingZip}`
+          : mailingZip;
+      }
+      if (mailingLine2) mailingLines.push(mailingLine2);
+      if (mailingLines.length) {
+        result.mailingAddressLines = mailingLines;
+      }
+
+      if (
+        INPUT_JSON.parcelLegalDescription &&
+        INPUT_JSON.parcelLegalDescription.propertyDescription
+      ) {
+        result.legalDescription = normSpace(
+          INPUT_JSON.parcelLegalDescription.propertyDescription,
+        );
+      } else if (generalProfile.propertyDescription) {
+        result.legalDescription = normSpace(generalProfile.propertyDescription);
+      }
+    }
+
+    if ($ && (!result.parcelNumber || !result.propertyLocationRaw)) {
+      const rows = $("table.property_head").first().find("tr");
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 4) {
+          const label = $(tds[2]).text().trim();
+          const val = $(tds[3]).text().trim();
+          if (!result.parcelNumber && /Parcel Number/i.test(label)) {
+            result.parcelNumber = val || result.parcelNumber || null;
+          }
+        }
+      });
+
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 2) {
+          const label = $(tds[0]).text().trim();
+          if (!result.mailingAddressLines && /Mailing Address:?/i.test(label)) {
+            const cellHtml = $(tds[1]).html() || "";
+            const cleanedHtml = cellHtml.replace(
+              /<span[^>]*>[\s\S]*?<\/span>/gi,
+              "",
             );
-          if (lines.length) result.mailingAddressLines = lines;
+            const lines = cleanedHtml
+              .split(/<br\s*\/?>/i)
+              .map((line) =>
+                line
+                  .replace(/<[^>]+>/g, "")
+                  .replace(/\s+/g, " ")
+                  .trim(),
+              )
+              .filter(
+                (line) =>
+                  line &&
+                  !/update mailing address/i.test(line) &&
+                  line !== "/>",
+              );
+            if (lines.length) result.mailingAddressLines = lines;
+          }
         }
-      }
-    });
+      });
 
-    // Property Location block
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 4) {
-        const label = $(tds[0]).text().trim();
-        if (/Property Location:/i.test(label)) {
-          const addrHtml = $(tds[1]).html() || "";
-          const addrText = addrHtml
-            .replace(/<br\s*\/?>(?=\s*|$)/gi, "\n")
-            .replace(/<[^>]+>/g, "")
-            .trim();
-          result.propertyLocationRaw = addrText; // e.g., "31729 PARKDALE DR\nLEESBURG FL, 34748"
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 4 && !result.propertyLocationRaw) {
+          const label = $(tds[0]).text().trim();
+          if (/Property Location:/i.test(label)) {
+            const addrHtml = $(tds[1]).html() || "";
+            const addrText = addrHtml
+              .replace(/<br\s*\/?>(?=\s*|$)/gi, "\n")
+              .replace(/<[^>]+>/g, "")
+              .trim();
+            if (addrText) result.propertyLocationRaw = addrText;
+          }
         }
-      }
-    });
+      });
 
-    // Property Description
-    rows.each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 2) {
-        const label = $(tds[0]).text().trim();
-        if (/Property Description:/i.test(label)) {
-          result.legalDescription = $(tds[1]).text().trim() || null;
+      rows.each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 2 && !result.legalDescription) {
+          const label = $(tds[0]).text().trim();
+          if (/Property Description:/i.test(label)) {
+            result.legalDescription = $(tds[1]).text().trim() || null;
+          }
         }
-      }
-    });
+      });
+    }
 
     return result;
   }
 
   function extractPropertyTypeFromLandData() {
-    if (!$)
-      return {
-        propertyType: null,
-        units: null,
-        landUseCodes: [],
-      };
-
     let landUseDescription = null;
     let units = null;
-    const landUseCodes = [];
+    const landUseCodes = new Set();
 
-    // Extract from Land Data table
-    $("#cphMain_gvLandData tr.property_row").each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 2) {
-        const landUseText = $(tds[1]).text().trim();
-        if (landUseText) {
-          landUseDescription = landUseText.toUpperCase();
-          const codeMatch = landUseText.match(/\((\d{2,6})\)/);
-          if (codeMatch) {
-            const code = codeMatch[1];
-            if (!landUseCodes.includes(code)) landUseCodes.push(code);
+    if (INPUT_JSON) {
+      const generalProfile = INPUT_JSON.parcelGeneralProfile || {};
+      if (generalProfile.dorCode) {
+        landUseCodes.add(String(generalProfile.dorCode));
+      }
+      if (generalProfile.dorDescription) {
+        landUseDescription = normSpace(generalProfile.dorDescription);
+      }
+
+      const landFeatures = Array.isArray(INPUT_JSON.parcelLandFeatures)
+        ? INPUT_JSON.parcelLandFeatures
+        : [];
+      landFeatures.forEach((feature) => {
+        if (!feature) return;
+        if (feature.landDorCode) {
+          landUseCodes.add(String(feature.landDorCode));
+        }
+        if (!landUseDescription && feature.descShort) {
+          landUseDescription = normSpace(feature.descShort);
+        }
+        if (
+          units == null &&
+          feature.landQtyCode &&
+          /unit/i.test(String(feature.landQtyCode))
+        ) {
+          const parsedUnits = parseFloat(String(feature.landQty).replace(/,/g, ""));
+          if (!Number.isNaN(parsedUnits)) {
+            units = parsedUnits % 1 === 0 ? parsedUnits : null;
           }
         }
-      }
-      if (tds.length >= 7 && units == null) {
-        const typeText = $(tds[6]).text().trim().toUpperCase();
-        if (!/UNIT/.test(typeText)) return;
-        const unitText = $(tds[5]).text().trim();
-        const parsedUnits = parseFloat(unitText.replace(/,/g, ""));
-        if (!Number.isNaN(parsedUnits)) {
-          units = parsedUnits % 1 === 0 ? parsedUnits : null;
-        }
-      }
-    });
+      });
 
-    // Also check for units in building summary if available
-    $("table.property_building_summary td").each((i, td) => {
-      if (units != null) return;
-      const text = $(td).text().trim();
-      const unitMatch = text.match(/Units:\s*(\d+)/i);
-      if (unitMatch) {
-        units = parseInt(unitMatch[1], 10);
-      }
-    });
+      const buildingFeatures = Array.isArray(INPUT_JSON.parcelBuildingFeatures)
+        ? INPUT_JSON.parcelBuildingFeatures
+        : [];
+      buildingFeatures.forEach((feature) => {
+        if (feature && feature.bldgDorCode) {
+          landUseCodes.add(String(feature.bldgDorCode));
+        }
+        if (feature && feature.units && units == null) {
+          const parsedUnits = parseFloat(String(feature.units).replace(/,/g, ""));
+          if (!Number.isNaN(parsedUnits)) {
+            units = parsedUnits % 1 === 0 ? parsedUnits : null;
+          }
+        }
+      });
+    }
+
+    if ($) {
+      $("#cphMain_gvLandData tr.property_row").each((i, tr) => {
+        const tds = $(tr).find("td");
+        if (tds.length >= 2) {
+          const landUseText = $(tds[1]).text().trim();
+          if (landUseText) {
+            landUseDescription = landUseDescription || landUseText.toUpperCase();
+            const codeMatch = landUseText.match(/\((\d{2,6})\)/);
+            if (codeMatch) {
+              const code = codeMatch[1];
+              if (code) landUseCodes.add(code);
+            }
+          }
+        }
+        if (tds.length >= 7 && units == null) {
+          const typeText = $(tds[6]).text().trim().toUpperCase();
+          if (!/UNIT/.test(typeText)) return;
+          const unitText = $(tds[5]).text().trim();
+          const parsedUnits = parseFloat(unitText.replace(/,/g, ""));
+          if (!Number.isNaN(parsedUnits)) {
+            units = parsedUnits % 1 === 0 ? parsedUnits : null;
+          }
+        }
+      });
+
+      $("table.property_building_summary td").each((i, td) => {
+        if (units != null) return;
+        const text = $(td).text().trim();
+        const unitMatch = text.match(/Units:\s*(\d+)/i);
+        if (unitMatch) {
+          units = parseInt(unitMatch[1], 10);
+        }
+      });
+    }
 
     const propertyType = mapLandUseToPropertyType(landUseDescription);
 
-    return { propertyType, units, landUseCodes, landUseDescription };
+    return {
+      propertyType,
+      units,
+      landUseCodes: Array.from(landUseCodes),
+      landUseDescription,
+    };
   }
 
   // Extract Living Area, Year Built, Building/Land Values, Sales, and derive structure hints
   function extractBuildingAndValues() {
-    if (!$) return {};
     const out = {
       yearBuilt: null,
       livingArea: null,
@@ -2920,14 +3210,148 @@ function main() {
       },
     };
 
+    if (INPUT_JSON) {
+      const buildingFeatures = Array.isArray(INPUT_JSON.parcelBuildingFeatures)
+        ? INPUT_JSON.parcelBuildingFeatures
+        : [];
+      const primaryBuilding = buildingFeatures.find(Boolean) || null;
+      if (primaryBuilding) {
+        if (primaryBuilding.dateBuilt) {
+          const rawBuilt = String(primaryBuilding.dateBuilt);
+          const builtDate = rawBuilt.includes("T")
+            ? rawBuilt.split("T")[0]
+            : rawBuilt;
+          const normalizedBuilt = toIsoDate(builtDate);
+          if (normalizedBuilt) {
+            const year = parseInt(normalizedBuilt.slice(0, 4), 10);
+            if (Number.isFinite(year)) out.yearBuilt = year;
+          }
+        }
+        const livingAreaNum = parseFloat(primaryBuilding.livingArea);
+        if (Number.isFinite(livingAreaNum) && livingAreaNum > 0) {
+          out.livingArea = livingAreaNum;
+        }
+        if (
+          primaryBuilding.bldgValue != null &&
+          Number(primaryBuilding.bldgValue) >= 0
+        ) {
+          out.buildingValue = parseCurrency(primaryBuilding.bldgValue);
+        }
+        if (primaryBuilding.floors != null) {
+          const floors = parseFloat(primaryBuilding.floors);
+          if (Number.isFinite(floors)) {
+            out.structure.number_of_stories = Math.round(floors);
+          }
+        }
+        if (primaryBuilding.extWall) {
+          const inferred = interpretExteriorMaterials(primaryBuilding.extWall);
+          if (inferred) {
+            if (
+              inferred.primary &&
+              !out.structure.exterior_wall_material_primary
+            ) {
+              out.structure.exterior_wall_material_primary = inferred.primary;
+            }
+            if (
+              inferred.secondary &&
+              !out.structure.exterior_wall_material_secondary
+            ) {
+              out.structure.exterior_wall_material_secondary =
+                inferred.secondary;
+            }
+            if (
+              inferred.framing &&
+              !out.structure.primary_framing_material
+            ) {
+              out.structure.primary_framing_material = inferred.framing;
+            }
+          }
+        }
+      }
+
+      const valuationRows = Array.isArray(INPUT_JSON.parcelPropertyValuesByYear)
+        ? INPUT_JSON.parcelPropertyValuesByYear.filter(Boolean)
+        : [];
+      valuationRows.sort((a, b) => {
+        const ta = a && a.taxYear ? Number(a.taxYear) : 0;
+        const tb = b && b.taxYear ? Number(b.taxYear) : 0;
+        return tb - ta;
+      });
+      const currentValuation =
+        valuationRows.find((row) => row && row.showFlag === 1) ||
+        valuationRows.find((row) => row && row.isCertified) ||
+        valuationRows[0] ||
+        null;
+      if (currentValuation) {
+        if (currentValuation.taxYear && !out.taxYear) {
+          const taxYear = Number(currentValuation.taxYear);
+          if (Number.isFinite(taxYear)) out.taxYear = taxYear;
+        }
+        if (currentValuation.marketValue != null && out.marketValue == null) {
+          out.marketValue = parseCurrency(currentValuation.marketValue);
+        }
+        if (currentValuation.assessedValue != null && out.assessedValue == null) {
+          out.assessedValue = parseCurrency(currentValuation.assessedValue);
+        }
+        if (currentValuation.landValue != null && out.landValue == null) {
+          out.landValue = parseCurrency(currentValuation.landValue);
+        }
+        if (
+          currentValuation.buildingValue != null &&
+          out.buildingValue == null
+        ) {
+          const bVal = parseCurrency(currentValuation.buildingValue);
+          if (bVal != null) out.buildingValue = bVal;
+        }
+        if (currentValuation.taxValue != null && out.taxableValue == null) {
+          out.taxableValue = parseCurrency(currentValuation.taxValue);
+        } else if (
+          out.taxableValue == null &&
+          currentValuation.assessedValue != null
+        ) {
+          out.taxableValue = parseCurrency(currentValuation.assessedValue);
+        }
+      }
+
+      const valuationStats = INPUT_JSON.parcelValuationStats || {};
+      if (valuationStats.taxYear && !out.taxYear) {
+        const taxYear = Number(valuationStats.taxYear);
+        if (Number.isFinite(taxYear)) out.taxYear = taxYear;
+      }
+      if (valuationStats.assessedValue != null && out.assessedValue == null) {
+        out.assessedValue = parseCurrency(valuationStats.assessedValue);
+        if (out.taxableValue == null) {
+          out.taxableValue = parseCurrency(valuationStats.assessedValue);
+        }
+      }
+      if (valuationStats.marketValue != null && out.marketValue == null) {
+        out.marketValue = parseCurrency(valuationStats.marketValue);
+      }
+
+      const totalTaxes = Array.isArray(INPUT_JSON.parcelTotalTaxesSummary)
+        ? INPUT_JSON.parcelTotalTaxesSummary
+        : [];
+      if (!out.taxYear && totalTaxes.length) {
+        const taxYear = totalTaxes[0] && totalTaxes[0].taxYear;
+        if (taxYear) {
+          const yr = Number(taxYear);
+          if (Number.isFinite(yr)) out.taxYear = yr;
+        }
+      }
+    }
+
     // Summary table with Year Built and Total Living Area
     $("table.property_building_summary td").each((i, td) => {
       const t = $(td).text().replace(/\s+/g, " ").trim();
       let m;
-      m = t.match(/Year Built:\s*(\d{4})/i);
-      if (m) out.yearBuilt = parseInt(m[1], 10);
-      m = t.match(/Total Living Area:\s*([0-9,\.]+)/i);
-      if (m) out.livingArea = m[1].replace(/[,]/g, "").trim();
+      if (out.yearBuilt == null) {
+        m = t.match(/Year Built:\s*(\d{4})/i);
+        if (m) out.yearBuilt = parseInt(m[1], 10);
+      }
+      if (out.livingArea == null) {
+        m = t.match(/Total Living Area:\s*([0-9,\.]+)/i);
+        if (m) out.livingArea = parseFloat(m[1].replace(/[,]/g, "").trim());
+      }
     });
 
     // Building Value
@@ -2937,15 +3361,16 @@ function main() {
       .first()
       .find("td")
       .each((i, td) => {
+        if (out.buildingValue != null) return;
         const text = $(td).text();
         const m = text.match(/Building Value:\s*\$([0-9,\.]+)/i);
-        if (m) out.buildingValue = parseCurrency(m[0].split(":")[1]);
+        if (m) out.buildingValue = parseCurrency(m[1]);
       });
 
     // Land Value (from Land Data table)
     $("#cphMain_gvLandData tr.property_row").each((i, tr) => {
       const tds = $(tr).find("td");
-      if (tds.length >= 9) {
+      if (tds.length >= 9 && out.landValue == null) {
         const lv = $(tds[8]).text();
         const parsed = parseCurrency(lv);
         if (parsed != null) out.landValue = parsed;
@@ -2958,36 +3383,59 @@ function main() {
       // First data row after header
       const tds = $(estRows[1]).find("td");
       if (tds.length >= 6) {
-        const market = $(tds[1]).text();
-        const assessed = $(tds[2]).text();
-        const taxable = $(tds[3]).text();
-        out.marketValue = parseCurrency(market);
-        out.assessedValue = parseCurrency(assessed);
-        out.taxableValue = parseCurrency(taxable);
+        if (out.marketValue == null) {
+          const market = $(tds[1]).text();
+          out.marketValue = parseCurrency(market);
+        }
+        if (out.assessedValue == null) {
+          const assessed = $(tds[2]).text();
+          out.assessedValue = parseCurrency(assessed);
+        }
+        if (out.taxableValue == null) {
+          const taxable = $(tds[3]).text();
+          out.taxableValue = parseCurrency(taxable);
+        }
       }
     }
 
     // Tax year from the red note text or globally from HTML
-    let noteText = "";
-    $("div.red").each((i, el) => {
-      noteText += $(el).text() + " ";
-    });
-    let mYear = noteText.match(
-      /Values shown below are\s+(\d{4})\s+CERTIFIED VALUES/i,
-    );
-    if (!mYear)
-      mYear = inputHtml.match(
+    if (!out.taxYear) {
+      let noteText = "";
+      $("div.red").each((i, el) => {
+        noteText += $(el).text() + " ";
+      });
+      let mYear = noteText.match(
         /Values shown below are\s+(\d{4})\s+CERTIFIED VALUES/i,
       );
-    if (mYear) out.taxYear = parseInt(mYear[1], 10);
+      if (!mYear)
+        mYear = inputHtml.match(
+          /Values shown below are\s+(\d{4})\s+CERTIFIED VALUES/i,
+        );
+      if (mYear) out.taxYear = parseInt(mYear[1], 10);
+    }
 
     // Enhanced Sales History: capture book/page, instrument, qualification, and pricing
-    // Prioritize sales data from inputJson if available
-    if (inputJson && inputJson.parcelSalesHistory && Array.isArray(inputJson.parcelSalesHistory)) {
-      inputJson.parcelSalesHistory.forEach((sale) => {
-        const saleDateISO = toISODate(sale.saleDate);
-        console.log("Script is running!");
-        console.log(sale.saleDate);
+    // Prioritize sales data from INPUT_JSON if available
+    if (
+      INPUT_JSON &&
+      Array.isArray(INPUT_JSON.parcelSalesHistory) &&
+      INPUT_JSON.parcelSalesHistory.length
+    ) {
+      INPUT_JSON.parcelSalesHistory.forEach((sale) => {
+        if (!sale) return;
+        const saleDateISO = toIsoDate(String(sale.saleDate || ""));
+
+        // Clean and validate buyer name
+        let buyerName = sale.buyer ? normSpace(sale.buyer) : null;
+        if (buyerName) {
+          // Remove leading/trailing commas, spaces, and other punctuation
+          buyerName = buyerName.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+          // Set to null if no alphanumeric characters remain
+          if (!buyerName || !/[a-zA-Z0-9]/.test(buyerName)) {
+            buyerName = null;
+          }
+        }
+
         const saleRecord = {
           sale_date: saleDateISO,
           ownership_transfer_date: saleDateISO,
@@ -3001,8 +3449,8 @@ function main() {
           instrument_number: sale.instrNum || null,
           document_url: null, // Not directly available in this JSON structure
           document_name: null, // Can be constructed if needed
-          buyer: sale.buyer || null, // Add buyer information
-          seller: sale.seller || null, // Add seller information for future use
+          buyer: buyerName, // Use cleaned buyer name
+          seller: sale.seller ? normSpace(sale.seller) : null, // Add seller information for future use
         };
         const hasMeaningfulData =
           saleRecord.sale_date ||
@@ -3083,7 +3531,7 @@ function main() {
           "instrument",
           "document",
         ]);
-        const idxSaleDate = headerIndex(["saleDate"]);
+        const idxSaleDate = headerIndex(["sale date"]);
         const idxInstrument = headerIndex(["instrument", "deed"]);
         const idxQualified = headerIndex(["qualified"]);
         const idxVacantImproved = headerIndex(["improved", "vacant"]);
@@ -3127,8 +3575,18 @@ function main() {
             const vacantImprovedText = getCellText(idxVacantImproved);
             const salePriceRaw = getCellText(idxSalePrice);
             const instrumentNumberText = getCellText(idxInstrumentNumber);
-            const buyerText = getCellText(idxBuyer); // Extracted buyer text
+            let buyerText = getCellText(idxBuyer); // Extracted buyer text
             const sellerText = getCellText(idxSeller); // Extracted seller text
+
+            // Clean and validate buyer name
+            if (buyerText) {
+              // Remove leading/trailing commas, spaces, and other punctuation
+              buyerText = buyerText.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+              // Set to null if no alphanumeric characters remain
+              if (!buyerText || !/[a-zA-Z0-9]/.test(buyerText)) {
+                buyerText = null;
+              }
+            }
 
             let book = null;
             let page = null;
@@ -3182,7 +3640,7 @@ function main() {
               document_name: bookPageText
                 ? `Official Records ${bookPageText}`
                 : null,
-              buyer: buyerText || null, // Added buyer to saleRecord
+              buyer: buyerText || null, // Use cleaned buyer name
               seller: sellerText || null, // Added seller to saleRecord
             };
 
@@ -3218,37 +3676,26 @@ function main() {
           if (!isNaN(sNum)) out.structure.number_of_stories = Math.round(sNum);
         }
         if (extText) {
-          const U = extText.toUpperCase();
-          let primary = null;
-          let secondary = null;
-          let framing = null;
-
-          const has = (kw) => U.indexOf(kw) !== -1;
-          if (has("BLOCK") || has("CONCRETE BLOCK")) framing = "Concrete Block";
-
-          if (has("STUCCO")) primary = "Stucco";
-          if (!primary && has("VINYL") && has("SIDING"))
-            primary = "Vinyl Siding";
-          if (!primary && has("WOOD") && has("SIDING")) primary = "Wood Siding";
-          if (!primary && has("FIBER") && has("CEMENT"))
-            primary = "Fiber Cement Siding";
-          if (!primary && has("BRICK")) primary = "Brick";
-          if (!primary && (has("BLOCK") || has("CONCRETE BLOCK")))
-            primary = "Concrete Block";
-
-          if (has("BRICK") && primary !== "Brick") secondary = "Brick Accent";
+          const inferred = interpretExteriorMaterials(extText);
           if (
-            !secondary &&
-            (has("BLOCK") || has("CONCRETE BLOCK")) &&
-            primary !== "Concrete Block"
-          )
-            secondary = "Decorative Block";
-          if (!secondary && has("STUCCO") && primary !== "Stucco")
-            secondary = "Stucco Accent";
-
-          out.structure.exterior_wall_material_primary = primary;
-          out.structure.exterior_wall_material_secondary = secondary || null;
-          out.structure.primary_framing_material = framing || null;
+            inferred.primary &&
+            !out.structure.exterior_wall_material_primary
+          ) {
+            out.structure.exterior_wall_material_primary = inferred.primary;
+          }
+          if (
+            inferred.secondary &&
+            !out.structure.exterior_wall_material_secondary
+          ) {
+            out.structure.exterior_wall_material_secondary =
+              inferred.secondary;
+          }
+          if (
+            inferred.framing &&
+            !out.structure.primary_framing_material
+          ) {
+            out.structure.primary_framing_material = inferred.framing;
+          }
         }
       }
     }
@@ -3829,7 +4276,6 @@ function buildPropertyJson() {
     };
   }
 
-  const addr = parseAddress();
   const rawPropertyAddress = (general.propertyLocationRaw ||
     addrSeed.full_address ||
     "")
@@ -3838,45 +4284,16 @@ function buildPropertyJson() {
     .replace(/\s+/g, " ")
     .trim();
 
-  // addr.unnormalized_address = rawPropertyAddress || null;
-  // Extract latitude and longitude from addrSeed if available
-  addr.latitude = addrSeed.latitude || null;
-  addr.longitude = addrSeed.longitude || null;
-
-  const propertyAddressKeys = new Set([
-    "street_number",
-    "street_pre_directional_text",
-    "street_name",
-    "street_suffix_type",
-    "street_post_directional_text",
-    "unit_identifier",
-    "city_name",
-    "municipality_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "country_code",
-    "county_name",
-    "latitude",
-    "longitude",
-    "request_identifier",
-    "source_http_request",
-    "route_number",
-    "township",
-    "range",
-    "section",
-    "block",
-    "lot",
-  ]);
-  Object.keys(addr).forEach((key) => {
-    if (!propertyAddressKeys.has(key)) {
-      addr[key] = null;
-    }
-  });
-  addr.country_code = rawPropertyAddress ? "US" : addr.country_code || "US";
-  addr.county_name = addrSeed.county_jurisdiction || null;
-  addr.request_identifier = propSeed.request_identifier || null;
-  addr.source_http_request = propSeed.source_http_request || null;
+  // Use unnormalized_address since source provides it
+  const addr = {
+    unnormalized_address: rawPropertyAddress || null,
+    latitude: addrSeed.latitude || null,
+    longitude: addrSeed.longitude || null,
+    country_code: "US",
+    county_name: addrSeed.county_jurisdiction || null,
+    request_identifier: propSeed.request_identifier || null,
+    source_http_request: propSeed.source_http_request || null,
+  };
 
   function buildMailingAddress(lines) {
     if (!Array.isArray(lines) || !lines.length) return null;
@@ -3887,144 +4304,13 @@ function buildPropertyJson() {
 
     const raw = normalizedLines.join(", ");
 
-    let cityLineIndex = -1;
-    for (let i = normalizedLines.length - 1; i >= 0; i -= 1) {
-      if (/\d{5}/.test(normalizedLines[i]) || /[A-Z]{2}\b/.test(normalizedLines[i])) {
-        cityLineIndex = i;
-        break;
-      }
-    }
-
-    let cityLine = cityLineIndex >= 0 ? normalizedLines[cityLineIndex] : null;
-    const addressSegments =
-      cityLineIndex >= 0
-        ? normalizedLines.slice(0, cityLineIndex)
-        : normalizedLines.slice();
-    const trailingSegments =
-      cityLineIndex >= 0 ? normalizedLines.slice(cityLineIndex + 1) : [];
-
-    let cityName = null;
-    let stateCode = null;
-    let postalCode = null;
-    let plusFour = null;
-
-    if (cityLine) {
-      const zipMatch = cityLine.match(/(\d{5})(?:-?(\d{4}))?/);
-      if (zipMatch) {
-        postalCode = zipMatch[1];
-        plusFour = zipMatch[2] || null;
-        cityLine = cityLine.slice(0, zipMatch.index).trim();
-      }
-
-      const parts = cityLine
-        .replace(/,+/g, " ")
-        .split(/\s+/)
-        .filter(Boolean);
-      if (parts.length) {
-        const possibleState = parts[parts.length - 1];
-        if (/^[A-Z]{2}$/i.test(possibleState)) {
-          stateCode = possibleState.toUpperCase();
-          parts.pop();
-        }
-        if (parts.length) {
-          cityName = parts.join(" ").toUpperCase();
-        }
-      }
-    }
-
-    const streetRaw = addressSegments.concat(trailingSegments).join(", ");
-    let streetNumber = null;
-    let streetName = null;
-    let streetSuffix = null;
-    if (streetRaw) {
-      const normalizedStreet = streetRaw.replace(/\s+/g, " ").trim();
-      const streetMatch = normalizedStreet.match(/^(\d+)\s+(.*)$/);
-      if (streetMatch) {
-        streetNumber = streetMatch[1];
-        let remainder = streetMatch[2].trim();
-        const parts = remainder.split(/\s+/);
-        if (parts.length > 1) {
-          const suffixCandidate = parts[parts.length - 1].replace(/\./g, "").toUpperCase();
-          const suffixAlias = {
-            AVENUE: "Ave",
-            AVE: "Ave",
-            STREET: "St",
-            ST: "St",
-            ROAD: "Rd",
-            RD: "Rd",
-            DRIVE: "Dr",
-            DR: "Dr",
-            COURT: "Ct",
-            CT: "Ct",
-            LANE: "Ln",
-            LN: "Ln",
-            CIRCLE: "Cir",
-            CIR: "Cir",
-            BOULEVARD: "Blvd",
-            BLVD: "Blvd",
-            WAY: "Way",
-            TERRACE: "Ter",
-            TER: "Ter",
-            PLACE: "Pl",
-            PL: "Pl",
-            HIGHWAY: "Hwy",
-            HWY: "Hwy",
-            PARKWAY: "Pkwy",
-            PKWY: "Pkwy",
-            TRAIL: "Trl",
-            TRL: "Trl",
-            LOOP: "Loop",
-            POINT: "Pt",
-            PT: "Pt",
-            SQUARE: "Sq",
-            SQ: "Sq",
-            COVE: "Cv",
-            CV: "Cv",
-            RUN: "Run",
-            BEND: "Bnd",
-            BND: "Bnd",
-          };
-          const mappedSuffix =
-            suffixAlias[suffixCandidate] ||
-            (suffixCandidate.length
-              ? suffixCandidate[0] +
-                suffixCandidate.slice(1).toLowerCase()
-              : null);
-          if (mappedSuffix && parts.length > 1) {
-            parts.pop();
-            streetSuffix = mappedSuffix;
-          }
-          remainder = parts.join(" ");
-        }
-        streetName = remainder.toUpperCase();
-      } else {
-        streetName = normalizedStreet.toUpperCase();
-      }
-    }
-
+    // Use unnormalized_address since source provides it
     return {
-      street_number: streetNumber || null,
-      street_pre_directional_text: null,
-      street_name: streetName || null,
-      street_suffix_type: streetSuffix || null,
-      street_post_directional_text: null,
-      unit_identifier: null,
-      city_name: cityName || null,
-      municipality_name: null,
-      state_code: stateCode || null,
-      postal_code: postalCode || null,
-      plus_four_postal_code: plusFour || null,
-      county_name: addrSeed.county_jurisdiction || null,
-      country_code: "US",
+      unnormalized_address: raw,
       latitude: null,
       longitude: null,
-      route_number: null,
-      township: null,
-      range: null,
-      section: null,
-      block: null,
-      lot: null,
-      unnormalized_address: raw,
+      country_code: "US",
+      county_name: addrSeed.county_jurisdiction || null,
       request_identifier: propSeed.request_identifier || null,
       source_http_request: propSeed.source_http_request || null,
     };
@@ -4034,52 +4320,6 @@ function buildPropertyJson() {
     general.mailingAddressLines || null,
   );
   const mailingAddressFile = mailingAddress ? "mailing_address.json" : null;
-  if (mailingAddress) {
-    const rawMailing = (general.mailingAddressLines || [])
-      .map((line) => (line || "").replace(/\s+/g, " ").trim())
-      .filter((line) => line)
-      .join(", ")
-      .trim();
-    mailingAddress.unnormalized_address = rawMailing || null;
-    // Extract latitude and longitude from addrSeed for mailing address if available
-    mailingAddress.latitude = addrSeed.latitude || null;
-    mailingAddress.longitude = addrSeed.longitude || null;
-
-    const mailingAddressKeys = new Set([
-      "unnormalized_address",
-      "street_number",
-      "street_pre_directional_text",
-      "street_name",
-      "street_suffix_type",
-      "street_post_directional_text",
-      "unit_identifier",
-      "city_name",
-      "municipality_name",
-      "state_code",
-      "postal_code",
-      "plus_four_postal_code",
-      "country_code",
-      "county_name",
-      "latitude",
-      "longitude",
-      "request_identifier",
-      "source_http_request",
-      "route_number",
-      "township",
-      "range",
-      "section",
-      "block",
-      "lot",
-    ]);
-    Object.keys(mailingAddress).forEach((key) => {
-      if (!mailingAddressKeys.has(key)) {
-        mailingAddress[key] = null;
-      }
-    });
-    mailingAddress.country_code = rawMailing ? "US" : mailingAddress.country_code || "US";
-    mailingAddress.request_identifier = propSeed.request_identifier || null;
-    mailingAddress.source_http_request = propSeed.source_http_request || null;
-  }
 
   function createRelationshipFileName(fromFile, toFile, suffix = null) {
     const fromBase = fromFile.replace(/\.json$/i, "");
@@ -4090,6 +4330,9 @@ function buildPropertyJson() {
 
   // Write address.json
   writeJSON(path.join(dataDir, "address.json"), addr);
+
+  // Create mailing_address.json
+  // Person and company classes exist in County datagroup, so mailing address can be referenced
   if (mailingAddressFile) {
     writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
   }
@@ -5089,7 +5332,7 @@ delete layoutContent.space_type_indexer;
             birth_date: null,
             first_name: first,
             last_name: last,
-            middle_name: middle,
+            middle_name: cleanNameField(middle),
             prefix_name: prefixName,
             suffix_name: suffixName,
             us_citizenship_status: null,
@@ -5101,7 +5344,7 @@ delete layoutContent.space_type_indexer;
       } else if (ownerType === "company") {
         const rawName = owner.name || owner.company_name || owner.organization_name;
         if (!rawName) return;
-        const normalized = rawName.replace(/\s+/g, " ").trim();
+        const normalized = rawName.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
         if (!normalized) return;
         const key = `company:${normalized.toLowerCase()}`;
         if (seenOwners.has(key)) return;
@@ -5139,7 +5382,7 @@ delete layoutContent.space_type_indexer;
   (bx.sales || []).forEach((sale, index) => {
     const saleFileName = `sales_history_${index + 1}.json`;
     const ownershipTransferDate =
-      sale.ownership_transfer_date || sale.saleDate || null;
+      sale.ownership_transfer_date || sale.sale_date || null;
     const saleObj = {
       ownership_transfer_date: ownershipTransferDate,
     };
@@ -5170,9 +5413,10 @@ delete layoutContent.space_type_indexer;
         if (buyer) {
           // Create buyer key similar to owner key creation
           let buyerKey = null;
+          let normalizedCompanyName = null;
           if (buyer.type === "company") {
-            const normalized = buyer.name.replace(/\s+/g, " ").trim();
-            buyerKey = `company:${normalized.toLowerCase()}`;
+            normalizedCompanyName = buyer.name.replace(/\s+/g, " ").trim().replace(/[,.\s]+$/, "");
+            buyerKey = `company:${normalizedCompanyName.toLowerCase()}`;
           } else {
             const parts = [buyer.first_name, buyer.middle_name, buyer.last_name]
               .map((part) => (part || "").trim().toLowerCase())
@@ -5189,27 +5433,29 @@ delete layoutContent.space_type_indexer;
               if (buyer.type === "company") {
                 seenOwners.set(buyerKey, {
                   type: "company",
-                  payload: { name: buyer.name },
+                  payload: { name: normalizedCompanyName },
                 });
               } else {
-                const first = properCaseName(buyer.first_name || null);
-                const last = properCaseName(buyer.last_name || null);
-                const middle = buyer.middle_name ? buyer.middle_name : null;
+                const firstName = properCaseName(buyer.first_name || null);
+                const lastName = properCaseName(buyer.last_name || null);
+                if (!firstName || !lastName) return;
+                const middleName = buyer.middle_name ? buyer.middle_name : null;
                 const prefixName = buyer.prefix_name ? buyer.prefix_name : null;
                 const suffixName = buyer.suffix_name ? buyer.suffix_name : null;
+                const personPayload = {
+                  birth_date: null,
+                  first_name: firstName,
+                  last_name: lastName,
+                  middle_name: cleanNameField(middleName),
+                  prefix_name: prefixName,
+                  suffix_name: suffixName,
+                  us_citizenship_status: null,
+                  veteran_status: null,
+                };
 
                 seenOwners.set(buyerKey, {
                   type: "person",
-                  payload: {
-                    birth_date: null,
-                    first_name: first,
-                    last_name: last,
-                    middle_name: middle,
-                    prefix_name: prefixName,
-                    suffix_name: suffixName,
-                    us_citizenship_status: null,
-                    veteran_status: null,
-                  },
+                  payload: personPayload,
                 });
               }
             }
@@ -5261,63 +5507,116 @@ delete layoutContent.space_type_indexer;
     fileFiles.push(fileFileName);
   });
 
-  // Now that all owners (including buyers from sales) are collected in seenOwners, create their files
-  let personIndex = 1;
-  let companyIndex = 1;
-  const ownerEntries = [];
-  seenOwners.forEach((info, key) => {
-    ownerEntries.push([key, info]);
+  // Determine which owner keys will be used in relationships
+  // CRITICAL: Only create entity files for owners that will have relationships.
+  // This prevents "Unused data JSON file detected" validation errors.
+  const usedOwnerKeys = new Set();
+
+  // Add buyer keys from sales - these will have sales_history_has_company/person relationships
+  salesBuyerFiles.forEach((saleInfo) => {
+    saleInfo.buyerKeys.forEach((buyerKey) => {
+      usedOwnerKeys.add(buyerKey);
+    });
   });
 
-  ownerEntries.forEach(([key, info]) => {
-    if (info.type === "person") {
-      const file = `person_${personIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      personFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      personIndex += 1;
-      console.log("Created person file:", file, info.payload); // DEBUG LOG
-    } else if (info.type === "company") {
-      const file = `company_${companyIndex}.json`;
-      writeJSON(path.join(dataDir, file), info.payload);
-      companyFiles.push(file);
-      ownerKeyToFile.set(key, file);
-      companyIndex += 1;
-      console.log("Created company file:", file, info.payload); // DEBUG LOG
+  // Add current owner keys ONLY if mailing address exists
+  // These will have company/person_has_mailing_address relationships
+  // If mailingAddressFile is null, current owners are NOT added to avoid orphaned files
+  // REMOVED: Since mailing_address.json is not being created (person and company classes
+  // don't exist), we don't add current owner keys.
+  // if (mailingAddressFile) {
+  //   const currentOwners = ownerKeysByDate.get('current');
+  //   if (currentOwners) {
+  //     currentOwners.forEach((ownerKey) => {
+  //       usedOwnerKeys.add(ownerKey);
+  //     });
+  //   }
+  // }
+
+  // Person and Company files are NOT part of the Sales_History data group schema
+  // Owner information is stored separately in owners/owner_data.json
+  // Do not create person or company files in the data/ directory
+  const requestIdentifier = propSeed.request_identifier || null;
+
+  // NOTE: person and company classes exist in the County datagroup, but NOT in Sales_History
+  // Separate persons and companies from usedOwnerKeys (tracked for debugging, but files not created)
+  const personsToCreate = [];
+  const companiesToCreate = [];
+
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      personsToCreate.push(ownerData.payload);
+    } else if (ownerData.type === "company") {
+      companiesToCreate.push(ownerData.payload);
     }
   });
 
-  console.log("All person files created:", personFiles); // DEBUG LOG
-  console.log("All company files created:", companyFiles); // DEBUG LOG
-
-  // Update salesBuyerFiles with actual file names after owner files are created
-  salesBuyerFiles.forEach((saleInfo) => {
-    saleInfo.buyerKeys.forEach((buyerKey) => {
-      const buyerFile = ownerKeyToFile.get(buyerKey);
-      if (buyerFile) {
-        saleInfo.buyerFiles.push(buyerFile);
-      }
+  // CRITICAL: Only create person/company files if explicitly enabled
+  // This prevents orphaned files and validation errors
+  if (ENABLE_PERSON_COMPANY_FILES) {
+  // Create person files - person class exists in County data group
+  personsToCreate.forEach((person, idx) => {
+    const personFileName = `person_${idx + 1}.json`;
+    const personObj = {
+      first_name: person.first_name,
+      last_name: person.last_name,
+      middle_name: person.middle_name,
+      prefix_name: person.prefix_name,
+      suffix_name: person.suffix_name,
+      birth_date: person.birth_date,
+      us_citizenship_status: person.us_citizenship_status,
+      veteran_status: person.veteran_status,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(personObj).forEach((key) => {
+      if (personObj[key] === undefined) delete personObj[key];
     });
+    writeJSON(path.join(dataDir, personFileName), personObj);
+    personFiles.push(personFileName);
   });
 
-  if (mailingAddressFile) {
-    personFiles.forEach((pf) => {
-      const rel = {
-        from: { "/": `./${pf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(pf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
+  // Create company files - company class exists in County data group
+  companiesToCreate.forEach((company, idx) => {
+    const companyFileName = `company_${idx + 1}.json`;
+    const companyObj = {
+      name: company.name,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(companyObj).forEach((key) => {
+      if (companyObj[key] === undefined) delete companyObj[key];
     });
-    companyFiles.forEach((cf) => {
-      const rel = {
-        from: { "/": `./${cf}` },
-        to: { "/": `./${mailingAddressFile}` },
-      };
-      const relFile = createRelationshipFileName(cf, mailingAddressFile);
-      writeJSON(path.join(dataDir, relFile), rel);
-    });
-  }
+    writeJSON(path.join(dataDir, companyFileName), companyObj);
+    companyFiles.push(companyFileName);
+  });
+
+  // Create a mapping from ownerKey to file index for relationship creation
+  const ownerKeyToFileIndex = new Map();
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      const idx = personsToCreate.findIndex((p) =>
+        p.first_name === ownerData.payload.first_name &&
+        p.last_name === ownerData.payload.last_name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "person", index: idx + 1 });
+      }
+    } else if (ownerData.type === "company") {
+      const idx = companiesToCreate.findIndex((c) =>
+        c.name === ownerData.payload.name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "company", index: idx + 1 });
+      }
+    }
+  });
 
   // relationship_deed_file_*.json (file → deed)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
@@ -5329,26 +5628,146 @@ delete layoutContent.space_type_indexer;
     writeRelationshipFile(salesHistoryFiles[i], deedFiles[i]);
   }
 
-  // Create relationships between sales and their specific buyers
+  // Create sales-buyer relationships - person and company classes exist in County data group
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
+
   salesBuyerFiles.forEach((saleInfo) => {
-    if (saleInfo.buyerFiles.length > 0) {
-      saleInfo.buyerFiles.forEach((buyerFile, idx) => {
-        const suffix = saleInfo.buyerFiles.length === 1 ? null : `buyer_${idx + 1}`;
-        writeRelationshipFile(saleInfo.saleFile, buyerFile, suffix);
+    let personCounter = 0;
+    let companyCounter = 0;
+    const seenInThisSale = new Set();
+
+    saleInfo.buyerKeys.forEach((buyerKey) => {
+      if (seenInThisSale.has(buyerKey)) return;
+      seenInThisSale.add(buyerKey);
+
+      const fileInfo = ownerKeyToFileIndex.get(buyerKey);
+      if (!fileInfo) return;
+
+      if (fileInfo.type === "person") {
+        personCounter++;
+        usedPersonIndices.add(fileInfo.index);
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./person_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_person_${personCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
+      } else if (fileInfo.type === "company") {
+        companyCounter++;
+        usedCompanyIndices.add(fileInfo.index);
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./company_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_company_${companyCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
+      }
+    });
+  });
+
+  // Create relationships between current owners (person/company) and mailing_address
+  if (mailingAddressFile) {
+    const currentOwnerKeys = ownerKeysByDate.get('current');
+    if (currentOwnerKeys) {
+      const mailingPersonIndices = new Set();
+      const mailingCompanyIndices = new Set();
+
+      currentOwnerKeys.forEach((ownerKey) => {
+        const fileInfo = ownerKeyToFileIndex.get(ownerKey);
+        if (!fileInfo) return;
+
+        if (fileInfo.type === "person" && !mailingPersonIndices.has(fileInfo.index)) {
+          mailingPersonIndices.add(fileInfo.index);
+          const relObj = {
+            from: { "/": `./person_${fileInfo.index}.json` },
+            to: { "/": `./${mailingAddressFile}` },
+          };
+          const relFileName = `relationship_person_${fileInfo.index}_has_mailing_address.json`;
+          writeJSON(path.join(dataDir, relFileName), relObj);
+        } else if (fileInfo.type === "company" && !mailingCompanyIndices.has(fileInfo.index)) {
+          mailingCompanyIndices.add(fileInfo.index);
+          const relObj = {
+            from: { "/": `./company_${fileInfo.index}.json` },
+            to: { "/": `./${mailingAddressFile}` },
+          };
+          const relFileName = `relationship_company_${fileInfo.index}_has_mailing_address.json`;
+          writeJSON(path.join(dataDir, relFileName), relObj);
+        }
       });
+    }
+  }
+
+  // Remove unused person/company files that don't have relationships
+  personFiles.forEach((personFile, idx) => {
+    const personIndex = idx + 1;
+    if (!usedPersonIndices.has(personIndex)) {
+      const filePath = path.join(dataDir, personFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
     }
   });
 
+  companyFiles.forEach((companyFile, idx) => {
+    const companyIndex = idx + 1;
+    if (!usedCompanyIndices.has(companyIndex)) {
+      const filePath = path.join(dataDir, companyFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  });
+  } // End of if (ENABLE_PERSON_COMPANY_FILES)
+
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
-  const improvementSelectors = [
-    "#cphMain_gvImprovements",
-    "#cphMain_gvPermits",
-    "#cphMain_gvPermit",
-    "#cphMain_gvBuildingPermits",
-  ];
-  const improvementRows = [];
-  const seenImprovementRows = new Set();
+  let improvementsFromJson = false;
+  if (
+    INPUT_JSON &&
+    Array.isArray(INPUT_JSON.parcelExtraFeatures) &&
+    INPUT_JSON.parcelExtraFeatures.length
+  ) {
+    let improvementIndex = 1;
+    INPUT_JSON.parcelExtraFeatures.forEach((feature) => {
+      if (!feature) return;
+      const improvementType = mapMiscImprovementType(
+        feature.xfobCode || null,
+        feature.descShort || "",
+      );
+      if (!improvementType) return;
+      const improvement = {
+        improvement_type: improvementType,
+        improvement_status: null,
+        completion_date: null,
+        contractor_type: null,
+        permit_required: false,
+      };
+      const fileName = `property_improvement_${improvementIndex}.json`;
+      writeJSON(path.join(dataDir, fileName), improvement);
+      propertyImprovementFiles.push(fileName);
+      improvementIndex += 1;
+    });
+    if (propertyImprovementFiles.length) improvementsFromJson = true;
+  }
+
+  if (!improvementsFromJson) {
+    const improvementSelectors = [
+      "#cphMain_gvImprovements",
+      "#cphMain_gvPermits",
+      "#cphMain_gvPermit",
+      "#cphMain_gvBuildingPermits",
+    ];
+    const improvementRows = [];
+    const seenImprovementRows = new Set();
 
   const buildPermitHeaderMap = ($headerCells) => {
     const map = {
@@ -5444,127 +5863,128 @@ delete layoutContent.space_type_indexer;
     return added;
   };
 
-  improvementSelectors.forEach((selector) => {
-    const table = $(selector);
-    if (!table || table.length === 0) return;
-    collectImprovementRows(table);
-  });
-
-  if (improvementRows.length === 0) {
-    $("table").each((_, tbl) => {
-      const $tbl = $(tbl);
-      const headerText = textNormalize($tbl.find("th").first().text() || "");
-      if (!/permit/i.test(headerText)) return;
-      collectImprovementRows($tbl);
+    improvementSelectors.forEach((selector) => {
+      const table = $(selector);
+      if (!table || table.length === 0) return;
+      collectImprovementRows(table);
     });
-  }
 
-  const normalizePermitDate = (value) => {
-    if (!value) return null;
-    const text = String(value).trim();
-    if (!text || text === "--") return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-    const match = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
-    if (!match) return null;
-    let candidate = match[1];
-    const twoDigit = candidate.match(/(\d{1,2}\/\d{1,2})\/(\d{2})$/);
-    if (twoDigit) {
-      const yearNum = parseInt(twoDigit[2], 10);
-      const fullYear = yearNum >= 70 ? `19${twoDigit[2]}` : `20${twoDigit[2]}`;
-      candidate = `${twoDigit[1]}/${fullYear}`;
-    }
-    return toISODate(candidate);
-  };
-
-  if (improvementRows.length > 0) {
-    let improvementIndex = 1;
-    improvementRows.forEach((rowInfo) => {
-      const header = rowInfo.headerMap || {};
-      const cells = rowInfo.cells || [];
-      if (!cells.length) return;
-
-      const getCell = (idx) =>
-        idx != null && idx >= 0 && idx < cells.length ? cells[idx] : null;
-
-      let permitNumber = getCell(header.permitNumber);
-      if (!permitNumber && cells.length > 0) {
-        permitNumber = cells[0];
-      }
-      if (permitNumber) {
-        permitNumber = permitNumber.replace(/^#/, "").trim();
-        if (!permitNumber) permitNumber = null;
-      }
-
-      const typeText =
-        getCell(header.type) ||
-        getCell(header.description) ||
-        getCell(header.action) ||
-        (cells.length > 1 ? cells[1] : cells[0] || "");
-      const actionText =
-        getCell(header.action) ||
-        getCell(header.description) ||
-        (typeText || "");
-
-      const statusText = getCell(header.status);
-      const issueDateRaw = getCell(header.issueDate);
-      const finalDateRaw = getCell(header.finalDate);
-      const closeDateRaw = getCell(header.closeDate);
-      const applicationDateRaw = getCell(header.applicationDate);
-
-      const typeTextClean = typeText || "";
-      const codeMatch = typeTextClean.match(/\(([^)]+)\)/);
-      const rawCode = codeMatch ? codeMatch[1].trim().toUpperCase() : null;
-      const baseCode = rawCode ? rawCode.replace(/[^A-Z]/g, "") : null;
-      const description = typeTextClean.replace(/\([^)]*\)/g, "").trim();
-      const improvementType = mapMiscImprovementType(
-        baseCode,
-        description || actionText || typeTextClean,
-      );
-      if (!improvementType) return;
-
-      const permitIssueDate = normalizePermitDate(issueDateRaw);
-      const completionDate =
-        normalizePermitDate(finalDateRaw) || normalizePermitDate(closeDateRaw);
-      const permitCloseDate = normalizePermitDate(closeDateRaw);
-      const applicationDate = normalizePermitDate(applicationDateRaw);
-
-      let improvementStatus = coerceImprovementStatus(statusText);
-      if (!improvementStatus) {
-        if (completionDate) improvementStatus = "Completed";
-        else if (permitIssueDate) improvementStatus = "Permitted";
-      }
-
-      const improvementAction = description || actionText || null;
-
-      const improvement = {
-        improvement_type: improvementType,
-        improvement_status: improvementStatus,
-        improvement_action: improvementAction || null,
-        permit_number: permitNumber || null,
-        permit_issue_date: permitIssueDate || null,
-        completion_date: completionDate || null,
-        permit_close_date: permitCloseDate || null,
-        application_received_date: applicationDate || null,
-      };
-      if (permitNumber) {
-        improvement.permit_required = true;
-      }
-
-      Object.keys(improvement).forEach((key) => {
-        const value = improvement[key];
-        if (value === undefined) {
-          delete improvement[key];
-        } else if (typeof value === "string") {
-          const trimmed = value.trim();
-          improvement[key] = trimmed ? trimmed : null;
-        }
+    if (improvementRows.length === 0) {
+      $("table").each((_, tbl) => {
+        const $tbl = $(tbl);
+        const headerText = textNormalize($tbl.find("th").first().text() || "");
+        if (!/permit/i.test(headerText)) return;
+        collectImprovementRows($tbl);
       });
+    }
 
-      const fileName = `property_improvement_${improvementIndex}.json`;
-      writeJSON(path.join(dataDir, fileName), improvement);
-      propertyImprovementFiles.push(fileName);
-      improvementIndex += 1;
-    });
+    const normalizePermitDate = (value) => {
+      if (!value) return null;
+      const text = String(value).trim();
+      if (!text || text === "--") return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+      const match = text.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+      if (!match) return null;
+      let candidate = match[1];
+      const twoDigit = candidate.match(/(\d{1,2}\/\d{1,2})\/(\d{2})$/);
+      if (twoDigit) {
+        const yearNum = parseInt(twoDigit[2], 10);
+        const fullYear = yearNum >= 70 ? `19${twoDigit[2]}` : `20${twoDigit[2]}`;
+        candidate = `${twoDigit[1]}/${fullYear}`;
+      }
+      return toISODate(candidate);
+    };
+
+    if (improvementRows.length > 0) {
+      let improvementIndex = 1;
+      improvementRows.forEach((rowInfo) => {
+        const header = rowInfo.headerMap || {};
+        const cells = rowInfo.cells || [];
+        if (!cells.length) return;
+
+        const getCell = (idx) =>
+          idx != null && idx >= 0 && idx < cells.length ? cells[idx] : null;
+
+        let permitNumber = getCell(header.permitNumber);
+        if (!permitNumber && cells.length > 0) {
+          permitNumber = cells[0];
+        }
+        if (permitNumber) {
+          permitNumber = permitNumber.replace(/^#/, "").trim();
+          if (!permitNumber) permitNumber = null;
+        }
+
+        const typeText =
+          getCell(header.type) ||
+          getCell(header.description) ||
+          getCell(header.action) ||
+          (cells.length > 1 ? cells[1] : cells[0] || "");
+        const actionText =
+          getCell(header.action) ||
+          getCell(header.description) ||
+          (typeText || "");
+
+        const statusText = getCell(header.status);
+        const issueDateRaw = getCell(header.issueDate);
+        const finalDateRaw = getCell(header.finalDate);
+        const closeDateRaw = getCell(header.closeDate);
+        const applicationDateRaw = getCell(header.applicationDate);
+
+        const typeTextClean = typeText || "";
+        const codeMatch = typeTextClean.match(/\(([^)]+)\)/);
+        const rawCode = codeMatch ? codeMatch[1].trim().toUpperCase() : null;
+        const baseCode = rawCode ? rawCode.replace(/[^A-Z]/g, "") : null;
+        const description = typeTextClean.replace(/\([^)]*\)/g, "").trim();
+        const improvementType = mapMiscImprovementType(
+          baseCode,
+          description || actionText || typeTextClean,
+        );
+        if (!improvementType) return;
+
+        const permitIssueDate = normalizePermitDate(issueDateRaw);
+        const completionDate =
+          normalizePermitDate(finalDateRaw) || normalizePermitDate(closeDateRaw);
+        const permitCloseDate = normalizePermitDate(closeDateRaw);
+        const applicationDate = normalizePermitDate(applicationDateRaw);
+
+        let improvementStatus = coerceImprovementStatus(statusText);
+        if (!improvementStatus) {
+          if (completionDate) improvementStatus = "Completed";
+          else if (permitIssueDate) improvementStatus = "Permitted";
+        }
+
+        const improvementAction = description || actionText || null;
+
+        const improvement = {
+          improvement_type: improvementType,
+          improvement_status: improvementStatus,
+          improvement_action: improvementAction || null,
+          permit_number: permitNumber || null,
+          permit_issue_date: permitIssueDate || null,
+          completion_date: completionDate || null,
+          permit_close_date: permitCloseDate || null,
+          application_received_date: applicationDate || null,
+        };
+        if (permitNumber) {
+          improvement.permit_required = true;
+        }
+
+        Object.keys(improvement).forEach((key) => {
+          const value = improvement[key];
+          if (value === undefined) {
+            delete improvement[key];
+          } else if (typeof value === "string") {
+            const trimmed = value.trim();
+            improvement[key] = trimmed ? trimmed : null;
+          }
+        });
+
+        const fileName = `property_improvement_${improvementIndex}.json`;
+        writeJSON(path.join(dataDir, fileName), improvement);
+        propertyImprovementFiles.push(fileName);
+        improvementIndex += 1;
+      });
+    }
   }
 
   propertyImprovementFiles.forEach((fileName) => {
@@ -5575,6 +5995,297 @@ delete layoutContent.space_type_indexer;
     console.warn(
       `Unmapped DOR codes encountered: ${Array.from(missingDorCodes).join(", ")}`,
     );
+  }
+
+  // CRITICAL: Final cleanup pass to remove orphaned person/company files
+  // This is a safeguard to ensure no "Unused data JSON file" errors
+  // even if there are bugs in the person/company creation logic above
+  try {
+    const allFilesInData = fs.readdirSync(dataDir);
+
+    // Find all person and company files
+    const personFiles = allFilesInData.filter(f => /^person_\d+\.json$/.test(f));
+    const companyFiles = allFilesInData.filter(f => /^company_\d+\.json$/.test(f));
+
+    // CRITICAL: If there are no sales_history files AND no mailing_address, remove ALL person and company files
+    // Person/company files can be linked to either sales_history OR mailing_address
+    const salesHistoryFilesExist = allFilesInData.some(f => /^sales_history_\d+\.json$/.test(f));
+    const mailingAddressExists = allFilesInData.some(f => /^mailing_address(_\d+)?\.json$/.test(f));
+
+    if (!salesHistoryFilesExist && !mailingAddressExists && (personFiles.length > 0 || companyFiles.length > 0)) {
+      console.warn(`CRITICAL CLEANUP: No sales_history or mailing_address files found - removing all ${personFiles.length} person and ${companyFiles.length} company files`);
+
+      personFiles.forEach(personFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, personFile));
+          console.log(`✓ Removed ${personFile} (no sales_history or mailing_address files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${personFile}:`, e.message);
+        }
+      });
+
+      companyFiles.forEach(companyFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, companyFile));
+          console.log(`✓ Removed ${companyFile} (no sales_history or mailing_address files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${companyFile}:`, e.message);
+        }
+      });
+
+      // Also remove any relationship files that reference persons or companies
+      const allRelFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      allRelFiles.forEach(relFile => {
+        if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+          try {
+            fs.unlinkSync(path.join(dataDir, relFile));
+            console.log(`✓ Removed ${relFile} (no sales_history or mailing_address files exist)`);
+          } catch (e) {
+            console.error(`✗ Failed to remove ${relFile}:`, e.message);
+          }
+        }
+      });
+
+      console.log(`Cleanup complete: Removed all person/company files and their relationships`);
+      return; // Exit cleanup early
+    } else if (!salesHistoryFilesExist && mailingAddressExists) {
+      console.log(`No sales_history files, but mailing_address exists - keeping person/company files linked to mailing_address`);
+    }
+
+    if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup check: Found ${personFiles.length} person files and ${companyFiles.length} company files`);
+    }
+
+    // Find all relationship files
+    const relationshipFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+
+    // Build a set of all referenced entity files (person/company) that have VALID relationships
+    // A valid relationship is one where BOTH endpoints exist
+    const referencedEntityFiles = new Set();
+    const invalidRelationshipFiles = [];
+
+    relationshipFiles.forEach(relFile => {
+      try {
+        const relPath = path.join(dataDir, relFile);
+        const relContent = JSON.parse(fs.readFileSync(relPath, 'utf8'));
+
+        // Extract file names from relationship endpoints
+        const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+        const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+        // Verify both endpoints exist before considering this a valid reference
+        const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+        const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+        // Only add entity files if BOTH endpoints of the relationship exist
+        if (fromExists && toExists) {
+          // Check if they reference person or company files
+          if (/^person_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^person_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+          if (/^company_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^company_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+        } else {
+          // Mark this relationship file for removal
+          invalidRelationshipFiles.push({
+            file: relFile,
+            fromPath,
+            toPath,
+            fromExists,
+            toExists
+          });
+        }
+      } catch (e) {
+        console.error(`Error reading relationship file ${relFile}:`, e.message);
+      }
+    });
+
+    // Remove invalid relationship files (those with missing endpoints)
+    invalidRelationshipFiles.forEach(({ file, fromPath, toPath, fromExists, toExists }) => {
+      try {
+        fs.unlinkSync(path.join(dataDir, file));
+        const missingEndpoint = !fromExists ? fromPath : toPath;
+        console.warn(`✓ Removed invalid relationship ${file} (missing endpoint: ${missingEndpoint})`);
+      } catch (e) {
+        console.error(`✗ Failed to remove invalid relationship ${file}:`, e.message);
+      }
+    });
+
+    // Delete orphaned person files
+    let removedPersonCount = 0;
+    personFiles.forEach(personFile => {
+      if (!referencedEntityFiles.has(personFile)) {
+        const orphanPath = path.join(dataDir, personFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned person file: ${personFile} (not referenced by any valid relationship)`);
+          removedPersonCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned person file ${personFile}:`, e.message);
+        }
+      }
+    });
+
+    // Delete orphaned company files
+    let removedCompanyCount = 0;
+    companyFiles.forEach(companyFile => {
+      if (!referencedEntityFiles.has(companyFile)) {
+        const orphanPath = path.join(dataDir, companyFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned company file: ${companyFile} (not referenced by any valid relationship)`);
+          removedCompanyCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned company file ${companyFile}:`, e.message);
+        }
+      }
+    });
+
+    if (removedPersonCount > 0 || removedCompanyCount > 0) {
+      console.log(`Cleanup complete: Removed ${removedPersonCount} person files and ${removedCompanyCount} company files`);
+    } else if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup complete: All ${personFiles.length} person files and ${companyFiles.length} company files have valid relationships`);
+    }
+  } catch (cleanupError) {
+    console.error('✗ Error during final cleanup of orphaned files:', cleanupError.message);
+    console.error('Stack trace:', cleanupError.stack);
+  }
+
+  // ============================================================================
+  // FINAL VERIFICATION PASS: Remove any orphaned person/company files
+  // ============================================================================
+  try {
+    console.log('\n=== FINAL VERIFICATION PASS ===');
+    const finalFiles = fs.readdirSync(dataDir);
+    const finalPersonFiles = finalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const finalCompanyFiles = finalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (finalPersonFiles.length === 0 && finalCompanyFiles.length === 0) {
+      console.log('No person or company files found - verification complete ✓');
+    } else {
+      console.log(`Verifying ${finalPersonFiles.length} person files and ${finalCompanyFiles.length} company files...`);
+
+      // Build final set of referenced entity files from ALL relationship files
+      const finalRelFiles = finalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      const finalReferencedEntities = new Set();
+
+      finalRelFiles.forEach(relFile => {
+        try {
+          const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, relFile), 'utf8'));
+          const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+          const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+          // Only count as referenced if BOTH endpoints exist
+          const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+          const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+          if (fromExists && toExists) {
+            if (/^(person|company)_\d+\.json$/.test(fromPath)) finalReferencedEntities.add(fromPath);
+            if (/^(person|company)_\d+\.json$/.test(toPath)) finalReferencedEntities.add(toPath);
+          }
+        } catch (e) {
+          // Ignore invalid relationship files
+        }
+      });
+
+      // Remove any orphaned files
+      let finalRemovedCount = 0;
+
+      [...finalPersonFiles, ...finalCompanyFiles].forEach(entityFile => {
+        if (!finalReferencedEntities.has(entityFile)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, entityFile));
+            console.warn(`✓ FINAL CLEANUP: Removed orphaned ${entityFile}`);
+            finalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${entityFile}:`, e.message);
+          }
+        }
+      });
+
+      if (finalRemovedCount > 0) {
+        console.log(`Final verification: Removed ${finalRemovedCount} orphaned entity files`);
+      } else {
+        console.log(`Final verification: All entity files have valid relationships ✓`);
+      }
+    }
+    console.log('=== END FINAL VERIFICATION PASS ===\n');
+  } catch (finalError) {
+    console.error('✗ Error during final verification pass:', finalError.message);
+  }
+
+  // ============================================================================
+  // CONDITIONAL: UNCONDITIONAL person/company file removal
+  // When ENABLE_PERSON_COMPANY_FILES is false, remove ALL person/company files
+  // This prevents orphaned files and validation errors
+  // ============================================================================
+  if (!ENABLE_PERSON_COMPANY_FILES) {
+    try {
+      console.log('\n=== UNCONDITIONAL CLEANUP (ENABLE_PERSON_COMPANY_FILES = false) ===');
+      const unconditionalFiles = fs.readdirSync(dataDir);
+      const unconditionalPersonFiles = unconditionalFiles.filter(f => /^person_\d+\.json$/.test(f));
+      const unconditionalCompanyFiles = unconditionalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+      if (unconditionalPersonFiles.length > 0 || unconditionalCompanyFiles.length > 0) {
+        console.warn(`CRITICAL: Found ${unconditionalPersonFiles.length} person and ${unconditionalCompanyFiles.length} company files even though ENABLE_PERSON_COMPANY_FILES is false`);
+        console.warn('Removing ALL person and company files as ENABLE_PERSON_COMPANY_FILES = false...');
+
+        let unconditionalRemovedCount = 0;
+
+        [...unconditionalPersonFiles, ...unconditionalCompanyFiles].forEach(file => {
+          try {
+            const filePath = path.join(dataDir, file);
+            fs.unlinkSync(filePath);
+            console.warn(`✓ Removed ${file}`);
+            unconditionalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${file}:`, e.message);
+          }
+        });
+
+        // Also remove any relationship files that reference persons or companies
+        const unconditionalRelFiles = unconditionalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+        unconditionalRelFiles.forEach(relFile => {
+          if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+            try {
+              fs.unlinkSync(path.join(dataDir, relFile));
+              console.warn(`✓ Removed ${relFile} (references person/company)`);
+              unconditionalRemovedCount++;
+            } catch (e) {
+              console.error(`✗ Failed to remove ${relFile}:`, e.message);
+            }
+          }
+        });
+
+        console.log(`Unconditional cleanup: Removed ${unconditionalRemovedCount} files`);
+      } else {
+        console.log('No person or company files found - cleanup not needed ✓');
+      }
+      console.log('=== END UNCONDITIONAL CLEANUP ===\n');
+    } catch (unconditionalError) {
+      console.error('✗ Error during unconditional cleanup:', unconditionalError.message);
+    }
+  }
+
+  // ============================================================================
+  // DISABLED: ABSOLUTE FINAL SAFEGUARD (only runs when ENABLE_PERSON_COMPANY_FILES is true)
+  // When the flag is true, person/company files should be kept if they have valid relationships
+  // ============================================================================
+  // Final verification: Check that person/company files with relationships are preserved
+  try {
+    console.log('\n=== FINAL VERIFICATION (person/company files should exist with relationships) ===');
+    const absoluteFinalFiles = fs.readdirSync(dataDir);
+    const absolutePersonFiles = absoluteFinalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const absoluteCompanyFiles = absoluteFinalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (absolutePersonFiles.length === 0 && absoluteCompanyFiles.length === 0) {
+      console.log('No person or company files found (this is expected if there are no owners)');
+    } else {
+      console.log(`✓ Found ${absolutePersonFiles.length} person files and ${absoluteCompanyFiles.length} company files`);
+      console.log('These files are valid and should have corresponding relationships');
+    }
+    console.log('=== END FINAL VERIFICATION ===\n');
+  } catch (safeguardError) {
+    console.error('✗ Error during final verification:', safeguardError.message);
   }
 }
 

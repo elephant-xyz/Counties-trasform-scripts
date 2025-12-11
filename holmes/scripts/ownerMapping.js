@@ -9,11 +9,87 @@ const $ = cheerio.load(html);
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl01_ctl01_dynamicSummary_rptrDynamicColumns_ctl00_pnlSingleValue";
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl07_ctl01_grdSales tbody tr";
-const CURRENT_OWNER_SELECTOR = ".module-content .sdw1-owners-container";
+// const CURRENT_OWNER_SELECTOR = ".module-content .sdw1-owners-container";
 
 // Utility helpers
 const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
 const normalizeName = (s) => txt(s).toLowerCase();
+
+const PREFIX_NAME_MAP = {
+  MR: "Mr.",
+  MISTER: "Mr.",
+  MRS: "Mrs.",
+  MISS: "Miss",
+  MS: "Ms.",
+  MX: "Mx.",
+  MXR: "Mx.",
+  MXE: "Mx.",
+  DR: "Dr.",
+  DOCTOR: "Dr.",
+  PROF: "Prof.",
+  PROFESSOR: "Prof.",
+  REV: "Rev.",
+  REVEREND: "Rev.",
+  FR: "Fr.",
+  FATHER: "Fr.",
+  SISTER: "Sr.",
+  BR: "Br.",
+  BRO: "Br.",
+  BROTHER: "Br.",
+  CAPT: "Capt.",
+  CAPTAIN: "Capt.",
+  COL: "Col.",
+  COLONEL: "Col.",
+  MAJ: "Maj.",
+  MAJOR: "Maj.",
+  LT: "Lt.",
+  LIEUTENANT: "Lt.",
+  SGT: "Sgt.",
+  SERGEANT: "Sgt.",
+  HON: "Hon.",
+  HONORABLE: "Hon.",
+  JUDGE: "Judge",
+  RABBI: "Rabbi",
+  IMAM: "Imam",
+  SHEIKH: "Sheikh",
+  SHEIK: "Sheikh",
+  SIR: "Sir",
+  DAME: "Dame",
+};
+
+const SUFFIX_NAME_MAP = {
+  JR: "Jr.",
+  JNR: "Jr.",
+  JUNIOR: "Jr.",
+  SR: "Sr.",
+  SNR: "Sr.",
+  SENIOR: "Sr.",
+  II: "II",
+  "2ND": "II",
+  III: "III",
+  "3RD": "III",
+  IV: "IV",
+  "4TH": "IV",
+  PHD: "PhD",
+  MD: "MD",
+  ESQ: "Esq.",
+  ESQUIR: "Esq.",
+  ESQUIRE: "Esq.",
+  JD: "JD",
+  LLM: "LLM",
+  MBA: "MBA",
+  RN: "RN",
+  DDS: "DDS",
+  DVM: "DVM",
+  CFA: "CFA",
+  CPA: "CPA",
+  PE: "PE",
+  PMP: "PMP",
+  EMERITUS: "Emeritus",
+  EMER: "Emeritus",
+  RET: "Ret.",
+  RETIRED: "Ret.",
+};
 
 function formatNameForSchema(name) {
   if (!name) return null;
@@ -49,8 +125,6 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
-    /\bJR\.?\b/gi,
-    /\bSR\.?\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -95,36 +169,132 @@ function cleanInvalidCharsFromName(raw) {
   return parsedName;
 }
 
+function normalizeHonorificToken(token) {
+  return (token || "")
+    .replace(/[,]/g, "")
+    .replace(/\./g, "")
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
+function mapPrefixName(token) {
+  const normalized = normalizeHonorificToken(token);
+  if (!normalized) return null;
+  return PREFIX_NAME_MAP[normalized] || null;
+}
+
+function mapSuffixName(token) {
+  const normalized = normalizeHonorificToken(token);
+  if (!normalized) return null;
+  return SUFFIX_NAME_MAP[normalized] || null;
+}
+
+function extractPrefixSuffixFromTokens(tokens) {
+  const remaining = [...tokens];
+  let prefix_name = null;
+  let suffix_name = null;
+
+  if (remaining.length) {
+    const mappedPrefix = mapPrefixName(remaining[0]);
+    if (mappedPrefix) {
+      prefix_name = mappedPrefix;
+      remaining.shift();
+    }
+  }
+  if (remaining.length) {
+    const mappedSuffix = mapSuffixName(remaining[remaining.length - 1]);
+    if (mappedSuffix) {
+      suffix_name = mappedSuffix;
+      remaining.pop();
+    }
+  }
+
+  return { prefix_name, suffix_name, tokens: remaining };
+}
+
 const COMPANY_KEYWORDS = [
   "inc",
-  "llc",
-  "l.l.c",
-  "ltd",
-  "foundation",
-  "alliance",
-  "solutions",
+  "inc.",
+  "incorporated",
+  "corporation",
   "corp",
   "co",
   "company",
-  "services",
-  "trust",
-  "tr",
-  "associates",
+  "companies",
+  "ltd",
+  "l.t.d",
+  "limited",
+  "llc",
+  "l.l.c",
+  "limited liability company",
+  "llp",
+  "l.l.p",
+  "limited liability partnership",
+  "lllp",
+  "plc",
+  "p.l.c",
+  "pllc",
+  "p.l.l.c",
+  "lp",
+  "l.p",
+  "partnership",
+  "partners",
+  "assoc",
   "association",
+  "assn",
+  "associates",
+  "foundation",
+  "trust",
+  "trustee",
+  "ministries",
+  "ministry",
+  "church",
+  "temple",
+  "synagogue",
+  "mosque",
+  "bank",
+  "credit",
+  "credit union",
+  "university",
+  "college",
+  "school",
+  "authority",
+  "commission",
+  "department",
+  "dept",
+  "county",
+  "city",
+  "town",
+  "village",
+  "board",
+  "agency",
+  "services",
+  "solutions",
   "holdings",
   "group",
-  "partners",
-  "lp",
-  "llp",
-  "plc",
-  "pllc",
-  "bank",
-  "church",
-  "school",
-  "university",
-  "authority",
+  "enterprises",
+  "enterprise",
+  "management",
+  "investments",
+  "investment",
+  "properties",
+  "property",
+  "realty",
+  "rentals",
+  "assessor",
   "clerk",
   "court",
+  "development",
+  "developers",
+  "construction",
+  "contracting",
+  "logistics",
+  "consulting",
+  "assurance",
+  "mortgage",
+  "financing",
+  "capital",
+  "estate",
 ];
 
 
@@ -154,12 +324,14 @@ function classifyOwner(raw) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
   const tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
-  if (tokens.length < 2) {
+  const { prefix_name, suffix_name, tokens: personTokens } =
+    extractPrefixSuffixFromTokens(tokens);
+  if (personTokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
-  const first = cleanInvalidCharsFromName(tokens[0]);
-  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
-  const middleTokens = tokens.slice(1, -1);
+  const first = cleanInvalidCharsFromName(personTokens[0]);
+  const last = cleanInvalidCharsFromName(personTokens[personTokens.length - 1]);
+  const middleTokens = personTokens.slice(1, -1);
   // if (/^[A-Za-z]$/.test(last)) {
   //   return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   // }
@@ -170,6 +342,8 @@ function classifyOwner(raw) {
       first_name: first,
       last_name: last,
       middle_name: middle ? middle : null,
+      prefix_name: prefix_name || null,
+      suffix_name: suffix_name || null,
     };
     return { valid: true, owner: person };
   }
@@ -185,7 +359,9 @@ function dedupeOwners(owners) {
       norm = `company:${normalizeName(o.name)}`;
     } else {
       const middle = o.middle_name ? normalizeName(o.middle_name) : "";
-      norm = `person:${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}`;
+      const prefix = o.prefix_name ? normalizeName(o.prefix_name) : "";
+      const suffix = o.suffix_name ? normalizeName(o.suffix_name) : "";
+      norm = `person:${prefix}|${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}|${suffix}`;
     }
     if (!seen.has(norm)) {
       seen.add(norm);
@@ -288,56 +464,7 @@ for (const d of dates) {
   }
 }
 
-if (priorOwners && priorOwners.length > 0) {
-  const granteeNamesNorm = new Set();
-  Object.values(owners_by_date).forEach((arr) => {
-    arr.forEach((o) => {
-      if (o.type === "company")
-        granteeNamesNorm.add(`company:${normalizeName(o.name)}`);
-      else
-        granteeNamesNorm.add(
-          `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
-        );
-    });
-  });
-  const placeholderRaw = [];
-  for (const p of priorOwners) {
-    const parts = splitCompositeNames(p);
-    for (const part of parts) {
-      const res = classifyOwner(part);
-      if (res.valid) {
-        const o = res.owner;
-        let key;
-        if (o.type === "company") key = `company:${normalizeName(o.name)}`;
-        else
-          key = `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`;
-        if (!granteeNamesNorm.has(key)) {
-          placeholderRaw.push(part);
-        }
-      } else {
-        invalid_owners.push({
-          raw: part,
-          reason: res.reason || "invalid_owner",
-        });
-      }
-    }
-  }
-  if (placeholderRaw.length > 0) {
-    const unknownOwners = resolveOwnersFromRawStrings(
-      placeholderRaw,
-      invalid_owners,
-    );
-    if (unknownOwners.length > 0) {
-      let idx = 1;
-      let unknownKey = `unknown_date_${idx}`;
-      while (Object.prototype.hasOwnProperty.call(owners_by_date, unknownKey)) {
-        idx += 1;
-        unknownKey = `unknown_date_${idx}`;
-      }
-      owners_by_date[unknownKey] = unknownOwners;
-    }
-  }
-}
+
 
 const currentOwnersStructured = resolveOwnersFromRawStrings(
   currentOwnerRaw,
@@ -354,11 +481,7 @@ const dateKeys = Object.keys(owners_by_date)
   .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
   .sort();
 for (const dk of dateKeys) orderedOwnersByDate[dk] = owners_by_date[dk];
-Object.keys(owners_by_date)
-  .filter((k) => /^unknown_date_\d+$/.test(k))
-  .forEach((k) => {
-    orderedOwnersByDate[k] = owners_by_date[k];
-  });
+
 if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
   orderedOwnersByDate["current"] = owners_by_date["current"];
 }
