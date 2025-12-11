@@ -16213,66 +16213,32 @@ async function main() {
       fullAddrInput,
     ].filter((candidate) => candidate !== undefined);
 
-    const normalizedCandidate =
-      hasCompleteNormalizedAddress(existingAddress) &&
-      hasRobustNormalizedAddress(existingAddress)
-        ? finalizeAddressPayloadForOutput(existingAddress, "normalized")
-        : null;
+    const requestIdentifierCandidates = [
+      existingAddress.request_identifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unnormalizedSource.request_identifier,
+    ].filter((candidate) => candidate !== undefined);
 
-    if (normalizedCandidate) {
-      if (
-        Object.prototype.hasOwnProperty.call(
-          normalizedCandidate,
-          "unnormalized_address",
-        )
-      ) {
-        delete normalizedCandidate.unnormalized_address;
-      }
-      writeJSON(addressOutputPath, normalizedCandidate);
-    } else {
-      const resolvedRaw = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
-      if (resolvedRaw) {
-        const requestIdentifier = safeNullIfEmpty(
-          resolveFirstNonEmptyString([
-            existingAddress.request_identifier,
-            trimmedRequestIdentifier,
-            parcelId,
-            seed && seed.request_identifier,
-            unnormalizedSource.request_identifier,
-          ]),
-        );
-        const sourceHttpRequest =
-          resolveSourceHttpRequest(
-            existingAddress.source_http_request,
-            unnormalizedSource.source_http_request,
-            seedSource.source_http_request,
-            sourceHttpCandidate,
-          ) || null;
+    const sourceHttpRequestCandidates = [
+      existingAddress.source_http_request,
+      unnormalizedSource.source_http_request,
+      seedSource.source_http_request,
+      sourceHttpCandidate,
+    ].filter((candidate) => candidate !== undefined);
 
-        const rawPayload =
-          ensureRawAddressRequiredCoverage(
-            {
-              ...existingAddress,
-              ...unnormalizedSource,
-              ...seedSource,
-            },
-            resolvedRaw,
-          ) || {
-            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-            unnormalized_address: resolvedRaw,
-          };
-
-        rawPayload.request_identifier =
-          requestIdentifier === undefined ? null : requestIdentifier;
-        rawPayload.source_http_request = sourceHttpRequest;
-
-        const preparedRaw =
-          pruneRawVariantToSchemaSurface(rawPayload) || rawPayload;
-        writeJSON(addressOutputPath, preparedRaw);
-      } else {
-        removeFileIfExists(addressOutputPath);
-      }
-    }
+    stabilizeCountyAddressOneOf(addressOutputPath, {
+      rawCandidates,
+      unnormalizedPath: "unnormalized_address.json",
+      seedPath: "property_seed.json",
+      defaultCountyName: formattedCountyName || countyName || "Palm Beach",
+      defaultCountryCode: "US",
+      requestIdentifierCandidates,
+      sourceHttpRequestCandidates,
+      propertyPath: propertyFilePath,
+      relationshipDirs: [dataDir, relationshipsDir, relationshipsRoot],
+    });
 
     enforceCountyAddressSchemaRequirements(
       addressOutputPath,
@@ -16280,6 +16246,10 @@ async function main() {
       unnormalizedSource,
     );
     pruneAddressToRawAllowedFields(addressOutputPath);
+    ensureRawAddressFinalFieldCoverage(addressOutputPath);
+    enforceFinalAddressOneOfOutput(addressOutputPath);
+    solidifyCountyAddressSchemaSurface(addressOutputPath);
+    enforceAddressFieldDefaults(addressOutputPath);
     enforcePropertyRelationshipNulls(propertyFilePath);
     [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
       removeAddressRelationshipFiles(dirPath);
