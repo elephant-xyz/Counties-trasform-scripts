@@ -1530,8 +1530,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   // console.log("ownersByDate",ownersByDate);
 
   //Person processing and mapping creation.
+  // Only include persons from actual sales dates and current owners, exclude unknown_date_* entries
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  Object.keys(ownersByDate).forEach((dateKey) => {
+    // Skip unknown_date_* entries as they cannot be linked to actual sales
+    if (dateKey.startsWith('unknown_date_')) {
+      return;
+    }
+
+    const arr = ownersByDate[dateKey];
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
