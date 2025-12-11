@@ -3273,9 +3273,9 @@ function ensureRawAddressFinalFieldCoverage(addressFilePath) {
     return;
   }
 
-  const ensured = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  const ensured = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
 
-  for (const field of RAW_ADDRESS_OUTPUT_FIELDS) {
+  for (const field of RAW_ONE_OF_ALLOWED_FIELDS) {
     let value = Object.prototype.hasOwnProperty.call(payload, field)
       ? payload[field]
       : null;
@@ -3305,19 +3305,6 @@ function ensureRawAddressFinalFieldCoverage(addressFilePath) {
   }
 
   ensured.unnormalized_address = trimmedUnnormalized;
-
-  if ((ensured.latitude == null) !== (ensured.longitude == null)) {
-    ensured.latitude = null;
-    ensured.longitude = null;
-  }
-
-  if (!ensured.postal_code) {
-    ensured.plus_four_postal_code = null;
-  }
-
-  if (ensured.state_code && !ensured.country_code) {
-    ensured.country_code = "US";
-  }
 
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
     const trimmedIdentifier = safeNullIfEmpty(payload.request_identifier);
@@ -4837,7 +4824,7 @@ function pruneAddressToRawAllowedFields(addressPath) {
   }
 
   const cleaned = {};
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
     if (field === "unnormalized_address") {
       cleaned[field] = rawValue;
       return;
@@ -6590,9 +6577,21 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch aligned with the full address surface so schema required
-// fields are always present (even when only an unnormalized string exists).
-const RAW_MINIMAL_ADDRESS_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...ADDRESS_SCHEMA_FIELDS]),
+);
+
+// Raw variant must stay minimal to satisfy the oneOf branch that only permits
+// the unnormalized payload surface.
+const RAW_ONE_OF_ALLOWED_FIELDS = [
+  "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
+  "county_name",
+];
+const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
+
+const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -6611,13 +6610,7 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
 // Fields that may accompany the raw (unnormalized) address payload.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...RAW_MINIMAL_ADDRESS_FIELDS]),
-);
-
-const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(
-  new Set(RAW_ADDRESS_ALLOWED_FIELDS),
-);
+const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS));
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
@@ -6628,6 +6621,13 @@ const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
 
 const RAW_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   RAW_ADDRESS_ALLOWED_FIELDS.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {}),
+);
+
+const RAW_ONE_OF_SCHEMA_TEMPLATE = Object.freeze(
+  RAW_ONE_OF_ALLOWED_FIELDS.reduce((acc, field) => {
     acc[field] = null;
     return acc;
   }, {}),
@@ -7118,23 +7118,32 @@ function emitFinalCountyAddressOneOf(addressPath, options = {}) {
     rawOut[field] = sanitized;
   });
 
-  if (!rawOut.postal_code) {
+  const rawAllowedFieldSet = RAW_ONE_OF_ALLOWED_FIELD_SET;
+
+  if (rawAllowedFieldSet.has("postal_code") && !rawOut.postal_code) {
     rawOut.plus_four_postal_code = null;
   }
   if (
+    rawAllowedFieldSet.has("state_code") &&
+    rawAllowedFieldSet.has("country_code") &&
     hasMeaningfulAddressValue(rawOut.state_code) &&
     !hasMeaningfulAddressValue(rawOut.country_code)
   ) {
     rawOut.country_code = defaultCountryCode;
   }
 
-  const rawLat = parseCoordinate(rawOut.latitude);
-  const rawLon = parseCoordinate(rawOut.longitude);
-  rawOut.latitude = Number.isFinite(rawLat) ? rawLat : null;
-  rawOut.longitude = Number.isFinite(rawLon) ? rawLon : null;
-  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-    rawOut.latitude = null;
-    rawOut.longitude = null;
+  if (
+    rawAllowedFieldSet.has("latitude") &&
+    rawAllowedFieldSet.has("longitude")
+  ) {
+    const rawLat = parseCoordinate(rawOut.latitude);
+    const rawLon = parseCoordinate(rawOut.longitude);
+    rawOut.latitude = Number.isFinite(rawLat) ? rawLat : null;
+    rawOut.longitude = Number.isFinite(rawLon) ? rawLon : null;
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
   }
 
   writeJSON(addressPath, rawOut);
@@ -7144,8 +7153,7 @@ const RAW_ADDRESS_SURFACE_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS
 const RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET = new Set(RAW_ADDRESS_SURFACE_FIELDS);
 const NORMALIZED_ADDRESS_ALLOWED_KEY_SET = new Set(NORMALIZED_ADDRESS_FIELDS);
 
-// Align raw variant with normalized surface so the schema oneOf that permits
-// unnormalized strings still sees every nullable key.
+// Raw variant deliberately keeps a minimal surface to satisfy the schema oneOf.
 const RAW_VARIANT_SCHEMA_FIELDS = [...RAW_ADDRESS_ALLOWED_FIELDS];
 const RAW_VARIANT_SCHEMA_FIELD_SET = new Set(RAW_VARIANT_SCHEMA_FIELDS);
 
@@ -13615,7 +13623,7 @@ function enforceCountyAddressSchemaRequirements(
     return;
   }
 
-  const rawSchemaFields = [...RAW_ADDRESS_ALLOWED_FIELDS];
+  const rawSchemaFields = [...RAW_ONE_OF_ALLOWED_FIELDS];
   const structuredSchemaFields = [
     "block",
     "city_name",
@@ -13657,7 +13665,11 @@ function enforceCountyAddressSchemaRequirements(
     ]),
   );
 
-  const variant = rawValue ? "raw" : hasStructuredCoverage ? "normalized" : "raw";
+  const variant = hasStructuredCoverage
+    ? "normalized"
+    : rawValue
+      ? "raw"
+      : "raw";
   const fieldList = variant === "raw" ? rawSchemaFields : structuredSchemaFields;
   const baseTemplate = fieldList.reduce((acc, field) => {
     acc[field] = null;
@@ -13718,7 +13730,7 @@ function enforceCountyAddressSchemaRequirements(
 
   const requiredFields =
     variant === "raw"
-      ? [...RAW_ADDRESS_ALLOWED_FIELDS]
+      ? [...RAW_ONE_OF_ALLOWED_FIELDS]
       : [
           "source_http_request",
           "request_identifier",
