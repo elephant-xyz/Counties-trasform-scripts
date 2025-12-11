@@ -17838,6 +17838,10 @@ async function main() {
     preferRawWhenAvailable: prefersRawAddressBranch,
     fieldSources: [unAddr, seed],
   });
+  // Final guard: ensure the address lands on exactly one oneOf branch with the
+  // full schema surface populated (raw keeps normalized fields nullable).
+  enforceAddressTerminalOneOf(addressOutputPath);
+  emitAddressOneOfAligned(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
     removeAddressRelationshipFiles(dirPath);
