@@ -1248,6 +1248,26 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // Clean up ALL existing person and company files and relationships from previous runs
+  try {
+    const dataFiles = fs.readdirSync("data");
+    dataFiles.forEach((f) => {
+      if (
+        /^person_\d+\.json$/.test(f) ||
+        /^company_\d+\.json$/.test(f) ||
+        /^relationship_sales_person_\d+\.json$/.test(f) ||
+        /^relationship_sales_company_\d+\.json$/.test(f) ||
+        /^relationship_person_has_mailing_address_\d+\.json$/.test(f) ||
+        /^relationship_company_has_mailing_address_\d+\.json$/.test(f)
+      ) {
+        try {
+          fs.unlinkSync(path.join("data", f));
+        } catch (e) {}
+      }
+    });
+  } catch (e) {}
+
   const personMap = new Map();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
