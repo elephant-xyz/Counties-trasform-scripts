@@ -3,7 +3,18 @@ const path = require("path");
 const cheerio = require("cheerio");
 
 // Read HTML input
-const htmlPath = path.join(process.cwd(), "input.html");
+function findHTMLFile() {
+  const inputDir = path.join(process.cwd(), "input");
+  if (fs.existsSync(inputDir)) {
+    const files = fs.readdirSync(inputDir);
+    const htmlFile = files.find(f => f.endsWith('.html'));
+    if (htmlFile) {
+      return path.join(inputDir, htmlFile);
+    }
+  }
+  return path.join(process.cwd(), "input.html");
+}
+const htmlPath = findHTMLFile();
 const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 

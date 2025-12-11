@@ -395,7 +395,18 @@ function buildStructuresFromBuildings(buildings, parcelId) {
 }
 
 function main() {
-  const inputPath = path.resolve("input.html");
+  function findHTMLFile() {
+    const inputDir = path.join(process.cwd(), "input");
+    if (fs.existsSync(inputDir)) {
+      const files = fs.readdirSync(inputDir);
+      const htmlFile = files.find(f => f.endsWith('.html'));
+      if (htmlFile) {
+        return path.join(inputDir, htmlFile);
+      }
+    }
+    return path.resolve("input.html");
+  }
+  const inputPath = findHTMLFile();
   const $ = readHtml(inputPath);
   const parcelId = getParcelId($);
   if (!parcelId) {

@@ -760,6 +760,17 @@ function textOf($el) {
 }
 
 function loadHTML() {
+  // Try to find HTML file in input directory
+  const inputDir = path.join(process.cwd(), "input");
+  if (fs.existsSync(inputDir)) {
+    const files = fs.readdirSync(inputDir);
+    const htmlFile = files.find(f => f.endsWith('.html'));
+    if (htmlFile) {
+      const html = fs.readFileSync(path.join(inputDir, htmlFile), "utf8");
+      return cheerio.load(html);
+    }
+  }
+  // Fallback to input.html in current directory
   const html = fs.readFileSync("input.html", "utf8");
   return cheerio.load(html);
 }
@@ -1801,7 +1812,7 @@ function writeLayout(parcelId) {
   });
 }
 
-const seed = readJSON("property_seed.json");
+const seed = readJSON(path.join("input", "property_seed.json")) || readJSON("property_seed.json");
 const appendSourceInfo = (seed) => ({
   source_http_request: {
     method: "GET",
@@ -2316,8 +2327,8 @@ function main() {
   ensureDir("data");
   const $ = loadHTML();
 
-  const propertySeed = readJSON("property_seed.json");
-  const unnormalized = readJSON("unnormalized_address.json");
+  const propertySeed = readJSON(path.join("input", "property_seed.json")) || readJSON("property_seed.json");
+  const unnormalized = readJSON(path.join("input", "unnormalized_address.json")) || readJSON("unnormalized_address.json");
   const appendSourceInfo = (propertySeed) => ({
     source_http_request: {
       method: "GET",
