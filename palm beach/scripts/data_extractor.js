@@ -1667,7 +1667,11 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
 }
 
 function normalizeNameForMatch(str) {
-  return (str || "").replace(/\s+/g, " ").trim().toUpperCase();
+  return (str || "")
+    .replace(/\s*&\s*$/, "") // Remove trailing ampersand like "NAME &"
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
 }
 
 function parseNumber(val) {
@@ -2020,9 +2024,15 @@ function mapInstrumentToDeedType(instr) {
 }
 
 function main() {
-  const inputHtmlPath = path.join("input.html");
-  const unaddrPath = path.join("unnormalized_address.json");
-  const seedPath = path.join("property_seed.json");
+  const inputHtmlPath = fs.existsSync(path.join("input.html"))
+    ? path.join("input.html")
+    : path.join("input", "input.html");
+  const unaddrPath = fs.existsSync(path.join("unnormalized_address.json"))
+    ? path.join("unnormalized_address.json")
+    : path.join("input", "unnormalized_address.json");
+  const seedPath = fs.existsSync(path.join("property_seed.json"))
+    ? path.join("property_seed.json")
+    : path.join("input", "property_seed.json");
   const ownerPath = path.join("owners", "owner_data.json");
   const utilitiesPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
@@ -2046,7 +2056,9 @@ function main() {
     "";
   const key = `property_${parcelId}`;
   try {
-    const seedCsvPath = path.join(".", "input.csv");
+    const seedCsvPath = fs.existsSync(path.join(".", "input.csv"))
+      ? path.join(".", "input.csv")
+      : path.join("input", "input.csv");
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
     createGeometryClass(createGeometryInstances(seedCsv));
   } catch (e) {
@@ -2159,16 +2171,15 @@ function main() {
     });
   }
 
-  // Owners (persons/companies)
+  // Owners (persons/companies) - collect but don't write yet
   const pc = buildPersonsAndCompanies(ownerJSON, parcelId);
-  pc.persons.forEach((p, i) =>
-    writeJSON(path.join("data", `person_${i + 1}.json`), p),
-  );
-  pc.companies.forEach((c, i) =>
-    writeJSON(path.join("data", `company_${i + 1}.json`), c),
-  );
+
+  // Track which persons/companies are actually used in relationships
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
   if (hasOwnerMailingAddress) {
-    pc.personCurrentOwners.forEach((idx, i) =>
+    pc.personCurrentOwners.forEach((idx, i) => {
+      usedPersonIndices.add(idx);
       writeJSON(
         path.join(
           "data",
@@ -2178,9 +2189,10 @@ function main() {
           from: { "/": `./person_${idx}.json` },
           to: { "/": `./mailing_address.json` },
         }
-      )
-    );
-    pc.companyCurrentOwners.forEach((idx, i) =>
+      );
+    });
+    pc.companyCurrentOwners.forEach((idx, i) => {
+      usedCompanyIndices.add(idx);
       writeJSON(
         path.join(
           "data",
@@ -2190,68 +2202,25 @@ function main() {
           from: { "/": `./company_${idx}.json` },
           to: { "/": `./mailing_address.json` },
         }
-      )
-    );
+      );
+    });
   }
 
-  // Relationships person/company -> sales
-  const personNameToPath = new Map();
+  // Note: Do not create relationships from sales to persons/companies
+  // because persons/companies are not part of the Sales_History data group.
+  // Only persons that are current owners (with mailing addresses) should be written.
+
+  // Now write only the persons and companies that are actually used in relationships
   pc.persons.forEach((p, i) => {
-    const nameVariants = [];
-    const f = (p.first_name || "").trim();
-    const m = (p.middle_name || "").trim();
-    const l = (p.last_name || "").trim();
-    if (f && l) {
-      // Use the capitalized names for matching
-      nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
-      nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
-      nameVariants.push(`${l} ${f}`.toUpperCase());
+    const personIndex = i + 1;
+    if (usedPersonIndices.has(personIndex)) {
+      writeJSON(path.join("data", `person_${personIndex}.json`), p);
     }
-    const pth = `./person_${i + 1}.json`;
-    nameVariants.forEach((v) => personNameToPath.set(v, pth));
   });
-  const companyNameToPath = new Map();
   pc.companies.forEach((c, i) => {
-    const nm = (c.name || "").trim().toUpperCase();
-    if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
-  });
-  sales.forEach((s, idx) => {
-    const g = normalizeNameForMatch(s.OwnerName);
-    if (!g) return;
-    if (companyNameToPath.has(g)) {
-      const rel = {
-        to: { "/": companyNameToPath.get(g) },
-        from: { "/": `./sales_${idx + 1}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_sales_company_${idx + 1}.json`),
-        rel,
-      );
-    } else {
-      // try direct or swapped person match
-      let toPath = null;
-      if (personNameToPath.has(g)) {
-        toPath = personNameToPath.get(g);
-      } else {
-        const parts = g.split(/\s+/);
-        if (parts.length >= 2) {
-          const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
-            .toUpperCase()
-            .trim();
-          if (personNameToPath.has(swapped))
-            toPath = personNameToPath.get(swapped);
-        }
-      }
-      if (toPath) {
-        const rel = {
-          to: { "/": toPath },
-          from: { "/": `./sales_${idx + 1}.json` },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_person_${idx + 1}.json`),
-          rel,
-        );
-      }
+    const companyIndex = i + 1;
+    if (usedCompanyIndices.has(companyIndex)) {
+      writeJSON(path.join("data", `company_${companyIndex}.json`), c);
     }
   });
   // Layout extraction from owners/layout_data.json
