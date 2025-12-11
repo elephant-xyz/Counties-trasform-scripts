@@ -2870,37 +2870,73 @@ function main() {
     }
   }
 
+  // Determine if we have a valid unnormalized address (must be non-empty and have meaningful content)
+  const hasValidUnnormalizedAddress = situsAddress && situsAddress.trim().length > 0;
+
   const address = {
     source_http_request: {
           method: "GET",
           url: seed.source_http_request.url
-        },    
-    // street_number: street_number || null,
-    // street_name: street_name || null,
-    // street_suffix_type: street_suffix_type || null,
-    // street_pre_directional_text: pre_dir || null,
-    // street_post_directional_text: post_dir || null,
-    // unit_identifier: null,
-    // city_name: (cityUpper || "").toUpperCase() || null,
-    // state_code: "FL",
-    // postal_code: postal_code || null,
-    // plus_four_postal_code: plus_four_postal_code || null,
-    // country_code: "US",
-    county_name: "Franklin",
-    latitude: unAddr.latitude ?? null,
-    longitude: unAddr.longitude ?? null,
-    // route_number: null,
-    township: townshipText || null,
-    range: rangeText || null,
-    section: sectionText || null,
-    // block: null,
-    // lot: lotNumber || null,
-    // municipality_name: null,
-    unnormalized_address: situsAddress
+        },
+    request_identifier: parcelIdentifier || seed.parcel_id || ""
   };
+
+  // Use normalized format when unnormalized address is empty or invalid
+  if (!hasValidUnnormalizedAddress) {
+    // Normalized format - all required fields must be present (can be null)
+    address.street_number = street_number || null;
+    address.street_name = street_name || null;
+    address.street_suffix_type = street_suffix_type || null;
+    address.street_pre_directional_text = pre_dir || null;
+    address.street_post_directional_text = post_dir || null;
+    address.unit_identifier = null;
+    address.city_name = (cityUpper || "").toUpperCase() || null;
+    address.state_code = "FL";
+    address.postal_code = postal_code || null;
+    address.plus_four_postal_code = plus_four_postal_code || null;
+    address.country_code = "US";
+    address.route_number = null;
+    address.block = null;
+  } else {
+    // Unnormalized format - only use unnormalized_address
+    address.unnormalized_address = situsAddress;
+  }
+
+  // Common fields for both formats
+  address.county_name = "Franklin";
+  address.township = townshipText || null;
+  address.range = rangeText || null;
+  address.section = sectionText || null;
+
   writeJSON(path.join("data", "address.json"), address);
   console.log(address)
-  
+
+  // Create geometry.json
+  const geometry = {
+    source_http_request: {
+      method: "GET",
+      url: seed.source_http_request.url
+    },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
+    latitude: unAddr.latitude ?? null,
+    longitude: unAddr.longitude ?? null
+  };
+  writeJSON(path.join("data", "geometry.json"), geometry);
+
+  // Create relationship between address and geometry
+  const relAddressGeometry = {
+    from: { "/": "./address.json" },
+    to: { "/": "./geometry.json" }
+  };
+  writeJSON(path.join("data", "relationship_address_has_geometry.json"), relAddressGeometry);
+
+  // Create relationship between property and address
+  const relPropertyAddress = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  };
+  writeJSON(path.join("data", "relationship_property_has_address.json"), relPropertyAddress);
+
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
