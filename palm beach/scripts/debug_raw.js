@@ -5900,6 +5900,96 @@ async function fetchParcelCentroid(parcelId) {
   }
 }
 
+// Pick a single address branch for schema oneOf: prefer normalized when fully
+// populated, otherwise emit a raw payload with the full nullable surface so
+// required fields are present (even when null).
+function enforceAddressBranchResolution(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const payload = readJSONIfExists(addressPath) || {};
+
+  const normalizedCandidate = normalizeCandidateForCoverage({ ...payload });
+  if (normalizedCandidate) {
+    const normalizedOut = {
+      ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+      ...normalizedCandidate,
+    };
+    delete normalizedOut.unnormalized_address;
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (normalizedOut.state_code && !normalizedOut.country_code) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawCandidates = Array.isArray(options.rawCandidates)
+    ? options.rawCandidates
+    : [];
+  if (
+    payload.unnormalized_address &&
+    typeof payload.unnormalized_address === "string"
+  ) {
+    rawCandidates.unshift(payload.unnormalized_address);
+  }
+  const resolvedRaw = resolveFirstNonEmptyString(rawCandidates);
+  const trimmedRaw =
+    typeof resolvedRaw === "string" && resolvedRaw.trim().length
+      ? resolvedRaw.trim()
+      : null;
+  if (!trimmedRaw) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestIdentifier = resolveTrimmedString(
+    resolveFirstNonEmptyString(
+      Array.isArray(options.requestIdentifierCandidates)
+        ? options.requestIdentifierCandidates
+        : [],
+    ),
+  );
+  const sourceHttp = resolveSourceHttpRequest(
+    ...(Array.isArray(options.sourceHttpRequestCandidates)
+      ? options.sourceHttpRequestCandidates
+      : []),
+  );
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") return;
+    let value = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      rawOut[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+    rawOut[field] = value === undefined ? null : value;
+  });
+
+  rawOut.unnormalized_address = trimmedRaw;
+  rawOut.request_identifier =
+    requestIdentifier === undefined ? null : requestIdentifier;
+  rawOut.source_http_request = sourceHttp ? deepClone(sourceHttp) : null;
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if (rawOut.state_code && !rawOut.country_code) {
+    rawOut.country_code = "US";
+  }
+
+  writeJSON(addressPath, rawOut);
+}
+
 function extractUnitIdentifierFromAddressLines(lines = []) {
   for (const raw of lines) {
     const candidate = safeNullIfEmpty(raw);
@@ -16747,27 +16837,30 @@ async function main() {
     }
   }
 
-  const finalNormalizedCandidate = normalizeCandidateForCoverage(
-    readJSONIfExists(addressOutputPath),
-  );
-  if (finalNormalizedCandidate) {
-    const normalizedOut = {
-      ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-      ...finalNormalizedCandidate,
-    };
-    delete normalizedOut.unnormalized_address;
-    if (!normalizedOut.postal_code) {
-      normalizedOut.plus_four_postal_code = null;
-    }
-    if (normalizedOut.state_code && !normalizedOut.country_code) {
-      normalizedOut.country_code = "US";
-    }
-    const serialized = `${JSON.stringify(normalizedOut, null, 2)}\n`;
-    const normalizedAddressPath = path.resolve(addressOutputPath);
-    lockedAddressPath = normalizedAddressPath;
-    originalWriteFileSync(normalizedAddressPath, serialized);
-    lockedAddressPath = null;
-  }
+  enforceAddressBranchResolution(addressOutputPath, {
+    rawCandidates: [
+      ...(finalUnnormalizedCandidates || []),
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ],
+    requestIdentifierCandidates: [
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+  });
 
   console.log("All mapping scripts completed successfully");
 }
