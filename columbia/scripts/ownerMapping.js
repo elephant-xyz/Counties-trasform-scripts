@@ -55,7 +55,7 @@ function isCompanyName(name) {
   const n = (name || "").toLowerCase();
   // direct boundary checks for common suffixes/patterns
   if (
-    /\b(inc|inc\.|corp|corp\.|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
+    /\b(incorporated|inc|inc\.|corp|corporation|corp\.|co|co\.|ltd|limited|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
       n,
     )
   ) {
