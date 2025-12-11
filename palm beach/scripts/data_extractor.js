@@ -1667,7 +1667,11 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
 }
 
 function normalizeNameForMatch(str) {
-  return (str || "").replace(/\s+/g, " ").trim().toUpperCase();
+  return (str || "")
+    .replace(/\s*&\s*$/, "") // Remove trailing ampersand like "NAME &"
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
 }
 
 function parseNumber(val) {
@@ -2020,9 +2024,15 @@ function mapInstrumentToDeedType(instr) {
 }
 
 function main() {
-  const inputHtmlPath = path.join("input.html");
-  const unaddrPath = path.join("unnormalized_address.json");
-  const seedPath = path.join("property_seed.json");
+  const inputHtmlPath = fs.existsSync(path.join("input.html"))
+    ? path.join("input.html")
+    : path.join("input", "input.html");
+  const unaddrPath = fs.existsSync(path.join("unnormalized_address.json"))
+    ? path.join("unnormalized_address.json")
+    : path.join("input", "unnormalized_address.json");
+  const seedPath = fs.existsSync(path.join("property_seed.json"))
+    ? path.join("property_seed.json")
+    : path.join("input", "property_seed.json");
   const ownerPath = path.join("owners", "owner_data.json");
   const utilitiesPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
@@ -2046,7 +2056,9 @@ function main() {
     "";
   const key = `property_${parcelId}`;
   try {
-    const seedCsvPath = path.join(".", "input.csv");
+    const seedCsvPath = fs.existsSync(path.join(".", "input.csv"))
+      ? path.join(".", "input.csv")
+      : path.join("input", "input.csv");
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
     createGeometryClass(createGeometryInstances(seedCsv));
   } catch (e) {
