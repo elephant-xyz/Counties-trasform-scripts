@@ -1755,37 +1755,32 @@ function createStructureFiles(seed,parcelIdentifier) {
       // Create relationship between building layout and structure
       const buildingNumber = struct.building_number || idx + 1;
       const structureIndex = struct.structure_index || idx + 1;
-
+      
       // Find the correct building layout file index
-      let buildingLayoutIndex = null;
-      let buildingLayoutFound = false;
+      let buildingLayoutIndex = buildingNumber;
       // console.log("BUILDING_NUMBER",buildingNumber)
       if (layoutsData && parcelIdentifier) {
         // console.log(layoutsData)
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
         // console.log(layouts)
-        const buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         // console.log("BUILDING_LAYOUT", buildingLayout)
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
-          buildingLayoutFound = true;
         }
       }
-
-      // Only create relationship if a building layout was found
-      if (buildingLayoutFound && buildingLayoutIndex) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./structure_${structureIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./structure_${structureIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+        relationship
+      );
     });
   }
 
@@ -1834,33 +1829,28 @@ function createUtilitiesFiles(seed,parcelIdentifier){
       // Create relationship between building layout and utility
       const buildingNumber = util.building_number || idx + 1;
       const utilityIndex = util.utility_index || idx + 1;
-
+      
       // Find the correct building layout file index
-      let buildingLayoutIndex = null;
-      let buildingLayoutFound = false;
+      let buildingLayoutIndex = buildingNumber;
       if (layoutsData && parcelIdentifier) {
         const key = `property_${parcelIdentifier}`;
         const layouts = layoutsData[key]?.layouts || [];
-        const buildingLayout = layouts.find((layout, layoutIdx) =>
+        const buildingLayout = layouts.find((layout, layoutIdx) => 
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
         if (buildingLayout) {
           buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
-          buildingLayoutFound = true;
         }
       }
-
-      // Only create relationship if a building layout was found
-      if (buildingLayoutFound && buildingLayoutIndex) {
-        const relationship = {
-          from: { "/": `./layout_${buildingLayoutIndex}.json` },
-          to: { "/": `./utility_${utilityIndex}.json` }
-        };
-        writeJSON(
-          path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-          relationship
-        );
-      }
+      
+      const relationship = {
+        from: { "/": `./layout_${buildingLayoutIndex}.json` },
+        to: { "/": `./utility_${utilityIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+        relationship
+      );
     });
   }
 
@@ -2204,15 +2194,15 @@ function main() {
     // writeLayout(parcelId);
     // writeStructure(parcelId);
     
-  // ---------- Layouts (owners/layout_data.json) ----------
-  // IMPORTANT: Create layouts FIRST because structures and utilities reference them
-  createLayoutFiles(propertySeed,parcelId);
-
   //------Structure (owners/structures_data.json)---------------
-  createStructureFiles(propertySeed,parcelId);
+  createStructureFiles(seed,parcelId);
 
   // ---------- Utilities (owners/utilities_data.json) ----------
-  createUtilitiesFiles(propertySeed,parcelId);
+  createUtilitiesFiles(seed,parcelId);
+
+  // ---------- Layouts (owners/layout_data.json) ----------
+
+  createLayoutFiles(seed,parcelId);
 
   }
 
