@@ -1312,12 +1312,15 @@ function enforceAddressFieldDefaults(addressFilePath) {
   if (isRawVariant) {
     const rawSurface =
       ensureRawAddressSchemaDefaults({
+        ...payload,
         unnormalized_address: trimmedRaw,
         request_identifier:
-          requestIdentifier === undefined ? null : requestIdentifier,
+          requestIdentifier === undefined
+            ? payload.request_identifier ?? null
+            : requestIdentifier,
         source_http_request: preparedSource
           ? deepClone(preparedSource)
-          : null,
+          : payload.source_http_request ?? null,
       }) || null;
 
     if (rawSurface) {
@@ -11799,6 +11802,14 @@ process.on("exit", () => {
       if (countyCandidate) {
         normalizedCandidate.county_name = titleCaseCounty(countyCandidate);
       }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedCandidate.unnormalized_address;
+      }
       writeJSON(addressPath, normalizedCandidate);
     } else if (rawValue) {
       const hydratedRaw =
@@ -16157,6 +16168,14 @@ async function main() {
         : null;
 
     if (normalizedCandidate) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedCandidate,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedCandidate.unnormalized_address;
+      }
       writeJSON(addressOutputPath, normalizedCandidate);
     } else {
       const resolvedRaw = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
