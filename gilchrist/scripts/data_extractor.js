@@ -1248,8 +1248,33 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
+
+  // Clean up ALL existing person and company files and relationships from previous runs
+  try {
+    const dataFiles = fs.readdirSync("data");
+    dataFiles.forEach((f) => {
+      if (
+        /^person_\d+\.json$/.test(f) ||
+        /^company_\d+\.json$/.test(f) ||
+        /^relationship_sales_person_\d+\.json$/.test(f) ||
+        /^relationship_sales_company_\d+\.json$/.test(f) ||
+        /^relationship_person_has_mailing_address_\d+\.json$/.test(f) ||
+        /^relationship_company_has_mailing_address_\d+\.json$/.test(f)
+      ) {
+        try {
+          fs.unlinkSync(path.join("data", f));
+        } catch (e) {}
+      }
+    });
+  } catch (e) {}
+
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only include persons who are grantees (buyers) or current owners, not just grantors
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date entries as these are grantors who never became grantees
+    if (dateKey.startsWith("unknown_date")) {
+      return;
+    }
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1282,19 +1307,29 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only include companies who are grantees (buyers) or current owners, not just grantors
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date entries as these are grantors who never became grantees
+    if (dateKey.startsWith("unknown_date")) {
+      return;
+    }
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
     });
   });
-  companies = Array.from(companyNames).map((n) => ({ 
+  companies = Array.from(companyNames).map((n) => ({
     name: n,
     request_identifier: parcelId,
   }));
   companies.forEach((c, idx) => {
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
+
+  // Track which person/company indices are actually used in relationships
+  const usedPersonIdx = new Set();
+  const usedCompanyIdx = new Set();
+
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -1306,6 +1341,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       .forEach((o) => {
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
+          usedPersonIdx.add(pIdx);
           relPersonCounter++;
           writeJSON(
             path.join(
@@ -1324,6 +1360,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
+          usedCompanyIdx.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1347,6 +1384,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     .forEach((o) => {
       const pIdx = findPersonIndexByName(o.first_name, o.last_name);
       if (pIdx) {
+        usedPersonIdx.add(pIdx);
         relPersonCounter++;
         writeJSON(
           path.join(
@@ -1365,6 +1403,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     .forEach((o) => {
       const cIdx = findCompanyIndexByName(o.name);
       if (cIdx) {
+        usedCompanyIdx.add(cIdx);
         relCompanyCounter++;
         writeJSON(
           path.join(
@@ -1378,6 +1417,22 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         );
       }
     });
+  }
+
+  // Remove unused person and company files
+  for (let i = 1; i <= people.length; i++) {
+    if (!usedPersonIdx.has(i)) {
+      try {
+        fs.unlinkSync(path.join("data", `person_${i}.json`));
+      } catch (e) {}
+    }
+  }
+  for (let i = 1; i <= companies.length; i++) {
+    if (!usedCompanyIdx.has(i)) {
+      try {
+        fs.unlinkSync(path.join("data", `company_${i}.json`));
+      } catch (e) {}
+    }
   }
 }
 
@@ -1532,10 +1587,13 @@ function extractOwnerMailingAddress($) {
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  if (!inputCounty) {
-    inputCounty = (unnorm.county_name || "").trim();
+  let inputCounty = "";
+  if (unnorm) {
+    inputCounty = (unnorm.county_jurisdiction || "").trim();
+    if (!inputCounty) {
+      inputCounty = (unnorm.county_name || "").trim();
     }
+  }
   const county_name = inputCounty || null;
   if (mailingAddress) {
     const mailingAddressObj = {
