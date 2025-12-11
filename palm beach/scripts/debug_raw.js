@@ -18503,67 +18503,119 @@ async function main() {
   });
 
   const finalAddress = readJSONIfExists(addressOutputPath) || {};
-  const finalUnnormalized =
-    safeNullIfEmpty(resolvedRawAddress) ||
-    safeNullIfEmpty(finalAddress.unnormalized_address) ||
-    safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
-  const forcedAddress = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-    if (field === "unnormalized_address") {
-      forcedAddress[field] = finalUnnormalized || null;
-      return;
-    }
-    let value = Object.prototype.hasOwnProperty.call(finalAddress, field)
-      ? finalAddress[field]
+  const rawFallbackCandidates = [
+    resolvedRawAddress,
+    finalAddress.unnormalized_address,
+    ...rawCandidates,
+    unnormalizedAddressCandidate,
+    combinedModelAddress,
+    siteLocationLine,
+    fullAddr,
+    fullAddrInput,
+    unAddr && unAddr.full_address,
+    unAddr && unAddr.unnormalized_address,
+  ].map((candidate) => safeNullIfEmpty(candidate)).filter(Boolean);
+  const finalUnnormalized = safeNullIfEmpty(
+    resolveFirstNonEmptyString(rawFallbackCandidates),
+  );
+  const normalizedSurfaceForFinal =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...finalAddress })
       : null;
+  const hasNormalizedSurfaceFinal =
+    normalizedSurfaceForFinal &&
+    hasCompleteNormalizedAddress({ ...normalizedSurfaceForFinal });
+
+  const sanitizeFinalField = (field, value) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
-      forcedAddress[field] = Number.isFinite(numeric) ? numeric : null;
-      return;
-    }
-    if (field === "source_http_request") {
-      const prepared = prepareSourceHttpRequest(
-        resolvedSourceHttp || value,
-      );
-      forcedAddress[field] = prepared ? deepClone(prepared) : null;
-      return;
+      return Number.isFinite(numeric) ? numeric : null;
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
-      forcedAddress[field] = trimmed.length ? trimmed : null;
-      return;
+      return trimmed.length ? trimmed : null;
     }
-    forcedAddress[field] = value === undefined ? null : value;
-  });
-  if (
-    hasMeaningfulAddressValue(resolvedRequestIdentifier) &&
-    !hasMeaningfulAddressValue(forcedAddress.request_identifier)
-  ) {
-    forcedAddress.request_identifier = resolvedRequestIdentifier;
+    return value === undefined ? null : value;
+  };
+
+  const buildRawAddressSurface = () => {
+    if (!finalUnnormalized) return null;
+    const output = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        output[field] = finalUnnormalized;
+        return;
+      }
+      const sourceValue = Object.prototype.hasOwnProperty.call(finalAddress, field)
+        ? finalAddress[field]
+        : hasNormalizedSurfaceFinal
+          ? normalizedSurfaceForFinal[field]
+          : null;
+      output[field] = sanitizeFinalField(field, sourceValue);
+    });
+    return output;
+  };
+
+  const buildNormalizedSurface = () => {
+    if (!hasNormalizedSurfaceFinal) return null;
+    const output = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      const sourceValue = Object.prototype.hasOwnProperty.call(finalAddress, field)
+        ? finalAddress[field]
+        : normalizedSurfaceForFinal[field];
+      output[field] = sanitizeFinalField(field, sourceValue);
+    });
+    return output;
+  };
+
+  let finalAddressOutput = buildRawAddressSurface();
+  if (!finalAddressOutput && hasNormalizedSurfaceFinal) {
+    finalAddressOutput = buildNormalizedSurface();
   }
-  if (!forcedAddress.postal_code) {
-    forcedAddress.plus_four_postal_code = null;
+
+  if (finalAddressOutput) {
+    if (
+      hasMeaningfulAddressValue(resolvedRequestIdentifier) &&
+      !hasMeaningfulAddressValue(finalAddressOutput.request_identifier)
+    ) {
+      finalAddressOutput.request_identifier = resolvedRequestIdentifier;
+    }
+    if (Object.prototype.hasOwnProperty.call(finalAddressOutput, "source_http_request")) {
+      const prepared = prepareSourceHttpRequest(
+        finalAddressOutput.source_http_request || resolvedSourceHttp,
+      );
+      finalAddressOutput.source_http_request = prepared ? deepClone(prepared) : null;
+    } else if (resolvedSourceHttp) {
+      finalAddressOutput.source_http_request = deepClone(resolvedSourceHttp);
+    }
+    if (!finalAddressOutput.postal_code) {
+      finalAddressOutput.plus_four_postal_code = null;
+    }
+    if (
+      (finalAddressOutput.latitude == null) !== (finalAddressOutput.longitude == null)
+    ) {
+      finalAddressOutput.latitude = null;
+      finalAddressOutput.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(finalAddressOutput.state_code) &&
+      !hasMeaningfulAddressValue(finalAddressOutput.country_code)
+    ) {
+      finalAddressOutput.country_code = "US";
+    }
+    if (Object.prototype.hasOwnProperty.call(finalAddressOutput, "__force_raw_variant")) {
+      delete finalAddressOutput.__force_raw_variant;
+    }
+
+    fs.writeFileSync = originalWriteFileSync;
+    originalWriteFileSync(
+      addressOutputPath,
+      `${JSON.stringify(finalAddressOutput, null, 2)}\n`,
+    );
+  } else {
+    fs.writeFileSync = originalWriteFileSync;
+    removeFileIfExists(addressOutputPath);
   }
-  if (
-    (forcedAddress.latitude == null) !== (forcedAddress.longitude == null)
-  ) {
-    forcedAddress.latitude = null;
-    forcedAddress.longitude = null;
-  }
-  if (
-    hasMeaningfulAddressValue(forcedAddress.state_code) &&
-    !hasMeaningfulAddressValue(forcedAddress.country_code)
-  ) {
-    forcedAddress.country_code = "US";
-  }
-  if (Object.prototype.hasOwnProperty.call(forcedAddress, "__force_raw_variant")) {
-    delete forcedAddress.__force_raw_variant;
-  }
-  fs.writeFileSync = originalWriteFileSync;
-  originalWriteFileSync(
-    addressOutputPath,
-    `${JSON.stringify(forcedAddress, null, 2)}\n`,
-  );
 
   console.log("All mapping scripts completed successfully");
 }
