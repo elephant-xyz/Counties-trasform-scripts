@@ -1352,6 +1352,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
+  // Update people to be validPeople so findPersonIndexByName searches the correct array
+  people = validPeople;
   // Collect all unique company names
   const companyNamesMap = new Map();
   Object.values(ownersByDate).forEach((arr) => {
