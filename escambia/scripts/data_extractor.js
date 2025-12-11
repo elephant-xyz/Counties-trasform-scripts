@@ -16,8 +16,11 @@ function toTitleCase(str) {
   if (!cleaned) return null;
 
   // Handle names with various separators (space, hyphen, apostrophe, comma, period)
+  // Normalize multiple spaces and clean up
+  const normalized = cleaned.replace(/\s+/g, ' ');
+
   // Split on separators while preserving them
-  const parts = cleaned.toLowerCase().split(/(?=[\ \-',.])/).filter(Boolean);
+  const parts = normalized.toLowerCase().split(/(?=[\ \-',.])/).filter(Boolean);
 
   let result = '';
   for (let i = 0; i < parts.length; i++) {
@@ -28,10 +31,23 @@ function toTitleCase(str) {
       const rest = part.slice(1);
       result += separator;
       if (rest.length > 0) {
-        result += rest.charAt(0).toUpperCase() + rest.slice(1);
+        // Find first letter to capitalize
+        let firstLetterIdx = 0;
+        while (firstLetterIdx < rest.length && !/[A-Za-z]/.test(rest[firstLetterIdx])) {
+          firstLetterIdx++;
+        }
+        if (firstLetterIdx < rest.length) {
+          // Add any non-letters before the first letter
+          result += rest.slice(0, firstLetterIdx);
+          // Capitalize the first letter and add the rest
+          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1);
+        } else {
+          // No letters found, just add as is
+          result += rest;
+        }
       }
     } else {
-      // No separator at start
+      // No separator at start - capitalize first letter
       result += part.charAt(0).toUpperCase() + part.slice(1);
     }
   }
@@ -2605,8 +2621,13 @@ function main() {
         let middle = null;
         if (owner.middle_name && typeof owner.middle_name === 'string') {
           const middleTrimmed = owner.middle_name.trim();
-          if (middleTrimmed && middleTrimmed.length > 0) {
-            middle = validatePersonName(toTitleCase(middleTrimmed));
+          // Reject middle names that contain digits or are too long/complex
+          // Valid middle names should not have numbers and should be relatively short
+          if (middleTrimmed && middleTrimmed.length > 0 && middleTrimmed.length < 50) {
+            // Check if middle name contains digits - if so, it's probably malformed data
+            if (!/\d/.test(middleTrimmed)) {
+              middle = validatePersonName(toTitleCase(middleTrimmed));
+            }
           }
         }
 
