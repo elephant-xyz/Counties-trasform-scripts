@@ -1290,6 +1290,11 @@ function titleCaseName(s) {
 function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
   try {
     const dataDir = "data";
+    if (!fs.existsSync(dataDir)) {
+      console.log("Data directory does not exist, skipping cleanup");
+      return;
+    }
+
     const files = fs.readdirSync(dataDir);
 
     files.forEach((file) => {
@@ -1297,6 +1302,7 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
       if (personMatch) {
         const idx = parseInt(personMatch[1], 10);
         if (!usedPersonIdx.has(idx)) {
+          console.log(`Removing unused person file: ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
       }
@@ -1305,6 +1311,7 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
       if (companyMatch) {
         const idx = parseInt(companyMatch[1], 10);
         if (!usedCompanyIdx.has(idx)) {
+          console.log(`Removing unused company file: ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
       }
