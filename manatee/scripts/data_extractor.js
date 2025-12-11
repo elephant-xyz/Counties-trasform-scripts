@@ -2484,11 +2484,23 @@ function findCompanyIndexByName(name) {
 
 function titleCaseName(s) {
   if (!s) return s;
-  return s
+  // Normalize consecutive delimiters (e.g., ". " or ", ") to single space
+  // This ensures names like "St. James" become "St James" to match the pattern
+  const normalized = s
     .toLowerCase()
-    .split(/\s+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+    .replace(/[\s\-',.]+/g, (match) => {
+      // If multiple delimiters, collapse to single space
+      if (match.length > 1 || match === ',') {
+        return ' ';
+      }
+      return match;
+    });
+
+  // Capitalize first letter and any letter after a delimiter
+  return normalized
+    .replace(/(^|[\s\-'.])([a-z])/g, (match, delimiter, letter) => {
+      return delimiter + letter.toUpperCase();
+    });
 }
 
 function writeJSON(p, obj) {
