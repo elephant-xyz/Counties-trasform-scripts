@@ -1558,15 +1558,28 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 
   //Company processing and mapping creation.
-  const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
+  // Collect companies that are actually used (in sales or current owners)
+  const usedCompanyNames = new Set();
+
+  // Add companies from sales
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate.forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
+        usedCompanyNames.add((o.name || "").trim());
     });
   });
-  // console.log("companyNames",companyNames);
-  companies = Array.from(companyNames).map((n) => ({ 
+
+  // Add companies from current owners
+  const currentOwners = ownersByDate["current"] || [];
+  currentOwners.forEach((o) => {
+    if (o.type === "company" && (o.name || "").trim())
+      usedCompanyNames.add((o.name || "").trim());
+  });
+
+  // Only create company files for companies that are actually used
+  companies = Array.from(usedCompanyNames).map((n) => ({
     ...appendSourceInfo(seed),
     name: n
   }));
