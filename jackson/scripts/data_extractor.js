@@ -1352,14 +1352,46 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  const companyNames = new Set();
+  // Collect all unique company names
+  const companyNamesMap = new Map();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim())
-        companyNames.add((o.name || "").trim());
+      if (o.type === "company" && (o.name || "").trim()) {
+        const normalizedName = (o.name || "").trim();
+        companyNamesMap.set(normalizedName, normalizedName);
+      }
     });
   });
-  companies = Array.from(companyNames).map((n) => ({
+
+  // Track which companies will be used in relationships
+  const usedCompanyNames = new Set();
+  const usedPersonIdx = new Set();
+
+  // Identify companies used in sales relationships
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "company")
+      .forEach((o) => {
+        if ((o.name || "").trim()) {
+          usedCompanyNames.add((o.name || "").trim());
+        }
+      });
+  });
+
+  // Identify companies used in mailing address relationships
+  if (hasOwnerMailingAddress && ownersByDate['current']) {
+    const currentOwners = ownersByDate['current'];
+    currentOwners.forEach((owner) => {
+      if (owner.type === "company" && (owner.name || "").trim()) {
+        usedCompanyNames.add((owner.name || "").trim());
+      }
+    });
+  }
+
+  // Only create company files for companies that will be used
+  companies = Array.from(usedCompanyNames).map((n) => ({
     ...appendSourceInfo(seed),
     name: n,
   }));
@@ -1367,11 +1399,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
 
-  // Track which person/company files are actually used in relationships
-  const usedPersonIdx = new Set();
-  const usedCompanyIdx = new Set();
-
-  // Relationships: link sale to owners present on that date (both persons and companies)
+  // Create sales relationships
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
   sales.forEach((rec, idx) => {
@@ -1401,7 +1429,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
-          usedCompanyIdx.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1438,7 +1465,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       } else if (owner.type === "company") {
         const cIdx = findCompanyIndexByName(owner.name);
         if (cIdx) {
-          usedCompanyIdx.add(cIdx);
           mailingRelCounter++;
           writeJSON(
             path.join("data", `relationship_company_has_mailing_address_${mailingRelCounter}.json`),
@@ -1452,8 +1478,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     });
   }
 
-  // Remove unused person and company files
-  removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx);
+  // Remove unused person files (companies are now only created if used)
+  removeUnusedOwnerFiles(usedPersonIdx, new Set());
 }
 
 function writeTaxes($, parcelId) {
