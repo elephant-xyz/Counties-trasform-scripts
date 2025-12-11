@@ -2208,11 +2208,13 @@ function createStructureFiles(seed,parcelIdentifier) {
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-  
+
   if (structuresData && parcelIdentifier) {
     // console.log("INSIDE")
     const key = `property_${parcelIdentifier}`;
     const structures = structuresData[key]?.structures || [];
+    const layouts = (layoutsData && layoutsData[key]?.layouts) || [];
+
     structures.forEach((struct, idx) => {
       const structureOut = {
         ...appendSourceInfo(seed),
@@ -2270,36 +2272,43 @@ function createStructureFiles(seed,parcelIdentifier) {
         window_installation_date: struct?.window_installation_date ?? null
       };
       writeJSON(path.join("data", `structure_${struct.structure_index || idx + 1}.json`), structureOut);
-      
-      // Create relationship between building layout and structure
-      const buildingNumber = struct.building_number || idx + 1;
+
+      // Create relationship: either to layout (if it exists) or directly to property
+      const buildingNumber = struct.building_number;
       const structureIndex = struct.structure_index || idx + 1;
-      
-      // Find the correct building layout file index
-      let buildingLayoutIndex = buildingNumber;
-      // console.log("BUILDING_NUMBER",buildingNumber)
-      if (layoutsData && parcelIdentifier) {
-        // console.log(layoutsData)
-        const key = `property_${parcelIdentifier}`;
-        const layouts = layoutsData[key]?.layouts || [];
-        // console.log(layouts)
-        const buildingLayout = layouts.find((layout, layoutIdx) => 
+      let linkedToLayout = false;
+
+      if (buildingNumber != null && layouts.length > 0) {
+        // Find the correct building layout file index
+        const buildingLayout = layouts.find((layout, layoutIdx) =>
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
-        // console.log("BUILDING_LAYOUT", buildingLayout)
+
         if (buildingLayout) {
-          buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
+          const buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
+          const relationship = {
+            from: { "/": `./layout_${buildingLayoutIndex}.json` },
+            to: { "/": `./structure_${structureIndex}.json` }
+          };
+          writeJSON(
+            path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
+            relationship
+          );
+          linkedToLayout = true;
         }
       }
-      
-      const relationship = {
-        from: { "/": `./layout_${buildingLayoutIndex}.json` },
-        to: { "/": `./structure_${structureIndex}.json` }
-      };
-      writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_structure_${structureIndex}.json`),
-        relationship
-      );
+
+      // If not linked to layout, link directly to property
+      if (!linkedToLayout) {
+        const relationship = {
+          from: { "/": "./property.json" },
+          to: { "/": `./structure_${structureIndex}.json` }
+        };
+        writeJSON(
+          path.join("data", `relationship_property_has_structure_${structureIndex}.json`),
+          relationship
+        );
+      }
     });
   }
 
@@ -2315,11 +2324,13 @@ function createUtilitiesFiles(seed,parcelIdentifier){
   try {
     layoutsData = readJSON(path.join("owners", "layout_data.json"));
   } catch (e) {}
-  
-  
+
+
   if (utilitiesData && parcelIdentifier) {
     const key = `property_${parcelIdentifier}`;
     const utilities = utilitiesData[key]?.utilities || [];
+    const layouts = (layoutsData && layoutsData[key]?.layouts) || [];
+
     utilities.forEach((util, idx) => {
       const utilityOut = {
         ...appendSourceInfo(seed),
@@ -2344,32 +2355,43 @@ function createUtilitiesFiles(seed,parcelIdentifier){
         hvac_unit_issues: util?.hvac_unit_issues ?? null
       };
       writeJSON(path.join("data", `utility_${util.utility_index || idx + 1}.json`), utilityOut);
-      
-      // Create relationship between building layout and utility
-      const buildingNumber = util.building_number || idx + 1;
+
+      // Create relationship: either to layout (if it exists) or directly to property
+      const buildingNumber = util.building_number;
       const utilityIndex = util.utility_index || idx + 1;
-      
-      // Find the correct building layout file index
-      let buildingLayoutIndex = buildingNumber;
-      if (layoutsData && parcelIdentifier) {
-        const key = `property_${parcelIdentifier}`;
-        const layouts = layoutsData[key]?.layouts || [];
-        const buildingLayout = layouts.find((layout, layoutIdx) => 
+      let linkedToLayout = false;
+
+      if (buildingNumber != null && layouts.length > 0) {
+        // Find the correct building layout file index
+        const buildingLayout = layouts.find((layout, layoutIdx) =>
           layout.space_type === "Building" && layout.building_number === buildingNumber
         );
+
         if (buildingLayout) {
-          buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
+          const buildingLayoutIndex = layouts.indexOf(buildingLayout) + 1;
+          const relationship = {
+            from: { "/": `./layout_${buildingLayoutIndex}.json` },
+            to: { "/": `./utility_${utilityIndex}.json` }
+          };
+          writeJSON(
+            path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
+            relationship
+          );
+          linkedToLayout = true;
         }
       }
-      
-      const relationship = {
-        from: { "/": `./layout_${buildingLayoutIndex}.json` },
-        to: { "/": `./utility_${utilityIndex}.json` }
-      };
-      writeJSON(
-        path.join("data", `relationship_layout_${buildingNumber}_has_utility_${utilityIndex}.json`),
-        relationship
-      );
+
+      // If not linked to layout, link directly to property
+      if (!linkedToLayout) {
+        const relationship = {
+          from: { "/": "./property.json" },
+          to: { "/": `./utility_${utilityIndex}.json` }
+        };
+        writeJSON(
+          path.join("data", `relationship_property_has_utility_${utilityIndex}.json`),
+          relationship
+        );
+      }
     });
   }
 
@@ -2434,11 +2456,13 @@ function createLayoutFiles(seed,parcelIdentifier){
     });
     
     // Create layout relationships
+    const buildingLayoutIndices = [];
     layouts.forEach((layout, idx) => {
       if (layout.space_type === "Building") {
         const buildingLayoutIndex = idx + 1; // Use actual file index
+        buildingLayoutIndices.push(buildingLayoutIndex);
         const buildingNumber = layout.building_number;
-        
+
         // Find sub-layouts for this building
         layouts.forEach((subLayout, subIdx) => {
           if (subLayout.building_number === buildingNumber && subLayout.space_type !== "Building") {
@@ -2454,6 +2478,18 @@ function createLayoutFiles(seed,parcelIdentifier){
           }
         });
       }
+    });
+
+    // Create property_has_layout relationships for all Building-type layouts
+    buildingLayoutIndices.forEach((layoutIndex) => {
+      const relationship = {
+        from: { "/": "./property.json" },
+        to: { "/": `./layout_${layoutIndex}.json` }
+      };
+      writeJSON(
+        path.join("data", `relationship_property_has_layout_${layoutIndex}.json`),
+        relationship
+      );
     });
   }
 
