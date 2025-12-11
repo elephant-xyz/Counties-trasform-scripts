@@ -219,62 +219,28 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
            ? JSON.parse(data.toString())
            : data;
        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-         const normalizedSurface =
-           ensureNormalizedAddressSchemaSurface &&
-           ensureNormalizedAddressSchemaSurface({ ...parsed });
-         const normalizedReady =
-           normalizedSurface &&
-           NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
-             hasMeaningfulAddressValue(normalizedSurface[field]),
-           ) &&
-           Number.isFinite(parseCoordinate(normalizedSurface.latitude)) &&
-           Number.isFinite(parseCoordinate(normalizedSurface.longitude));
+        const normalizedSurface =
+          ensureNormalizedAddressSchemaSurface &&
+          ensureNormalizedAddressSchemaSurface({ ...parsed });
+        const normalizedReady =
+          normalizedSurface &&
+          NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
+            hasMeaningfulAddressValue(normalizedSurface[field]),
+          ) &&
+          Number.isFinite(parseCoordinate(normalizedSurface.latitude)) &&
+          Number.isFinite(parseCoordinate(normalizedSurface.longitude));
 
-         let finalPayload = null;
-         if (normalizedReady) {
-           finalPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-           NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-             const candidate = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
-               ? normalizedSurface[field]
-               : null;
-             const sanitized = sanitizeAddressFieldValue(field, candidate);
-             if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-               const numeric = parseCoordinate(sanitized);
-               finalPayload[field] = Number.isFinite(numeric) ? numeric : null;
-             } else if (typeof sanitized === "string") {
-               const trimmed = sanitized.trim();
-               finalPayload[field] = trimmed.length ? trimmed : null;
-             } else {
-               finalPayload[field] = sanitized === undefined ? null : sanitized;
-             }
-           });
-           if (!finalPayload.postal_code) {
-             finalPayload.plus_four_postal_code = null;
-           }
-           if (
-             hasMeaningfulAddressValue(finalPayload.state_code) &&
-             !hasMeaningfulAddressValue(finalPayload.country_code)
-           ) {
-             finalPayload.country_code = "US";
-           }
-           if ((finalPayload.latitude == null) !== (finalPayload.longitude == null)) {
-             finalPayload.latitude = null;
-             finalPayload.longitude = null;
-           }
-           finalPayload.request_identifier =
-             parsed.request_identifier === undefined ? null : parsed.request_identifier;
-           finalPayload.source_http_request = parsed.source_http_request
-             ? deepClone(parsed.source_http_request)
-             : null;
-           if (Object.prototype.hasOwnProperty.call(finalPayload, "unnormalized_address")) {
-             delete finalPayload.unnormalized_address;
-           }
-         } else if (parsed.unnormalized_address) {
-           finalPayload =
-             ensureRawAddressSchemaDefaults({ ...parsed }) || {
-               ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-               ...parsed,
-             };
+        const hasRawUnnormalized =
+          typeof parsed.unnormalized_address === "string" &&
+          parsed.unnormalized_address.trim().length > 0;
+
+        let finalPayload = null;
+        if (hasRawUnnormalized) {
+          finalPayload =
+            ensureRawAddressSchemaDefaults({ ...parsed }) || {
+              ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+              ...parsed,
+            };
            RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
              if (!Object.prototype.hasOwnProperty.call(finalPayload, field)) {
                finalPayload[field] = null;
@@ -305,9 +271,48 @@ fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
            }
            if ((finalPayload.latitude == null) !== (finalPayload.longitude == null)) {
              finalPayload.latitude = null;
-             finalPayload.longitude = null;
-           }
-         }
+            finalPayload.longitude = null;
+          }
+        }
+        if (!finalPayload && normalizedReady) {
+          finalPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+          NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+            const candidate = Object.prototype.hasOwnProperty.call(normalizedSurface, field)
+              ? normalizedSurface[field]
+              : null;
+            const sanitized = sanitizeAddressFieldValue(field, candidate);
+            if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+              const numeric = parseCoordinate(sanitized);
+              finalPayload[field] = Number.isFinite(numeric) ? numeric : null;
+            } else if (typeof sanitized === "string") {
+              const trimmed = sanitized.trim();
+              finalPayload[field] = trimmed.length ? trimmed : null;
+            } else {
+              finalPayload[field] = sanitized === undefined ? null : sanitized;
+            }
+          });
+          if (!finalPayload.postal_code) {
+            finalPayload.plus_four_postal_code = null;
+          }
+          if (
+            hasMeaningfulAddressValue(finalPayload.state_code) &&
+            !hasMeaningfulAddressValue(finalPayload.country_code)
+          ) {
+            finalPayload.country_code = "US";
+          }
+          if ((finalPayload.latitude == null) !== (finalPayload.longitude == null)) {
+            finalPayload.latitude = null;
+            finalPayload.longitude = null;
+          }
+          finalPayload.request_identifier =
+            parsed.request_identifier === undefined ? null : parsed.request_identifier;
+          finalPayload.source_http_request = parsed.source_http_request
+            ? deepClone(parsed.source_http_request)
+            : null;
+          if (hasRawUnnormalized) {
+            finalPayload.unnormalized_address = parsed.unnormalized_address;
+          }
+        }
 
          if (finalPayload) {
            data = `${JSON.stringify(finalPayload, null, 2)}\n`;
@@ -1209,13 +1214,13 @@ function enforceFinalAddressOneOfOutput(filePath) {
     ) && hasNormalizedCountyCoverage(normalizedSurface);
 
   let finalOutput = null;
-  if (hasNormalizedCoverage) {
-    finalOutput = { ...normalizedSurface };
-  } else if (trimmedUnnormalized.length) {
+  if (trimmedUnnormalized.length) {
     finalOutput = {
       unnormalized_address: trimmedUnnormalized,
       ...normalizedSurface,
     };
+  } else if (hasNormalizedCoverage) {
+    finalOutput = { ...normalizedSurface };
   } else {
     removeFileIfExists(filePath);
     return;
@@ -6678,13 +6683,12 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Raw variant must stay minimal to satisfy the oneOf branch that only permits
-// the unnormalized payload surface.
+// Raw branch still needs the full address surface present (with nullable values)
+// so it satisfies the oneOf schema that expects these fields even when using
+// an unnormalized string.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
+  ...NORMALIZED_ADDRESS_FIELDS,
   "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
-  "county_name",
 ];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
@@ -12027,16 +12031,17 @@ function finalizeAddressSchemaPayload(addressPath, options = {}) {
 // Final guard: emit a single address oneOf branch (normalized only when fully
 // populated, otherwise a lean raw payload) and force relationship placeholders
 // to null so UR hydration can occur downstream.
-process.on("exit", () => {
-  try {
-    lockedAddressPath = null;
-    const dataDir = path.join("data");
-    const relationshipsDir = path.join("relationships");
-    ensureDir(dataDir);
-    ensureDir(relationshipsDir);
+  process.on("exit", () => {
+    try {
+      lockedAddressPath = null;
+      const dataDir = path.join("data");
+      const relationshipsDir = path.join("relationships");
+      ensureDir(dataDir);
+      ensureDir(relationshipsDir);
 
-    const addressPath = path.join(dataDir, "address.json");
-    const propertyPath = path.join(dataDir, "property.json");
+      const addressPath = path.join(dataDir, "address.json");
+      const propertyPath = path.join(dataDir, "property.json");
+      console.log("Exit handler writing to", addressPath, "cwd", process.cwd());
     const propertyPayload = readJSONIfExists(propertyPath) || {};
     const unnormalizedSource = readJSONIfExists("unnormalized_address.json") || {};
     const seedSource = readJSONIfExists("property_seed.json") || {};
@@ -12064,59 +12069,78 @@ process.on("exit", () => {
       ]),
     );
 
-    const rawValue = safeNullIfEmpty(
-      resolveFirstNonEmptyString([
-        existingAddress.unnormalized_address,
-        unnormalizedSource.unnormalized_address,
-        unnormalizedSource.full_address,
-        seedSource.unnormalized_address,
-      ]),
-    );
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingAddress.unnormalized_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+      seedSource.unnormalized_address,
+    ]),
+  );
 
-    const hasStructuredCoverage =
-      hasMeaningfulAddressValue(existingAddress.street_number) &&
+  const hasStructuredCoverage =
+    hasMeaningfulAddressValue(existingAddress.street_number) &&
       hasMeaningfulAddressValue(existingAddress.street_name) &&
       hasMeaningfulAddressValue(existingAddress.city_name) &&
       hasMeaningfulAddressValue(existingAddress.state_code) &&
       hasMeaningfulAddressValue(existingAddress.postal_code);
 
-    if (rawValue) {
-      const hydratedRaw =
-        ensureRawAddressRequiredCoverage(
-          {
-            ...existingAddress,
-            ...propertyPayload,
-            ...unnormalizedSource,
+  if (rawValue) {
+    console.log("Exit handler using raw branch with", rawValue);
+    const hydratedRaw =
+      ensureRawAddressRequiredCoverage(
+        {
+          ...existingAddress,
+          ...propertyPayload,
+          ...unnormalizedSource,
             ...seedSource,
             county_name: countyCandidate
               ? titleCaseCounty(countyCandidate)
               : existingAddress.county_name,
           },
           rawValue,
-        ) || {
-          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-          unnormalized_address: rawValue,
-          county_name: countyCandidate ? titleCaseCounty(countyCandidate) : null,
-        };
+      ) || {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        unnormalized_address: rawValue,
+        county_name: countyCandidate ? titleCaseCounty(countyCandidate) : null,
+      };
 
-      hydratedRaw.request_identifier =
-        requestId === undefined ? hydratedRaw.request_identifier : requestId;
-      hydratedRaw.source_http_request = sourceHttp ? deepClone(sourceHttp) : null;
+    hydratedRaw.request_identifier =
+      requestId === undefined ? hydratedRaw.request_identifier : requestId;
+    hydratedRaw.source_http_request = sourceHttp ? deepClone(sourceHttp) : null;
 
-      if (
-        hasMeaningfulAddressValue(hydratedRaw.state_code) &&
-        !hasMeaningfulAddressValue(hydratedRaw.country_code)
-      ) {
-        hydratedRaw.country_code = "US";
-      } else if (!hasMeaningfulAddressValue(hydratedRaw.country_code)) {
-        hydratedRaw.country_code = countyCandidate ? "US" : hydratedRaw.country_code;
-      }
+    if (
+      hasMeaningfulAddressValue(hydratedRaw.state_code) &&
+      !hasMeaningfulAddressValue(hydratedRaw.country_code)
+    ) {
+      hydratedRaw.country_code = "US";
+    } else if (!hasMeaningfulAddressValue(hydratedRaw.country_code)) {
+      hydratedRaw.country_code = countyCandidate ? "US" : hydratedRaw.country_code;
+    }
 
+    originalWriteFileSync(
+      addressPath,
+      `${JSON.stringify(hydratedRaw, null, 2)}\n`,
+    );
+    const verifyRaw = readJSONIfExists(addressPath) || {};
+    if (!verifyRaw.unnormalized_address) {
+      const enforced = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...verifyRaw,
+        unnormalized_address: rawValue,
+      };
       originalWriteFileSync(
         addressPath,
-        `${JSON.stringify(hydratedRaw, null, 2)}\n`,
+        `${JSON.stringify(enforced, null, 2)}\n`,
       );
-    } else if (hasStructuredCoverage) {
+    }
+    console.log(
+      "Exit final contains raw?",
+      fs.readFileSync(addressPath, "utf8").includes("unnormalized_address"),
+    );
+    console.log("Exit hydrated keys", Object.keys(hydratedRaw));
+  } else if (hasStructuredCoverage) {
+    console.log("Exit handler using normalized branch");
       const normalizedSurface =
         ensureNormalizedAddressSchemaSurface &&
         ensureNormalizedAddressSchemaSurface({
@@ -16502,6 +16526,40 @@ async function main() {
     enforceAddressFieldDefaults(addressOutputPath);
     enforceAddressTerminalOneOf(addressOutputPath);
     emitAddressOneOfAligned(addressOutputPath);
+    const resolvedRawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString(rawCandidates),
+    );
+    if (resolvedRawValue) {
+      const latestAddress = readJSONIfExists(addressOutputPath) || {};
+      if (!latestAddress.unnormalized_address) {
+        const merged = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...latestAddress,
+          unnormalized_address: resolvedRawValue,
+        };
+        try {
+          lockedAddressPath = path.resolve(addressOutputPath);
+          console.log(
+            "Writing raw address with keys",
+            Object.keys(merged),
+            "unnormalized value",
+            merged.unnormalized_address,
+          );
+          originalWriteFileSync(
+            addressOutputPath,
+            `${JSON.stringify(merged, null, 2)}\n`,
+          );
+          console.log(
+            "After raw write sample",
+            fs.readFileSync(addressOutputPath, "utf8").slice(0, 200),
+            "contains raw?",
+            fs.readFileSync(addressOutputPath, "utf8").includes("unnormalized"),
+          );
+        } finally {
+          lockedAddressPath = null;
+        };
+      }
+    }
     enforcePropertyRelationshipNulls(propertyFilePath);
     [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
       removeAddressRelationshipFiles(dirPath);
