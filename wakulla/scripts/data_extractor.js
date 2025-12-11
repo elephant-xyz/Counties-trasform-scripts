@@ -1624,6 +1624,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       usedCompanyNames.add((o.name || "").trim());
   });
 
+  // Add companies from unknown_date_* entries (prior owners/grantors)
+  Object.keys(ownersByDate).forEach((dateKey) => {
+    if (dateKey.startsWith("unknown_date_")) {
+      const ownersOnDate = ownersByDate[dateKey] || [];
+      ownersOnDate.forEach((o) => {
+        if (o.type === "company" && (o.name || "").trim())
+          usedCompanyNames.add((o.name || "").trim());
+      });
+    }
+  });
+
   // Only create company files for companies that are actually used
   companies = Array.from(usedCompanyNames).map((n) => ({
     ...appendSourceInfo(seed),
