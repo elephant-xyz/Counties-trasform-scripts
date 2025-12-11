@@ -11,11 +11,37 @@ function normalizeSpace(str) {
   return (str || "").replace(/\s+/g, " ").trim();
 }
 
-// Utility: title-case words conservatively (keep all-caps acronyms)
+// Utility: title-case words conservatively according to pattern ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
 function titleCase(str) {
-  return (str || "")
-    .toLowerCase()
-    .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
+  if (!str || str.trim() === "") return "";
+
+  const normalized = str.trim().toLowerCase();
+  let result = "";
+  let capitalizeNext = true;
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i];
+
+    if (/[a-z]/.test(char)) {
+      // It's a letter
+      if (capitalizeNext) {
+        result += char.toUpperCase();
+        capitalizeNext = false;
+      } else {
+        result += char;
+      }
+    } else if (/[ \-',.]/.test(char)) {
+      // It's a special character allowed in names
+      result += char;
+      // Next letter should be capitalized
+      capitalizeNext = true;
+    } else {
+      // For any other character, just add it and keep the capitalization state
+      result += char;
+    }
+  }
+
+  return result;
 }
 
 // Extract property id

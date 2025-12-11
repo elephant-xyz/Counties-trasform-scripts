@@ -1522,14 +1522,43 @@ function formatName(name) {
 
   if (!cleaned || cleaned.length === 0) return null;
 
-  const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
-  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
-  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ").trim();
+  // Normalize spacing: collapse multiple spaces into one
+  const normalizedSpacing = cleaned.replace(/\s+/g, " ").trim();
+
+  // Convert to lowercase first
+  const lower = normalizedSpacing.toLowerCase();
+
+  // Capitalize properly according to pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // This means: uppercase first letter, lowercase rest, then optionally (special char + letter + lowercase*)
+  let result = "";
+  let capitalizeNext = true;
+
+  for (let i = 0; i < lower.length; i++) {
+    const char = lower[i];
+
+    if (/[a-z]/.test(char)) {
+      // It's a letter
+      if (capitalizeNext) {
+        result += char.toUpperCase();
+        capitalizeNext = false;
+      } else {
+        result += char;
+      }
+    } else if (/[ \-',.]/.test(char)) {
+      // It's a special character allowed in names
+      result += char;
+      // Next letter should be capitalized
+      capitalizeNext = true;
+    } else {
+      // Should not happen after cleaning, but just in case
+      result += char;
+    }
+  }
 
   // If the result is empty or doesn't start with a letter, return null
-  if (!sanitized || sanitized.length === 0 || !/^[A-Z]/.test(sanitized)) return null;
+  if (!result || result.length === 0 || !/^[A-Z]/.test(result)) return null;
 
-  return sanitized;
+  return result;
 }
 
 // Validate prefix/suffix against schema
