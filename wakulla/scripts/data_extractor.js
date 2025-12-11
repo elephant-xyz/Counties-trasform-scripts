@@ -1530,11 +1530,13 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   // console.log("ownersByDate",ownersByDate);
 
   //Person processing and mapping creation.
-  // Only include persons from actual sales dates and current owners, exclude unknown_date_* entries
+  // Only include persons from actual sales dates, exclude unknown_date_* and "current" entries
+  // "current" owners will be handled separately only if they don't match any sales date owners
   const personMap = new Map();
   Object.keys(ownersByDate).forEach((dateKey) => {
     // Skip unknown_date_* entries as they cannot be linked to actual sales
-    if (dateKey.startsWith('unknown_date_')) {
+    // Also skip "current" for now - we'll add them later if they're not already in a sale
+    if (dateKey.startsWith('unknown_date_') || dateKey === 'current') {
       return;
     }
 
@@ -1558,6 +1560,31 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       }
     });
   });
+
+  // Add current owners to personMap only if they're not already present
+  // This ensures they'll be linked to sales if they match any sales date owners
+  if (sales.length > 0) {
+    const currentOwners = ownersByDate["current"] || [];
+    currentOwners.forEach((o) => {
+      if (o.type === "person") {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!personMap.has(k))
+          personMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name,
+            last_name: o.last_name,
+            prefix_name: o.prefix_name,
+            suffix_name: o.suffix_name,
+          });
+        else {
+          const existing = personMap.get(k);
+          if (!existing.middle_name && o.middle_name)
+            existing.middle_name = o.middle_name;
+        }
+      }
+    });
+  }
+
   // console.log("personMap",personMap)
   people = Array.from(personMap.values()).map((p) => ({
   ...appendSourceInfo(seed),
