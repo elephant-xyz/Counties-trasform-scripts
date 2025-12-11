@@ -1316,28 +1316,59 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-  const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
+
+  // First pass: identify which persons will actually be used in relationships
+  const personsToUseMap = new Map();
+
+  // Add persons from valid sale dates
+  sales.forEach((rec) => {
+    const d = parseDateToISO(rec.saleDate);
+    const ownersOnDate = ownersByDate[d] || [];
+    ownersOnDate
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
+        if (!personsToUseMap.has(k)) {
+          personsToUseMap.set(k, {
             first_name: o.first_name,
             middle_name: o.middle_name || null,
             last_name: o.last_name,
-            prefix_name: o.prefix_name ||null,
+            prefix_name: o.prefix_name || null,
             suffix_name: o.suffix_name || null
           });
-        else {
-          const existing = personMap.get(k);
+        } else {
+          const existing = personsToUseMap.get(k);
           if (!existing.middle_name && o.middle_name)
             existing.middle_name = o.middle_name;
         }
-      }
-    });
+      });
   });
-  people = Array.from(personMap.values()).map((p) => ({
+
+  // Add persons from current owners (for mailing address)
+  if (hasOwnerMailingAddress && ownersByDate['current']) {
+    const currentOwners = ownersByDate['current'];
+    currentOwners
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+        if (!personsToUseMap.has(k)) {
+          personsToUseMap.set(k, {
+            first_name: o.first_name,
+            middle_name: o.middle_name || null,
+            last_name: o.last_name,
+            prefix_name: o.prefix_name || null,
+            suffix_name: o.suffix_name || null
+          });
+        } else {
+          const existing = personsToUseMap.get(k);
+          if (!existing.middle_name && o.middle_name)
+            existing.middle_name = o.middle_name;
+        }
+      });
+  }
+
+  // Now create person files only for persons that will be used
+  people = Array.from(personsToUseMap.values()).map((p) => ({
   ...appendSourceInfo(seed),
   birth_date: null,
   first_name: p.first_name ? formatNameForSchema(p.first_name) : null,
