@@ -2595,7 +2595,7 @@ function main() {
   writeTaxes($, parcelId);
 
   if (parcelId) {
-    writePersonCompaniesSalesRelationships(parcelId, sales);
+    // writePersonCompaniesSalesRelationships(parcelId, sales);
     // writeOwnersCurrentAndRelationships(parcelId);
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     // writeUtility(parcelId);
