@@ -6492,15 +6492,9 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch minimal so the oneOf selects it when only an
-// unnormalized string is available from the source.
-const RAW_MINIMAL_ADDRESS_FIELDS = [
-  "unnormalized_address",
-  "latitude",
-  "longitude",
-  "request_identifier",
-  "source_http_request",
-];
+// Keep the raw branch aligned with the full address surface so schema required
+// fields are always present (even when only an unnormalized string exists).
+const RAW_MINIMAL_ADDRESS_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -6514,19 +6508,18 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
 
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
-const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set(
-  NORMALIZED_ADDRESS_FIELDS.filter(
-    (field) => !RAW_MINIMAL_ADDRESS_FIELDS.includes(field),
-  ),
+const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
+
+// Fields that may accompany the raw (unnormalized) address payload.
+const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
+
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...RAW_MINIMAL_ADDRESS_FIELDS]),
 );
 
-// Fields that may accompany the raw (unnormalized) address payload; intentionally
-// excludes normalized components so the raw oneOf branch stays valid.
-const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([...RAW_ADDRESS_NORMALIZED_ONLY_FIELDS]);
-
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(new Set(RAW_MINIMAL_ADDRESS_FIELDS));
-
-const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS));
+const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(
+  new Set(RAW_ADDRESS_ALLOWED_FIELDS),
+);
 
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
