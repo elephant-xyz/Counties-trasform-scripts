@@ -896,15 +896,13 @@ function sanitizeAddressPayloadForWrite(payload) {
     normalizedCandidate.country_code = "US";
   }
 
+  const forceRawVariant =
+    (Object.prototype.hasOwnProperty.call(payload, "__force_raw_variant") &&
+      payload.__force_raw_variant === true) ||
+    trimmedUnnormalized.length > 0;
   const normalizedCoverage = hasNormalizedCountyCoverage(normalizedCandidate);
 
   if (trimmedUnnormalized.length) {
-    const forceRawVariant =
-      Object.prototype.hasOwnProperty.call(payload, "__force_raw_variant") &&
-      payload.__force_raw_variant === true;
-    if (!forceRawVariant && normalizedCoverage) {
-      return stripAddressRequestMetadata(normalizedCandidate);
-    }
     const rawOut = {
       ...RAW_ADDRESS_SCHEMA_TEMPLATE,
       unnormalized_address: trimmedUnnormalized,
@@ -1007,7 +1005,7 @@ function sanitizeAddressPayloadForWrite(payload) {
     return stripAddressRequestMetadata(rawOut);
   }
 
-  if (normalizedCoverage) {
+  if (!forceRawVariant && normalizedCoverage) {
     const surfaced =
       ensureAddressOutputFieldPresence(normalizedCandidate) ||
       normalizedCandidate;
@@ -3390,6 +3388,8 @@ function enforceFinalCountyAddressSchemaCompliance(addressFilePath, options = {}
       : { ...payload };
   const hasNormalized =
     normalizedProbe && hasCompleteNormalizedAddress({ ...normalizedProbe });
+  const preferRaw = options.preferRawWhenAvailable === true;
+  const hasRawCandidate = !!resolvedRaw;
 
   const resolvedRequestIdentifier = resolveTrimmed(
     resolveFirstNonEmptyString([
@@ -3443,7 +3443,7 @@ function enforceFinalCountyAddressSchemaCompliance(addressFilePath, options = {}
     }
   };
 
-  if (hasNormalized) {
+  if (hasNormalized && !(preferRaw && hasRawCandidate)) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       let value = Object.prototype.hasOwnProperty.call(normalizedProbe, field)
@@ -3474,7 +3474,7 @@ function enforceFinalCountyAddressSchemaCompliance(addressFilePath, options = {}
   }
 
   if (resolvedRaw) {
-    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, __force_raw_variant: true };
     RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
       if (field === "unnormalized_address") {
         rawOut[field] = resolvedRaw;
@@ -12950,6 +12950,9 @@ process.on("exit", () => {
       (unnormalizedSource && unnormalizedSource.county_jurisdiction) ||
       seedSource.county_name ||
       null;
+    const resolvedRawCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString(rawCandidates),
+    );
 
     canonicalizeCountyAddress(addressPath, {
       rawCandidates,
@@ -12957,18 +12960,22 @@ process.on("exit", () => {
       sourceHttpRequestCandidates,
       fallbackCountyName: fallbackCounty || "Palm Beach",
       fallbackCountryCode: "US",
+      preferRawWhenAvailable: !!resolvedRawCandidate,
+      preferNormalizedWhenAvailable: !resolvedRawCandidate,
     });
     enforceFinalCountyAddressSchemaCompliance(addressPath, {
       rawCandidates,
       requestIdentifierCandidates,
       sourceHttpRequestCandidates,
       fallbackCountyName: fallbackCounty || "Palm Beach",
-      rawFallback: resolveFirstNonEmptyString(rawCandidates),
+      rawFallback: resolvedRawCandidate,
+      preferRawWhenAvailable: !!resolvedRawCandidate,
       unnormalizedPath: "unnormalized_address.json",
       seedPath: "property_seed.json",
     });
 
     lockAddressToSchemaSurface(addressPath);
+    stripInternalAddressFlags(addressPath);
     enforcePropertyRelationshipNulls(propertyPath);
     [dataDir, relationshipsDir].forEach((dirPath) => {
       removeAddressRelationshipFiles(dirPath);
@@ -14944,11 +14951,15 @@ function canonicalizeCountyAddress(addressPath, options = {}) {
     { ...payload };
   const hasNormalized =
     normalizedCandidate && hasCompleteNormalizedAddress({ ...normalizedCandidate });
+  const preferRaw = options.preferRawWhenAvailable === true;
+  const preferNormalized =
+    options.preferNormalizedWhenAvailable !== false &&
+    !(preferRaw && rawValue);
 
   let variant = null;
   let output = null;
 
-  if (hasNormalized && options.preferNormalizedWhenAvailable !== false) {
+  if (hasNormalized && preferNormalized) {
     output = buildNormalizedAddressForSchema(normalizedCandidate, {
       requestIdentifier,
       sourceHttpRequest,
@@ -17720,6 +17731,15 @@ async function main() {
   process.on("exit", () => {
     try {
       const payload = readJSONIfExists(addressOutputPath);
+      const rawValue =
+        payload && typeof payload.unnormalized_address === "string"
+          ? payload.unnormalized_address.trim()
+          : "";
+      const forceRawVariant =
+        payload && payload.__force_raw_variant === true;
+      if (forceRawVariant || rawValue.length) {
+        return;
+      }
       const normalizedCandidate =
         payload && typeof normalizeCandidateForCoverage === "function"
           ? normalizeCandidateForCoverage({ ...payload })
@@ -17921,6 +17941,7 @@ async function main() {
     sourceHttpRequestCandidates: [sourceHttpCandidate],
     fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
     rawFallback: fullAddrInput || fullAddr || siteLocationLine,
+    preferRawWhenAvailable: prefersRawAddressBranch,
     unnormalizedPath: "unnormalized_address.json",
     seedPath: "property_seed.json",
   });
@@ -18247,6 +18268,7 @@ async function main() {
     sourceHttpRequestCandidates,
     fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
     fallbackCountryCode: "US",
+    preferRawWhenAvailable: prefersRawAddressBranch,
     preferNormalizedWhenAvailable: !prefersRawAddressBranch,
   });
   enforceFinalCountyAddressSchemaCompliance(addressOutputPath, {
@@ -18261,6 +18283,7 @@ async function main() {
       siteLocationLine ||
       fullAddr ||
       fullAddrInput,
+    preferRawWhenAvailable: prefersRawAddressBranch,
     unnormalizedPath: "unnormalized_address.json",
     seedPath: "property_seed.json",
   });
