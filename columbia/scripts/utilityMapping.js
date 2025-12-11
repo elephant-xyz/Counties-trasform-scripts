@@ -239,9 +239,6 @@ function buildUtilityFromFeature(feature) {
   } else if (/WATER/i.test(description)) {
     util.public_utility_type = util.public_utility_type || "WaterAvailable";
   }
-  if (/PUMP/i.test(description)) {
-    util.utility_component = "Pump";
-  }
 
   return util;
 }
