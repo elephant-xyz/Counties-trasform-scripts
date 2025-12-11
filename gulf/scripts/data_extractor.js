@@ -1253,6 +1253,22 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
 
+  // Remove old person/company files and their relationships to avoid orphaned files
+  try {
+    fs.readdirSync("data").forEach((f) => {
+      if (
+        /^person_\d+\.json$/.test(f) ||
+        /^company_\d+\.json$/.test(f) ||
+        /^relationship_sales_person_\d+\.json$/.test(f) ||
+        /^relationship_sales_company_\d+\.json$/.test(f) ||
+        /^relationship_person_has_mailing_address_\d+\.json$/.test(f) ||
+        /^relationship_company_has_mailing_address_\d+\.json$/.test(f)
+      ) {
+        fs.unlinkSync(path.join("data", f));
+      }
+    });
+  } catch (e) {}
+
   // Maps to track created entities: key -> entity data
   const personMap = new Map(); // key: "FIRSTNAME|LASTNAME" -> person data
   const companyMap = new Map(); // key: "COMPANYNAME" -> company data
