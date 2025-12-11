@@ -9806,6 +9806,96 @@ function ensureRawAddressRequiredCoverage(
   return candidate;
 }
 
+function solidifyAddressOneOfBranch(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+
+  const normalizedProbe =
+    (typeof ensureNormalizedAddressSchemaSurface === "function" &&
+      ensureNormalizedAddressSchemaSurface({ ...payload })) ||
+    { ...payload };
+  const normalizedComplete =
+    normalizedProbe && hasCompleteNormalizedAddress({ ...normalizedProbe });
+
+  if (normalizedComplete) {
+    const normalizedOut = {
+      ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+      ...normalizedProbe,
+    };
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      (normalizedOut.latitude == null) !==
+      (normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    originalWriteFileSync(
+      addressPath,
+      `${JSON.stringify(normalizedOut, null, 2)}\n`,
+      "utf8",
+    );
+    return;
+  }
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut =
+    ensureRawAddressRequiredCoverage({ ...payload }, rawValue) ||
+    ensureRawAddressSchemaDefaults(
+      { ...payload, unnormalized_address: rawValue },
+      RAW_ONE_OF_ALLOWED_FIELDS,
+    );
+  if (!rawOut) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  originalWriteFileSync(
+    addressPath,
+    `${JSON.stringify(rawOut, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 function composeMinimalRawAddress(address) {
   if (!address || typeof address !== "object") return null;
 
@@ -17925,6 +18015,7 @@ async function main() {
     preferRaw: prefersRawAddressBranch,
     rawCandidates,
   });
+  solidifyAddressOneOfBranch(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
     removeAddressRelationshipFiles(dirPath);
