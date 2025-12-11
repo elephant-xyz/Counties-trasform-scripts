@@ -77,10 +77,48 @@ function normalizeOwnerKey(owner) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, ' ');
-  return cleaned.split(' ').map(part =>
-    part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-  ).join(' ');
+  let cleaned = name.trim();
+
+  // Return null if empty after trimming
+  if (!cleaned) return null;
+
+  // Replace forward slashes with hyphens to conform to the schema pattern
+  // This is a logical replacement as '/' often implies a separation similar to '-'
+  cleaned = cleaned.replace(/\//g, '-');
+
+  // Replace multiple spaces with a single space
+  cleaned = cleaned.replace(/\s+/g, ' ');
+
+  // Remove trailing delimiters (periods, commas, hyphens, apostrophes)
+  cleaned = cleaned.replace(/[ \-',.]+$/, '');
+
+  // Return null if empty after removing trailing delimiters
+  if (!cleaned) return null;
+
+  // Split by spaces, hyphens, apostrophes, commas, periods, keeping the delimiters
+  const result = cleaned.split(/([ \-',.])/)
+    .map((part) => {
+      if (!part) return ''; // Handle empty parts from splitting
+      if (part.match(/[ \-',.]/)) { // If it's a delimiter, return it as is
+        return part;
+      }
+      // For actual name parts, capitalize the first letter and lowercase the rest
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join('')
+    .trim();
+
+  // Remove any trailing delimiters that might have been added during processing
+  const finalResult = result.replace(/[ \-',.]+$/, '');
+
+  // Validate the result matches the required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!finalResult || !namePattern.test(finalResult)) {
+    return null;
+  }
+
+  return finalResult;
 }
 
 // Build owner object(s) from a raw string

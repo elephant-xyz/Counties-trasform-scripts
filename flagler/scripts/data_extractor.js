@@ -2525,6 +2525,110 @@ function main() {
     return { ...base, ...overrides };
   };
 
+  const VALID_SPACE_TYPES = new Set([
+    "Building", "Living Room", "Family Room", "Great Room", "Dining Room",
+    "Office Room", "Conference Room", "Class Room", "Plant Floor", "Kitchen",
+    "Breakfast Nook", "Pantry", "Primary Bedroom", "Secondary Bedroom",
+    "Guest Bedroom", "Children's Bedroom", "Nursery", "Full Bathroom",
+    "Three-Quarter Bathroom", "Half Bathroom / Powder Room", "En-Suite Bathroom",
+    "Jack-and-Jill Bathroom", "Primary Bathroom", "Laundry Room", "Mudroom",
+    "Closet", "Bedroom", "Walk-in Closet", "Mechanical Room", "Storage Room",
+    "Server/IT Closet", "Home Office", "Library", "Den", "Study",
+    "Media Room / Home Theater", "Game Room", "Home Gym", "Music Room",
+    "Craft Room / Hobby Room", "Prayer Room / Meditation Room",
+    "Safe Room / Panic Room", "Wine Cellar", "Bar Area", "Greenhouse",
+    "Attached Garage", "Detached Garage", "Carport", "Workshop", "Storage Loft",
+    "Porch", "Screened Porch", "Sunroom", "Deck", "Patio", "Pergola",
+    "Balcony", "Terrace", "Gazebo", "Pool House", "Outdoor Kitchen",
+    "Lobby / Entry Hall", "Common Room", "Utility Closet", "Elevator Lobby",
+    "Mail Room", "Janitor's Closet", "Pool Area", "Indoor Pool", "Outdoor Pool",
+    "Hot Tub / Spa Area", "Shed", "Lanai", "Open Porch", "Enclosed Porch",
+    "Attic", "Enclosed Cabana", "Attached Carport", "Detached Carport",
+    "Detached Utility Closet", "Jacuzzi", "Courtyard", "Open Courtyard",
+    "Screen Porch (1-Story)", "Screen Enclosure (2-Story)",
+    "Screen Enclosure (3-Story)", "Screen Enclosure (Custom)", "Lower Garage",
+    "Lower Screened Porch", "Stoop", "Floor", "Basement", "Sub-Basement",
+    "Living Area", "Barn"
+  ]);
+
+  const mapSubAreaToSpaceType = (description) => {
+    if (!description) return "Living Area";
+    const upper = String(description).toUpperCase().trim();
+
+    // Base area mappings
+    if (upper.includes("BASE AREA") || upper.includes("BASE")) return "Living Area";
+    if (upper.includes("NON CALC") || upper.includes("NON-CALC")) return "Living Area";
+
+    // Storage and utility
+    if (upper.includes("STORAGE") || upper.includes("STOR")) return "Storage Room";
+    if (upper.includes("UTILITY") || upper.includes("UTIL")) return "Utility Closet";
+    if (upper.includes("CLOSET") || upper.includes("CLST")) return "Closet";
+    if (upper.includes("MECHANICAL") || upper.includes("MECH")) return "Mechanical Room";
+
+    // Garage and carport
+    if (upper.includes("GARAGE") && upper.includes("ATTACHED")) return "Attached Garage";
+    if (upper.includes("GARAGE") && upper.includes("DETACHED")) return "Detached Garage";
+    if (upper.includes("GARAGE")) return "Attached Garage";
+    if (upper.includes("CARPORT") && upper.includes("ATTACHED")) return "Attached Carport";
+    if (upper.includes("CARPORT") && upper.includes("DETACHED")) return "Detached Carport";
+    if (upper.includes("CARPORT")) return "Carport";
+
+    // Outdoor spaces
+    if (upper.includes("PATIO") && upper.includes("ENCLOSED")) return "Enclosed Porch";
+    if (upper.includes("PATIO")) return "Patio";
+    if (upper.includes("PORCH") && upper.includes("SCREEN")) return "Screened Porch";
+    if (upper.includes("PORCH") && upper.includes("ENCLOSED")) return "Enclosed Porch";
+    if (upper.includes("PORCH") && upper.includes("OPEN")) return "Open Porch";
+    if (upper.includes("PORCH")) return "Porch";
+    if (upper.includes("DECK")) return "Deck";
+    if (upper.includes("BALCONY")) return "Balcony";
+    if (upper.includes("TERRACE")) return "Terrace";
+    if (upper.includes("PERGOLA")) return "Pergola";
+    if (upper.includes("GAZEBO")) return "Gazebo";
+    if (upper.includes("LANAI")) return "Lanai";
+    if (upper.includes("COURTYARD") && upper.includes("OPEN")) return "Open Courtyard";
+    if (upper.includes("COURTYARD")) return "Courtyard";
+
+    // Pool and spa
+    if (upper.includes("POOL") && upper.includes("INDOOR")) return "Indoor Pool";
+    if (upper.includes("POOL") && upper.includes("OUTDOOR")) return "Outdoor Pool";
+    if (upper.includes("POOL") && upper.includes("HOUSE")) return "Pool House";
+    if (upper.includes("POOL")) return "Pool Area";
+    if (upper.includes("SPA") || upper.includes("HOT TUB") || upper.includes("JACUZZI")) return "Hot Tub / Spa Area";
+
+    // Attic and basement
+    if (upper.includes("ATTIC")) return "Attic";
+    if (upper.includes("BASEMENT") && upper.includes("SUB")) return "Sub-Basement";
+    if (upper.includes("BASEMENT")) return "Basement";
+
+    // Other structures
+    if (upper.includes("SHED")) return "Shed";
+    if (upper.includes("WORKSHOP")) return "Workshop";
+    if (upper.includes("BARN")) return "Barn";
+    if (upper.includes("GREENHOUSE")) return "Greenhouse";
+    if (upper.includes("CABANA")) return "Enclosed Cabana";
+
+    // Default fallback
+    return "Living Area";
+  };
+
+  const validateSpaceType = (spaceType) => {
+    if (!spaceType) return "Living Area";
+    const normalized = String(spaceType).trim();
+    if (VALID_SPACE_TYPES.has(normalized)) return normalized;
+
+    // Try mapping common variations
+    const upper = normalized.toUpperCase();
+    if (upper === "INTERIOR SPACE" || upper === "LIVING SPACE") return "Living Area";
+    if (upper === "MAIN FLOOR" || upper.includes("FIRST FLOOR")) return "Floor";
+    if (upper.includes("SECOND FLOOR")) return "Floor";
+    if (upper.includes("THIRD FLOOR")) return "Floor";
+    if (upper.includes("FOURTH FLOOR")) return "Floor";
+
+    // If no match, use mapSubAreaToSpaceType
+    return mapSubAreaToSpaceType(spaceType);
+  };
+
   const rawLayouts =
     layoutEntry && Array.isArray(layoutEntry.layouts) ? layoutEntry.layouts : [];
   const layoutBuildings =
@@ -2693,12 +2797,10 @@ function main() {
     rawLayouts.forEach((layout) => {
       const source = layout || {};
       const { parent_building_index, ...overrides } = source;
-      const spaceType =
+      const rawSpaceType =
         overrides && overrides.space_type ? overrides.space_type : "Living Area";
-      const normalized = createLayoutRecord(spaceType, overrides);
-      if (normalized.space_type === "Interior Space") {
-        normalized.space_type = "Living Area";
-      }
+      const validSpaceType = validateSpaceType(rawSpaceType);
+      const normalized = createLayoutRecord(validSpaceType, overrides);
       if (!normalized.floor_level) {
         normalized.floor_level = "1st Floor";
       }
@@ -2748,13 +2850,12 @@ function main() {
             );
           }
           meta.subAreas.forEach((subArea) => {
-            const label = titleCase(
-              subArea.description || subArea.type || "Sub Area",
-            );
+            const rawDescription = subArea.description || subArea.type || "Sub Area";
+            const spaceType = mapSubAreaToSpaceType(rawDescription);
             const yearBuilt = parseIntSafe(subArea.actYear) || parseIntSafe(binfo.actYear);
             attachLayoutToBuilding(
               info.index,
-              createLayoutRecord(label, {
+              createLayoutRecord(spaceType, {
                 floor_level: "1st Floor",
                 size_square_feet:
                   subArea.square_feet != null ? subArea.square_feet : null,
@@ -2765,13 +2866,12 @@ function main() {
         } else if (info.subAreasFromHTML && info.subAreasFromHTML.length) {
           // Use HTML subAreas if no metadata available
           info.subAreasFromHTML.forEach((subArea) => {
-            const label = titleCase(
-              subArea.description || subArea.type || "Sub Area",
-            );
+            const rawDescription = subArea.description || subArea.type || "Sub Area";
+            const spaceType = mapSubAreaToSpaceType(rawDescription);
             const yearBuilt = parseIntSafe(subArea.actYear) || parseIntSafe(binfo.actYear);
             attachLayoutToBuilding(
               info.index,
-              createLayoutRecord(label, {
+              createLayoutRecord(spaceType, {
                 floor_level: "1st Floor",
                 size_square_feet: parseIntSafe(subArea.sqFootage),
                 built_year: yearBuilt,
@@ -3131,45 +3231,21 @@ function main() {
     }
   }
 
-  // Create mailing address files only if we have current owners who will use them
+  // Only create mailing address files if there are owners to reference them
   const mailingAddressFiles = [];
-  const usedMailingIndices = new Set();
-
-  // First pass: determine which mailing addresses will be used
   if (currentOwners.length > 0) {
-    currentOwners.forEach((owner, idx) => {
-      if (!owner || !owner.type) return;
-      let mailingIdx = null;
-      if (ownerMailingInfo.rawAddresses[idx] != null) {
-        const rawAddr = ownerMailingInfo.rawAddresses[idx];
-        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-        if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
-      }
-      if (mailingIdx == null && ownerMailingInfo.uniqueAddresses.length) {
-        mailingIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
-      }
-      if (mailingIdx != null && mailingIdx >= 0) {
-        usedMailingIndices.add(mailingIdx);
-      }
-    });
-
-    // Second pass: create only the mailing address files that will be used
     ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
       if (!addr) return;
       const fileName = `mailing_address_${idx + 1}.json`;
-      mailingAddressFiles[idx] = { path: `./${fileName}` };
-
-      // Only write the file if this mailing address will be used
-      if (usedMailingIndices.has(idx)) {
-        const mailingObj = {
-          unnormalized_address: addr,
-          latitude: null,
-          longitude: null,
-          source_http_request: clone(defaultSourceHttpRequest),
-          request_identifier: requestIdentifier,
-        };
-        writeJSON(path.join(dataDir, fileName), mailingObj);
-      }
+      const mailingObj = {
+        unnormalized_address: addr,
+        latitude: null,
+        longitude: null,
+        source_http_request: clone(defaultSourceHttpRequest),
+        request_identifier: requestIdentifier,
+      };
+      writeJSON(path.join(dataDir, fileName), mailingObj);
+      mailingAddressFiles.push({ path: `./${fileName}` });
     });
   }
 
