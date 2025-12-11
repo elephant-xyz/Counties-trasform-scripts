@@ -1553,7 +1553,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
-  validPeople.forEach((p, idx) => {
+  // Update people to validPeople so findPersonIndexByName uses the correct array
+  people = validPeople;
+  people.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
 
@@ -1716,7 +1718,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     }
 
     // Link any unlinked persons to the first sale (sales_1.json)
-    for (let i = 1; i <= validPeople.length; i++) {
+    for (let i = 1; i <= people.length; i++) {
       if (!linkedPersonIndices.has(i)) {
         relPersonCounter++;
         writeJSON(
