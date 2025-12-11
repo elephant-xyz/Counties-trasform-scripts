@@ -1350,28 +1350,29 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   // CLEANUP: Remove all existing person_*.json, company_*.json, mailing_address, tax, address, structure, utility, layout files and their relationships
   try {
     const dataDir = "data";
-    if (fs.existsSync(dataDir)) {
-      const files = fs.readdirSync(dataDir);
-      files.forEach((file) => {
-        // Remove unsupported entity files (not in Sales_History data group)
-        if (/^person_\d+\.json$/.test(file) ||
-            /^company_\d+\.json$/.test(file) ||
-            file === "mailing_address.json" ||
-            /^tax_\d+\.json$/.test(file) ||
-            file === "address.json" ||
-            /^structure_\d+\.json$/.test(file) ||
-            /^utility_\d+\.json$/.test(file) ||
-            /^layout_\d+\.json$/.test(file)) {
-          console.log(`Cleaning up unsupported file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-        // Remove unsupported relationship files
-        if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address|property_has_structure|property_has_utility|layout_\d+_has_).*\.json$/.test(file)) {
-          console.log(`Cleaning up unsupported relationship file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-      });
-    }
+    // Ensure data directory exists before checking for files
+    ensureDir(dataDir);
+
+    const files = fs.readdirSync(dataDir);
+    files.forEach((file) => {
+      // Remove unsupported entity files (not in Sales_History data group)
+      if (/^person_\d+\.json$/.test(file) ||
+          /^company_\d+\.json$/.test(file) ||
+          file === "mailing_address.json" ||
+          /^tax_\d+\.json$/.test(file) ||
+          file === "address.json" ||
+          /^structure_\d+\.json$/.test(file) ||
+          /^utility_\d+\.json$/.test(file) ||
+          /^layout_\d+\.json$/.test(file)) {
+        console.log(`Cleaning up unsupported file: ${file}`);
+        fs.unlinkSync(path.join(dataDir, file));
+      }
+      // Remove unsupported relationship files
+      if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address|property_has_structure|property_has_utility|layout_\d+_has_).*\.json$/.test(file)) {
+        console.log(`Cleaning up unsupported relationship file: ${file}`);
+        fs.unlinkSync(path.join(dataDir, file));
+      }
+    });
   } catch (e) {
     console.error("Error cleaning up unsupported files:", e);
   }
@@ -2325,6 +2326,33 @@ function attemptWriteAddress(unnorm, secTwpRng) {
 
 function main() {
   ensureDir("data");
+
+  // CLEANUP: Remove any company, person, and other unsupported files from previous runs at the start
+  // Sales_History data group only supports: file, property, and sales_history classes
+  try {
+    const dataDir = "data";
+    const files = fs.readdirSync(dataDir);
+    files.forEach((file) => {
+      if (/^person_\d+\.json$/.test(file) ||
+          /^company_\d+\.json$/.test(file) ||
+          file === "mailing_address.json" ||
+          /^tax_\d+\.json$/.test(file) ||
+          file === "address.json" ||
+          /^structure_\d+\.json$/.test(file) ||
+          /^utility_\d+\.json$/.test(file) ||
+          /^layout_\d+\.json$/.test(file)) {
+        console.log(`Early cleanup: Removing unsupported file: ${file}`);
+        fs.unlinkSync(path.join(dataDir, file));
+      }
+      if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address|property_has_structure|property_has_utility|layout_\d+_has_).*\.json$/.test(file)) {
+        console.log(`Early cleanup: Removing unsupported relationship file: ${file}`);
+        fs.unlinkSync(path.join(dataDir, file));
+      }
+    });
+  } catch (e) {
+    console.error("Error in early cleanup:", e);
+  }
+
   const $ = loadHTML();
 
   const propertySeed = readJSON(path.join("input", "property_seed.json")) || readJSON("property_seed.json");
