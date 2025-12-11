@@ -1197,7 +1197,11 @@ function writeSalesDeedsFilesAndRelationships($) {
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_deed)(?:_\d+)?\.json$/.test(f)) {
+      if (/^relationship_(deed_file|sales_history_deed|sales_history_file)(?:_\d+)?\.json$/.test(f)) {
+        fs.unlinkSync(path.join("data", f));
+      }
+      // Remove deed files (not supported in Sales_History data group)
+      if (/^deed_\d+\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -1210,16 +1214,17 @@ function writeSalesDeedsFilesAndRelationships($) {
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
     };
     // console.log("saleobject",saleObj);
-    writeJSON(path.join("data", `sales_${idx}.json`), saleObj);
+    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
-    const deedType = mapInstrumentToDeedType(s.instrument);
-    const deed = {
-      ...appendSourceInfo(seed),
-      deed_type: deedType,
-      book: s.deedBook || null,
-      page: s.deedPage || null,
-    };
-    writeJSON(path.join("data", `deed_${idx}.json`), deed);
+    // DISABLED: Deed class is not supported in Sales_History data group
+    // const deedType = mapInstrumentToDeedType(s.instrument);
+    // const deed = {
+    //   ...appendSourceInfo(seed),
+    //   deed_type: deedType,
+    //   book: s.deedBook || null,
+    //   page: s.deedPage || null,
+    // };
+    // writeJSON(path.join("data", `deed_${idx}.json`), deed);
 
     const file = {
       ...appendSourceInfo(seed),
@@ -1231,22 +1236,25 @@ function writeSalesDeedsFilesAndRelationships($) {
     };
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
-    const relDeedFile = {
-      from: { "/": `./deed_${idx}.json` },
+    // DISABLED: Deed relationships not supported in Sales_History data group
+    // const relDeedFile = {
+    //   from: { "/": `./deed_${idx}.json` },
+    //   to: { "/": `./file_${idx}.json` },
+    // };
+    // writeJSON(
+    //   path.join("data", `relationship_deed_file_${idx}.json`),
+    //   relDeedFile,
+    // );
+
+    // DISABLED: Deed relationships not supported in Sales_History data group
+    // Instead, link sales_history directly to file
+    const relSalesFile = {
+      from: { "/": `./sales_history_${idx}.json` },
       to: { "/": `./file_${idx}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_deed_file_${idx}.json`),
-      relDeedFile,
-    );
-
-    const relSalesDeed = {
-      from: { "/": `./sales_${idx}.json` },
-      to: { "/": `./deed_${idx}.json` },
-    };
-    writeJSON(
-      path.join("data", `relationship_sales_deed_${idx}.json`),
-      relSalesDeed,
+      path.join("data", `relationship_sales_history_file_${idx}.json`),
+      relSalesFile,
     );
   });
 }
@@ -1322,34 +1330,50 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
 }
 
 function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress) {
+  // DISABLED: Person, Company, and Mailing Address entities are not part of the Sales_History data group.
+  // The Sales_History data group only includes: file, property, and sales_history classes.
+  // Therefore, we do not generate person, company, or mailing_address entities or their relationships.
+
+  console.log("Skipping person/company generation - not supported in Sales_History data group");
+
+  // CLEANUP: Remove all existing person_*.json, company_*.json, mailing_address, tax, address, structure, utility, layout files and their relationships
+  try {
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      files.forEach((file) => {
+        // Remove unsupported entity files (not in Sales_History data group)
+        if (/^person_\d+\.json$/.test(file) ||
+            /^company_\d+\.json$/.test(file) ||
+            file === "mailing_address.json" ||
+            /^tax_\d+\.json$/.test(file) ||
+            file === "address.json" ||
+            /^structure_\d+\.json$/.test(file) ||
+            /^utility_\d+\.json$/.test(file) ||
+            /^layout_\d+\.json$/.test(file)) {
+          console.log(`Cleaning up unsupported file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+        // Remove unsupported relationship files
+        if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address|property_has_structure|property_has_utility|layout_\d+_has_).*\.json$/.test(file)) {
+          console.log(`Cleaning up unsupported relationship file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Error cleaning up unsupported files:", e);
+  }
+
+  return;
+
+  // ALL CODE BELOW IS DISABLED FOR SALES_HISTORY DATA GROUP
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
   const record = owners[key];
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
-
-  // CLEANUP: Remove all existing person_*.json, company_*.json files and their relationships from previous runs
-  try {
-    const dataDir = "data";
-    if (fs.existsSync(dataDir)) {
-      const files = fs.readdirSync(dataDir);
-      files.forEach((file) => {
-        // Remove old person and company files
-        if (/^person_\d+\.json$/.test(file) || /^company_\d+\.json$/.test(file)) {
-          console.log(`Cleaning up old file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-        // Remove old person and company relationship files
-        if (/^relationship_(sales_person|sales_company|person_has_mailing_address|company_has_mailing_address).*\.json$/.test(file)) {
-          console.log(`Cleaning up old relationship file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-      });
-    }
-  } catch (e) {
-    console.error("Error cleaning up old person/company files:", e);
-  }
 
   // Remove records with keys starting with 'unknown_date_' as they cannot be linked to any sale
   Object.keys(ownersByDate).forEach(dateKey => {
@@ -1495,11 +1519,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_person_${relPersonCounter}.json`,
+              `relationship_sales_history_${idx + 1}_has_person_${relPersonCounter}.json`,
             ),
             {
+              from: { "/": `./sales_history_${idx + 1}.json` },
               to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
             },
           );
         }
@@ -1514,11 +1538,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_company_${relCompanyCounter}.json`,
+              `relationship_sales_history_${idx + 1}_has_company_${relCompanyCounter}.json`,
             ),
             {
+              from: { "/": `./sales_history_${idx + 1}.json` },
               to: { "/": `./company_${cIdx}.json` },
-              from: { "/": `./sales_${idx + 1}.json` },
             },
           );
         }
@@ -2313,48 +2337,47 @@ function main() {
   // console.log("Sales:", sales);
   writeSalesDeedsFilesAndRelationships($);
 
-  writeTaxes($, parcelId);
+  // DISABLED: Tax class is not supported in Sales_History data group
+  // writeTaxes($, parcelId);
 
-  //Mailing Address
-  const mailingAddressRaw = extractCurrentOwnerAddress($)
-  // console.log("mailing address:", mailingAddressRaw);
-  const mailingAddressOutput = {
-    ...appendSourceInfo(propertySeed),
-    latitude: null,
-    longitude: null,
-    unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' '),
-  };
-  writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
+  // DISABLED: Mailing Address is not part of the Sales_History data group
+  // const mailingAddressRaw = extractCurrentOwnerAddress($)
+  // const mailingAddressOutput = {
+  //   ...appendSourceInfo(propertySeed),
+  //   latitude: null,
+  //   longitude: null,
+  //   unnormalized_address: mailingAddressRaw?.replace(/\n/g, ' '),
+  // };
+  // writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // Create mailing address relationships with current owners
-  // Pass hasOwnerMailingAddress flag to writePersonCompaniesSalesRelationships
-  const hasOwnerMailingAddress = mailingAddressRaw != null && mailingAddressRaw.trim().length > 0;
+  // DISABLED: Mailing address not supported in Sales_History data group
+  const hasOwnerMailingAddress = false;
 
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
-        
+
+    // DISABLED: Structure, Utility, and Layout classes are not supported in Sales_History data group
     // writeOwnersCurrentAndRelationships(parcelId);
     // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
     // writeUtility(parcelId);
     // writeLayout(parcelId);
     // writeStructure(parcelId);
-    
-  //------Structure (owners/structures_data.json)---------------
-  createStructureFiles(seed,parcelId);
 
-  // ---------- Utilities (owners/utilities_data.json) ----------
-  createUtilitiesFiles(seed,parcelId);
+  // DISABLED: Structure class is not supported in Sales_History data group
+  // createStructureFiles(seed,parcelId);
 
-  // ---------- Layouts (owners/layout_data.json) ----------
+  // DISABLED: Utility class is not supported in Sales_History data group
+  // createUtilitiesFiles(seed,parcelId);
 
-  createLayoutFiles(seed,parcelId);
+  // DISABLED: Layout class is not supported in Sales_History data group
+  // createLayoutFiles(seed,parcelId);
 
   }
 
-  // Address last
-  const secTwpRng = extractSecTwpRng($);
-  console.log(secTwpRng)
-  attemptWriteAddress(unnormalized, secTwpRng);  
+  // DISABLED: Address class is not supported in Sales_History data group
+  // const secTwpRng = extractSecTwpRng($);
+  // console.log(secTwpRng)
+  // attemptWriteAddress(unnormalized, secTwpRng);  
 
   // Create relationships only if target files exist
   // const dataDir = "data";
