@@ -1688,7 +1688,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
   // Ensure all created persons have at least one relationship to a sale
   // This prevents "Unused data JSON file detected" errors
-  if (sales.length > 0 && validPeople.length > 0) {
+  if (sales.length > 0) {
     // Track which person indices have relationships
     const linkedPersonIndices = new Set();
     const linkedCompanyIndices = new Set();
