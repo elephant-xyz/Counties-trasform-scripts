@@ -105,6 +105,33 @@ function mapInteriorSurface(tokens) {
   return out;
 }
 
+function mapInteriorSurfaceSecondary(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.toUpperCase().trim();
+    if (t.includes("WAINSCOT")) out.push("Wainscoting");
+    if (t.includes("CHAIR") && t.includes("RAIL")) out.push("Chair Rail");
+    if (t.includes("CROWN") && t.includes("MOLD")) out.push("Crown Molding");
+    if (t.includes("BASEBOARD")) out.push("Baseboards");
+    if (t.includes("WOOD") && (t.includes("TRIM") || t.includes("ACCENT"))) out.push("Wood Trim");
+    if (t.includes("STONE") && t.includes("ACCENT")) out.push("Stone Accent");
+    if (t.includes("TILE") && t.includes("ACCENT")) out.push("Tile Accent");
+    if (t.includes("METAL") && t.includes("ACCENT")) out.push("Metal Accent");
+    if (t.includes("GLASS") && t.includes("INSERT")) out.push("Glass Insert");
+    if (t.includes("DECORATIVE") && t.includes("PANEL")) out.push("Decorative Panels");
+    if (t.includes("FEATURE") && t.includes("WALL")) out.push("Feature Wall Material");
+    // Fallback mappings for common terms that should map to accents
+    if (!out.length) {
+      if (t.includes("WOOD")) out.push("Wood Trim");
+      if (t.includes("STONE")) out.push("Stone Accent");
+      if (t.includes("TILE")) out.push("Tile Accent");
+      if (t.includes("METAL")) out.push("Metal Accent");
+      if (t.includes("GLASS")) out.push("Glass Insert");
+    }
+  });
+  return out;
+}
+
 function mapFlooring(tokens) {
   const out = [];
   tokens.forEach((tok) => {
@@ -313,7 +340,14 @@ function buildStructureFromBuilding(building, parcelId, buildingNumber, structur
   const intMaterials = mapInteriorSurface(intWallTokens);
   if (intMaterials.length) {
     structure.interior_wall_surface_material_primary = intMaterials[0];
-    if (intMaterials.length > 1) structure.interior_wall_surface_material_secondary = intMaterials[1];
+  }
+  // Use separate mapping for secondary materials (accent/trim)
+  if (intWallTokens.length > 1) {
+    const secondaryTokens = intWallTokens.slice(1);
+    const secondaryMaterials = mapInteriorSurfaceSecondary(secondaryTokens);
+    if (secondaryMaterials.length > 0) {
+      structure.interior_wall_surface_material_secondary = secondaryMaterials[0];
+    }
   }
 
   const floorTokens = building["Floor Cover"]
