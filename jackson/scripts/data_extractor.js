@@ -1329,6 +1329,28 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (!record || !record.owners_by_date) return;
   const ownersByDate = record.owners_by_date;
 
+  // CLEANUP: Remove all existing person_*.json, company_*.json files and their relationships from previous runs
+  try {
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      files.forEach((file) => {
+        // Remove old person and company files
+        if (/^person_\d+\.json$/.test(file) || /^company_\d+\.json$/.test(file)) {
+          console.log(`Cleaning up old file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+        // Remove old person and company relationship files
+        if (/^relationship_(sales_person|sales_company|person_has_mailing_address|company_has_mailing_address).*\.json$/.test(file)) {
+          console.log(`Cleaning up old relationship file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Error cleaning up old person/company files:", e);
+  }
+
   // Remove records with keys starting with 'unknown_date_' as they cannot be linked to any sale
   Object.keys(ownersByDate).forEach(dateKey => {
     if (dateKey.startsWith('unknown_date_')) {
