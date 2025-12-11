@@ -6669,10 +6669,6 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...ADDRESS_SCHEMA_FIELDS]),
-);
-
 // Raw variant must stay minimal to satisfy the oneOf branch that only permits
 // the unnormalized payload surface.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
@@ -6684,6 +6680,10 @@ const RAW_ONE_OF_ALLOWED_FIELDS = [
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
+
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
+);
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -8909,7 +8909,10 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLO
   return result;
 }
 
-function ensureRawAddressSchemaDefaults(address) {
+function ensureRawAddressSchemaDefaults(
+  address,
+  allowedFields = RAW_ONE_OF_ALLOWED_FIELDS,
+) {
   if (!address || typeof address !== "object") return null;
 
   const trimmedUnnormalized =
@@ -8920,13 +8923,28 @@ function ensureRawAddressSchemaDefaults(address) {
     return null;
   }
 
+  const fields =
+    Array.isArray(allowedFields) && allowedFields.length
+      ? allowedFields
+      : RAW_ONE_OF_ALLOWED_FIELDS;
+
+  const template = fields.reduce((acc, field) => {
+    acc[field] = null;
+    return acc;
+  }, {});
+
   const result = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...template,
     ...address,
     unnormalized_address: trimmedUnnormalized,
   };
 
-  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+  for (const field of fields) {
+    if (field === "unnormalized_address") {
+      result[field] = trimmedUnnormalized;
+      continue;
+    }
+
     if (!Object.prototype.hasOwnProperty.call(result, field)) {
       result[field] = null;
       continue;
@@ -8938,31 +8956,33 @@ function ensureRawAddressSchemaDefaults(address) {
       continue;
     }
 
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(currentValue);
-      result[field] = Number.isFinite(numeric) ? numeric : null;
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(currentValue);
+      result[field] = prepared ? deepClone(prepared) : null;
       continue;
     }
 
-    if (typeof currentValue === "string") {
-      const trimmed = currentValue.trim();
+    if (field === "request_identifier") {
+      const normalizedIdentifier = safeNullIfEmpty(currentValue);
+      result[field] =
+        normalizedIdentifier === undefined || normalizedIdentifier === null
+          ? null
+          : normalizedIdentifier;
+      continue;
+    }
+
+    const sanitized = sanitizeAddressFieldValue
+      ? sanitizeAddressFieldValue(field, currentValue)
+      : currentValue;
+
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
       result[field] = trimmed.length ? trimmed : null;
+      continue;
     }
-  }
 
-  if (!result.postal_code) {
-    result.plus_four_postal_code = null;
+    result[field] = sanitized === undefined ? null : sanitized;
   }
-
-  if (result.state_code && !result.country_code) {
-    result.country_code = "US";
-  }
-
-  Object.keys(result).forEach((key) => {
-    if (!RAW_ADDRESS_ALLOWED_WITH_UNNORMALIZED_SET.has(key)) {
-      delete result[key];
-    }
-  });
 
   return result;
 }
@@ -9036,21 +9056,48 @@ function hydrateRawAddressSkeleton(addressPath, options = {}) {
   writeJSON(addressPath, skeleton);
 }
 
-function ensureRawAddressRequiredCoverage(payload, rawValue) {
+function ensureRawAddressRequiredCoverage(
+  payload,
+  rawValue,
+  allowedFields = RAW_ONE_OF_ALLOWED_FIELDS,
+) {
   const trimmedRaw =
     typeof rawValue === "string" ? rawValue.trim() : "";
   if (!trimmedRaw.length) {
     return null;
   }
 
+  const fields =
+    Array.isArray(allowedFields) && allowedFields.length
+      ? allowedFields
+      : RAW_ONE_OF_ALLOWED_FIELDS;
+
   const candidate = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...fields.reduce((acc, field) => {
+      acc[field] = null;
+      return acc;
+    }, {}),
     unnormalized_address: trimmedRaw,
   };
 
   if (payload && typeof payload === "object") {
-    for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    for (const field of fields) {
       if (!Object.prototype.hasOwnProperty.call(payload, field)) continue;
+
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(payload[field]);
+        candidate[field] = prepared ? deepClone(prepared) : null;
+        continue;
+      }
+
+      if (field === "request_identifier") {
+        const normalizedIdentifier = safeNullIfEmpty(payload[field]);
+        candidate[field] =
+          normalizedIdentifier === undefined || normalizedIdentifier === null
+            ? null
+            : normalizedIdentifier;
+        continue;
+      }
 
       const sanitized = sanitizeAddressFieldValue
         ? sanitizeAddressFieldValue(field, payload[field])
@@ -9069,38 +9116,6 @@ function ensureRawAddressRequiredCoverage(payload, rawValue) {
       candidate[field] =
         sanitized === null ? null : sanitized;
     }
-
-    if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-      const normalizedIdentifier = safeNullIfEmpty(payload.request_identifier);
-      candidate.request_identifier =
-        normalizedIdentifier === undefined || normalizedIdentifier === null
-          ? null
-          : normalizedIdentifier;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
-      const prepared = prepareSourceHttpRequest(payload.source_http_request);
-      if (prepared) {
-        candidate.source_http_request = deepClone(prepared);
-      }
-    }
-  }
-
-  if (!Object.prototype.hasOwnProperty.call(candidate, "request_identifier")) {
-    candidate.request_identifier = null;
-  }
-
-  if (!candidate.postal_code) {
-    candidate.plus_four_postal_code = null;
-  }
-
-  if (candidate.state_code && !candidate.country_code) {
-    candidate.country_code = "US";
-  }
-
-  if ((candidate.latitude == null) !== (candidate.longitude == null)) {
-    candidate.latitude = null;
-    candidate.longitude = null;
   }
 
   return candidate;
