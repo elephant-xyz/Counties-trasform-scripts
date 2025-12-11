@@ -3615,6 +3615,104 @@ function enforceFinalCountyAddressSchemaCompliance(addressFilePath) {
   writeJSON(addressFilePath, finalRaw);
 }
 
+function enforceAddressTerminalOneOf(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedProbe =
+    ensureNormalizedAddressSchemaSurface &&
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+  const normalizedReady =
+    normalizedProbe &&
+    hasNormalizedCountyCoverage({ ...normalizedProbe }) &&
+    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
+      hasMeaningfulAddressValue(normalizedProbe[field]),
+    );
+
+  const resolveTrimmed = (value) => {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    return trimmed.length ? trimmed : null;
+  };
+
+  if (normalizedReady) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = sanitizeAddressFieldValue(
+        field,
+        normalizedProbe[field],
+      );
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (normalizedOut.state_code && !normalizedOut.country_code) {
+      normalizedOut.country_code = "US";
+    }
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    normalizedOut.request_identifier =
+      resolveTrimmed(payload.request_identifier) || null;
+    if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+      const prepared = prepareSourceHttpRequest(payload.source_http_request);
+      normalizedOut.source_http_request = prepared ? deepClone(prepared) : null;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = resolveTrimmed(payload.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      rawOut[field] = rawValue;
+      return;
+    }
+    const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    rawOut[field] = sanitizeAddressFieldValue(field, candidate);
+  });
+  rawOut.unnormalized_address = rawValue;
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  rawOut.request_identifier = resolveTrimmed(payload.request_identifier) || null;
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    rawOut.source_http_request = prepared ? deepClone(prepared) : null;
+  }
+
+  writeJSON(addressPath, rawOut);
+}
+
 function stabilizeAddressOneOfForOutput(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -16176,6 +16274,7 @@ async function main() {
   enforceFinalAddressOneOfOutput(addressOutputPath);
   solidifyCountyAddressSchemaSurface(addressOutputPath);
   enforceAddressFieldDefaults(addressOutputPath);
+  enforceAddressTerminalOneOf(addressOutputPath);
   for (const dirPath of relationshipDirs) {
     ensureNullRelationshipPlaceholders(dirPath, managedBaseNames);
   }
@@ -16250,6 +16349,7 @@ async function main() {
     enforceFinalAddressOneOfOutput(addressOutputPath);
     solidifyCountyAddressSchemaSurface(addressOutputPath);
     enforceAddressFieldDefaults(addressOutputPath);
+    enforceAddressTerminalOneOf(addressOutputPath);
     enforcePropertyRelationshipNulls(propertyFilePath);
     [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
       removeAddressRelationshipFiles(dirPath);
