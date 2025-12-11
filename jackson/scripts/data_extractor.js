@@ -1264,10 +1264,14 @@ function findPersonIndexByName(first, last) {
   return null;
 }
 
+function normalizeCompanyName(name) {
+  return (name || "").trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
 function findCompanyIndexByName(name) {
-  const tn = (name || "").trim();
+  const tn = normalizeCompanyName(name);
   for (let i = 0; i < companies.length; i++) {
-    if ((companies[i].name || "").trim() === tn) return i + 1;
+    if (normalizeCompanyName(companies[i].name) === tn) return i + 1;
   }
   return null;
 }
@@ -1408,8 +1412,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     ownersOnDate
       .filter((o) => o.type === "company")
       .forEach((o) => {
-        if ((o.name || "").trim()) {
-          usedCompanyNames.add((o.name || "").trim());
+        const normalized = normalizeCompanyName(o.name);
+        if (normalized) {
+          usedCompanyNames.add(normalized);
         }
       });
   });
@@ -1418,8 +1423,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   if (hasOwnerMailingAddress && ownersByDate['current']) {
     const currentOwners = ownersByDate['current'];
     currentOwners.forEach((owner) => {
-      if (owner.type === "company" && (owner.name || "").trim()) {
-        usedCompanyNames.add((owner.name || "").trim());
+      if (owner.type === "company") {
+        const normalized = normalizeCompanyName(owner.name);
+        if (normalized) {
+          usedCompanyNames.add(normalized);
+        }
       }
     });
   }
