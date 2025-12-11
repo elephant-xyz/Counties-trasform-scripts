@@ -1557,10 +1557,13 @@ function extractOwnerMailingAddress($) {
 
 function attemptWriteAddress(unnorm, secTwpRng, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
-  const inputCounty = (unnorm.county_jurisdiction || "").trim();
-  if (!inputCounty) {
-    inputCounty = (unnorm.county_name || "").trim();
+  let inputCounty = "";
+  if (unnorm) {
+    inputCounty = (unnorm.county_jurisdiction || "").trim();
+    if (!inputCounty) {
+      inputCounty = (unnorm.county_name || "").trim();
     }
+  }
   const county_name = inputCounty || null;
   if (mailingAddress) {
     const mailingAddressObj = {
