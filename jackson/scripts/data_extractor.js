@@ -1347,7 +1347,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
 
   console.log("Skipping person/company generation - not supported in Sales_History data group");
 
-  // CLEANUP: Remove all existing person_*.json, company_*.json, mailing_address, tax, address, structure, utility, layout files and their relationships
+  // CLEANUP: Remove person/company files only (not in Property_Improvement data group)
+  // Keep structure, utility, layout, address files as they are part of Property_Improvement
   try {
     const dataDir = "data";
     // Ensure data directory exists before checking for files
@@ -1355,20 +1356,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
 
     const files = fs.readdirSync(dataDir);
     files.forEach((file) => {
-      // Remove unsupported entity files (not in Sales_History data group)
+      // Remove person/company/tax/mailing_address entity files (not in Property_Improvement data group)
       if (/^person_\d+\.json$/.test(file) ||
           /^company_\d+\.json$/.test(file) ||
           file === "mailing_address.json" ||
-          /^tax_\d+\.json$/.test(file) ||
-          file === "address.json" ||
-          /^structure_\d+\.json$/.test(file) ||
-          /^utility_\d+\.json$/.test(file) ||
-          /^layout_\d+\.json$/.test(file)) {
+          /^tax_\d+\.json$/.test(file)) {
         console.log(`Cleaning up unsupported file: ${file}`);
         fs.unlinkSync(path.join(dataDir, file));
       }
-      // Remove unsupported relationship files
-      if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address|property_has_structure|property_has_utility|layout_\d+_has_).*\.json$/.test(file)) {
+      // Remove person/company relationship files
+      if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address).*\.json$/.test(file)) {
         console.log(`Cleaning up unsupported relationship file: ${file}`);
         fs.unlinkSync(path.join(dataDir, file));
       }
@@ -1707,6 +1704,13 @@ function writeStructure(parcelId) {
   };
   
   writeJSON(path.join("data", "structure.json"), structure);
+
+  // Create relationship linking property to structure
+  const relationship = {
+    from: { "/": "./property.json" },
+    to: { "/": "./structure.json" }
+  };
+  writeJSON(path.join("data", "relationship_property_has_structure.json"), relationship);
 }
 
 
@@ -2327,28 +2331,29 @@ function attemptWriteAddress(unnorm, secTwpRng) {
 function main() {
   ensureDir("data");
 
-  // CLEANUP: Remove any company, person, and other unsupported files from previous runs at the start
-  // Sales_History data group only supports: file, property, and sales_history classes
+  // CLEANUP: Remove unsupported files only if in Sales_History data group
+  // For null/empty data group, support Property_Improvement which includes structure, utility, layout
+  // Only clean up person, company, and mailing_address files which are not in Property_Improvement
   try {
     const dataDir = "data";
-    const files = fs.readdirSync(dataDir);
-    files.forEach((file) => {
-      if (/^person_\d+\.json$/.test(file) ||
-          /^company_\d+\.json$/.test(file) ||
-          file === "mailing_address.json" ||
-          /^tax_\d+\.json$/.test(file) ||
-          file === "address.json" ||
-          /^structure_\d+\.json$/.test(file) ||
-          /^utility_\d+\.json$/.test(file) ||
-          /^layout_\d+\.json$/.test(file)) {
-        console.log(`Early cleanup: Removing unsupported file: ${file}`);
-        fs.unlinkSync(path.join(dataDir, file));
-      }
-      if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address|property_has_structure|property_has_utility|layout_\d+_has_).*\.json$/.test(file)) {
-        console.log(`Early cleanup: Removing unsupported relationship file: ${file}`);
-        fs.unlinkSync(path.join(dataDir, file));
-      }
-    });
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      files.forEach((file) => {
+        // Only remove person, company, tax, and mailing_address files (not in Property_Improvement)
+        if (/^person_\d+\.json$/.test(file) ||
+            /^company_\d+\.json$/.test(file) ||
+            file === "mailing_address.json" ||
+            /^tax_\d+\.json$/.test(file)) {
+          console.log(`Early cleanup: Removing unsupported file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+        // Remove person/company relationship files
+        if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address).*\.json$/.test(file)) {
+          console.log(`Early cleanup: Removing unsupported relationship file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+      });
+    }
   } catch (e) {
     console.error("Error in early cleanup:", e);
   }
@@ -2395,22 +2400,27 @@ function main() {
   if (parcelId) {
     writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress);
 
-    // DISABLED: Structure, Utility, and Layout classes are not supported in Sales_History data group
-    // writeOwnersCurrentAndRelationships(parcelId);
-    // writeHistoricalBuyerPersonsAndRelationships(parcelId, sales);
-    // writeUtility(parcelId);
-    // writeLayout(parcelId);
-    // writeStructure(parcelId);
+    // Clean up old structure.json file if it exists (we now use structure_1.json, structure_2.json, etc.)
+    const oldStructureFile = path.join("data", "structure.json");
+    const oldStructureRelFile = path.join("data", "relationship_property_has_structure.json");
+    if (fs.existsSync(oldStructureFile)) {
+      console.log("Removing old structure.json file");
+      fs.unlinkSync(oldStructureFile);
+    }
+    if (fs.existsSync(oldStructureRelFile)) {
+      console.log("Removing old relationship_property_has_structure.json file");
+      fs.unlinkSync(oldStructureRelFile);
+    }
 
-  // DISABLED: Structure class is not supported in Sales_History data group
-  // createStructureFiles(seed,parcelId);
+    // Structure, Utility, and Layout classes are supported in Property_Improvement data group
+    // Using createStructureFiles instead of writeStructure to handle array of structures
+    createStructureFiles(seed, parcelId);
 
-  // DISABLED: Utility class is not supported in Sales_History data group
-  // createUtilitiesFiles(seed,parcelId);
+    // Create utilities files with relationships
+    createUtilitiesFiles(seed, parcelId);
 
-  // DISABLED: Layout class is not supported in Sales_History data group
-  // createLayoutFiles(seed,parcelId);
-
+    // Create layout files with relationships
+    createLayoutFiles(seed, parcelId);
   }
 
   // DISABLED: Address class is not supported in Sales_History data group
