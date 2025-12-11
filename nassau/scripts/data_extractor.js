@@ -1522,45 +1522,14 @@ function formatName(name) {
 
   if (!cleaned || cleaned.length === 0) return null;
 
-  // Normalize spacing and convert to lowercase
   const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
+  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
+  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ").trim();
 
-  // Capitalize first letter of the string and after each delimiter
-  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  // This means: Start with uppercase, then lowercase, then optionally (delimiter + letter + lowercase)*
-  let result = "";
-  let capitalizeNext = true;
+  // If the result is empty or doesn't start with a letter, return null
+  if (!sanitized || sanitized.length === 0 || !/^[A-Z]/.test(sanitized)) return null;
 
-  for (let i = 0; i < normalizedSpacing.length; i++) {
-    const char = normalizedSpacing[i];
-
-    if (/[a-z]/.test(char)) {
-      if (capitalizeNext) {
-        result += char.toUpperCase();
-        capitalizeNext = false;
-      } else {
-        result += char;
-      }
-    } else if (/[ \-',.]/.test(char)) {
-      // Keep delimiters and capitalize next letter
-      result += char;
-      capitalizeNext = true;
-    }
-  }
-
-  // Remove any trailing delimiters
-  result = result.replace(/[ \-',.]+$/, "");
-
-  // Remove ". " (period followed by space) - replace with just space
-  result = result.replace(/\.\s+/g, " ");
-
-  // Remove any double spaces that might have been created
-  result = result.replace(/\s+/g, " ").trim();
-
-  // If the result is empty or doesn't start with an uppercase letter, return null
-  if (!result || result.length === 0 || !/^[A-Z]/.test(result)) return null;
-
-  return result;
+  return sanitized;
 }
 
 // Validate prefix/suffix against schema
