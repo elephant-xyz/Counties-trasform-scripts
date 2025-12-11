@@ -1637,7 +1637,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
     const currentOwners = ownersByDate["current"] || [];
-    
+
     currentOwners.forEach((owner) => {
       // Check if this owner already has a relationship with sales_1
       const alreadyLinked = ownersOnFirstSale.some(existingOwner => {
@@ -1649,7 +1649,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
         return false;
       });
-      
+
       if (!alreadyLinked) {
         if (owner.type === "person") {
           const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
@@ -1684,6 +1684,70 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
       }
     });
+  }
+
+  // Ensure all created persons have at least one relationship to a sale
+  // This prevents "Unused data JSON file detected" errors
+  if (sales.length > 0 && validPeople.length > 0) {
+    // Track which person indices have relationships
+    const linkedPersonIndices = new Set();
+    const linkedCompanyIndices = new Set();
+
+    // Scan existing relationship files to find which persons/companies are already linked
+    try {
+      const dataFiles = fs.readdirSync("data");
+      dataFiles.forEach((fileName) => {
+        if (/^relationship_sales_(person|company)_\d+\.json$/.test(fileName)) {
+          const relData = readJSON(path.join("data", fileName));
+          if (relData && relData.to && relData.to["/"]) {
+            const toPath = relData.to["/"];
+            const personMatch = toPath.match(/^\.\/person_(\d+)\.json$/);
+            const companyMatch = toPath.match(/^\.\/company_(\d+)\.json$/);
+            if (personMatch) {
+              linkedPersonIndices.add(parseInt(personMatch[1]));
+            } else if (companyMatch) {
+              linkedCompanyIndices.add(parseInt(companyMatch[1]));
+            }
+          }
+        }
+      });
+    } catch (e) {
+      // If data directory doesn't exist yet, continue
+    }
+
+    // Link any unlinked persons to the first sale (sales_1.json)
+    for (let i = 1; i <= validPeople.length; i++) {
+      if (!linkedPersonIndices.has(i)) {
+        relPersonCounter++;
+        writeJSON(
+          path.join(
+            "data",
+            `relationship_sales_person_${relPersonCounter}.json`,
+          ),
+          {
+            from: { "/": "./sales_1.json" },
+            to: { "/": `./person_${i}.json` }
+          },
+        );
+      }
+    }
+
+    // Link any unlinked companies to the first sale (sales_1.json)
+    for (let i = 1; i <= companies.length; i++) {
+      if (!linkedCompanyIndices.has(i)) {
+        relCompanyCounter++;
+        writeJSON(
+          path.join(
+            "data",
+            `relationship_sales_company_${relCompanyCounter}.json`,
+          ),
+          {
+            from: { "/": "./sales_1.json" },
+            to: { "/": `./company_${i}.json` }
+          },
+        );
+      }
+    }
   }
 }
 
