@@ -2215,20 +2215,12 @@ function main() {
     const nm = (c.name || "").trim().toUpperCase();
     if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
   });
-  // Track which persons/companies have been linked to sales
-  const linkedPersons = new Set();
-  const linkedCompanies = new Set();
-
   sales.forEach((s, idx) => {
     const g = normalizeNameForMatch(s.OwnerName);
     if (!g) return;
     if (companyNameToPath.has(g)) {
-      const companyPath = companyNameToPath.get(g);
-      // Extract company index from path (e.g., "./company_1.json" -> 1)
-      const match = companyPath.match(/company_(\d+)\.json/);
-      if (match) linkedCompanies.add(parseInt(match[1], 10));
       const rel = {
-        to: { "/": companyPath },
+        to: { "/": companyNameToPath.get(g) },
         from: { "/": `./sales_${idx + 1}.json` },
       };
       writeJSON(
@@ -2251,9 +2243,6 @@ function main() {
         }
       }
       if (toPath) {
-        // Extract person index from path (e.g., "./person_1.json" -> 1)
-        const match = toPath.match(/person_(\d+)\.json/);
-        if (match) linkedPersons.add(parseInt(match[1], 10));
         const rel = {
           to: { "/": toPath },
           from: { "/": `./sales_${idx + 1}.json` },
@@ -2265,36 +2254,6 @@ function main() {
       }
     }
   });
-
-  // Link current owners to the most recent sale (sales_1) if they haven't been linked yet
-  if (sales && sales.length > 0) {
-    pc.personCurrentOwners.forEach((personIdx) => {
-      if (!linkedPersons.has(personIdx)) {
-        const rel = {
-          to: { "/": `./person_${personIdx}.json` },
-          from: { "/": `./sales_1.json` },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_person_${personIdx}.json`),
-          rel,
-        );
-        linkedPersons.add(personIdx);
-      }
-    });
-    pc.companyCurrentOwners.forEach((companyIdx) => {
-      if (!linkedCompanies.has(companyIdx)) {
-        const rel = {
-          to: { "/": `./company_${companyIdx}.json` },
-          from: { "/": `./sales_1.json` },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_company_${companyIdx}.json`),
-          rel,
-        );
-        linkedCompanies.add(companyIdx);
-      }
-    });
-  }
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     const lset =
