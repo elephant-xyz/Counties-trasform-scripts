@@ -15367,10 +15367,6 @@ function enforceAddressOneOfBranch(addressPath) {
     return;
   }
 
-  const hasRaw =
-    typeof payload.unnormalized_address === "string" &&
-    payload.unnormalized_address.trim().length > 0;
-
   const sanitizeField = (field, value) => {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(value);
@@ -15382,6 +15378,48 @@ function enforceAddressOneOfBranch(addressPath) {
     }
     return value === undefined ? null : value;
   };
+
+  const normalizedCandidate =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const hasNormalized =
+    normalizedCandidate &&
+    hasCompleteNormalizedAddress({ ...normalizedCandidate });
+
+  const hasRaw =
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length > 0;
+
+  if (hasNormalized) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = sanitizeField(
+        field,
+        Object.prototype.hasOwnProperty.call(payload, field)
+          ? payload[field]
+          : normalizedCandidate[field],
+      );
+    });
+    if (!normalizedOut.postal_code) normalizedOut.plus_four_postal_code = null;
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    normalizedOut.request_identifier =
+      Object.prototype.hasOwnProperty.call(payload, "request_identifier") &&
+      payload.request_identifier !== undefined
+        ? safeNullIfEmpty(payload.request_identifier)
+        : null;
+    normalizedOut.source_http_request =
+      Object.prototype.hasOwnProperty.call(payload, "source_http_request") &&
+      payload.source_http_request !== undefined
+        ? deepClone(prepareSourceHttpRequest(payload.source_http_request) || null)
+        : null;
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
 
   if (hasRaw) {
     const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
@@ -15414,41 +15452,7 @@ function enforceAddressOneOfBranch(addressPath) {
     return;
   }
 
-  const normalizedCandidate =
-    ensureNormalizedAddressSchemaSurface &&
-    ensureNormalizedAddressSchemaSurface({ ...payload });
-  if (!normalizedCandidate || !hasCompleteNormalizedAddress({ ...normalizedCandidate })) {
-    removeFileIfExists(addressPath);
-    return;
-  }
-
-  const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-    normalizedOut[field] = sanitizeField(
-      field,
-      Object.prototype.hasOwnProperty.call(payload, field)
-        ? payload[field]
-        : normalizedCandidate[field],
-    );
-  });
-  if (!normalizedOut.postal_code) normalizedOut.plus_four_postal_code = null;
-  if (
-    hasMeaningfulAddressValue(normalizedOut.state_code) &&
-    !hasMeaningfulAddressValue(normalizedOut.country_code)
-  ) {
-    normalizedOut.country_code = "US";
-  }
-  normalizedOut.request_identifier =
-    Object.prototype.hasOwnProperty.call(payload, "request_identifier") &&
-    payload.request_identifier !== undefined
-      ? safeNullIfEmpty(payload.request_identifier)
-      : null;
-  normalizedOut.source_http_request =
-    Object.prototype.hasOwnProperty.call(payload, "source_http_request") &&
-    payload.source_http_request !== undefined
-      ? deepClone(prepareSourceHttpRequest(payload.source_http_request) || null)
-      : null;
-  writeJSON(addressPath, normalizedOut);
+  removeFileIfExists(addressPath);
 }
 
 async function main() {
@@ -18703,9 +18707,11 @@ async function main() {
     return output;
   };
 
-  let finalAddressOutput = buildRawAddressSurface();
-  if (!finalAddressOutput && hasNormalizedSurfaceFinal) {
-    finalAddressOutput = buildNormalizedSurface();
+  let finalAddressOutput = hasNormalizedSurfaceFinal
+    ? buildNormalizedSurface()
+    : null;
+  if (!finalAddressOutput && finalUnnormalized) {
+    finalAddressOutput = buildRawAddressSurface();
   }
 
   if (finalAddressOutput) {
