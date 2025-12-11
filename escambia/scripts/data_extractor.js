@@ -14,11 +14,29 @@ function toTitleCase(str) {
   if (!str) return null;
   const cleaned = str.trim();
   if (!cleaned) return null;
-  return cleaned
-    .toLowerCase()
-    .split(/\s+/)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(" ");
+
+  // Handle names with various separators (space, hyphen, apostrophe, comma, period)
+  // Split on separators while preserving them
+  const parts = cleaned.toLowerCase().split(/(?=[\ \-',.])/).filter(Boolean);
+
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (/^[\ \-',.]/.test(part)) {
+      // This part starts with a separator
+      const separator = part[0];
+      const rest = part.slice(1);
+      result += separator;
+      if (rest.length > 0) {
+        result += rest.charAt(0).toUpperCase() + rest.slice(1);
+      }
+    } else {
+      // No separator at start
+      result += part.charAt(0).toUpperCase() + part.slice(1);
+    }
+  }
+
+  return result;
 }
 
 function validatePersonName(name) {
@@ -28,9 +46,11 @@ function validatePersonName(name) {
   // Remove any leading/trailing special characters that might have been left
   const cleaned = trimmed.replace(/^[^A-Za-z]+|[^A-Za-z\s\-',.]+$/g, '').trim();
   if (!cleaned) return null;
-  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
-  // Must start with uppercase letter, then can have uppercase/lowercase letters, spaces, hyphens, apostrophes, commas, or periods
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Pattern from Elephant schema: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // Must be in proper title case:
+  // - Start with uppercase letter followed by lowercase letters
+  // - Then optionally: separator + one letter (any case) + lowercase letters
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   if (!pattern.test(cleaned)) {
     return null;
   }
