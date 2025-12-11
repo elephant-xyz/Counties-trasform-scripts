@@ -2483,11 +2483,11 @@ function findCompanyIndexByName(name) {
 }
 
 function titleCaseName(s) {
-  if (!s) return s;
+  if (!s) return null;
 
   // Trim leading/trailing whitespace and remove leading/trailing delimiters
   s = s.trim().replace(/^[\s\-',.]+|[\s\-',.]+$/g, '');
-  if (!s) return s;
+  if (!s) return null;
 
   // Normalize consecutive delimiters (e.g., ". " or ", ") to single space
   // This ensures names like "St. James" become "St James" to match the pattern
@@ -2502,10 +2502,19 @@ function titleCaseName(s) {
     });
 
   // Capitalize first letter and any letter after a delimiter
-  return normalized
+  const result = normalized
     .replace(/(^|[\s\-'.])([a-z])/g, (match, delimiter, letter) => {
       return delimiter + letter.toUpperCase();
     });
+
+  // Validate the result matches the expected pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!result || !namePattern.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 function writeJSON(p, obj) {
@@ -3139,19 +3148,21 @@ function main() {
             }
           });
         });
-        people = Array.from(personMap.values()).map((p) => ({
-          first_name: p.first_name ? titleCaseName(p.first_name) : null,
-          middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-          last_name: p.last_name ? titleCaseName(p.last_name) : null,
-          birth_date: null,
-          prefix_name: null,
-          suffix_name: null,
-          us_citizenship_status: null,
-          veteran_status: null,
-          request_identifier: parcel.parcel_identifier,
-        }));
+        people = Array.from(personMap.values())
+          .map((p) => ({
+            first_name: p.first_name ? titleCaseName(p.first_name) : null,
+            middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+            last_name: p.last_name ? titleCaseName(p.last_name) : null,
+            birth_date: null,
+            prefix_name: null,
+            suffix_name: null,
+            us_citizenship_status: null,
+            veteran_status: null,
+            request_identifier: parcel.parcel_identifier,
+          }))
+          .filter((p) => p.first_name && p.last_name); // Only include persons with valid first and last names
         people.forEach((p, idx) => {
-          
+
         });
         let loopIdx = 1;
         for (const p of people) {
