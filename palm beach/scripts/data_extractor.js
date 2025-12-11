@@ -2235,16 +2235,17 @@ function main() {
       // Extract company index from path like "./company_1.json"
       const companyMatch = companyPath.match(/company_(\d+)\.json/);
       if (companyMatch) {
-        usedCompanyIndices.add(parseInt(companyMatch[1], 10));
+        const companyIdx = companyMatch[1];
+        usedCompanyIndices.add(parseInt(companyIdx, 10));
+        const rel = {
+          to: { "/": companyPath },
+          from: { "/": `./sales_${idx + 1}.json` },
+        };
+        writeJSON(
+          path.join("data", `relationship_sales_${idx + 1}_company_${companyIdx}.json`),
+          rel,
+        );
       }
-      const rel = {
-        to: { "/": companyPath },
-        from: { "/": `./sales_${idx + 1}.json` },
-      };
-      writeJSON(
-        path.join("data", `relationship_sales_company_${idx + 1}.json`),
-        rel,
-      );
     } else {
       // try direct or swapped person match
       let toPath = null;
@@ -2264,16 +2265,17 @@ function main() {
         // Extract person index from path like "./person_1.json"
         const personMatch = toPath.match(/person_(\d+)\.json/);
         if (personMatch) {
-          usedPersonIndices.add(parseInt(personMatch[1], 10));
+          const personIdx = personMatch[1];
+          usedPersonIndices.add(parseInt(personIdx, 10));
+          const rel = {
+            to: { "/": toPath },
+            from: { "/": `./sales_${idx + 1}.json` },
+          };
+          writeJSON(
+            path.join("data", `relationship_sales_${idx + 1}_person_${personIdx}.json`),
+            rel,
+          );
         }
-        const rel = {
-          to: { "/": toPath },
-          from: { "/": `./sales_${idx + 1}.json` },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_person_${idx + 1}.json`),
-          rel,
-        );
       }
     }
   });
