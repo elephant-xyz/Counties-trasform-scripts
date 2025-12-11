@@ -1269,7 +1269,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   } catch (e) {}
 
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only include persons who are grantees (buyers) or current owners, not just grantors
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date entries as these are grantors who never became grantees
+    if (dateKey.startsWith("unknown_date")) {
+      return;
+    }
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1302,7 +1307,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  // Only include companies who are grantees (buyers) or current owners, not just grantors
+  Object.entries(ownersByDate).forEach(([dateKey, arr]) => {
+    // Skip unknown_date entries as these are grantors who never became grantees
+    if (dateKey.startsWith("unknown_date")) {
+      return;
+    }
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim().toUpperCase());
