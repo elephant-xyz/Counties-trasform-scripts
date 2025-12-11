@@ -2651,19 +2651,26 @@ function pruneRawVariantToSchemaSurface(address) {
     address.longitude = null;
   }
 
-  if (!hasMeaningfulAddressValue(address.postal_code)) {
-    address.plus_four_postal_code = null;
+  if (RAW_VARIANT_SCHEMA_FIELD_SET.has("postal_code")) {
+    if (!hasMeaningfulAddressValue(address.postal_code)) {
+      address.plus_four_postal_code = null;
+    }
   }
 
-  if (hasMeaningfulAddressValue(address.state_code)) {
-    if (!hasMeaningfulAddressValue(address.country_code)) {
-      address.country_code = "US";
-    }
-  } else if (
-    Object.prototype.hasOwnProperty.call(address, "country_code") &&
-    !hasMeaningfulAddressValue(address.country_code)
+  if (
+    RAW_VARIANT_SCHEMA_FIELD_SET.has("state_code") ||
+    RAW_VARIANT_SCHEMA_FIELD_SET.has("country_code")
   ) {
-    address.country_code = null;
+    if (hasMeaningfulAddressValue(address.state_code)) {
+      if (!hasMeaningfulAddressValue(address.country_code)) {
+        address.country_code = "US";
+      }
+    } else if (
+      Object.prototype.hasOwnProperty.call(address, "country_code") &&
+      !hasMeaningfulAddressValue(address.country_code)
+    ) {
+      address.country_code = null;
+    }
   }
 
   const requestIdentifier = safeNullIfEmpty(address.request_identifier);
@@ -4706,6 +4713,74 @@ function enforceFinalAddressVariant(addressFilePath, options = {}) {
   writeJSON(addressFilePath, payload);
 }
 
+function pruneAddressToRawAllowedFields(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedProbe = { ...payload };
+  if (hasCompleteNormalizedAddress(normalizedProbe)) {
+    return;
+  }
+
+  const rawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  if (!rawValue.length) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const cleaned = {};
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      cleaned[field] = rawValue;
+      return;
+    }
+
+    let value = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      cleaned[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(value);
+      cleaned[field] = prepared ? deepClone(prepared) : null;
+      return;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      cleaned[field] = trimmed.length ? trimmed : null;
+      return;
+    }
+
+    cleaned[field] = value === undefined ? null : value;
+  });
+
+  if ((cleaned.latitude == null) !== (cleaned.longitude == null)) {
+    cleaned.latitude = null;
+    cleaned.longitude = null;
+  }
+
+  originalWriteFileSync(
+    addressPath,
+    `${JSON.stringify(cleaned, null, 2)}\n`,
+  );
+}
+
 function enforceAddressOneOfStrictCompliance(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -6417,9 +6492,15 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch aligned with the schema oneOf while prioritizing the
-// unnormalized branch when that is all we have from the source.
-const RAW_MINIMAL_ADDRESS_FIELDS = ["unnormalized_address", ...NORMALIZED_ADDRESS_FIELDS];
+// Keep the raw branch minimal so the oneOf selects it when only an
+// unnormalized string is available from the source.
+const RAW_MINIMAL_ADDRESS_FIELDS = [
+  "unnormalized_address",
+  "latitude",
+  "longitude",
+  "request_identifier",
+  "source_http_request",
+];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -6439,11 +6520,8 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set(
   ),
 );
 
-// Fields that may accompany the raw (unnormalized) address payload; keep this
-// minimal so the raw oneOf branch is clearly selected when only an
-// unnormalized string is available.
-// Allow raw addresses to carry the normalized field surface so the raw oneOf
-// branch still validates when only an unnormalized string is present.
+// Fields that may accompany the raw (unnormalized) address payload; intentionally
+// excludes normalized components so the raw oneOf branch stays valid.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([...RAW_ADDRESS_NORMALIZED_ONLY_FIELDS]);
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(new Set(RAW_MINIMAL_ADDRESS_FIELDS));
@@ -11856,6 +11934,7 @@ process.on("exit", () => {
       seedSource,
       unnormalizedSource,
     );
+    pruneAddressToRawAllowedFields(addressPath);
 
     enforcePropertyRelationshipNulls(propertyPath);
     [dataDir, relationshipsDir].forEach((dirPath) => {
@@ -13445,27 +13524,7 @@ function enforceCountyAddressSchemaRequirements(
     return;
   }
 
-  const rawSchemaFields = [
-    "block",
-    "city_name",
-    "country_code",
-    "county_name",
-    "latitude",
-    "longitude",
-    "lot",
-    "municipality_name",
-    "plus_four_postal_code",
-    "postal_code",
-    "range",
-    "request_identifier",
-    "route_number",
-    "section",
-    "source_http_request",
-    "state_code",
-    "township",
-    "unit_identifier",
-    "unnormalized_address",
-  ];
+  const rawSchemaFields = [...RAW_ADDRESS_ALLOWED_FIELDS];
   const structuredSchemaFields = [
     "block",
     "city_name",
@@ -13568,7 +13627,7 @@ function enforceCountyAddressSchemaRequirements(
 
   const requiredFields =
     variant === "raw"
-      ? ["source_http_request", "request_identifier", "latitude", "longitude", "unnormalized_address"]
+      ? [...RAW_ADDRESS_ALLOWED_FIELDS]
       : [
           "source_http_request",
           "request_identifier",
@@ -16227,6 +16286,7 @@ async function main() {
       seedSource,
       unnormalizedSource,
     );
+    pruneAddressToRawAllowedFields(addressOutputPath);
     enforcePropertyRelationshipNulls(propertyFilePath);
     [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
       removeAddressRelationshipFiles(dirPath);
