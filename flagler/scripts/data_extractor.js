@@ -452,16 +452,13 @@ function titleCase(str) {
 }
 
 const COMPANY_KEYWORDS =
-  /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate|business\b)(\b|\s)/i;
+  /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate)(\b|\s)/i;
 const SUFFIXES_IGNORE =
   /^(jr|sr|ii|iii|iv|v|vi|vii|viii|ix|x|md|phd|esq|esquire)$/i;
 
 function isCompanyName(txt) {
   if (!txt) return false;
   if (COMPANY_KEYWORDS.test(txt)) return true;
-
-  // Check for possessive forms ending in 'S (company names like "Joe's Pizza", "P J Haley's")
-  if (/'s\s*$/i.test(txt.trim())) return true;
 
   // Check for abbreviated company codes like "SFR JV-2", "ABC-123", etc.
   // Pattern: short uppercase abbreviation followed by alphanumeric codes
@@ -525,12 +522,6 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
 
   // Don't create person if essential name parts are empty after cleaning
   if (!first || !last) return null;
-
-  // Filter out placeholder names like "Unknown Seller", "Seller Unknown", etc.
-  const placeholderWords = /^(unknown|seller|buyer|owner|grantor|grantee|n\/?a|none|various)$/i;
-  if (placeholderWords.test(first) || placeholderWords.test(last)) {
-    return null;
-  }
 
   return {
     type: "person",
