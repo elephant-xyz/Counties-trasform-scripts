@@ -1699,10 +1699,30 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const sourceHttpRequest = (propertySeed && propertySeed.source_http_request) || null;
 
   const owners = readJSON(path.join("owners", "owner_data.json"));
-  if (!owners) return;
+  if (!owners) {
+    // If no owners exist, remove mailing_address.json since no relationships can be created
+    if (hasOwnerMailingAddress) {
+      try {
+        fs.unlinkSync(path.join("data", "mailing_address.json"));
+      } catch (e) {
+        // File might not exist, ignore
+      }
+    }
+    return;
+  }
   const key = `property_${parcelId}`;
   const record = owners[key];
-  if (!record || !record.owners_by_date) return;
+  if (!record || !record.owners_by_date) {
+    // If no owner record exists for this property, remove mailing_address.json since no relationships can be created
+    if (hasOwnerMailingAddress) {
+      try {
+        fs.unlinkSync(path.join("data", "mailing_address.json"));
+      } catch (e) {
+        // File might not exist, ignore
+      }
+    }
+    return;
+  }
   const ownersByDate = record.owners_by_date;
   const personMap = new Map();
   Object.values(ownersByDate).forEach((arr) => {
