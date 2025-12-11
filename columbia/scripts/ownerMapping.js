@@ -106,7 +106,7 @@ function formatNameToPattern(name) {
   const parts = cleaned.split(/([ \-',.])/);
 
   // Filter out empty strings and format each part
-  return parts
+  const formatted = parts
     .map((part) => {
       if (!part) return "";
       if (part.match(/[ \-',.]/)) return part;
@@ -114,6 +114,25 @@ function formatNameToPattern(name) {
     })
     .filter(Boolean)
     .join("");
+
+  // Trim the result to remove any leading/trailing whitespace
+  let result = formatted.trim();
+
+  // Remove leading non-letter characters to ensure pattern compliance
+  // Pattern requires: ^[A-Z][a-zA-Z\s\-',.]*$
+  result = result.replace(/^[^A-Za-z]+/, "");
+
+  // Ensure first character is uppercase
+  if (result && result.length > 0) {
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+  }
+
+  // Return null if result is empty or doesn't match the required pattern
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 function mapPrefixName(token) {
