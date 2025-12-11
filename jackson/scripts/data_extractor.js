@@ -1254,8 +1254,9 @@ let people = [];
 let companies = [];
 
 function findPersonIndexByName(first, last) {
-  const tf = titleCaseName(first);
-  const tl = titleCaseName(last);
+  const tf = formatNameForSchema(first);
+  const tl = formatNameForSchema(last);
+  if (!tf || !tl) return null;
   for (let i = 0; i < people.length; i++) {
     if (people[i].first_name === tf && people[i].last_name === tl)
       return i + 1;
