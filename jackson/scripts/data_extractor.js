@@ -1435,6 +1435,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   // Create sales relationships
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
+  const usedCompanyIdx = new Set();
   sales.forEach((rec, idx) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
@@ -1462,6 +1463,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       .forEach((o) => {
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
+          usedCompanyIdx.add(cIdx);
           relCompanyCounter++;
           writeJSON(
             path.join(
@@ -1498,6 +1500,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       } else if (owner.type === "company") {
         const cIdx = findCompanyIndexByName(owner.name);
         if (cIdx) {
+          usedCompanyIdx.add(cIdx);
           mailingRelCounter++;
           writeJSON(
             path.join("data", `relationship_company_has_mailing_address_${mailingRelCounter}.json`),
@@ -1511,8 +1514,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     });
   }
 
-  // Remove unused person files (companies are now only created if used)
-  removeUnusedOwnerFiles(usedPersonIdx, new Set());
+  // Remove unused person and company files
+  removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx);
 }
 
 function writeTaxes($, parcelId) {
