@@ -6416,27 +6416,7 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 // Keep the raw branch aligned with the schema oneOf while prioritizing the
 // unnormalized branch when that is all we have from the source.
-const RAW_MINIMAL_ADDRESS_FIELDS = [
-  "unnormalized_address",
-  "latitude",
-  "longitude",
-  "township",
-  "range",
-  "section",
-  "block",
-  "lot",
-  "city_name",
-  "country_code",
-  "plus_four_postal_code",
-  "postal_code",
-  "state_code",
-  "route_number",
-  "county_name",
-  "municipality_name",
-  "unit_identifier",
-  "request_identifier",
-  "source_http_request",
-];
+const RAW_MINIMAL_ADDRESS_FIELDS = ["unnormalized_address", ...NORMALIZED_ADDRESS_FIELDS];
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
@@ -6459,6 +6439,8 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set(
 // Fields that may accompany the raw (unnormalized) address payload; keep this
 // minimal so the raw oneOf branch is clearly selected when only an
 // unnormalized string is available.
+// Allow raw addresses to carry the normalized field surface so the raw oneOf
+// branch still validates when only an unnormalized string is present.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set([...RAW_ADDRESS_NORMALIZED_ONLY_FIELDS]);
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(new Set(RAW_MINIMAL_ADDRESS_FIELDS));
@@ -10364,8 +10346,7 @@ function enforceAddressVariantFieldSurface(addressFilePath) {
     },
   );
 
-  const variant =
-    hasNormalizedCoverage || !hasUnnormalized ? "normalized" : "raw";
+  const variant = hasUnnormalized ? "raw" : "normalized";
 
   const targetFields =
     variant === "raw" ? RAW_ADDRESS_OUTPUT_FIELDS : NORMALIZED_ADDRESS_FIELDS;
@@ -13507,7 +13488,15 @@ function enforceCountyAddressSchemaRequirements(
     hasMeaningfulAddressValue(existing.state_code) &&
     hasMeaningfulAddressValue(existing.postal_code);
 
-  const variant = hasStructuredCoverage ? "normalized" : "raw";
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existing.unnormalized_address,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+    ]),
+  );
+
+  const variant = rawValue ? "raw" : hasStructuredCoverage ? "normalized" : "raw";
   const fieldList = variant === "raw" ? rawSchemaFields : structuredSchemaFields;
   const baseTemplate = fieldList.reduce((acc, field) => {
     acc[field] = null;
@@ -13523,13 +13512,6 @@ function enforceCountyAddressSchemaRequirements(
   });
 
   if (variant === "raw") {
-    const rawValue = safeNullIfEmpty(
-      resolveFirstNonEmptyString([
-        existing.unnormalized_address,
-        unnormalizedSource.unnormalized_address,
-        unnormalizedSource.full_address,
-      ]),
-    );
     if (!rawValue) {
       removeFileIfExists(addressPath);
       return;
