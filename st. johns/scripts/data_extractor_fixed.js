@@ -1724,45 +1724,46 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     return;
   }
   const ownersByDate = record.owners_by_date;
-  const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "person") {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personMap.has(k))
-          personMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name,
-            last_name: o.last_name,
-          });
-        else {
-          const existing = personMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
-        }
-      }
-    });
-  });
-  people = Array.from(personMap.values()).map((p) => {
-    const person = {
-      first_name: p.first_name ? titleCaseName(p.first_name) : null,
-      middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
-      last_name: p.last_name ? titleCaseName(p.last_name) : null,
-      birth_date: null,
-      prefix_name: null,
-      suffix_name: null,
-      us_citizenship_status: null,
-      veteran_status: null,
-      request_identifier: parcelId,
-    };
-    if (sourceHttpRequest) {
-      person.source_http_request = sourceHttpRequest;
-    }
-    return person;
-  });
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
+  // NOTE: Person generation disabled - person class is not part of Sales_History data group
+  // const personMap = new Map();
+  // Object.values(ownersByDate).forEach((arr) => {
+  //   (arr || []).forEach((o) => {
+  //     if (o.type === "person") {
+  //       const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
+  //       if (!personMap.has(k))
+  //         personMap.set(k, {
+  //           first_name: o.first_name,
+  //           middle_name: o.middle_name,
+  //           last_name: o.last_name,
+  //         });
+  //       else {
+  //         const existing = personMap.get(k);
+  //         if (!existing.middle_name && o.middle_name)
+  //           existing.middle_name = o.middle_name;
+  //       }
+  //     }
+  //   });
+  // });
+  // people = Array.from(personMap.values()).map((p) => {
+  //   const person = {
+  //     first_name: p.first_name ? titleCaseName(p.first_name) : null,
+  //     middle_name: p.middle_name ? titleCaseName(p.middle_name) : null,
+  //     last_name: p.last_name ? titleCaseName(p.last_name) : null,
+  //     birth_date: null,
+  //     prefix_name: null,
+  //     suffix_name: null,
+  //     us_citizenship_status: null,
+  //     veteran_status: null,
+  //     request_identifier: parcelId,
+  //   };
+  //   if (sourceHttpRequest) {
+  //     person.source_http_request = sourceHttpRequest;
+  //   }
+  //   return person;
+  // });
+  // people.forEach((p, idx) => {
+  //   writeJSON(path.join("data", `person_${idx + 1}.json`), p);
+  // });
   const companyNames = new Set();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
@@ -1791,35 +1792,37 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     writeJSON(path.join("data", `company_${idx + 1}.json`), c);
   });
 
-  // Track which persons and companies are actually used in relationships
-  const usedPersonIdx = new Set();
+  // Track which companies are actually used in relationships
+  // NOTE: Person relationships disabled - person class not in data group
+  // const usedPersonIdx = new Set();
   const usedCompanyIdx = new Set();
 
-  // Relationships: link sale to owners present on that date (both persons and companies)
-  let relPersonCounter = 0;
+  // Relationships: link sale to owners present on that date (companies only - person class not in data group)
+  // let relPersonCounter = 0;
   let relCompanyCounter = 0;
   sales.forEach((rec, idx) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
-    ownersOnDate
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-        if (pIdx) {
-          usedPersonIdx.add(pIdx);
-          relPersonCounter++;
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_history_${idx + 1}_has_person_${relPersonCounter}.json`,
-            ),
-            {
-              to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_history_${idx + 1}.json` },
-            },
-          );
-        }
-      });
+    // NOTE: Person relationships disabled - person class not in data group
+    // ownersOnDate
+    //   .filter((o) => o.type === "person")
+    //   .forEach((o) => {
+    //     const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+    //     if (pIdx) {
+    //       usedPersonIdx.add(pIdx);
+    //       relPersonCounter++;
+    //       writeJSON(
+    //         path.join(
+    //           "data",
+    //           `relationship_sales_history_${idx + 1}_has_person_${relPersonCounter}.json`,
+    //         ),
+    //         {
+    //           to: { "/": `./person_${pIdx}.json` },
+    //           from: { "/": `./sales_history_${idx + 1}.json` },
+    //         },
+    //       );
+    //     }
+    //   });
     ownersOnDate
       .filter((o) => o.type === "company")
       .forEach((o) => {
@@ -1866,26 +1869,27 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     const currentOwner = ownersByDate["current"] || [];
     const mostRecentSaleIdx = sales.length;
 
-    currentOwner
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-        // Only connect if this person isn't already connected to any sale
-        if (pIdx && !usedPersonIdx.has(pIdx)) {
-          usedPersonIdx.add(pIdx);
-          relPersonCounter++;
-          writeJSON(
-            path.join(
-              "data",
-              `relationship_sales_history_${mostRecentSaleIdx}_has_person_${relPersonCounter}.json`,
-            ),
-            {
-              to: { "/": `./person_${pIdx}.json` },
-              from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
-            },
-          );
-        }
-      });
+    // NOTE: Person relationships disabled - person class not in data group
+    // currentOwner
+    //   .filter((o) => o.type === "person")
+    //   .forEach((o) => {
+    //     const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+    //     // Only connect if this person isn't already connected to any sale
+    //     if (pIdx && !usedPersonIdx.has(pIdx)) {
+    //       usedPersonIdx.add(pIdx);
+    //       relPersonCounter++;
+    //       writeJSON(
+    //         path.join(
+    //           "data",
+    //           `relationship_sales_history_${mostRecentSaleIdx}_has_person_${relPersonCounter}.json`,
+    //         ),
+    //         {
+    //           to: { "/": `./person_${pIdx}.json` },
+    //           from: { "/": `./sales_history_${mostRecentSaleIdx}.json` },
+    //         },
+    //       );
+    //     }
+    //   });
 
     currentOwner
       .filter((o) => o.type === "company")
@@ -1911,27 +1915,28 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
 
   if (hasOwnerMailingAddress) {
     const currentOwner = ownersByDate["current"] || [];
-    let relPersonMailingCounter = 0;
+    // NOTE: Person mailing address relationships disabled - person class not in data group
+    // let relPersonMailingCounter = 0;
     let relCompanyMailingCounter = 0;
-    currentOwner
-    .filter((o) => o.type === "person")
-    .forEach((o) => {
-      const pIdx = findPersonIndexByName(o.first_name, o.last_name);
-      if (pIdx) {
-        usedPersonIdx.add(pIdx);
-        relPersonMailingCounter++;
-        writeJSON(
-          path.join(
-            "data",
-            `relationship_person_has_mailing_address_${relPersonMailingCounter}.json`,
-          ),
-          {
-            from: { "/": `./person_${pIdx}.json` },
-            to: { "/": `./mailing_address.json` },
-          },
-        );
-      }
-    });
+    // currentOwner
+    // .filter((o) => o.type === "person")
+    // .forEach((o) => {
+    //   const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+    //   if (pIdx) {
+    //     usedPersonIdx.add(pIdx);
+    //     relPersonMailingCounter++;
+    //     writeJSON(
+    //       path.join(
+    //         "data",
+    //         `relationship_person_has_mailing_address_${relPersonMailingCounter}.json`,
+    //       ),
+    //       {
+    //         from: { "/": `./person_${pIdx}.json` },
+    //         to: { "/": `./mailing_address.json` },
+    //       },
+    //     );
+    //   }
+    // });
     currentOwner
     .filter((o) => o.type === "company")
     .forEach((o) => {
@@ -1953,7 +1958,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     });
 
     // Remove mailing_address.json if no relationships were created
-    if (relPersonMailingCounter === 0 && relCompanyMailingCounter === 0) {
+    if (relCompanyMailingCounter === 0) { // relPersonMailingCounter check removed - person disabled
       try {
         fs.unlinkSync(path.join("data", "mailing_address.json"));
       } catch (e) {
@@ -1962,17 +1967,18 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     }
   }
 
-  // Remove unused person and company files
-  people.forEach((p, idx) => {
-    const personIdx = idx + 1;
-    if (!usedPersonIdx.has(personIdx)) {
-      try {
-        fs.unlinkSync(path.join("data", `person_${personIdx}.json`));
-      } catch (e) {
-        // File might not exist, ignore
-      }
-    }
-  });
+  // NOTE: Person cleanup disabled - person class not in data group
+  // Remove unused company files
+  // people.forEach((p, idx) => {
+  //   const personIdx = idx + 1;
+  //   if (!usedPersonIdx.has(personIdx)) {
+  //     try {
+  //       fs.unlinkSync(path.join("data", `person_${personIdx}.json`));
+  //     } catch (e) {
+  //       // File might not exist, ignore
+  //     }
+  //   }
+  // });
 
   companies.forEach((c, idx) => {
     const companyIdx = idx + 1;
