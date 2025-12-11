@@ -1545,8 +1545,11 @@ function validateSuffix(suffix) {
 
 function parsePerson(name) {
   if (!name) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-  
-  let tokens = name.trim().split(/\s+/).filter(Boolean);
+
+  const originalName = name.trim();
+  const isAllUppercase = originalName === originalName.toUpperCase() && /[A-Z]/.test(originalName);
+
+  let tokens = originalName.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
 
   // Extract prefix
@@ -1574,36 +1577,61 @@ function parsePerson(name) {
 
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix, suffix };
 
-  const firstName = tokens[0];
-  const lastName = tokens[tokens.length - 1];
-  const middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+  let firstName, lastName, middleName;
+
+  if (isAllUppercase) {
+    // All uppercase names are assumed to be in "LAST FIRST [MIDDLE]" format
+    lastName = tokens[0];
+    firstName = tokens[1];
+    middleName = tokens.length > 2 ? tokens.slice(2).join(" ") : null;
+  } else {
+    // Mixed case names are assumed to be in "FIRST [MIDDLE] LAST" format
+    firstName = tokens[0];
+    lastName = tokens[tokens.length - 1];
+    middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+  }
 
   return { firstName, lastName, middleName, prefix, suffix };
 }
 
 function extractOwnerInfo(ownershipHtml) {
   if (!ownershipHtml) return [];
-  
+
   // Remove content within <p></p> tags (addresses)
   const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-  
+
   // Split by <br> tags to get individual owner lines
   const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
     .map(line => line.replace(/<[^>]*>/g, '').trim())
     .filter(line => line.length > 0);
-  
+
   const owners = [];
   const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
-  
+
   for (const line of ownerLines) {
     let cleanName = line.trim();
     if (cleanName && cleanName.length > 2) {
       // Decode HTML entities like &amp; to &
       cleanName = cleanName.replace(/&amp;/g, '&');
-      
+
+      // Remove legal designations that are not part of the person's name
+      // L/E = Life Estate, JT/RS = Joint Tenants with Right of Survivorship, etc.
+      cleanName = cleanName
+        .replace(/\s+L\/E\s*$/i, '') // Remove Life Estate at end
+        .replace(/\s+JT\/RS\s*$/i, '') // Remove Joint Tenants with Right of Survivorship
+        .replace(/\s+JTWROS\s*$/i, '') // Remove Joint Tenants with Right of Survivorship
+        .replace(/\s+JT\s+W\/RS\s*$/i, '')
+        .replace(/\s+TENANTS?\s+IN\s+COMMON\s*$/i, '') // Remove Tenants in Common
+        .replace(/\s+TIC\s*$/i, '')
+        .replace(/\s+ET\s+AL\.?\s*$/i, '') // Remove Et Al
+        .replace(/\s+TTEE\s*$/i, '') // Remove Trustee abbreviation
+        .replace(/\s+AS\s+TRUSTEE.*$/i, '') // Remove "AS TRUSTEE" and anything after
+        .replace(/\s+CUSTODIAN.*$/i, '') // Remove "CUSTODIAN" and anything after
+        .trim();
+
       // Split by & to handle multiple owners on same line
       const namesParts = cleanName.split(/\s*&\s*/);
-      
+
       for (const namePart of namesParts) {
         const trimmedName = namePart.trim();
         if (trimmedName && trimmedName.length > 2) {
@@ -1613,7 +1641,7 @@ function extractOwnerInfo(ownershipHtml) {
       }
     }
   }
-  
+
   return owners;
 }
 
