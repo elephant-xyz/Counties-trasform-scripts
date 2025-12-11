@@ -1668,10 +1668,15 @@ function findPersonIndexByName(first, last) {
   return null;
 }
 
+function normalizeCompanyName(name) {
+  // Normalize by trimming, uppercasing, and collapsing multiple spaces to single space
+  return (name || "").trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
 function findCompanyIndexByName(name) {
-  const tn = (name || "").trim().toUpperCase();
+  const tn = normalizeCompanyName(name);
   for (let i = 0; i < companies.length; i++) {
-    if ((companies[i].name || "").trim() === tn) return i + 1;
+    if (normalizeCompanyName(companies[i].name) === tn) return i + 1;
   }
   return null;
 }
