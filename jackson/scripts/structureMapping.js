@@ -346,7 +346,16 @@ function buildStructureFromBuilding(building, parcelId, buildingNumber, structur
     const secondaryTokens = intWallTokens.slice(1);
     const secondaryMaterials = mapInteriorSurfaceSecondary(secondaryTokens);
     if (secondaryMaterials.length > 0) {
-      structure.interior_wall_surface_material_secondary = secondaryMaterials[0];
+      // Validate that the value is in the allowed enum list for secondary
+      const validSecondaryValues = [
+        "Wainscoting", "Chair Rail", "Crown Molding", "Baseboards", "Wood Trim",
+        "Stone Accent", "Tile Accent", "Metal Accent", "Glass Insert",
+        "Decorative Panels", "Feature Wall Material"
+      ];
+      const value = secondaryMaterials[0];
+      if (validSecondaryValues.includes(value)) {
+        structure.interior_wall_surface_material_secondary = value;
+      }
     }
   }
 

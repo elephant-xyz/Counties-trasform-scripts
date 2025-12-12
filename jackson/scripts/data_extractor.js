@@ -1805,6 +1805,15 @@ function createStructureFiles(seed,parcelIdentifier) {
     const buildingLayouts = layouts.filter(layout => layout.space_type === "Building");
 
     structures.forEach((struct, idx) => {
+      // Validate interior_wall_surface_material_secondary against allowed enum values
+      const validSecondaryValues = [
+        "Wainscoting", "Chair Rail", "Crown Molding", "Baseboards", "Wood Trim",
+        "Stone Accent", "Tile Accent", "Metal Accent", "Glass Insert",
+        "Decorative Panels", "Feature Wall Material"
+      ];
+      const secondaryValue = struct?.interior_wall_surface_material_secondary ?? null;
+      const validatedSecondary = (secondaryValue && validSecondaryValues.includes(secondaryValue)) ? secondaryValue : null;
+
       const structureOut = {
         ...appendSourceInfo(seed),
         architectural_style_type: struct?.architectural_style_type ?? null,
@@ -1819,7 +1828,7 @@ function createStructureFiles(seed,parcelIdentifier) {
         flooring_condition: struct?.flooring_condition ?? null,
         interior_wall_structure_material: struct?.interior_wall_structure_material ?? null,
         interior_wall_surface_material_primary: struct?.interior_wall_surface_material_primary ?? null,
-        interior_wall_surface_material_secondary: struct?.interior_wall_surface_material_secondary ?? null,
+        interior_wall_surface_material_secondary: validatedSecondary,
         interior_wall_finish_primary: struct?.interior_wall_finish_primary ?? null,
         interior_wall_finish_secondary: struct?.interior_wall_finish_secondary ?? null,
         interior_wall_condition: struct?.interior_wall_condition ?? null,
