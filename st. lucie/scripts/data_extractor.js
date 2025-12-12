@@ -1480,135 +1480,16 @@ async function main() {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
     county_name:"St. Lucie",
-    latitude: unnormalizedAddressData ? unnormalizedAddressData.latitude ?? null : null,
-    longitude: unnormalizedAddressData ? unnormalizedAddressData.longitude ?? null : null,
-    // Initialize all structured fields to null as per schema
-    city_name: null,
-    country_code: null,
-    postal_code: null,
-    plus_four_postal_code: null,
-    state_code: null,
-    street_number: null,
-    street_name: null,
-    street_post_directional_text: null,
-    street_pre_directional_text: null,
-    street_suffix_type: null,
-    unit_identifier: null,
-    route_number: null,
-    township: null, // Now correctly referenced
-    range: null,    // Now correctly referenced
-    section: null,  // Now correctly referenced
-    block: null,
+    country_code: "US",
   };
 
   if (siteAddress && siteAddress.toLowerCase() !== "tbd") {
-    // Use unnormalizedAddressData.full_address for city, state, zip if available,
-    // otherwise try to parse from siteAddress.
-    let cityStateZipPart = null;
-    if (unnormalizedAddressData && unnormalizedAddressData.full_address) {
-      const parts = unnormalizedAddressData.full_address.split(',');
-      if (parts.length > 1) {
-        cityStateZipPart = parts.slice(1).join(',').trim();
-      }
-    } else {
-      const parts = siteAddress.split(',');
-      if (parts.length > 1) {
-        cityStateZipPart = parts.slice(1).join(',').trim();
-      }
-    }
-
-    let streetNumber = null;
-    let streetPreDirectionalText = null;
-    let streetName = null;
-    let streetSuffixType = null;
-    let streetPostDirectionalText = null;
-    let city_name = null;
-    let state_code = null;
-    let postal_code = null;
-    let plus_four_postal_code = null;
-
-    // Parse street number, pre-directional, street name, post-directional, suffix from siteAddress
-    // Example: "1133 SW INGRASSINA AVE"
-    const streetPartMatch = siteAddress.match(/^(\d+)\s+((?:N|S|E|W|NE|NW|SE|SW)\s+)?(.+?)(?:\s+([A-Z]{2,}))?$/i);
-
-    if (streetPartMatch) {
-      streetNumber = streetPartMatch[1];
-      streetPreDirectionalText = streetPartMatch[2] ? streetPartMatch[2].trim().toUpperCase() : null;
-      let tempStreetName = streetPartMatch[3].trim();
-      let potentialSuffixOrPostDirectional = streetPartMatch[4] ? streetPartMatch[4].toUpperCase() : null;
-
-      // Common street suffix types (can be expanded)
-      const suffixMap = {
-        "ST": "St", "AVE": "Ave", "RD": "Rd", "DR": "Dr", "BLVD": "Blvd",
-        "LN": "Ln", "CT": "Ct", "CIR": "Cir", "PL": "Pl", "WAY": "Way",
-        "TER": "Ter", "PKWY": "Pkwy", "HWY": "Hwy", "SQ": "Sq", "TRL": "Trl",
-        "ALY": "Aly", "CV": "Cv", "EXPY": "Expy", "FRY": "Fry", "JCT": "Jct",
-        "MTN": "Mtn", "OVAL": "Oval", "PASS": "Pass", "PIKE": "Pike",
-        "PLZ": "Plz", "PT": "Pt", "RMP": "Ramp", "RDG": "Rdg", "RIV": "Riv",
-        "ROW": "Row", "RTE": "Rte", "SHR": "Shr", "SPG": "Spg", "SPUR": "Spur",
-        "UN": "Un", "VIS": "Vis", "VW": "Vw", "XING": "Xing", "EXT": "Ext",
-        "GLN": "Gln", "GRN": "Grn", "HTS": "Hts", "IS": "Is", "LNDG": "Lndg",
-        "LGT": "Lgt", "LCK": "Lck", "MDW": "Mdw", "MNR": "Mnr", "PR": "Pr",
-        "TRCE": "Trce", "VLG": "Vlg", "WLS": "Wls", "WALK": "Walk", "COR": "Cor",
-        "FRK": "Frk", "FRD": "Frd", "BRG": "Brg", "BRK": "Brk", "CLF": "Clf",
-        "CYN": "Cyn", "DL": "Dl", "DM": "Dm", "FLT": "Flt", "FLD": "Fld",
-        "FRST": "Frst", "GRV": "Grv", "HBR": "Hbr", "HL": "Hl", "HVN": "Hvn",
-        "INLT": "Inlt", "KY": "Ky", "LF": "Lf", "LOOP": "Loop", "MALL": "Mall",
-        "ML": "Ml", "NCK": "Nck", "ORCH": "Orch", "PSGE": "Psge", "RADL": "Radl",
-        "RPD": "Rpd", "RST": "Rst", "SHL": "Shl", "SKWY": "Skwy", "SMT": "Smt",
-        "STRA": "Stra", "STRM": "Strm", "TRFY": "Trfy", "TUNL": "Tunl",
-        "VLY": "Vly", "WALL": "Wall", "BYU": "Byu", "CPE": "Cpe", "CRK": "Crk",
-        "CRSE": "Crse", "CRST": "Crst", "DV": "Dv", "FALL": "Fall", "FT": "Ft",
-        "GTWY": "Gtwy", "LKS": "Lks", "LODG": "Ldg", "MWS": "Mews", "OPAS": "Opas",
-        "UPAS": "Upas", "PNE": "Pne", "RUN": "Run", "SPS": "Spgs", "SPUR": "Spur",
-        "TRLR": "Trlr", "TRWY": "Trwy", "VIA": "Via", "XRD": "Xrd", "BCH": "Bch",
-        "BGS": "Bgs", "BLF": "Blf", "BTM": "Btm", "CLB": "Clb", "CMN": "Cmn",
-        "CTS": "Cts", "DLS": "Dls", "DRS": "Drs", "EST": "Est", "FLS": "Fls",
-        "FRDS": "Frds", "FRGS": "Frgs", "GDNS": "Gdns", "GLNS": "Glns",
-        "GRNS": "Grns", "GRVS": "Grvs", "HBRS": "Hbrs", "HLS": "Hls",
-        "HVNS": "Hvns", "INLTS": "Inlts", "KNL": "Knl", "KNLS": "Knls",
-        "KYS": "Kys", "LGS": "Lgs", "LGTS": "Lgts", "LCKS": "Lcks",
-        "MDWS": "Mdw", "MLS": "Mls", "MNRS": "Mnr",
-        "MTNS": "Mtns", "NWS": "Nws", "PLNS": "Plns", "PNES": "Pnes", "PRTS": "Prts",
-        "PTS": "Pt", "RDGS": "Rdgs", "RPDS": "Rpds", "SHLS": "Shl",
-        "SHRS": "Shrs", "SPS": "Spgs", "SQS": "Sqs", "STS": "Sts",
-        "TRLS": "Trls", "VLS": "Vls", "VLGS": "Vlgs", "VWS": "Vws",
-        "WLS": "Wls", "WAYS": "Ways", "XRDS": "Xrds", "BYP": "Byp", "CMNS": "Cmns",
-        "CRKS": "Crks", "CRSS": "Crss",
-        "EXPS": "Exps", "FRYS": "Frys", "GTWYS": "Gtwys", "JCTS": "Jct",
-        "MTWYS": "Mtwys", "PKWYS": "Pkwys", "PLZS": "Plzs", "RMPS": "Rmps",
-        "RDGS": "Rdgs", "RIVS": "Rivs", "ROWS": "Rows", "RTES": "Rtes",
-        "SHRS": "Shrs", "SPS": "Spgs", "SQS": "Sqs", "STS": "Sts",
-        "TRLS": "Trls", "VLS": "Vls", "VLGS": "Vlgs", "VWS": "Vws",
-        "WLS": "Wls", "WAYS": "Ways", "XRDS": "Xrds"
-      };
-
-      let foundSuffix = false;
-      if (potentialSuffixOrPostDirectional) {
-        if (suffixMap[potentialSuffixOrPostDirectional]) {
-          streetSuffixType = suffixMap[potentialSuffixOrPostDirectional];
-          foundSuffix = true;
-        } else if (["N", "S", "E", "W", "NE", "NW", "SE", "SW"].includes(potentialSuffixOrPostDirectional)) {
-          streetPostDirectionalText = potentialSuffixOrPostDirectional;
-        }
-      }
-      streetName = tempStreetName;
-    }
-
-    // Parse city, state, zip from cityStateZipPart
-    if (cityStateZipPart) {
-      const cityStateZipMatch = cityStateZipPart.match(/^([\w\s\-\']+),\s*([A-Z]{2})\s+(\d{5})(?:-(\d{4}))?$/i);
-      if (cityStateZipMatch) {
-        city_name = cityStateZipMatch[1].toUpperCase();
-        state_code = cityStateZipMatch[2].toUpperCase();
-        postal_code = cityStateZipMatch[3];
-        plus_four_postal_code = cityStateZipMatch[4] || null;
-      }
-    }
+    // Store the original unnormalized address
+    finalAddressOutput.unnormalized_address = siteAddress;
 
     // Parse Sec/Town/Range
     // Sample: "25/37S/39E"
-    if (secTownRange) { // This block is now correctly using the declared variables
+    if (secTownRange) {
       const strMatch = secTownRange.match(/^(\d+)\/(\d+[NS])\/(\d+[EW])$/i);
       if (strMatch) {
         section = strMatch[1];
@@ -1617,23 +1498,11 @@ async function main() {
       }
     }
 
-    // Populate finalAddressOutput with parsed structured data
-    finalAddressOutput.city_name = city_name;
-    finalAddressOutput.country_code = "US"; // Assuming US for now
-    finalAddressOutput.postal_code = postal_code;
-    finalAddressOutput.plus_four_postal_code = plus_four_postal_code;
-    finalAddressOutput.state_code = state_code;
-    finalAddressOutput.street_number = streetNumber;
-    finalAddressOutput.street_name = streetName;
-    finalAddressOutput.street_post_directional_text = streetPostDirectionalText;
-    finalAddressOutput.street_pre_directional_text = streetPreDirectionalText;
-    finalAddressOutput.street_suffix_type = streetSuffixType;
-    finalAddressOutput.township = township; // Now correctly referenced
-    finalAddressOutput.range = range;    // Now correctly referenced
-    finalAddressOutput.section = section;  // Now correctly referenced
-    // unit_identifier, route_number, block remain null as they are not in the sample HTML
+    // Add section, township, range to the address output if available
+    if (section) finalAddressOutput.section = section;
+    if (township) finalAddressOutput.township = township;
+    if (range) finalAddressOutput.range = range;
   }
-  // We are explicitly NOT adding unnormalized_address.
 
   await fsp.writeFile(
     path.join("data", "address.json"),
