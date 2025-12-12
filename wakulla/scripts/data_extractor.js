@@ -1416,7 +1416,7 @@ function writeSalesDeedsFilesAndRelationships($) {
       if (/^(sales_history_\d+\.json|sales_\d+\.json|deed_\d+\.json|file_\d+\.json)$/.test(f) ||
           /^relationship_(deed_file|sales_history_deed|sales_deed|property_has_sales_history)(?:_\d+)?\.json$/.test(f) ||
           /^relationship_sales_(person|company)_\d+\.json$/.test(f) ||
-          /^relationship_sales_history_\d+_buyer_(person|company)_\d+\.json$/.test(f) ||
+          /^relationship_sales_history_\d+_has_(person|company)_\d+\.json$/.test(f) ||
           /^(person|company)_\d+\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
@@ -1681,7 +1681,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${saleIdx}_buyer_person_${personCounter}.json`,
+              `relationship_sales_history_${saleIdx}_has_person_${pIdx}.json`,
             ),
             {
               from: { "/": `./sales_history_${saleIdx}.json` },
@@ -1699,7 +1699,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${saleIdx}_buyer_company_${companyCounter}.json`,
+              `relationship_sales_history_${saleIdx}_has_company_${cIdx}.json`,
             ),
             {
               from: { "/": `./sales_history_${saleIdx}.json` },
@@ -1751,7 +1751,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_history_1_buyer_person_${sale1PersonCounter}.json`,
+                `relationship_sales_history_1_has_person_${pIdx}.json`,
               ),
               {
                 from: { "/": "./sales_history_1.json" },
@@ -1766,7 +1766,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_history_1_buyer_company_${sale1CompanyCounter}.json`,
+                `relationship_sales_history_1_has_company_${cIdx}.json`,
               ),
               {
                 from: { "/": "./sales_history_1.json" },
@@ -1790,7 +1790,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     try {
       const dataFiles = fs.readdirSync("data");
       dataFiles.forEach((fileName) => {
-        if (/^relationship_sales_history_\d+_buyer_(person|company)_\d+\.json$/.test(fileName)) {
+        if (/^relationship_sales_history_\d+_has_(person|company)_\d+\.json$/.test(fileName)) {
           const relData = readJSON(path.join("data", fileName));
           if (relData && relData.to && relData.to["/"]) {
             const toPath = relData.to["/"];
@@ -1814,10 +1814,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     try {
       const dataFiles = fs.readdirSync("data");
       dataFiles.forEach((fileName) => {
-        if (/^relationship_sales_history_1_buyer_person_\d+\.json$/.test(fileName)) {
+        if (/^relationship_sales_history_1_has_person_\d+\.json$/.test(fileName)) {
           sale1PersonCounter++;
         }
-        if (/^relationship_sales_history_1_buyer_company_\d+\.json$/.test(fileName)) {
+        if (/^relationship_sales_history_1_has_company_\d+\.json$/.test(fileName)) {
           sale1CompanyCounter++;
         }
       });
@@ -1830,7 +1830,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         writeJSON(
           path.join(
             "data",
-            `relationship_sales_history_1_buyer_person_${sale1PersonCounter}.json`,
+            `relationship_sales_history_1_has_person_${i}.json`,
           ),
           {
             from: { "/": "./sales_history_1.json" },
@@ -1847,7 +1847,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         writeJSON(
           path.join(
             "data",
-            `relationship_sales_history_1_buyer_company_${sale1CompanyCounter}.json`,
+            `relationship_sales_history_1_has_company_${i}.json`,
           ),
           {
             from: { "/": "./sales_history_1.json" },
