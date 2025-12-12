@@ -53,6 +53,30 @@ function titleCase(str) {
   return result;
 }
 
+// Utility: format middle name according to pattern ^[A-Z][a-zA-Z\s\-',.]*$
+// Middle names allow mixed case throughout (not just after separators)
+function formatMiddleName(str) {
+  if (!str || str.trim() === "") return "";
+
+  // Remove any characters that don't match the allowed pattern
+  const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned || cleaned.length === 0) return "";
+
+  // Normalize spacing: collapse multiple spaces into one
+  const normalizedSpacing = cleaned.replace(/\s+/g, " ").trim();
+  if (!normalizedSpacing) return "";
+
+  // Capitalize the first letter, keep the rest as-is (middle names allow any case)
+  const result = normalizedSpacing.charAt(0).toUpperCase() + normalizedSpacing.slice(1);
+
+  // Validate against the middle name pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+    return "";
+  }
+
+  return result;
+}
+
 // Extract property id
 function extractPropertyId($) {
   // Identify parcel identifier from HTML
@@ -192,7 +216,7 @@ function validateSuffix(suffix) {
 function buildPerson(first, last, middle, prefix, suffix) {
   const firstFormatted = titleCase(first);
   const lastFormatted = titleCase(last);
-  const middleFormatted = middle ? titleCase(middle) : null;
+  const middleFormatted = middle ? formatMiddleName(middle) : null;
 
   return {
     type: "person",
