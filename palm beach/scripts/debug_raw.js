@@ -16129,6 +16129,105 @@ function forceAddressVariantSchemaSurface(addressPath) {
   removeFileIfExists(addressPath);
 }
 
+// Final guardrail to keep the address aligned with the schema oneOf:
+// * If normalized coverage exists, strip the raw string and emit the normalized surface.
+// * If only an unnormalized string exists, include the full raw surface with
+//   normalized keys present (nullable) so required fields are not missing.
+function stabilizeAddressOneOfForValidation(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+    (field) => hasMeaningfulAddressValue(payload[field]),
+  );
+  const hasNormalizedCoords = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+    (coord) => Number.isFinite(parseCoordinate(payload[coord])),
+  );
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+
+  if (hasNormalizedStrings && hasNormalizedCoords) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      const sanitized = sanitizeAddressFieldValue(field, payload[field]);
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        normalizedOut[field] = Number.isFinite(sanitized) ? sanitized : null;
+      } else if (sanitized === undefined) {
+        normalizedOut[field] = null;
+      } else if (typeof sanitized === "string") {
+        normalizedOut[field] = sanitized.trim() || null;
+      } else {
+        normalizedOut[field] = sanitized;
+      }
+    });
+    if (!normalizedOut.postal_code) normalizedOut.plus_four_postal_code = null;
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      (normalizedOut.latitude == null && normalizedOut.longitude != null) ||
+      (normalizedOut.latitude != null && normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    originalWriteFileSync(
+      addressPath,
+      `${JSON.stringify(normalizedOut, null, 2)}\n`,
+    );
+    return;
+  }
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") return;
+    const sanitized = sanitizeAddressFieldValue(field, payload[field]);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      rawOut[field] = Number.isFinite(sanitized) ? sanitized : null;
+    } else if (sanitized === undefined) {
+      rawOut[field] = null;
+    } else if (typeof sanitized === "string") {
+      rawOut[field] = sanitized.trim() || null;
+    } else {
+      rawOut[field] = sanitized;
+    }
+  });
+  if (!rawOut.postal_code) rawOut.plus_four_postal_code = null;
+  if (
+    (rawOut.latitude == null && rawOut.longitude != null) ||
+    (rawOut.latitude != null && rawOut.longitude == null)
+  ) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+
+  originalWriteFileSync(
+    addressPath,
+    `${JSON.stringify(rawOut, null, 2)}\n`,
+  );
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -18913,6 +19012,7 @@ async function main() {
   solidifyAddressOneOfSurface(addressOutputPath);
   enforceFinalAddressOneOfSurface(addressOutputPath);
   forceAddressVariantSchemaSurface(addressOutputPath);
+  stabilizeAddressOneOfForValidation(addressOutputPath);
 
   const persistedAddressPayload =
     readJSONIfExists(addressOutputPath) ||
