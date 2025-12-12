@@ -11736,6 +11736,63 @@ function ensureAddressOutputCoverage(address) {
   return result;
 }
 
+function enforceAddressOneOfBranch(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const hasRaw =
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length > 0;
+
+  if (hasRaw) {
+    const hydrated =
+      ensureRawAddressSchemaDefaults(
+        { ...payload },
+        RAW_ONE_OF_ALLOWED_FIELDS,
+      ) ||
+      ensureAddressOutputCoverage({
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...payload,
+        unnormalized_address: payload.unnormalized_address.trim(),
+      }) ||
+      null;
+    const pruned =
+      pruneRawVariantToSchemaSurface(hydrated ? { ...hydrated } : { ...payload }) ||
+      hydrated;
+    if (pruned && pruned.unnormalized_address) {
+      writeJSON(addressPath, pruned);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+    return;
+  }
+
+  const normalizedSurface =
+    (typeof ensureNormalizedAddressSchemaSurface === "function" &&
+      ensureNormalizedAddressSchemaSurface({ ...payload })) ||
+    { ...payload };
+  if (
+    normalizedSurface &&
+    Object.prototype.hasOwnProperty.call(
+      normalizedSurface,
+      "unnormalized_address",
+    )
+  ) {
+    delete normalizedSurface.unnormalized_address;
+  }
+  const aligned =
+    ensureAddressOutputCoverage(normalizedSurface) || normalizedSurface;
+  if (aligned) {
+    writeJSON(addressPath, aligned);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+}
+
 function ensureAddressOutputFieldPresence(address) {
   return ensureAddressOutputCoverage(address);
 }
@@ -19406,6 +19463,7 @@ async function main() {
     });
     fs.rmSync(relationshipsRoot, { recursive: true, force: true });
     ensureDir(relationshipsRoot);
+    enforceAddressOneOfBranch(addressOutputPath);
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log(
       "Final address object",
@@ -19604,6 +19662,7 @@ async function main() {
       unnormalizedSource && unnormalizedSource.source_http_request,
     ],
   });
+  enforceAddressOneOfBranch(addressOutputPath);
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
