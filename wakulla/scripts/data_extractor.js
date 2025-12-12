@@ -1607,9 +1607,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   const validPeople = validateAndFilterPeople(people);
   // Update people to validPeople so findPersonIndexByName uses the correct array
   people = validPeople;
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
+
+  // Only create person files if there are sales to link them to
+  // This prevents "Unused data JSON file detected" errors for orphaned person files
+  if (sales.length > 0) {
+    people.forEach((p, idx) => {
+      writeJSON(path.join("data", `person_${idx + 1}.json`), p);
+    });
+  } else {
+    // If no sales, clear the people array to prevent relationship attempts
+    people = [];
+  }
 
   //Company processing and mapping creation.
   // Collect companies that are actually used (in sales or current owners)
