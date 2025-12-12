@@ -1513,6 +1513,55 @@ function ensureRawAddressFieldPresence(addressFilePath) {
   );
 }
 
+function solidifyAddressOneOfSurface(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const hasRawValue =
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length > 0;
+  if (hasRawValue) {
+    ensureRawAddressFieldPresence(addressPath);
+    return;
+  }
+
+  const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+  NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+    let value = payload[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      value = Number.isFinite(numeric) ? numeric : null;
+    } else if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(value);
+      value = prepared ? deepClone(prepared) : null;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      value = trimmed.length ? trimmed : null;
+    } else if (value === undefined) {
+      value = null;
+    }
+    normalizedOut[field] = value;
+  });
+
+  if (!normalizedOut.postal_code) {
+    normalizedOut.plus_four_postal_code = null;
+  }
+  if (normalizedOut.state_code && !normalizedOut.country_code) {
+    normalizedOut.country_code = "US";
+  }
+  if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+    normalizedOut.latitude = null;
+    normalizedOut.longitude = null;
+  }
+
+  writeJSON(addressPath, normalizedOut);
+}
+
 function enforceAddressSchemaBranchForOutput(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -18740,12 +18789,13 @@ async function main() {
     );
   }
 
+  solidifyAddressOneOfSurface(addressOutputPath);
+
+  const loggedAddress =
+    readJSONIfExists(addressOutputPath) || finalAddressPayload || {};
   console.log(
     "Final address object",
-    ensureAddressOutputCoverage(finalAddressPayload) ||
-      ensureAddressOutputFieldPresence(finalAddressPayload) ||
-      finalAddressPayload ||
-      {},
+    ensureAddressOutputCoverage(loggedAddress) || loggedAddress,
   );
   console.log("All mapping scripts completed successfully");
 }
