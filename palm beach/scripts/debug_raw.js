@@ -18494,35 +18494,36 @@ const normalizedCandidate = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
 NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
   for (const source of normalizedSources) {
     if (
-        source &&
-        Object.prototype.hasOwnProperty.call(source, field) &&
-        source[field] !== undefined &&
-        source[field] !== null
-      ) {
-        normalizedCandidate[field] = source[field];
-        break;
-      }
+      source &&
+      Object.prototype.hasOwnProperty.call(source, field) &&
+      source[field] !== undefined &&
+      source[field] !== null
+    ) {
+      normalizedCandidate[field] = source[field];
+      break;
     }
-  });
+  }
+});
 const hasNormalizedAddress = hasCompleteNormalizedAddress({
   ...normalizedCandidate,
 });
+const preferRawOutput = !hasNormalizedAddress && !!resolvedRaw;
 
 let finalAddressPayload = null;
 const resolveFieldFromSources = (field) => {
   const sources = [normalizedCandidate, existingAddress, seedSource];
   for (const source of sources) {
-      if (
-        source &&
-        Object.prototype.hasOwnProperty.call(source, field) &&
-        source[field] !== undefined &&
-        source[field] !== null
-      ) {
-        return source[field];
-      }
+    if (
+      source &&
+      Object.prototype.hasOwnProperty.call(source, field) &&
+      source[field] !== undefined &&
+      source[field] !== null
+    ) {
+      return source[field];
     }
-    return null;
-  };
+  }
+  return null;
+};
 
   if (hasNormalizedAddress) {
     finalAddressPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -18555,24 +18556,38 @@ const resolveFieldFromSources = (field) => {
       requestIdentifier: resolvedRequestIdentifier,
       sourceHttpRequest: resolvedSourceHttp,
     });
-    finalAddressPayload = rawSurface || null;
+    finalAddressPayload =
+      sanitizeRawOneOfPayload(rawSurface || {}, {
+        unnormalized_address: resolvedRaw,
+        request_identifier: resolvedRequestIdentifier,
+        source_http_request: resolvedSourceHttp,
+      }) || rawSurface || null;
   }
 
   if (finalAddressPayload) {
-    const normalizedSurfaceCandidate =
-      typeof ensureNormalizedAddressSchemaSurface === "function"
-        ? ensureNormalizedAddressSchemaSurface({ ...finalAddressPayload })
-        : { ...finalAddressPayload };
-    const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-      (field) => hasMeaningfulAddressValue(normalizedSurfaceCandidate[field]),
-    );
-    const hasNormalizedCoords = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-      (coord) =>
-        Number.isFinite(parseCoordinate(normalizedSurfaceCandidate[coord])),
-    );
-    if (hasNormalizedStrings && hasNormalizedCoords) {
-      finalAddressPayload = { ...normalizedSurfaceCandidate };
-      delete finalAddressPayload.unnormalized_address;
+    if (!preferRawOutput) {
+      const normalizedSurfaceCandidate =
+        typeof ensureNormalizedAddressSchemaSurface === "function"
+          ? ensureNormalizedAddressSchemaSurface({ ...finalAddressPayload })
+          : { ...finalAddressPayload };
+      const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+        (field) => hasMeaningfulAddressValue(normalizedSurfaceCandidate[field]),
+      );
+      const hasNormalizedCoords = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
+        (coord) =>
+          Number.isFinite(parseCoordinate(normalizedSurfaceCandidate[coord])),
+      );
+      if (hasNormalizedStrings && hasNormalizedCoords) {
+        finalAddressPayload = { ...normalizedSurfaceCandidate };
+        delete finalAddressPayload.unnormalized_address;
+      }
+    } else {
+      finalAddressPayload =
+        sanitizeRawOneOfPayload(finalAddressPayload, {
+          unnormalized_address: resolvedRaw,
+          request_identifier: resolvedRequestIdentifier,
+          source_http_request: resolvedSourceHttp,
+        }) || null;
     }
 
     if (!finalAddressPayload.postal_code) {
@@ -18605,7 +18620,7 @@ const resolveFieldFromSources = (field) => {
       NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((coord) =>
         Number.isFinite(parseCoordinate(completedAddress[coord])),
       );
-    if (completedHasNormalizedStrings && completedHasNormalizedCoords) {
+    if (!preferRawOutput && completedHasNormalizedStrings && completedHasNormalizedCoords) {
       const normalizedWritePayload =
         typeof ensureNormalizedAddressSchemaSurface === "function"
           ? ensureNormalizedAddressSchemaSurface({ ...completedAddress })
@@ -18631,14 +18646,15 @@ const resolveFieldFromSources = (field) => {
       NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((coord) =>
         Number.isFinite(parseCoordinate(persistedAddress[coord])),
       );
-    if (
-      persistedHasNormalizedStrings &&
-      persistedHasNormalizedCoords &&
-      Object.prototype.hasOwnProperty.call(persistedAddress, "unnormalized_address")
-    ) {
-      delete persistedAddress.unnormalized_address;
-      fs.writeFileSync(
-        addressOutputPath,
+  if (
+    persistedHasNormalizedStrings &&
+    persistedHasNormalizedCoords &&
+    !preferRawOutput &&
+    Object.prototype.hasOwnProperty.call(persistedAddress, "unnormalized_address")
+  ) {
+    delete persistedAddress.unnormalized_address;
+    fs.writeFileSync(
+      addressOutputPath,
         `${JSON.stringify(persistedAddress, null, 2)}\n`,
       );
     }
@@ -18669,7 +18685,7 @@ const resolveFieldFromSources = (field) => {
     NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((coord) =>
       Number.isFinite(parseCoordinate(terminalAddressPayload[coord])),
     );
-  if (terminalHasNormalizedStrings && terminalHasNormalizedCoords) {
+  if (!preferRawOutput && terminalHasNormalizedStrings && terminalHasNormalizedCoords) {
     const normalizedTerminal =
       typeof ensureNormalizedAddressSchemaSurface === "function"
         ? ensureNormalizedAddressSchemaSurface({ ...terminalAddressPayload })
