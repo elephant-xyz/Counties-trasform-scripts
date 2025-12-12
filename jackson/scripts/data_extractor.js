@@ -2490,35 +2490,44 @@ function main() {
   //   writeJSON(path.join("data", "relationship_property_has_utility.json"), relPropertyUtility);
   // }
 
-  // FINAL CLEANUP: Ensure mailing_address.json is removed at the end
-  // This file is not supported in Sales_History or Property_Improvement data groups
+  // FINAL CLEANUP: Remove unsupported files for Property_Improvement data group
+  // Person, company, tax, and mailing_address are not supported in Property_Improvement
   try {
-    const mailingAddressFile = path.join("data", "mailing_address.json");
-    if (fs.existsSync(mailingAddressFile)) {
-      console.log("Final cleanup: Removing unsupported mailing_address.json file");
-      fs.unlinkSync(mailingAddressFile);
-    }
-
-    // Also remove any relationship files that reference mailing_address
     const dataDir = "data";
     if (fs.existsSync(dataDir)) {
       const files = fs.readdirSync(dataDir);
       files.forEach((file) => {
+        // Remove person, company, tax, and mailing_address files (not in Property_Improvement)
+        if (/^person_\d+\.json$/.test(file) ||
+            /^company_\d+\.json$/.test(file) ||
+            file === "mailing_address.json" ||
+            /^tax_\d+\.json$/.test(file)) {
+          console.log(`Final cleanup: Removing unsupported file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        }
+        // Remove person/company relationship files - check both filename and content
         if (/^relationship_.*\.json$/.test(file)) {
-          try {
-            const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
-            if (/mailing_address\.json/i.test(content)) {
-              console.log(`Final cleanup: Removing relationship file referencing mailing_address: ${file}`);
-              fs.unlinkSync(path.join(dataDir, file));
+          // First check filename
+          if (/person/i.test(file) || /company/i.test(file)) {
+            console.log(`Final cleanup: Removing unsupported relationship file (by name): ${file}`);
+            fs.unlinkSync(path.join(dataDir, file));
+          } else {
+            // Check content for references to person/company/mailing_address files
+            try {
+              const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
+              if (/person_\d+\.json|company_\d+\.json|mailing_address\.json/i.test(content)) {
+                console.log(`Final cleanup: Removing unsupported relationship file (by content): ${file}`);
+                fs.unlinkSync(path.join(dataDir, file));
+              }
+            } catch (e) {
+              console.error(`Error checking relationship file ${file}:`, e);
             }
-          } catch (e) {
-            // Ignore errors reading relationship files
           }
         }
       });
     }
   } catch (e) {
-    console.error("Error in final cleanup of mailing_address:", e);
+    console.error("Error in final cleanup:", e);
   }
 }
 
