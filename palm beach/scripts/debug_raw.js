@@ -19020,6 +19020,12 @@ async function main() {
         }
       }
     });
+    if (resolvedRequestIdentifier !== undefined) {
+      rawOut.request_identifier = safeNullIfEmpty(resolvedRequestIdentifier);
+    }
+    if (resolvedSourceHttp) {
+      rawOut.source_http_request = resolveSourceHttpRequest(resolvedSourceHttp);
+    }
     if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
       rawOut.latitude = null;
       rawOut.longitude = null;
@@ -19029,7 +19035,8 @@ async function main() {
 
   const minimalRawAddress =
     rawValue && !normalizedCandidateAfterValidation
-      ? {
+      ? ensureAddressOutputCoverage({
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
           unnormalized_address: rawValue,
           request_identifier:
             resolvedRequestIdentifier === undefined
@@ -19038,10 +19045,10 @@ async function main() {
           source_http_request: resolvedSourceHttp
             ? deepClone(resolvedSourceHttp)
             : null,
-        }
+        })
       : null;
 
-  const terminalPayload = minimalRawAddress || reconciledAddress;
+  const terminalPayload = reconciledAddress || minimalRawAddress;
 
   if (terminalPayload) {
     originalWriteFileSync(
