@@ -7534,6 +7534,22 @@ const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
 
+const ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS = Object.freeze([
+  ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+]);
+
 // Fields that may accompany the raw (unnormalized) address payload.
 const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
@@ -11525,6 +11541,92 @@ function ensureAddressOutputCoverage(address) {
 
 function ensureAddressOutputFieldPresence(address) {
   return ensureAddressOutputCoverage(address);
+}
+
+function stabilizeAddressOneOfBranch(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const preferRaw = options.preferRaw === true;
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const hasNormalizedCoverage =
+    normalizedSurface &&
+    ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS.every((field) => {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        return Number.isFinite(parseCoordinate(normalizedSurface[field]));
+      }
+      return Object.prototype.hasOwnProperty.call(normalizedSurface, field);
+    });
+
+  const hasRawValue =
+    typeof payload.unnormalized_address === "string" &&
+    payload.unnormalized_address.trim().length > 0;
+
+  if (hasNormalizedCoverage && !preferRaw) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(normalizedSurface[field]);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(normalizedSurface[field]);
+        normalizedOut[field] = prepared ? deepClone(prepared) : null;
+        return;
+      }
+      const value = normalizeAddressFieldForSchema(
+        field,
+        normalizedSurface[field],
+      );
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        normalizedOut[field] = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        normalizedOut[field] = null;
+      } else {
+        normalizedOut[field] = value;
+      }
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (normalizedOut.state_code && !normalizedOut.country_code) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  if (hasRawValue) {
+    const rawOut = ensureAddressOutputCoverage({ ...payload }) || null;
+    if (rawOut) {
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if (rawOut.state_code && !rawOut.country_code) {
+        rawOut.country_code = "US";
+      }
+      writeJSON(addressPath, rawOut);
+    } else {
+      removeFileIfExists(addressPath);
+    }
+    return;
+  }
+
+  removeFileIfExists(addressPath);
 }
 
 function enforceAddressVariantFieldSurface(addressFilePath) {
@@ -18590,6 +18692,10 @@ async function main() {
   } else {
     removeFileIfExists(addressOutputPath);
   }
+
+  stabilizeAddressOneOfBranch(addressOutputPath, {
+    preferRaw: preferRawOutput,
+  });
 
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
