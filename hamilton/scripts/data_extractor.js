@@ -1379,8 +1379,8 @@ let people = [];
 let companies = [];
 
 function findPersonIndexByName(first, last) {
-  const tf = formatNameForSchema(first);
-  const tl = formatNameForSchema(last);
+  const tf = titleCaseName(first);
+  const tl = titleCaseName(last);
   for (let i = 0; i < people.length; i++) {
     if (people[i].first_name === tf && people[i].last_name === tl)
       return i + 1;
@@ -1449,7 +1449,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
-  people = validPeople; // Update people to be validPeople so findPersonIndexByName searches the correct array
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
