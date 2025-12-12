@@ -16577,7 +16577,7 @@ function finalizeAddressOneOfVariant(addressPath, options = {}) {
       : { ...payload };
   const hasNormalizedCoverage =
     normalizedCandidate &&
-    hasAddressNormalizedCoverage({ ...normalizedCandidate });
+    hasCompleteNormalizedAddress({ ...normalizedCandidate });
 
   if (hasNormalizedCoverage) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -19510,19 +19510,33 @@ async function main() {
   const hasNormalizedOneOf = hasNormalizedCountyCoverage({
     ...normalizedCandidate,
   });
+  const hasCompleteNormalized = hasCompleteNormalizedAddress({
+    ...normalizedCandidate,
+  });
   const hasRawAddress =
     typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
-  const preferRawOutput = hasRawAddress && !hasNormalizedOneOf;
-  const shouldUseNormalized = hasNormalizedOneOf;
+  const preferRawOutput = hasRawAddress && !hasCompleteNormalized;
+  const shouldUseNormalized = hasCompleteNormalized;
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
     finalAddressPayload = { ...normalizedCandidate };
-    if (Object.prototype.hasOwnProperty.call(finalAddressPayload, "unnormalized_address")) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        finalAddressPayload,
+        "unnormalized_address",
+      )
+    ) {
       delete finalAddressPayload.unnormalized_address;
     }
-  } else if (preferRawOutput && hasRawAddress) {
-    finalAddressPayload = buildLeanRawAddressPayload(resolvedRaw, {
+  } else if (hasRawAddress || hasNormalizedOneOf) {
+    // Default to the raw branch when full normalized coverage is missing; keep
+    // the normalized fields as nullable hints but anchor the payload with the
+    // unnormalized string so the address matches exactly one schema branch.
+    const rawSeed = hasRawAddress
+      ? resolvedRaw
+      : composeUnnormalizedAddress(normalizedCandidate);
+    finalAddressPayload = buildLeanRawAddressPayload(rawSeed, {
       fieldSources: [normalizedCandidate, ...normalizedSources],
       requestIdentifier:
         resolvedRequestIdentifier !== undefined
