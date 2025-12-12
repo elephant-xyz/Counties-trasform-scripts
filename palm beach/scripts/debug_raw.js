@@ -7361,7 +7361,14 @@ const ADDRESS_SCHEMA_FIELDS = [
 
 // Raw branch emits only the raw string plus optional request metadata so it
 // cleanly satisfies the oneOf raw schema without leaking normalized fields.
-const RAW_ONE_OF_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
+// Raw branch should stay minimal to satisfy the schema oneOf: only keep the
+// unnormalized string and optional request metadata so we don't leak normalized
+// fields that force the normalized branch.
+const RAW_ONE_OF_ALLOWED_FIELDS = [
+  "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
+];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
