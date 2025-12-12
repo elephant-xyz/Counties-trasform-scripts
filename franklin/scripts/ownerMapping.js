@@ -13,7 +13,11 @@ function normalizeSpace(str) {
 
 // Utility: title-case words conservatively (keep all-caps acronyms)
 function titleCase(str) {
-  return (str || "")
+  if (!str) return null;
+  // Remove any characters that are not letters, spaces, hyphens, apostrophes, commas, or periods
+  const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned) return null;
+  return cleaned
     .toLowerCase()
     .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
 }

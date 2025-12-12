@@ -2311,9 +2311,13 @@ function validateStringNotNull(value, fieldName) {
 }
 
 function validatePersonName(value, fieldName) {
-  const str = validateStringNotNull(value, fieldName);
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const str = String(value);
   if (!PERSON_NAME_PATTERN.test(str)) {
-    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}, got: ${str}`);
+    return null;
   }
   return str;
 }
@@ -2322,10 +2326,13 @@ function validatePersonName(value, fieldName) {
 
 function formatName(name) {
   if (!name || name.trim() === "") return null;
-  const normalizedSpacing = name.trim().toLowerCase().replace(/\s+/g, " ");
+  // Remove any characters that are not letters, spaces, hyphens, apostrophes, commas, or periods
+  const cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned) return null;
+  const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
   const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
   const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
-  return sanitized;
+  return sanitized.trim() || null;
 }
 
 // Validate prefix/suffix against schema
