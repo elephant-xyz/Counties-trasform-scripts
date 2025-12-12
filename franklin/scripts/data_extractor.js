@@ -2985,29 +2985,26 @@ function main() {
       if (middleName != null) {
         middleName = validatePersonName(middleName, 'middle_name');
       }
-
-      // Only create person if both firstName and lastName are valid
-      if (firstName && lastName) {
-        const person = {
-          source_http_request: {
-            method: "GET",
-            url: seed.source_http_request.url
-          },
-          request_identifier: parcelIdentifier || seed.parcel_id || "",
-          birth_date: null,
-          first_name: firstName,
-          last_name: lastName,
-          middle_name: middleName,
-          prefix_name: parsed.prefix ? validatePrefix(parsed.prefix) : null,
-          suffix_name: parsed.suffix ? validateSuffix(parsed.suffix) : null,
-          us_citizenship_status: null,
-          veteran_status: null
-        };
-        personCounter++;
-        const personFileName = `person_${personCounter}.json`;
-        writeJSON(path.join("data", personFileName), person);
-        initialPersonFiles.push(personFileName);
-      }
+      
+      const person = {
+        source_http_request: {
+          method: "GET",
+          url: seed.source_http_request.url
+        },
+        request_identifier: parcelIdentifier || seed.parcel_id || "",
+        birth_date: null,
+        first_name: firstName,
+        last_name: lastName,
+        middle_name: middleName,
+        prefix_name: parsed.prefix ? validatePrefix(parsed.prefix) : null,
+        suffix_name: parsed.suffix ? validateSuffix(parsed.suffix) : null,
+        us_citizenship_status: null,
+        veteran_status: null
+      };
+      personCounter++;
+      const personFileName = `person_${personCounter}.json`;
+      writeJSON(path.join("data", personFileName), person);
+      initialPersonFiles.push(personFileName);
       }
   });
   
@@ -3277,32 +3274,25 @@ function main() {
         if (middleName != null) {
           middleName = validatePersonName(middleName, 'middle_name');
         }
-
-        // Only create person if both firstName and lastName are valid
-        if (firstName && lastName) {
-          const personObj = {
-            source_http_request: {
-              method: "GET",
-              url: seed.source_http_request.url
-            },
-            request_identifier: parcelIdentifier || seed.parcel_id || "",
-            birth_date: null,
-            first_name: firstName,
-            last_name: lastName,
-            middle_name: middleName,
-            prefix_name: owner.prefix_name ? validatePrefix(owner.prefix_name) : null,
-            suffix_name: owner.suffix_name ? validateSuffix(owner.suffix_name) : null,
-            us_citizenship_status: null,
-            veteran_status: null
-          };
-          personCounter += 1;
-          const fileName = `person_${personCounter}.json`;
-          writeJSON(path.join("data", fileName), personObj);
-          personIndexByKey.set(key, fileName);
-        } else {
-          // Return null if validation failed to prevent relationship creation
-          return null;
-        }
+        const personObj = {
+          source_http_request: {
+            method: "GET",
+            url: seed.source_http_request.url
+          },
+          request_identifier: parcelIdentifier || seed.parcel_id || "",
+          birth_date: null,
+          first_name: firstName,
+          last_name: lastName,
+          middle_name: middleName,
+          prefix_name: owner.prefix_name ? validatePrefix(owner.prefix_name) : null,
+          suffix_name: owner.suffix_name ? validateSuffix(owner.suffix_name) : null,
+          us_citizenship_status: null,
+          veteran_status: null
+        };
+        personCounter += 1;
+        const fileName = `person_${personCounter}.json`;
+        writeJSON(path.join("data", fileName), personObj);
+        personIndexByKey.set(key, fileName);
       }
       return personIndexByKey.get(key);
     }
@@ -3333,19 +3323,17 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          if (personFile) {
-            const rel = {
-              from: { "/": `./${sref.salesFileName}` },
-              to: { "/": `./${personFile}` },
-            };
-            writeJSON(
-              path.join(
-                "data",
-                `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
-              ),
-              rel,
-            );
-          }
+          const rel = {
+            from: { "/": `./${sref.salesFileName}` },
+            to: { "/": `./${personFile}` },
+          };
+          writeJSON(
+            path.join(
+              "data",
+              `relationship_sales_history_${sref.index}_has_person_${j + 1}.json`,
+            ),
+            rel,
+          );
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
           const rel = {
@@ -3402,16 +3390,14 @@ function main() {
       currentOwners.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
-          if (personFile) {
-            const rel = {
-              from: { "/": `./${personFile}` },
-              to: { "/": `./mailing_address.json` },
-            };
-            writeJSON(
-              path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-              rel,
-            );
-          }
+          const rel = {
+            from: { "/": `./${personFile}` },
+            to: { "/": `./mailing_address.json` },
+          };
+          writeJSON(
+            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
+            rel,
+          );
         } else if (owner.type === "company") {
           const companyFile = ensureCompany(owner);
           const rel = {
