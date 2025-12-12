@@ -2422,6 +2422,37 @@ function main() {
   //   };
   //   writeJSON(path.join("data", "relationship_property_has_utility.json"), relPropertyUtility);
   // }
+
+  // FINAL CLEANUP: Ensure mailing_address.json is removed at the end
+  // This file is not supported in Sales_History or Property_Improvement data groups
+  try {
+    const mailingAddressFile = path.join("data", "mailing_address.json");
+    if (fs.existsSync(mailingAddressFile)) {
+      console.log("Final cleanup: Removing unsupported mailing_address.json file");
+      fs.unlinkSync(mailingAddressFile);
+    }
+
+    // Also remove any relationship files that reference mailing_address
+    const dataDir = "data";
+    if (fs.existsSync(dataDir)) {
+      const files = fs.readdirSync(dataDir);
+      files.forEach((file) => {
+        if (/^relationship_.*\.json$/.test(file)) {
+          try {
+            const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
+            if (/mailing_address\.json/i.test(content)) {
+              console.log(`Final cleanup: Removing relationship file referencing mailing_address: ${file}`);
+              fs.unlinkSync(path.join(dataDir, file));
+            }
+          } catch (e) {
+            // Ignore errors reading relationship files
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Error in final cleanup of mailing_address:", e);
+  }
 }
 
 if (require.main === module) {
