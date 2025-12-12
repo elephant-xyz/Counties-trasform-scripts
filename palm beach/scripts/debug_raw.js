@@ -7382,12 +7382,12 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Raw branch still needs the full address surface present (with nullable values)
-// so it satisfies the oneOf schema that expects these fields even when using
-// an unnormalized string.
+// Raw branch emits only the raw string plus optional request metadata so it
+// cleanly satisfies the oneOf raw schema without leaking normalized fields.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
   "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
 ];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
@@ -12474,6 +12474,138 @@ function parseCoordinate(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function finalizeAddressOneOfSelection(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestId = safeNullIfEmpty(payload.request_identifier);
+  const sourceHttp = prepareSourceHttpRequest(payload.source_http_request) || null;
+  const normalizedCandidate = { ...payload };
+  const hasNormalized = hasCompleteNormalizedAddress(normalizedCandidate);
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+
+  if (hasNormalized) {
+    const normalizedOut = {};
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "request_identifier") {
+        normalizedOut[field] = requestId || null;
+        return;
+      }
+      if (field === "source_http_request") {
+        normalizedOut[field] = sourceHttp;
+        return;
+      }
+      if (field === "latitude" || field === "longitude") {
+        const numeric = parseCoordinate(normalizedCandidate[field]);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      normalizedOut[field] = hasMeaningfulAddressValue(normalizedCandidate[field])
+        ? normalizedCandidate[field]
+        : null;
+    });
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")) {
+      delete normalizedOut.unnormalized_address;
+    }
+    Object.keys(normalizedOut).forEach((key) => {
+      if (!NORMALIZED_ADDRESS_FIELDS.includes(key)) {
+        delete normalizedOut[key];
+      }
+    });
+    originalWriteFileSync(
+      addressPath,
+      `${JSON.stringify(normalizedOut, null, 2)}\n`,
+    );
+    return;
+  }
+
+  if (rawValue) {
+    const rawOut = {
+      unnormalized_address: rawValue,
+      request_identifier: requestId || null,
+      source_http_request: sourceHttp,
+    };
+    Object.keys(rawOut).forEach((key) => {
+      if (!RAW_ONE_OF_ALLOWED_FIELD_SET.has(key)) {
+        delete rawOut[key];
+      }
+    });
+    originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
+function forceFinalAddressSurface(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  const requestId = safeNullIfEmpty(payload.request_identifier);
+  const sourceHttp = prepareSourceHttpRequest(payload.source_http_request) || null;
+
+  if (rawValue) {
+    const rawOut = {
+      unnormalized_address: rawValue,
+      request_identifier: requestId || null,
+      source_http_request: sourceHttp,
+    };
+    originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
+    return;
+  }
+
+  const normalizedCandidate = { ...payload };
+  if (hasCompleteNormalizedAddress(normalizedCandidate)) {
+    const normalizedOut = {};
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "request_identifier") {
+        normalizedOut[field] = requestId || null;
+        return;
+      }
+      if (field === "source_http_request") {
+        normalizedOut[field] = sourceHttp;
+        return;
+      }
+      if (field === "latitude" || field === "longitude") {
+        const numeric = parseCoordinate(normalizedCandidate[field]);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      normalizedOut[field] = hasMeaningfulAddressValue(normalizedCandidate[field])
+        ? normalizedCandidate[field]
+        : null;
+    });
+    if ((normalizedOut.latitude == null) !== (normalizedOut.longitude == null)) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    originalWriteFileSync(addressPath, `${JSON.stringify(normalizedOut, null, 2)}\n`);
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 function enforceRawPreferredAddressOutput(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -12515,14 +12647,6 @@ function enforceRawPreferredAddressOutput(addressPath) {
         ? payload[field]
         : null;
     });
-
-    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-      rawOut.latitude = null;
-      rawOut.longitude = null;
-    }
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
-    }
 
     writeJSON(addressPath, rawOut);
     return;
@@ -19062,6 +19186,9 @@ async function main() {
     }
   }
   enforceRawPreferredAddressOutput(addressOutputPath);
+  finalizeAddressOneOfSelection(addressOutputPath);
+  pruneAddressToRawAllowedFields(addressOutputPath);
+  forceFinalAddressSurface(addressOutputPath);
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
     removeAddressRelationshipFiles(dirPath);
