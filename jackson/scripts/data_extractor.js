@@ -1364,10 +1364,24 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         console.log(`Cleaning up unsupported file: ${file}`);
         fs.unlinkSync(path.join(dataDir, file));
       }
-      // Remove person/company relationship files - catch any relationship file that references person or company
-      if (/^relationship_.*\.json$/.test(file) && (/person/i.test(file) || /company/i.test(file))) {
-        console.log(`Cleaning up unsupported relationship file: ${file}`);
-        fs.unlinkSync(path.join(dataDir, file));
+      // Remove person/company relationship files - check both filename and content
+      if (/^relationship_.*\.json$/.test(file)) {
+        // First check filename
+        if (/person/i.test(file) || /company/i.test(file)) {
+          console.log(`Cleaning up unsupported relationship file (by name): ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
+        } else {
+          // Check content for references to person/company files
+          try {
+            const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
+            if (/person_\d+\.json|company_\d+\.json|mailing_address\.json/i.test(content)) {
+              console.log(`Cleaning up unsupported relationship file (by content): ${file}`);
+              fs.unlinkSync(path.join(dataDir, file));
+            }
+          } catch (e) {
+            console.error(`Error checking relationship file ${file}:`, e);
+          }
+        }
       }
     });
   } catch (e) {
@@ -2347,10 +2361,24 @@ function main() {
           console.log(`Early cleanup: Removing unsupported file: ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
-        // Remove person/company relationship files - catch any relationship file that references person or company
-        if (/^relationship_.*\.json$/.test(file) && (/person/i.test(file) || /company/i.test(file))) {
-          console.log(`Early cleanup: Removing unsupported relationship file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
+        // Remove person/company relationship files - check both filename and content
+        if (/^relationship_.*\.json$/.test(file)) {
+          // First check filename
+          if (/person/i.test(file) || /company/i.test(file)) {
+            console.log(`Early cleanup: Removing unsupported relationship file (by name): ${file}`);
+            fs.unlinkSync(path.join(dataDir, file));
+          } else {
+            // Check content for references to person/company files
+            try {
+              const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
+              if (/person_\d+\.json|company_\d+\.json|mailing_address\.json/i.test(content)) {
+                console.log(`Early cleanup: Removing unsupported relationship file (by content): ${file}`);
+                fs.unlinkSync(path.join(dataDir, file));
+              }
+            } catch (e) {
+              console.error(`Error checking relationship file ${file}:`, e);
+            }
+          }
         }
       });
     }
