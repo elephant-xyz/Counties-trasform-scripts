@@ -46,7 +46,7 @@ function titleCase(str) {
   }
 
   // Validate result matches the pattern, return empty string if not
-  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
     return "";
   }
 
