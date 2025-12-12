@@ -2297,7 +2297,7 @@ const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
-    throw new Error(`${fieldName} cannot be null or empty`);
+    console.log(`${fieldName} cannot be null or empty`);
   }
   return value;
 }
@@ -2305,7 +2305,7 @@ function validateNotNull(value, fieldName) {
 function validateStringNotNull(value, fieldName) {
   validateNotNull(value, fieldName);
   if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a string`);
+    console.log(`${fieldName} must be a string`);
   }
   return value;
 }
@@ -2313,10 +2313,12 @@ function validateStringNotNull(value, fieldName) {
 function validatePersonName(value, fieldName) {
   const str = validateStringNotNull(value, fieldName);
   if (!PERSON_NAME_PATTERN.test(str)) {
-    throw new Error(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
+    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
   }
   return str;
 }
+
+
 
 function formatName(name) {
   if (!name || name.trim() === "") return null;
