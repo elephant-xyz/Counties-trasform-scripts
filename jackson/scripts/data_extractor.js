@@ -1335,6 +1335,64 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
         }
       }
     });
+
+    // Also remove relationship files that reference removed person/company files
+    files.forEach((file) => {
+      if (file.startsWith('relationship_') && file.endsWith('.json')) {
+        try {
+          const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
+          const rel = JSON.parse(content);
+
+          // Check if relationship references removed person or company files
+          let shouldRemove = false;
+
+          if (rel.from && rel.from['/']) {
+            const fromPath = rel.from['/'];
+            const personFromMatch = fromPath.match(/\.\/person_(\d+)\.json$/);
+            const companyFromMatch = fromPath.match(/\.\/company_(\d+)\.json$/);
+
+            if (personFromMatch) {
+              const idx = parseInt(personFromMatch[1], 10);
+              if (!usedPersonIdx.has(idx)) {
+                shouldRemove = true;
+              }
+            }
+            if (companyFromMatch) {
+              const idx = parseInt(companyFromMatch[1], 10);
+              if (!usedCompanyIdx.has(idx)) {
+                shouldRemove = true;
+              }
+            }
+          }
+
+          if (rel.to && rel.to['/']) {
+            const toPath = rel.to['/'];
+            const personToMatch = toPath.match(/\.\/person_(\d+)\.json$/);
+            const companyToMatch = toPath.match(/\.\/company_(\d+)\.json$/);
+
+            if (personToMatch) {
+              const idx = parseInt(personToMatch[1], 10);
+              if (!usedPersonIdx.has(idx)) {
+                shouldRemove = true;
+              }
+            }
+            if (companyToMatch) {
+              const idx = parseInt(companyToMatch[1], 10);
+              if (!usedCompanyIdx.has(idx)) {
+                shouldRemove = true;
+              }
+            }
+          }
+
+          if (shouldRemove) {
+            console.log(`Removing relationship file referencing removed entity: ${file}`);
+            fs.unlinkSync(path.join(dataDir, file));
+          }
+        } catch (e) {
+          console.error(`Error processing relationship file ${file}:`, e.message);
+        }
+      }
+    });
   } catch (e) {
     console.error("Error removing unused owner files:", e);
   }
