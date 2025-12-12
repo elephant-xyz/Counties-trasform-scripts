@@ -7365,16 +7365,15 @@ const ADDRESS_SCHEMA_FIELDS = [
 // unnormalized string and optional request metadata so we don't leak normalized
 // fields that force the normalized branch.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
   "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
 ];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
-);
+const RAW_ADDRESS_ALLOWED_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
 // Keep raw (unnormalized) address payloads limited to the oneOf surface so we
 // don't leak normalized fields that break validation.
