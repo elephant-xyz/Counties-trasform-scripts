@@ -2667,6 +2667,69 @@ function buildNormalizedAddressOutputForSchema(source) {
   return normalized;
 }
 
+function buildRawAddressOneOfSurface(options = {}) {
+  const { rawValue, fieldSources = [], requestIdentifier, sourceHttpRequest } = options;
+  const trimmedRaw =
+    typeof rawValue === "string" && rawValue.trim().length
+      ? rawValue.trim()
+      : "";
+  if (!trimmedRaw.length) return null;
+
+  const resolvedSources = Array.isArray(fieldSources)
+    ? fieldSources.filter((source) => source && typeof source === "object")
+    : [];
+  const payload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: trimmedRaw };
+
+  for (const field of RAW_ADDRESS_ALLOWED_FIELDS) {
+    if (field === "unnormalized_address") continue;
+
+    if (field === "request_identifier") {
+      payload[field] =
+        requestIdentifier === undefined ? null : safeNullIfEmpty(requestIdentifier);
+      continue;
+    }
+    if (field === "source_http_request") {
+      const prepared =
+        prepareSourceHttpRequest(sourceHttpRequest) ||
+        prepareSourceHttpRequest(
+          resolvedSources.find((s) => s && s.source_http_request)?.source_http_request,
+        );
+      payload[field] = prepared ? deepClone(prepared) : null;
+      continue;
+    }
+
+    let value = null;
+    for (const source of resolvedSources) {
+      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+      value = source[field];
+      break;
+    }
+
+    const sanitized = sanitizeAddressFieldValue(field, value);
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(sanitized);
+      payload[field] = Number.isFinite(numeric) ? numeric : null;
+    } else if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      payload[field] = trimmed.length ? trimmed : null;
+    } else {
+      payload[field] = sanitized === undefined ? null : sanitized;
+    }
+  }
+
+  if (!payload.postal_code) {
+    payload.plus_four_postal_code = null;
+  }
+  if (
+    hasMeaningfulAddressValue(payload.state_code) &&
+    !hasMeaningfulAddressValue(payload.country_code)
+  ) {
+    payload.country_code = "US";
+  }
+
+  return payload;
+}
+
 function buildRawAddressOutputForSchema(unnormalizedAddress, source) {
   const trimmed =
     typeof unnormalizedAddress === "string"
@@ -18486,37 +18549,13 @@ const resolveFieldFromSources = (field) => {
       delete finalAddressPayload.unnormalized_address;
     }
   } else if (resolvedRaw) {
-    finalAddressPayload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-      if (field === "unnormalized_address") {
-        finalAddressPayload[field] = resolvedRaw;
-        return;
-      }
-      if (field === "request_identifier") {
-        finalAddressPayload[field] =
-          resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
-        return;
-      }
-      if (field === "source_http_request") {
-        const prepared = prepareSourceHttpRequest(resolvedSourceHttp);
-        finalAddressPayload[field] = prepared ? deepClone(prepared) : null;
-        return;
-      }
-
-      const sourceValue = resolveFieldFromSources(field);
-      const sanitized = sanitizeAddressFieldValue(field, sourceValue);
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        finalAddressPayload[field] = Number.isFinite(sanitized)
-          ? sanitized
-          : null;
-      } else if (typeof sanitized === "string") {
-        const trimmed = sanitized.trim();
-        finalAddressPayload[field] = trimmed.length ? trimmed : null;
-      } else {
-        finalAddressPayload[field] =
-          sanitized === undefined ? null : sanitized;
-      }
+    const rawSurface = buildRawAddressOneOfSurface({
+      rawValue: resolvedRaw,
+      fieldSources: [normalizedCandidate, existingAddress, seedSource, unnormalizedSource],
+      requestIdentifier: resolvedRequestIdentifier,
+      sourceHttpRequest: resolvedSourceHttp,
     });
+    finalAddressPayload = rawSurface || null;
   }
 
   if (finalAddressPayload) {
