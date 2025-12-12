@@ -15,11 +15,36 @@ function normalizeSpace(str) {
 function titleCase(str) {
   if (!str) return null;
   // Remove any characters that are not letters, spaces, hyphens, apostrophes, commas, or periods
-  const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  let cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
   if (!cleaned) return null;
-  return cleaned
-    .toLowerCase()
-    .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
+
+  // Convert to lowercase and normalize spacing
+  const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
+
+  // Capitalize first letter of each word (after word boundaries and special chars)
+  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
+
+  // Remove ". " patterns (e.g., "Jr. Smith" -> "Jr Smith")
+  let sanitized = capitalized.replace(/\.\s+/g, " ");
+
+  // Remove trailing special characters that would violate the pattern
+  sanitized = sanitized.replace(/[\s\-',.]+$/, "");
+
+  // Remove leading special characters
+  sanitized = sanitized.replace(/^[\s\-',.]+/, "");
+
+  // Remove multiple consecutive special characters
+  sanitized = sanitized.replace(/[\s\-',.]{2,}/g, " ");
+
+  const result = sanitized.trim();
+
+  // Validate against the pattern before returning
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!result || !pattern.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 // Extract property id
@@ -122,11 +147,10 @@ function isCompanyName(name) {
   // - Acronyms with slash: TIITF/MARINE
   // - Slash followed by acronyms: /DEP
   // - Dash followed by acronyms: -DEP
+  // Fixed to limit acronym pattern to 2-5 letters only (e.g., FBI, DEP) to avoid matching normal all-caps names
   const companyPatterns = [
-    /^[A-Z]{2,}\//,        // Starts with acronym followed by slash
-    /\/[A-Z]{2,}\b/,       // Slash followed by acronym
-    /-[A-Z]{2,}\b/,        // Dash followed by acronym
-    /^[A-Z]{2,}\s/         // Starts with acronym followed by space
+    /^[A-Z]{2,5}\//,       // Starts with acronym (2-5 letters) followed by slash
+    /\/[A-Z]{2,5}\b/,      // Slash followed by acronym (2-5 letters)
   ];
 
   for (const pattern of companyPatterns) {

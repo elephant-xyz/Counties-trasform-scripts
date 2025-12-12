@@ -2327,12 +2327,36 @@ function validatePersonName(value, fieldName) {
 function formatName(name) {
   if (!name || name.trim() === "") return null;
   // Remove any characters that are not letters, spaces, hyphens, apostrophes, commas, or periods
-  const cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  let cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
   if (!cleaned) return null;
+
+  // Convert to lowercase and normalize spacing
   const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
+
+  // Capitalize first letter of each word (after word boundaries and special chars)
   const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
-  const sanitized = capitalized.replace(/\. (?=[A-Za-z])/g, " ");
-  return sanitized.trim() || null;
+
+  // Remove ". " patterns (e.g., "Jr. Smith" -> "Jr Smith")
+  let sanitized = capitalized.replace(/\.\s+/g, " ");
+
+  // Remove trailing special characters that would violate the pattern
+  sanitized = sanitized.replace(/[\s\-',.]+$/, "");
+
+  // Remove leading special characters
+  sanitized = sanitized.replace(/^[\s\-',.]+/, "");
+
+  // Remove multiple consecutive special characters
+  sanitized = sanitized.replace(/[\s\-',.]{2,}/g, " ");
+
+  const result = sanitized.trim();
+
+  // Validate against the pattern before returning
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!result || !pattern.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 // Validate prefix/suffix against schema
@@ -2348,8 +2372,12 @@ function validateSuffix(suffix) {
 
 function parsePerson(name) {
   if (!name) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
-  
-  let tokens = name.trim().split(/\s+/).filter(Boolean);
+
+  // Check if name is all uppercase to determine parsing strategy
+  const originalName = name.trim();
+  const isAllUppercase = originalName === originalName.toUpperCase() && /[A-Z]/.test(originalName);
+
+  let tokens = originalName.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix: null, suffix: null };
 
   // Extract prefix
@@ -2377,9 +2405,22 @@ function parsePerson(name) {
 
   if (tokens.length < 2) return { firstName: null, lastName: null, middleName: null, prefix, suffix };
 
-  const firstName = tokens[0];
-  const lastName = tokens[tokens.length - 1];
-  const middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+  // For all-uppercase names, assume format is: LASTNAME FIRSTNAME [MIDDLE]
+  // For mixed-case names, assume format is: FIRSTNAME [MIDDLE] LASTNAME
+  // Special case: If second token is a single letter, it's likely FIRSTNAME MIDDLE, not LASTNAME FIRSTNAME
+  let firstName, lastName, middleName;
+
+  if (isAllUppercase) {
+    // All-caps format: LASTNAME FIRSTNAME [MIDDLE]
+    lastName = tokens[0];
+    firstName = tokens[1] || null;
+    middleName = tokens.length > 2 ? tokens.slice(2).join(" ") : null;
+  } else {
+    // Mixed-case format: FIRSTNAME [MIDDLE] LASTNAME
+    firstName = tokens[0];
+    lastName = tokens[tokens.length - 1];
+    middleName = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+  }
 
   return { firstName, lastName, middleName, prefix, suffix };
 }
@@ -2397,7 +2438,8 @@ function extractOwnerInfo(ownershipHtml) {
 
   const owners = [];
   // Enhanced company indicators to catch government entities, departments, and acronyms
-  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP|DEPT|DEP|DEPARTMENT|GOV|GOVERNMENT|COUNTY|CITY|STATE|FEDERAL|DISTRICT|DIVISION|AUTHORITY|COMMISSION|BOARD|AGENCY|SERVICES|PROPERTIES|INVESTMENTS|GROUP|HOLDINGS|ENTERPRISES)\b|^[A-Z]{2,}\/|^[A-Z]{2,}\s|\/[A-Z]{2,}|-[A-Z]{2,}\b/i;
+  // Fixed to limit acronym pattern to 2-5 letters only (e.g., FBI, DEP) to avoid matching normal all-caps names
+  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP|DEPT|DEP|DEPARTMENT|GOV|GOVERNMENT|COUNTY|CITY|STATE|FEDERAL|DISTRICT|DIVISION|AUTHORITY|COMMISSION|BOARD|AGENCY|SERVICES|PROPERTIES|INVESTMENTS|GROUP|HOLDINGS|ENTERPRISES)\b|^[A-Z]{2,5}\/|\/[A-Z]{2,5}\b/i;
 
   for (const line of ownerLines) {
     let cleanName = line.trim();
@@ -2408,11 +2450,34 @@ function extractOwnerInfo(ownershipHtml) {
       // Split by & to handle multiple owners on same line
       const namesParts = cleanName.split(/\s*&\s*/);
 
-      for (const namePart of namesParts) {
-        const trimmedName = namePart.trim();
+      // Track last name from first owner for shared surnames
+      let sharedLastName = null;
+
+      for (let i = 0; i < namesParts.length; i++) {
+        const trimmedName = namesParts[i].trim();
         if (trimmedName && trimmedName.length > 2) {
           const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
-          owners.push({ name: trimmedName, type: ownerType });
+
+          // Check if this is a short name (FIRSTNAME MIDDLE) that might share a surname
+          const tokens = trimmedName.split(/\s+/);
+          const isShortName = tokens.length === 2 && tokens[1].length === 1 && trimmedName === trimmedName.toUpperCase();
+
+          if (isShortName && sharedLastName && i > 0) {
+            // This is likely FIRSTNAME MIDDLE sharing the previous owner's last name
+            // Reconstruct full name as "LASTNAME FIRSTNAME MIDDLE"
+            const fullName = `${sharedLastName} ${trimmedName}`;
+            owners.push({ name: fullName, type: 'Person' });
+          } else {
+            owners.push({ name: trimmedName, type: ownerType });
+
+            // If this is the first owner and it's a person, extract the last name for potential sharing
+            if (i === 0 && ownerType === 'Person') {
+              const parsed = parsePerson(trimmedName);
+              if (parsed && parsed.lastName) {
+                sharedLastName = parsed.lastName;
+              }
+            }
+          }
         }
       }
     }
