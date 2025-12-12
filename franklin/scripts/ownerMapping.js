@@ -39,7 +39,7 @@ function titleCase(str) {
   const result = sanitized.trim();
 
   // Validate against the pattern before returning
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!result || !pattern.test(result)) {
     return null;
   }
