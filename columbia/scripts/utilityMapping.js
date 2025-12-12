@@ -231,16 +231,13 @@ function buildUtilityFromFeature(feature) {
     util.water_source_type = "Well";
   }
   if (/IRRIGATION|SPRINK/i.test(description)) {
-    util.public_utility_type = "Irrigation";
+    util.public_utility_type = "WaterAvailable";
   } else if (/ELECTRIC|POWER|TRANSFORMER|GENERATOR/i.test(description)) {
-    util.public_utility_type = "Electric";
+    util.public_utility_type = "ElectricityAvailable";
   } else if (/GAS/i.test(description)) {
-    util.public_utility_type = "Gas";
+    util.public_utility_type = "NaturalGasAvailable";
   } else if (/WATER/i.test(description)) {
-    util.public_utility_type = util.public_utility_type || "Water";
-  }
-  if (/PUMP/i.test(description)) {
-    util.utility_component = "Pump";
+    util.public_utility_type = util.public_utility_type || "WaterAvailable";
   }
 
   return util;

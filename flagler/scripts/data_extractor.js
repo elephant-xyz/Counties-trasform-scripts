@@ -446,7 +446,9 @@ function cleanText(text) {
 }
 
 function titleCase(str) {
-  return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  // Only capitalize letter sequences, ignore special characters
+  // This ensures names match the pattern ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return (str || "").replace(/[A-Za-z]+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
 const COMPANY_KEYWORDS =
@@ -490,9 +492,16 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   if (!tokens || !tokens.length) return null;
   if (tokens.length === 1) return null;
 
-  let last = tokens[0];
-  let first = tokens[1] || null;
-  let middle = tokens.length > 2 ? tokens.slice(2).join(" ") : null;
+  // Helper to clean name parts - remove trailing periods and special chars
+  const cleanNamePart = (part) => {
+    if (!part) return part;
+    // Remove any non-letter characters except internal spaces, hyphens, apostrophes
+    return part.replace(/[^A-Za-z\s\-']/g, "").trim();
+  };
+
+  let last = cleanNamePart(tokens[0]);
+  let first = cleanNamePart(tokens[1]) || null;
+  let middle = tokens.length > 2 ? tokens.slice(2).map(cleanNamePart).join(" ").trim() : null;
 
   if (
     fallbackLastName &&
@@ -501,20 +510,23 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     tokens[0] === tokens[0].toUpperCase() &&
     tokens[1]
   ) {
-    first = tokens[0];
-    middle = tokens[1] || null;
+    first = cleanNamePart(tokens[0]);
+    middle = cleanNamePart(tokens[1]) || null;
     last = fallbackLastName;
   }
 
   if (middle) {
     const mids = middle.split(" ").filter((t) => !SUFFIXES_IGNORE.test(t));
-    middle = mids.join(" ") || null;
+    middle = mids.join(" ").trim() || null;
   }
+
+  // Don't create person if essential name parts are empty after cleaning
+  if (!first || !last) return null;
 
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
+    first_name: titleCase(first),
+    last_name: titleCase(last),
     middle_name: middle ? titleCase(middle) : null,
   };
 }
@@ -1927,11 +1939,16 @@ function normalizeOwner(owner, ownersByDate) {
         c.first_name &&
         c.first_name.toLowerCase().startsWith(owner.first_name.toLowerCase())
       ) {
+        // Apply titleCase to ensure proper formatting from external data
+        const normalizedFirst = titleCase(c.first_name || owner.first_name || "");
+        const normalizedMiddle = c.middle_name != null ? titleCase(c.middle_name) : owner.middle_name;
+        const normalizedLast = titleCase(c.last_name || owner.last_name || "");
+
         return {
           ...owner,
-          first_name: c.first_name || owner.first_name,
-          middle_name:
-            c.middle_name != null ? c.middle_name : owner.middle_name,
+          first_name: normalizedFirst,
+          middle_name: normalizedMiddle,
+          last_name: normalizedLast,
         };
       }
     }
@@ -2078,6 +2095,18 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
+
+    // Validate first_name and last_name against required pattern
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+
+    // If first_name or last_name don't match the pattern, don't create the person
+    if (!firstName || !namePattern.test(firstName)) {
+      return null;
+    }
+    if (!lastName || !namePattern.test(lastName)) {
+      return null;
+    }
+
     // Validate middle_name matches pattern ^[A-Z][a-zA-Z\s\-',.]*$ or set to null
     const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
     const middleName = middleRaw && middleNamePattern.test(middleRaw) ? middleRaw : null;
@@ -2094,8 +2123,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null
@@ -2796,9 +2825,8 @@ function main() {
   if (Array.isArray(rawLayouts) && rawLayouts.length) {
     rawLayouts.forEach((layout) => {
       const source = layout || {};
-      const { parent_building_index, ...overrides } = source;
-      const rawSpaceType =
-        overrides && overrides.space_type ? overrides.space_type : "Living Area";
+      const { parent_building_index, space_type, ...overrides } = source;
+      const rawSpaceType = space_type || "Living Area";
       const validSpaceType = validateSpaceType(rawSpaceType);
       const normalized = createLayoutRecord(validSpaceType, overrides);
       if (!normalized.floor_level) {

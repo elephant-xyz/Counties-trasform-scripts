@@ -72,14 +72,24 @@ function titleCaseNamePart(part) {
   if (!part) return null;
   const trimmed = String(part).trim();
   if (trimmed === "") return null;
-  return trimmed
+
+  // Remove invalid characters like "/" that don't match the schema pattern
+  // Pattern allows: letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = trimmed
+    .replace(/[^a-zA-Z\s\-',.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned === "") return null;
+
+  return cleaned
     .toLowerCase()
     .split(/\s+/)
     .map((word) =>
       word
-        .split(/([-'.])/)
+        .split(/([-',.])/)
         .map((segment) =>
-          /[-'.]/.test(segment)
+          /[-',.]/.test(segment)
             ? segment
             : segment.charAt(0).toUpperCase() + segment.slice(1),
         )
@@ -2091,43 +2101,25 @@ function main() {
     writeJSON("property.json", propertyPayload);
   }
 
-  const addrPartsFull =
-    unnormalizedAddress && unnormalizedAddress.full_address
-      ? parseAddressPartsFromFull(unnormalizedAddress.full_address)
-      : {};
-  const cityStateZipFromHtml = parseCityStateZipFromHtml($);
   const trs = parsePLSTrsFromLegalRows(legalRows);
   const lotStr = parseLotFromLegalRows(legalRows);
+  const fullAddress = unnormalizedAddress && unnormalizedAddress.full_address
+    ? unnormalizedAddress.full_address
+    : null;
+
   writeJSON("address.json", {
-    street_number: addrPartsFull.street_number || null,
-    street_name: addrPartsFull.street_name || null,
-    street_suffix_type: addrPartsFull.street_suffix_type || null,
-    street_pre_directional_text:
-      addrPartsFull.street_pre_directional_text || null,
-    street_post_directional_text:
-      addrPartsFull.street_post_directional_text || null,
-    unit_identifier: addrPartsFull.unit_identifier || null,
-    city_name:
-      addrPartsFull.city_name || cityStateZipFromHtml.city_name || null,
-    state_code:
-      addrPartsFull.state_code || cityStateZipFromHtml.state_code || null,
-    postal_code:
-      addrPartsFull.postal_code || cityStateZipFromHtml.postal_code || null,
-    plus_four_postal_code:
-      addrPartsFull.plus_four_postal_code ||
-      cityStateZipFromHtml.plus_four_postal_code ||
-      null,
+    unnormalized_address: fullAddress,
     county_name: "Duval",
-    country_code: "US",
-    latitude: null,
-    longitude: null,
     lot: lotStr || null,
-    municipality_name: null,
     range: trs.range,
-    route_number: null,
     section: trs.section,
     township: trs.township,
-    block: null,
+  });
+
+  // Create property_has_address relationship
+  writeJSON("relationship_property_has_address.json", {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
   });
 
   if (mailingAddress) {

@@ -60,6 +60,16 @@ function removeEtAl(name) {
   );
 }
 
+function removeInvalidNameSuffixes(name) {
+  // Remove R/S (revocable/living trust abbreviation) and similar suffixes
+  return cleanText(
+    name.replace(/\bR\/S\b\.?/gi, "")
+        .replace(/\bR\/s\b\.?/g, "")
+        .replace(/\s+\/\s+/g, " ")
+        .replace(/\s+R\s*\/\s*[A-Za-z]\b/gi, ""),
+  );
+}
+
 function normalizeNameKey(obj) {
   if (!obj) return "";
   if (obj.type === "company") {
@@ -99,6 +109,7 @@ function classifyOwner(raw, invalid) {
     name = cleanText(name.replace(/\baka\b|\bfka\b/gi, ""));
   }
   name = removeEtAl(name);
+  name = removeInvalidNameSuffixes(name);
 
   // Company classification
   if (isCompanyName(name)) {

@@ -14,11 +14,63 @@ function toTitleCase(str) {
   if (!str) return null;
   const cleaned = str.trim();
   if (!cleaned) return null;
-  return cleaned
-    .toLowerCase()
-    .split(/\s+/)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(" ");
+
+  // Handle names with various separators (space, hyphen, apostrophe, comma, period)
+  // Normalize multiple spaces and clean up
+  const normalized = cleaned.replace(/\s+/g, ' ');
+
+  // Split on separators while preserving them
+  const parts = normalized.toLowerCase().split(/(?=[\ \-',.])/).filter(Boolean);
+
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (/^[\ \-',.]/.test(part)) {
+      // This part starts with a separator
+      const separator = part[0];
+      const rest = part.slice(1);
+      result += separator;
+      if (rest.length > 0) {
+        // Find first letter to capitalize
+        let firstLetterIdx = 0;
+        while (firstLetterIdx < rest.length && !/[A-Za-z]/.test(rest[firstLetterIdx])) {
+          firstLetterIdx++;
+        }
+        if (firstLetterIdx < rest.length) {
+          // Add any non-letters before the first letter
+          result += rest.slice(0, firstLetterIdx);
+          // Capitalize the first letter and add the rest
+          result += rest.charAt(firstLetterIdx).toUpperCase() + rest.slice(firstLetterIdx + 1);
+        } else {
+          // No letters found, just add as is
+          result += rest;
+        }
+      }
+    } else {
+      // No separator at start - capitalize first letter
+      result += part.charAt(0).toUpperCase() + part.slice(1);
+    }
+  }
+
+  return result;
+}
+
+function validatePersonName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Remove any leading/trailing special characters that might have been left
+  const cleaned = trimmed.replace(/^[^A-Za-z]+|[^A-Za-z\s\-',.]+$/g, '').trim();
+  if (!cleaned) return null;
+  // Pattern from Elephant schema: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // Must be in proper title case:
+  // - Start with uppercase letter followed by lowercase letters
+  // - Then optionally: separator + one letter (any case) + lowercase letters
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!pattern.test(cleaned)) {
+    return null;
+  }
+  return cleaned;
 }
 
 function validatePersonName(name) {
@@ -2577,7 +2629,20 @@ function main() {
         const personFile = `person_${index}.json`;
         const first = validatePersonName(toTitleCase(owner.first_name || ""));
         const last = validatePersonName(toTitleCase(owner.last_name || ""));
-        const middle = owner.middle_name ? validatePersonName(toTitleCase(owner.middle_name)) : null;
+
+        // Validate and clean middle name more carefully
+        let middle = null;
+        if (owner.middle_name && typeof owner.middle_name === 'string') {
+          const middleTrimmed = owner.middle_name.trim();
+          // Reject middle names that contain digits or are too long/complex
+          // Valid middle names should not have numbers and should be relatively short
+          if (middleTrimmed && middleTrimmed.length > 0 && middleTrimmed.length < 50) {
+            // Check if middle name contains digits - if so, it's probably malformed data
+            if (!/\d/.test(middleTrimmed)) {
+              middle = validatePersonName(toTitleCase(middleTrimmed));
+            }
+          }
+        }
 
         // Skip person if first or last name is invalid
         if (!first || !last) {
