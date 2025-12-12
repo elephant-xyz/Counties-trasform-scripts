@@ -19437,7 +19437,22 @@ async function main() {
   // Final guard: rewrite the address with the full schema surface so oneOf validation
   // sees every required field, even when we only have an unnormalized string.
   const finalWritePayload = readJSONIfExists(addressOutputPath) || {};
-  const finalWriteRawValue = safeNullIfEmpty(finalWritePayload.unnormalized_address);
+  const finalWriteRawCandidates = [
+    finalWritePayload.unnormalized_address,
+    finalUnnormalized,
+    finalResolvedRawAddress,
+    ...rawCandidates,
+    unAddr && unAddr.unnormalized_address,
+    unAddr && unAddr.full_address,
+    siteLocationLine,
+    combinedModelAddress,
+    addressLineCombined,
+    fullAddr,
+    fullAddrInput,
+  ];
+  const finalWriteRawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString(finalWriteRawCandidates),
+  );
   const finalNormalizedCandidate =
     typeof ensureNormalizedAddressSchemaSurface === "function"
       ? ensureNormalizedAddressSchemaSurface({ ...finalWritePayload })
