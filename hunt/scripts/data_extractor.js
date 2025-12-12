@@ -2051,12 +2051,11 @@ function main() {
       let mailingAddr = null;
       if (owner.mailing_address) {
         mailingAddr = parseMailingAddress(owner.mailing_address);
-        if (mailingAddr) {
-          writeJson(path.join("data", "mailing_address.json"), mailingAddr);
-        }
       }
 
       // Process ALL persons (handles multiple owners like "OWENS GORDON T & ERIKA M")
+      // Only create mailing_address.json if we have at least one valid person
+      let mailingAddressCreated = false;
       for (const ownerPerson of ownerPersons) {
         const personKey = `${ownerPerson.first_name}|${ownerPerson.middle_name}|${ownerPerson.last_name}|${ownerPerson.suffix_name}`;
 
@@ -2085,8 +2084,14 @@ function main() {
           }
         );
 
-        // Create relationship from person to mailing address (if mailing address exists)
+        // Create mailing_address.json once (on first person) and relationships for each person
         if (mailingAddr) {
+          // Create mailing_address.json file only once
+          if (!mailingAddressCreated) {
+            writeJson(path.join("data", "mailing_address.json"), mailingAddr);
+            mailingAddressCreated = true;
+          }
+
           // Create relationship from person to mailing address (lexicon-compliant: person_has_mailing_address)
           writeJson(
             path.join("data", `relationship_person_${ownerPersonId}_has_mailing_address.json`),
