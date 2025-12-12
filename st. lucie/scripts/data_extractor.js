@@ -1476,16 +1476,16 @@ async function main() {
     });
   }
 
-  // Only create address.json if we have a valid site address
-  // The address schema requires either unnormalized_address OR normalized fields (oneOf constraint)
+  let finalAddressOutput = {
+    source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
+    request_identifier: baseRequestData.request_identifier || null,
+    county_name:"St. Lucie",
+    country_code: "US",
+  };
+
   if (siteAddress && siteAddress.toLowerCase() !== "tbd") {
-    let finalAddressOutput = {
-      source_http_request: sourceHttpRequest,
-      request_identifier: baseRequestData.request_identifier || null,
-      county_name: "St. Lucie",
-      country_code: "US",
-      unnormalized_address: siteAddress, // Store the original unnormalized address
-    };
+    // Store the original unnormalized address
+    finalAddressOutput.unnormalized_address = siteAddress;
 
     // Parse Sec/Town/Range
     // Sample: "25/37S/39E"
@@ -1502,12 +1502,12 @@ async function main() {
     if (section) finalAddressOutput.section = section;
     if (township) finalAddressOutput.township = township;
     if (range) finalAddressOutput.range = range;
-
-    await fsp.writeFile(
-      path.join("data", "address.json"),
-      JSON.stringify(finalAddressOutput, null, 2),
-    );
   }
+
+  await fsp.writeFile(
+    path.join("data", "address.json"),
+    JSON.stringify(finalAddressOutput, null, 2),
+  );
 
   // --- Parcel extraction ---
   // parcelIdentifierDashed is already extracted from HTML
