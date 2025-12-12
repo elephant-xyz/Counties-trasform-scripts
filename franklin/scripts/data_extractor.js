@@ -3051,7 +3051,13 @@ function main() {
       if (middleName != null) {
         middleName = validatePersonName(middleName, 'middle_name');
       }
-      
+
+      // Only create person if we have valid required fields (first_name and last_name)
+      if (!firstName || !lastName) {
+        console.log(`Skipping person with invalid name: firstName="${firstName}", lastName="${lastName}"`);
+        return;
+      }
+
       const person = {
         source_http_request: {
           method: "GET",
@@ -3340,6 +3346,13 @@ function main() {
         if (middleName != null) {
           middleName = validatePersonName(middleName, 'middle_name');
         }
+
+        // Only create person if we have valid required fields (first_name and last_name)
+        if (!firstName || !lastName) {
+          console.log(`Skipping person with invalid name: firstName="${firstName}", lastName="${lastName}"`);
+          return null;
+        }
+
         const personObj = {
           source_http_request: {
             method: "GET",
@@ -3389,6 +3402,11 @@ function main() {
       ownersForDate.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
+          // Skip creating relationship if person is invalid (ensurePerson returned null)
+          if (!personFile) {
+            console.log(`Skipping relationship for invalid person in sale ${sref.index}`);
+            return;
+          }
           const rel = {
             from: { "/": `./${sref.salesFileName}` },
             to: { "/": `./${personFile}` },
@@ -3456,6 +3474,11 @@ function main() {
       currentOwners.forEach((owner, j) => {
         if (owner.type === "person") {
           const personFile = ensurePerson(owner);
+          // Skip creating relationship if person is invalid (ensurePerson returned null)
+          if (!personFile) {
+            console.log(`Skipping mailing address relationship for invalid person`);
+            return;
+          }
           const rel = {
             from: { "/": `./${personFile}` },
             to: { "/": `./mailing_address.json` },
