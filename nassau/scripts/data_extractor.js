@@ -1539,6 +1539,7 @@ function formatName(name) {
   // This means: uppercase first letter, lowercase rest, then optionally (special char + letter + lowercase*)
   let result = "";
   let capitalizeNext = true;
+  let lastWasSpecial = false;
 
   for (let i = 0; i < lower.length; i++) {
     const char = lower[i];
@@ -1551,19 +1552,29 @@ function formatName(name) {
       } else {
         result += char;
       }
+      lastWasSpecial = false;
     } else if (/[ \-',.]/.test(char)) {
       // It's a special character allowed in names
-      result += char;
-      // Next letter should be capitalized
-      capitalizeNext = true;
-    } else {
-      // Should not happen after cleaning, but just in case
-      result += char;
+      // Only add if the previous character was not a special character
+      // and if there's a next character that is a letter
+      if (!lastWasSpecial && i + 1 < lower.length && /[a-z]/.test(lower[i + 1])) {
+        result += char;
+        // Next letter should be capitalized
+        capitalizeNext = true;
+        lastWasSpecial = true;
+      }
     }
   }
 
   // If the result is empty or doesn't start with a letter, return null
   if (!result || result.length === 0 || !/^[A-Z]/.test(result)) return null;
+
+  // Final validation: ensure the result matches the pattern
+  const finalPattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!finalPattern.test(result)) {
+    console.log(`Warning: formatName produced invalid result: "${result}" from input: "${name}"`);
+    return null;
+  }
 
   return result;
 }
