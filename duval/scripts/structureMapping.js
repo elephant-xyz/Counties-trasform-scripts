@@ -923,6 +923,15 @@ const STRUCTURE_ENUMS = {
     "Precast Concrete",
     "Curtain Wall",
   ]),
+  exteriorWallMaterialSecondary: new Set([
+    "Brick Accent",
+    "Stone Accent",
+    "Wood Trim",
+    "Metal Trim",
+    "Stucco Accent",
+    "Vinyl Accent",
+    "Decorative Block",
+  ]),
   roofDesignType: new Set([
     "Gable",
     "Hip",
@@ -1045,6 +1054,23 @@ function mapExteriorWall(detail) {
     return "Wood Siding";
   if (/STONE/.test(upper)) return "Manufactured Stone";
   return null;
+}
+
+function mapPrimaryToSecondaryExteriorWall(primaryMaterial) {
+  if (!primaryMaterial) return null;
+  const mapping = {
+    "Brick": "Brick Accent",
+    "Natural Stone": "Stone Accent",
+    "Manufactured Stone": "Stone Accent",
+    "Stucco": "Stucco Accent",
+    "Vinyl Siding": "Vinyl Accent",
+    "Wood Siding": "Wood Trim",
+    "Fiber Cement Siding": "Wood Trim",
+    "Metal Siding": "Metal Trim",
+    "Concrete Block": "Decorative Block",
+    "EIFS": "Stucco Accent",
+  };
+  return mapping[primaryMaterial] || null;
 }
 
 function mapRoofDesign(detail) {
@@ -1280,8 +1306,8 @@ function buildStructureRecord($, buildingNode, extraFeatures, totalBuildings) {
     STRUCTURE_ENUMS.exteriorWallMaterial,
   );
   const exterior_wall_material_secondary = ensureEnum(
-    exteriorMaterialCandidates[1],
-    STRUCTURE_ENUMS.exteriorWallMaterial,
+    mapPrimaryToSecondaryExteriorWall(exteriorMaterialCandidates[1]),
+    STRUCTURE_ENUMS.exteriorWallMaterialSecondary,
   );
 
   const roof_design_type = ensureEnum(
