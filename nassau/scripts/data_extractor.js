@@ -1475,6 +1475,7 @@ function extractMailingAddress(ownershipHtml) {
 }
 
 const PERSON_NAME_PATTERN = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+const MIDDLE_NAME_PATTERN = /^[A-Z][a-zA-Z\s\-',.]*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
@@ -1511,13 +1512,41 @@ function validatePersonName(value, fieldName) {
     return null;
   }
 
-  // Validate against the pattern for person names
-  if (!PERSON_NAME_PATTERN.test(trimmed)) {
-    console.log(`Warning: ${fieldName} "${trimmed}" does not match pattern ${PERSON_NAME_PATTERN.source}, returning null`);
+  // Use different patterns for middle_name vs first_name/last_name
+  const pattern = fieldName === 'middle_name' ? MIDDLE_NAME_PATTERN : PERSON_NAME_PATTERN;
+
+  // Validate against the appropriate pattern
+  if (!pattern.test(trimmed)) {
+    console.log(`Warning: ${fieldName} "${trimmed}" does not match pattern ${pattern.source}, returning null`);
     return null;
   }
 
   return trimmed;
+}
+
+function formatMiddleName(name) {
+  if (!name || name.trim() === "") return null;
+
+  // Remove any characters that don't match the pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  const cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+
+  if (!cleaned || cleaned.length === 0) return null;
+
+  // Normalize spacing: collapse multiple spaces into one
+  const normalizedSpacing = cleaned.replace(/\s+/g, " ").trim();
+
+  if (!normalizedSpacing) return null;
+
+  // Capitalize the first letter, keep the rest as-is (middle names allow any case)
+  const result = normalizedSpacing.charAt(0).toUpperCase() + normalizedSpacing.slice(1);
+
+  // Validate against the middle name pattern
+  if (!MIDDLE_NAME_PATTERN.test(result)) {
+    console.log(`Warning: formatMiddleName produced invalid result: "${result}" from input: "${name}"`);
+    return null;
+  }
+
+  return result;
 }
 
 function formatName(name) {
@@ -2335,7 +2364,7 @@ function main() {
       const parsed = parsePerson(owner.name);
       const firstNameRaw = formatName(parsed.firstName);
       const lastNameRaw = formatName(parsed.lastName);
-      let middleName = formatName(parsed.middleName);
+      let middleName = formatMiddleName(parsed.middleName);
       const firstName = validatePersonName(firstNameRaw, 'first_name');
       const lastName = validatePersonName(lastNameRaw, 'last_name');
       if (middleName != null) {
@@ -2660,7 +2689,7 @@ function main() {
       if (!personIndexByKey.has(key)) {
         const firstNameRaw = formatName(owner.first_name);
         const lastNameRaw = formatName(owner.last_name);
-        let middleName = formatName(owner.middle_name);
+        let middleName = formatMiddleName(owner.middle_name);
         const firstName = validatePersonName(firstNameRaw, 'first_name');
         const lastName = validatePersonName(lastNameRaw, 'last_name');
         if (middleName != null) {
