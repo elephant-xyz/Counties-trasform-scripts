@@ -62,10 +62,16 @@ function removeEtAl(name) {
 
 function removeInvalidNameSuffixes(name) {
   // Remove R/S (revocable/living trust abbreviation) and similar suffixes
+  // Also remove T/C (trustee/co-trustee), TTE (trustee), TR (trustee), etc.
   return cleanText(
     name.replace(/\bR\/S\b\.?/gi, "")
         .replace(/\bR\/s\b\.?/g, "")
+        .replace(/\bT\/C\b\.?/gi, "")  // Remove T/C (trustee/co-trustee)
+        .replace(/\bT\/c\b\.?/g, "")
+        .replace(/\bTTE\b\.?/gi, "")   // Remove TTE (trustee)
+        .replace(/\bTR\b\.?/gi, "")    // Remove TR (trustee) - but only as suffix
         .replace(/\s+\/\s+/g, " ")
+        .replace(/\s+[A-Z]\s*\/\s*[A-Za-z]\b/gi, "")  // Remove any X/Y patterns
         .replace(/\s+R\s*\/\s*[A-Za-z]\b/gi, ""),
   );
 }
@@ -131,7 +137,7 @@ function classifyOwner(raw, invalid) {
   let personStr = name;
   personStr = personStr.replace(/\s*&\s*/g, " ").replace(/\s{2,}/g, " ");
 
-  // Common person formats: "LAST, FIRST M" or "First M Last"
+  // Common person formats: "LAST, FIRST M" or "LAST FIRST M" or "First M Last"
   let first = null,
     middle = null,
     last = null;
@@ -149,10 +155,26 @@ function classifyOwner(raw, invalid) {
   } else {
     const tokens = personStr.split(" ").filter(Boolean);
     if (tokens.length >= 2) {
-      first = toTitleCaseName(tokens[0]);
-      last = toTitleCaseName(tokens[tokens.length - 1]);
-      if (tokens.length > 2) {
-        middle = toTitleCaseName(tokens.slice(1, -1).join(" "));
+      // Check if the first token is all uppercase (likely last name)
+      // or if it's from a structured field (e.g., property records typically use LAST FIRST MIDDLE format)
+      const firstTokenAllCaps = tokens[0] === tokens[0].toUpperCase();
+      const allTokensAllCaps = tokens.every(t => t === t.toUpperCase());
+      
+      // If all tokens are uppercase or first token is all caps with length > 3, assume LAST FIRST MIDDLE format
+      if (allTokensAllCaps || (firstTokenAllCaps && tokens[0].length > 3)) {
+        // Format: LAST FIRST [MIDDLE]
+        last = toTitleCaseName(tokens[0]);
+        first = toTitleCaseName(tokens[1]);
+        if (tokens.length > 2) {
+          middle = toTitleCaseName(tokens.slice(2).join(" "));
+        }
+      } else {
+        // Format: FIRST [MIDDLE] LAST
+        first = toTitleCaseName(tokens[0]);
+        last = toTitleCaseName(tokens[tokens.length - 1]);
+        if (tokens.length > 2) {
+          middle = toTitleCaseName(tokens.slice(1, -1).join(" "));
+        }
       }
     }
   }
