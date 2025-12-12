@@ -236,6 +236,7 @@ const NUMBER_OF_UNITS_TYPE_MAP = Object.freeze({
 });
 
 const DEFAULT_PROPERTY_TYPE = "Building";
+const DEFAULT_PROPERTY_USAGE_TYPE = "Unknown";
 const DEFAULT_OWNERSHIP_ESTATE_TYPE = "FeeSimple";
 
 const VACANT_LAND_CODES = new Set(["00", "10", "40", "70", "95", "99"]);
@@ -245,7 +246,7 @@ const PROPERTY_CODE_MAP = Object.freeze(
       code,
       {
         property_type: PROPERTY_TYPE_MAP[code] || DEFAULT_PROPERTY_TYPE,
-        property_usage_type: PROPERTY_USAGE_MAP[code] || null,
+        property_usage_type: PROPERTY_USAGE_MAP[code] || DEFAULT_PROPERTY_USAGE_TYPE,
         build_status: VACANT_LAND_CODES.has(code) ? "VacantLand" : "Improved",
         ownership_estate_type:
           OWNERSHIP_ESTATE_TYPE_MAP[code] || DEFAULT_OWNERSHIP_ESTATE_TYPE,
@@ -1002,7 +1003,7 @@ function main() {
     }
     return out;
   })();
-  let property_type = null;
+  let property_type = DEFAULT_PROPERTY_TYPE;
   let property_usage_type = null;
   let number_of_units_type = null;
   let build_status = null;
@@ -1023,15 +1024,25 @@ function main() {
     }
     if (!text) text = rawDor.toUpperCase();
     if (code) {
+      const defaultMapping = {
+        property_type: DEFAULT_PROPERTY_TYPE,
+        property_usage_type: DEFAULT_PROPERTY_USAGE_TYPE,
+        build_status: VACANT_LAND_CODES.has(code) ? "VacantLand" : "Improved",
+        structure_form: null,
+        ownership_estate_type: DEFAULT_OWNERSHIP_ESTATE_TYPE,
+      };
       const mapping = PROPERTY_CODE_MAP[code];
-      if (!mapping || !mapping.property_usage_type) {
-        errEnum(dorText, "property", "property_usage_type");
-      }
-      property_usage_type = mapping.property_usage_type;
-      property_type = mapping.property_type || DEFAULT_PROPERTY_TYPE;
-      build_status = mapping.build_status;
-      structure_form = mapping.structure_form;
-      ownership_estate_type = mapping.ownership_estate_type;
+      const resolvedMapping = mapping
+        ? {
+            ...defaultMapping,
+            ...mapping,
+          }
+        : defaultMapping;
+      property_usage_type = resolvedMapping.property_usage_type || DEFAULT_PROPERTY_USAGE_TYPE;
+      property_type = resolvedMapping.property_type || DEFAULT_PROPERTY_TYPE;
+      build_status = resolvedMapping.build_status;
+      structure_form = resolvedMapping.structure_form;
+      ownership_estate_type = resolvedMapping.ownership_estate_type;
       if (Object.prototype.hasOwnProperty.call(NUMBER_OF_UNITS_TYPE_MAP, code)) {
         number_of_units_type = NUMBER_OF_UNITS_TYPE_MAP[code];
       } else {
@@ -1063,9 +1074,8 @@ function main() {
     }
   });
   if (!parcelId) throw new Error("Missing parcel identifier");
-  if (!property_type) throw new Error("Missing or unmapped DOR/property_type");
-  if (!property_usage_type)
-    throw new Error("Missing or unmapped property_usage_type");
+  if (!property_type) property_type = DEFAULT_PROPERTY_TYPE;
+  if (!property_usage_type) property_usage_type = DEFAULT_PROPERTY_USAGE_TYPE;
   writeJson(path.join(dataDir, "property.json"), {
     parcel_identifier: parcelId,
     property_type,

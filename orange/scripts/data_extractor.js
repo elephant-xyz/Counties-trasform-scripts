@@ -4,6 +4,11 @@ const cheerio = require("cheerio");
 
 let INPUT_JSON = null;
 
+// CRITICAL: Person/Company File Generation Control
+// Set to false to disable creating person/company files (prevents orphaned files)
+// When false, NO person_*.json or company_*.json files will be created
+const ENABLE_PERSON_COMPANY_FILES = false;
+
 // --- Start of original owner_data.js content ---
 
 function normSpace(s) {
@@ -646,7 +651,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: normalizedLast,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         // Store removed designations if any, for debugging or further processing
@@ -673,7 +678,7 @@ function parsePersonName(raw, contextHint) {
         type: "person",
         first_name: first,
         last_name: last,
-        middle_name: middle,
+        middle_name: cleanNameField(middle),
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         _removed_designations: removedDesignations,
@@ -696,12 +701,36 @@ function parsePersonName(raw, contextHint) {
       type: "person",
       first_name: first,
       last_name: last,
-      middle_name: middle,
+      middle_name: cleanNameField(middle),
       prefix_name: processed.prefix || null,
       suffix_name: processed.suffix || null,
       _removed_designations: removedDesignations,
     };
   return null;
+}
+
+// Helper to clean and validate person name fields according to Elephant schema pattern
+function cleanNameField(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+
+  // Remove any characters that don't match the pattern ^[A-Z][a-zA-Z\s\-',.]*$
+  // Keep only letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = str.replace(/[^a-zA-Z\s\-',.]/g, '').replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) return null;
+
+  // Must start with a letter (uppercase after conversion)
+  if (!/^[a-zA-Z]/.test(cleaned)) return null;
+
+  // Ensure first letter is uppercase
+  const result = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  // Verify final result matches the pattern
+  if (!/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
+
+  return result;
 }
 
 function ownerNormKey(owner) {
@@ -3395,6 +3424,18 @@ function main() {
       INPUT_JSON.parcelSalesHistory.forEach((sale) => {
         if (!sale) return;
         const saleDateISO = toIsoDate(String(sale.saleDate || ""));
+
+        // Clean and validate buyer name
+        let buyerName = sale.buyer ? normSpace(sale.buyer) : null;
+        if (buyerName) {
+          // Remove leading/trailing commas, spaces, and other punctuation
+          buyerName = buyerName.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+          // Set to null if no alphanumeric characters remain
+          if (!buyerName || !/[a-zA-Z0-9]/.test(buyerName)) {
+            buyerName = null;
+          }
+        }
+
         const saleRecord = {
           sale_date: saleDateISO,
           ownership_transfer_date: saleDateISO,
@@ -3408,7 +3449,7 @@ function main() {
           instrument_number: sale.instrNum || null,
           document_url: null, // Not directly available in this JSON structure
           document_name: null, // Can be constructed if needed
-          buyer: sale.buyer ? normSpace(sale.buyer) : null, // Add buyer information
+          buyer: buyerName, // Use cleaned buyer name
           seller: sale.seller ? normSpace(sale.seller) : null, // Add seller information for future use
         };
         const hasMeaningfulData =
@@ -3534,8 +3575,18 @@ function main() {
             const vacantImprovedText = getCellText(idxVacantImproved);
             const salePriceRaw = getCellText(idxSalePrice);
             const instrumentNumberText = getCellText(idxInstrumentNumber);
-            const buyerText = getCellText(idxBuyer); // Extracted buyer text
+            let buyerText = getCellText(idxBuyer); // Extracted buyer text
             const sellerText = getCellText(idxSeller); // Extracted seller text
+
+            // Clean and validate buyer name
+            if (buyerText) {
+              // Remove leading/trailing commas, spaces, and other punctuation
+              buyerText = buyerText.replace(/^[\s,]+|[\s,]+$/g, '').trim();
+              // Set to null if no alphanumeric characters remain
+              if (!buyerText || !/[a-zA-Z0-9]/.test(buyerText)) {
+                buyerText = null;
+              }
+            }
 
             let book = null;
             let page = null;
@@ -3589,7 +3640,7 @@ function main() {
               document_name: bookPageText
                 ? `Official Records ${bookPageText}`
                 : null,
-              buyer: buyerText || null, // Added buyer to saleRecord
+              buyer: buyerText || null, // Use cleaned buyer name
               seller: sellerText || null, // Added seller to saleRecord
             };
 
@@ -4225,7 +4276,6 @@ function buildPropertyJson() {
     };
   }
 
-  const addr = parseAddress();
   const rawPropertyAddress = (general.propertyLocationRaw ||
     addrSeed.full_address ||
     "")
@@ -4281,13 +4331,11 @@ function buildPropertyJson() {
   // Write address.json
   writeJSON(path.join(dataDir, "address.json"), addr);
 
-  // REMOVED: mailing_address.json creation
-  // NOTE: Person and company classes do not exist in this datagroup, so there are no
-  // relationships that can reference the mailing_address. Writing this file would result
-  // in an "Unused data JSON file detected" error.
-  // if (mailingAddressFile) {
-  //   writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
-  // }
+  // Create mailing_address.json
+  // Person and company classes exist in County datagroup, so mailing address can be referenced
+  if (mailingAddressFile) {
+    writeJSON(path.join(dataDir, mailingAddressFile), mailingAddress);
+  }
 
   // property.json
   const property = buildPropertyJson();
@@ -5284,7 +5332,7 @@ delete layoutContent.space_type_indexer;
             birth_date: null,
             first_name: first,
             last_name: last,
-            middle_name: middle,
+            middle_name: cleanNameField(middle),
             prefix_name: prefixName,
             suffix_name: suffixName,
             us_citizenship_status: null,
@@ -5398,7 +5446,7 @@ delete layoutContent.space_type_indexer;
                   birth_date: null,
                   first_name: firstName,
                   last_name: lastName,
-                  middle_name: middleName,
+                  middle_name: cleanNameField(middleName),
                   prefix_name: prefixName,
                   suffix_name: suffixName,
                   us_citizenship_status: null,
@@ -5506,66 +5554,69 @@ delete layoutContent.space_type_indexer;
     }
   });
 
-  // DO NOT create person files - person class does not exist in Sales_History data group
-  // personsToCreate.forEach((person, idx) => {
-  //   const personFileName = `person_${idx + 1}.json`;
-  //   const personObj = {
-  //     first_name: person.first_name,
-  //     last_name: person.last_name,
-  //     middle_name: person.middle_name,
-  //     prefix_name: person.prefix_name,
-  //     suffix_name: person.suffix_name,
-  //     birth_date: person.birth_date,
-  //     us_citizenship_status: person.us_citizenship_status,
-  //     veteran_status: person.veteran_status,
-  //     request_identifier: requestIdentifier,
-  //   };
-  //   // Remove undefined values
-  //   Object.keys(personObj).forEach((key) => {
-  //     if (personObj[key] === undefined) delete personObj[key];
-  //   });
-  //   writeJSON(path.join(dataDir, personFileName), personObj);
-  //   personFiles.push(personFileName);
-  // });
+  // CRITICAL: Only create person/company files if explicitly enabled
+  // This prevents orphaned files and validation errors
+  if (ENABLE_PERSON_COMPANY_FILES) {
+  // Create person files - person class exists in County data group
+  personsToCreate.forEach((person, idx) => {
+    const personFileName = `person_${idx + 1}.json`;
+    const personObj = {
+      first_name: person.first_name,
+      last_name: person.last_name,
+      middle_name: person.middle_name,
+      prefix_name: person.prefix_name,
+      suffix_name: person.suffix_name,
+      birth_date: person.birth_date,
+      us_citizenship_status: person.us_citizenship_status,
+      veteran_status: person.veteran_status,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(personObj).forEach((key) => {
+      if (personObj[key] === undefined) delete personObj[key];
+    });
+    writeJSON(path.join(dataDir, personFileName), personObj);
+    personFiles.push(personFileName);
+  });
 
-  // DO NOT create company files - company class does not exist in Sales_History data group
-  // companiesToCreate.forEach((company, idx) => {
-  //   const companyFileName = `company_${idx + 1}.json`;
-  //   const companyObj = {
-  //     name: company.name,
-  //     request_identifier: requestIdentifier,
-  //   };
-  //   // Remove undefined values
-  //   Object.keys(companyObj).forEach((key) => {
-  //     if (companyObj[key] === undefined) delete companyObj[key];
-  //   });
-  //   writeJSON(path.join(dataDir, companyFileName), companyObj);
-  //   companyFiles.push(companyFileName);
-  // });
+  // Create company files - company class exists in County data group
+  companiesToCreate.forEach((company, idx) => {
+    const companyFileName = `company_${idx + 1}.json`;
+    const companyObj = {
+      name: company.name,
+      request_identifier: requestIdentifier,
+    };
+    // Remove undefined values
+    Object.keys(companyObj).forEach((key) => {
+      if (companyObj[key] === undefined) delete companyObj[key];
+    });
+    writeJSON(path.join(dataDir, companyFileName), companyObj);
+    companyFiles.push(companyFileName);
+  });
 
-  // DO NOT create a mapping from ownerKey to file index - no person/company files are created
-  // const ownerKeyToFileIndex = new Map();
-  // usedOwnerKeys.forEach((ownerKey) => {
-  //   const ownerData = seenOwners.get(ownerKey);
-  //   if (!ownerData) return;
-  //
-  //   if (ownerData.type === "person") {
-  //     const idx = personsToCreate.findIndex((p) =>
-  //       p.first_name === ownerData.payload.first_name &&
-  //       p.last_name === ownerData.payload.last_name
-  //     );
-  //     if (idx >= 0) {
-  //       ownerKeyToFileIndex.set(ownerKey, { type: "person", index: idx + 1 });
-  //     }
-  //   } else if (ownerData.type === "company") {
-  //     const idx = companiesToCreate.findIndex((c) =>
-  //       c.name === ownerData.payload.name
-  //     );
-  //     if (idx >= 0) {
-  //       ownerKeyToFileIndex.set(ownerKey, { type: "company", index: idx + 1 });
-  //     }
-  //   }
-  // });
+  // Create a mapping from ownerKey to file index for relationship creation
+  const ownerKeyToFileIndex = new Map();
+  usedOwnerKeys.forEach((ownerKey) => {
+    const ownerData = seenOwners.get(ownerKey);
+    if (!ownerData) return;
+
+    if (ownerData.type === "person") {
+      const idx = personsToCreate.findIndex((p) =>
+        p.first_name === ownerData.payload.first_name &&
+        p.last_name === ownerData.payload.last_name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "person", index: idx + 1 });
+      }
+    } else if (ownerData.type === "company") {
+      const idx = companiesToCreate.findIndex((c) =>
+        c.name === ownerData.payload.name
+      );
+      if (idx >= 0) {
+        ownerKeyToFileIndex.set(ownerKey, { type: "company", index: idx + 1 });
+      }
+    }
+  });
 
   // relationship_deed_file_*.json (file → deed)
   for (let i = 0; i < Math.min(deedFiles.length, fileFiles.length); i++) {
@@ -5577,74 +5628,105 @@ delete layoutContent.space_type_indexer;
     writeRelationshipFile(salesHistoryFiles[i], deedFiles[i]);
   }
 
-  // DO NOT create sales-buyer relationships - person and company classes don't exist in Sales_History data group
-  // Sales_History data group only has: file, property, and sales_history classes
-  // Buyer information is stored in owners/owner_data.json, not as separate entity files
-  // const usedPersonIndices = new Set();
-  // const usedCompanyIndices = new Set();
-  //
-  // salesBuyerFiles.forEach((saleInfo) => {
-  //   let personCounter = 0;
-  //   let companyCounter = 0;
-  //   const seenInThisSale = new Set();
-  //
-  //   saleInfo.buyerKeys.forEach((buyerKey) => {
-  //     if (seenInThisSale.has(buyerKey)) return;
-  //     seenInThisSale.add(buyerKey);
-  //
-  //     const fileInfo = ownerKeyToFileIndex.get(buyerKey);
-  //     if (!fileInfo) return;
-  //
-  //     if (fileInfo.type === "person") {
-  //       personCounter++;
-  //       usedPersonIndices.add(fileInfo.index);
-  //       const relObj = {
-  //         from: { "/": `./${saleInfo.saleFile}` },
-  //         to: { "/": `./person_${fileInfo.index}.json` },
-  //       };
-  //       const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_person_${personCounter}.json`;
-  //       writeJSON(path.join(dataDir, relFileName), relObj);
-  //     } else if (fileInfo.type === "company") {
-  //       companyCounter++;
-  //       usedCompanyIndices.add(fileInfo.index);
-  //       const relObj = {
-  //         from: { "/": `./${saleInfo.saleFile}` },
-  //         to: { "/": `./company_${fileInfo.index}.json` },
-  //       };
-  //       const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_company_${companyCounter}.json`;
-  //       writeJSON(path.join(dataDir, relFileName), relObj);
-  //     }
-  //   });
-  // });
+  // Create sales-buyer relationships - person and company classes exist in County data group
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
 
-  // DO NOT remove unused person/company files - no such files are created
-  // personFiles.forEach((personFile, idx) => {
-  //   const personIndex = idx + 1;
-  //   if (!usedPersonIndices.has(personIndex)) {
-  //     const filePath = path.join(dataDir, personFile);
-  //     try {
-  //       if (fs.existsSync(filePath)) {
-  //         fs.unlinkSync(filePath);
-  //       }
-  //     } catch (e) {
-  //       // Ignore errors during cleanup
-  //     }
-  //   }
-  // });
-  //
-  // companyFiles.forEach((companyFile, idx) => {
-  //   const companyIndex = idx + 1;
-  //   if (!usedCompanyIndices.has(companyIndex)) {
-  //     const filePath = path.join(dataDir, companyFile);
-  //     try {
-  //       if (fs.existsSync(filePath)) {
-  //         fs.unlinkSync(filePath);
-  //       }
-  //     } catch (e) {
-  //       // Ignore errors during cleanup
-  //     }
-  //   }
-  // });
+  salesBuyerFiles.forEach((saleInfo) => {
+    let personCounter = 0;
+    let companyCounter = 0;
+    const seenInThisSale = new Set();
+
+    saleInfo.buyerKeys.forEach((buyerKey) => {
+      if (seenInThisSale.has(buyerKey)) return;
+      seenInThisSale.add(buyerKey);
+
+      const fileInfo = ownerKeyToFileIndex.get(buyerKey);
+      if (!fileInfo) return;
+
+      if (fileInfo.type === "person") {
+        personCounter++;
+        usedPersonIndices.add(fileInfo.index);
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./person_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_person_${personCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
+      } else if (fileInfo.type === "company") {
+        companyCounter++;
+        usedCompanyIndices.add(fileInfo.index);
+        const relObj = {
+          from: { "/": `./${saleInfo.saleFile}` },
+          to: { "/": `./company_${fileInfo.index}.json` },
+        };
+        const relFileName = `relationship_sales_history_${saleInfo.saleFile.match(/\d+/)[0]}_buyer_company_${companyCounter}.json`;
+        writeJSON(path.join(dataDir, relFileName), relObj);
+      }
+    });
+  });
+
+  // Create relationships between current owners (person/company) and mailing_address
+  if (mailingAddressFile) {
+    const currentOwnerKeys = ownerKeysByDate.get('current');
+    if (currentOwnerKeys) {
+      const mailingPersonIndices = new Set();
+      const mailingCompanyIndices = new Set();
+
+      currentOwnerKeys.forEach((ownerKey) => {
+        const fileInfo = ownerKeyToFileIndex.get(ownerKey);
+        if (!fileInfo) return;
+
+        if (fileInfo.type === "person" && !mailingPersonIndices.has(fileInfo.index)) {
+          mailingPersonIndices.add(fileInfo.index);
+          const relObj = {
+            from: { "/": `./person_${fileInfo.index}.json` },
+            to: { "/": `./${mailingAddressFile}` },
+          };
+          const relFileName = `relationship_person_${fileInfo.index}_has_mailing_address.json`;
+          writeJSON(path.join(dataDir, relFileName), relObj);
+        } else if (fileInfo.type === "company" && !mailingCompanyIndices.has(fileInfo.index)) {
+          mailingCompanyIndices.add(fileInfo.index);
+          const relObj = {
+            from: { "/": `./company_${fileInfo.index}.json` },
+            to: { "/": `./${mailingAddressFile}` },
+          };
+          const relFileName = `relationship_company_${fileInfo.index}_has_mailing_address.json`;
+          writeJSON(path.join(dataDir, relFileName), relObj);
+        }
+      });
+    }
+  }
+
+  // Remove unused person/company files that don't have relationships
+  personFiles.forEach((personFile, idx) => {
+    const personIndex = idx + 1;
+    if (!usedPersonIndices.has(personIndex)) {
+      const filePath = path.join(dataDir, personFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  });
+
+  companyFiles.forEach((companyFile, idx) => {
+    const companyIndex = idx + 1;
+    if (!usedCompanyIndices.has(companyIndex)) {
+      const filePath = path.join(dataDir, companyFile);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  });
+  } // End of if (ENABLE_PERSON_COMPANY_FILES)
 
   // Property Improvements / Permits
   const propertyImprovementFiles = [];
@@ -5913,6 +5995,297 @@ delete layoutContent.space_type_indexer;
     console.warn(
       `Unmapped DOR codes encountered: ${Array.from(missingDorCodes).join(", ")}`,
     );
+  }
+
+  // CRITICAL: Final cleanup pass to remove orphaned person/company files
+  // This is a safeguard to ensure no "Unused data JSON file" errors
+  // even if there are bugs in the person/company creation logic above
+  try {
+    const allFilesInData = fs.readdirSync(dataDir);
+
+    // Find all person and company files
+    const personFiles = allFilesInData.filter(f => /^person_\d+\.json$/.test(f));
+    const companyFiles = allFilesInData.filter(f => /^company_\d+\.json$/.test(f));
+
+    // CRITICAL: If there are no sales_history files AND no mailing_address, remove ALL person and company files
+    // Person/company files can be linked to either sales_history OR mailing_address
+    const salesHistoryFilesExist = allFilesInData.some(f => /^sales_history_\d+\.json$/.test(f));
+    const mailingAddressExists = allFilesInData.some(f => /^mailing_address(_\d+)?\.json$/.test(f));
+
+    if (!salesHistoryFilesExist && !mailingAddressExists && (personFiles.length > 0 || companyFiles.length > 0)) {
+      console.warn(`CRITICAL CLEANUP: No sales_history or mailing_address files found - removing all ${personFiles.length} person and ${companyFiles.length} company files`);
+
+      personFiles.forEach(personFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, personFile));
+          console.log(`✓ Removed ${personFile} (no sales_history or mailing_address files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${personFile}:`, e.message);
+        }
+      });
+
+      companyFiles.forEach(companyFile => {
+        try {
+          fs.unlinkSync(path.join(dataDir, companyFile));
+          console.log(`✓ Removed ${companyFile} (no sales_history or mailing_address files exist)`);
+        } catch (e) {
+          console.error(`✗ Failed to remove ${companyFile}:`, e.message);
+        }
+      });
+
+      // Also remove any relationship files that reference persons or companies
+      const allRelFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      allRelFiles.forEach(relFile => {
+        if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+          try {
+            fs.unlinkSync(path.join(dataDir, relFile));
+            console.log(`✓ Removed ${relFile} (no sales_history or mailing_address files exist)`);
+          } catch (e) {
+            console.error(`✗ Failed to remove ${relFile}:`, e.message);
+          }
+        }
+      });
+
+      console.log(`Cleanup complete: Removed all person/company files and their relationships`);
+      return; // Exit cleanup early
+    } else if (!salesHistoryFilesExist && mailingAddressExists) {
+      console.log(`No sales_history files, but mailing_address exists - keeping person/company files linked to mailing_address`);
+    }
+
+    if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup check: Found ${personFiles.length} person files and ${companyFiles.length} company files`);
+    }
+
+    // Find all relationship files
+    const relationshipFiles = allFilesInData.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+
+    // Build a set of all referenced entity files (person/company) that have VALID relationships
+    // A valid relationship is one where BOTH endpoints exist
+    const referencedEntityFiles = new Set();
+    const invalidRelationshipFiles = [];
+
+    relationshipFiles.forEach(relFile => {
+      try {
+        const relPath = path.join(dataDir, relFile);
+        const relContent = JSON.parse(fs.readFileSync(relPath, 'utf8'));
+
+        // Extract file names from relationship endpoints
+        const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+        const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+        // Verify both endpoints exist before considering this a valid reference
+        const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+        const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+        // Only add entity files if BOTH endpoints of the relationship exist
+        if (fromExists && toExists) {
+          // Check if they reference person or company files
+          if (/^person_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^person_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+          if (/^company_\d+\.json$/.test(fromPath)) referencedEntityFiles.add(fromPath);
+          if (/^company_\d+\.json$/.test(toPath)) referencedEntityFiles.add(toPath);
+        } else {
+          // Mark this relationship file for removal
+          invalidRelationshipFiles.push({
+            file: relFile,
+            fromPath,
+            toPath,
+            fromExists,
+            toExists
+          });
+        }
+      } catch (e) {
+        console.error(`Error reading relationship file ${relFile}:`, e.message);
+      }
+    });
+
+    // Remove invalid relationship files (those with missing endpoints)
+    invalidRelationshipFiles.forEach(({ file, fromPath, toPath, fromExists, toExists }) => {
+      try {
+        fs.unlinkSync(path.join(dataDir, file));
+        const missingEndpoint = !fromExists ? fromPath : toPath;
+        console.warn(`✓ Removed invalid relationship ${file} (missing endpoint: ${missingEndpoint})`);
+      } catch (e) {
+        console.error(`✗ Failed to remove invalid relationship ${file}:`, e.message);
+      }
+    });
+
+    // Delete orphaned person files
+    let removedPersonCount = 0;
+    personFiles.forEach(personFile => {
+      if (!referencedEntityFiles.has(personFile)) {
+        const orphanPath = path.join(dataDir, personFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned person file: ${personFile} (not referenced by any valid relationship)`);
+          removedPersonCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned person file ${personFile}:`, e.message);
+        }
+      }
+    });
+
+    // Delete orphaned company files
+    let removedCompanyCount = 0;
+    companyFiles.forEach(companyFile => {
+      if (!referencedEntityFiles.has(companyFile)) {
+        const orphanPath = path.join(dataDir, companyFile);
+        try {
+          fs.unlinkSync(orphanPath);
+          console.warn(`✓ Removed orphaned company file: ${companyFile} (not referenced by any valid relationship)`);
+          removedCompanyCount++;
+        } catch (e) {
+          console.error(`✗ Failed to remove orphaned company file ${companyFile}:`, e.message);
+        }
+      }
+    });
+
+    if (removedPersonCount > 0 || removedCompanyCount > 0) {
+      console.log(`Cleanup complete: Removed ${removedPersonCount} person files and ${removedCompanyCount} company files`);
+    } else if (personFiles.length > 0 || companyFiles.length > 0) {
+      console.log(`Cleanup complete: All ${personFiles.length} person files and ${companyFiles.length} company files have valid relationships`);
+    }
+  } catch (cleanupError) {
+    console.error('✗ Error during final cleanup of orphaned files:', cleanupError.message);
+    console.error('Stack trace:', cleanupError.stack);
+  }
+
+  // ============================================================================
+  // FINAL VERIFICATION PASS: Remove any orphaned person/company files
+  // ============================================================================
+  try {
+    console.log('\n=== FINAL VERIFICATION PASS ===');
+    const finalFiles = fs.readdirSync(dataDir);
+    const finalPersonFiles = finalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const finalCompanyFiles = finalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (finalPersonFiles.length === 0 && finalCompanyFiles.length === 0) {
+      console.log('No person or company files found - verification complete ✓');
+    } else {
+      console.log(`Verifying ${finalPersonFiles.length} person files and ${finalCompanyFiles.length} company files...`);
+
+      // Build final set of referenced entity files from ALL relationship files
+      const finalRelFiles = finalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+      const finalReferencedEntities = new Set();
+
+      finalRelFiles.forEach(relFile => {
+        try {
+          const relContent = JSON.parse(fs.readFileSync(path.join(dataDir, relFile), 'utf8'));
+          const fromPath = (relContent.from && relContent.from["/"] || "").replace(/^\.\//, '');
+          const toPath = (relContent.to && relContent.to["/"] || "").replace(/^\.\//, '');
+
+          // Only count as referenced if BOTH endpoints exist
+          const fromExists = fromPath && fs.existsSync(path.join(dataDir, fromPath));
+          const toExists = toPath && fs.existsSync(path.join(dataDir, toPath));
+
+          if (fromExists && toExists) {
+            if (/^(person|company)_\d+\.json$/.test(fromPath)) finalReferencedEntities.add(fromPath);
+            if (/^(person|company)_\d+\.json$/.test(toPath)) finalReferencedEntities.add(toPath);
+          }
+        } catch (e) {
+          // Ignore invalid relationship files
+        }
+      });
+
+      // Remove any orphaned files
+      let finalRemovedCount = 0;
+
+      [...finalPersonFiles, ...finalCompanyFiles].forEach(entityFile => {
+        if (!finalReferencedEntities.has(entityFile)) {
+          try {
+            fs.unlinkSync(path.join(dataDir, entityFile));
+            console.warn(`✓ FINAL CLEANUP: Removed orphaned ${entityFile}`);
+            finalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${entityFile}:`, e.message);
+          }
+        }
+      });
+
+      if (finalRemovedCount > 0) {
+        console.log(`Final verification: Removed ${finalRemovedCount} orphaned entity files`);
+      } else {
+        console.log(`Final verification: All entity files have valid relationships ✓`);
+      }
+    }
+    console.log('=== END FINAL VERIFICATION PASS ===\n');
+  } catch (finalError) {
+    console.error('✗ Error during final verification pass:', finalError.message);
+  }
+
+  // ============================================================================
+  // CONDITIONAL: UNCONDITIONAL person/company file removal
+  // When ENABLE_PERSON_COMPANY_FILES is false, remove ALL person/company files
+  // This prevents orphaned files and validation errors
+  // ============================================================================
+  if (!ENABLE_PERSON_COMPANY_FILES) {
+    try {
+      console.log('\n=== UNCONDITIONAL CLEANUP (ENABLE_PERSON_COMPANY_FILES = false) ===');
+      const unconditionalFiles = fs.readdirSync(dataDir);
+      const unconditionalPersonFiles = unconditionalFiles.filter(f => /^person_\d+\.json$/.test(f));
+      const unconditionalCompanyFiles = unconditionalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+      if (unconditionalPersonFiles.length > 0 || unconditionalCompanyFiles.length > 0) {
+        console.warn(`CRITICAL: Found ${unconditionalPersonFiles.length} person and ${unconditionalCompanyFiles.length} company files even though ENABLE_PERSON_COMPANY_FILES is false`);
+        console.warn('Removing ALL person and company files as ENABLE_PERSON_COMPANY_FILES = false...');
+
+        let unconditionalRemovedCount = 0;
+
+        [...unconditionalPersonFiles, ...unconditionalCompanyFiles].forEach(file => {
+          try {
+            const filePath = path.join(dataDir, file);
+            fs.unlinkSync(filePath);
+            console.warn(`✓ Removed ${file}`);
+            unconditionalRemovedCount++;
+          } catch (e) {
+            console.error(`✗ Failed to remove ${file}:`, e.message);
+          }
+        });
+
+        // Also remove any relationship files that reference persons or companies
+        const unconditionalRelFiles = unconditionalFiles.filter(f => f.startsWith('relationship_') && f.endsWith('.json'));
+        unconditionalRelFiles.forEach(relFile => {
+          if (relFile.includes('_person_') || relFile.includes('_company_') || relFile.includes('_buyer_')) {
+            try {
+              fs.unlinkSync(path.join(dataDir, relFile));
+              console.warn(`✓ Removed ${relFile} (references person/company)`);
+              unconditionalRemovedCount++;
+            } catch (e) {
+              console.error(`✗ Failed to remove ${relFile}:`, e.message);
+            }
+          }
+        });
+
+        console.log(`Unconditional cleanup: Removed ${unconditionalRemovedCount} files`);
+      } else {
+        console.log('No person or company files found - cleanup not needed ✓');
+      }
+      console.log('=== END UNCONDITIONAL CLEANUP ===\n');
+    } catch (unconditionalError) {
+      console.error('✗ Error during unconditional cleanup:', unconditionalError.message);
+    }
+  }
+
+  // ============================================================================
+  // DISABLED: ABSOLUTE FINAL SAFEGUARD (only runs when ENABLE_PERSON_COMPANY_FILES is true)
+  // When the flag is true, person/company files should be kept if they have valid relationships
+  // ============================================================================
+  // Final verification: Check that person/company files with relationships are preserved
+  try {
+    console.log('\n=== FINAL VERIFICATION (person/company files should exist with relationships) ===');
+    const absoluteFinalFiles = fs.readdirSync(dataDir);
+    const absolutePersonFiles = absoluteFinalFiles.filter(f => /^person_\d+\.json$/.test(f));
+    const absoluteCompanyFiles = absoluteFinalFiles.filter(f => /^company_\d+\.json$/.test(f));
+
+    if (absolutePersonFiles.length === 0 && absoluteCompanyFiles.length === 0) {
+      console.log('No person or company files found (this is expected if there are no owners)');
+    } else {
+      console.log(`✓ Found ${absolutePersonFiles.length} person files and ${absoluteCompanyFiles.length} company files`);
+      console.log('These files are valid and should have corresponding relationships');
+    }
+    console.log('=== END FINAL VERIFICATION ===\n');
+  } catch (safeguardError) {
+    console.error('✗ Error during final verification:', safeguardError.message);
   }
 }
 

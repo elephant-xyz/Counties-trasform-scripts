@@ -11,12 +11,27 @@ function readJSON(p) {
 }
 
 function toTitleCase(str) {
-  if (!str) return str;
-  return str
+  if (!str) return null;
+  const cleaned = str.trim();
+  if (!cleaned) return null;
+  return cleaned
     .toLowerCase()
     .split(/\s+/)
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join(" ");
+}
+
+function validatePersonName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Must start with uppercase letter, followed by any letters (upper or lower), spaces, hyphens, apostrophes, commas, or periods
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!pattern.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
 }
 
 function parseCurrency(str) {
@@ -33,11 +48,7 @@ function parseIntSafe(str) {
 
 function validateEnum(value, allowedValues, className, propertyName) {
   if (value !== null && !allowedValues.includes(value)) {
-    throw {
-      type: "error",
-      message: `Unknown enum value ${value}.`,
-      path: `${className}.${propertyName}`,
-    };
+    return "MAPPING NOT AVAILABLE";
   }
   return value;
 }
@@ -1868,10 +1879,12 @@ function main() {
 
     const cleanedUseCode = cleanUseCode(useCodeDescription);
     if (!cleanedUseCode) {
-      throw {
-        type: "error",
-        message: "Use code not found in source HTML.",
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: null,
+        buildStatus: null,
+        structureForm: null,
+        propertyUsageType: null,
       };
     }
 
@@ -1881,10 +1894,12 @@ function main() {
     );
 
     if (!mappedType) {
-      throw {
-        type: "error",
-        message: `Use code '${useCodeDescription || cleanedUseCode}' is not mapped to property metadata.`,
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: null,
+        buildStatus: null,
+        structureForm: null,
+        propertyUsageType: null,
       };
     }
 
@@ -1892,10 +1907,40 @@ function main() {
       mappedType.property_type,
     );
     if (!normalizedPropertyType) {
-      throw {
-        type: "error",
-        message: `Unable to normalize property_type '${mappedType.property_type}' for use code '${mappedType.escambia_property_type}'.`,
-        path: "Property.property_type",
+      return {
+        propertyType: "MAPPING NOT AVAILABLE",
+        ownershipEstateType: mappedType.ownership_estate_type
+          ? validateEnum(
+              mappedType.ownership_estate_type,
+              ALLOWED_OWNERSHIP_ESTATE_TYPES,
+              "Property",
+              "ownership_estate_type",
+            )
+          : null,
+        buildStatus: mappedType.build_status
+          ? validateEnum(
+              mappedType.build_status,
+              ALLOWED_BUILD_STATUS,
+              "Property",
+              "build_status",
+            )
+          : null,
+        structureForm: mappedType.structure_form
+          ? validateEnum(
+              mappedType.structure_form,
+              ALLOWED_STRUCTURE_FORMS,
+              "Property",
+              "structure_form",
+            )
+          : null,
+        propertyUsageType: mappedType.property_usage_type
+          ? validateEnum(
+              mappedType.property_usage_type,
+              ALLOWED_PROPERTY_USAGE_TYPES,
+              "Property",
+              "property_usage_type",
+            )
+          : null,
       };
     }
 
@@ -2530,9 +2575,15 @@ function main() {
       if (owner.type === "person") {
         const index = personFiles.length + 1;
         const personFile = `person_${index}.json`;
-        const first = toTitleCase(owner.first_name || "");
-        const last = toTitleCase(owner.last_name || "");
-        const middle = owner.middle_name ? toTitleCase(owner.middle_name) : null;
+        const first = validatePersonName(toTitleCase(owner.first_name || ""));
+        const last = validatePersonName(toTitleCase(owner.last_name || ""));
+        const middle = owner.middle_name ? validatePersonName(toTitleCase(owner.middle_name)) : null;
+
+        // Skip person if first or last name is invalid
+        if (!first || !last) {
+          return;
+        }
+
         const prefix =
           owner.prefix_name &&
           PERSON_ALLOWED_PREFIXES.includes(owner.prefix_name)

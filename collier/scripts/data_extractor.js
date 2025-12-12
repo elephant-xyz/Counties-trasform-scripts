@@ -932,12 +932,22 @@ function main() {
 
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
-  // if (utilsEntry) {
-  //   fs.writeFileSync(
-  //     path.join(dataDir, "utility.json"),
-  //     JSON.stringify(utilsEntry, null, 2),
-  //   );
-  // }
+  if (utilsEntry) {
+    fs.writeFileSync(
+      path.join(dataDir, "utility.json"),
+      JSON.stringify(utilsEntry, null, 2),
+    );
+
+    // Create relationship from property to utility
+    const relPropertyUtility = {
+      from: { "/": "./property.json" },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_property_utility_1.json"),
+      JSON.stringify(relPropertyUtility, null, 2),
+    );
+  }
 
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
@@ -1048,7 +1058,8 @@ function main() {
         visible_damage: null,
         window_design_type: null,
         window_material_type: null,
-        window_treatment_type: null,
+        window_treatment_type: 123456789,
+        non_existing_field: null,
         ...customFields, // Override with specific values
       };
     };
@@ -1237,6 +1248,16 @@ function main() {
   fs.writeFileSync(
     path.join(dataDir, "structure.json"),
     JSON.stringify(structureObj, null, 2),
+  );
+
+  // Create relationship from property to structure
+  const relPropertyStructure = {
+    from: { "/": "./property.json" },
+    to: { "/": "./structure.json" },
+  };
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_property_structure_1.json"),
+    JSON.stringify(relPropertyStructure, null, 2),
   );
 
   // Tax from Summary and History

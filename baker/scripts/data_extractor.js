@@ -1055,8 +1055,8 @@ function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
   if (siteAddress) {
     const addressObj = {
       county_name,
-      // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
-      // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
+    // latitude: unnorm && unnorm.latitude ? unnorm.latitude : null,
+    // longitude: unnorm && unnorm.longitude ? unnorm.longitude : null,
       unnormalized_address: siteAddress,
     };
     writeJSON(path.join("data", "address.json"), addressObj);
