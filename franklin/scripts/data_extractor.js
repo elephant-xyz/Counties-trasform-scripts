@@ -3209,7 +3209,7 @@ function main() {
 
     const fileObj = {
       file_format: null,
-      name: (instAbbr ? instAbbr + " " : "") + (bookPage || ""),
+      name: (instAbbr ? instAbbr + " " : "") + (bookPage || "") || "Deed Document",
       original_url: deedUrl,
       ipfs_url: null,
       document_type: mapDocumentType(deedType),
