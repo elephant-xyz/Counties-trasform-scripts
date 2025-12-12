@@ -19215,163 +19215,83 @@ async function main() {
   const finalResolvedRawAddress =
     resolveFirstNonEmptyString(finalRawAddressCandidates) || null;
 
-  const finalizedAddressOutput = ADDRESS_SCHEMA_FIELDS.reduce((acc, field) => {
-    acc[field] = null;
-    return acc;
-  }, {});
-
-  if (finalResolvedRawAddress) {
-    finalizedAddressOutput.unnormalized_address = finalResolvedRawAddress;
-  }
-
-  const streetSegment = finalResolvedRawAddress
-    ? finalResolvedRawAddress.split(",")[0]
+  // Build a normalized candidate only if we meet the full schema surface (strings + coordinates).
+  const normalizedCandidateForFinal = finalPayload
+    ? { ...finalPayload }
     : null;
-  const parsedStreet = parseLocationAddress(streetSegment);
-  const formattedStreetName = formatStreetNameCase(parsedStreet.streetName);
-  finalizedAddressOutput.street_number = safeNullIfEmpty(parsedStreet.streetNumber);
-  finalizedAddressOutput.street_name = formattedStreetName
-    ? formattedStreetName.toUpperCase()
-    : safeNullIfEmpty(parsedStreet.streetName);
-  finalizedAddressOutput.street_pre_directional_text = safeNullIfEmpty(
-    parsedStreet.streetPreDirectional,
-  );
-  finalizedAddressOutput.street_post_directional_text = safeNullIfEmpty(
-    parsedStreet.streetPostDirectional,
-  );
-  finalizedAddressOutput.street_suffix_type =
-    mapStreetSuffixType(parsedStreet.streetSuffix) ||
-    safeNullIfEmpty(parsedStreet.streetSuffix);
-  finalizedAddressOutput.unit_identifier = safeNullIfEmpty(parsedStreet.unitIdentifier);
-  finalizedAddressOutput.route_number = safeNullIfEmpty(parsedStreet.routeNumber);
+  const hasNormalizedCoverageForSchema = normalizedCandidateForFinal
+    ? hasCompleteNormalizedAddress(normalizedCandidateForFinal)
+    : false;
 
-  const parsedCityState = parseCityStatePostal(
-    finalResolvedRawAddress && finalResolvedRawAddress.includes(",")
-      ? finalResolvedRawAddress.split(",").slice(1).join(",")
-      : finalResolvedRawAddress,
-  );
-  finalizedAddressOutput.city_name = parsedCityState.city
-    ? parsedCityState.city.toUpperCase()
-    : null;
-  finalizedAddressOutput.state_code = parsedCityState.state || null;
-  finalizedAddressOutput.postal_code = parsedCityState.postal || null;
-  finalizedAddressOutput.plus_four_postal_code = parsedCityState.plus4 || null;
-
-  const normalizedMunicipalityFinal = safeNullIfEmpty(
-    municipality && municipality.replace(/\s+/g, " ").trim(),
-  );
-  if (normalizedMunicipalityFinal) {
-    finalizedAddressOutput.municipality_name = toTitleCase(normalizedMunicipalityFinal);
-    if (!finalizedAddressOutput.city_name) {
-      finalizedAddressOutput.city_name = normalizedMunicipalityFinal.toUpperCase();
+  // Prefer raw branch when available; otherwise emit a fully covered normalized object.
+  let finalAddressOutput = null;
+  if (hasNormalizedCoverageForSchema) {
+    finalAddressOutput = {
+      ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+      ...normalizedCandidateForFinal,
+    };
+    if (Object.prototype.hasOwnProperty.call(finalAddressOutput, "unnormalized_address")) {
+      delete finalAddressOutput.unnormalized_address;
+    }
+    if (!finalAddressOutput.postal_code) {
+      finalAddressOutput.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(finalAddressOutput.state_code) &&
+      !hasMeaningfulAddressValue(finalAddressOutput.country_code)
+    ) {
+      finalAddressOutput.country_code = "US";
+    }
+    if (
+      (finalAddressOutput.latitude == null) !==
+      (finalAddressOutput.longitude == null)
+    ) {
+      finalAddressOutput.latitude = null;
+      finalAddressOutput.longitude = null;
+    }
+  } else if (finalResolvedRawAddress) {
+    const rawOut =
+      sanitizeRawOneOfPayload(finalPayload, {
+        unnormalized_address: finalResolvedRawAddress,
+        request_identifier:
+          resolvedRequestIdentifier === undefined
+            ? finalPayload.request_identifier
+            : resolvedRequestIdentifier,
+        source_http_request:
+          resolvedSourceHttp || finalPayload.source_http_request,
+      }) || null;
+    if (rawOut) {
+      if (!Object.prototype.hasOwnProperty.call(rawOut, "request_identifier")) {
+        rawOut.request_identifier = null;
+      }
+      if (!Object.prototype.hasOwnProperty.call(rawOut, "source_http_request")) {
+        rawOut.source_http_request = null;
+      }
+      finalAddressOutput = rawOut;
     }
   }
 
-  const countyFromUnnormalized = safeNullIfEmpty(
-    unAddr && (unAddr.county_jurisdiction || unAddr.county_name),
-  );
-  finalizedAddressOutput.county_name =
-    formattedCountySafe ||
-    (countyFromUnnormalized ? titleCaseCounty(countyFromUnnormalized) : null) ||
-    titleCaseCounty("Palm Beach");
-
-  finalizedAddressOutput.township = safeNullIfEmpty(township);
-  finalizedAddressOutput.range = safeNullIfEmpty(range);
-  finalizedAddressOutput.section = safeNullIfEmpty(section);
-  finalizedAddressOutput.block = safeNullIfEmpty(block);
-  finalizedAddressOutput.lot = safeNullIfEmpty(lotNo);
-
-  const latitudeCandidate = [
-    finalPayload.latitude,
-    unAddr && unAddr.latitude,
-    initialLatitude,
-    parcelCentroid && parcelCentroid.latitude,
-  ]
-    .map(parseCoordinate)
-    .find((coord) => Number.isFinite(coord));
-  const longitudeCandidate = [
-    finalPayload.longitude,
-    unAddr && unAddr.longitude,
-    initialLongitude,
-    parcelCentroid && parcelCentroid.longitude,
-  ]
-    .map(parseCoordinate)
-    .find((coord) => Number.isFinite(coord));
-
-  if (Number.isFinite(latitudeCandidate) && Number.isFinite(longitudeCandidate)) {
-    finalizedAddressOutput.latitude = latitudeCandidate;
-    finalizedAddressOutput.longitude = longitudeCandidate;
-  } else {
-    finalizedAddressOutput.latitude = null;
-    finalizedAddressOutput.longitude = null;
-  }
-
-  const requestIdentifier =
-    safeNullIfEmpty(finalPayload.request_identifier) ||
-    safeNullIfEmpty(trimmedRequestIdentifier) ||
-    safeNullIfEmpty(unAddr && unAddr.request_identifier) ||
-    safeNullIfEmpty(seed && seed.request_identifier) ||
-    null;
-  if (requestIdentifier) {
-    finalizedAddressOutput.request_identifier = requestIdentifier;
-  }
-
-  const sourceHttpRequest =
-    prepareSourceHttpRequest(finalPayload.source_http_request) ||
-    prepareSourceHttpRequest(sourceHttpCandidate) ||
-    prepareSourceHttpRequest(unAddr && unAddr.source_http_request) ||
-    prepareSourceHttpRequest(seed && seed.source_http_request) ||
-    null;
-  if (sourceHttpRequest) {
-    finalizedAddressOutput.source_http_request = sourceHttpRequest;
-  }
-
-  if (!finalizedAddressOutput.postal_code) {
-    finalizedAddressOutput.plus_four_postal_code = null;
-  }
-  if (
-    hasMeaningfulAddressValue(finalizedAddressOutput.state_code) &&
-    !hasMeaningfulAddressValue(finalizedAddressOutput.country_code)
-  ) {
-    finalizedAddressOutput.country_code = "US";
-  }
-  if (
-    (finalizedAddressOutput.latitude == null) !==
-    (finalizedAddressOutput.longitude == null)
-  ) {
-    finalizedAddressOutput.latitude = null;
-    finalizedAddressOutput.longitude = null;
-  }
-
-  const hasNormalizedCoverage = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) =>
-      typeof finalizedAddressOutput[field] === "string" &&
-      finalizedAddressOutput[field].trim().length > 0,
-  );
-  console.log("Has normalized coverage", hasNormalizedCoverage);
-
-  if (hasNormalizedCoverage) {
-    delete finalizedAddressOutput.unnormalized_address;
-  } else if (finalizedAddressOutput.unnormalized_address) {
-    finalizedAddressOutput.unnormalized_address =
-      typeof finalizedAddressOutput.unnormalized_address === "string"
-        ? finalizedAddressOutput.unnormalized_address.trim()
-        : finalizedAddressOutput.unnormalized_address;
-  }
-
-  console.log("Final address object", finalizedAddressOutput);
-  originalWriteFileSync(
-    addressOutputPath,
-    `${JSON.stringify(finalizedAddressOutput, null, 2)}\n`,
-  );
-  try {
-    const verifyWritten = JSON.parse(
-      fs.readFileSync(addressOutputPath, "utf8"),
+  if (finalAddressOutput) {
+    originalWriteFileSync(
+      addressOutputPath,
+      `${JSON.stringify(finalAddressOutput, null, 2)}\n`,
     );
-    console.log("Verified address on disk", verifyWritten);
-  } catch (e) {
-    console.error("Failed to verify written address", e);
+  } else {
+    removeFileIfExists(addressOutputPath);
   }
+
+  // Ensure relationships remain null so UR hydration can occur downstream.
+  enforcePropertyRelationshipNulls(propertyFilePath);
+  [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
+    removeAddressRelationshipFiles(dirPath);
+    purgeAddressRelationshipArtifacts(dirPath);
+    ensureNullRelationshipPlaceholders(
+      dirPath,
+      Array.from(RELATIONSHIP_AUTOGENERATED_BASENAMES),
+    );
+  });
+
+  console.log("Final address object", finalAddressOutput || {});
   console.log("All mapping scripts completed successfully");
 }
 
