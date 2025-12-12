@@ -119,17 +119,11 @@ function enforcePropertyRelationshipNulls(propertyPath) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return;
   }
-  if (!payload.relationships || typeof payload.relationships !== "object") {
-    payload.relationships = {};
+  // Downstream processes populate relationship URIs; strip any locally
+  // generated placeholders to avoid invalid relationship payloads.
+  if (payload.relationships) {
+    delete payload.relationships;
   }
-  PROPERTY_RELATIONSHIP_KEYS.forEach((baseName) => {
-    payload.relationships[baseName] = null;
-  });
-  Object.keys(payload.relationships).forEach((key) => {
-    if (!PROPERTY_RELATIONSHIP_KEYS.includes(key)) {
-      delete payload.relationships[key];
-    }
-  });
   writeJSON(propertyPath, payload);
 }
 
@@ -16503,10 +16497,6 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
-    relationships: {
-      property_has_address: null,
-      address_has_fact_sheet: null,
-    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -19037,10 +19027,26 @@ async function main() {
     reconciledAddress = ensureAddressOutputCoverage(rawOut);
   }
 
-  if (reconciledAddress) {
+  const minimalRawAddress =
+    rawValue && !normalizedCandidateAfterValidation
+      ? {
+          unnormalized_address: rawValue,
+          request_identifier:
+            resolvedRequestIdentifier === undefined
+              ? null
+              : resolvedRequestIdentifier,
+          source_http_request: resolvedSourceHttp
+            ? deepClone(resolvedSourceHttp)
+            : null,
+        }
+      : null;
+
+  const terminalPayload = minimalRawAddress || reconciledAddress;
+
+  if (terminalPayload) {
     originalWriteFileSync(
       addressOutputPath,
-      `${JSON.stringify(reconciledAddress, null, 2)}\n`,
+      `${JSON.stringify(terminalPayload, null, 2)}\n`,
     );
   } else {
     removeFileIfExists(addressOutputPath);
