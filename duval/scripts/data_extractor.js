@@ -2121,10 +2121,6 @@ function main() {
     to: { "/": "./address.json" },
   });
 
-  if (mailingAddress) {
-    writeJSON("mailing_address.json", mailingAddress);
-  }
-
   const sales = [];
   $("#ctl00_cphBody_gridSalesHistory tr").each((i, el) => {
     if (i === 0) return;
@@ -2341,7 +2337,9 @@ function main() {
         });
       }
 
-      if (mailingAddress) {
+      if (mailingAddress && (personPaths.length > 0 || companyPaths.length > 0)) {
+        // Only write mailing_address.json if there are owners to create relationships with
+        writeJSON("mailing_address.json", mailingAddress);
         const mailingPath = "./mailing_address.json";
         personPaths.forEach((personPath) => {
         const relName = relationshipFileName(personPath, mailingPath);
