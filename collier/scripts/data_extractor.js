@@ -932,25 +932,18 @@ function main() {
 
   // Utilities from owners/utilities_data.json
   const utilsEntry = utils[ownerKey];
+  let utilityCreated = false;
   if (utilsEntry) {
     fs.writeFileSync(
       path.join(dataDir, "utility.json"),
       JSON.stringify(utilsEntry, null, 2),
     );
-
-    // Create relationship from property to utility
-    const relPropertyUtility = {
-      from: { "/": "./property.json" },
-      to: { "/": "./utility.json" },
-    };
-    fs.writeFileSync(
-      path.join(dataDir, "relationship_property_utility_1.json"),
-      JSON.stringify(relPropertyUtility, null, 2),
-    );
+    utilityCreated = true;
   }
 
   // Layouts from owners/layout_data.json
   let layoutIdx = 1;
+  let firstLayoutIndex = null;
   const layoutEntry = layouts[ownerKey];
   if (layoutEntry && Array.isArray(layoutEntry.layouts)) {
     for (const lay of layoutEntry.layouts) {
@@ -970,6 +963,12 @@ function main() {
           path.join(dataDir, `layout_${layoutIdx}.json`),
           JSON.stringify(lay, null, 2),
         );
+
+        // Track the first layout index
+        if (firstLayoutIndex === null) {
+          firstLayoutIndex = layoutIdx;
+        }
+
         layoutIdx++;
       }
     }
@@ -1136,9 +1135,27 @@ function main() {
         path.join(dataDir, `layout_${layoutIdx}.json`),
         JSON.stringify(layoutObj, null, 2),
       );
+
+      // Track the first layout index
+      if (firstLayoutIndex === null) {
+        firstLayoutIndex = layoutIdx;
+      }
+
       layoutIdx++;
     }
   });
+
+  // Create relationship between utility and first layout (if both exist)
+  if (utilityCreated && firstLayoutIndex !== null) {
+    const relationshipObj = {
+      from: { "/": `./layout_${firstLayoutIndex}.json` },
+      to: { "/": "./utility.json" },
+    };
+    fs.writeFileSync(
+      path.join(dataDir, "relationship_layout_has_utility.json"),
+      JSON.stringify(relationshipObj, null, 2),
+    );
+  }
 
   // Structure data from permits and building features
   const structureObj = {
@@ -1248,6 +1265,15 @@ function main() {
   fs.writeFileSync(
     path.join(dataDir, "structure.json"),
     JSON.stringify(structureObj, null, 2),
+  );
+
+  // Create relationship from property to structure
+  fs.writeFileSync(
+    path.join(dataDir, "relationship_property_has_structure.json"),
+    JSON.stringify({
+      from: { "/": "./property.json" },
+      to: { "/": "./structure.json" }
+    }, null, 2),
   );
 
   // Tax from Summary and History

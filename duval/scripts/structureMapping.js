@@ -1158,6 +1158,7 @@ function mapInteriorWallSurfaceSecondary(detail) {
   if (/CROWN\s*MOLD/.test(upper)) return "Crown Molding";
   if (/BASEBOARD/.test(upper)) return "Baseboards";
   if (/WOOD\s*TRIM|TRIM/.test(upper)) return "Wood Trim";
+  if (/WOOD\s*CUSTOM|WOOD\s*PANEL|WOOD/.test(upper)) return "Wood Trim";
   if (/STONE\s*ACCENT/.test(upper)) return "Stone Accent";
   if (/TILE\s*ACCENT/.test(upper)) return "Tile Accent";
   if (/METAL\s*ACCENT/.test(upper)) return "Metal Accent";
