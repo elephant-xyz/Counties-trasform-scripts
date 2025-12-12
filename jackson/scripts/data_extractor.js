@@ -2358,40 +2358,25 @@ function attemptWriteAddress(unnorm, secTwpRng) {
 function main() {
   ensureDir("data");
 
-  // CLEANUP: Remove unsupported files only if in Sales_History data group
-  // For null/empty data group, support Property_Improvement which includes structure, utility, layout
-  // Only clean up person, company, and mailing_address files which are not in Property_Improvement
+  // CLEANUP: Remove unsupported files
+  // Property_Improvement data group INCLUDES person, company, structure, utility, layout
+  // Only remove tax and mailing_address files which are not in Property_Improvement
   try {
     const dataDir = "data";
     if (fs.existsSync(dataDir)) {
       const files = fs.readdirSync(dataDir);
       files.forEach((file) => {
-        // Only remove person, company, tax, and mailing_address files (not in Property_Improvement)
-        if (/^person_\d+\.json$/.test(file) ||
-            /^company_\d+\.json$/.test(file) ||
-            file === "mailing_address.json" ||
+        // Only remove tax and mailing_address files (not in Property_Improvement)
+        // Person and company ARE supported in Property_Improvement, so keep them
+        if (file === "mailing_address.json" ||
             /^tax_\d+\.json$/.test(file)) {
           console.log(`Early cleanup: Removing unsupported file: ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
-        // Remove person/company relationship files - check both filename and content
-        if (/^relationship_.*\.json$/.test(file)) {
-          // First check filename
-          if (/person/i.test(file) || /company/i.test(file)) {
-            console.log(`Early cleanup: Removing unsupported relationship file (by name): ${file}`);
-            fs.unlinkSync(path.join(dataDir, file));
-          } else {
-            // Check content for references to person/company files
-            try {
-              const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
-              if (/person_\d+\.json|company_\d+\.json|mailing_address\.json/i.test(content)) {
-                console.log(`Early cleanup: Removing unsupported relationship file (by content): ${file}`);
-                fs.unlinkSync(path.join(dataDir, file));
-              }
-            } catch (e) {
-              console.error(`Error checking relationship file ${file}:`, e);
-            }
-          }
+        // Remove mailing_address relationship files
+        if (/^relationship_.*mailing_address.*\.json$/.test(file)) {
+          console.log(`Early cleanup: Removing unsupported relationship file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
         }
       });
     }
@@ -2435,7 +2420,8 @@ function main() {
   // };
   // writeJSON(path.join("data", "mailing_address.json"), mailingAddressOutput);
 
-  // DISABLED: Mailing address not supported in Sales_History data group
+  // Mailing address is not in Property_Improvement, but we still track current owners for person relationships
+  // Set to false since mailing_address class is not in Property_Improvement
   const hasOwnerMailingAddress = false;
 
   if (parcelId) {
@@ -2491,38 +2477,23 @@ function main() {
   // }
 
   // FINAL CLEANUP: Remove unsupported files for Property_Improvement data group
-  // Person, company, tax, and mailing_address are not supported in Property_Improvement
+  // Tax and mailing_address are not supported in Property_Improvement
+  // Person and company ARE supported, so keep them
   try {
     const dataDir = "data";
     if (fs.existsSync(dataDir)) {
       const files = fs.readdirSync(dataDir);
       files.forEach((file) => {
-        // Remove person, company, tax, and mailing_address files (not in Property_Improvement)
-        if (/^person_\d+\.json$/.test(file) ||
-            /^company_\d+\.json$/.test(file) ||
-            file === "mailing_address.json" ||
+        // Remove tax and mailing_address files (not in Property_Improvement)
+        if (file === "mailing_address.json" ||
             /^tax_\d+\.json$/.test(file)) {
           console.log(`Final cleanup: Removing unsupported file: ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
-        // Remove person/company relationship files - check both filename and content
-        if (/^relationship_.*\.json$/.test(file)) {
-          // First check filename
-          if (/person/i.test(file) || /company/i.test(file)) {
-            console.log(`Final cleanup: Removing unsupported relationship file (by name): ${file}`);
-            fs.unlinkSync(path.join(dataDir, file));
-          } else {
-            // Check content for references to person/company/mailing_address files
-            try {
-              const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
-              if (/person_\d+\.json|company_\d+\.json|mailing_address\.json/i.test(content)) {
-                console.log(`Final cleanup: Removing unsupported relationship file (by content): ${file}`);
-                fs.unlinkSync(path.join(dataDir, file));
-              }
-            } catch (e) {
-              console.error(`Error checking relationship file ${file}:`, e);
-            }
-          }
+        // Remove mailing_address relationship files
+        if (/^relationship_.*mailing_address.*\.json$/.test(file)) {
+          console.log(`Final cleanup: Removing unsupported relationship file: ${file}`);
+          fs.unlinkSync(path.join(dataDir, file));
         }
       });
     }
