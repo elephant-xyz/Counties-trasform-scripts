@@ -1498,7 +1498,7 @@ function validateStringNotNull(value, fieldName) {
 
 function validatePersonName(value, fieldName) {
   if (value === null || value === undefined || value === "") {
-    return value;
+    return null;
   }
   if (typeof value !== "string") {
     console.log(`Warning: ${fieldName} must be a string, returning null`);
