@@ -3257,6 +3257,12 @@ function main() {
     const bookPage = instCell.find("a").text().trim();
     const dateStr = tds.eq(1).text().trim();
     const priceStr = tds.eq(6).text().trim();
+
+    // Skip rows where both instAbbr and bookPage are empty (placeholder rows)
+    if (!instAbbr && !bookPage) {
+      return;
+    }
+
     const deedType = deedTypeMap[instAbbr] || "Miscellaneous";
 
     const purchase_price_amount = parseCurrencyToNumber(priceStr);
@@ -3290,7 +3296,8 @@ function main() {
 
     // Construct the file name, ensuring it's never empty
     let fileName = ((instAbbr ? instAbbr.trim() + " " : "") + (bookPage || "")).trim();
-    if (!fileName) {
+    // Check for empty string or whitespace-only string
+    if (!fileName || fileName.length === 0) {
       fileName = "Deed Document";
     }
 
