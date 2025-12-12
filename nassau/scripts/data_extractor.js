@@ -1683,7 +1683,7 @@ function extractOwnerInfo(ownershipHtml) {
     .filter(line => line.length > 0);
 
   const owners = [];
-  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
+  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP|STATE|COUNTY|CITY|GOVERNMENT|FEDERAL|PUBLIC|MUNICIPAL|DISTRICT|AUTHORITY|COMMISSION|AGENCY|DEPARTMENT|BOARD|LANDS)\b/i;
 
   for (const line of ownerLines) {
     let cleanName = line.trim();

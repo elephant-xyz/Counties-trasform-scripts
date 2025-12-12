@@ -162,7 +162,10 @@ function isCompanyName(name) {
     "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
     "\\btrust\\b", "\\btr\\b", "\\bfoundation\\b", "\\bfund\\b", "\\bpartnership\\b",
     "\\bholdings\\b", "\\bholding\\b", "\\bassociation\\b", "\\bassociates\\b",
-    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b"
+    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b",
+    "\\bstate\\b", "\\bcounty\\b", "\\bcity\\b", "\\bgovernment\\b", "\\bfederal\\b",
+    "\\bpublic\\b", "\\bmunicipal\\b", "\\bauthority\\b", "\\bcommission\\b",
+    "\\bagency\\b", "\\bdepartment\\b", "\\bboard\\b", "\\blands\\b"
   ];
   
   // Check for strict keyword matches
