@@ -131,6 +131,22 @@ function splitJointOwners(raw) {
   return parts.length ? parts : [s];
 }
 
+// Clean name artifacts like F/K/A, AKA, etc.
+function cleanNameArtifacts(name) {
+  if (!name) return name;
+  // Handle "F/K/A" (formerly known as) by keeping only the FIRST part (current name)
+  // Example: "GRACE F/K/A RUSH" → "GRACE"
+  const fkaMatch = name.match(/^([^]+?)\s+(F\/K\/A|FKA|F\s*\/\s*K\s*\/\s*A|A\/K\/A|AKA|A\s*K\s*A)\b/i);
+  if (fkaMatch) {
+    return normalizeSpace(fkaMatch[1]);
+  }
+  // Remove "F/K/A", "FKA", "AKA", "A/K/A" and similar patterns if in middle or end
+  let cleaned = name.replace(/\s+(F\/K\/A|FKA|F\s*\/\s*K\s*\/\s*A|A\/K\/A|AKA|A\s*K\s*A)\b.*$/gi, '');
+  // Remove extra spaces
+  cleaned = normalizeSpace(cleaned);
+  return cleaned;
+}
+
 // Detect if a string looks like a person name
 function looksLikePerson(name) {
   const s = normalizeSpace(name);
@@ -309,7 +325,9 @@ function buildOwnersByDate($) {
 
     for (let idx = 0; idx < parts.length; idx++) {
       const raw = parts[idx];
-      const clean = normalizeSpace(raw.replace(/\.$/, "").replace(/\s*\([^)]*\)\s*$/, ""));
+      let clean = normalizeSpace(raw.replace(/\.$/, "").replace(/\s*\([^)]*\)\s*$/, ""));
+      // Clean name artifacts like F/K/A, AKA, etc.
+      clean = cleanNameArtifacts(clean);
 
       if (!clean) continue;
 
