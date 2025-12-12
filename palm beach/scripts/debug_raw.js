@@ -19449,40 +19449,16 @@ async function main() {
 
   if (finalWriteRawValue || finalHasNormalized) {
     let finalSurface = null;
-    if (finalWriteRawValue) {
-      finalSurface = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-        if (field === "unnormalized_address") {
-          finalSurface[field] = finalWriteRawValue;
-          return;
-        }
-        if (field === "request_identifier") {
-          finalSurface[field] = safeNullIfEmpty(
-            finalWritePayload.request_identifier,
-          );
-          return;
-        }
-        if (field === "source_http_request") {
-          finalSurface[field] =
-            prepareSourceHttpRequest(finalWritePayload.source_http_request) ||
-            null;
-          return;
-        }
-        let value = Object.prototype.hasOwnProperty.call(finalWritePayload, field)
-          ? finalWritePayload[field]
-          : null;
-        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-          const numeric = parseCoordinate(value);
-          finalSurface[field] = Number.isFinite(numeric) ? numeric : null;
-          return;
-        }
-        if (typeof value === "string") {
-          const trimmed = value.trim();
-          finalSurface[field] = trimmed.length ? trimmed : null;
-          return;
-        }
-        finalSurface[field] = value === undefined ? null : value;
-      });
+    if (finalWriteRawValue && !finalHasNormalized) {
+      // Source only provides raw text; emit the raw oneOf branch with minimal fields.
+      finalSurface = {
+        unnormalized_address: finalWriteRawValue,
+        request_identifier:
+          safeNullIfEmpty(finalWritePayload.request_identifier) ?? null,
+        source_http_request:
+          prepareSourceHttpRequest(finalWritePayload.source_http_request) ||
+          null,
+      };
     } else if (finalHasNormalized) {
       finalSurface = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
@@ -19509,9 +19485,6 @@ async function main() {
       ) {
         delete finalSurface.unnormalized_address;
       }
-    }
-
-    if (finalSurface) {
       if (!finalSurface.postal_code) {
         finalSurface.plus_four_postal_code = null;
       }
@@ -19527,6 +19500,9 @@ async function main() {
       ) {
         finalSurface.country_code = "US";
       }
+    }
+
+    if (finalSurface) {
       lockedAddressPath = path.resolve(addressOutputPath);
       originalWriteFileSync(
         addressOutputPath,
