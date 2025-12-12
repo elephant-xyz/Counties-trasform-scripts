@@ -19095,6 +19095,60 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  const terminalAddressForBranch = readJSONIfExists(addressOutputPath);
+  if (terminalAddressForBranch) {
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalAddressForBranch });
+    const normalizedReady =
+      normalizedSurface &&
+      hasCompleteNormalizedAddress({ ...normalizedSurface });
+    const rawValue = safeNullIfEmpty(
+      terminalAddressForBranch.unnormalized_address,
+    );
+
+    if (normalizedReady) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedSurface,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedSurface.unnormalized_address;
+      }
+      const normalizedOut =
+        ensureAddressOutputCoverage(normalizedSurface) || normalizedSurface;
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(normalizedOut, null, 2)}\n`,
+      );
+    } else if (rawValue) {
+      const rawSeed = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...terminalAddressForBranch,
+        unnormalized_address: rawValue,
+      };
+      const alignedRaw =
+        ensureRawAddressSchemaDefaults(rawSeed) ||
+        sanitizeRawOneOfPayload(rawSeed, {
+          unnormalized_address: rawValue,
+          request_identifier: rawSeed.request_identifier,
+          source_http_request: rawSeed.source_http_request,
+        });
+      if (alignedRaw) {
+        const covered = ensureAddressOutputCoverage(alignedRaw) || alignedRaw;
+        originalWriteFileSync(
+          addressOutputPath,
+          `${JSON.stringify(covered, null, 2)}\n`,
+        );
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   const loggedAddress =
     readJSONIfExists(addressOutputPath) || finalAddressPayload || {};
   console.log(
