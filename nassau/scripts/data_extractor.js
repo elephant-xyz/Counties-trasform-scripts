@@ -1498,19 +1498,26 @@ function validateStringNotNull(value, fieldName) {
 
 function validatePersonName(value, fieldName) {
   if (value === null || value === undefined || value === "") {
-    console.log(`Warning: ${fieldName} cannot be null or empty`);
     return value;
   }
   if (typeof value !== "string") {
-    console.log(`Warning: ${fieldName} must be a string`);
-    return value;
+    console.log(`Warning: ${fieldName} must be a string, returning null`);
+    return null;
   }
-  if (fieldName !== 'first_name' && fieldName !== 'last_name' && fieldName !== 'middle_name') {
-    if (!PERSON_NAME_PATTERN.test(value)) {
-      console.log(`Warning: ${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}`);
-    }
+
+  // Trim the value to remove any leading/trailing whitespace
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return null;
   }
-  return value;
+
+  // Validate against the pattern for person names
+  if (!PERSON_NAME_PATTERN.test(trimmed)) {
+    console.log(`Warning: ${fieldName} "${trimmed}" does not match pattern ${PERSON_NAME_PATTERN.source}, returning null`);
+    return null;
+  }
+
+  return trimmed;
 }
 
 function formatName(name) {

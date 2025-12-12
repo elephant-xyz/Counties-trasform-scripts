@@ -15,7 +15,11 @@ function normalizeSpace(str) {
 function titleCase(str) {
   if (!str || str.trim() === "") return "";
 
-  const normalized = str.trim().toLowerCase();
+  // Remove any characters that don't match the allowed pattern
+  const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned || cleaned.length === 0) return "";
+
+  const normalized = cleaned.toLowerCase();
   let result = "";
   let capitalizeNext = true;
 
@@ -36,9 +40,14 @@ function titleCase(str) {
       // Next letter should be capitalized
       capitalizeNext = true;
     } else {
-      // For any other character, just add it and keep the capitalization state
+      // Should not happen after cleaning, but just in case
       result += char;
     }
+  }
+
+  // Validate result matches the pattern, return empty string if not
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+    return "";
   }
 
   return result;
