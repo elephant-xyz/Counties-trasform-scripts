@@ -1597,11 +1597,13 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       });
   });
 
+
   // Create relationship between current owner and first sale (sales_1) if not already created
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
     const currentOwners = ownersByDate["current"] || [];
+
 
     currentOwners.forEach((owner) => {
       // Check if this owner already has a relationship with sales_1
@@ -1614,6 +1616,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
         }
         return false;
       });
+
 
       if (!alreadyLinked) {
         if (owner.type === "person") {
