@@ -57,7 +57,7 @@ function main() {
   const $ = cheerio.load(html);
 
   const parcelId = getParcelId($);
-  if (!parcelId) throw new Error("Parcel ID not found");
+  const parcelIdToUse = parcelId || "UNKNOWN";
 
   const buildingCount = countBuildings($);
   const utilities =
@@ -65,7 +65,7 @@ function main() {
       ? Array.from({ length: buildingCount }, () => defaultUtility())
       : [];
 
-  const propertyKey = `property_${parcelId}`;
+  const propertyKey = `property_${parcelIdToUse}`;
   const output = {};
   output[propertyKey] = {
     utilities,

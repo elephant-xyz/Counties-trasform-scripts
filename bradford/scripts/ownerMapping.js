@@ -139,7 +139,7 @@ function isCompanyName(name) {
   const n = (name || "").toLowerCase();
   // direct boundary checks for common suffixes/patterns
   if (
-    /\b(inc|inc\.|corp|corp\.|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
+    /\b(inc|inc\.|corp|corp\.|corporation|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
       n,
     )
   ) {
@@ -165,10 +165,46 @@ function normalizeOwnerKey(owner) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, ' ');
-  return cleaned.split(' ').map(part =>
-    part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-  ).join(' ');
+
+  // Clean and normalize whitespace
+  let cleaned = name.trim().replace(/\s+/g, ' ');
+
+  // Remove trailing periods
+  cleaned = cleaned.replace(/\.+$/, '');
+
+  // Handle abbreviations: ensure letters after periods, hyphens, apostrophes are uppercase
+  // Pattern: letter + special char + letter should be: Upper + special + Upper
+  cleaned = cleaned.replace(/([A-Za-z])([.\-',])([A-Za-z])/g, (match, before, sep, after) => {
+    return before.charAt(0).toUpperCase() + sep + after.charAt(0).toUpperCase();
+  });
+
+  // Split by spaces and format each word part
+  const result = cleaned.split(' ').map(part => {
+    // For parts with special characters (abbreviations), handle carefully
+    if (/[.\-',]/.test(part)) {
+      // Split by special characters and capitalize each segment
+      return part.split(/([.\-',])/).map((segment, idx) => {
+        // If it's a separator, keep it
+        if (/[.\-',]/.test(segment)) return segment;
+        // If it's a letter segment, capitalize first letter
+        if (segment.length > 0) {
+          return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+        }
+        return segment;
+      }).join('');
+    } else {
+      // Normal word: capitalize first letter, lowercase rest
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+  }).join(' ');
+
+  // Validate result matches required pattern: must start with uppercase letter
+  // and only contain letters, spaces, hyphens, apostrophes, commas, periods
+  if (!result || result.length === 0 || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 // Build owner object(s) from a raw string

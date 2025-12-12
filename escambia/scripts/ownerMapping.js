@@ -138,7 +138,20 @@ function isCompanyName(name) {
     "library",
     "museum",
     "park",
-    "conservancy"
+    "conservancy",
+    "dept",
+    "dept.",
+    "department",
+    "parks",
+    "recreation",
+    "plant",
+    "prairie",
+    "prarie",
+    "reserve",
+    "sanctuary",
+    "preserve",
+    "forest",
+    "wildlife"
   ];
   return kws.some((kw) => new RegExp(`(^|\\b)${kw}(\\b|\\.|$)`, "i").test(n));
 }
@@ -251,7 +264,10 @@ function splitOwnerCandidates(text) {
   parts.forEach((p) => {
     p.split(/\s+(?:and|AND|And)\s+|\s*&\s*/).forEach((x) => {
       const z = normSpace(x);
-      if (z) out.push(z);
+      // Filter out date patterns like "DATED 06-12-2024" or standalone dates
+      if (z && !/^(?:DATED\s+)?[\d\-\/]+$|^DATED\s/i.test(z)) {
+        out.push(z);
+      }
     });
   });
   return out;
@@ -259,17 +275,33 @@ function splitOwnerCandidates(text) {
 
 function extractInterestInfo(raw) {
   if (!raw) return null;
-  const interestRegex =
-    /(\d+)\s*\/\s*(\d+)\s*(?:IN(?:T|TEREST)?\.?)?/i;
-  const match = raw.match(interestRegex);
-  if (!match) return null;
-  const numerator = parseInt(match[1], 10);
-  const denominator = parseInt(match[2], 10);
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0)
-    return null;
+  // Match patterns like "1/2 INT", "50%", "50 %", etc.
+  const fractionRegex = /(\d+)\s*\/\s*(\d+)\s*(?:IN(?:T|TEREST)?\.?)?/i;
+  const percentRegex = /\d+\s*%/g;
+
+  let cleaned = raw;
+  let numerator = null;
+  let denominator = null;
+
+  // Check for fraction pattern first
+  const fractionMatch = raw.match(fractionRegex);
+  if (fractionMatch) {
+    numerator = parseInt(fractionMatch[1], 10);
+    denominator = parseInt(fractionMatch[2], 10);
+    cleaned = normSpace(raw.replace(fractionMatch[0], " "));
+  }
+
+  // Also remove any percentage patterns (like "50%")
+  cleaned = normSpace(cleaned.replace(percentRegex, " "));
+
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) {
+    // No valid fraction found, but return cleaned text with percentages removed
+    return cleaned !== raw ? { cleaned } : null;
+  }
+
   const fraction = numerator / denominator;
   const fractionString = `${numerator}/${denominator}`;
-  const cleaned = normSpace(raw.replace(match[0], " "));
+
   return {
     numerator,
     denominator,
@@ -317,13 +349,14 @@ function parsePersonName(raw, contextHint) {
       .filter(Boolean);
     let processed = tryApplyPrefixSuffix(tokens);
     const first = processed.tokens[0] || "";
-    const middle = processed.tokens.slice(1).join(" ") || null;
+    const middleRaw = processed.tokens.slice(1).join(" ") || null;
+    const middle = middleRaw ? normSpace(middleRaw) : null;
     if (first && last)
       return {
         type: "person",
         first_name: first,
         last_name: normSpace(last),
-        middle_name: middle,
+        middle_name: middle && middle.length > 0 ? middle : null,
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         // Store removed designations if any, for debugging or further processing
@@ -344,13 +377,14 @@ function parsePersonName(raw, contextHint) {
     if (processed.tokens.length < 2) processed = { ...processed, tokens };
     const last = processed.tokens[0];
     const first = processed.tokens[1] || "";
-    const middle = processed.tokens.slice(2).join(" ") || null;
+    const middleRaw = processed.tokens.slice(2).join(" ") || null;
+    const middle = middleRaw ? normSpace(middleRaw) : null;
     if (first && last)
       return {
         type: "person",
         first_name: first,
         last_name: last,
-        middle_name: middle,
+        middle_name: middle && middle.length > 0 ? middle : null,
         prefix_name: processed.prefix || null,
         suffix_name: processed.suffix || null,
         _removed_designations: removedDesignations,
@@ -362,13 +396,14 @@ function parsePersonName(raw, contextHint) {
   }
   const first = processed.tokens[0];
   const last = processed.tokens[processed.tokens.length - 1];
-  const middle = processed.tokens.slice(1, -1).join(" ") || null;
+  const middleRaw = processed.tokens.slice(1, -1).join(" ") || null;
+  const middle = middleRaw ? normSpace(middleRaw) : null;
   if (first && last)
     return {
       type: "person",
       first_name: first,
       last_name: last,
-      middle_name: middle,
+      middle_name: middle && middle.length > 0 ? middle : null,
       prefix_name: processed.prefix || null,
       suffix_name: processed.suffix || null,
       _removed_designations: removedDesignations,
@@ -510,7 +545,7 @@ function parseOwnersFromGroup(valueText, contextHint) {
       return;
     }
 
-    if (interestInfo) {
+    if (interestInfo && interestInfo.fraction !== undefined) {
       interestGroupCounter += 1;
       pendingInterest = interestInfo;
       pendingGroupId = `group_${interestGroupCounter}`;
@@ -522,7 +557,7 @@ function parseOwnersFromGroup(valueText, contextHint) {
         (interestInfo.fraction * 100).toFixed(4),
       );
       lastOwner.ownership_interest_group = pendingGroupId;
-    } else if (pendingInterest) {
+    } else if (pendingInterest && pendingInterest.fraction !== undefined) {
       lastOwner.ownership_interest_fraction = pendingInterest.fractionString;
       lastOwner.ownership_interest_decimal = Number(
         pendingInterest.fraction.toFixed(6),
