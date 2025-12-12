@@ -1416,7 +1416,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
   //Person processing and mapping creation.
   const personMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
+  Object.keys(ownersByDate).forEach((dateKey) => {
+    // Skip unknown_date_* entries as they won't be linked to any sale
+    if (/^unknown_date_\d+$/.test(dateKey)) return;
+
+    const arr = ownersByDate[dateKey];
     (arr || []).forEach((o) => {
       if (o.type === "person") {
         const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
@@ -1426,7 +1430,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             middle_name: o.middle_name,
             last_name: o.last_name,
             prefix_name: o.prefix_name,
-            suffix_name: o.suffix_name            
+            suffix_name: o.suffix_name
           });
         else {
           const existing = personMap.get(k);
@@ -1455,7 +1459,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
   //Company processing and mapping creation.
   const companyNames = new Set();
-  Object.values(ownersByDate).forEach((arr) => {
+  Object.keys(ownersByDate).forEach((dateKey) => {
+    // Skip unknown_date_* entries as they won't be linked to any sale
+    if (/^unknown_date_\d+$/.test(dateKey)) return;
+
+    const arr = ownersByDate[dateKey];
     (arr || []).forEach((o) => {
       if (o.type === "company" && (o.name || "").trim())
         companyNames.add((o.name || "").trim());
