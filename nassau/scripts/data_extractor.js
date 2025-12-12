@@ -1474,7 +1474,7 @@ function extractMailingAddress(ownershipHtml) {
     .trim();
 }
 
-const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
+const PERSON_NAME_PATTERN = /^[A-Z][a-zA-Z\s\-',.]*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
@@ -1535,8 +1535,8 @@ function formatName(name) {
   // Convert to lowercase first
   const lower = normalizedSpacing.toLowerCase();
 
-  // Capitalize properly according to pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  // This means: uppercase first letter, lowercase rest, then optionally (special char + letter + lowercase*)
+  // Capitalize properly according to pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // This means: uppercase first letter, then any mix of letters, spaces, and special chars
   let result = "";
   let capitalizeNext = true;
   let lastWasSpecial = false;
@@ -1570,7 +1570,7 @@ function formatName(name) {
   if (!result || result.length === 0 || !/^[A-Z]/.test(result)) return null;
 
   // Final validation: ensure the result matches the pattern
-  const finalPattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const finalPattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!finalPattern.test(result)) {
     console.log(`Warning: formatName produced invalid result: "${result}" from input: "${name}"`);
     return null;
