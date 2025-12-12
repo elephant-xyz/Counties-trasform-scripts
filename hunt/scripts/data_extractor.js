@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
+const ownerParser = require("./ownerMapping");
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -24,13 +25,98 @@ function parseCurrencyToNumber(text) {
   return Number.isFinite(num) ? num : null;
 }
 
-function titleCaseName(name) {
-  if (!name) return name;
-  return String(name)
-    .toLowerCase()
-    .split(/\s+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function isLikelyNameToken(token) {
+  return !!token && /^[A-Za-z][A-Za-z'.-]*$/.test(token);
+}
+
+function collapseHyphenNameTokens(tokens) {
+  const collapsed = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (
+      token === "-" &&
+      i > 0 &&
+      i < tokens.length - 1 &&
+      isLikelyNameToken(tokens[i - 1]) &&
+      isLikelyNameToken(tokens[i + 1])
+    ) {
+      const prev = collapsed.pop();
+      collapsed.push(`${prev}-${tokens[i + 1]}`);
+      i += 1;
+      continue;
+    }
+    collapsed.push(token);
+  }
+  return collapsed;
+}
+
+function splitHyphenatedFirstNames(raw) {
+  const normalized = (raw || "")
+    .replace(/[\u2012-\u2015]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || !normalized.includes("-")) return [];
+
+  let tokens = normalized.split(" ").filter(Boolean);
+  if (tokens.length < 3) return [];
+
+  tokens = collapseHyphenNameTokens(tokens);
+  if (tokens.length < 3) return [];
+
+  let hyphenIndex = -1;
+  if (tokens[0] && tokens[0].includes("-")) hyphenIndex = 0;
+  else if (tokens[1] && tokens[1].includes("-")) hyphenIndex = 1;
+  if (hyphenIndex === -1) return [];
+
+  const hyphenToken = tokens[hyphenIndex];
+  const lastNameToken = tokens[hyphenIndex === 0 ? 1 : 0];
+  if (!lastNameToken) return [];
+
+  let remainderTokens = tokens.slice(2);
+  const firstNames = hyphenToken
+    .split("-")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (firstNames.length < 2) return [];
+
+  const hasTrailingTokens = remainderTokens.length > 0;
+  const isAllLowercase = normalized === normalized.toLowerCase();
+  const isAllUppercase = normalized === normalized.toUpperCase();
+
+  if (hyphenIndex === 1 && !(isAllUppercase || isAllLowercase)) {
+    return [];
+  }
+
+  if (!hasTrailingTokens && !(isAllLowercase || isAllUppercase)) {
+    return [];
+  }
+
+  let suffixName = null;
+  if (remainderTokens.length) {
+    const possibleSuffix = validateSuffixName(
+      remainderTokens[remainderTokens.length - 1],
+    );
+    if (possibleSuffix) {
+      suffixName = possibleSuffix;
+      remainderTokens = remainderTokens.slice(0, -1);
+    }
+  }
+
+  const middleStr = remainderTokens.join(" ").trim();
+  const middleName = ownerParser.sanitizeMiddleName(middleStr);
+  const lastName = ownerParser.titleCaseName(lastNameToken);
+
+  return firstNames.map((first) => ({
+    first_name: ownerParser.titleCaseName(first),
+    last_name: lastName,
+    middle_name: middleName,
+    prefix_name: null,
+    suffix_name: suffixName,
+    birth_date: null,
+    us_citizenship_status: null,
+    veteran_status: null,
+  }));
 }
 
 function validateSuffixName(suffix) {
@@ -56,349 +142,9 @@ function validateSuffixName(suffix) {
 
 function parsePersonNames(nameStr) {
   if (!nameStr || nameStr.trim() === "") return [];
-
-  const persons = [];
-
-  // Clean up the string and remove parenthetical content like "(DECEASED)", "(TRUSTEE)", etc.
-  let cleaned = nameStr
-    .trim()
-    .replace(/\([^)]*\)/g, "") // Remove all parenthetical content
-    .replace(/\s+/g, " ")
-    .trim();
-
-  // Comprehensive company keyword list
-  const companyKeywords = [
-    "inc", "llc", "ltd", "foundation", "alliance", "solutions", "corp", "co",
-    "services", "trust", "tr", "company", "partners", "holdings", "lp", "pllc",
-    "pc", "bank", "association", "assn", "church", "group", "university",
-    "school", "authority", "dept", "department", "ministries", "incorporated",
-    "corporation", "limited", "estate", "partnership", "associates", "properties",
-    "investments", "enterprises", "ventures", "capital", "fund", "society",
-    "organization", "agency"
-  ];
-
-  const companyRe = new RegExp(
-    `(^|[^a-zA-Z])(${companyKeywords.join("|")})([^a-zA-Z]|$)`,
-    "i"
-  );
-
-  // RULE 1 & 2: Check if it's a company
-  if (companyRe.test(cleaned)) {
-    // Company detected - do not create person objects for companies
-    // Companies should be handled separately as company entities
-    return [];
-  }
-
-  // RULE 3: Process Personal Names
-  let first_name = null;
-  let last_name = null;
-  let middle_name = null;
-  let suffix_name = null;
-
-  // RULE 3A: Check if the name contains '&'
-  // NEW LOGIC: Split into TWO person objects (for human names without entity keywords)
-  if (cleaned.includes("&")) {
-    const parts = cleaned.split("&").map(s => s.trim()).filter(Boolean);
-
-    if (parts.length >= 2) {
-      // Check if this is ALL CAPS format (CAD style)
-      const isAllCaps = cleaned.replace(/&/g, " ").trim() === cleaned.replace(/&/g, " ").trim().toUpperCase();
-
-      const part1Words = parts[0].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
-      const part2Words = parts[1].replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(w => w.length > 0);
-
-      // Heuristic: If CAD format (ALL CAPS) and first part has 2+ words and second part has 1+ word
-      // Then assume shared last name: "LASTNAME FIRSTNAME1 & FIRSTNAME2" or "LASTNAME FIRSTNAME1 MIDDLEINITIAL & FIRSTNAME2"
-      if (isAllCaps && part1Words.length >= 2 && part2Words.length >= 1) {
-        const sharedLastName = titleCaseName(part1Words[0]);
-
-        // Check if the last word in part1 is a middle initial (single character or ends with period)
-        let firstName1, middleName1;
-        const lastWord = part1Words[part1Words.length - 1];
-        const isMiddleInitial = lastWord.length === 1 || lastWord.endsWith(".");
-
-        if (isMiddleInitial && part1Words.length >= 3) {
-          // Has middle initial: LASTNAME FIRSTNAME MIDDLEINITIAL
-          firstName1 = titleCaseName(part1Words.slice(1, -1).join(" "));
-          middleName1 = titleCaseName(lastWord).replace(/\.$/, "");
-        } else {
-          // No middle initial: LASTNAME FIRSTNAME
-          firstName1 = titleCaseName(part1Words.slice(1).join(" "));
-          middleName1 = null;
-        }
-
-        const firstName2 = titleCaseName(part2Words.join(" "));
-
-        // Create first person
-        if (firstName1) {
-          persons.push({
-            first_name: firstName1,
-            last_name: sharedLastName,
-            middle_name: middleName1,
-            prefix_name: null,
-            suffix_name: null,
-            birth_date: null,
-            us_citizenship_status: null,
-            veteran_status: null,
-          });
-        }
-
-        // Create second person
-        if (firstName2) {
-          persons.push({
-            first_name: firstName2,
-            last_name: sharedLastName,
-            middle_name: null, // Second person typically doesn't have middle name shown
-            prefix_name: null,
-            suffix_name: null,
-            birth_date: null,
-            us_citizenship_status: null,
-            veteran_status: null,
-          });
-        }
-
-        return persons;
-      }
-
-      // Otherwise, parse each part separately as individual full names
-      // Parse first part
-      const person1 = parseSinglePersonName(parts[0]);
-      if (person1) {
-        persons.push(person1);
-      }
-
-      // Parse second part
-      const person2 = parseSinglePersonName(parts[1]);
-      if (person2) {
-        persons.push(person2);
-      }
-
-      return persons;
-    }
-  }
-
-  // Helper function to parse a single person name with smart format detection
-  function parseSinglePersonName(nameStr) {
-    let cleaned = nameStr.replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim();
-    const words = cleaned.split(" ").filter(w => w.length > 0);
-
-    if (words.length === 0) return null;
-
-    let first_name, middle_name, last_name;
-
-    // Smart format detection using multiple heuristics
-    const isAllCaps = cleaned === cleaned.toUpperCase();
-
-    if (words.length === 1) {
-      first_name = titleCaseName(words[0]);
-      middle_name = null;
-      last_name = titleCaseName(words[0]);
-    } else if (words.length === 2) {
-      // For 2 words, use ALL CAPS as indicator of CAD format
-      if (isAllCaps) {
-        // CAD format: LASTNAME FIRSTNAME
-        last_name = titleCaseName(words[0]);
-        first_name = titleCaseName(words[1]);
-      } else {
-        // Normal format: FIRSTNAME LASTNAME
-        first_name = titleCaseName(words[0]);
-        last_name = titleCaseName(words[1]);
-      }
-      middle_name = null;
-    } else if (words.length === 3) {
-      // Three words - detect format using multiple heuristics
-      const firstWord = words[0];
-      const secondWord = words[1];
-      const thirdWord = words[2];
-
-      const firstIsInitial = firstWord.length === 1 || firstWord.endsWith(".");
-      const secondIsInitial = secondWord.length === 1 || secondWord.endsWith(".");
-      const thirdIsInitial = thirdWord.length === 1 || thirdWord.endsWith(".");
-
-      if (secondIsInitial && !firstIsInitial && !thirdIsInitial) {
-        // Middle initial in position 2
-        if (isAllCaps) {
-          // CAD format: LASTNAME FIRSTNAME M
-          last_name = titleCaseName(firstWord);
-          first_name = titleCaseName(secondWord);
-          middle_name = titleCaseName(thirdWord).replace(/\.$/, "");
-        } else {
-          // Normal format: FIRSTNAME M LASTNAME
-          first_name = titleCaseName(firstWord);
-          middle_name = titleCaseName(secondWord).replace(/\.$/, "");
-          last_name = titleCaseName(thirdWord);
-        }
-      } else if (firstIsInitial && !secondIsInitial && !thirdIsInitial) {
-        // Unlikely format: M FIRSTNAME LASTNAME
-        first_name = titleCaseName(secondWord);
-        middle_name = titleCaseName(firstWord).replace(/\.$/, "");
-        last_name = titleCaseName(thirdWord);
-      } else if (thirdIsInitial && !firstIsInitial && !secondIsInitial) {
-        // Initial at end: FIRSTNAME LASTNAME M or LASTNAME FIRSTNAME M
-        if (isAllCaps) {
-          // CAD format: LASTNAME FIRSTNAME M
-          last_name = titleCaseName(firstWord);
-          first_name = titleCaseName(secondWord);
-          middle_name = titleCaseName(thirdWord).replace(/\.$/, "");
-        } else {
-          // Normal format: FIRSTNAME LASTNAME M (unusual)
-          first_name = titleCaseName(firstWord);
-          last_name = titleCaseName(secondWord);
-          middle_name = titleCaseName(thirdWord).replace(/\.$/, "");
-        }
-      } else {
-        // No obvious initial - use ALL CAPS to determine format
-        if (isAllCaps) {
-          // CAD format: LASTNAME FIRSTNAME MIDDLENAME
-          last_name = titleCaseName(firstWord);
-          first_name = titleCaseName(secondWord);
-          middle_name = titleCaseName(thirdWord);
-        } else {
-          // Normal format: FIRSTNAME MIDDLENAME LASTNAME
-          first_name = titleCaseName(firstWord);
-          middle_name = titleCaseName(secondWord);
-          last_name = titleCaseName(thirdWord);
-        }
-      }
-    } else {
-      // Four or more words - use ALL CAPS to determine format
-      if (isAllCaps) {
-        // CAD format: LASTNAME FIRSTNAME MIDDLE1 MIDDLE2 ...
-        last_name = titleCaseName(words[0]);
-        first_name = titleCaseName(words[1]);
-        middle_name = words.slice(2).map(w => titleCaseName(w)).join(" ");
-      } else {
-        // Normal format: FIRSTNAME MIDDLE1 MIDDLE2 ... LASTNAME
-        first_name = titleCaseName(words[0]);
-        last_name = titleCaseName(words[words.length - 1]);
-        middle_name = words.slice(1, -1).map(w => titleCaseName(w)).join(" ");
-      }
-    }
-
-    return {
-      first_name: first_name && first_name.trim() !== "" ? first_name : (last_name || "Unknown"),
-      last_name: last_name && last_name.trim() !== "" ? last_name : (first_name || "Unknown"),
-      middle_name: middle_name && middle_name.trim() !== "" ? middle_name : null,
-      prefix_name: null,
-      suffix_name: null,
-      birth_date: null,
-      us_citizenship_status: null,
-      veteran_status: null,
-    };
-  }
-
-  // RULE 3B: Single person without '&' - use smart format detection
-  // Keep only: letters, spaces, hyphens, apostrophes, commas, periods
-  cleaned = cleaned.replace(/[^A-Za-z\s\-',.]/g, " ").replace(/\s+/g, " ").trim();
-
-  const words = cleaned.split(" ").filter((w) => w.length > 0);
-
-  if (words.length === 0) return [];
-
-  // Use smart format detection
-  const isAllCaps = cleaned === cleaned.toUpperCase();
-
-  if (words.length === 1) {
-    // Single word
-    first_name = titleCaseName(words[0]);
-    middle_name = null;
-    last_name = titleCaseName(words[0]);
-  } else if (words.length === 2) {
-    // For 2 words, use ALL CAPS as indicator of CAD format
-    if (isAllCaps) {
-      // CAD format: LASTNAME FIRSTNAME
-      last_name = titleCaseName(words[0]);
-      first_name = titleCaseName(words[1]);
-    } else {
-      // Normal format: FIRSTNAME LASTNAME
-      first_name = titleCaseName(words[0]);
-      last_name = titleCaseName(words[1]);
-    }
-    middle_name = null;
-  } else if (words.length === 3) {
-    // Three words - detect format using multiple heuristics
-    const firstWord = words[0];
-    const secondWord = words[1];
-    const thirdWord = words[2];
-
-    const firstIsInitial = firstWord.length === 1 || firstWord.endsWith(".");
-    const secondIsInitial = secondWord.length === 1 || secondWord.endsWith(".");
-    const thirdIsInitial = thirdWord.length === 1 || thirdWord.endsWith(".");
-
-    if (secondIsInitial && !firstIsInitial && !thirdIsInitial) {
-      // Middle initial in position 2
-      if (isAllCaps) {
-        // CAD format: LASTNAME FIRSTNAME M
-        last_name = titleCaseName(firstWord);
-        first_name = titleCaseName(secondWord);
-        middle_name = titleCaseName(thirdWord).replace(/\.$/, "");
-      } else {
-        // Normal format: FIRSTNAME M LASTNAME
-        first_name = titleCaseName(firstWord);
-        middle_name = titleCaseName(secondWord).replace(/\.$/, "");
-        last_name = titleCaseName(thirdWord);
-      }
-    } else if (firstIsInitial && !secondIsInitial && !thirdIsInitial) {
-      // Unlikely format: M FIRSTNAME LASTNAME
-      first_name = titleCaseName(secondWord);
-      middle_name = titleCaseName(firstWord).replace(/\.$/, "");
-      last_name = titleCaseName(thirdWord);
-    } else if (thirdIsInitial && !firstIsInitial && !secondIsInitial) {
-      // Initial at end: FIRSTNAME LASTNAME M or LASTNAME FIRSTNAME M
-      if (isAllCaps) {
-        // CAD format: LASTNAME FIRSTNAME M
-        last_name = titleCaseName(firstWord);
-        first_name = titleCaseName(secondWord);
-        middle_name = titleCaseName(thirdWord).replace(/\.$/, "");
-      } else {
-        // Normal format: FIRSTNAME LASTNAME M (unusual)
-        first_name = titleCaseName(firstWord);
-        last_name = titleCaseName(secondWord);
-        middle_name = titleCaseName(thirdWord).replace(/\.$/, "");
-      }
-    } else {
-      // No obvious initial - use ALL CAPS to determine format
-      if (isAllCaps) {
-        // CAD format: LASTNAME FIRSTNAME MIDDLENAME
-        last_name = titleCaseName(firstWord);
-        first_name = titleCaseName(secondWord);
-        middle_name = titleCaseName(thirdWord);
-      } else {
-        // Normal format: FIRSTNAME MIDDLENAME LASTNAME
-        first_name = titleCaseName(firstWord);
-        middle_name = titleCaseName(secondWord);
-        last_name = titleCaseName(thirdWord);
-      }
-    }
-  } else {
-    // Four or more words - use ALL CAPS to determine format
-    if (isAllCaps) {
-      // CAD format: LASTNAME FIRSTNAME MIDDLE1 MIDDLE2 ...
-      last_name = titleCaseName(words[0]);
-      first_name = titleCaseName(words[1]);
-      middle_name = words.slice(2).map(w => titleCaseName(w)).join(" ");
-    } else {
-      // Normal format: FIRSTNAME MIDDLE1 MIDDLE2 ... LASTNAME
-      first_name = titleCaseName(words[0]);
-      last_name = titleCaseName(words[words.length - 1]);
-      middle_name = words.slice(1, -1).map(w => titleCaseName(w)).join(" ");
-    }
-  }
-
-  // Ensure no null/empty values - use actual names
-  persons.push({
-    first_name: first_name && first_name.trim() !== "" ? first_name : (last_name || "Unknown"),
-    last_name: last_name && last_name.trim() !== "" ? last_name : (first_name || "Unknown"),
-    middle_name: middle_name && middle_name.trim() !== "" ? middle_name : null,
-    prefix_name: null,
-    suffix_name: null,
-    birth_date: null,
-    us_citizenship_status: null,
-    veteran_status: null,
-  });
-
-  return persons;
+  return ownerParser.parsePersonsFromString(nameStr);
 }
+
 
 function validateDeedType(deedType) {
   // List of valid deed types from the schema
@@ -1425,6 +1171,16 @@ function extractFromHtml(htmlPath) {
         else if (/GUARDIAN'?S?\s*DEED/i.test(descNormalized)) {
           deedType = "Guardian's Deed";
         }
+        // Tenancy/Ownership Deeds
+        else if (/JOINT\s+TENANCY/i.test(descNormalized)) {
+          deedType = "Joint Tenancy Deed";
+        } else if (/TENANCY\s+IN\s+COMMON/i.test(descNormalized)) {
+          deedType = "Tenancy in Common Deed";
+        } else if (/COMMUNITY\s+PROPERTY/i.test(descNormalized)) {
+          deedType = "Community Property Deed";
+        } else if (/INTERSPOUSAL\s+TRANSFER/i.test(descNormalized)) {
+          deedType = "Interspousal Transfer Deed";
+        }
         // Other specific deed types
         else if (/BARGAIN\s+AND\s+SALE/i.test(descNormalized)) {
           deedType = "Bargain and Sale Deed";
@@ -1442,6 +1198,18 @@ function extractFromHtml(htmlPath) {
           deedType = "Contract for Deed";
         } else if (/RECEIVER'?S?\s*DEED/i.test(descNormalized)) {
           deedType = "Receiver's Deed";
+        } else if (/WILD\s*DEED/i.test(descNormalized)) {
+          deedType = "Wild Deed";
+        } else if (/QUIET\s+TITLE/i.test(descNormalized)) {
+          deedType = "Quiet Title Deed";
+        } else if (/RIGHT\s+OF\s+WAY/i.test(descNormalized) || /\bROW\b/i.test(descNormalized)) {
+          deedType = "Right of Way Deed";
+        } else if (/VACATION\s+OF\s+PLAT/i.test(descNormalized)) {
+          deedType = "Vacation of Plat Deed";
+        } else if (/ASSIGNMENT\s+OF\s+CONTRACT/i.test(descNormalized)) {
+          deedType = "Assignment of Contract";
+        } else if (/RELEASE\s+OF\s+CONTRACT/i.test(descNormalized)) {
+          deedType = "Release of Contract";
         }
         // For all unmatched types (MARRIAGE LICENSE, DIVORCE DECREE, etc.),
         // use "Miscellaneous" which is in the allowed enum list
@@ -1562,9 +1330,9 @@ function buildOwners(ownerJsonPath) {
       const arr = ownersBlock.owners_by_date[dateKey] || [];
       for (const o of arr) {
         if (o && o.type === "person") {
-          let first = titleCaseName(o.first_name || "");
-          let last = titleCaseName(o.last_name || "");
-          let mid = o.middle_name ? titleCaseName(o.middle_name).trim() : "";
+          let first = ownerParser.titleCaseName(o.first_name || "");
+          let last = ownerParser.titleCaseName(o.last_name || "");
+          let mid = o.middle_name ? ownerParser.titleCaseName(o.middle_name).trim() : "";
 
           // Remove special characters that don't match the validation pattern
           // Keep only: letters, spaces, hyphens, apostrophes, commas, periods
@@ -1868,7 +1636,7 @@ function parseMailingAddress(mailingAddressText) {
     }
   }
 
-  // Return schema-compliant address structure (without street component fields)
+  // Return schema-compliant address structure (mailing address includes unnormalized)
   return {
     source_http_request: null,
     request_identifier: null,
@@ -2092,7 +1860,7 @@ function parseAddress(unnormalizedPath, situsText) {
   return {
     source_http_request: addrSeed.source_http_request || null,
     request_identifier: addrSeed.request_identifier || null,
-    unnormalized_address: addrSeed.full_address || full || null,
+    unnormalized_address: null,
     unit_identifier: null,
     city_name: city_name || null,
     municipality_name: null,
@@ -2113,25 +1881,7 @@ function parseAddress(unnormalizedPath, situsText) {
 }
 
 function isCompanyName(name) {
-  if (!name) return false;
-
-  // Comprehensive company keyword list
-  const companyKeywords = [
-    "inc", "llc", "ltd", "foundation", "alliance", "solutions", "corp", "co",
-    "services", "trust", "tr", "company", "partners", "holdings", "lp", "pllc",
-    "pc", "bank", "association", "assn", "church", "group", "university",
-    "school", "authority", "dept", "department", "ministries", "incorporated",
-    "corporation", "limited", "estate", "partnership", "associates", "properties",
-    "investments", "enterprises", "ventures", "capital", "fund", "society",
-    "organization", "agency"
-  ];
-
-  const companyRe = new RegExp(
-    `(^|[^a-zA-Z])(${companyKeywords.join("|")})([^a-zA-Z]|$)`,
-    "i"
-  );
-
-  return companyRe.test(name);
+  return ownerParser.looksLikeCompany(name);
 }
 
 /**
@@ -2411,7 +2161,7 @@ function main() {
         const exemptionId = `${jurisdictionId}_${exemptionIndex + 1}`;
         const exemptionFileName = `tax_exemption_${exemptionId}.json`;
 
-        // Build exemption object with only fields that have values
+        // Build exemption object with all extracted fields
         const taxExemption = {
           source_http_request: {
             method: "GET",
@@ -2430,9 +2180,9 @@ function main() {
           taxExemption.exemption_code = exemption.code;
         }
 
-        // Add exemption_value_amount only if available
+        // Add exemption_value only if available
         if (exemption.value_amount !== null && exemption.value_amount !== undefined) {
-          taxExemption.exemption_value_amount = exemption.value_amount;
+          taxExemption.exemption_value = exemption.value_amount;
         }
 
         // Add tax_rate from exemption or jurisdiction if available
