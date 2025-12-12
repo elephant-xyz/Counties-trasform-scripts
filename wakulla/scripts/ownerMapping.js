@@ -156,7 +156,7 @@ function cleanRawName(raw) {
     .trim();
   // If a trailing bare number remains right after a company suffix, drop it
   const companySuffix =
-    "(?:LLC|L\\.L\\.C|INC|CORP|CO|COMPANY|LTD|TRUST|LP|LLP|PLC|PLLC)";
+    "(?:LLC|L\\.L\\.C|LC|INC|CORP|CO|COMPANY|LTD|TRUST|LP|LLP|PLC|PLLC)";
   const trailingNumAfterCo = new RegExp(
     `^(.*?\\b${companySuffix}\\b)\\s+\\d{1,3}$`,
     "i",
@@ -224,7 +224,7 @@ function extractPrefixSuffix(rawName) {
 
 const COMPANY_KEYWORDS = [
   // Business entity types - short forms
-  "inc", "corp", "co", "llc", "l.l.c", "ltd", "lp", "llp", "plc", "pllc", "pc", "pa", "pllp", "lllp", "rlp", "rllp",
+  "inc", "corp", "co", "lc", "llc", "l.l.c", "ltd", "lp", "llp", "plc", "pllc", "pc", "pa", "pllp", "lllp", "rlp", "rllp",
   // Business entity types - long forms
   "incorporated", "corporation", "company", "limited", "partnership", "professional",
   // Trusts and estates
