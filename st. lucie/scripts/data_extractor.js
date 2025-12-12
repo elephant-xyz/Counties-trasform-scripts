@@ -1483,26 +1483,48 @@ async function main() {
     country_code: "US",
   };
 
-  if (siteAddress && siteAddress.toLowerCase() !== "tbd") {
-    // Store the original unnormalized address
-    finalAddressOutput.unnormalized_address = siteAddress;
+  const isValidSiteAddress = siteAddress && siteAddress.toLowerCase() !== "tbd";
+  const cleanSiteAddress = isValidSiteAddress ? siteAddress : null;
 
-    // Parse Sec/Town/Range
-    // Sample: "25/37S/39E"
-    if (secTownRange) {
-      const strMatch = secTownRange.match(/^(\d+)\/(\d+[NS])\/(\d+[EW])$/i);
-      if (strMatch) {
-        section = strMatch[1];
-        township = strMatch[2];
-        range = strMatch[3];
+  let fallbackAddress = null;
+  if (!cleanSiteAddress && unnormalizedAddressData) {
+    const fallbackCandidates = [
+      unnormalizedAddressData.unnormalized_address,
+      unnormalizedAddressData.full_address,
+      unnormalizedAddressData.address,
+      unnormalizedAddressData.site_address,
+      unnormalizedAddressData.siteAddress,
+    ];
+    for (const candidate of fallbackCandidates) {
+      if (typeof candidate !== "string") continue;
+      const cleanedCandidate = textClean(candidate);
+      if (cleanedCandidate) {
+        fallbackAddress = cleanedCandidate;
+        break;
       }
     }
-
-    // Add section, township, range to the address output if available
-    if (section) finalAddressOutput.section = section;
-    if (township) finalAddressOutput.township = township;
-    if (range) finalAddressOutput.range = range;
   }
+
+  const addressToUse = cleanSiteAddress || fallbackAddress;
+  if (addressToUse) {
+    finalAddressOutput.unnormalized_address = addressToUse;
+  }
+
+  // Parse Sec/Town/Range
+  // Sample: "25/37S/39E"
+  if (secTownRange) {
+    const strMatch = secTownRange.match(/^(\d+)\/(\d+[NS])\/(\d+[EW])$/i);
+    if (strMatch) {
+      section = strMatch[1];
+      township = strMatch[2];
+      range = strMatch[3];
+    }
+  }
+
+  // Add section, township, range to the address output if available
+  if (section) finalAddressOutput.section = section;
+  if (township) finalAddressOutput.township = township;
+  if (range) finalAddressOutput.range = range;
 
   await fsp.writeFile(
     path.join("data", "address.json"),
@@ -1514,7 +1536,7 @@ async function main() {
   const parcelOut = {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
-    parcel_identifier: parcelIdentifierDashed || null,
+    parcel_identifier: parcelIdentifierDashed || baseRequestData.request_identifier,
   };
   await fsp.writeFile(
     path.join("data", "parcel.json"),
@@ -1589,7 +1611,7 @@ async function main() {
     propertyOut = {
       source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
       request_identifier: baseRequestData.request_identifier || null,
-      parcel_identifier: parcelIdentifierDashed || null, // Use the extracted parcel ID
+      parcel_identifier: parcelIdentifierDashed || baseRequestData.request_identifier, // Use the extracted parcel ID
       property_legal_description_text: legalDescription || null,
       property_type: mappedPropertyDetails.property_type || "LandParcel", // Default if not found
       property_usage_type: mappedPropertyDetails.property_usage_type || null,
