@@ -10,6 +10,10 @@ const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
 
+
+const SCRIPT_DIR = __dirname;
+const WORKING_DIR = process.cwd();
+
 const propertyTypeMapping = [
   {
     "property_usecode": "AGRI ACRG",
@@ -1300,9 +1304,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     veteran_status: null,
     request_identifier: parcelId,
   }));
-  people.forEach((p, idx) => {
-    writeJSON(path.join("data", `person_${idx + 1}.json`), p);
-  });
   const companyNames = new Set();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
@@ -1314,9 +1315,22 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     name: n,
     request_identifier: parcelId,
   }));
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
+  const writtenPeople = new Set();
+  const writtenCompanies = new Set();
+  const ensurePersonFile = (idx) => {
+    if (writtenPeople.has(idx)) return;
+    const person = people[idx - 1];
+    if (!person) return;
+    writeJSON(path.join("data", `person_${idx}.json`), person);
+    writtenPeople.add(idx);
+  };
+  const ensureCompanyFile = (idx) => {
+    if (writtenCompanies.has(idx)) return;
+    const company = companies[idx - 1];
+    if (!company) return;
+    writeJSON(path.join("data", `company_${idx}.json`), company);
+    writtenCompanies.add(idx);
+  };
   // Relationships: link sale to owners present on that date (both persons and companies)
   let relPersonCounter = 0;
   let relCompanyCounter = 0;
@@ -1329,6 +1343,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
           relPersonCounter++;
+          ensurePersonFile(pIdx);
           writeJSON(
             path.join(
               "data",
@@ -1347,6 +1362,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
           relCompanyCounter++;
+          ensureCompanyFile(cIdx);
           writeJSON(
             path.join(
               "data",
@@ -1370,6 +1386,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       const pIdx = findPersonIndexByName(o.first_name, o.last_name);
       if (pIdx) {
         relPersonCounter++;
+        ensurePersonFile(pIdx);
         writeJSON(
           path.join(
             "data",
@@ -1388,6 +1405,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       const cIdx = findCompanyIndexByName(o.name);
       if (cIdx) {
         relCompanyCounter++;
+        ensureCompanyFile(cIdx);
         writeJSON(
           path.join(
             "data",
@@ -1715,6 +1733,81 @@ function splitGeometry(record) {
   });
 }
 
+function buildHttpRequest(...candidates) {
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const url = candidate.url ? String(candidate.url).trim() : null;
+    if (!url) continue;
+    const method = candidate.method
+      ? String(candidate.method).trim().toUpperCase()
+      : "GET";
+    const req = { url, method: method || "GET" };
+    if (
+      candidate.multiValueQueryString &&
+      typeof candidate.multiValueQueryString === "object"
+    ) {
+      req.multiValueQueryString = candidate.multiValueQueryString;
+    }
+    return req;
+  }
+  return null;
+}
+
+function normalizeIdentifier(value) {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim();
+  return normalized.length ? normalized : null;
+}
+
+
+function writeParcel(propertySeed, unnormalizedAddress, parcelId) {
+  const parcelIdentifier =
+    normalizeIdentifier(parcelId) ||
+    normalizeIdentifier(
+      (propertySeed && propertySeed.parcel_id) ||
+        (unnormalizedAddress && unnormalizedAddress.parcel_id)
+    ) ||
+    null;
+
+  const requestIdentifier =
+    normalizeIdentifier(
+      (propertySeed && propertySeed.request_identifier) ||
+        (propertySeed && propertySeed.parcel_id)
+    ) ||
+    normalizeIdentifier(
+      unnormalizedAddress && unnormalizedAddress.request_identifier
+    ) ||
+    parcelIdentifier ||
+    null;
+
+  const parcelRecord = {
+    parcel_identifier: parcelIdentifier || requestIdentifier || "",
+  };
+
+  if (requestIdentifier) {
+    parcelRecord.request_identifier = requestIdentifier;
+  }
+
+  const sourceHttpRequest = buildHttpRequest(
+    propertySeed && propertySeed.source_http_request,
+    unnormalizedAddress && unnormalizedAddress.source_http_request
+  );
+  if (sourceHttpRequest) {
+    parcelRecord.source_http_request = sourceHttpRequest;
+  }
+
+  writeJSON(path.join("data", "parcel.json"), parcelRecord);
+}
+
+
+
+function writeOut(filePath, obj) {
+  const outPath = path.join("data", filePath);
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, JSON.stringify(obj, null, 2), "utf8");
+}
+
+
 /**
  * Read the provided CSV file (defaults to ./input.csv) and return Geometry instances.
  */
@@ -1734,25 +1827,32 @@ function createGeometryInstances(csvContent) {
     }, {})
   );
 
+  console.log("hello", records.flatMap((record) => splitGeometry(record)))
+
   return records.flatMap((record) => splitGeometry(record));
 }
 
 function createGeometryClass(geometryInstances) {
+
   let geomIndex = 1;
+  console.log("geometryInstances", geometryInstances)
   for(let geom of geometryInstances) {
     let polygon = [];
-    let geometry = {
+    if (!geom || !geom.polygon) {
+      continue;
+    }
+    for (const coordinate of geom.polygon.coordinates[0]) {
+      polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
+    }
+    const geometry = {
       "latitude": geom.latitude,
       "longitude": geom.longitude,
+      "polygon": polygon,
     }
-    if (geom && geom.polygon) {
-      for (const coordinate of geom.polygon.coordinates[0]) {
-        polygon.push({"longitude": coordinate[0], "latitude": coordinate[1]})
-      }
-      geometry.polygon = polygon;
-    }
-    writeJSON(path.join("data", `geometry_${geomIndex}.json`), geometry);
-    writeJSON(path.join("data", `relationship_parcel_to_geometry_${geomIndex}.json`), {
+
+    console.log("geometry- output", geometry);
+    writeOut(`geometry_${geomIndex}.json`, geometry);
+    writeOut(`relationship_parcel_to_geometry_${geomIndex}.json`, {
         from: { "/": `./parcel.json` },
         to: { "/": `./geometry_${geomIndex}.json` },
     });
@@ -1770,25 +1870,48 @@ function main() {
   const parcelFromHTML = getParcelId($);
   const parcelId =
     parcelFromHTML || (propertySeed && propertySeed.parcel_id) || null;
+      writeParcel(propertySeed, unnormalized, parcelId);
+
   const layoutData = readJSON(path.join("owners", "layout_data.json"));
   const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
   const structureData = readJSON(path.join("owners", "structure_data.json"));
   const key = `property_${parcelId}`;  
-  try {
-    const seedCsvPath = path.join(".", "input.csv");
-    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-    createGeometryClass(createGeometryInstances(seedCsv));
-  } catch (e) {
-    const latitude = unnormalized && unnormalized.latitude ? unnormalized.latitude : null;
-    const longitude = unnormalized && unnormalized.longitude ? unnormalized.longitude : null;
-    if (latitude && longitude) {
-      const coordinate = new Geometry({
-        latitude: latitude,
-        longitude: longitude
-      });
-      createGeometryClass([coordinate]);
+  // try {
+  //   const seedCsvPath = path.join(".", "input.csv");
+  //   const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+  //   createGeometryClass(createGeometryInstances(seedCsv));
+  // } catch (e) {
+  //   const latitude = unnormalized && unnormalized.latitude ? unnormalized.latitude : null;
+  //   const longitude = unnormalized && unnormalized.longitude ? unnormalized.longitude : null;
+  //   if (latitude && longitude) {
+  //     const coordinate = new Geometry({
+  //       latitude: latitude,
+  //       longitude: longitude
+  //     });
+  //     createGeometryClass([coordinate]);
+  //   }
+  // }
+
+  const geometryCsvCandidates = [
+      path.join(SCRIPT_DIR, "input.csv"),
+      path.join(SCRIPT_DIR, "..", "input.csv"),
+      path.join(WORKING_DIR, "input.csv"),
+      path.join(SCRIPT_DIR, "seed.csv"),
+      path.join(SCRIPT_DIR, "..", "seed.csv"),
+      path.join(WORKING_DIR, "seed.csv"),
+    ];
+    const seedCsvPath = geometryCsvCandidates.find((candidate) =>
+      fs.existsSync(candidate)
+    );
+    if (!seedCsvPath) {
+      throw new Error("Unable to locate input.csv or seed.csv for geometry creation.");
     }
-  }
+    const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
+    console.log("seedCsv", seedCsv)
+    const instance = createGeometryInstances(seedCsv);
+    console.log(instance)
+    createGeometryClass(instance);
+
   let struct = null;
   if (structureData) {
     struct = key && structureData[key] ? structureData[key] : null;
