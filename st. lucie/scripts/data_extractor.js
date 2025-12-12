@@ -1480,8 +1480,7 @@ async function main() {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
     county_name:"St. Lucie",
-    latitude: unnormalizedAddressData ? unnormalizedAddressData.latitude ?? null : null,
-    longitude: unnormalizedAddressData ? unnormalizedAddressData.longitude ?? null : null,
+    // Removed latitude and longitude as they are deprecated fields
     // Initialize all structured fields to null as per schema
     city_name: null,
     country_code: null,
@@ -1638,6 +1637,16 @@ async function main() {
   await fsp.writeFile(
     path.join("data", "address.json"),
     JSON.stringify(finalAddressOutput, null, 2),
+  );
+
+  // Create relationship from property to address
+  const relationshipPropertyHasAddress = {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  };
+  await fsp.writeFile(
+    path.join("data", "relationship_property_has_address.json"),
+    JSON.stringify(relationshipPropertyHasAddress, null, 2),
   );
 
   // --- Parcel extraction ---
