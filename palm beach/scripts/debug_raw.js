@@ -8175,12 +8175,21 @@ const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
-  for (const field of NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS) {
-    const value = address[field];
-    if (typeof value !== "string") {
+  const working = { ...address };
+  for (const field of ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS) {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(working[field]);
+      if (!Number.isFinite(numeric)) {
+        return false;
+      }
+      working[field] = numeric;
+      continue;
+    }
+
+    if (typeof working[field] !== "string") {
       return false;
     }
-    const trimmed = value.trim();
+    const trimmed = working[field].trim();
     if (!trimmed.length) {
       return false;
     }
@@ -8189,30 +8198,13 @@ function hasCompleteNormalizedAddress(address) {
       if (!titledCounty || !titledCounty.trim().length) {
         return false;
       }
-      address[field] = titledCounty;
+      working[field] = titledCounty;
       continue;
     }
-    address[field] = trimmed;
+    working[field] = trimmed;
   }
-  for (const field of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
-    const numeric = parseCoordinate(address[field]);
-    if (!Number.isFinite(numeric)) {
-      return false;
-    }
-    address[field] = numeric;
-  }
-  if (
-    address.street_suffix_type != null &&
-    typeof address.street_suffix_type === "string"
-  ) {
-    const trimmedSuffix = address.street_suffix_type.trim();
-    if (trimmedSuffix.length) {
-      const mappedSuffix = mapStreetSuffixType(trimmedSuffix);
-      if (mappedSuffix) {
-        address.street_suffix_type = mappedSuffix;
-      }
-    }
-  }
+
+  Object.assign(address, working);
   return true;
 }
 
@@ -8436,35 +8428,7 @@ function hasRobustNormalizedAddress(address) {
     ? ensureNormalizedAddressSchemaSurface({ ...address })
     : { ...address };
 
-  if (!hasCompleteNormalizedAddress({ ...surface })) {
-    return false;
-  }
-
-  const normalized = { ...surface };
-  const hasValidCoordinates = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every(
-    (field) => {
-      if (!Object.prototype.hasOwnProperty.call(normalized, field)) {
-        return true;
-      }
-      const value = normalized[field];
-      if (value === null || value === undefined || value === "") {
-        normalized[field] = null;
-        return true;
-      }
-      const numeric = parseCoordinate(value);
-      if (!Number.isFinite(numeric)) {
-        return false;
-      }
-      normalized[field] = numeric;
-      return true;
-    },
-  );
-
-  if (!hasValidCoordinates) {
-    return false;
-  }
-
-  return true;
+  return hasNormalizedOneOfCoverage({ ...surface });
 }
 
 function isNormalizedAddressSchemaReady(address) {
@@ -8728,6 +8692,17 @@ function hasMeaningfulAddressValue(value) {
     return value.trim().length > 0;
   }
   return true;
+}
+
+// Normalized branch must carry every oneOf field with a concrete value.
+function hasNormalizedOneOfCoverage(address) {
+  if (!address || typeof address !== "object") return false;
+  return ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS.every((field) => {
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      return Number.isFinite(parseCoordinate(address[field]));
+    }
+    return hasMeaningfulAddressValue(address[field]);
+  });
 }
 
 function hasRawAddressRequiredFields(address) {
@@ -11606,13 +11581,7 @@ function stabilizeAddressOneOfBranch(addressPath, options = {}) {
     ensureNormalizedAddressSchemaSurface &&
     ensureNormalizedAddressSchemaSurface({ ...payload });
   const hasNormalizedCoverage =
-    normalizedSurface &&
-    ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS.every((field) => {
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        return Number.isFinite(parseCoordinate(normalizedSurface[field]));
-      }
-      return Object.prototype.hasOwnProperty.call(normalizedSurface, field);
-    });
+    normalizedSurface && hasNormalizedOneOfCoverage(normalizedSurface);
 
   const hasRawValue =
     typeof payload.unnormalized_address === "string" &&
@@ -11908,12 +11877,11 @@ function solidifyCountyAddressSchemaSurface(addressFilePath) {
 
   const normalizedProbe =
     ensureAddressOutputFieldPresence({ ...payload }) || { ...payload };
-  const hasNormalizedCoverage = hasRobustNormalizedAddress
-    ? hasRobustNormalizedAddress({ ...normalizedProbe })
-    : false;
+  const hasNormalizedCoverage = hasNormalizedOneOfCoverage({
+    ...normalizedProbe,
+  });
 
-  const variant =
-    hasNormalizedCoverage || !trimmedUnnormalized.length ? "normalized" : "raw";
+  const variant = hasNormalizedCoverage ? "normalized" : "raw";
 
   const template =
     variant === "raw"
@@ -17252,13 +17220,13 @@ async function main() {
 
     if (!preparedAddress && baseRawCandidate) {
       const rawSurface =
-        ensureRawAddressOutputSurface(
-          baseRawCandidate || {
-            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-            ...coordinateOverride,
-            unnormalized_address: trimmedRawUnnormalized,
-          },
-        ) || null;
+        buildRawAddressOneOfSurface({
+          rawValue: trimmedRawUnnormalized,
+          fieldSources: [baseRawCandidate, coordinateOverride].filter(
+            (src) => src && typeof src === "object",
+          ),
+        }) ||
+        null;
 
       if (rawSurface) {
         rawSurface.unnormalized_address = trimmedRawUnnormalized;
@@ -18687,8 +18655,7 @@ async function main() {
       )
     : null;
   const snapshotHasNormalized =
-    normalizedSnapshot &&
-    hasCompleteNormalizedAddress({ ...normalizedSnapshot });
+    normalizedSnapshot && hasNormalizedOneOfCoverage({ ...normalizedSnapshot });
   if (!snapshotHasNormalized) {
     forceRawAddressVariantForFinalOutput(addressOutputPath, {
       candidates: [
@@ -18895,18 +18862,13 @@ async function main() {
     normalizedCandidate[field] = value === undefined ? null : value;
   });
 
-  const hasNormalizedStrings = NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-    (field) => hasMeaningfulAddressValue(normalizedCandidate[field]),
-  );
-  const hasNormalizedCoords = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((coord) =>
-    Number.isFinite(parseCoordinate(normalizedCandidate[coord])),
-  );
+  const hasNormalizedOneOf = hasNormalizedOneOfCoverage({
+    ...normalizedCandidate,
+  });
   const hasRawAddress =
     typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
-  const shouldUseNormalized =
-    !hasRawAddress && hasNormalizedStrings && hasNormalizedCoords;
-  const preferRawOutput =
-    hasRawAddress || (!shouldUseNormalized && !!resolvedRaw);
+  const shouldUseNormalized = hasNormalizedOneOf && !hasRawAddress;
+  const preferRawOutput = hasRawAddress || !hasNormalizedOneOf;
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
@@ -18979,17 +18941,10 @@ async function main() {
   ensureDir(relationshipsRoot);
 
   const terminalAddressPayload = readJSONIfExists(addressOutputPath);
-  const terminalHasNormalizedStrings =
+  const terminalHasNormalizedCoverage =
     terminalAddressPayload &&
-    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every((field) =>
-      hasMeaningfulAddressValue(terminalAddressPayload[field]),
-    );
-  const terminalHasNormalizedCoords =
-    terminalAddressPayload &&
-    NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((coord) =>
-      Number.isFinite(parseCoordinate(terminalAddressPayload[coord])),
-    );
-  if (!preferRawOutput && terminalHasNormalizedStrings && terminalHasNormalizedCoords) {
+    hasNormalizedOneOfCoverage({ ...terminalAddressPayload });
+  if (!preferRawOutput && terminalHasNormalizedCoverage) {
     const normalizedTerminal =
       typeof ensureNormalizedAddressSchemaSurface === "function"
         ? ensureNormalizedAddressSchemaSurface({ ...terminalAddressPayload })
@@ -19036,7 +18991,7 @@ async function main() {
     ensureNormalizedAddressSchemaSurface({ ...existingAddressPayload });
   const normalizedCandidateAfterValidation =
     normalizedSurfaceAfterValidation &&
-    hasCompleteNormalizedAddress({ ...normalizedSurfaceAfterValidation })
+    hasNormalizedOneOfCoverage({ ...normalizedSurfaceAfterValidation })
       ? normalizedSurfaceAfterValidation
       : null;
 
