@@ -73,6 +73,19 @@ function validatePersonName(name) {
   return cleaned;
 }
 
+function validatePersonName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Must start with uppercase letter, followed by any letters (upper or lower), spaces, hyphens, apostrophes, commas, or periods
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!pattern.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
 function parseCurrency(str) {
   if (!str) return null;
   const n = parseFloat(String(str).replace(/[^0-9.\-]/g, ""));
