@@ -1533,8 +1533,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   // console.log("ownersByDate",ownersByDate);
 
   //Person processing and mapping creation.
-  // Include persons from all dates including unknown_date_* so they can be linked to sales
-  // "current" owners will be handled separately only if they're not already in a sale
+  // Only include persons from dated sales entries (YYYY-MM-DD format) and current owners
+  // Skip unknown_date_* entries as they cannot be properly linked to specific sales
   const personMap = new Map();
   Object.keys(ownersByDate).forEach((dateKey) => {
     // Skip "current" for now - we'll add them later if they're not already in a sale
@@ -1542,8 +1542,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       return;
     }
 
-    // Skip unknown_date_* entries if there are no sales to link them to
-    if (dateKey.startsWith('unknown_date_') && sales.length === 0) {
+    // Skip unknown_date_* entries entirely - these are prior owners without valid sale dates
+    // and cannot be properly linked to sales_history records
+    if (dateKey.startsWith('unknown_date_')) {
       return;
     }
 
@@ -1620,10 +1621,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   }
 
   //Company processing and mapping creation.
-  // Collect companies that are actually used (in sales or current owners)
+  // Collect companies that are actually used (in sales with valid dates or current owners)
+  // Skip unknown_date_* entries as they cannot be properly linked to specific sales
   const usedCompanyNames = new Set();
 
-  // Add companies from sales
+  // Add companies from sales with valid dates
   sales.forEach((rec) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
@@ -1639,20 +1641,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     if (o.type === "company" && (o.name || "").trim())
       usedCompanyNames.add((o.name || "").trim());
   });
-
-  // Add companies from unknown_date_* entries (prior owners/grantors)
-  // Only add these if there are sales to link them to
-  if (sales.length > 0) {
-    Object.keys(ownersByDate).forEach((dateKey) => {
-      if (dateKey.startsWith("unknown_date_")) {
-        const ownersOnDate = ownersByDate[dateKey] || [];
-        ownersOnDate.forEach((o) => {
-          if (o.type === "company" && (o.name || "").trim())
-            usedCompanyNames.add((o.name || "").trim());
-        });
-      }
-    });
-  }
 
   // Only create company files for companies that are actually used
   companies = Array.from(usedCompanyNames).map((n) => ({
