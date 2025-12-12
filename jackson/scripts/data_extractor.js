@@ -1476,8 +1476,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   });
 
   // Create sales relationships
-  let relPersonCounter = 0;
-  let relCompanyCounter = 0;
   const usedCompanyIdx = new Set();
   sales.forEach((rec, idx) => {
     const d = parseDateToISO(rec.saleDate);
@@ -1488,11 +1486,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         const pIdx = findPersonIndexByName(o.first_name, o.last_name);
         if (pIdx) {
           usedPersonIdx.add(pIdx);
-          relPersonCounter++;
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${idx + 1}_has_person_${relPersonCounter}.json`,
+              `relationship_sales_history_${idx + 1}_has_person_${pIdx}.json`,
             ),
             {
               from: { "/": `./sales_history_${idx + 1}.json` },
@@ -1507,11 +1504,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         const cIdx = findCompanyIndexByName(o.name);
         if (cIdx) {
           usedCompanyIdx.add(cIdx);
-          relCompanyCounter++;
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_history_${idx + 1}_has_company_${relCompanyCounter}.json`,
+              `relationship_sales_history_${idx + 1}_has_company_${cIdx}.json`,
             ),
             {
               from: { "/": `./sales_history_${idx + 1}.json` },
