@@ -1058,7 +1058,8 @@ function main() {
         visible_damage: null,
         window_design_type: null,
         window_material_type: null,
-        window_treatment_type: null,
+        window_treatment_type: 123456789,
+        non_existing_field: null,
         ...customFields, // Override with specific values
       };
     };
