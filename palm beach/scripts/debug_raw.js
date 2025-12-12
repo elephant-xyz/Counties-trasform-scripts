@@ -7739,13 +7739,18 @@ function buildLeanRawAddressPayload(rawValue, options = {}) {
     sourceHttpRequest,
   } = options;
 
-  const base =
+  const minimal =
     buildMinimalRawAddressPayload({
       rawCandidates: [trimmedRaw],
       requestIdentifierCandidates:
         requestIdentifier === undefined ? [] : [requestIdentifier],
       sourceHttpRequestCandidates: [sourceHttpRequest],
     }) || { unnormalized_address: trimmedRaw };
+
+  // Start from the full raw oneOf surface so every expected field is present
+  // (as null when we don't have data) and the validator can pick the raw branch.
+  const base = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, ...minimal };
+  base.unnormalized_address = trimmedRaw;
 
   const optionalFields = [
     "latitude",
@@ -7803,8 +7808,8 @@ function buildLeanRawAddressPayload(rawValue, options = {}) {
     base.latitude = lat;
     base.longitude = lon;
   } else {
-    delete base.latitude;
-    delete base.longitude;
+    base.latitude = null;
+    base.longitude = null;
   }
 
   if (!base.postal_code) {
