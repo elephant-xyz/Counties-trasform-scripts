@@ -1480,6 +1480,8 @@ async function main() {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
     county_name:"St. Lucie",
+    latitude: unnormalizedAddressData ? unnormalizedAddressData.latitude ?? null : null,
+    longitude: unnormalizedAddressData ? unnormalizedAddressData.longitude ?? null : null,
     // Initialize all structured fields to null as per schema
     city_name: null,
     country_code: null,
@@ -2205,6 +2207,22 @@ async function main() {
         source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
         request_identifier: baseRequestData.request_identifier || null,
         unnormalized_address: mailingAddressText, // Store the full cleaned text here
+        // All other structured fields are null as per instruction
+        latitude:  null,
+        longitude: null
+        // country_code: null,
+        // city_name: null,
+        // postal_code: null,
+        // plus_four_postal_code: null,
+        // state_code: null,
+        // street_number: null,
+        // street_name: null,
+        // street_post_directional_text: null,
+        // street_pre_directional_text: null,
+        // street_suffix_type: null,
+        // unit_identifier: null,
+        // route_number: null,
+        // po_box_number: null,
       };
 
       console.log("Final Mailing Address Object (unnormalized):", mailingAddressOut);
