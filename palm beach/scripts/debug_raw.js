@@ -7365,9 +7365,8 @@ const ADDRESS_SCHEMA_FIELDS = [
 // unnormalized string and optional request metadata so we don't leak normalized
 // fields that force the normalized branch.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
+  ...NORMALIZED_ADDRESS_FIELDS,
   "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
 ];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
@@ -7394,6 +7393,11 @@ function sanitizeRawOneOfPayload(payload = {}, overrides = {}) {
     if (field === "unnormalized_address") return;
     let value =
       overrides[field] !== undefined ? overrides[field] : source[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      cleaned[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
     if (field === "source_http_request") {
       const prepared = prepareSourceHttpRequest(value);
       cleaned[field] = prepared ? deepClone(prepared) : null;
@@ -7412,12 +7416,9 @@ function enforceRawOneOfSurface(addressPath) {
   const rawValue = safeNullIfEmpty(payload.unnormalized_address);
   if (!rawValue) return;
 
-  const cleaned = {
-    unnormalized_address: rawValue,
-    request_identifier: safeNullIfEmpty(payload.request_identifier),
-    source_http_request:
-      prepareSourceHttpRequest(payload.source_http_request) || null,
-  };
+  const cleaned =
+    sanitizeRawOneOfPayload(payload, { unnormalized_address: rawValue }) || null;
+  if (!cleaned) return;
 
   originalWriteFileSync(
     addressPath,
