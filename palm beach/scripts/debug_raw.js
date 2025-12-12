@@ -18790,6 +18790,7 @@ async function main() {
   }
 
   solidifyAddressOneOfSurface(addressOutputPath);
+  enforceFinalAddressOneOfSurface(addressOutputPath);
 
   const loggedAddress =
     readJSONIfExists(addressOutputPath) || finalAddressPayload || {};
