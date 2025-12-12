@@ -2386,27 +2386,28 @@ function parsePerson(name) {
 
 function extractOwnerInfo(ownershipHtml) {
   if (!ownershipHtml) return [];
-  
+
   // Remove content within <p></p> tags (addresses)
   const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-  
+
   // Split by <br> tags to get individual owner lines
   const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
     .map(line => line.replace(/<[^>]*>/g, '').trim())
     .filter(line => line.length > 0);
-  
+
   const owners = [];
-  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP)\b/i;
-  
+  // Enhanced company indicators to catch government entities, departments, and acronyms
+  const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP|DEPT|DEP|DEPARTMENT|GOV|GOVERNMENT|COUNTY|CITY|STATE|FEDERAL|DISTRICT|DIVISION|AUTHORITY|COMMISSION|BOARD|AGENCY|SERVICES|PROPERTIES|INVESTMENTS|GROUP|HOLDINGS|ENTERPRISES)\b|^[A-Z]{2,}\/|^[A-Z]{2,}\s|\/[A-Z]{2,}|-[A-Z]{2,}\b/i;
+
   for (const line of ownerLines) {
     let cleanName = line.trim();
     if (cleanName && cleanName.length > 2) {
       // Decode HTML entities like &amp; to &
       cleanName = cleanName.replace(/&amp;/g, '&');
-      
+
       // Split by & to handle multiple owners on same line
       const namesParts = cleanName.split(/\s*&\s*/);
-      
+
       for (const namePart of namesParts) {
         const trimmedName = namePart.trim();
         if (trimmedName && trimmedName.length > 2) {
@@ -2416,7 +2417,7 @@ function extractOwnerInfo(ownershipHtml) {
       }
     }
   }
-  
+
   return owners;
 }
 

@@ -107,14 +107,32 @@ function isCompanyName(name) {
     "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
     "\\btrust\\b", "\\btr\\b", "\\bfoundation\\b", "\\bfund\\b", "\\bpartnership\\b",
     "\\bholdings\\b", "\\bholding\\b", "\\bassociation\\b", "\\bassociates\\b",
-    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b"
+    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b",
+    "\\bdept\\b", "\\bdep\\b", "\\bdepartment\\b", "\\bgov\\b", "\\bgovernment\\b",
+    "\\bcounty\\b", "\\bcity\\b", "\\bstate\\b", "\\bfederal\\b", "\\bdivision\\b",
+    "\\bauthority\\b", "\\bcommission\\b", "\\bboard\\b", "\\bagency\\b"
   ];
-  
+
   // Check for strict keyword matches
   for (const pattern of strictKeywords) {
     if (new RegExp(pattern, 'i').test(n)) return true;
   }
-  
+
+  // Check for patterns that indicate company/government entities:
+  // - Acronyms with slash: TIITF/MARINE
+  // - Slash followed by acronyms: /DEP
+  // - Dash followed by acronyms: -DEP
+  const companyPatterns = [
+    /^[A-Z]{2,}\//,        // Starts with acronym followed by slash
+    /\/[A-Z]{2,}\b/,       // Slash followed by acronym
+    /-[A-Z]{2,}\b/,        // Dash followed by acronym
+    /^[A-Z]{2,}\s/         // Starts with acronym followed by space
+  ];
+
+  for (const pattern of companyPatterns) {
+    if (pattern.test(name)) return true;
+  }
+
   // Only return true for obvious company patterns, not person names
   return false;
 }
