@@ -18948,8 +18948,8 @@ async function main() {
   });
   const hasRawAddress =
     typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
-  const shouldUseNormalized = hasNormalizedOneOf && !hasRawAddress;
-  const preferRawOutput = hasRawAddress || !hasNormalizedOneOf;
+  const shouldUseNormalized = hasNormalizedOneOf;
+  const preferRawOutput = !hasNormalizedOneOf && hasRawAddress;
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
@@ -19116,10 +19116,18 @@ async function main() {
   const terminalPayload = reconciledAddress || minimalRawAddress;
 
   if (terminalPayload) {
-    originalWriteFileSync(
-      addressOutputPath,
-      `${JSON.stringify(terminalPayload, null, 2)}\n`,
-    );
+    const surfacedTerminal =
+      ensureAddressOutputCoverage(terminalPayload) || null;
+    if (surfacedTerminal) {
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(surfacedTerminal, null, 2)}\n`,
+      );
+      forceAddressVariantSchemaSurface(addressOutputPath);
+      stabilizeAddressOneOfForValidation(addressOutputPath);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
   } else {
     removeFileIfExists(addressOutputPath);
   }
