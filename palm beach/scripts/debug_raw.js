@@ -11740,6 +11740,99 @@ function ensureAddressOutputFieldPresence(address) {
   return ensureAddressOutputCoverage(address);
 }
 
+function enforceRawPreferenceWhenAvailable(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawCandidates = [];
+  const enqueue = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed.length) return;
+    rawCandidates.push(trimmed);
+  };
+
+  enqueue(payload.unnormalized_address);
+  if (Array.isArray(options.rawCandidates)) {
+    options.rawCandidates.forEach(enqueue);
+  }
+
+  const rawValue = safeNullIfEmpty(resolveFirstNonEmptyString(rawCandidates));
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const normalizedReady =
+    normalizedSurface && hasNormalizedOneOfCoverage({ ...normalizedSurface });
+
+  const requestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      ...(options.requestIdentifierCandidates || []),
+    ]),
+  );
+  const sourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  let nextPayload = null;
+  const preferRaw = options.preferRaw !== false;
+
+  if (rawValue && (preferRaw || !normalizedReady)) {
+    const baseRaw = enforceRawVariantAllowedFields({
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...payload,
+      unnormalized_address: rawValue,
+      request_identifier:
+        requestIdentifier === undefined
+          ? payload.request_identifier
+          : requestIdentifier,
+      source_http_request: sourceHttp || payload.source_http_request || null,
+    });
+    nextPayload = ensureAddressOutputCoverage(baseRaw) || baseRaw;
+  } else if (normalizedReady) {
+    const normalizedOut =
+      ensureAddressOutputCoverage({ ...normalizedSurface }) ||
+      normalizedSurface;
+    if (
+      normalizedOut &&
+      Object.prototype.hasOwnProperty.call(
+        normalizedOut,
+        "unnormalized_address",
+      )
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    nextPayload = normalizedOut;
+  }
+
+  if (nextPayload) {
+    if (!nextPayload.postal_code) {
+      nextPayload.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(nextPayload.state_code) &&
+      !hasMeaningfulAddressValue(nextPayload.country_code)
+    ) {
+      nextPayload.country_code = "US";
+    }
+    if (
+      (nextPayload.latitude == null) !== (nextPayload.longitude == null)
+    ) {
+      nextPayload.latitude = null;
+      nextPayload.longitude = null;
+    }
+    writeJSON(addressPath, nextPayload);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+}
+
 function stabilizeAddressOneOfBranch(addressPath, options = {}) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
 
@@ -19127,6 +19220,21 @@ async function main() {
       addressOutputPath,
       `${JSON.stringify(completedAddress, null, 2)}\n`,
     );
+    enforceRawPreferenceWhenAvailable(addressOutputPath, {
+      rawCandidates,
+      requestIdentifierCandidates: [
+        resolvedRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        resolvedSourceHttp,
+        sourceHttpCandidate,
+        seedSource && seedSource.source_http_request,
+      ],
+      preferRaw: true,
+    });
     harmonizeAddressOneOfOutput(addressOutputPath);
     enforcePropertyRelationshipNulls(propertyFilePath);
     [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
@@ -19277,6 +19385,30 @@ async function main() {
         addressOutputPath,
         `${JSON.stringify(surfacedTerminal, null, 2)}\n`,
       );
+      enforceRawPreferenceWhenAvailable(addressOutputPath, {
+        rawCandidates: [
+          rawValue,
+          ...finalUnnormalizedCandidates,
+          unnormalizedAddressCandidate,
+          combinedModelAddress,
+          siteLocationLine,
+          addressLineCombined,
+          fullAddr,
+          fullAddrInput,
+        ],
+        requestIdentifierCandidates: [
+          resolvedRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+        ],
+        sourceHttpRequestCandidates: [
+          resolvedSourceHttp,
+          sourceHttpCandidate,
+          seedSource && seedSource.source_http_request,
+        ],
+        preferRaw: true,
+      });
       forceAddressVariantSchemaSurface(addressOutputPath);
       stabilizeAddressOneOfForValidation(addressOutputPath);
     } else {
