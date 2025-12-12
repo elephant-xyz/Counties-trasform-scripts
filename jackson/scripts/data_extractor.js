@@ -1364,8 +1364,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
         console.log(`Cleaning up unsupported file: ${file}`);
         fs.unlinkSync(path.join(dataDir, file));
       }
-      // Remove person/company relationship files
-      if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address).*\.json$/.test(file)) {
+      // Remove person/company relationship files - catch any relationship file that references person or company
+      if (/^relationship_.*\.json$/.test(file) && (/person/i.test(file) || /company/i.test(file))) {
         console.log(`Cleaning up unsupported relationship file: ${file}`);
         fs.unlinkSync(path.join(dataDir, file));
       }
@@ -2347,8 +2347,8 @@ function main() {
           console.log(`Early cleanup: Removing unsupported file: ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
-        // Remove person/company relationship files
-        if (/^relationship_(sales_history_\d+_has_person|sales_history_\d+_has_company|person_has_mailing_address|company_has_mailing_address).*\.json$/.test(file)) {
+        // Remove person/company relationship files - catch any relationship file that references person or company
+        if (/^relationship_.*\.json$/.test(file) && (/person/i.test(file) || /company/i.test(file))) {
           console.log(`Early cleanup: Removing unsupported relationship file: ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
