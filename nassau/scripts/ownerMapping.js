@@ -263,19 +263,62 @@ function parsePerson(name) {
 
   if (tokens.length < 2) return null;
 
+  let first, last, middle;
+
   if (upper) {
-    // Assume LAST FIRST [MIDDLE] for uppercase names
-    const last = tokens[0];
-    const first = tokens[1] || null;
-    const middle = tokens.length >= 3 ? tokens.slice(2).join(" ") : null;
+    // For uppercase names, we need to be smart about 2-token names
+    if (tokens.length === 2) {
+      // Check if either token is a single letter
+      const firstIsSingleLetter = tokens[0].length === 1;
+      const secondIsSingleLetter = tokens[1].length === 1;
+
+      if (secondIsSingleLetter && !firstIsSingleLetter) {
+        // Pattern like "MARY A" -> treat as FIRST MIDDLE (reject due to missing last name)
+        console.log(`Debug: Rejecting '${name}' - appears to be FIRST MIDDLE without last name`);
+        return null;
+      } else if (firstIsSingleLetter && !secondIsSingleLetter) {
+        // Pattern like "A MARY" -> treat as MIDDLE FIRST (reject due to missing last name)
+        console.log(`Debug: Rejecting '${name}' - appears to be MIDDLE FIRST without last name`);
+        return null;
+      } else if (firstIsSingleLetter && secondIsSingleLetter) {
+        // Both single letters -> reject
+        console.log(`Debug: Rejecting '${name}' - both tokens are single letters`);
+        return null;
+      }
+      // Otherwise, treat as LAST FIRST
+      last = tokens[0];
+      first = tokens[1];
+      middle = null;
+    } else {
+      // 3+ tokens: Assume LAST FIRST [MIDDLE] for uppercase names
+      last = tokens[0];
+      first = tokens[1];
+      middle = tokens.length >= 3 ? tokens.slice(2).join(" ") : null;
+    }
+
     if (!first || !last) return null;
+
+    // Reject if first or last name is a single letter
+    if (first.length === 1 || last.length === 1) {
+      console.log(`Debug: Rejecting '${name}' - first or last name is a single letter after parsing`);
+      return null;
+    }
+
     return buildPerson(first, last, middle, prefix, suffix);
   } else {
     // Assume FIRST [MIDDLE] LAST for mixed case names
-    const first = tokens[0];
-    const last = tokens[tokens.length - 1];
-    const middle = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+    first = tokens[0];
+    last = tokens[tokens.length - 1];
+    middle = tokens.length > 2 ? tokens.slice(1, -1).join(" ") : null;
+
     if (!first || !last) return null;
+
+    // Reject if first or last name is a single letter
+    if (first.length === 1 || last.length === 1) {
+      console.log(`Debug: Rejecting '${name}' - first or last name is a single letter after parsing`);
+      return null;
+    }
+
     return buildPerson(first, last, middle, prefix, suffix);
   }
 }
