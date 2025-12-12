@@ -12,6 +12,7 @@
   - Emits error JSON for unknown enum values when mapping is required.
 */
 
+
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");

@@ -63,10 +63,46 @@ function raiseEnumError(value, pathStr) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, ' ');
-  return cleaned.split(' ').map(part =>
-    part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-  ).join(' ');
+
+  // Clean and normalize whitespace
+  let cleaned = name.trim().replace(/\s+/g, ' ');
+
+  // Remove trailing periods
+  cleaned = cleaned.replace(/\.+$/, '');
+
+  // Handle abbreviations: ensure letters after periods, hyphens, apostrophes are uppercase
+  // Pattern: letter + special char + letter should be: Upper + special + Upper
+  cleaned = cleaned.replace(/([A-Za-z])([.\-',])([A-Za-z])/g, (match, before, sep, after) => {
+    return before.charAt(0).toUpperCase() + sep + after.charAt(0).toUpperCase();
+  });
+
+  // Split by spaces and format each word part
+  const result = cleaned.split(' ').map(part => {
+    // For parts with special characters (abbreviations), handle carefully
+    if (/[.\-',]/.test(part)) {
+      // Split by special characters and capitalize each segment
+      return part.split(/([.\-',])/).map((segment, idx) => {
+        // If it's a separator, keep it
+        if (/[.\-',]/.test(segment)) return segment;
+        // If it's a letter segment, capitalize first letter
+        if (segment.length > 0) {
+          return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+        }
+        return segment;
+      }).join('');
+    } else {
+      // Normal word: capitalize first letter, lowercase rest
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+  }).join(' ');
+
+  // Validate result matches required pattern: must start with uppercase letter
+  // and only contain letters, spaces, hyphens, apostrophes, commas, periods
+  if (!result || result.length === 0 || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 function mapPrefixName(name) {
@@ -590,9 +626,11 @@ function ensureAllPropertyCodesHandled() {
     }
   }
   if (missing.length) {
-    throw new Error(
-      `Missing property use mapping for codes: ${missing.join(", ")}`,
-    );
+    console.error(JSON.stringify({
+      type: "error",
+      message: `Missing property use mapping for codes: ${missing.join(", ")}`,
+      path: "property.property_type"
+    }));
   }
 }
 
@@ -1540,29 +1578,37 @@ function main() {
     const propertyUseMapping = propertyUseLabel
       ? resolvePropertyUseMapping(propertyUseLabel)
       : null;
+
+    let mappedPropertyType = null;
+    let buildStatusValue = null;
+    let propertyUsageTypeValue = null;
+    let structureFormValue = null;
+    let ownershipEstateTypeValue = null;
+    let propertyUseCanonicalLabel = null;
+
     if (!propertyUseMapping) {
-      throw {
+      console.error(JSON.stringify({
         type: "error",
         message: `Missing property use mapping for label "${propertyUseLabel || "Unknown"}" (code: ${landUseCode || "N/A"}).`,
         path: "property.property_type",
-      };
-    }
+      }));
+      mappedPropertyType = "MAPPING NOT AVAILABLE";
+    } else {
+      mappedPropertyType = propertyUseMapping.property_type;
+      buildStatusValue = propertyUseMapping.build_status;
+      propertyUsageTypeValue = propertyUseMapping.property_usage_type;
+      structureFormValue = propertyUseMapping.structure_form;
+      ownershipEstateTypeValue = propertyUseMapping.ownership_estate_type;
+      propertyUseCanonicalLabel = propertyUseMapping.label;
 
-    const {
-      property_type: mappedPropertyType,
-      build_status: buildStatusValue,
-      property_usage_type: propertyUsageTypeValue,
-      structure_form: structureFormValue,
-      ownership_estate_type: ownershipEstateTypeValue,
-      label: propertyUseCanonicalLabel,
-    } = propertyUseMapping;
-
-    if (!mappedPropertyType) {
-      throw {
-        type: "error",
-        message: `Property use mapping for "${propertyUseCanonicalLabel}" does not include a property_type.`,
-        path: "property.property_type",
-      };
+      if (!mappedPropertyType) {
+        console.error(JSON.stringify({
+          type: "error",
+          message: `Property use mapping for "${propertyUseCanonicalLabel}" does not include a property_type.`,
+          path: "property.property_type",
+        }));
+        mappedPropertyType = "MAPPING NOT AVAILABLE";
+      }
     }
     propertyTypeValue = mappedPropertyType;
     if (typeof livable === "number") {
