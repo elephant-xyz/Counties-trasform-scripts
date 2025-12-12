@@ -1982,7 +1982,8 @@ function main() {
         if (!granteesToPersonId.has(personKey)) {
           writeJson(path.join("data", `person_${personIdCounter}.json`), person);
           granteesToPersonId.set(personKey, personIdCounter);
-          granteesToPersonId.set(granteeName, personIdCounter); // Also map original name
+          // Note: Do NOT map granteeName when multiple people are parsed
+          // Each person must be looked up by their individual personKey to avoid overwrites
           personIdCounter++;
         }
       }
@@ -2300,7 +2301,7 @@ function main() {
         // Create relationships for each person parsed from this grantee
         for (const person of granteePersons) {
           const personKey = `${person.first_name}|${person.middle_name}|${person.last_name}|${person.suffix_name}`;
-          const personId = granteesToPersonId.get(personKey) || granteesToPersonId.get(sale.grantee);
+          const personId = granteesToPersonId.get(personKey);
 
           if (personId) {
             // Create relationship from sale to person (as grantee)
