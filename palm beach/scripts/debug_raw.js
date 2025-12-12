@@ -19031,20 +19031,21 @@ async function main() {
     ]),
   );
 
-  const normalizedSurface =
+  const normalizedSurfaceAfterValidation =
     ensureNormalizedAddressSchemaSurface &&
     ensureNormalizedAddressSchemaSurface({ ...existingAddressPayload });
-  const normalizedCandidate =
-    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface })
-      ? normalizedSurface
+  const normalizedCandidateAfterValidation =
+    normalizedSurfaceAfterValidation &&
+    hasCompleteNormalizedAddress({ ...normalizedSurfaceAfterValidation })
+      ? normalizedSurfaceAfterValidation
       : null;
 
   let reconciledAddress = null;
-  if (normalizedCandidate && !rawValue) {
+  if (normalizedCandidateAfterValidation && !rawValue) {
     const normalizedOut =
       ensureAddressOutputCoverage({
         ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-        ...normalizedCandidate,
+        ...normalizedCandidateAfterValidation,
       }) || null;
     if (normalizedOut) {
       if (
@@ -19060,7 +19061,7 @@ async function main() {
   } else if (rawValue) {
     const fieldSources = [
       existingAddressPayload,
-      normalizedSurface,
+      normalizedSurfaceAfterValidation,
       seedSource,
       unnormalizedSource,
     ].filter((source) => source && typeof source === "object");
