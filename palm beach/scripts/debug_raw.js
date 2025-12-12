@@ -19018,14 +19018,81 @@ async function main() {
     readJSONIfExists(addressOutputPath) ||
     (finalAddressPayload &&
       ensureAddressOutputCoverage(finalAddressPayload));
+
   if (persistedAddressPayload) {
-    const surfaced =
-      ensureAddressOutputCoverage(persistedAddressPayload) ||
-      persistedAddressPayload;
-    originalWriteFileSync(
-      addressOutputPath,
-      `${JSON.stringify(surfaced, null, 2)}\n`,
-    );
+    const hasRawString =
+      typeof persistedAddressPayload.unnormalized_address === "string" &&
+      persistedAddressPayload.unnormalized_address.trim().length > 0;
+
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...persistedAddressPayload });
+
+    const normalizedOneOfReady =
+      normalizedSurface &&
+      ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS.every((field) => {
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          return Number.isFinite(parseCoordinate(normalizedSurface[field]));
+        }
+        return hasMeaningfulAddressValue(normalizedSurface[field]);
+      });
+
+    let alignedAddress = null;
+    if (normalizedOneOfReady && !prefersRawAddressBranch) {
+      const normalizedOutput =
+        ensureNormalizedAddressSchemaSurface &&
+        ensureNormalizedAddressSchemaSurface({ ...normalizedSurface });
+      if (normalizedOutput) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedOutput,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedOutput.unnormalized_address;
+        }
+        alignedAddress =
+          ensureAddressOutputCoverage(normalizedOutput) || normalizedOutput;
+      }
+    } else if (hasRawString) {
+      const rawOutput =
+        sanitizeRawOneOfPayload(persistedAddressPayload, {
+          unnormalized_address: persistedAddressPayload.unnormalized_address,
+          request_identifier: persistedAddressPayload.request_identifier,
+          source_http_request: persistedAddressPayload.source_http_request,
+        }) || ensureAddressOutputCoverage(persistedAddressPayload);
+      if (rawOutput) {
+        alignedAddress =
+          ensureAddressOutputCoverage(rawOutput) || rawOutput;
+      }
+    } else if (normalizedOneOfReady) {
+      const normalizedOutput =
+        ensureNormalizedAddressSchemaSurface &&
+        ensureNormalizedAddressSchemaSurface({ ...normalizedSurface });
+      if (normalizedOutput) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedOutput,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedOutput.unnormalized_address;
+        }
+        alignedAddress =
+          ensureAddressOutputCoverage(normalizedOutput) || normalizedOutput;
+      }
+    }
+
+    if (alignedAddress) {
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(alignedAddress, null, 2)}\n`,
+      );
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  } else {
+    removeFileIfExists(addressOutputPath);
   }
 
   const loggedAddress =
