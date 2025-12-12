@@ -18802,8 +18802,12 @@ async function main() {
   const hasNormalizedCoords = NORMALIZED_ADDRESS_COORDINATE_FIELDS.every((coord) =>
     Number.isFinite(parseCoordinate(normalizedCandidate[coord])),
   );
-  const shouldUseNormalized = hasNormalizedStrings && hasNormalizedCoords;
-  const preferRawOutput = !shouldUseNormalized && !!resolvedRaw;
+  const hasRawAddress =
+    typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
+  const shouldUseNormalized =
+    !hasRawAddress && hasNormalizedStrings && hasNormalizedCoords;
+  const preferRawOutput =
+    hasRawAddress || (!shouldUseNormalized && !!resolvedRaw);
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
@@ -18811,7 +18815,7 @@ async function main() {
     if (Object.prototype.hasOwnProperty.call(finalAddressPayload, "unnormalized_address")) {
       delete finalAddressPayload.unnormalized_address;
     }
-  } else if (resolvedRaw) {
+  } else if (hasRawAddress) {
     const rawPayload = {
       ...RAW_ADDRESS_SCHEMA_TEMPLATE,
       ...normalizedCandidate,
@@ -18909,6 +18913,20 @@ async function main() {
   solidifyAddressOneOfSurface(addressOutputPath);
   enforceFinalAddressOneOfSurface(addressOutputPath);
   forceAddressVariantSchemaSurface(addressOutputPath);
+
+  const persistedAddressPayload =
+    readJSONIfExists(addressOutputPath) ||
+    (finalAddressPayload &&
+      ensureAddressOutputCoverage(finalAddressPayload));
+  if (persistedAddressPayload) {
+    const surfaced =
+      ensureAddressOutputCoverage(persistedAddressPayload) ||
+      persistedAddressPayload;
+    originalWriteFileSync(
+      addressOutputPath,
+      `${JSON.stringify(surfaced, null, 2)}\n`,
+    );
+  }
 
   const loggedAddress =
     readJSONIfExists(addressOutputPath) || finalAddressPayload || {};
