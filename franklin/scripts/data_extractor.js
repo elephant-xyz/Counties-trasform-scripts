@@ -3008,27 +3008,26 @@ function main() {
       }
   });
   
+  const mailingAddress = {
+    source_http_request: {
+      method: "GET",
+      url: seed.source_http_request.url
+    },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
+    // county_name: null,
+    unnormalized_address: mailingAddr,
+    longitude: null,
+    latitude: null
+  };
+  writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
+  
   // Track if relationships were created for initial owners
   let initialRelationshipsCreated = false;
-
-  // Only create mailing_address.json if there are owners to link to it
+  
+  // Create relationships between owners and mailing address
   if (personCounter > 0 || companyCounter > 0) {
-    const mailingAddress = {
-      source_http_request: {
-        method: "GET",
-        url: seed.source_http_request.url
-      },
-      request_identifier: parcelIdentifier || seed.parcel_id || "",
-      // county_name: null,
-      unnormalized_address: mailingAddr,
-      longitude: null,
-      latitude: null
-    };
-    writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-
     initialRelationshipsCreated = true;
-
-    // Create relationships between owners and mailing address
+    
     for (let i = 1; i <= personCounter; i++) {
       const rel = {
         from: { "/": `./person_${i}.json` },
@@ -3039,7 +3038,7 @@ function main() {
         rel,
       );
     }
-
+    
     for (let i = 1; i <= companyCounter; i++) {
       const rel = {
         from: { "/": `./company_${i}.json` },
@@ -3384,50 +3383,33 @@ function main() {
       });
     }
     
-
+    
     // Create person-mailing address relationships for current owners only if not already created
     if (!initialRelationshipsCreated) {
       const currentOwners = ownersByDate["current"] || [];
-
-      // Only create mailing_address.json and relationships if there are current owners
-      if (currentOwners.length > 0) {
-        // Create mailing_address.json if not already created
-        const mailingAddress = {
-          source_http_request: {
-            method: "GET",
-            url: seed.source_http_request.url
-          },
-          request_identifier: parcelIdentifier || seed.parcel_id || "",
-          unnormalized_address: mailingAddr,
-          longitude: null,
-          latitude: null
-        };
-        writeJSON(path.join("data", "mailing_address.json"), mailingAddress);
-
-        currentOwners.forEach((owner, j) => {
-          if (owner.type === "person") {
-            const personFile = ensurePerson(owner);
-            const rel = {
-              from: { "/": `./${personFile}` },
-              to: { "/": `./mailing_address.json` },
-            };
-            writeJSON(
-              path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
-              rel,
-            );
-          } else if (owner.type === "company") {
-            const companyFile = ensureCompany(owner);
-            const rel = {
-              from: { "/": `./${companyFile}` },
-              to: { "/": `./mailing_address.json` },
-            };
-            writeJSON(
-              path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
-              rel,
-            );
-          }
-        });
-      }
+      currentOwners.forEach((owner, j) => {
+        if (owner.type === "person") {
+          const personFile = ensurePerson(owner);
+          const rel = {
+            from: { "/": `./${personFile}` },
+            to: { "/": `./mailing_address.json` },
+          };
+          writeJSON(
+            path.join("data", `relationship_person_${j + 1}_has_mailing_address.json`),
+            rel,
+          );
+        } else if (owner.type === "company") {
+          const companyFile = ensureCompany(owner);
+          const rel = {
+            from: { "/": `./${companyFile}` },
+            to: { "/": `./mailing_address.json` },
+          };
+          writeJSON(
+            path.join("data", `relationship_company_${j + 1}_has_mailing_address.json`),
+            rel,
+          );
+        }
+      });
     }
   }
 
