@@ -2447,17 +2447,28 @@ function main() {
   if (structureRecords.length === 0) {
     const fallbackRecord = extractStructure($);
     if (fallbackRecord && typeof fallbackRecord === "object") {
-      const fallbackNumberText = textOrNull(
-        $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
-      );
-      const buildingNumber = normalizeBuildingNumber(
-        fallbackRecord.building_number ?? fallbackNumberText,
-        1,
-      );
-      structureRecords.push({
-        record: fallbackRecord,
-        buildingNumber,
+      // Check if the structure has meaningful data
+      // Skip if number_of_buildings is 0 or null and no other meaningful data exists
+      const hasBuildings = fallbackRecord.number_of_buildings != null &&
+                          fallbackRecord.number_of_buildings !== 0;
+      const hasMeaningfulData = Object.entries(fallbackRecord).some(([key, value]) => {
+        if (key === 'number_of_buildings') return false; // Already checked above
+        return value != null && value !== 0;
       });
+
+      if (hasBuildings || hasMeaningfulData) {
+        const fallbackNumberText = textOrNull(
+          $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
+        );
+        const buildingNumber = normalizeBuildingNumber(
+          fallbackRecord.building_number ?? fallbackNumberText,
+          1,
+        );
+        structureRecords.push({
+          record: fallbackRecord,
+          buildingNumber,
+        });
+      }
     }
   }
 
