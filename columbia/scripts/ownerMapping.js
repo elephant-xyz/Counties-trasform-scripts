@@ -55,7 +55,7 @@ function isCompanyName(name) {
   const n = (name || "").toLowerCase();
   // direct boundary checks for common suffixes/patterns
   if (
-    /\b(inc|inc\.|corp|corp\.|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
+    /\b(incorporated|inc|inc\.|corp|corporation|corp\.|co|co\.|ltd|limited|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
       n,
     )
   ) {
@@ -88,15 +88,51 @@ function normalizeOwnerKey(owner) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, " ");
+  // Replace common digit-to-letter substitutions that appear in data entry errors
+  let cleaned = name.trim()
+    .replace(/0/g, "O")  // Zero to letter O
+    .replace(/1/g, "I")  // One to letter I
+    .replace(/3/g, "E")  // Three to letter E
+    .replace(/5/g, "S")  // Five to letter S
+    .replace(/8/g, "B"); // Eight to letter B
+
+  // Normalize whitespace
+  cleaned = cleaned.replace(/\s+/g, " ");
+
+  // Remove any remaining non-letter, non-special-character symbols
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, "");
+
+  // Split by special characters while preserving them
   const parts = cleaned.split(/([ \-',.])/);
-  return parts
+
+  // Filter out empty strings and format each part
+  const formatted = parts
     .map((part) => {
       if (!part) return "";
       if (part.match(/[ \-',.]/)) return part;
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     })
+    .filter(Boolean)
     .join("");
+
+  // Trim the result to remove any leading/trailing whitespace
+  let result = formatted.trim();
+
+  // Remove leading non-letter characters to ensure pattern compliance
+  // Pattern requires: ^[A-Z][a-zA-Z\s\-',.]*$
+  result = result.replace(/^[^A-Za-z]+/, "");
+
+  // Ensure first character is uppercase
+  if (result && result.length > 0) {
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+  }
+
+  // Return null if result is empty or doesn't match the required pattern
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 function mapPrefixName(token) {
