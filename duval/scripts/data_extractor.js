@@ -71,14 +71,24 @@ function titleCaseNamePart(part) {
   if (!part) return null;
   const trimmed = String(part).trim();
   if (trimmed === "") return null;
-  return trimmed
+
+  // Remove invalid characters like "/" that don't match the schema pattern
+  // Pattern allows: letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = trimmed
+    .replace(/[^a-zA-Z\s\-',.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned === "") return null;
+
+  return cleaned
     .toLowerCase()
     .split(/\s+/)
     .map((word) =>
       word
-        .split(/([-'.])/)
+        .split(/([-',.])/)
         .map((segment) =>
-          /[-'.]/.test(segment)
+          /[-',.]/.test(segment)
             ? segment
             : segment.charAt(0).toUpperCase() + segment.slice(1),
         )
