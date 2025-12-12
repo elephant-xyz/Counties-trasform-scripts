@@ -1704,11 +1704,15 @@ function checkOwnerInfoVsCurrentOwners(ownerInfo, ownersByDateCurrent) {
   }
   
   function buildPersonFromOwnerMapping(first, last, middle) {
+    const firstFormatted = titleCase(first);
+    const lastFormatted = titleCase(last);
+    const middleFormatted = middle ? titleCase(middle) : null;
+
     return {
       type: "person",
-      first_name: titleCase(first),
-      last_name: titleCase(last),
-      middle_name: middle ? titleCase(middle) : null,
+      first_name: firstFormatted || null,
+      last_name: lastFormatted || null,
+      middle_name: middleFormatted || null,
     };
   }
   

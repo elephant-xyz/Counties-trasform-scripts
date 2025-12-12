@@ -190,11 +190,15 @@ function validateSuffix(suffix) {
 
 // Build a person object using inferred pattern
 function buildPerson(first, last, middle, prefix, suffix) {
+  const firstFormatted = titleCase(first);
+  const lastFormatted = titleCase(last);
+  const middleFormatted = middle ? titleCase(middle) : null;
+
   return {
     type: "person",
-    first_name: titleCase(first),
-    last_name: titleCase(last),
-    middle_name: middle ? titleCase(middle) : null,
+    first_name: firstFormatted || null,
+    last_name: lastFormatted || null,
+    middle_name: middleFormatted || null,
     prefix_name: prefix ? validatePrefix(prefix) : null,
     suffix_name: suffix ? validateSuffix(suffix) : null,
   };
