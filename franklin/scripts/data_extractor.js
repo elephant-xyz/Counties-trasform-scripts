@@ -2350,8 +2350,8 @@ function formatName(name) {
 
   const result = sanitized.trim();
 
-  // Validate against the pattern before returning
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Validate against the correct person name pattern before returning
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   if (!result || !pattern.test(result)) {
     return null;
   }
