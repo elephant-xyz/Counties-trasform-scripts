@@ -378,13 +378,77 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
+  const rawNames = [];
+
+  // First collect all raw owner names
   $(CURRENT_OWNER_SELECTOR).find('a, span').each((i, el) => {
     const ownerText = $(el).text().trim();
     if (ownerText && !ownerText.includes('Primary Owner') && !/\d+\s+\w+\s+ST\s+N\s+#\d+/.test(ownerText)) {
       const t = txt(ownerText);
-      owners.push(t);
+      // Remove address portions from owner name
+      // Addresses typically include numbers and common address abbreviations
+      let cleanedName = t.replace(/\d+\s+[A-Z\s]+(?:ST|AVE|RD|DR|LN|CT|WAY|BLVD|PL|TER|CIR|PKWY)\s+[A-Z\s,\d]+$/i, '').trim();
+      if (cleanedName) {
+        // Remove trailing "&" and any following text
+        cleanedName = cleanedName.replace(/\s*&.*$/,'').trim();
+        if (cleanedName) {
+          rawNames.push(cleanedName);
+        }
+      }
     }
   });
+
+  // Extract sales data to check against
+  const salesNames = [];
+  $(SALES_TABLE_SELECTOR).each((i, tr) => {
+    const $tr = $(tr);
+    const tds = $tr.find("td");
+    if (tds.length >= 8) {
+      const grantee = txt(tds.eq(7).text());
+      if (grantee) salesNames.push(grantee.toUpperCase());
+    }
+  });
+  const salesNamesStr = salesNames.join(' ');
+
+  // Process each raw name
+  for (const name of rawNames) {
+    let finalName = name;
+    const tokens = name.split(/\s+/);
+
+    // For 3-token names, check if reordering helps match sales data
+    if (tokens.length === 3) {
+      const [t1, t2, t3] = tokens;
+      const original = `${t1} ${t2} ${t3}`;
+      const reordered = `${t2} ${t3} ${t1}`; // Assume LAST FIRST MIDDLE → FIRST MIDDLE LAST
+
+      // Check if reordered version appears in sales data
+      if (salesNamesStr.includes(reordered.toUpperCase())) {
+        finalName = reordered;
+      } else if (salesNamesStr.includes(original.toUpperCase())) {
+        finalName = original;
+      } else {
+        // Default to reordering for 3-token names (common pattern in this data)
+        finalName = reordered;
+      }
+    } else if (tokens.length === 2) {
+      const [t1, t2] = tokens;
+      const original = `${t1} ${t2}`;
+      const reordered = `${t2} ${t1}`;
+
+      // Check which version appears in sales data
+      if (salesNamesStr.includes(reordered.toUpperCase())) {
+        finalName = reordered;
+      } else if (salesNamesStr.includes(original.toUpperCase())) {
+        finalName = original;
+      } else {
+        // Default to reordering for 2-token names
+        finalName = reordered;
+      }
+    }
+
+    owners.push(finalName);
+  }
+
   return owners;
 }
 
