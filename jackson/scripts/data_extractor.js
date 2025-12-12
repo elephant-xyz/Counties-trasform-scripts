@@ -1341,56 +1341,6 @@ function removeUnusedOwnerFiles(usedPersonIdx, usedCompanyIdx) {
 }
 
 function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailingAddress) {
-  // DISABLED: Person, Company, and Mailing Address entities are not part of the Sales_History data group.
-  // The Sales_History data group only includes: file, property, and sales_history classes.
-  // Therefore, we do not generate person, company, or mailing_address entities or their relationships.
-
-  console.log("Skipping person/company generation - not supported in Sales_History data group");
-
-  // CLEANUP: Remove person/company files only (not in Property_Improvement data group)
-  // Keep structure, utility, layout, address files as they are part of Property_Improvement
-  try {
-    const dataDir = "data";
-    // Ensure data directory exists before checking for files
-    ensureDir(dataDir);
-
-    const files = fs.readdirSync(dataDir);
-    files.forEach((file) => {
-      // Remove person/company/tax/mailing_address entity files (not in Property_Improvement data group)
-      if (/^person_\d+\.json$/.test(file) ||
-          /^company_\d+\.json$/.test(file) ||
-          file === "mailing_address.json" ||
-          /^tax_\d+\.json$/.test(file)) {
-        console.log(`Cleaning up unsupported file: ${file}`);
-        fs.unlinkSync(path.join(dataDir, file));
-      }
-      // Remove person/company relationship files - check both filename and content
-      if (/^relationship_.*\.json$/.test(file)) {
-        // First check filename
-        if (/person/i.test(file) || /company/i.test(file)) {
-          console.log(`Cleaning up unsupported relationship file (by name): ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        } else {
-          // Check content for references to person/company files
-          try {
-            const content = fs.readFileSync(path.join(dataDir, file), 'utf8');
-            if (/person_\d+\.json|company_\d+\.json|mailing_address\.json/i.test(content)) {
-              console.log(`Cleaning up unsupported relationship file (by content): ${file}`);
-              fs.unlinkSync(path.join(dataDir, file));
-            }
-          } catch (e) {
-            console.error(`Error checking relationship file ${file}:`, e);
-          }
-        }
-      }
-    });
-  } catch (e) {
-    console.error("Error cleaning up unsupported files:", e);
-  }
-
-  return;
-
-  // ALL CODE BELOW IS DISABLED FOR SALES_HISTORY DATA GROUP
   const owners = readJSON(path.join("owners", "owner_data.json"));
   if (!owners) return;
   const key = `property_${parcelId}`;
