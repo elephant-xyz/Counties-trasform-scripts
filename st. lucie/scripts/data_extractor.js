@@ -1514,7 +1514,7 @@ async function main() {
   const parcelOut = {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
-    parcel_identifier: parcelIdentifierDashed || baseRequestData.parcel_id || null,
+    parcel_identifier: parcelIdentifierDashed || null,
   };
   await fsp.writeFile(
     path.join("data", "parcel.json"),
@@ -1589,7 +1589,7 @@ async function main() {
     propertyOut = {
       source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
       request_identifier: baseRequestData.request_identifier || null,
-      parcel_identifier: parcelIdentifierDashed || baseRequestData.parcel_id || null, // Use the extracted parcel ID
+      parcel_identifier: parcelIdentifierDashed || null, // Use the extracted parcel ID
       property_legal_description_text: legalDescription || null,
       property_type: mappedPropertyDetails.property_type || "LandParcel", // Default if not found
       property_usage_type: mappedPropertyDetails.property_usage_type || null,
@@ -3008,21 +3008,21 @@ async function main() {
     ? buildingLayoutIndices[0]
     : null;
 
-  if (propertyOut) {
-    for (const record of layoutRecords) {
-      if (multiBuilding || record.space_type === "Building") {
-        const relFile = `relationship_property_has_layout_${record.index}.json`;
-        const relOut = {
-          from: { "/": "./property.json" },
-          to: { "/": `./${record.file}` },
-        };
-        await fsp.writeFile(
-          path.join("data", relFile),
-          JSON.stringify(relOut, null, 2),
-        );
-      }
-    }
-  }
+  // if (propertyOut) {
+  //   for (const record of layoutRecords) {
+  //     if (multiBuilding || record.space_type === "Building") {
+  //       const relFile = `relationship_property_has_layout_${record.index}.json`;
+  //       const relOut = {
+  //         from: { "/": "./property.json" },
+  //         to: { "/": `./${record.file}` },
+  //       };
+  //       await fsp.writeFile(
+  //         path.join("data", relFile),
+  //         JSON.stringify(relOut, null, 2),
+  //       );
+  //     }
+  //   }
+  // }
 
   for (const record of layoutRecords) {
     if (record.space_type === "Building") continue;
