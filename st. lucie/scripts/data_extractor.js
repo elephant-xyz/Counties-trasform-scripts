@@ -1514,7 +1514,7 @@ async function main() {
   const parcelOut = {
     source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
     request_identifier: baseRequestData.request_identifier || null,
-    parcel_identifier: parcelIdentifierDashed || null,
+    parcel_identifier: parcelIdentifierDashed || propertySeedData?.parcel_id || baseRequestData.request_identifier || "UNKNOWN",
   };
   await fsp.writeFile(
     path.join("data", "parcel.json"),
@@ -1589,7 +1589,7 @@ async function main() {
     propertyOut = {
       source_http_request: sourceHttpRequest, // Use the extracted sourceHttpRequest
       request_identifier: baseRequestData.request_identifier || null,
-      parcel_identifier: parcelIdentifierDashed || null, // Use the extracted parcel ID
+      parcel_identifier: parcelIdentifierDashed || propertySeedData?.parcel_id || baseRequestData.request_identifier || "UNKNOWN", // Use the extracted parcel ID with fallbacks
       property_legal_description_text: legalDescription || null,
       property_type: mappedPropertyDetails.property_type || "LandParcel", // Default if not found
       property_usage_type: mappedPropertyDetails.property_usage_type || null,
