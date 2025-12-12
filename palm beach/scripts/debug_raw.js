@@ -19014,143 +19014,83 @@ async function main() {
   forceAddressVariantSchemaSurface(addressOutputPath);
   stabilizeAddressOneOfForValidation(addressOutputPath);
 
-  const persistedAddressPayload =
-    readJSONIfExists(addressOutputPath) ||
-    (finalAddressPayload &&
-      ensureAddressOutputCoverage(finalAddressPayload));
+  const existingAddressPayload = readJSONIfExists(addressOutputPath) || {};
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      existingAddressPayload.unnormalized_address,
+      resolvedRaw,
+      ...finalUnnormalizedCandidates,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unnormalizedSource.unnormalized_address,
+      unnormalizedSource.full_address,
+    ]),
+  );
 
-  if (persistedAddressPayload) {
-    const hasRawString =
-      typeof persistedAddressPayload.unnormalized_address === "string" &&
-      persistedAddressPayload.unnormalized_address.trim().length > 0;
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...existingAddressPayload });
+  const normalizedCandidate =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface })
+      ? normalizedSurface
+      : null;
 
-    const normalizedSurface =
-      ensureNormalizedAddressSchemaSurface &&
-      ensureNormalizedAddressSchemaSurface({ ...persistedAddressPayload });
-
-    const normalizedOneOfReady =
-      normalizedSurface &&
-      ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS.every((field) => {
-        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-          return Number.isFinite(parseCoordinate(normalizedSurface[field]));
-        }
-        return hasMeaningfulAddressValue(normalizedSurface[field]);
-      });
-
-    let alignedAddress = null;
-    if (normalizedOneOfReady && !prefersRawAddressBranch) {
-      const normalizedOutput =
-        ensureNormalizedAddressSchemaSurface &&
-        ensureNormalizedAddressSchemaSurface({ ...normalizedSurface });
-      if (normalizedOutput) {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedOutput,
-            "unnormalized_address",
-          )
-        ) {
-          delete normalizedOutput.unnormalized_address;
-        }
-        alignedAddress =
-          ensureAddressOutputCoverage(normalizedOutput) || normalizedOutput;
+  let reconciledAddress = null;
+  if (normalizedCandidate && !rawValue) {
+    const normalizedOut =
+      ensureAddressOutputCoverage({
+        ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+        ...normalizedCandidate,
+      }) || null;
+    if (normalizedOut) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
       }
-    } else if (hasRawString) {
-      const rawOutput =
-        sanitizeRawOneOfPayload(persistedAddressPayload, {
-          unnormalized_address: persistedAddressPayload.unnormalized_address,
-          request_identifier: persistedAddressPayload.request_identifier,
-          source_http_request: persistedAddressPayload.source_http_request,
-        }) || ensureAddressOutputCoverage(persistedAddressPayload);
-      if (rawOutput) {
-        alignedAddress =
-          ensureAddressOutputCoverage(rawOutput) || rawOutput;
-      }
-    } else if (normalizedOneOfReady) {
-      const normalizedOutput =
-        ensureNormalizedAddressSchemaSurface &&
-        ensureNormalizedAddressSchemaSurface({ ...normalizedSurface });
-      if (normalizedOutput) {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            normalizedOutput,
-            "unnormalized_address",
-          )
-        ) {
-          delete normalizedOutput.unnormalized_address;
-        }
-        alignedAddress =
-          ensureAddressOutputCoverage(normalizedOutput) || normalizedOutput;
-      }
+      reconciledAddress = normalizedOut;
     }
-
-    if (alignedAddress) {
-      originalWriteFileSync(
-        addressOutputPath,
-        `${JSON.stringify(alignedAddress, null, 2)}\n`,
-      );
-    } else {
-      removeFileIfExists(addressOutputPath);
+  } else if (rawValue) {
+    const fieldSources = [
+      existingAddressPayload,
+      normalizedSurface,
+      seedSource,
+      unnormalizedSource,
+    ].filter((source) => source && typeof source === "object");
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      for (const source of fieldSources) {
+        if (Object.prototype.hasOwnProperty.call(source, field)) {
+          rawOut[field] = sanitizeAddressFieldValue(field, source[field]);
+          break;
+        }
+      }
+    });
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
     }
+    reconciledAddress = ensureAddressOutputCoverage(rawOut);
+  }
+
+  if (reconciledAddress) {
+    originalWriteFileSync(
+      addressOutputPath,
+      `${JSON.stringify(reconciledAddress, null, 2)}\n`,
+    );
   } else {
     removeFileIfExists(addressOutputPath);
   }
 
-  const terminalAddressForBranch = readJSONIfExists(addressOutputPath);
-  if (terminalAddressForBranch) {
-    const normalizedSurface =
-      ensureNormalizedAddressSchemaSurface &&
-      ensureNormalizedAddressSchemaSurface({ ...terminalAddressForBranch });
-    const normalizedReady =
-      normalizedSurface &&
-      hasCompleteNormalizedAddress({ ...normalizedSurface });
-    const rawValue = safeNullIfEmpty(
-      terminalAddressForBranch.unnormalized_address,
-    );
-
-    if (normalizedReady) {
-      if (
-        Object.prototype.hasOwnProperty.call(
-          normalizedSurface,
-          "unnormalized_address",
-        )
-      ) {
-        delete normalizedSurface.unnormalized_address;
-      }
-      const normalizedOut =
-        ensureAddressOutputCoverage(normalizedSurface) || normalizedSurface;
-      originalWriteFileSync(
-        addressOutputPath,
-        `${JSON.stringify(normalizedOut, null, 2)}\n`,
-      );
-    } else if (rawValue) {
-      const rawSeed = {
-        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-        ...terminalAddressForBranch,
-        unnormalized_address: rawValue,
-      };
-      const alignedRaw =
-        ensureRawAddressSchemaDefaults(rawSeed) ||
-        sanitizeRawOneOfPayload(rawSeed, {
-          unnormalized_address: rawValue,
-          request_identifier: rawSeed.request_identifier,
-          source_http_request: rawSeed.source_http_request,
-        });
-      if (alignedRaw) {
-        const covered = ensureAddressOutputCoverage(alignedRaw) || alignedRaw;
-        originalWriteFileSync(
-          addressOutputPath,
-          `${JSON.stringify(covered, null, 2)}\n`,
-        );
-      } else {
-        removeFileIfExists(addressOutputPath);
-      }
-    } else {
-      removeFileIfExists(addressOutputPath);
-    }
-  }
-
-  const loggedAddress =
-    readJSONIfExists(addressOutputPath) || finalAddressPayload || {};
+  const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
     ensureAddressOutputCoverage(loggedAddress) || loggedAddress,
