@@ -2293,7 +2293,7 @@ function extractMailingAddress(ownershipHtml) {
     .trim();
 }
 
-const PERSON_NAME_PATTERN = /^[A-Z][a-z]*(?:[ \-',.][A-Za-z][a-z]*)*$/;
+const PERSON_NAME_PATTERN = /^[A-Z][a-zA-Z\s\-',.]*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
@@ -2351,7 +2351,7 @@ function formatName(name) {
   const result = sanitized.trim();
 
   // Validate against the pattern before returning
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!result || !pattern.test(result)) {
     return null;
   }
