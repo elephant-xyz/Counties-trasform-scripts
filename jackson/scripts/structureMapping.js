@@ -155,6 +155,21 @@ function mapFlooring(tokens) {
   return out;
 }
 
+function mapFlooringSecondary(token) {
+  // Valid values for flooring_material_secondary enum
+  const t = token.toUpperCase().trim();
+  if (t.includes("HARDWOOD") && t.includes("SOLID")) return "Solid Hardwood";
+  if (t.includes("HARDWOOD") && t.includes("ENGINEERED")) return "Engineered Hardwood";
+  if (t.includes("LAMINATE")) return "Laminate";
+  if (t.includes("LVP") || (t.includes("LUXURY") && t.includes("VINYL"))) return "Luxury Vinyl Plank";
+  if (t.includes("CERAMIC")) return "Ceramic Tile";
+  if (t.includes("CARPET")) return "Carpet";
+  if (t.includes("AREA") && t.includes("RUG")) return "Area Rugs";
+  if (t.includes("TRANSITION")) return "Transition Strips";
+  // If no valid mapping found, return null
+  return null;
+}
+
 function parseNumber(val) {
   if (val == null) return null;
   const n = Number(String(val).replace(/[,]/g, "").trim());
@@ -365,7 +380,13 @@ function buildStructureFromBuilding(building, parcelId, buildingNumber, structur
   const floorMaterials = mapFlooring(floorTokens);
   if (floorMaterials.length) {
     structure.flooring_material_primary = floorMaterials[0];
-    if (floorMaterials.length > 1) structure.flooring_material_secondary = floorMaterials[1];
+    // Use separate mapping for secondary flooring material (has different enum values)
+    if (floorTokens.length > 1) {
+      const secondaryValue = mapFlooringSecondary(floorTokens[1]);
+      if (secondaryValue) {
+        structure.flooring_material_secondary = secondaryValue;
+      }
+    }
   }
 
   const roofTokens = [];
