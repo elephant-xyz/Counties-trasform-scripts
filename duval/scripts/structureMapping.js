@@ -1012,6 +1012,19 @@ const STRUCTURE_ENUMS = {
     "Glass Panels",
     "Concrete",
   ]),
+  interiorWallSurfaceSecondary: new Set([
+    "Wainscoting",
+    "Chair Rail",
+    "Crown Molding",
+    "Baseboards",
+    "Wood Trim",
+    "Stone Accent",
+    "Tile Accent",
+    "Metal Accent",
+    "Glass Insert",
+    "Decorative Panels",
+    "Feature Wall Material",
+  ]),
   flooringMaterial: new Set([
     "Solid Hardwood",
     "Engineered Hardwood",
@@ -1134,6 +1147,23 @@ function mapInteriorWallSurface(detail) {
   if (/WOOD/.test(upper)) return "Wood Paneling";
   if (/BRICK/.test(upper)) return "Exposed Brick";
   if (/TILE|DECOR/.test(upper)) return "Tile";
+  return null;
+}
+
+function mapInteriorWallSurfaceSecondary(detail) {
+  if (!detail) return null;
+  const upper = detail.toUpperCase();
+  if (/WAINSCOT/.test(upper)) return "Wainscoting";
+  if (/CHAIR\s*RAIL/.test(upper)) return "Chair Rail";
+  if (/CROWN\s*MOLD/.test(upper)) return "Crown Molding";
+  if (/BASEBOARD/.test(upper)) return "Baseboards";
+  if (/WOOD\s*TRIM|TRIM/.test(upper)) return "Wood Trim";
+  if (/STONE\s*ACCENT/.test(upper)) return "Stone Accent";
+  if (/TILE\s*ACCENT/.test(upper)) return "Tile Accent";
+  if (/METAL\s*ACCENT/.test(upper)) return "Metal Accent";
+  if (/GLASS\s*INSERT/.test(upper)) return "Glass Insert";
+  if (/DECORAT.*PANEL/.test(upper)) return "Decorative Panels";
+  if (/FEATURE\s*WALL/.test(upper)) return "Feature Wall Material";
   return null;
 }
 
@@ -1332,8 +1362,8 @@ function buildStructureRecord($, buildingNode, extraFeatures, totalBuildings) {
     STRUCTURE_ENUMS.interiorWallSurface,
   );
   const interior_wall_surface_material_secondary = ensureEnum(
-    mapInteriorWallSurface(interiorWalls[1] || ""),
-    STRUCTURE_ENUMS.interiorWallSurface,
+    mapInteriorWallSurfaceSecondary(interiorWalls[1] || ""),
+    STRUCTURE_ENUMS.interiorWallSurfaceSecondary,
   );
 
   const flooringSet = new Set();
