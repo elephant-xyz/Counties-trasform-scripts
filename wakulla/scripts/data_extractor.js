@@ -1542,6 +1542,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       return;
     }
 
+    // Skip unknown_date_* entries if there are no sales to link them to
+    if (dateKey.startsWith('unknown_date_') && sales.length === 0) {
+      return;
+    }
+
     const arr = ownersByDate[dateKey];
     (arr || []).forEach((o) => {
       if (o.type === "person") {
@@ -1628,15 +1633,18 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 
   // Add companies from unknown_date_* entries (prior owners/grantors)
-  Object.keys(ownersByDate).forEach((dateKey) => {
-    if (dateKey.startsWith("unknown_date_")) {
-      const ownersOnDate = ownersByDate[dateKey] || [];
-      ownersOnDate.forEach((o) => {
-        if (o.type === "company" && (o.name || "").trim())
-          usedCompanyNames.add((o.name || "").trim());
-      });
-    }
-  });
+  // Only add these if there are sales to link them to
+  if (sales.length > 0) {
+    Object.keys(ownersByDate).forEach((dateKey) => {
+      if (dateKey.startsWith("unknown_date_")) {
+        const ownersOnDate = ownersByDate[dateKey] || [];
+        ownersOnDate.forEach((o) => {
+          if (o.type === "company" && (o.name || "").trim())
+            usedCompanyNames.add((o.name || "").trim());
+        });
+      }
+    });
+  }
 
   // Only create company files for companies that are actually used
   companies = Array.from(usedCompanyNames).map((n) => ({
