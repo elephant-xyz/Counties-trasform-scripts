@@ -16433,53 +16433,31 @@ function pruneRawAddressToMinimalSurface(addressPath) {
     return;
   }
 
-  const normalizedSurface =
-    typeof ensureNormalizedAddressSchemaSurface === "function"
-      ? ensureNormalizedAddressSchemaSurface({ ...payload })
-      : { ...payload };
-  const normalizedComplete =
-    typeof hasCompleteNormalizedAddress === "function" &&
-    hasCompleteNormalizedAddress({ ...normalizedSurface });
-
-  if (normalizedComplete && !payload.__force_raw_variant) {
-    return;
-  }
-
-  const minimal = {
+  // Preserve the raw variant while keeping the full schema surface present so
+  // oneOf validation can still succeed even when normalized coverage is
+  // incomplete. Always prefer the raw branch when an unnormalized string is
+  // available from the source.
+  const rawSeed = {
+    ...payload,
     unnormalized_address: rawValue,
   };
 
-  const copyField = (field, transformer) => {
-    const value = Object.prototype.hasOwnProperty.call(payload, field)
-      ? payload[field]
-      : null;
-    const nextValue = transformer ? transformer(value) : safeNullIfEmpty(value);
-    minimal[field] = nextValue === undefined ? null : nextValue;
-  };
-
-  copyField("request_identifier");
-  copyField("source_http_request", (val) => {
-    const prepared = prepareSourceHttpRequest(val);
-    return prepared ? deepClone(prepared) : null;
-  });
-
-  [
-    "city_name",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "county_name",
-    "country_code",
-  ].forEach((field) => copyField(field));
-
-  if (
-    hasMeaningfulAddressValue(minimal.state_code) &&
-    !hasMeaningfulAddressValue(minimal.country_code)
-  ) {
-    minimal.country_code = "US";
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    rawSeed.request_identifier = safeNullIfEmpty(payload.request_identifier);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
+    const prepared = prepareSourceHttpRequest(payload.source_http_request);
+    rawSeed.source_http_request = prepared ? deepClone(prepared) : null;
   }
 
-  writeJSON(addressPath, minimal);
+  const hydratedRaw =
+    ensureAddressOutputCoverage(rawSeed) ||
+    ensureRawAddressSchemaDefaults(rawSeed) || {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...rawSeed,
+    };
+
+  writeJSON(addressPath, hydratedRaw);
 }
 
 // Final hardening pass to keep the address payload aligned to exactly one
