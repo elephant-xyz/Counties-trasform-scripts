@@ -16552,6 +16552,100 @@ function pruneRawAddressToMinimalSurface(addressPath) {
   writeJSON(addressPath, hydratedRaw);
 }
 
+// Keep the final address payload aligned to a single oneOf branch:
+// - Prefer normalized when all required normalized fields (including lat/long) are present.
+// - Otherwise emit a lean raw variant anchored by the unnormalized string while retaining
+//   optional coordinates/identifiers when available.
+function enforceCountyAddressOneOfFinal(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+  const normalizedComplete =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      const candidate = normalizedSurface[field];
+      normalizedOut[field] =
+        typeof sanitizeAddressFieldValue === "function"
+          ? sanitizeAddressFieldValue(field, candidate)
+          : candidate;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(normalizedOut[field]);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof normalizedOut[field] === "string") {
+        const trimmed = normalizedOut[field].trim();
+        normalizedOut[field] = trimmed.length ? trimmed : null;
+      } else if (normalizedOut[field] === undefined) {
+        normalizedOut[field] = null;
+      }
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  if (rawValue) {
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      const candidate = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : normalizedSurface && normalizedSurface[field];
+      let value =
+        typeof sanitizeAddressFieldValue === "function"
+          ? sanitizeAddressFieldValue(field, candidate)
+          : candidate;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      rawOut[field] = value;
+    });
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    writeJSON(addressPath, rawOut);
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 // Final hardening pass to keep the address payload aligned to exactly one
 // schema branch. Normalized outputs drop the raw string; raw outputs keep the
 // full oneOf surface with nullable fields present.
@@ -20532,6 +20626,8 @@ async function main() {
   } else {
     removeFileIfExists(addressOutputPath);
   }
+
+  enforceCountyAddressOneOfFinal(addressOutputPath);
 
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
