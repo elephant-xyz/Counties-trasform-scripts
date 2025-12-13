@@ -944,7 +944,7 @@ function sanitizeAddressPayloadForWrite(payload) {
   if (trimmedUnnormalized.length) {
     // Keep the full raw schema surface present (nullable) so validation sees
     // every required field even when we only have an unnormalized string.
-    const preferLeanRaw = false;
+    const preferLeanRaw = true;
     const rawOut = {
       ...RAW_ADDRESS_SCHEMA_TEMPLATE,
       unnormalized_address: trimmedUnnormalized,
@@ -21420,18 +21420,60 @@ async function main() {
       }
       writeJSON(addressOutputPath, normalizedOut);
     } else if (rawValueTerminal) {
-      const surfacedRaw =
-        ensureAddressOutputCoverage({
-          ...finalSnapshotForOneOf,
-          unnormalized_address: rawValueTerminal,
-        }) || null;
-      if (surfacedRaw) {
-        writeJSON(addressOutputPath, surfacedRaw);
-      } else {
-        removeFileIfExists(addressOutputPath);
-      }
+      const preparedSource = prepareSourceHttpRequest(
+        finalSnapshotForOneOf.source_http_request || sourceHttpCandidate,
+      );
+      const sanitizedRequestId = safeNullIfEmpty(
+        trimmedRequestIdentifier ||
+          finalSnapshotForOneOf.request_identifier ||
+          (seed && seed.request_identifier) ||
+          (unAddr && unAddr.request_identifier),
+      );
+      const rawOut = {
+        unnormalized_address: String(rawValueTerminal).trim(),
+        request_identifier:
+          sanitizedRequestId === undefined ? null : sanitizedRequestId,
+        source_http_request: preparedSource ? deepClone(preparedSource) : null,
+      };
+      writeJSON(addressOutputPath, rawOut);
     } else {
       removeFileIfExists(addressOutputPath);
+    }
+  }
+
+  // After all oneOf adjustments, force the raw branch to stay lean when a raw
+  // string exists and normalized coverage is incomplete.
+  const finalAddressSnapshotLean =
+    readJSONIfExists(addressOutputPath) || null;
+  if (
+    finalAddressSnapshotLean &&
+    typeof finalAddressSnapshotLean === "object" &&
+    !Array.isArray(finalAddressSnapshotLean)
+  ) {
+    const finalRawString = safeNullIfEmpty(
+      finalAddressSnapshotLean.unnormalized_address,
+    );
+    const finalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...finalAddressSnapshotLean });
+    const finalNormalizedComplete =
+      finalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...finalNormalizedSurface });
+    if (finalRawString && !finalNormalizedComplete) {
+      const finalReqId = safeNullIfEmpty(
+        trimmedRequestIdentifier ||
+          finalAddressSnapshotLean.request_identifier ||
+          (seed && seed.request_identifier) ||
+          (unAddr && unAddr.request_identifier),
+      );
+      const finalSource = prepareSourceHttpRequest(
+        finalAddressSnapshotLean.source_http_request || sourceHttpCandidate,
+      );
+      writeJSON(addressOutputPath, {
+        unnormalized_address: String(finalRawString).trim(),
+        request_identifier: finalReqId === undefined ? null : finalReqId,
+        source_http_request: finalSource ? deepClone(finalSource) : null,
+      });
     }
   }
 
