@@ -20521,7 +20521,10 @@ async function main() {
   );
 
   let finalizedAddress = null;
-  let preferRawFinal = preferRawBranch || !finalNormalizedComplete;
+  let preferRawFinal =
+    true === preferRawBranch ||
+    !!finalRawCandidate ||
+    !finalNormalizedComplete;
 
   if (finalNormalizedComplete && !preferRawFinal) {
     const normalizedSurface =
@@ -20574,123 +20577,17 @@ async function main() {
       seedSource && seedSource.source_http_request,
       seed && seed.source_http_request,
     );
-    const coordinateSeed = {};
-    const latCandidate = parseCoordinate(
-      finalAddressSnapshot && finalAddressSnapshot.latitude,
-    );
-    const lonCandidate = parseCoordinate(
-      finalAddressSnapshot && finalAddressSnapshot.longitude,
-    );
-    if (Number.isFinite(latCandidate) && Number.isFinite(lonCandidate)) {
-      coordinateSeed.latitude = latCandidate;
-      coordinateSeed.longitude = lonCandidate;
-    }
-
-    const rawFieldSeed = { ...coordinateSeed };
-    if (
-      typeof finalRawCandidate === "string" &&
-      finalRawCandidate.trim().length
-    ) {
-      const streetSegment = finalRawCandidate.split(",")[0];
-      const localitySegment = finalRawCandidate.includes(",")
-        ? finalRawCandidate
-            .split(",")
-            .slice(1)
-            .join(" ")
-            .trim()
-        : finalRawCandidate;
-      const parsedLocality = parseCityStatePostal(localitySegment);
-      if (parsedLocality.city && !rawFieldSeed.city_name) {
-        rawFieldSeed.city_name = parsedLocality.city.toUpperCase();
-      }
-      if (parsedLocality.state && !rawFieldSeed.state_code) {
-        rawFieldSeed.state_code = parsedLocality.state.toUpperCase();
-      }
-      if (parsedLocality.postal && !rawFieldSeed.postal_code) {
-        rawFieldSeed.postal_code = parsedLocality.postal;
-      }
-      if (parsedLocality.plus4 && !rawFieldSeed.plus_four_postal_code) {
-        rawFieldSeed.plus_four_postal_code = parsedLocality.plus4;
-      }
-      const parsedStreet = parseLocationAddress(streetSegment);
-      if (parsedStreet.streetNumber && !rawFieldSeed.street_number) {
-        rawFieldSeed.street_number = parsedStreet.streetNumber;
-      }
-      if (parsedStreet.streetName && !rawFieldSeed.street_name) {
-        const formattedStreetName = formatStreetNameCase(parsedStreet.streetName);
-        rawFieldSeed.street_name =
-          (formattedStreetName && formattedStreetName.toUpperCase()) ||
-          parsedStreet.streetName;
-      }
-      if (
-        parsedStreet.streetPreDirectional &&
-        !rawFieldSeed.street_pre_directional_text
-      ) {
-        rawFieldSeed.street_pre_directional_text =
-          parsedStreet.streetPreDirectional.toUpperCase();
-      }
-      if (
-        parsedStreet.streetPostDirectional &&
-        !rawFieldSeed.street_post_directional_text
-      ) {
-        rawFieldSeed.street_post_directional_text =
-          parsedStreet.streetPostDirectional.toUpperCase();
-      }
-      if (parsedStreet.streetSuffix && !rawFieldSeed.street_suffix_type) {
-        const mappedSuffix = mapStreetSuffixType(parsedStreet.streetSuffix);
-        rawFieldSeed.street_suffix_type =
-          mappedSuffix || parsedStreet.streetSuffix;
-      }
-      if (parsedStreet.unitIdentifier && !rawFieldSeed.unit_identifier) {
-        rawFieldSeed.unit_identifier = parsedStreet.unitIdentifier;
-      }
-      if (parsedStreet.routeNumber && !rawFieldSeed.route_number) {
-        rawFieldSeed.route_number = parsedStreet.routeNumber;
-      }
-      if (!rawFieldSeed.county_name) {
-        rawFieldSeed.county_name = formattedCountyName || countyName || null;
-      }
-      if (
-        hasMeaningfulAddressValue(rawFieldSeed.state_code) &&
-        !hasMeaningfulAddressValue(rawFieldSeed.country_code)
-      ) {
-        rawFieldSeed.country_code = "US";
-      }
-    }
-
-    const rawSeed =
-      sanitizeRawOneOfPayload(
-        rawFieldSeed,
-        {
-          unnormalized_address: finalRawCandidate,
-          request_identifier:
-            resolvedFinalRequestId === undefined ? null : resolvedFinalRequestId,
-          source_http_request: resolvedFinalSourceHttp,
-        },
-      ) ||
-      buildRawAddressOutputForSchema(finalRawCandidate, {
-        request_identifier: resolvedFinalRequestId,
-        source_http_request: resolvedFinalSourceHttp,
-        ...rawFieldSeed,
-      });
-
-    if (rawSeed) {
-      if (!rawSeed.postal_code) {
-        rawSeed.plus_four_postal_code = null;
-      }
-      if (
-        hasMeaningfulAddressValue(rawSeed.state_code) &&
-        !hasMeaningfulAddressValue(rawSeed.country_code)
-      ) {
-        rawSeed.country_code = "US";
-      }
-      if ((rawSeed.latitude == null) !== (rawSeed.longitude == null)) {
-        rawSeed.latitude = null;
-        rawSeed.longitude = null;
-      }
-      finalizedAddress = rawSeed;
-      preferRawFinal = true;
-    }
+    const rawOut = {
+      ...RAW_ONE_OF_SCHEMA_TEMPLATE,
+      unnormalized_address: String(finalRawCandidate).trim(),
+      request_identifier:
+        resolvedFinalRequestId === undefined ? null : resolvedFinalRequestId,
+      source_http_request: resolvedFinalSourceHttp
+        ? deepClone(resolvedFinalSourceHttp)
+        : null,
+    };
+    finalizedAddress = rawOut;
+    preferRawFinal = true;
   }
 
   if (finalizedAddress) {
