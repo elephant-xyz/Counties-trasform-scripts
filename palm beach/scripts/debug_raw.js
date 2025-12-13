@@ -7710,19 +7710,17 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch minimal so it matches the unnormalized oneOf variant
-// instead of falling back to the normalized branch.
-const RAW_ONE_OF_ALLOWED_FIELDS = [
-  "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
-];
+// Keep the raw branch aligned with the schema's raw oneOf surface by
+// explicitly carrying every address field (defaulting to null) alongside the
+// unnormalized string. This avoids validation errors for missing properties on
+// the raw variant.
+const RAW_ONE_OF_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
+  new Set([...ADDRESS_SCHEMA_FIELDS]),
 );
 
 // Keep raw (unnormalized) address payloads limited to the oneOf surface so we
@@ -20952,13 +20950,17 @@ async function main() {
       seedSource && seedSource.source_http_request,
       sourceHttpCandidate,
     );
-    const minimalRawAddress = {
+    const minimalRawAddress = ensureAddressOutputCoverage({
       unnormalized_address: finalRawCandidate,
       request_identifier:
         finalRequestId === undefined ? null : finalRequestId,
       source_http_request: finalSourceHttp ? deepClone(finalSourceHttp) : null,
-    };
-    writeJSON(addressOutputPath, minimalRawAddress);
+    });
+    if (minimalRawAddress) {
+      writeJSON(addressOutputPath, minimalRawAddress);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
   } else {
     removeFileIfExists(addressOutputPath);
   }
