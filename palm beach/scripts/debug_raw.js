@@ -16592,6 +16592,66 @@ function finalizeAddressOneOfVariant(addressPath, options = {}) {
   writeJSON(addressPath, rawOut);
 }
 
+function enforceStrictAddressOneOf(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedCandidate = { ...payload };
+  const normalizedComplete =
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress(normalizedCandidate);
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(normalizedCandidate[field]);
+        normalizedOut[field] = Number.isFinite(numeric) ? numeric : null;
+        return;
+      }
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(
+          normalizedCandidate.source_http_request,
+        );
+        normalizedOut.source_http_request = prepared ? deepClone(prepared) : null;
+        return;
+      }
+      normalizedOut[field] = safeNullIfEmpty(normalizedCandidate[field]);
+    });
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestId = safeNullIfEmpty(
+    resolveFirstNonEmptyString(options.requestIdentifierCandidates || []),
+  );
+  const sourceHttp = resolveSourceHttpRequest(
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  writeJSON(addressPath, {
+    unnormalized_address: rawValue,
+    request_identifier: requestId === undefined ? null : requestId,
+    source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
+  });
+}
+
 async function main() {
   const dataDir = path.join("data");
   ensureDir(dataDir);
@@ -17997,7 +18057,7 @@ async function main() {
           ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
           ...finalizedAddressPayload,
         }) || { ...finalizedAddressPayload };
-      const hasNormalizedBranch = hasNormalizedCountyCoverage({
+      const hasNormalizedBranch = hasCompleteNormalizedAddress({
         ...normalizedSurface,
       });
 
@@ -19891,6 +19951,44 @@ async function main() {
       unnormalizedSource && unnormalizedSource.source_http_request,
     ],
   });
+  enforceStrictAddressOneOf(addressOutputPath, {
+    rawCandidates: [
+      resolvedRaw,
+      ...finalUnnormalizedCandidates,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unnormalizedSource && unnormalizedSource.unnormalized_address,
+      unnormalizedSource && unnormalizedSource.full_address,
+    ],
+    requestIdentifierCandidates: [
+      resolvedRequestIdentifier,
+      trimmedRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unnormalizedSource && unnormalizedSource.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seedSource && seedSource.source_http_request,
+      unnormalizedSource && unnormalizedSource.source_http_request,
+    ],
+  });
+  [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
+    removeFileIfExists(
+      path.join(dirPath, "relationship_property_has_address.json"),
+    );
+    removeFileIfExists(
+      path.join(dirPath, "relationship_address_has_fact_sheet.json"),
+    );
+    removeFileIfExists(path.join(dirPath, "property_has_address.json"));
+    removeFileIfExists(path.join(dirPath, "address_has_fact_sheet.json"));
+  });
+  enforcePropertyRelationshipNulls(propertyFilePath);
   enforceAddressOneOfBranch(addressOutputPath);
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
