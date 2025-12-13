@@ -19586,6 +19586,119 @@ async function main() {
         removeFileIfExists(addressOutputPath);
       }
     }
+
+    // Final enforcement: pick a single schema branch and drop address
+    // relationship stubs that are populated downstream.
+    const enforceFinalAddressOneOf = () => {
+      const latestAddress = readJSONIfExists(addressOutputPath);
+      if (!latestAddress || typeof latestAddress !== "object" || Array.isArray(latestAddress)) {
+        removeFileIfExists(addressOutputPath);
+        return;
+      }
+
+      const sanitizeField = (field, value) => {
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          return Number.isFinite(numeric) ? numeric : null;
+        }
+        if (field === "source_http_request") {
+          const prepared = prepareSourceHttpRequest(value);
+          return prepared ? deepClone(prepared) : null;
+        }
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          return trimmed.length ? trimmed : null;
+        }
+        if (typeof value === "number") {
+          return Number.isFinite(value) ? value : null;
+        }
+        return value === undefined ? null : value;
+      };
+
+      const normalizedSurface =
+        ensureNormalizedAddressSchemaSurface &&
+        ensureNormalizedAddressSchemaSurface({ ...latestAddress });
+      const normalizedComplete =
+        normalizedSurface &&
+        hasCompleteNormalizedAddress({ ...normalizedSurface });
+      const rawValueFinal = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          latestAddress.unnormalized_address,
+          ...finalUnnormalizedCandidates,
+          unnormalizedAddressCandidate,
+          combinedModelAddress,
+          siteLocationLine,
+          addressLineCombined,
+          fullAddr,
+          fullAddrInput,
+        ]),
+      );
+
+      if (normalizedComplete) {
+        const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+        NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+          const candidate = Object.prototype.hasOwnProperty.call(
+            latestAddress,
+            field,
+          )
+            ? latestAddress[field]
+            : normalizedSurface[field];
+          normalizedOut[field] = sanitizeField(field, candidate);
+        });
+        if (!normalizedOut.postal_code) {
+          normalizedOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(normalizedOut.state_code) &&
+          !hasMeaningfulAddressValue(normalizedOut.country_code)
+        ) {
+          normalizedOut.country_code = "US";
+        }
+        writeJSON(addressOutputPath, normalizedOut);
+        return;
+      }
+
+      if (rawValueFinal) {
+        const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+        rawOut.unnormalized_address = rawValueFinal;
+        RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+          if (field === "unnormalized_address") return;
+          const candidate = Object.prototype.hasOwnProperty.call(
+            latestAddress,
+            field,
+          )
+            ? latestAddress[field]
+            : normalizedSurface && normalizedSurface[field];
+          rawOut[field] = sanitizeField(field, candidate);
+        });
+        if (!rawOut.postal_code) {
+          rawOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(rawOut.state_code) &&
+          !hasMeaningfulAddressValue(rawOut.country_code)
+        ) {
+          rawOut.country_code = "US";
+        }
+        if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+          rawOut.latitude = null;
+          rawOut.longitude = null;
+        }
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    };
+
+    enforceFinalAddressOneOf();
+    [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
+      removeFileIfExists(
+        path.join(dirPath, "relationship_property_has_address.json"),
+      );
+      removeFileIfExists(
+        path.join(dirPath, "relationship_address_has_fact_sheet.json"),
+      );
+    });
     return;
   } else {
     removeFileIfExists(addressOutputPath);
