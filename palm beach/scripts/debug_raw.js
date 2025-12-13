@@ -7996,12 +7996,11 @@ function enforceFinalAddressBranchChoice(addressPath, options = {}) {
     }
   }
 
-  const hasNormalizedCoverage =
-    hasCompleteNormalizedAddress(normalizedSurface) && resolvedSourceHttp;
+  const hasNormalizedCoverage = hasCompleteNormalizedAddress(normalizedSurface);
   if (hasNormalizedCoverage) {
     normalizedSurface.request_identifier =
       resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier;
-    normalizedSurface.source_http_request = deepClone(resolvedSourceHttp);
+    normalizedSurface.source_http_request = deepClone(resolvedSourceHttp) || null;
     if (
       (normalizedSurface.latitude == null) !==
       (normalizedSurface.longitude == null)
@@ -8080,11 +8079,6 @@ function enforceFinalAddressBranchChoice(addressPath, options = {}) {
   rawOut.source_http_request = resolvedSourceHttp
     ? deepClone(resolvedSourceHttp)
     : null;
-
-  if (!rawOut.source_http_request) {
-    removeFileIfExists(addressPath);
-    return;
-  }
 
   if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
     rawOut.latitude = null;
@@ -11897,9 +11891,15 @@ function stabilizeAddressOneOfBranch(addressPath, options = {}) {
   const hasNormalizedCoverage =
     normalizedSurface && hasAddressNormalizedCoverage(normalizedSurface);
 
-  const hasRawValue =
-    typeof payload.unnormalized_address === "string" &&
-    payload.unnormalized_address.trim().length > 0;
+  const primaryRawValue =
+    typeof payload.unnormalized_address === "string"
+      ? payload.unnormalized_address.trim()
+      : "";
+  const fallbackRawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString(options.rawCandidates || []),
+  );
+  const rawValue = primaryRawValue || fallbackRawValue;
+  const hasRawValue = typeof rawValue === "string" && rawValue.length > 0;
 
   if (hasNormalizedCoverage && !preferRaw) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
@@ -11943,7 +11943,11 @@ function stabilizeAddressOneOfBranch(addressPath, options = {}) {
   }
 
   if (hasRawValue) {
-    const rawOut = ensureAddressOutputCoverage({ ...payload }) || null;
+    const rawCandidate = {
+      ...payload,
+      unnormalized_address: rawValue,
+    };
+    const rawOut = ensureAddressOutputCoverage(rawCandidate) || null;
     if (rawOut) {
       if (!rawOut.postal_code) {
         rawOut.plus_four_postal_code = null;
@@ -20102,6 +20106,21 @@ async function main() {
   });
   enforcePropertyRelationshipNulls(propertyFilePath);
   enforceAddressOneOfBranch(addressOutputPath);
+  stabilizeAddressOneOfBranch(addressOutputPath, {
+    preferRaw: prefersRawAddressBranch,
+    rawCandidates: [
+      resolvedRaw,
+      ...finalUnnormalizedCandidates,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unnormalizedSource && unnormalizedSource.unnormalized_address,
+      unnormalizedSource && unnormalizedSource.full_address,
+    ],
+  });
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
