@@ -942,13 +942,13 @@ function sanitizeAddressPayloadForWrite(payload) {
   const normalizedCoverage = hasNormalizedCountyCoverage(normalizedCandidate);
 
   if (trimmedUnnormalized.length) {
-    const preferLeanRaw = !normalizedCoverage;
-    const rawOut = preferLeanRaw
-      ? { unnormalized_address: trimmedUnnormalized }
-      : {
-          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-          unnormalized_address: trimmedUnnormalized,
-        };
+    // Keep the full raw schema surface present (nullable) so validation sees
+    // every required field even when we only have an unnormalized string.
+    const preferLeanRaw = false;
+    const rawOut = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      unnormalized_address: trimmedUnnormalized,
+    };
     if (forceRawVariant) {
       rawOut.__force_raw_variant = true;
     }
@@ -21285,6 +21285,58 @@ async function main() {
   }
 
   enforceRawPreferredAddressOneOf(addressOutputPath);
+
+  // Lock the final address to a single schema branch: prefer normalized only
+  // when fully populated, otherwise emit the raw branch with the full schema
+  // surface (all nullable fields present) to satisfy oneOf requirements.
+  const finalSnapshotForOneOf = readJSONIfExists(addressOutputPath);
+  if (
+    finalSnapshotForOneOf &&
+    typeof finalSnapshotForOneOf === "object" &&
+    !Array.isArray(finalSnapshotForOneOf)
+  ) {
+    const rawValueTerminal = safeNullIfEmpty(
+      finalSnapshotForOneOf.unnormalized_address,
+    );
+    const normalizedSurfaceTerminal =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...finalSnapshotForOneOf });
+    const normalizedCompleteTerminal =
+      normalizedSurfaceTerminal &&
+      hasCompleteNormalizedAddress({ ...normalizedSurfaceTerminal });
+
+    if (normalizedCompleteTerminal) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        normalizedOut[field] = sanitizeAddressFieldValue
+          ? sanitizeAddressFieldValue(field, normalizedSurfaceTerminal[field])
+          : normalizedSurfaceTerminal[field];
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else if (rawValueTerminal) {
+      const surfacedRaw =
+        ensureAddressOutputCoverage({
+          ...finalSnapshotForOneOf,
+          unnormalized_address: rawValueTerminal,
+        }) || null;
+      if (surfacedRaw) {
+        writeJSON(addressOutputPath, surfacedRaw);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
 
   // Ensure downstream systems populate URIs; keep local relationship files null.
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
