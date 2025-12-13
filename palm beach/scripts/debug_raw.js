@@ -1227,6 +1227,81 @@ function enforceFinalAddressOneOfOutput(filePath) {
   removeFileIfExists(filePath);
 }
 
+// Final guard to lock the address into a single oneOf branch. Prefer the raw
+// branch whenever an unnormalized string is available; otherwise fall back to a
+// fully covered normalized payload. This prevents partially populated
+// normalized objects from failing validation while still allowing normalized
+// data to flow when present.
+function finalizeCountyAddressOneOf(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  const normalizedSurface =
+    (typeof ensureNormalizedAddressSchemaSurface === "function" &&
+      ensureNormalizedAddressSchemaSurface({ ...payload })) || { ...payload };
+  const normalizedComplete =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  const resolvedRequestId = safeNullIfEmpty(payload.request_identifier);
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+  );
+
+  if (rawValue) {
+    const rawOut =
+      sanitizeRawOneOfPayload(payload, {
+        unnormalized_address: rawValue,
+        request_identifier: resolvedRequestId,
+        source_http_request: resolvedSourceHttp,
+      }) || null;
+    if (rawOut) {
+      rawOut.request_identifier =
+        resolvedRequestId === undefined ? null : resolvedRequestId;
+      rawOut.source_http_request = resolvedSourceHttp
+        ? deepClone(resolvedSourceHttp)
+        : null;
+      writeJSON(addressPath, rawOut);
+      return;
+    }
+  }
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = sanitizeAddressFieldValue(
+        field,
+        normalizedSurface[field],
+      );
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      (normalizedOut.latitude == null) !== (normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  removeFileIfExists(addressPath);
+}
+
 function enforceAddressFieldDefaults(addressFilePath) {
   if (!addressFilePath || !fs.existsSync(addressFilePath)) {
     return;
@@ -19800,6 +19875,7 @@ async function main() {
     seedPath: "property_seed.json",
   });
   ensureRawAddressFinalFieldCoverage(addressOutputPath);
+  finalizeCountyAddressOneOf(addressOutputPath);
   enforceFinalAddressOneOfOutput(addressOutputPath);
   solidifyCountyAddressSchemaSurface(addressOutputPath);
   enforceAddressFieldDefaults(addressOutputPath);
@@ -20819,6 +20895,7 @@ async function main() {
       "address_has_fact_sheet",
     ]);
   });
+  finalizeCountyAddressOneOf(addressOutputPath);
   enforceFinalAddressOneOfOutput(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
