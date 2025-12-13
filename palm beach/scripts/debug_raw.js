@@ -19528,8 +19528,8 @@ async function main() {
   });
   const hasRawAddress =
     typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
-  const preferRawOutput = hasRawAddress && !hasCompleteNormalized;
-  const shouldUseNormalized = hasCompleteNormalized;
+  const preferRawOutput = hasRawAddress;
+  const shouldUseNormalized = hasCompleteNormalized && !preferRawOutput;
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
@@ -19664,7 +19664,7 @@ async function main() {
       const rawUnnormalized = safeNullIfEmpty(
         stabilizedAddress.unnormalized_address,
       );
-      if (hasNormalizedSurface) {
+      if (hasNormalizedSurface && !preferRawOutput) {
         const normalizedOnly =
           ensureAddressOutputCoverage({
             ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
@@ -19698,6 +19698,14 @@ async function main() {
         } else {
           removeFileIfExists(addressOutputPath);
         }
+      } else if (hasNormalizedSurface && !preferRawOutput) {
+        removeFileIfExists(addressOutputPath);
+      } else if (hasNormalizedSurface) {
+        // Default back to normalized when no raw is available.
+        writeJSON(
+          addressOutputPath,
+          ensureAddressOutputCoverage(stabilizedAddress) || stabilizedAddress,
+        );
       } else {
         removeFileIfExists(addressOutputPath);
       }
@@ -19750,7 +19758,7 @@ async function main() {
         ]),
       );
 
-      if (normalizedComplete) {
+      if (normalizedComplete && !preferRawOutput) {
         const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
         NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
           const candidate = Object.prototype.hasOwnProperty.call(
@@ -19801,6 +19809,29 @@ async function main() {
           rawOut.longitude = null;
         }
         writeJSON(addressOutputPath, rawOut);
+      } else if (normalizedComplete) {
+        // When only normalized data exists and no raw string is available,
+        // fall back to the normalized branch.
+        const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+        NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+          const candidate = Object.prototype.hasOwnProperty.call(
+            latestAddress,
+            field,
+          )
+            ? latestAddress[field]
+            : normalizedSurface && normalizedSurface[field];
+          normalizedOut[field] = sanitizeField(field, candidate);
+        });
+        if (!normalizedOut.postal_code) {
+          normalizedOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(normalizedOut.state_code) &&
+          !hasMeaningfulAddressValue(normalizedOut.country_code)
+        ) {
+          normalizedOut.country_code = "US";
+        }
+        writeJSON(addressOutputPath, normalizedOut);
       } else {
         removeFileIfExists(addressOutputPath);
       }
