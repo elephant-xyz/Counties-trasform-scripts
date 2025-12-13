@@ -7686,6 +7686,21 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 
 const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS));
 
+const NORMALIZED_OPTIONAL_NULLABLE_FIELDS = new Set([
+  "plus_four_postal_code",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
+  "lot",
+  "municipality_name",
+]);
+
 const NORMALIZED_ADDRESS_SCHEMA_TEMPLATE = Object.freeze(
   NORMALIZED_ADDRESS_FIELDS.reduce((acc, field) => {
     acc[field] = null;
@@ -8296,6 +8311,7 @@ function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
   const working = { ...address };
   for (const field of ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS) {
+    const isOptionalNullable = NORMALIZED_OPTIONAL_NULLABLE_FIELDS.has(field);
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(working[field]);
       if (!Number.isFinite(numeric)) {
@@ -8306,10 +8322,18 @@ function hasCompleteNormalizedAddress(address) {
     }
 
     if (typeof working[field] !== "string") {
+      if (isOptionalNullable) {
+        working[field] = null;
+        continue;
+      }
       return false;
     }
     const trimmed = working[field].trim();
     if (!trimmed.length) {
+      if (isOptionalNullable) {
+        working[field] = null;
+        continue;
+      }
       return false;
     }
     if (field === "county_name") {
@@ -8817,6 +8841,9 @@ function hasMeaningfulAddressValue(value) {
 function hasNormalizedOneOfCoverage(address) {
   if (!address || typeof address !== "object") return false;
   return ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS.every((field) => {
+    if (NORMALIZED_OPTIONAL_NULLABLE_FIELDS.has(field)) {
+      return true;
+    }
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       return Number.isFinite(parseCoordinate(address[field]));
     }
