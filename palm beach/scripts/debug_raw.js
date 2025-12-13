@@ -19626,6 +19626,57 @@ async function main() {
       ensureAddressOutputCoverage(loggedAddress) || loggedAddress,
     );
     console.log("All mapping scripts completed successfully");
+    const stabilizedAddress =
+      readJSONIfExists(addressOutputPath) || loggedAddress || {};
+    if (
+      stabilizedAddress &&
+      typeof stabilizedAddress === "object" &&
+      !Array.isArray(stabilizedAddress)
+    ) {
+      const hasNormalizedSurface = hasCompleteNormalizedAddress({
+        ...stabilizedAddress,
+      });
+      const rawUnnormalized = safeNullIfEmpty(
+        stabilizedAddress.unnormalized_address,
+      );
+      if (hasNormalizedSurface) {
+        const normalizedOnly =
+          ensureAddressOutputCoverage({
+            ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+            ...stabilizedAddress,
+          }) || null;
+        if (normalizedOnly) {
+          if (
+            Object.prototype.hasOwnProperty.call(
+              normalizedOnly,
+              "unnormalized_address",
+            )
+          ) {
+            delete normalizedOnly.unnormalized_address;
+          }
+          writeJSON(addressOutputPath, normalizedOnly);
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
+      } else if (rawUnnormalized) {
+        const rawAligned =
+          buildLeanRawAddressPayload(rawUnnormalized, {
+            fieldSources: [stabilizedAddress],
+            requestIdentifier: stabilizedAddress.request_identifier,
+            sourceHttpRequest: stabilizedAddress.source_http_request,
+          }) || null;
+        const surfacedRaw =
+          ensureAddressOutputCoverage(rawAligned || {}) || rawAligned;
+        if (surfacedRaw) {
+          writeJSON(addressOutputPath, surfacedRaw);
+          enforceAddressOneOfBranch(addressOutputPath);
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
     return;
   } else {
     removeFileIfExists(addressOutputPath);
