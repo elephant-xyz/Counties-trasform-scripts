@@ -7586,18 +7586,20 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch minimal so it cleanly selects the unnormalized oneOf arm
-// when we only have a raw address string from the source.
+// Keep the raw branch aligned to the schema surface: include every normalized
+// field (nullable) plus the unnormalized string so the oneOf raw variant
+// validates without demanding downstream enrichment.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
   "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
+  ...NORMALIZED_ADDRESS_FIELDS,
 ];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
-const RAW_ADDRESS_ALLOWED_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
+);
 
 // Keep raw (unnormalized) address payloads limited to the oneOf surface so we
 // don't leak normalized fields that break validation.
