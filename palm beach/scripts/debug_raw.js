@@ -20324,6 +20324,64 @@ async function main() {
     ].filter(Boolean),
   });
 
+  // Collapse to a single oneOf branch: use normalized only when fully covered,
+  // otherwise emit a lean raw payload seeded from the provided unnormalized
+  // address string.
+  const reconciledAddress = readJSONIfExists(addressOutputPath);
+  if (
+    reconciledAddress &&
+    typeof reconciledAddress === "object" &&
+    !Array.isArray(reconciledAddress)
+  ) {
+    const normalizedIsComplete = hasCompleteNormalizedAddress({
+      ...reconciledAddress,
+    });
+    const rawBranchValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        reconciledAddress.unnormalized_address,
+        finalRawValue,
+        unnormalizedSource && unnormalizedSource.unnormalized_address,
+        unnormalizedSource && unnormalizedSource.full_address,
+      ]),
+    );
+    if (rawBranchValue) {
+      const finalRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          reconciledAddress.request_identifier,
+          finalRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+        ]),
+      );
+      const finalSourceRequest = resolveSourceHttpRequest(
+        reconciledAddress.source_http_request,
+        finalSourceHttp,
+        seedSource && seedSource.source_http_request,
+        seed && seed.source_http_request,
+      );
+      writeJSON(addressOutputPath, {
+        unnormalized_address: rawBranchValue,
+        request_identifier:
+          finalRequestId === undefined ? null : finalRequestId,
+        source_http_request: finalSourceRequest
+          ? deepClone(finalSourceRequest)
+          : null,
+      });
+    } else if (normalizedIsComplete) {
+      const normalizedOnly = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        normalizedOnly[field] = sanitizeAddressFieldValue(
+          field,
+          reconciledAddress[field],
+        );
+      });
+      writeJSON(addressOutputPath, normalizedOnly);
+    } else if (!rawBranchValue) {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   pruneRawAddressToMinimalSurface(addressOutputPath);
   enforceTerminalAddressBranch(addressOutputPath);
   lockAddressToOneOf(addressOutputPath, { preferRaw: prefersRawAddressBranch });
