@@ -7688,18 +7688,6 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
 
 const ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS = Object.freeze([
   ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
-  "latitude",
-  "longitude",
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
 ]);
 
 // Fields that may accompany the raw (unnormalized) address payload.
@@ -17953,6 +17941,39 @@ async function main() {
       longitude: Number.isFinite(preferredLongitude) ? preferredLongitude : null,
     };
 
+    if (canonicalUnnormalized) {
+      const parsedLocality = parseCityStatePostal(canonicalUnnormalized);
+      if (
+        !hasMeaningfulAddressValue(addressForOutput.city_name) &&
+        parsedLocality.city
+      ) {
+        addressForOutput.city_name = parsedLocality.city.toUpperCase();
+      }
+      if (
+        !hasMeaningfulAddressValue(addressForOutput.state_code) &&
+        parsedLocality.state
+      ) {
+        addressForOutput.state_code = parsedLocality.state.toUpperCase();
+      }
+      if (
+        !hasMeaningfulAddressValue(addressForOutput.postal_code) &&
+        parsedLocality.postal
+      ) {
+        addressForOutput.postal_code = parsedLocality.postal;
+      }
+      if (
+        !hasMeaningfulAddressValue(addressForOutput.plus_four_postal_code) &&
+        parsedLocality.plus4
+      ) {
+        addressForOutput.plus_four_postal_code = parsedLocality.plus4;
+      }
+    }
+
+    if (!hasMeaningfulAddressValue(addressForOutput.county_name)) {
+      addressForOutput.county_name =
+        formattedCountyName || countyName || null;
+    }
+
     if (
       hasMeaningfulAddressValue(addressForOutput.postal_code) &&
       !hasMeaningfulAddressValue(addressForOutput.plus_four_postal_code)
@@ -20583,9 +20604,81 @@ async function main() {
       coordinateSeed.longitude = lonCandidate;
     }
 
+    const rawFieldSeed = { ...coordinateSeed };
+    if (
+      typeof finalRawCandidate === "string" &&
+      finalRawCandidate.trim().length
+    ) {
+      const streetSegment = finalRawCandidate.split(",")[0];
+      const localitySegment = finalRawCandidate.includes(",")
+        ? finalRawCandidate
+            .split(",")
+            .slice(1)
+            .join(" ")
+            .trim()
+        : finalRawCandidate;
+      const parsedLocality = parseCityStatePostal(localitySegment);
+      if (parsedLocality.city && !rawFieldSeed.city_name) {
+        rawFieldSeed.city_name = parsedLocality.city.toUpperCase();
+      }
+      if (parsedLocality.state && !rawFieldSeed.state_code) {
+        rawFieldSeed.state_code = parsedLocality.state.toUpperCase();
+      }
+      if (parsedLocality.postal && !rawFieldSeed.postal_code) {
+        rawFieldSeed.postal_code = parsedLocality.postal;
+      }
+      if (parsedLocality.plus4 && !rawFieldSeed.plus_four_postal_code) {
+        rawFieldSeed.plus_four_postal_code = parsedLocality.plus4;
+      }
+      const parsedStreet = parseLocationAddress(streetSegment);
+      if (parsedStreet.streetNumber && !rawFieldSeed.street_number) {
+        rawFieldSeed.street_number = parsedStreet.streetNumber;
+      }
+      if (parsedStreet.streetName && !rawFieldSeed.street_name) {
+        const formattedStreetName = formatStreetNameCase(parsedStreet.streetName);
+        rawFieldSeed.street_name =
+          (formattedStreetName && formattedStreetName.toUpperCase()) ||
+          parsedStreet.streetName;
+      }
+      if (
+        parsedStreet.streetPreDirectional &&
+        !rawFieldSeed.street_pre_directional_text
+      ) {
+        rawFieldSeed.street_pre_directional_text =
+          parsedStreet.streetPreDirectional.toUpperCase();
+      }
+      if (
+        parsedStreet.streetPostDirectional &&
+        !rawFieldSeed.street_post_directional_text
+      ) {
+        rawFieldSeed.street_post_directional_text =
+          parsedStreet.streetPostDirectional.toUpperCase();
+      }
+      if (parsedStreet.streetSuffix && !rawFieldSeed.street_suffix_type) {
+        const mappedSuffix = mapStreetSuffixType(parsedStreet.streetSuffix);
+        rawFieldSeed.street_suffix_type =
+          mappedSuffix || parsedStreet.streetSuffix;
+      }
+      if (parsedStreet.unitIdentifier && !rawFieldSeed.unit_identifier) {
+        rawFieldSeed.unit_identifier = parsedStreet.unitIdentifier;
+      }
+      if (parsedStreet.routeNumber && !rawFieldSeed.route_number) {
+        rawFieldSeed.route_number = parsedStreet.routeNumber;
+      }
+      if (!rawFieldSeed.county_name) {
+        rawFieldSeed.county_name = formattedCountyName || countyName || null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawFieldSeed.state_code) &&
+        !hasMeaningfulAddressValue(rawFieldSeed.country_code)
+      ) {
+        rawFieldSeed.country_code = "US";
+      }
+    }
+
     const rawSeed =
       sanitizeRawOneOfPayload(
-        coordinateSeed,
+        rawFieldSeed,
         {
           unnormalized_address: finalRawCandidate,
           request_identifier:
@@ -20596,7 +20689,7 @@ async function main() {
       buildRawAddressOutputForSchema(finalRawCandidate, {
         request_identifier: resolvedFinalRequestId,
         source_http_request: resolvedFinalSourceHttp,
-        ...coordinateSeed,
+        ...rawFieldSeed,
       });
 
     if (rawSeed) {
