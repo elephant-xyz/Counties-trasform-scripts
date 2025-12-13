@@ -20965,6 +20965,91 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  // Stabilize the terminal address payload to a single oneOf branch. Prefer the
+  // raw branch when any unnormalized string exists so we emit the full raw
+  // surface with nullable normalized fields; otherwise fall back to the
+  // normalized branch and drop the raw field.
+  const terminalSnapshot = readJSONIfExists(addressOutputPath);
+  if (terminalSnapshot && typeof terminalSnapshot === "object" && !Array.isArray(terminalSnapshot)) {
+    const terminalRawValue = safeNullIfEmpty(terminalSnapshot.unnormalized_address);
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalSnapshot });
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+    const terminalRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshot.request_identifier,
+        resolvedRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+      ]),
+    );
+    const terminalSourceHttp = resolveSourceHttpRequest(
+      terminalSnapshot.source_http_request,
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seedSource && seedSource.source_http_request,
+    );
+
+    let stabilizedAddress = null;
+    if (terminalRawValue) {
+      const rawOut =
+        ensureRawAddressSchemaDefaults(
+          {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...terminalSnapshot,
+            unnormalized_address: terminalRawValue,
+          },
+          RAW_ONE_OF_ALLOWED_FIELDS,
+        ) || null;
+      if (rawOut) {
+        rawOut.request_identifier =
+          terminalRequestId === undefined ? null : terminalRequestId;
+        rawOut.source_http_request = terminalSourceHttp
+          ? deepClone(terminalSourceHttp)
+          : null;
+        stabilizedAddress = ensureAddressOutputCoverage(rawOut) || rawOut;
+      }
+    } else if (terminalNormalizedComplete) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        const candidate = terminalNormalizedSurface[field];
+        let value = sanitizeAddressFieldValue
+          ? sanitizeAddressFieldValue(field, candidate)
+          : candidate;
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        normalizedOut[field] = value;
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      stabilizedAddress = normalizedOut;
+    }
+
+    if (stabilizedAddress) {
+      writeJSON(addressOutputPath, stabilizedAddress);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
     removeAddressRelationshipFiles(dirPath);
     purgeAddressRelationshipArtifacts(dirPath);
