@@ -7605,12 +7605,12 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch aligned to the schema surface: include every normalized
-// field (nullable) plus the unnormalized string so the oneOf raw variant
-// validates without demanding downstream enrichment.
+// Keep the raw branch minimal so it matches the unnormalized oneOf variant
+// instead of falling back to the normalized branch.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
   "unnormalized_address",
-  ...NORMALIZED_ADDRESS_FIELDS,
+  "request_identifier",
+  "source_http_request",
 ];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
@@ -16500,31 +16500,23 @@ function pruneRawAddressToMinimalSurface(addressPath) {
     return;
   }
 
-  // Preserve the raw variant while keeping the full schema surface present so
-  // oneOf validation can still succeed even when normalized coverage is
-  // incomplete. Always prefer the raw branch when an unnormalized string is
-  // available from the source.
-  const rawSeed = {
-    ...payload,
-    unnormalized_address: rawValue,
-  };
+  const normalizedComplete =
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...payload });
+  if (normalizedComplete) {
+    return;
+  }
 
+  const rawOut = { unnormalized_address: rawValue };
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    rawSeed.request_identifier = safeNullIfEmpty(payload.request_identifier);
+    rawOut.request_identifier = safeNullIfEmpty(payload.request_identifier);
   }
   if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    rawSeed.source_http_request = prepared ? deepClone(prepared) : null;
+    rawOut.source_http_request = prepared ? deepClone(prepared) : null;
   }
 
-  const hydratedRaw =
-    ensureAddressOutputCoverage(rawSeed) ||
-    ensureRawAddressSchemaDefaults(rawSeed) || {
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      ...rawSeed,
-    };
-
-  writeJSON(addressPath, hydratedRaw);
+  writeJSON(addressPath, rawOut);
 }
 
 // Keep the final address payload aligned to a single oneOf branch:
