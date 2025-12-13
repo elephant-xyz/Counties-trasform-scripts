@@ -103,17 +103,11 @@ function ensureNullRelationshipPlaceholders(directoryPath, baseNames = []) {
   if (!directoryPath || !Array.isArray(baseNames) || !baseNames.length) {
     return;
   }
-
-  // The pipeline now populates relationship files; explicitly null out any local
-  // stubs so validation doesn't trip over partial payloads.
-  ensureDir(directoryPath);
+  // Downstream now populates relationship URIs; remove any locally generated
+  // stubs instead of emitting placeholders that trigger invalid UR errors.
   baseNames.forEach((baseName) => {
     const targetPath = path.join(directoryPath, `${baseName}.json`);
-    try {
-      originalWriteFileSync.call(fs, targetPath, "null\n");
-    } catch {
-      removeFileIfExists(targetPath);
-    }
+    removeFileIfExists(targetPath);
   });
 }
 
@@ -121,14 +115,11 @@ function writeNullRelationshipPlaceholders(directoryPath, baseNames = []) {
   if (!directoryPath || !Array.isArray(baseNames) || !baseNames.length) {
     return;
   }
-  ensureDir(directoryPath);
+  // Relationship placeholders are handled by the pipeline; ensure nothing is
+  // emitted from this transform.
   baseNames.forEach((baseName) => {
     const targetPath = path.join(directoryPath, `${baseName}.json`);
-    try {
-      originalWriteFileSync.call(fs, targetPath, "null\n");
-    } catch {
-      removeFileIfExists(targetPath);
-    }
+    removeFileIfExists(targetPath);
   });
 }
 
