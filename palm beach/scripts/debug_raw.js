@@ -16302,6 +16302,96 @@ function enforceFinalAddressOneOfSurface(addressPath) {
   removeFileIfExists(addressPath);
 }
 
+// Final selector: prefer normalized when it is fully populated; otherwise emit
+// the raw branch with the full oneOf surface so required fields are always
+// present.
+function enforceTerminalAddressBranch(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const sanitizeField = (field, value) => {
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(value);
+      return prepared ? deepClone(prepared) : null;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+    return value === undefined ? null : value;
+  };
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...payload });
+  const normalizedComplete =
+    normalizedSurface &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+
+  let nextPayload = null;
+  if (normalizedComplete && (!rawValue || rawValue === null)) {
+    nextPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      nextPayload[field] = sanitizeField(
+        field,
+        Object.prototype.hasOwnProperty.call(payload, field)
+          ? payload[field]
+          : normalizedSurface[field],
+      );
+    });
+    if (!nextPayload.postal_code) {
+      nextPayload.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(nextPayload.state_code) &&
+      !hasMeaningfulAddressValue(nextPayload.country_code)
+    ) {
+      nextPayload.country_code = "US";
+    }
+  } else if (rawValue) {
+    nextPayload = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+    nextPayload.unnormalized_address = rawValue;
+    RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      const sourceValue = Object.prototype.hasOwnProperty.call(payload, field)
+        ? payload[field]
+        : normalizedSurface && normalizedSurface[field];
+      nextPayload[field] = sanitizeField(field, sourceValue);
+    });
+    if (!nextPayload.postal_code) {
+      nextPayload.plus_four_postal_code = null;
+    }
+    if ((nextPayload.latitude == null) !== (nextPayload.longitude == null)) {
+      nextPayload.latitude = null;
+      nextPayload.longitude = null;
+    }
+    if (
+      hasMeaningfulAddressValue(nextPayload.state_code) &&
+      !hasMeaningfulAddressValue(nextPayload.country_code)
+    ) {
+      nextPayload.country_code = "US";
+    }
+  } else {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  writeJSON(addressPath, nextPayload);
+}
+
 // Final hardening pass to keep the address payload aligned to exactly one
 // schema branch. Normalized outputs drop the raw string; raw outputs keep the
 // full oneOf surface with nullable fields present.
@@ -20037,6 +20127,8 @@ async function main() {
   } else {
     removeFileIfExists(addressOutputPath);
   }
+
+  enforceTerminalAddressBranch(addressOutputPath);
 
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
