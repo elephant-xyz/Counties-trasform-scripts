@@ -908,13 +908,25 @@ function sanitizeAddressPayloadForWrite(payload) {
     const preparedSourceHttpRequest = prepareSourceHttpRequest(
       payload.source_http_request,
     );
-    return {
-      unnormalized_address: trimmedUnnormalized,
-      request_identifier: requestId === undefined ? null : requestId,
-      source_http_request: preparedSourceHttpRequest
-        ? deepClone(preparedSourceHttpRequest)
-        : null,
-    };
+    return (
+      ensureAddressOutputCoverage({
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...payload,
+        unnormalized_address: trimmedUnnormalized,
+        request_identifier: requestId === undefined ? null : requestId,
+        source_http_request: preparedSourceHttpRequest
+          ? deepClone(preparedSourceHttpRequest)
+          : null,
+      }) || {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...payload,
+        unnormalized_address: trimmedUnnormalized,
+        request_identifier: requestId === undefined ? null : requestId,
+        source_http_request: preparedSourceHttpRequest
+          ? deepClone(preparedSourceHttpRequest)
+          : null,
+      }
+    );
   }
 
   return stripAddressRequestMetadata(normalizedCandidate);
@@ -16476,16 +16488,20 @@ function pruneRawAddressToMinimalSurface(addressPath) {
     return;
   }
 
-  const rawOut = { unnormalized_address: rawValue };
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    rawOut.request_identifier = safeNullIfEmpty(payload.request_identifier);
-  }
-  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    rawOut.source_http_request = prepared ? deepClone(prepared) : null;
-  }
+  const rawOut = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...payload,
+    unnormalized_address: rawValue,
+  };
+  rawOut.request_identifier = safeNullIfEmpty(payload.request_identifier);
+  const prepared = prepareSourceHttpRequest(payload.source_http_request);
+  rawOut.source_http_request = prepared ? deepClone(prepared) : null;
 
-  writeJSON(addressPath, rawOut);
+  const stabilized =
+    ensureAddressOutputCoverage(rawOut) ||
+    ensureRawAddressSchemaDefaults(rawOut) ||
+    rawOut;
+  writeJSON(addressPath, stabilized);
 }
 
 // Keep the final address payload aligned to a single oneOf branch:
@@ -21177,18 +21193,28 @@ async function main() {
       ]),
     );
 
-    const minimalRaw = { unnormalized_address: terminalRawString };
-    if (finalRequestId !== null) {
-      minimalRaw.request_identifier = finalRequestId;
-    }
-    if (finalSourceRequest) {
-      minimalRaw.source_http_request = deepClone(finalSourceRequest);
-    }
-    if (terminalCounty) {
-      minimalRaw.county_name = terminalCounty;
-    }
+    const rawOut =
+      ensureAddressOutputCoverage({
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...terminalSnapshotFinal,
+        unnormalized_address: terminalRawString,
+        request_identifier: finalRequestId === undefined ? null : finalRequestId,
+        source_http_request: finalSourceRequest
+          ? deepClone(finalSourceRequest)
+          : null,
+        county_name: terminalCounty || null,
+      }) ||
+      {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        unnormalized_address: terminalRawString,
+        request_identifier: finalRequestId === undefined ? null : finalRequestId,
+        source_http_request: finalSourceRequest
+          ? deepClone(finalSourceRequest)
+          : null,
+        county_name: terminalCounty || null,
+      };
 
-    writeJSON(addressOutputPath, minimalRaw);
+    writeJSON(addressOutputPath, rawOut);
   } else if (terminalNormalizedComplete) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
@@ -21310,11 +21336,20 @@ async function main() {
       const finalSource = prepareSourceHttpRequest(
         finalAddressSnapshotLean.source_http_request || sourceHttpCandidate,
       );
-      writeJSON(addressOutputPath, {
-        unnormalized_address: String(finalRawString).trim(),
-        request_identifier: finalReqId === undefined ? null : finalReqId,
-        source_http_request: finalSource ? deepClone(finalSource) : null,
-      });
+      const rawOut =
+        ensureAddressOutputCoverage({
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...finalAddressSnapshotLean,
+          unnormalized_address: String(finalRawString).trim(),
+          request_identifier: finalReqId === undefined ? null : finalReqId,
+          source_http_request: finalSource ? deepClone(finalSource) : null,
+        }) || {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          unnormalized_address: String(finalRawString).trim(),
+          request_identifier: finalReqId === undefined ? null : finalReqId,
+          source_http_request: finalSource ? deepClone(finalSource) : null,
+        };
+      writeJSON(addressOutputPath, rawOut);
     }
   }
 
