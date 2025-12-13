@@ -104,10 +104,31 @@ function ensureNullRelationshipPlaceholders(directoryPath, baseNames = []) {
     return;
   }
 
-  // The pipeline now populates relationship files; avoid generating placeholders here.
+  // The pipeline now populates relationship files; explicitly null out any local
+  // stubs so validation doesn't trip over partial payloads.
+  ensureDir(directoryPath);
   baseNames.forEach((baseName) => {
     const targetPath = path.join(directoryPath, `${baseName}.json`);
-    removeFileIfExists(targetPath);
+    try {
+      originalWriteFileSync.call(fs, targetPath, "null\n");
+    } catch {
+      removeFileIfExists(targetPath);
+    }
+  });
+}
+
+function writeNullRelationshipPlaceholders(directoryPath, baseNames = []) {
+  if (!directoryPath || !Array.isArray(baseNames) || !baseNames.length) {
+    return;
+  }
+  ensureDir(directoryPath);
+  baseNames.forEach((baseName) => {
+    const targetPath = path.join(directoryPath, `${baseName}.json`);
+    try {
+      originalWriteFileSync.call(fs, targetPath, "null\n");
+    } catch {
+      removeFileIfExists(targetPath);
+    }
   });
 }
 
@@ -16392,6 +16413,74 @@ function enforceTerminalAddressBranch(addressPath) {
   writeJSON(addressPath, nextPayload);
 }
 
+// When only an unnormalized string is available, collapse the payload to the
+// lean raw shape so the address matches the raw oneOf branch instead of
+// failing normalized validation.
+function pruneRawAddressToMinimalSurface(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+  const normalizedComplete =
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedComplete && !payload.__force_raw_variant) {
+    return;
+  }
+
+  const minimal = {
+    unnormalized_address: rawValue,
+  };
+
+  const copyField = (field, transformer) => {
+    const value = Object.prototype.hasOwnProperty.call(payload, field)
+      ? payload[field]
+      : null;
+    const nextValue = transformer ? transformer(value) : safeNullIfEmpty(value);
+    minimal[field] = nextValue === undefined ? null : nextValue;
+  };
+
+  copyField("request_identifier");
+  copyField("source_http_request", (val) => {
+    const prepared = prepareSourceHttpRequest(val);
+    return prepared ? deepClone(prepared) : null;
+  });
+
+  [
+    "city_name",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "county_name",
+    "country_code",
+  ].forEach((field) => copyField(field));
+
+  if (
+    hasMeaningfulAddressValue(minimal.state_code) &&
+    !hasMeaningfulAddressValue(minimal.country_code)
+  ) {
+    minimal.country_code = "US";
+  }
+
+  writeJSON(addressPath, minimal);
+}
+
 // Final hardening pass to keep the address payload aligned to exactly one
 // schema branch. Normalized outputs drop the raw string; raw outputs keep the
 // full oneOf surface with nullable fields present.
@@ -20128,6 +20217,7 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  pruneRawAddressToMinimalSurface(addressOutputPath);
   enforceTerminalAddressBranch(addressOutputPath);
 
   enforcePropertyRelationshipNulls(propertyFilePath);
@@ -20141,6 +20231,10 @@ async function main() {
   });
   fs.rmSync(relationshipsRoot, { recursive: true, force: true });
   ensureDir(relationshipsRoot);
+  writeNullRelationshipPlaceholders(relationshipsRoot, [
+    "property_has_address",
+    "address_has_fact_sheet",
+  ]);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
