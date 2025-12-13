@@ -20603,11 +20603,13 @@ async function main() {
   // otherwise emit a raw branch seeded with the unnormalized string while
   // keeping the full schema surface (all normalized fields nullable) to satisfy
   // the oneOf discriminator.
-  const finalAddressSnapshot = readJSONIfExists(addressOutputPath) || {};
+  const finalAddressSnapshotPrimary =
+    readJSONIfExists(addressOutputPath) || {};
   const finalNormalizedComplete = hasCompleteNormalizedAddress({
-    ...(ensureAddressOutputCoverage(finalAddressSnapshot) || finalAddressSnapshot),
+    ...(ensureAddressOutputCoverage(finalAddressSnapshotPrimary) ||
+      finalAddressSnapshotPrimary),
   });
-  const finalRawCandidate = safeNullIfEmpty(
+  const finalRawCandidatePrimary = safeNullIfEmpty(
     resolveFirstNonEmptyString([
       finalRawValue,
       resolvedRaw,
@@ -20626,7 +20628,7 @@ async function main() {
   let finalizedAddress = null;
   let preferRawFinal =
     true === preferRawBranch ||
-    !!finalRawCandidate ||
+    !!finalRawCandidatePrimary ||
     !finalNormalizedComplete;
 
   if (finalNormalizedComplete && !preferRawFinal) {
@@ -20634,12 +20636,12 @@ async function main() {
       (ensureNormalizedAddressSchemaSurface &&
         ensureNormalizedAddressSchemaSurface({
           ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-          ...finalAddressSnapshot,
+          ...finalAddressSnapshotPrimary,
           ...normalizedSurfaceFinal,
         })) ||
       ensureAddressOutputCoverage({
         ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
-        ...finalAddressSnapshot,
+        ...finalAddressSnapshotPrimary,
       });
 
     if (normalizedSurface) {
@@ -20663,20 +20665,22 @@ async function main() {
     }
   }
 
-  if (!finalizedAddress && finalRawCandidate) {
+  if (!finalizedAddress && finalRawCandidatePrimary) {
     const resolvedFinalRequestId = safeNullIfEmpty(
       resolveFirstNonEmptyString([
         finalRequestIdentifier,
         trimmedRequestIdentifier,
         parcelId,
         seed && seed.request_identifier,
-        finalAddressSnapshot && finalAddressSnapshot.request_identifier,
+        finalAddressSnapshotPrimary &&
+          finalAddressSnapshotPrimary.request_identifier,
       ]),
     );
     const resolvedFinalSourceHttp = resolveSourceHttpRequest(
       finalSourceHttp,
       sourceHttpCandidate,
-      finalAddressSnapshot && finalAddressSnapshot.source_http_request,
+      finalAddressSnapshotPrimary &&
+        finalAddressSnapshotPrimary.source_http_request,
       seedSource && seedSource.source_http_request,
       seed && seed.source_http_request,
     );
@@ -20684,14 +20688,14 @@ async function main() {
       ensureRawAddressRequiredCoverage(
         {
           ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-          ...finalAddressSnapshot,
+          ...finalAddressSnapshotPrimary,
           ...normalizedSurfaceFinal,
         },
-        String(finalRawCandidate).trim(),
+        String(finalRawCandidatePrimary).trim(),
         RAW_ONE_OF_ALLOWED_FIELDS,
       ) || {
         ...RAW_ONE_OF_SCHEMA_TEMPLATE,
-        unnormalized_address: String(finalRawCandidate).trim(),
+        unnormalized_address: String(finalRawCandidatePrimary).trim(),
       };
 
     hydratedRaw.request_identifier =
@@ -20742,7 +20746,7 @@ async function main() {
     const resolvedTerminalRaw = safeNullIfEmpty(
       resolveFirstNonEmptyString([
         terminalAddress.unnormalized_address,
-        finalRawCandidate,
+        finalRawCandidatePrimary,
         finalRawValue,
         resolvedRaw,
         ...finalUnnormalizedCandidates,
