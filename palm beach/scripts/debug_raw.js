@@ -20387,6 +20387,79 @@ async function main() {
   enforceTerminalAddressBranch(addressOutputPath);
   lockAddressToOneOf(addressOutputPath, { preferRaw: preferRawBranch });
 
+  // Normalize the final address selection: prefer fully covered normalized data,
+  // otherwise emit a raw branch seeded with the unnormalized string while
+  // keeping the full schema surface (all normalized fields nullable) to satisfy
+  // the oneOf discriminator.
+  const finalAddressSnapshot = readJSONIfExists(addressOutputPath) || {};
+  const finalNormalizedComplete = hasCompleteNormalizedAddress({
+    ...(ensureAddressOutputCoverage(finalAddressSnapshot) || finalAddressSnapshot),
+  });
+  const finalRawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      finalRawValue,
+      resolvedRaw,
+      ...finalUnnormalizedCandidates,
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unnormalizedSource && unnormalizedSource.unnormalized_address,
+      unnormalizedSource && unnormalizedSource.full_address,
+    ]),
+  );
+
+  let finalizedAddress = null;
+  if (finalNormalizedComplete) {
+    const normalizedSurface =
+      ensureAddressOutputCoverage({ ...finalAddressSnapshot }) ||
+      ensureAddressOutputCoverage({
+        ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+        ...finalAddressSnapshot,
+      });
+    if (normalizedSurface) {
+      delete normalizedSurface.unnormalized_address;
+      finalizedAddress = normalizedSurface;
+    }
+  } else if (finalRawCandidate) {
+    const resolvedFinalRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        finalAddressSnapshot && finalAddressSnapshot.request_identifier,
+      ]),
+    );
+    const resolvedFinalSourceHttp = resolveSourceHttpRequest(
+      finalSourceHttp,
+      sourceHttpCandidate,
+      finalAddressSnapshot && finalAddressSnapshot.source_http_request,
+      seedSource && seedSource.source_http_request,
+      seed && seed.source_http_request,
+    );
+    finalizedAddress =
+      ensureAddressOutputCoverage({
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...finalAddressSnapshot,
+        unnormalized_address: finalRawCandidate,
+        request_identifier:
+          resolvedFinalRequestId === undefined ? null : resolvedFinalRequestId,
+        source_http_request: resolvedFinalSourceHttp
+          ? deepClone(resolvedFinalSourceHttp)
+          : null,
+      }) || null;
+  }
+
+  if (finalizedAddress) {
+    writeJSON(addressOutputPath, finalizedAddress);
+    lockAddressToOneOf(addressOutputPath, { preferRaw: !finalNormalizedComplete });
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
     removeAddressRelationshipFiles(dirPath);
