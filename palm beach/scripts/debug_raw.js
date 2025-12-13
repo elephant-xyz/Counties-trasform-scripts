@@ -19966,25 +19966,17 @@ async function main() {
   const normalizedCompleteFinal =
     normalizedSurfaceFinal &&
     hasCompleteNormalizedAddress({ ...normalizedSurfaceFinal });
+  const preferNormalizedFinal = normalizedCompleteFinal;
 
   let finalAddressOut = null;
-  if (finalRawValue) {
-    finalAddressOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-    finalAddressOut.unnormalized_address = finalRawValue;
+  if (preferNormalizedFinal) {
+    finalAddressOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-      if (field === "request_identifier" || field === "source_http_request") {
-        return;
-      }
-      const candidate = normalizedSurfaceFinal
-        ? normalizedSurfaceFinal[field]
-        : existingAddressPayload[field];
-      finalAddressOut[field] = sanitizeAddressFieldValue(field, candidate);
+      finalAddressOut[field] = sanitizeAddressFieldValue(
+        field,
+        normalizedSurfaceFinal[field],
+      );
     });
-    finalAddressOut.request_identifier =
-      finalRequestIdentifier === undefined ? null : finalRequestIdentifier;
-    finalAddressOut.source_http_request = finalSourceHttp
-      ? deepClone(finalSourceHttp)
-      : null;
     if (!finalAddressOut.postal_code) {
       finalAddressOut.plus_four_postal_code = null;
     }
@@ -19993,6 +19985,32 @@ async function main() {
       !hasMeaningfulAddressValue(finalAddressOut.country_code)
     ) {
       finalAddressOut.country_code = "US";
+    }
+  } else if (finalRawValue) {
+    const rawPayload =
+      buildLeanRawAddressPayload(finalRawValue, {
+        fieldSources: [
+          normalizedSurfaceFinal,
+          existingAddressPayload,
+        ].filter(Boolean),
+        requestIdentifier:
+          finalRequestIdentifier === undefined
+            ? undefined
+            : finalRequestIdentifier,
+        sourceHttpRequest: finalSourceHttp,
+      }) || null;
+
+    if (rawPayload) {
+      finalAddressOut = rawPayload;
+      if (!finalAddressOut.postal_code) {
+        finalAddressOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(finalAddressOut.state_code) &&
+        !hasMeaningfulAddressValue(finalAddressOut.country_code)
+      ) {
+        finalAddressOut.country_code = "US";
+      }
     }
   } else if (normalizedCompleteFinal) {
     finalAddressOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
