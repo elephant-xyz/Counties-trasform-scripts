@@ -7733,22 +7733,37 @@ function buildLeanRawAddressPayload(rawValue, options = {}) {
   const trimmedRaw = safeNullIfEmpty(rawValue);
   if (!trimmedRaw) return null;
 
-  const { requestIdentifier, sourceHttpRequest } = options;
+  const {
+    requestIdentifier,
+    sourceHttpRequest,
+    fieldSources = [],
+    fieldFallbacks = {},
+    coordinateCandidates = [],
+    parcelIdCandidates = [],
+  } = options;
 
-  const minimal =
-    buildMinimalRawAddressPayload({
-      rawCandidates: [trimmedRaw],
-      requestIdentifierCandidates:
-        requestIdentifier === undefined ? [] : [requestIdentifier],
-      sourceHttpRequestCandidates: [sourceHttpRequest],
-    }) || { unnormalized_address: trimmedRaw };
+  const preparedSourceHttp =
+    sourceHttpRequest === undefined
+      ? undefined
+      : prepareSourceHttpRequest(sourceHttpRequest) || null;
 
-  // Keep the raw payload minimal so it matches the unnormalized branch of the
-  // schema without leaking partial normalized fields.
-  const base = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, ...minimal };
-  base.unnormalized_address = trimmedRaw;
+  const hydrated =
+    buildRawAddressPayloadFromSources({
+      unnormalizedCandidates: [trimmedRaw],
+      fieldSources,
+      fieldFallbacks,
+      coordinateCandidates,
+      parcelIdCandidates,
+    }) || { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: trimmedRaw };
 
-  return base;
+  if (requestIdentifier !== undefined) {
+    hydrated.request_identifier = requestIdentifier;
+  }
+  if (preparedSourceHttp !== undefined) {
+    hydrated.source_http_request = preparedSourceHttp;
+  }
+
+  return ensureAddressOutputCoverage(hydrated) || hydrated;
 }
 
 function writeMinimalRawAddress(addressPath, options = {}) {
@@ -19190,6 +19205,7 @@ async function main() {
   };
   registerAddressFallbackContext(addressBaselineOptions);
   overwriteAddressWithRawBaseline(addressOutputPath, addressBaselineOptions);
+  const baselineAddressSnapshot = readJSONIfExists(addressOutputPath);
 
   enforceCountyAddressOneOfCompliance(addressOutputPath);
   preferNormalizedCountyAddressOutput(addressOutputPath);
@@ -19380,6 +19396,7 @@ async function main() {
     sourceHttpCandidate,
   );
   const normalizedSources = [
+    baselineAddressSnapshot,
     normalizedSnapshot,
     existingAddress,
     seedSource,
@@ -19507,6 +19524,18 @@ async function main() {
       : composeUnnormalizedAddress(normalizedCandidate);
     finalAddressPayload = buildLeanRawAddressPayload(rawSeed, {
       fieldSources: [normalizedCandidate, ...normalizedSources],
+      fieldFallbacks: {
+        ...(ADDRESS_FALLBACK_CONTEXT.fieldFallbacks || {}),
+        ...(addressBaselineOptions.fieldFallbacks || {}),
+      },
+      coordinateCandidates: [
+        ...(solidifyOptions.coordinateCandidates || []),
+        ...(addressBaselineOptions.coordinateCandidates || []),
+        ...(ADDRESS_FALLBACK_CONTEXT.coordinateCandidates || []),
+      ],
+      parcelIdCandidates: Array.isArray(addressBaselineOptions.parcelIdCandidates)
+        ? addressBaselineOptions.parcelIdCandidates
+        : [],
       requestIdentifier:
         resolvedRequestIdentifier !== undefined
           ? resolvedRequestIdentifier
