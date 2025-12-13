@@ -944,7 +944,9 @@ function sanitizeAddressPayloadForWrite(payload) {
   if (trimmedUnnormalized.length) {
     // Keep the full raw schema surface present (nullable) so validation sees
     // every required field even when we only have an unnormalized string.
-    const preferLeanRaw = true;
+    // Do NOT drop null fields here; the raw oneOf branch requires every address
+    // field to exist, even when the source only supplies an unnormalized string.
+    const preferLeanRaw = false;
     const rawOut = {
       ...RAW_ADDRESS_SCHEMA_TEMPLATE,
       unnormalized_address: trimmedUnnormalized,
