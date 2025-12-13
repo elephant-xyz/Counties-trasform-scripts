@@ -7602,6 +7602,8 @@ const NORMALIZED_ADDRESS_FIELDS = [
   "source_http_request",
 ];
 
+const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
+
 const ADDRESS_SCHEMA_FIELDS = [
   ...NORMALIZED_ADDRESS_FIELDS,
   "unnormalized_address",
@@ -7688,6 +7690,7 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
 
 const ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS = Object.freeze([
   ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
+  ...NORMALIZED_ADDRESS_COORDINATE_FIELDS,
 ]);
 
 // Fields that may accompany the raw (unnormalized) address payload.
@@ -7696,16 +7699,6 @@ const RAW_ADDRESS_EXCLUDED_FIELDS = new Set();
 const RAW_ADDRESS_OUTPUT_FIELDS = Array.from(new Set(RAW_ADDRESS_ALLOWED_FIELDS));
 
 const NORMALIZED_OPTIONAL_NULLABLE_FIELDS = new Set([
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
   "lot",
   "municipality_name",
 ]);
@@ -8307,8 +8300,6 @@ const RAW_ONE_OF_MINIMAL_FIELDS = new Set([
 ]);
 
 const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS];
-
-const NORMALIZED_ADDRESS_COORDINATE_FIELDS = ["latitude", "longitude"];
 
 function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
