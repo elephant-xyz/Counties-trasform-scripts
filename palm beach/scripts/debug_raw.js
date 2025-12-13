@@ -19841,8 +19841,9 @@ async function main() {
   });
   const hasRawAddress =
     typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
-  const preferRawOutput = hasRawAddress && !hasCompleteNormalized;
-  const shouldUseNormalized = hasCompleteNormalized;
+  const preferRawOutput =
+    prefersRawAddressBranch || (hasRawAddress && !hasCompleteNormalized);
+  const shouldUseNormalized = hasCompleteNormalized && !preferRawOutput;
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
@@ -20248,11 +20249,11 @@ async function main() {
   const normalizedSurfaceFinal =
     ensureNormalizedAddressSchemaSurface &&
     ensureNormalizedAddressSchemaSurface({ ...existingAddressPayload });
-  const normalizedCompleteFinal =
+    const normalizedCompleteFinal =
     normalizedSurfaceFinal &&
     hasCompleteNormalizedAddress({ ...normalizedSurfaceFinal });
   const hasRawFinal = !!finalRawValue;
-  const preferRawBranch = hasRawFinal && !normalizedCompleteFinal;
+  const preferRawBranch = preferRawOutput || (hasRawFinal && !normalizedCompleteFinal);
 
   let finalAddressOut = null;
   if (normalizedCompleteFinal) {
@@ -20370,14 +20371,25 @@ async function main() {
         seedSource && seedSource.source_http_request,
         seed && seed.source_http_request,
       );
-      writeJSON(addressOutputPath, {
-        unnormalized_address: rawBranchValue,
-        request_identifier:
-          finalRequestId === undefined ? null : finalRequestId,
-        source_http_request: finalSourceRequest
-          ? deepClone(finalSourceRequest)
-          : null,
-      });
+      const hydratedRaw =
+        ensureAddressOutputCoverage({
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...reconciledAddress,
+          unnormalized_address: rawBranchValue,
+          request_identifier:
+            finalRequestId === undefined ? null : finalRequestId,
+          source_http_request: finalSourceRequest
+            ? deepClone(finalSourceRequest)
+            : null,
+        }) || {
+          unnormalized_address: rawBranchValue,
+          request_identifier:
+            finalRequestId === undefined ? null : finalRequestId,
+          source_http_request: finalSourceRequest
+            ? deepClone(finalSourceRequest)
+            : null,
+        };
+      writeJSON(addressOutputPath, hydratedRaw);
     } else if (!rawBranchValue && !normalizedIsComplete) {
       removeFileIfExists(addressOutputPath);
     }
@@ -20455,7 +20467,9 @@ async function main() {
 
   if (finalizedAddress) {
     writeJSON(addressOutputPath, finalizedAddress);
-    lockAddressToOneOf(addressOutputPath, { preferRaw: !finalNormalizedComplete });
+    lockAddressToOneOf(addressOutputPath, {
+      preferRaw: preferRawBranch || !finalNormalizedComplete,
+    });
   } else {
     removeFileIfExists(addressOutputPath);
   }
