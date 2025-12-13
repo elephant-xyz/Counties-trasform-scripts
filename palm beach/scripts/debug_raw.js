@@ -1147,54 +1147,84 @@ function enforceFinalAddressOneOfOutput(filePath) {
   }
 
   const hasNormalizedCoverage =
-    NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
-      (field) =>
-        typeof normalizedSurface[field] === "string" &&
-        normalizedSurface[field].trim().length > 0,
-    ) && hasNormalizedCountyCoverage(normalizedSurface);
+    typeof hasCompleteNormalizedAddress === "function"
+      ? hasCompleteNormalizedAddress({ ...normalizedSurface })
+      : NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS.every(
+          (field) =>
+            typeof normalizedSurface[field] === "string" &&
+            normalizedSurface[field].trim().length > 0,
+        );
 
-  let finalOutput = null;
-  if (trimmedUnnormalized.length) {
-    finalOutput = {
-      unnormalized_address: trimmedUnnormalized,
-      ...normalizedSurface,
-    };
-  } else if (hasNormalizedCoverage) {
-    finalOutput = { ...normalizedSurface };
-  } else {
-    removeFileIfExists(filePath);
+  if (hasNormalizedCoverage) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = sanitizeAddressFieldValue(
+        field,
+        normalizedSurface[field],
+      );
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      (normalizedOut.latitude == null) !== (normalizedOut.longitude == null)
+    ) {
+      normalizedOut.latitude = null;
+      normalizedOut.longitude = null;
+    }
+    if (requestIdentifier !== undefined) {
+      normalizedOut.request_identifier = requestIdentifier;
+    }
+    if (preparedSourceHttpRequest) {
+      normalizedOut.source_http_request = preparedSourceHttpRequest;
+    } else if (
+      Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+    ) {
+      normalizedOut.source_http_request = null;
+    }
+    fs.writeFileSync(filePath, JSON.stringify(normalizedOut, null, 2));
     return;
   }
 
-  if ((finalOutput.latitude == null) !== (finalOutput.longitude == null)) {
-    finalOutput.latitude = null;
-    finalOutput.longitude = null;
-  }
-  if (!finalOutput.postal_code) {
-    finalOutput.plus_four_postal_code = null;
-  }
-  if (finalOutput.state_code && !finalOutput.country_code) {
-    finalOutput.country_code = "US";
+  if (trimmedUnnormalized.length) {
+    const rawOut =
+      sanitizeRawOneOfPayload(
+        { ...payload, unnormalized_address: trimmedUnnormalized },
+        {
+          request_identifier:
+            requestIdentifier === undefined ? undefined : requestIdentifier,
+          source_http_request: preparedSourceHttpRequest,
+        },
+      ) || null;
+
+    if (rawOut) {
+      if (requestIdentifier !== undefined) {
+        rawOut.request_identifier = requestIdentifier;
+      } else if (
+        !Object.prototype.hasOwnProperty.call(rawOut, "request_identifier")
+      ) {
+        rawOut.request_identifier = null;
+      }
+
+      if (
+        preparedSourceHttpRequest ||
+        Object.prototype.hasOwnProperty.call(payload, "source_http_request")
+      ) {
+        rawOut.source_http_request = preparedSourceHttpRequest || null;
+      }
+
+      fs.writeFileSync(filePath, JSON.stringify(rawOut, null, 2));
+      return;
+    }
   }
 
-  if (requestIdentifier !== undefined) {
-    finalOutput.request_identifier =
-      requestIdentifier === undefined ? null : requestIdentifier;
-  } else if (
-    !Object.prototype.hasOwnProperty.call(finalOutput, "request_identifier")
-  ) {
-    finalOutput.request_identifier = null;
-  }
-
-  if (preparedSourceHttpRequest) {
-    finalOutput.source_http_request = preparedSourceHttpRequest;
-  } else if (
-    Object.prototype.hasOwnProperty.call(payload, "source_http_request")
-  ) {
-    finalOutput.source_http_request = null;
-  }
-
-  fs.writeFileSync(filePath, JSON.stringify(finalOutput, null, 2));
+  removeFileIfExists(filePath);
 }
 
 function enforceAddressFieldDefaults(addressFilePath) {
@@ -20745,6 +20775,8 @@ async function main() {
     "property_has_address",
     "address_has_fact_sheet",
   ]);
+
+  enforceFinalAddressOneOfOutput(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
