@@ -20424,18 +20424,43 @@ async function main() {
   );
 
   let finalizedAddress = null;
-  if (finalNormalizedComplete) {
+  let preferRawFinal = preferRawBranch || !finalNormalizedComplete;
+
+  if (finalNormalizedComplete && !preferRawFinal) {
     const normalizedSurface =
-      ensureAddressOutputCoverage({ ...finalAddressSnapshot }) ||
+      (ensureNormalizedAddressSchemaSurface &&
+        ensureNormalizedAddressSchemaSurface({
+          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+          ...finalAddressSnapshot,
+          ...normalizedSurfaceFinal,
+        })) ||
       ensureAddressOutputCoverage({
         ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
         ...finalAddressSnapshot,
       });
+
     if (normalizedSurface) {
-      delete normalizedSurface.unnormalized_address;
-      finalizedAddress = normalizedSurface;
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        normalizedOut[field] = sanitizeAddressFieldValue(
+          field,
+          normalizedSurface[field],
+        );
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      finalizedAddress = normalizedOut;
     }
-  } else if (finalRawCandidate) {
+  }
+
+  if (!finalizedAddress && finalRawCandidate) {
     const resolvedFinalRequestId = safeNullIfEmpty(
       resolveFirstNonEmptyString([
         finalRequestIdentifier,
@@ -20452,23 +20477,57 @@ async function main() {
       seedSource && seedSource.source_http_request,
       seed && seed.source_http_request,
     );
-    finalizedAddress =
-      ensureAddressOutputCoverage({
-        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-        ...finalAddressSnapshot,
-        unnormalized_address: finalRawCandidate,
-        request_identifier:
-          resolvedFinalRequestId === undefined ? null : resolvedFinalRequestId,
-        source_http_request: resolvedFinalSourceHttp
-          ? deepClone(resolvedFinalSourceHttp)
-          : null,
-      }) || null;
+    const coordinateSeed = {};
+    const latCandidate = parseCoordinate(
+      finalAddressSnapshot && finalAddressSnapshot.latitude,
+    );
+    const lonCandidate = parseCoordinate(
+      finalAddressSnapshot && finalAddressSnapshot.longitude,
+    );
+    if (Number.isFinite(latCandidate) && Number.isFinite(lonCandidate)) {
+      coordinateSeed.latitude = latCandidate;
+      coordinateSeed.longitude = lonCandidate;
+    }
+
+    const rawSeed =
+      sanitizeRawOneOfPayload(
+        coordinateSeed,
+        {
+          unnormalized_address: finalRawCandidate,
+          request_identifier:
+            resolvedFinalRequestId === undefined ? null : resolvedFinalRequestId,
+          source_http_request: resolvedFinalSourceHttp,
+        },
+      ) ||
+      buildRawAddressOutputForSchema(finalRawCandidate, {
+        request_identifier: resolvedFinalRequestId,
+        source_http_request: resolvedFinalSourceHttp,
+        ...coordinateSeed,
+      });
+
+    if (rawSeed) {
+      if (!rawSeed.postal_code) {
+        rawSeed.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawSeed.state_code) &&
+        !hasMeaningfulAddressValue(rawSeed.country_code)
+      ) {
+        rawSeed.country_code = "US";
+      }
+      if ((rawSeed.latitude == null) !== (rawSeed.longitude == null)) {
+        rawSeed.latitude = null;
+        rawSeed.longitude = null;
+      }
+      finalizedAddress = rawSeed;
+      preferRawFinal = true;
+    }
   }
 
   if (finalizedAddress) {
     writeJSON(addressOutputPath, finalizedAddress);
     lockAddressToOneOf(addressOutputPath, {
-      preferRaw: preferRawBranch || !finalNormalizedComplete,
+      preferRaw: preferRawFinal,
     });
   } else {
     removeFileIfExists(addressOutputPath);
