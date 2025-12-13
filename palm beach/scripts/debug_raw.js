@@ -19841,8 +19841,8 @@ async function main() {
   });
   const hasRawAddress =
     typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
-  const preferRawOutput = hasRawAddress;
-  const shouldUseNormalized = !hasRawAddress && hasCompleteNormalized;
+  const preferRawOutput = hasRawAddress && !hasCompleteNormalized;
+  const shouldUseNormalized = hasCompleteNormalized;
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
@@ -19855,10 +19855,10 @@ async function main() {
     ) {
       delete finalAddressPayload.unnormalized_address;
     }
-  } else if (hasRawAddress || hasNormalizedOneOf) {
-    // Default to the raw branch when full normalized coverage is missing; keep
-    // the normalized fields as nullable hints but anchor the payload with the
-    // unnormalized string so the address matches exactly one schema branch.
+  } else if (!hasCompleteNormalized && (hasRawAddress || hasNormalizedOneOf)) {
+    // Default to the raw branch only when full normalized coverage is missing;
+    // keep the normalized fields as nullable hints but anchor the payload with
+    // the unnormalized string so the address matches exactly one schema branch.
     const rawSeed = hasRawAddress
       ? resolvedRaw
       : composeUnnormalizedAddress(normalizedCandidate);
@@ -20252,9 +20252,27 @@ async function main() {
     normalizedSurfaceFinal &&
     hasCompleteNormalizedAddress({ ...normalizedSurfaceFinal });
   const hasRawFinal = !!finalRawValue;
+  const preferRawBranch = hasRawFinal && !normalizedCompleteFinal;
 
   let finalAddressOut = null;
-  if (hasRawFinal) {
+  if (normalizedCompleteFinal) {
+    finalAddressOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      finalAddressOut[field] = sanitizeAddressFieldValue(
+        field,
+        normalizedSurfaceFinal[field],
+      );
+    });
+    if (!finalAddressOut.postal_code) {
+      finalAddressOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(finalAddressOut.state_code) &&
+      !hasMeaningfulAddressValue(finalAddressOut.country_code)
+    ) {
+      finalAddressOut.country_code = "US";
+    }
+  } else if (hasRawFinal) {
     const rawPayload =
       buildLeanRawAddressPayload(finalRawValue, {
         fieldSources: [
@@ -20282,25 +20300,6 @@ async function main() {
     }
   }
 
-  if (!finalAddressOut && normalizedCompleteFinal) {
-    finalAddressOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-      finalAddressOut[field] = sanitizeAddressFieldValue(
-        field,
-        normalizedSurfaceFinal[field],
-      );
-    });
-    if (!finalAddressOut.postal_code) {
-      finalAddressOut.plus_four_postal_code = null;
-    }
-    if (
-      hasMeaningfulAddressValue(finalAddressOut.state_code) &&
-      !hasMeaningfulAddressValue(finalAddressOut.country_code)
-    ) {
-      finalAddressOut.country_code = "US";
-    }
-  }
-
   if (finalAddressOut) {
     const surfacedFinal = ensureAddressOutputCoverage(finalAddressOut);
     writeJSON(addressOutputPath, surfacedFinal || finalAddressOut);
@@ -20308,21 +20307,23 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
-  forceRawAddressVariantForFinalOutput(addressOutputPath, {
-    candidates: [
-      finalRawValue,
-      resolvedRaw,
-      ...finalUnnormalizedCandidates,
-      unnormalizedAddressCandidate,
-      combinedModelAddress,
-      siteLocationLine,
-      addressLineCombined,
-      fullAddr,
-      fullAddrInput,
-      unnormalizedSource && unnormalizedSource.unnormalized_address,
-      unnormalizedSource && unnormalizedSource.full_address,
-    ].filter(Boolean),
-  });
+  if (preferRawBranch) {
+    forceRawAddressVariantForFinalOutput(addressOutputPath, {
+      candidates: [
+        finalRawValue,
+        resolvedRaw,
+        ...finalUnnormalizedCandidates,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unnormalizedSource && unnormalizedSource.unnormalized_address,
+        unnormalizedSource && unnormalizedSource.full_address,
+      ].filter(Boolean),
+    });
+  }
 
   // Collapse to a single oneOf branch: use normalized only when fully covered,
   // otherwise emit a lean raw payload seeded from the provided unnormalized
@@ -20344,7 +20345,16 @@ async function main() {
         unnormalizedSource && unnormalizedSource.full_address,
       ]),
     );
-    if (rawBranchValue) {
+    if (normalizedIsComplete && !preferRawBranch) {
+      const normalizedOnly = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        normalizedOnly[field] = sanitizeAddressFieldValue(
+          field,
+          reconciledAddress[field],
+        );
+      });
+      writeJSON(addressOutputPath, normalizedOnly);
+    } else if (rawBranchValue) {
       const finalRequestId = safeNullIfEmpty(
         resolveFirstNonEmptyString([
           reconciledAddress.request_identifier,
@@ -20368,23 +20378,14 @@ async function main() {
           ? deepClone(finalSourceRequest)
           : null,
       });
-    } else if (normalizedIsComplete) {
-      const normalizedOnly = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-        normalizedOnly[field] = sanitizeAddressFieldValue(
-          field,
-          reconciledAddress[field],
-        );
-      });
-      writeJSON(addressOutputPath, normalizedOnly);
-    } else if (!rawBranchValue) {
+    } else if (!rawBranchValue && !normalizedIsComplete) {
       removeFileIfExists(addressOutputPath);
     }
   }
 
   pruneRawAddressToMinimalSurface(addressOutputPath);
   enforceTerminalAddressBranch(addressOutputPath);
-  lockAddressToOneOf(addressOutputPath, { preferRaw: prefersRawAddressBranch });
+  lockAddressToOneOf(addressOutputPath, { preferRaw: preferRawBranch });
 
   enforcePropertyRelationshipNulls(propertyFilePath);
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
