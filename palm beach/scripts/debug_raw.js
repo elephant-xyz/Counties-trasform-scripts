@@ -7586,11 +7586,9 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Raw branch needs the full address surface plus the unnormalized string so it
-// satisfies the schema's oneOf requirements (which expect the normalized keys
-// to be present, even if they are null).
+// Keep the raw branch minimal so it cleanly selects the unnormalized oneOf arm
+// when we only have a raw address string from the source.
 const RAW_ONE_OF_ALLOWED_FIELDS = [
-  ...NORMALIZED_ADDRESS_FIELDS,
   "unnormalized_address",
   "request_identifier",
   "source_http_request",
@@ -7733,11 +7731,7 @@ function buildLeanRawAddressPayload(rawValue, options = {}) {
   const trimmedRaw = safeNullIfEmpty(rawValue);
   if (!trimmedRaw) return null;
 
-  const {
-    fieldSources = [],
-    requestIdentifier,
-    sourceHttpRequest,
-  } = options;
+  const { requestIdentifier, sourceHttpRequest } = options;
 
   const minimal =
     buildMinimalRawAddressPayload({
@@ -7747,80 +7741,10 @@ function buildLeanRawAddressPayload(rawValue, options = {}) {
       sourceHttpRequestCandidates: [sourceHttpRequest],
     }) || { unnormalized_address: trimmedRaw };
 
-  // Start from the full raw oneOf surface so every expected field is present
-  // (as null when we don't have data) and the validator can pick the raw branch.
+  // Keep the raw payload minimal so it matches the unnormalized branch of the
+  // schema without leaking partial normalized fields.
   const base = { ...RAW_ONE_OF_SCHEMA_TEMPLATE, ...minimal };
   base.unnormalized_address = trimmedRaw;
-
-  const optionalFields = [
-    "latitude",
-    "longitude",
-    "postal_code",
-    "plus_four_postal_code",
-    "city_name",
-    "municipality_name",
-    "state_code",
-    "county_name",
-    "country_code",
-    "section",
-    "township",
-    "range",
-    "block",
-    "lot",
-    "route_number",
-    "street_number",
-    "street_name",
-    "street_suffix_type",
-    "street_pre_directional_text",
-    "street_post_directional_text",
-    "unit_identifier",
-  ];
-
-  optionalFields.forEach((field) => {
-    for (const source of fieldSources) {
-      if (!source || typeof source !== "object") continue;
-      if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
-      const sanitized = sanitizeAddressFieldValue
-        ? sanitizeAddressFieldValue(field, source[field])
-        : source[field];
-      if (
-        sanitized === undefined ||
-        sanitized === null ||
-        (typeof sanitized === "string" && !sanitized.trim().length)
-      ) {
-        continue;
-      }
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(sanitized);
-        if (Number.isFinite(numeric)) {
-          base[field] = numeric;
-        }
-        return;
-      }
-      base[field] = sanitized;
-      return;
-    }
-  });
-
-  const lat = parseCoordinate(base.latitude);
-  const lon = parseCoordinate(base.longitude);
-  if (Number.isFinite(lat) && Number.isFinite(lon)) {
-    base.latitude = lat;
-    base.longitude = lon;
-  } else {
-    base.latitude = null;
-    base.longitude = null;
-  }
-
-  if (!base.postal_code) {
-    base.plus_four_postal_code = null;
-  }
-  if (
-    hasMeaningfulAddressValue(base.state_code) &&
-    !hasMeaningfulAddressValue(base.country_code)
-  ) {
-    base.country_code = "US";
-  }
 
   return base;
 }
@@ -9952,19 +9876,23 @@ function ensureRawAddressFieldCoverage(address, allowedFields = RAW_ADDRESS_ALLO
     Array.isArray(allowedFields) && allowedFields.length
       ? allowedFields
       : RAW_ADDRESS_ALLOWED_FIELDS;
-  const allowedSet = new Set(fields);
   const result = { unnormalized_address: unnormalized };
 
   for (const field of fields) {
     const hasValue = Object.prototype.hasOwnProperty.call(address, field);
-    const value = hasValue ? address[field] : null;
+    let value = hasValue ? address[field] : null;
+    if (field === "source_http_request") {
+      value = prepareSourceHttpRequest(value);
+      result[field] = value ? deepClone(value) : null;
+      continue;
+    }
+    if (field === "request_identifier") {
+      const normalizedIdentifier = safeNullIfEmpty(value);
+      result[field] =
+        normalizedIdentifier === undefined ? null : normalizedIdentifier;
+      continue;
+    }
     result[field] = value === undefined ? null : value;
-  }
-
-  for (const [key, value] of Object.entries(address)) {
-    if (key === "unnormalized_address") continue;
-    if (allowedSet.has(key)) continue;
-    result[key] = value;
   }
 
   return result;
@@ -9994,11 +9922,7 @@ function ensureRawAddressSchemaDefaults(
     return acc;
   }, {});
 
-  const result = {
-    ...template,
-    ...address,
-    unnormalized_address: trimmedUnnormalized,
-  };
+  const result = { ...template, unnormalized_address: trimmedUnnormalized };
 
   for (const field of fields) {
     if (field === "unnormalized_address") {
@@ -10006,12 +9930,8 @@ function ensureRawAddressSchemaDefaults(
       continue;
     }
 
-    if (!Object.prototype.hasOwnProperty.call(result, field)) {
-      result[field] = null;
-      continue;
-    }
-
-    const currentValue = result[field];
+    const hasValue = Object.prototype.hasOwnProperty.call(address, field);
+    const currentValue = hasValue ? address[field] : null;
     if (currentValue === undefined || currentValue === null) {
       result[field] = null;
       continue;
@@ -10071,11 +9991,11 @@ function hydrateRawAddressSkeleton(addressPath, options = {}) {
     payload.county_jurisdiction ||
     null;
 
-  const skeleton = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    ...payload,
-    unnormalized_address: rawValue,
-  };
+  const skeleton =
+    ensureRawAddressSchemaDefaults(
+      { ...payload, unnormalized_address: rawValue },
+      RAW_ADDRESS_ALLOWED_FIELDS,
+    ) || { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
 
   RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
     if (!Object.prototype.hasOwnProperty.call(skeleton, field)) {
@@ -10881,19 +10801,6 @@ function enforceRawVariantAllowedFields(payload) {
 
   if (!Object.prototype.hasOwnProperty.call(pruned, "request_identifier")) {
     pruned.request_identifier = null;
-  }
-
-  if (!pruned.postal_code) {
-    pruned.plus_four_postal_code = null;
-  }
-
-  if (pruned.state_code && !pruned.country_code) {
-    pruned.country_code = "US";
-  }
-
-  if ((pruned.latitude == null) !== (pruned.longitude == null)) {
-    pruned.latitude = null;
-    pruned.longitude = null;
   }
 
   return pruned;
