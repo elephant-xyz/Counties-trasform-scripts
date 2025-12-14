@@ -190,23 +190,23 @@ function collapseAddressToMinimalRaw(addressPath) {
     return;
   }
 
-  const minimalRaw = buildMinimalRawAddressPayload({
-    rawCandidates: [
-      rawValue,
-      payload.full_address,
-      payload.site_address,
-      payload.address,
-    ],
-    requestIdentifierCandidates: [payload.request_identifier],
-    sourceHttpRequestCandidates: [payload.source_http_request],
-  });
+  const hydratedRaw =
+    sanitizeAddressPayloadForWrite({
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...payload,
+      unnormalized_address: rawValue,
+    }) || null;
 
-  if (!minimalRaw) {
+  if (!hydratedRaw) {
     removeFileIfExists(addressPath);
     return;
   }
 
-  originalWriteFileSync.call(fs, addressPath, `${JSON.stringify(minimalRaw, null, 2)}\n`);
+  originalWriteFileSync.call(
+    fs,
+    addressPath,
+    `${JSON.stringify(hydratedRaw, null, 2)}\n`,
+  );
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -903,13 +903,54 @@ function sanitizeAddressPayloadForWrite(payload) {
     const preparedSourceHttpRequest = prepareSourceHttpRequest(
       payload.source_http_request,
     );
-    return {
-      unnormalized_address: trimmedUnnormalized,
-      request_identifier: requestId === undefined ? null : requestId,
-      source_http_request: preparedSourceHttpRequest
-        ? deepClone(preparedSourceHttpRequest)
-        : null,
-    };
+    const hydratedRaw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") {
+        hydratedRaw[field] = trimmedUnnormalized;
+        return;
+      }
+      if (field === "request_identifier") {
+        hydratedRaw[field] =
+          requestId === undefined ? null : requestId;
+        return;
+      }
+      if (field === "source_http_request") {
+        hydratedRaw[field] = preparedSourceHttpRequest
+          ? deepClone(preparedSourceHttpRequest)
+          : null;
+        return;
+      }
+      let value = payload[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      hydratedRaw[field] = value;
+    });
+    if (!hydratedRaw.postal_code) {
+      hydratedRaw.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(hydratedRaw.state_code) &&
+      !hasMeaningfulAddressValue(hydratedRaw.country_code)
+    ) {
+      hydratedRaw.country_code = "US";
+    }
+    const parsedLat = parseCoordinate(hydratedRaw.latitude);
+    const parsedLon = parseCoordinate(hydratedRaw.longitude);
+    if (Number.isFinite(parsedLat) && Number.isFinite(parsedLon)) {
+      hydratedRaw.latitude = parsedLat;
+      hydratedRaw.longitude = parsedLon;
+    } else {
+      hydratedRaw.latitude = null;
+      hydratedRaw.longitude = null;
+    }
+    return hydratedRaw;
   }
 
   return stripAddressRequestMetadata(normalizedCandidate);
@@ -12105,16 +12146,18 @@ function enforceMinimalAddressBranch(addressPath) {
     return;
   }
 
-  const requestId = safeNullIfEmpty(payload.request_identifier);
-  const sourceHttp = resolveSourceHttpRequest(payload.source_http_request);
+  const hydratedRaw =
+    sanitizeAddressPayloadForWrite({
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...payload,
+      unnormalized_address: rawValue,
+    }) || null;
 
-  const minimalRaw = {
-    unnormalized_address: rawValue,
-    request_identifier: requestId === undefined ? null : requestId,
-    source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
-  };
-
-  writeJSON(addressPath, minimalRaw);
+  if (hydratedRaw) {
+    writeJSON(addressPath, hydratedRaw);
+  } else {
+    removeFileIfExists(addressPath);
+  }
 }
 
 function ensureAddressOutputFieldPresence(address) {
