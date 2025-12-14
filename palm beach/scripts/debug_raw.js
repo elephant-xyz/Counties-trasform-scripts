@@ -7748,6 +7748,68 @@ function simplifyAddressOneOf(addressPath, options = {}) {
   writeJSON(addressPath, rawOut);
 }
 
+function clampAddressToSingleBranch(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...snapshot })
+      : null;
+  const normalizedComplete =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  let nextPayload = null;
+  if (normalizedComplete && !rawValue) {
+    nextPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(value);
+        value = prepared ? deepClone(prepared) : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      nextPayload[field] = value;
+    });
+    if (!nextPayload.postal_code) {
+      nextPayload.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(nextPayload.state_code) &&
+      !hasMeaningfulAddressValue(nextPayload.country_code)
+    ) {
+      nextPayload.country_code = "US";
+    }
+  } else if (rawValue) {
+    const countyCandidate = safeNullIfEmpty(
+      snapshot.county_name || options.fallbackCountyName,
+    );
+    const rawSeed = {
+      ...snapshot,
+      county_name: countyCandidate || snapshot.county_name,
+    };
+    nextPayload = buildRawAddressMinimalSurface(rawSeed, rawValue);
+  }
+
+  if (nextPayload) {
+    writeJSON(addressPath, nextPayload);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+}
+
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
@@ -22438,8 +22500,7 @@ async function main() {
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
   ].forEach(writeNullRelationshipFile);
 
-  simplifyAddressOneOf(addressOutputPath, {
-    rawFallback: finalRawCandidateClamp || terminalRawResolved,
+  clampAddressToSingleBranch(addressOutputPath, {
     fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
   });
 
