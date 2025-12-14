@@ -868,7 +868,10 @@ function buildRawAddressMinimalSurface(sourcePayload, rawValue) {
   const trimmedRaw = safeNullIfEmpty(rawValue);
   if (!trimmedRaw) return null;
 
+  // Start from the full raw oneOf template so every schema field is present
+  // (nullable) and we satisfy required property presence on the raw branch.
   const result = {
+    ...RAW_ONE_OF_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
     request_identifier: null,
     source_http_request: null,
@@ -21945,14 +21948,14 @@ async function main() {
     path.join(relationshipsDir, "property_has_address.json"),
     path.join(relationshipsDir, "relationship_property_has_address.json"),
   ];
-  relationshipTargets.forEach(removeFileIfExists);
+  relationshipTargets.forEach(writeNullRelationshipFile);
   // Explicitly drop address→fact_sheet placeholders when no fact_sheet payload exists.
   [
     path.join(dataDir, "address_has_fact_sheet.json"),
     path.join(dataDir, "relationship_address_has_fact_sheet.json"),
     path.join(relationshipsDir, "address_has_fact_sheet.json"),
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
-  ].forEach(removeFileIfExists);
+  ].forEach(writeNullRelationshipFile);
 
   rewriteAddressToPreferredOneOf(addressOutputPath);
 
