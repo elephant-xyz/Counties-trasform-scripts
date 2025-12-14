@@ -23039,6 +23039,140 @@ async function main() {
     }
   }
 
+  // Last-mile branch choice: if we have any unnormalized string from the source,
+  // emit the raw address variant with the full schema surface (so required fields
+  // exist as nullable values). Only fall back to the normalized branch when we
+  // truly lack a raw string and have a fully populated normalized payload.
+  const finalAddressSnapshotAligned = readJSONIfExists(addressOutputPath);
+  if (
+    finalAddressSnapshotAligned &&
+    typeof finalAddressSnapshotAligned === "object" &&
+    !Array.isArray(finalAddressSnapshotAligned)
+  ) {
+    const preferredRaw = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        finalAddressSnapshotAligned.unnormalized_address,
+        finalRawOverride,
+        finalRawCandidateClamp,
+        finalRawPreferred,
+        finalRawResolved,
+        terminalRawResolved,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const normalizedSurfaceAligned =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...finalAddressSnapshotAligned });
+    const normalizedCompleteAligned =
+      normalizedSurfaceAligned &&
+      hasCompleteNormalizedAddress({ ...normalizedSurfaceAligned });
+
+    if (preferredRaw) {
+      const preferredRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          finalAddressSnapshotAligned.request_identifier,
+          finalRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
+      const preferredSource = resolveSourceHttpRequest(
+        finalAddressSnapshotAligned.source_http_request,
+        finalSourceHttp,
+        resolvedSourceHttp,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      );
+      const preferredCounty = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          finalAddressSnapshotAligned.county_name,
+          formattedCountyName,
+          countyName,
+          unAddr && unAddr.county_jurisdiction,
+        ]),
+      );
+
+      const rawSurface =
+        buildRawAddressMinimalSurface(
+          {
+            request_identifier:
+              preferredRequestId === undefined ? null : preferredRequestId,
+            source_http_request: preferredSource
+              ? deepClone(preferredSource)
+              : null,
+            county_name: preferredCounty || null,
+            latitude: finalAddressSnapshotAligned.latitude,
+            longitude: finalAddressSnapshotAligned.longitude,
+            postal_code: finalAddressSnapshotAligned.postal_code,
+            plus_four_postal_code: finalAddressSnapshotAligned.plus_four_postal_code,
+            city_name: finalAddressSnapshotAligned.city_name,
+            state_code: finalAddressSnapshotAligned.state_code,
+            street_number: finalAddressSnapshotAligned.street_number,
+            street_name: finalAddressSnapshotAligned.street_name,
+            street_suffix_type: finalAddressSnapshotAligned.street_suffix_type,
+            street_pre_directional_text:
+              finalAddressSnapshotAligned.street_pre_directional_text,
+            street_post_directional_text:
+              finalAddressSnapshotAligned.street_post_directional_text,
+            unit_identifier: finalAddressSnapshotAligned.unit_identifier,
+            route_number: finalAddressSnapshotAligned.route_number,
+            township: finalAddressSnapshotAligned.township,
+            range: finalAddressSnapshotAligned.range,
+            section: finalAddressSnapshotAligned.section,
+            block: finalAddressSnapshotAligned.block,
+            lot: finalAddressSnapshotAligned.lot,
+            municipality_name: finalAddressSnapshotAligned.municipality_name,
+          },
+          preferredRaw,
+        ) || null;
+
+      if (rawSurface) {
+        writeJSON(addressOutputPath, rawSurface);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    } else if (normalizedCompleteAligned) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        normalizedOut[field] = sanitizeAddressFieldValue(
+          field,
+          normalizedSurfaceAligned[field],
+        );
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   // Re-assert null placeholders so downstream can populate URIs without local stubs.
   relationshipTargets.forEach(writeNullRelationshipFile);
   [
