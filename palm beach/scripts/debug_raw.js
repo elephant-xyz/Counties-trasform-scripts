@@ -11838,6 +11838,81 @@ function finalizeAddressOneOfSimplified(addressPath) {
   writeJSON(addressPath, rawOut);
 }
 
+// Final guard to emit either a complete normalized address (when all required
+// fields are present) or a raw variant anchored by the unnormalized string with
+// the full nullable surface. This avoids partial normalized payloads that miss
+// required fields and keeps the raw branch aligned to the oneOf schema.
+function stabilizeFinalCountyAddress(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedProbe =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+
+  if (normalizedProbe && hasCompleteNormalizedAddress({ ...normalizedProbe })) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedProbe[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const preparedSourceHttp = prepareSourceHttpRequest(
+    payload.source_http_request,
+  );
+  const rawOut =
+    ensureAddressOutputCoverage({
+      ...RAW_ONE_OF_SCHEMA_TEMPLATE,
+      ...payload,
+      unnormalized_address: rawValue,
+      request_identifier: safeNullIfEmpty(payload.request_identifier),
+      source_http_request: preparedSourceHttp
+        ? deepClone(preparedSourceHttp)
+        : null,
+    }) || null;
+
+  if (rawOut) {
+    writeJSON(addressPath, rawOut);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+}
+
 function enforceAddressOneOfBranch(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
   const payload = readJSONIfExists(addressPath);
@@ -21692,6 +21767,7 @@ async function main() {
 
   // Collapse to the raw oneOf branch when only an unnormalized string is available.
   collapseAddressToMinimalRaw(addressOutputPath);
+  stabilizeFinalCountyAddress(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
