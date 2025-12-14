@@ -22239,6 +22239,111 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  // Final deterministic address payload: prefer the raw branch when we have an
+  // unnormalized string; otherwise fall back to a fully populated normalized
+  // payload. This keeps every expected field present so the address satisfies
+  // exactly one oneOf schema.
+  const terminalSnapshotDeterministic = readJSONIfExists(addressOutputPath) || {};
+  const unnormalizedSourceFinal =
+    readJSONIfExists("unnormalized_address.json") || {};
+  const seedSourceFinal = readJSONIfExists("property_seed.json") || {};
+  const terminalRawResolved = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      terminalSnapshotDeterministic.unnormalized_address,
+      resolvedRaw,
+      ...(finalUnnormalizedCandidates || []),
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unnormalizedSourceFinal.unnormalized_address,
+      unnormalizedSourceFinal.full_address,
+    ]),
+  );
+  const terminalNormalizedSurfaceFinal =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...terminalSnapshotDeterministic });
+  const terminalNormalizedCompleteFinal =
+    terminalNormalizedSurfaceFinal &&
+    hasCompleteNormalizedAddress({ ...terminalNormalizedSurfaceFinal });
+
+  if (terminalRawResolved) {
+    const requestIdFinal = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalSnapshotDeterministic.request_identifier,
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seedSourceFinal.request_identifier,
+        unnormalizedSourceFinal.request_identifier,
+      ]),
+    );
+    const sourceHttpFinal = resolveSourceHttpRequest(
+      terminalSnapshotDeterministic.source_http_request,
+      finalSourceHttp,
+      resolvedSourceHttp,
+      unnormalizedSourceFinal && unnormalizedSourceFinal.source_http_request,
+      seedSourceFinal && seedSourceFinal.source_http_request,
+      sourceHttpCandidate,
+    );
+
+    const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+    rawOut.unnormalized_address = String(terminalRawResolved).trim();
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      if (field === "request_identifier") {
+        rawOut.request_identifier =
+          requestIdFinal === undefined ? null : requestIdFinal;
+        return;
+      }
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(sourceHttpFinal);
+        rawOut.source_http_request = prepared ? deepClone(prepared) : null;
+        return;
+      }
+      const candidate =
+        Object.prototype.hasOwnProperty.call(
+          terminalSnapshotDeterministic,
+          field,
+        ) && terminalSnapshotDeterministic[field] !== undefined
+          ? terminalSnapshotDeterministic[field]
+          : terminalNormalizedSurfaceFinal && terminalNormalizedSurfaceFinal[field];
+      rawOut[field] = sanitizeAddressFieldValue(field, candidate);
+    });
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
+    writeJSON(addressOutputPath, rawOut);
+  } else if (terminalNormalizedCompleteFinal) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = sanitizeAddressFieldValue(
+        field,
+        terminalNormalizedSurfaceFinal[field],
+      );
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressOutputPath, normalizedOut);
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
   // Relationships are auto-populated downstream; keep placeholders null so we
   // don't emit invalid UR stubs.
   [
