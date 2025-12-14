@@ -154,6 +154,91 @@ function enforcePropertyRelationshipNulls(propertyPath) {
   writeJSON(propertyPath, payload);
 }
 
+function nullifyAddressRelationshipFiles(dataDir, relationshipsDir) {
+  const targets = [
+    dataDir && path.join(dataDir, "property_has_address.json"),
+    dataDir && path.join(dataDir, "relationship_property_has_address.json"),
+    dataDir && path.join(dataDir, "address_has_fact_sheet.json"),
+    dataDir && path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    relationshipsDir && path.join(relationshipsDir, "property_has_address.json"),
+    relationshipsDir &&
+      path.join(relationshipsDir, "relationship_property_has_address.json"),
+    relationshipsDir && path.join(relationshipsDir, "address_has_fact_sheet.json"),
+    relationshipsDir &&
+      path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
+  ].filter(Boolean);
+  targets.forEach((target) => writeNullRelationshipFile(target));
+}
+
+function forceRawAddressOutput(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const snapshot = readJSONIfExists(addressPath) || {};
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...snapshot });
+  const normalizedComplete =
+    normalizedSurface && hasNormalizedOneOfCoverage({ ...normalizedSurface });
+  if (normalizedComplete) {
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      snapshot.unnormalized_address,
+      snapshot.full_address,
+      snapshot.site_address,
+      snapshot.address,
+      ...(options.rawCandidates || []),
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestIdentifier =
+    options.requestIdentifierCandidates && options.requestIdentifierCandidates.length
+      ? safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            snapshot.request_identifier,
+            ...(options.requestIdentifierCandidates || []),
+          ]),
+        )
+      : safeNullIfEmpty(snapshot.request_identifier);
+
+  const sourceHttp = resolveSourceHttpRequest(
+    snapshot.source_http_request,
+    ...(options.sourceHttpRequestCandidates || []),
+  );
+
+  const rawPayload =
+    buildRawAddressMinimalSurface(
+      {
+        ...snapshot,
+        request_identifier: requestIdentifier,
+        source_http_request: sourceHttp || snapshot.source_http_request,
+      },
+      rawValue,
+    ) || null;
+
+  if (!rawPayload) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(rawPayload, field)) {
+      rawPayload[field] = null;
+    }
+  });
+  rawPayload.request_identifier =
+    requestIdentifier === undefined ? null : requestIdentifier;
+  rawPayload.source_http_request = prepareSourceHttpRequest(sourceHttp) || null;
+
+  writeJSON(addressPath, rawPayload);
+}
+
 function collapseAddressToMinimalRaw(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) {
     return;
@@ -23389,6 +23474,35 @@ async function main() {
       }
     }
   }
+
+  forceRawAddressOutput(addressOutputPath, {
+    rawCandidates: [
+      ...(finalUnnormalizedCandidates || []),
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ],
+    requestIdentifierCandidates: [
+      resolvedRequestIdFinal,
+      trimmedRequestIdentifier,
+      finalRequestIdentifier,
+      parcelId,
+      seed && seed.request_identifier,
+      unAddr && unAddr.request_identifier,
+    ],
+    sourceHttpRequestCandidates: [
+      resolvedSourceHttpFinal,
+      finalSourceHttp,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    ],
+  });
+  nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
