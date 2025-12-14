@@ -23502,6 +23502,95 @@ async function main() {
       unAddr && unAddr.source_http_request,
     ],
   });
+
+  // Hard clamp: if normalized coverage is still incomplete but we have any raw
+  // string from the source, emit the raw branch so the address matches a single
+  // oneOf schema. This prevents partially normalized payloads (with nulls) from
+  // drifting into the normalized branch and failing validation.
+  const hardenedSnapshot = readJSONIfExists(addressOutputPath) || {};
+  const hardenedNormalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...hardenedSnapshot });
+  const hardenedNormalizedReady =
+    hardenedNormalizedSurface &&
+    hasCompleteNormalizedAddress({ ...hardenedNormalizedSurface });
+  const hardenedRawCandidate = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      hardenedSnapshot.unnormalized_address,
+      finalRawCandidateClamp,
+      ...(finalUnnormalizedCandidates || []),
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ]),
+  );
+
+  if (!hardenedNormalizedReady && hardenedRawCandidate) {
+    const hardenedRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        hardenedSnapshot.request_identifier,
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ]),
+    );
+    const hardenedSourceHttp = resolveSourceHttpRequest(
+      hardenedSnapshot.source_http_request,
+      finalSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    );
+    const hardenedRawOut =
+      ensureAddressOutputCoverage({
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...hardenedSnapshot,
+        unnormalized_address: hardenedRawCandidate,
+        request_identifier:
+          hardenedRequestId === undefined ? null : hardenedRequestId,
+        source_http_request: prepareSourceHttpRequest(hardenedSourceHttp),
+        county_name:
+          hardenedSnapshot.county_name ||
+          formattedCountyName ||
+          countyName ||
+          (unAddr && unAddr.county_jurisdiction) ||
+          null,
+      }) || null;
+    if (hardenedRawOut) {
+      if ((hardenedRawOut.latitude == null) !== (hardenedRawOut.longitude == null)) {
+        hardenedRawOut.latitude = null;
+        hardenedRawOut.longitude = null;
+      }
+      writeJSON(addressOutputPath, hardenedRawOut);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  } else if (hardenedNormalizedReady) {
+    const normalizedOut =
+      ensureAddressOutputCoverage({
+        ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+        ...hardenedNormalizedSurface,
+      }) || null;
+    if (normalizedOut) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    }
+  }
+
   nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
