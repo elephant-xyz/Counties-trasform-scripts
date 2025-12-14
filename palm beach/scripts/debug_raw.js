@@ -180,39 +180,23 @@ function collapseAddressToMinimalRaw(addressPath) {
     return;
   }
 
-  const trimmedRaw = rawValue.trim();
-  const hydrated = {
-    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-    ...payload,
-    unnormalized_address: trimmedRaw,
-  };
+  const minimalRaw = buildMinimalRawAddressPayload({
+    rawCandidates: [
+      rawValue,
+      payload.full_address,
+      payload.site_address,
+      payload.address,
+    ],
+    requestIdentifierCandidates: [payload.request_identifier],
+    sourceHttpRequestCandidates: [payload.source_http_request],
+  });
 
-  const minimal =
-    ensureAddressOutputCoverage(hydrated) ||
-    enforceAddressSchemaSurfaceForOutput(hydrated) ||
-    null;
-
-  if (!minimal) {
+  if (!minimalRaw) {
     removeFileIfExists(addressPath);
     return;
   }
 
-  if (minimal.state_code && !minimal.country_code) {
-    minimal.country_code = "US";
-  }
-  if (!minimal.postal_code) {
-    minimal.plus_four_postal_code = null;
-  }
-  if ((minimal.latitude == null) !== (minimal.longitude == null)) {
-    minimal.latitude = null;
-    minimal.longitude = null;
-  }
-
-  originalWriteFileSync.call(
-    fs,
-    addressPath,
-    `${JSON.stringify(minimal, null, 2)}\n`,
-  );
+  originalWriteFileSync.call(fs, addressPath, `${JSON.stringify(minimalRaw, null, 2)}\n`);
 }
 
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
@@ -11831,30 +11815,18 @@ function finalizeAddressOneOfSimplified(addressPath) {
   }
 
   const rawOut =
-    ensureAddressOutputCoverage({
-      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-      ...normalizedSurface,
-      ...payload,
-      unnormalized_address: rawValue,
+    buildMinimalRawAddressPayload({
+      rawCandidates: [rawValue],
+      requestIdentifierCandidates: [payload.request_identifier],
+      sourceHttpRequestCandidates: [payload.source_http_request],
     }) || null;
-  if (rawOut) {
-    if (!rawOut.postal_code) {
-      rawOut.plus_four_postal_code = null;
-    }
-    if (
-      hasMeaningfulAddressValue(rawOut.state_code) &&
-      !hasMeaningfulAddressValue(rawOut.country_code)
-    ) {
-      rawOut.country_code = "US";
-    }
-    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-      rawOut.latitude = null;
-      rawOut.longitude = null;
-    }
-    writeJSON(addressPath, rawOut);
-  } else {
+
+  if (!rawOut) {
     removeFileIfExists(addressPath);
+    return;
   }
+
+  writeJSON(addressPath, rawOut);
 }
 
 function enforceAddressOneOfBranch(addressPath) {
