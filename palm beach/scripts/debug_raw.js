@@ -180,33 +180,78 @@ function collapseAddressToMinimalRaw(addressPath) {
     return;
   }
 
-  const baseline = {
-    ...payload,
-    unnormalized_address: rawValue,
-  };
-  const schemaAligned =
-    ensureRawAddressSchemaDefaults(baseline) ||
-    composeMinimalRawAddress(baseline);
-  if (!schemaAligned) {
-    removeFileIfExists(addressPath);
-    return;
-  }
+  const trimmedRaw = rawValue.trim();
+  const RAW_MINIMAL_FIELDS = [
+    "county_name",
+    "country_code",
+    "state_code",
+    "postal_code",
+    "plus_four_postal_code",
+    "city_name",
+    "municipality_name",
+    "section",
+    "township",
+    "range",
+    "block",
+    "lot",
+    "route_number",
+    "street_number",
+    "street_name",
+    "street_pre_directional_text",
+    "street_post_directional_text",
+    "street_suffix_type",
+    "unit_identifier",
+  ];
 
+  const minimal = { unnormalized_address: trimmedRaw };
+
+  // Preserve request and source metadata even when we collapse to the raw branch.
   if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    const identifier = safeNullIfEmpty(payload.request_identifier);
-    schemaAligned.request_identifier =
-      identifier === undefined ? null : identifier;
+    minimal.request_identifier = safeNullIfEmpty(payload.request_identifier);
   }
-
   if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
     const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    schemaAligned.source_http_request = prepared ? deepClone(prepared) : null;
+    minimal.source_http_request = prepared ? deepClone(prepared) : null;
+  }
+
+  RAW_MINIMAL_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      return;
+    }
+    let value = payload[field];
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(value);
+      if (Number.isFinite(numeric)) {
+        minimal[field] = numeric;
+      }
+      return;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length) {
+        minimal[field] = trimmed;
+      }
+      return;
+    }
+    if (value !== undefined && value !== null) {
+      minimal[field] = value;
+    }
+  });
+
+  if (minimal.state_code && !minimal.country_code) {
+    minimal.country_code = "US";
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(minimal, "plus_four_postal_code") &&
+    !minimal.postal_code
+  ) {
+    minimal.plus_four_postal_code = null;
   }
 
   originalWriteFileSync.call(
     fs,
     addressPath,
-    `${JSON.stringify(schemaAligned, null, 2)}\n`,
+    `${JSON.stringify(minimal, null, 2)}\n`,
   );
 }
 
@@ -21703,6 +21748,9 @@ async function main() {
   managedRelationshipFiles.forEach((filePath) =>
     writeNullRelationshipFile(filePath),
   );
+
+  // Collapse to the raw oneOf branch when only an unnormalized string is available.
+  collapseAddressToMinimalRaw(addressOutputPath);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
