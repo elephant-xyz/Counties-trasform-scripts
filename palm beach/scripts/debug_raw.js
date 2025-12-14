@@ -22758,8 +22758,8 @@ async function main() {
     fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
   });
 
-  // Relationships are auto-populated downstream; keep placeholders null so we
-  // don't emit invalid UR stubs.
+  // Relationships are auto-populated downstream; drop any local stubs so we
+  // don't emit invalid UR placeholders.
   [
     path.join(dataDir, "property_has_address.json"),
     path.join(dataDir, "relationship_property_has_address.json"),
@@ -22769,7 +22769,7 @@ async function main() {
     path.join(dataDir, "relationship_address_has_fact_sheet.json"),
     path.join(relationshipsDir, "address_has_fact_sheet.json"),
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
-  ].forEach(writeNullRelationshipFile);
+  ].forEach(removeFileIfExists);
 
   clampAddressToSingleBranch(addressOutputPath, {
     fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
@@ -23311,6 +23311,83 @@ async function main() {
 
   if (finalAddressOutput) {
     writeJSON(addressOutputPath, finalAddressOutput);
+  }
+
+  // Final clamp: if we have any raw string and incomplete normalized coverage,
+  // emit the raw oneOf surface with all required fields present (nullable),
+  // pulling request/source metadata from the seed inputs.
+  const terminalAddressSnapshot = readJSONIfExists(addressOutputPath) || null;
+  if (terminalAddressSnapshot && typeof terminalAddressSnapshot === "object") {
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalAddressSnapshot });
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+    const terminalRawCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalAddressSnapshot.unnormalized_address,
+        finalRawOverride,
+        finalRawCandidateClamp,
+        finalRawPreferred,
+        finalRawResolved,
+        terminalRawResolved,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+
+    if (terminalRawCandidate && !terminalNormalizedComplete) {
+      const resolvedRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          terminalAddressSnapshot.request_identifier,
+          finalRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
+      const resolvedSourceHttpFinalClamp =
+        resolveSourceHttpRequest(
+          terminalAddressSnapshot.source_http_request,
+          finalSourceHttp,
+          seed && seed.source_http_request,
+          unAddr && unAddr.source_http_request,
+        ) ||
+        seed?.source_http_request ||
+        unAddr?.source_http_request ||
+        null;
+
+      if (resolvedSourceHttpFinalClamp) {
+        const rawOut = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...terminalAddressSnapshot,
+        };
+        rawOut.unnormalized_address = terminalRawCandidate;
+        rawOut.request_identifier =
+          resolvedRequestId === undefined ? null : resolvedRequestId;
+        rawOut.source_http_request = prepareSourceHttpRequest(
+          resolvedSourceHttpFinalClamp,
+        );
+        rawOut.latitude = Number.isFinite(parseCoordinate(rawOut.latitude))
+          ? parseCoordinate(rawOut.latitude)
+          : null;
+        rawOut.longitude = Number.isFinite(parseCoordinate(rawOut.longitude))
+          ? parseCoordinate(rawOut.longitude)
+          : null;
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
   }
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
