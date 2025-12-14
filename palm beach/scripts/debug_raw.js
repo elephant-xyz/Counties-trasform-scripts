@@ -21955,6 +21955,108 @@ async function main() {
 
   rewriteAddressToPreferredOneOf(addressOutputPath);
 
+  // Final reconciliation: force a single oneOf branch with the full schema surface
+  // so required fields are always present. Prefer normalized only when complete;
+  // otherwise emit a raw payload anchored by the unnormalized string.
+  const reconciledSnapshot = readJSONIfExists(addressOutputPath);
+  if (
+    reconciledSnapshot &&
+    typeof reconciledSnapshot === "object" &&
+    !Array.isArray(reconciledSnapshot)
+  ) {
+    const terminalRawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        reconciledSnapshot.unnormalized_address,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const terminalSourceHttp = resolveSourceHttpRequest(
+      reconciledSnapshot.source_http_request,
+      sourceHttpCandidate,
+      seedSource && seedSource.source_http_request,
+      unnormalizedSource && unnormalizedSource.source_http_request,
+      seed && seed.source_http_request,
+    );
+    const terminalRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        reconciledSnapshot.request_identifier,
+        resolvedRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unnormalizedSource && unnormalizedSource.request_identifier,
+      ]),
+    );
+    const terminalCounty = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        reconciledSnapshot.county_name,
+        formattedCountyName,
+        countyName,
+        unAddr && unAddr.county_jurisdiction,
+      ]),
+    );
+
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...reconciledSnapshot });
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+
+    let reconciledTerminal = null;
+    if (terminalNormalizedComplete && !terminalRawValue) {
+      reconciledTerminal = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        const candidate = Object.prototype.hasOwnProperty.call(
+          terminalNormalizedSurface,
+          field,
+        )
+          ? terminalNormalizedSurface[field]
+          : terminalSnapshot[field];
+        reconciledTerminal[field] = sanitizeAddressFieldValue(
+          field,
+          candidate,
+        );
+      });
+      if (!reconciledTerminal.postal_code) {
+        reconciledTerminal.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(reconciledTerminal.state_code) &&
+        !hasMeaningfulAddressValue(reconciledTerminal.country_code)
+      ) {
+        reconciledTerminal.country_code = "US";
+      }
+    } else if (terminalRawValue) {
+      reconciledTerminal =
+        ensureAddressOutputCoverage({
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...reconciledSnapshot,
+          unnormalized_address: terminalRawValue,
+          request_identifier:
+            terminalRequestId === undefined ? null : terminalRequestId,
+          source_http_request: terminalSourceHttp
+            ? deepClone(terminalSourceHttp)
+            : null,
+          county_name: terminalCounty || terminalSnapshot.county_name || null,
+        }) || null;
+    }
+
+    if (reconciledTerminal) {
+      writeJSON(addressOutputPath, reconciledTerminal);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
