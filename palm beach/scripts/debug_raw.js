@@ -22694,7 +22694,10 @@ async function main() {
     ) {
       normalizedOut.country_code = "US";
     }
-    writeJSON(addressOutputPath, normalizedOut);
+    originalWriteFileSync(
+      addressOutputPath,
+      `${JSON.stringify(normalizedOut, null, 2)}\n`,
+    );
   } else if (finalRawOverride) {
     const finalRequestOverride = safeNullIfEmpty(
       resolveFirstNonEmptyString([
@@ -22723,14 +22726,132 @@ async function main() {
           ? resolvedCounty
           : null,
       }) || null;
-    const surfacedRaw =
-      rawOverridePayload &&
-      (ensureAddressOutputCoverage(rawOverridePayload) ||
-        ensureRawAddressSchemaDefaults(rawOverridePayload));
-    if (surfacedRaw && typeof surfacedRaw === "object") {
-      writeJSON(addressOutputPath, surfacedRaw);
-    } else {
+
+    if (!rawOverridePayload) {
       removeFileIfExists(addressOutputPath);
+    } else {
+      const rawPayload = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      rawPayload.unnormalized_address = String(finalRawOverride).trim();
+      rawPayload.request_identifier =
+        finalRequestOverride === undefined ? null : finalRequestOverride;
+      rawPayload.source_http_request = rawOverridePayload.source_http_request;
+
+      const fieldSources = [
+        snapshotForOverride,
+        rawOverridePayload,
+        baselineAddressSnapshot,
+      ].filter(
+        (source) => source && typeof source === "object" && !Array.isArray(source),
+      );
+
+      const fieldOrder = [
+        "latitude",
+        "longitude",
+        "township",
+        "range",
+        "section",
+        "block",
+        "lot",
+        "city_name",
+        "country_code",
+        "plus_four_postal_code",
+        "postal_code",
+        "state_code",
+        "street_name",
+        "street_post_directional_text",
+        "street_pre_directional_text",
+        "street_number",
+        "street_suffix_type",
+        "unit_identifier",
+        "route_number",
+        "county_name",
+        "municipality_name",
+      ];
+
+      fieldOrder.forEach((field) => {
+        const candidates = fieldSources
+          .map((source) => source && source[field])
+          .filter((val) => val !== undefined);
+        if (field === "county_name") {
+          candidates.push(resolvedCounty);
+        }
+        const value = resolveFirstNonEmptyString(candidates);
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          rawPayload[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        rawPayload[field] = sanitizeAddressFieldValue(field, value);
+      });
+
+      // Backfill city/state/postal from the raw string when missing.
+      if (rawPayload.unnormalized_address) {
+        const parsedCityState = parseCityStatePostal(rawPayload.unnormalized_address);
+        if (!hasMeaningfulAddressValue(rawPayload.city_name) && parsedCityState.city) {
+          rawPayload.city_name = parsedCityState.city.toUpperCase();
+        }
+        if (!hasMeaningfulAddressValue(rawPayload.state_code) && parsedCityState.state) {
+          rawPayload.state_code = parsedCityState.state.toUpperCase();
+        }
+        if (!hasMeaningfulAddressValue(rawPayload.postal_code) && parsedCityState.postal) {
+          rawPayload.postal_code = parsedCityState.postal;
+        }
+        if (
+          !hasMeaningfulAddressValue(rawPayload.plus_four_postal_code) &&
+          parsedCityState.plus4
+        ) {
+          rawPayload.plus_four_postal_code = parsedCityState.plus4;
+        }
+
+        const parsedStreet = parseLocationAddress(rawPayload.unnormalized_address);
+        if (!hasMeaningfulAddressValue(rawPayload.street_number) && parsedStreet.streetNumber) {
+          rawPayload.street_number = parsedStreet.streetNumber;
+        }
+        if (!hasMeaningfulAddressValue(rawPayload.street_name) && parsedStreet.streetName) {
+          rawPayload.street_name = formatStreetNameCase(parsedStreet.streetName);
+        }
+        if (
+          !hasMeaningfulAddressValue(rawPayload.street_suffix_type) &&
+          parsedStreet.streetSuffix
+        ) {
+          rawPayload.street_suffix_type = mapStreetSuffixType(parsedStreet.streetSuffix);
+        }
+        if (
+          !hasMeaningfulAddressValue(rawPayload.street_post_directional_text) &&
+          parsedStreet.streetPostDirectional
+        ) {
+          rawPayload.street_post_directional_text =
+            parsedStreet.streetPostDirectional.toUpperCase();
+        }
+        if (
+          !hasMeaningfulAddressValue(rawPayload.street_pre_directional_text) &&
+          parsedStreet.streetPreDirectional
+        ) {
+          rawPayload.street_pre_directional_text =
+            parsedStreet.streetPreDirectional.toUpperCase();
+        }
+        if (!hasMeaningfulAddressValue(rawPayload.unit_identifier) && parsedStreet.unitIdentifier) {
+          rawPayload.unit_identifier = parsedStreet.unitIdentifier;
+        }
+        if (!hasMeaningfulAddressValue(rawPayload.route_number) && parsedStreet.routeNumber) {
+          rawPayload.route_number = parsedStreet.routeNumber;
+        }
+      }
+
+      if (!rawPayload.postal_code) {
+        rawPayload.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawPayload.state_code) &&
+        !hasMeaningfulAddressValue(rawPayload.country_code)
+      ) {
+        rawPayload.country_code = "US";
+      }
+
+      originalWriteFileSync(
+        addressOutputPath,
+        `${JSON.stringify(rawPayload, null, 2)}\n`,
+      );
     }
   } else {
     removeFileIfExists(addressOutputPath);
