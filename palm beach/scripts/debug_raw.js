@@ -868,12 +868,8 @@ function buildRawAddressMinimalSurface(sourcePayload, rawValue) {
   const trimmedRaw = safeNullIfEmpty(rawValue);
   if (!trimmedRaw) return null;
 
-  // Start from the raw oneOf template so only the raw fields are present.
   const result = {
-    ...RAW_ONE_OF_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
-    request_identifier: null,
-    source_http_request: null,
   };
 
   if (
@@ -7670,6 +7666,86 @@ function enforceRawOneOfSurface(addressPath) {
     addressPath,
     `${JSON.stringify(cleaned, null, 2)}\n`,
   );
+}
+
+function simplifyAddressOneOf(addressPath, options = {}) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+  const normalizedComplete =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      options.rawFallback,
+    ]),
+  );
+
+  if (normalizedComplete) {
+    const normalizedOut = {};
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(value);
+        value = prepared ? deepClone(prepared) : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = { unnormalized_address: rawValue };
+  const county = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.county_name,
+      options.fallbackCountyName,
+    ]),
+  );
+  if (county !== undefined) {
+    rawOut.county_name = county === undefined ? null : county;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
+    const reqId = safeNullIfEmpty(payload.request_identifier);
+    rawOut.request_identifier = reqId === undefined ? null : reqId;
+  }
+  const preparedSource = prepareSourceHttpRequest(payload.source_http_request);
+  if (preparedSource) {
+    rawOut.source_http_request = deepClone(preparedSource);
+  }
+  writeJSON(addressPath, rawOut);
 }
 
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
@@ -22344,6 +22420,11 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  simplifyAddressOneOf(addressOutputPath, {
+    rawFallback: terminalRawResolved || finalRawCandidateClamp,
+    fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
+  });
+
   // Relationships are auto-populated downstream; keep placeholders null so we
   // don't emit invalid UR stubs.
   [
@@ -22356,6 +22437,11 @@ async function main() {
     path.join(relationshipsDir, "address_has_fact_sheet.json"),
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
   ].forEach(writeNullRelationshipFile);
+
+  simplifyAddressOneOf(addressOutputPath, {
+    rawFallback: finalRawCandidateClamp || terminalRawResolved,
+    fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
+  });
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
