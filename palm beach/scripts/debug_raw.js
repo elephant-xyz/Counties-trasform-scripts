@@ -868,21 +868,13 @@ function buildRawAddressMinimalSurface(sourcePayload, rawValue) {
   const trimmedRaw = safeNullIfEmpty(rawValue);
   if (!trimmedRaw) return null;
 
-  // Start from the full raw oneOf template so every schema field is present
-  // (nullable) and we satisfy required property presence on the raw branch.
+  // Start from the raw oneOf template so only the raw fields are present.
   const result = {
     ...RAW_ONE_OF_SCHEMA_TEMPLATE,
     unnormalized_address: trimmedRaw,
     request_identifier: null,
     source_http_request: null,
   };
-
-  const lat = parseCoordinate(sourcePayload && sourcePayload.latitude);
-  const lon = parseCoordinate(sourcePayload && sourcePayload.longitude);
-  if (Number.isFinite(lat) && Number.isFinite(lon)) {
-    result.latitude = lat;
-    result.longitude = lon;
-  }
 
   if (
     sourcePayload &&
@@ -7616,17 +7608,21 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch aligned with the schema's raw oneOf surface by
-// explicitly carrying every address field (defaulting to null) alongside the
-// unnormalized string. This avoids validation errors for missing properties on
-// the raw variant.
-const RAW_ONE_OF_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
+// Keep the raw branch lean: only include the raw string plus standard request
+// metadata so we don't leak normalized fields that force the normalized oneOf
+// schema (which then expects required street/geo fields).
+const RAW_ONE_OF_ALLOWED_FIELDS = [
+  "unnormalized_address",
+  "request_identifier",
+  "source_http_request",
+  "county_name",
+];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...ADDRESS_SCHEMA_FIELDS]),
+  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
 );
 
 // Keep raw (unnormalized) address payloads limited to the oneOf surface so we
