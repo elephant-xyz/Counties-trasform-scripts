@@ -22157,6 +22157,104 @@ async function main() {
     }
   }
 
+  // Final safety clamp: prefer the raw oneOf branch when any unnormalized value
+  // exists; only emit the normalized branch when every required field is
+  // present. Drop partial normalized payloads that would fail validation.
+  const finalSnapshot = readJSONIfExists(addressOutputPath);
+  const finalRawCandidateClamp = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      finalSnapshot && finalSnapshot.unnormalized_address,
+      ...(finalUnnormalizedCandidates || []),
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ]),
+  );
+
+  const finalNormalizedSurfaceClamp =
+    finalSnapshot &&
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...finalSnapshot });
+  const finalNormalizedCompleteClamp =
+    finalNormalizedSurfaceClamp &&
+    hasCompleteNormalizedAddress({ ...finalNormalizedSurfaceClamp });
+
+  if (finalRawCandidateClamp) {
+    const preparedFinalSource = resolveSourceHttpRequest(
+      finalSnapshot && finalSnapshot.source_http_request,
+      finalSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    );
+    const finalRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        finalSnapshot && finalSnapshot.request_identifier,
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+      ]),
+    );
+    const rawOut =
+      sanitizeRawOneOfPayload(finalSnapshot || {}, {
+        unnormalized_address: finalRawCandidateClamp,
+        request_identifier: finalRequestId === undefined ? null : finalRequestId,
+        source_http_request: preparedFinalSource
+          ? deepClone(preparedFinalSource)
+          : null,
+        county_name:
+          (finalSnapshot && finalSnapshot.county_name) ||
+          formattedCountyName ||
+          countyName ||
+          (unAddr && unAddr.county_jurisdiction) ||
+          null,
+      }) || null;
+    if (rawOut) {
+      writeJSON(
+        addressOutputPath,
+        ensureAddressOutputCoverage(rawOut) || rawOut,
+      );
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  } else if (finalNormalizedCompleteClamp) {
+    const normalizedOut =
+      ensureAddressOutputCoverage({ ...finalNormalizedSurfaceClamp }) || null;
+    if (normalizedOut) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
+  // Relationships are auto-populated downstream; keep placeholders null so we
+  // don't emit invalid UR stubs.
+  [
+    path.join(dataDir, "property_has_address.json"),
+    path.join(dataDir, "relationship_property_has_address.json"),
+    path.join(relationshipsDir, "property_has_address.json"),
+    path.join(relationshipsDir, "relationship_property_has_address.json"),
+    path.join(dataDir, "address_has_fact_sheet.json"),
+    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
+  ].forEach(writeNullRelationshipFile);
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
