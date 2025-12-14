@@ -7769,7 +7769,7 @@ function clampAddressToSingleBranch(addressPath, options = {}) {
     normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
 
   let nextPayload = null;
-  if (normalizedComplete && !rawValue) {
+  if (normalizedComplete) {
     nextPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       let value = normalizedSurface[field];
@@ -16920,7 +16920,7 @@ function enforceTerminalAddressBranch(addressPath) {
   const rawValue = safeNullIfEmpty(payload.unnormalized_address);
 
   let nextPayload = null;
-  if (normalizedComplete && (!rawValue || rawValue === null)) {
+  if (normalizedComplete) {
     nextPayload = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       nextPayload[field] = sanitizeField(
@@ -17341,7 +17341,7 @@ function enforceRawPreferredAddressOneOf(addressPath) {
   const normalizedComplete =
     normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
 
-  if (normalizedComplete && !rawValue) {
+  if (normalizedComplete) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       let value = normalizedSurface[field];
@@ -17441,7 +17441,7 @@ function lockFinalAddressBranch(addressPath) {
   const normalizedComplete =
     normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
 
-  if (normalizedComplete && !rawValue) {
+  if (normalizedComplete) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       let value = normalizedSurface[field];
@@ -21574,7 +21574,7 @@ async function main() {
     ]),
   );
 
-  if (normalizedFinalComplete && !preferRawOutput && !finalRawCandidate) {
+  if (normalizedFinalComplete && !preferRawOutput) {
     const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
     NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
       normalizedOut[field] = sanitizeAddressFieldValue(
@@ -22118,7 +22118,7 @@ async function main() {
       hasCompleteNormalizedAddress({ ...normalizedSurface });
     const rawString = safeNullIfEmpty(terminalSchemaCandidate.unnormalized_address);
 
-    if (normalizedComplete && !rawString) {
+    if (normalizedComplete) {
       const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
         let value = normalizedSurface[field];
@@ -22953,10 +22953,8 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
-  // Final oneOf clamp: if we have a raw string, emit the full raw surface so
-  // every required field is present (nullable) and avoid mixed-branch payloads.
-  // Only emit a normalized branch when it is fully complete and no raw value
-  // is available.
+  // Final oneOf clamp: prefer a complete normalized surface; otherwise emit the
+  // raw branch with the full schema surface so required fields are always present.
   const finalSnapshotOneOf = readJSONIfExists(addressOutputPath) || {};
   const finalRawResolved = safeNullIfEmpty(
     resolveFirstNonEmptyString([
@@ -22981,7 +22979,7 @@ async function main() {
     hasCompleteNormalizedAddress({ ...finalNormalizedCandidate });
 
   let finalOneOfPayload = null;
-  if (finalNormalizedReady && !finalRawResolved) {
+  if (finalNormalizedReady) {
     finalOneOfPayload =
       ensureAddressOutputCoverage({ ...finalNormalizedCandidate }) || null;
     if (
