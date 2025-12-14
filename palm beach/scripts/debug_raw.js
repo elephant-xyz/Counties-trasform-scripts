@@ -181,71 +181,31 @@ function collapseAddressToMinimalRaw(addressPath) {
   }
 
   const trimmedRaw = rawValue.trim();
-  const RAW_MINIMAL_FIELDS = [
-    "county_name",
-    "country_code",
-    "state_code",
-    "postal_code",
-    "plus_four_postal_code",
-    "city_name",
-    "municipality_name",
-    "section",
-    "township",
-    "range",
-    "block",
-    "lot",
-    "route_number",
-    "street_number",
-    "street_name",
-    "street_pre_directional_text",
-    "street_post_directional_text",
-    "street_suffix_type",
-    "unit_identifier",
-  ];
+  const hydrated = {
+    ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+    ...payload,
+    unnormalized_address: trimmedRaw,
+  };
 
-  const minimal = { unnormalized_address: trimmedRaw };
+  const minimal =
+    ensureAddressOutputCoverage(hydrated) ||
+    enforceAddressSchemaSurfaceForOutput(hydrated) ||
+    null;
 
-  // Preserve request and source metadata even when we collapse to the raw branch.
-  if (Object.prototype.hasOwnProperty.call(payload, "request_identifier")) {
-    minimal.request_identifier = safeNullIfEmpty(payload.request_identifier);
+  if (!minimal) {
+    removeFileIfExists(addressPath);
+    return;
   }
-  if (Object.prototype.hasOwnProperty.call(payload, "source_http_request")) {
-    const prepared = prepareSourceHttpRequest(payload.source_http_request);
-    minimal.source_http_request = prepared ? deepClone(prepared) : null;
-  }
-
-  RAW_MINIMAL_FIELDS.forEach((field) => {
-    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
-      return;
-    }
-    let value = payload[field];
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(value);
-      if (Number.isFinite(numeric)) {
-        minimal[field] = numeric;
-      }
-      return;
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.length) {
-        minimal[field] = trimmed;
-      }
-      return;
-    }
-    if (value !== undefined && value !== null) {
-      minimal[field] = value;
-    }
-  });
 
   if (minimal.state_code && !minimal.country_code) {
     minimal.country_code = "US";
   }
-  if (
-    Object.prototype.hasOwnProperty.call(minimal, "plus_four_postal_code") &&
-    !minimal.postal_code
-  ) {
+  if (!minimal.postal_code) {
     minimal.plus_four_postal_code = null;
+  }
+  if ((minimal.latitude == null) !== (minimal.longitude == null)) {
+    minimal.latitude = null;
+    minimal.longitude = null;
   }
 
   originalWriteFileSync.call(
