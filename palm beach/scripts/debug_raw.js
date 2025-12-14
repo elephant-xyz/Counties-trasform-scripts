@@ -22953,6 +22953,73 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  // Final oneOf clamp: if we have a raw string, emit the full raw surface so
+  // every required field is present (nullable) and avoid mixed-branch payloads.
+  // Only emit a normalized branch when it is fully complete and no raw value
+  // is available.
+  const finalSnapshotOneOf = readJSONIfExists(addressOutputPath) || {};
+  const finalRawResolved = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      finalSnapshotOneOf.unnormalized_address,
+      finalRawCandidateClamp,
+      ...(finalUnnormalizedCandidates || []),
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ]),
+  );
+  const finalNormalizedCandidate =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...finalSnapshotOneOf });
+  const finalNormalizedReady =
+    finalNormalizedCandidate &&
+    hasCompleteNormalizedAddress({ ...finalNormalizedCandidate });
+
+  let finalOneOfPayload = null;
+  if (finalNormalizedReady && !finalRawResolved) {
+    finalOneOfPayload =
+      ensureAddressOutputCoverage({ ...finalNormalizedCandidate }) || null;
+    if (
+      finalOneOfPayload &&
+      Object.prototype.hasOwnProperty.call(finalOneOfPayload, "unnormalized_address")
+    ) {
+      delete finalOneOfPayload.unnormalized_address;
+    }
+  } else if (finalRawResolved) {
+    const rawSource = {
+      ...finalNormalizedCandidate,
+      ...finalSnapshotOneOf,
+      county_name:
+        (finalSnapshotOneOf && finalSnapshotOneOf.county_name) ||
+        formattedCountyName ||
+        countyName ||
+        (unAddr && unAddr.county_jurisdiction) ||
+        null,
+    };
+    finalOneOfPayload =
+      buildRawAddressMinimalSurface(rawSource, finalRawResolved) || null;
+  }
+
+  if (finalOneOfPayload) {
+    writeJSON(addressOutputPath, finalOneOfPayload);
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
+  // Re-assert null placeholders so downstream can populate URIs without local stubs.
+  relationshipTargets.forEach(writeNullRelationshipFile);
+  [
+    path.join(dataDir, "address_has_fact_sheet.json"),
+    path.join(dataDir, "relationship_address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "address_has_fact_sheet.json"),
+    path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
+  ].forEach(writeNullRelationshipFile);
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
