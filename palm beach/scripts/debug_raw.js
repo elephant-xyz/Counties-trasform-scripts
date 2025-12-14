@@ -22511,6 +22511,98 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  // Force a final oneOf choice: prefer the raw branch whenever any unnormalized
+  // string is available; only emit the normalized branch when it is fully
+  // populated and no raw candidate exists. This avoids partial normalized
+  // payloads that trigger missing-required-field errors.
+  const finalOneOfSnapshot = readJSONIfExists(addressOutputPath) || {};
+  const finalRawPreferred = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      finalOneOfSnapshot.unnormalized_address,
+      terminalRawResolved,
+      finalRawCandidateClamp,
+      ...(finalUnnormalizedCandidates || []),
+      unnormalizedAddressCandidate,
+      combinedModelAddress,
+      siteLocationLine,
+      addressLineCombined,
+      fullAddr,
+      fullAddrInput,
+      unAddr && unAddr.full_address,
+      unAddr && unAddr.unnormalized_address,
+    ]),
+  );
+  const finalNormalizedSurfacePreferred =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...finalOneOfSnapshot });
+  const finalNormalizedCompletePreferred =
+    finalNormalizedSurfacePreferred &&
+    hasCompleteNormalizedAddress({ ...finalNormalizedSurfacePreferred });
+
+  if (finalRawPreferred) {
+    const finalRequestIdPreferred = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        finalOneOfSnapshot.request_identifier,
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ]),
+    );
+    const finalSourceHttpPreferred = resolveSourceHttpRequest(
+      finalOneOfSnapshot.source_http_request,
+      finalSourceHttp,
+      resolvedSourceHttp,
+      unnormalizedSourceFinal && unnormalizedSourceFinal.source_http_request,
+      seedSourceFinal && seedSourceFinal.source_http_request,
+      sourceHttpCandidate,
+    );
+    const rawPayload =
+      sanitizeRawOneOfPayload(finalOneOfSnapshot, {
+        unnormalized_address: finalRawPreferred,
+        request_identifier:
+          finalRequestIdPreferred === undefined ? null : finalRequestIdPreferred,
+        source_http_request: finalSourceHttpPreferred
+          ? deepClone(finalSourceHttpPreferred)
+          : null,
+        county_name:
+          finalOneOfSnapshot.county_name ||
+          formattedCountyName ||
+          countyName ||
+          null,
+      }) || null;
+
+    if (rawPayload) {
+      writeJSON(
+        addressOutputPath,
+        ensureAddressOutputCoverage(rawPayload) || rawPayload,
+      );
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  } else if (finalNormalizedCompletePreferred) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      normalizedOut[field] = sanitizeAddressFieldValue(
+        field,
+        finalNormalizedSurfacePreferred[field],
+      );
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressOutputPath, normalizedOut);
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
   simplifyAddressOneOf(addressOutputPath, {
     rawFallback: terminalRawResolved || finalRawCandidateClamp,
     fallbackCountyName: formattedCountyName || countyName || "Palm Beach",
