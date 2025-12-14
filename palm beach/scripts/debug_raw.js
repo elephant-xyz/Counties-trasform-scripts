@@ -868,16 +868,17 @@ function buildRawAddressMinimalSurface(sourcePayload, rawValue) {
   const trimmedRaw = safeNullIfEmpty(rawValue);
   if (!trimmedRaw) return null;
 
-  const result = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: trimmedRaw };
+  const result = {
+    unnormalized_address: trimmedRaw,
+    request_identifier: null,
+    source_http_request: null,
+  };
 
   const lat = parseCoordinate(sourcePayload && sourcePayload.latitude);
   const lon = parseCoordinate(sourcePayload && sourcePayload.longitude);
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
     result.latitude = lat;
     result.longitude = lon;
-  } else {
-    result.latitude = null;
-    result.longitude = null;
   }
 
   if (
@@ -22029,25 +22030,26 @@ async function main() {
       if (!reconciledTerminal.postal_code) {
         reconciledTerminal.plus_four_postal_code = null;
       }
-      if (
-        hasMeaningfulAddressValue(reconciledTerminal.state_code) &&
-        !hasMeaningfulAddressValue(reconciledTerminal.country_code)
-      ) {
-        reconciledTerminal.country_code = "US";
-      }
+    if (
+      hasMeaningfulAddressValue(reconciledTerminal.state_code) &&
+      !hasMeaningfulAddressValue(reconciledTerminal.country_code)
+    ) {
+      reconciledTerminal.country_code = "US";
+    }
     } else if (terminalRawValue) {
-      reconciledTerminal =
-        ensureAddressOutputCoverage({
-          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-          ...reconciledSnapshot,
-          unnormalized_address: terminalRawValue,
-          request_identifier:
-            terminalRequestId === undefined ? null : terminalRequestId,
-          source_http_request: terminalSourceHttp
-            ? deepClone(terminalSourceHttp)
-            : null,
-          county_name: terminalCounty || terminalSnapshot.county_name || null,
-        }) || null;
+      const preparedSource =
+        terminalSourceHttp && prepareSourceHttpRequest
+          ? prepareSourceHttpRequest(terminalSourceHttp)
+          : terminalSourceHttp;
+      const rawOutput = {
+        unnormalized_address: terminalRawValue,
+        request_identifier: terminalRequestId === undefined ? null : terminalRequestId,
+        source_http_request: preparedSource ? deepClone(preparedSource) : null,
+      };
+      if (hasMeaningfulAddressValue(terminalCounty)) {
+        rawOutput.county_name = terminalCounty;
+      }
+      reconciledTerminal = rawOutput;
     }
 
     if (reconciledTerminal) {
