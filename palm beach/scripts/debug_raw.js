@@ -22710,23 +22710,28 @@ async function main() {
       seed && seed.source_http_request,
       unAddr && unAddr.source_http_request,
     );
-    const minimalRaw = {
-      unnormalized_address: finalRawOverride,
-      request_identifier:
-        finalRequestOverride === undefined ? null : finalRequestOverride,
-      source_http_request: finalSourceOverride
-        ? prepareSourceHttpRequest(finalSourceOverride)
-        : null,
-    };
     const resolvedCounty = formattedCountyName || countyName || null;
-    if (hasMeaningfulAddressValue(resolvedCounty)) {
-      minimalRaw.county_name = resolvedCounty;
+    const rawOverridePayload =
+      sanitizeRawOneOfPayload(snapshotForOverride || {}, {
+        unnormalized_address: finalRawOverride,
+        request_identifier:
+          finalRequestOverride === undefined ? null : finalRequestOverride,
+        source_http_request: finalSourceOverride
+          ? prepareSourceHttpRequest(finalSourceOverride)
+          : null,
+        county_name: hasMeaningfulAddressValue(resolvedCounty)
+          ? resolvedCounty
+          : null,
+      }) || null;
+    const surfacedRaw =
+      rawOverridePayload &&
+      (ensureAddressOutputCoverage(rawOverridePayload) ||
+        ensureRawAddressSchemaDefaults(rawOverridePayload));
+    if (surfacedRaw && typeof surfacedRaw === "object") {
+      writeJSON(addressOutputPath, surfacedRaw);
+    } else {
+      removeFileIfExists(addressOutputPath);
     }
-    originalWriteFileSync.call(
-      fs,
-      addressOutputPath,
-      `${JSON.stringify(minimalRaw, null, 2)}\n`,
-    );
   } else {
     removeFileIfExists(addressOutputPath);
   }
