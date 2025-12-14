@@ -868,15 +868,16 @@ function buildRawAddressMinimalSurface(sourcePayload, rawValue) {
   const trimmedRaw = safeNullIfEmpty(rawValue);
   if (!trimmedRaw) return null;
 
-  const result = {
-    unnormalized_address: trimmedRaw,
-  };
+  const result = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, unnormalized_address: trimmedRaw };
 
   const lat = parseCoordinate(sourcePayload && sourcePayload.latitude);
   const lon = parseCoordinate(sourcePayload && sourcePayload.longitude);
   if (Number.isFinite(lat) && Number.isFinite(lon)) {
     result.latitude = lat;
     result.longitude = lon;
+  } else {
+    result.latitude = null;
+    result.longitude = null;
   }
 
   if (
@@ -7690,17 +7691,6 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
 
 const ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS = Object.freeze([
   ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
-  "plus_four_postal_code",
-  "street_post_directional_text",
-  "street_pre_directional_text",
-  "street_suffix_type",
-  "unit_identifier",
-  "route_number",
-  "township",
-  "range",
-  "section",
-  "block",
-  ...NORMALIZED_ADDRESS_COORDINATE_FIELDS,
 ]);
 
 // Fields that may accompany the raw (unnormalized) address payload.
@@ -8377,6 +8367,15 @@ function hasNormalizedCountyCoverage(address) {
   }
 
   for (const coord of NORMALIZED_ADDRESS_COORDINATE_FIELDS) {
+    if (
+      address[coord] === undefined ||
+      address[coord] === null ||
+      address[coord] === ""
+    ) {
+      address[coord] = null;
+      continue;
+    }
+
     const numeric = parseCoordinate(address[coord]);
     if (!Number.isFinite(numeric)) {
       return false;
