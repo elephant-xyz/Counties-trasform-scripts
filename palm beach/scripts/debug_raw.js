@@ -23163,6 +23163,76 @@ async function main() {
     path.join(relationshipsDir, "relationship_address_has_fact_sheet.json"),
   ].forEach(writeNullRelationshipFile);
 
+  // Normalize the final address output to a single valid oneOf branch:
+  // - if we have a complete normalized surface, emit only that surface and drop
+  //   the raw string
+  // - otherwise, keep the raw branch with the full nullable schema surface so
+  //   required fields are present (even when values are unknown).
+  const finalAddressCanonical = readJSONIfExists(addressOutputPath);
+  if (
+    finalAddressCanonical &&
+    typeof finalAddressCanonical === "object" &&
+    !Array.isArray(finalAddressCanonical)
+  ) {
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...finalAddressCanonical });
+    const normalizedComplete =
+      normalizedSurface &&
+      hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+    if (normalizedComplete) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        let value = normalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        normalizedOut[field] = value;
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else if (
+      hasMeaningfulAddressValue(finalAddressCanonical.unnormalized_address)
+    ) {
+      const rawOut =
+        ensureAddressOutputCoverage({
+          ...finalAddressCanonical,
+          unnormalized_address:
+            finalAddressCanonical.unnormalized_address.trim(),
+        }) || null;
+      if (rawOut) {
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
