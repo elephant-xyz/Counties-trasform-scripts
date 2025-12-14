@@ -11763,6 +11763,95 @@ function ensureAddressOutputCoverage(address) {
   return result;
 }
 
+// Finalize an address file to the simplest valid oneOf branch. Prefer the
+// normalized surface when complete; otherwise emit a raw payload with every
+// allowed field present (nullable) anchored by the unnormalized string.
+function finalizeAddressOneOfSimplified(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) {
+    return;
+  }
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : { ...payload };
+  const normalizedComplete =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.unnormalized_address,
+      payload.full_address,
+      payload.site_address,
+      payload.address,
+    ]),
+  );
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut =
+    ensureAddressOutputCoverage({
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...normalizedSurface,
+      ...payload,
+      unnormalized_address: rawValue,
+    }) || null;
+  if (rawOut) {
+    if (!rawOut.postal_code) {
+      rawOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(rawOut.state_code) &&
+      !hasMeaningfulAddressValue(rawOut.country_code)
+    ) {
+      rawOut.country_code = "US";
+    }
+    if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+      rawOut.latitude = null;
+      rawOut.longitude = null;
+    }
+    writeJSON(addressPath, rawOut);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+}
+
 function enforceAddressOneOfBranch(addressPath) {
   if (!addressPath || !fs.existsSync(addressPath)) return;
   const payload = readJSONIfExists(addressPath);
@@ -21582,6 +21671,10 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
   }
+
+  // Collapse to a single, schema-compliant branch to avoid missing required
+  // normalized fields when only an unnormalized string is available.
+  finalizeAddressOneOfSimplified(addressOutputPath);
 
   // Ensure downstream systems populate URIs; keep local relationship files null.
   [dataDir, relationshipsDir, relationshipsRoot].forEach((dirPath) => {
