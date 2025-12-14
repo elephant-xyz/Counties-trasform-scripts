@@ -7705,11 +7705,20 @@ function buildMinimalRawAddressPayload(options = {}) {
     ...(options.sourceHttpRequestCandidates || []),
   );
 
-  return {
+  const minimalPayload = {
     unnormalized_address: rawValue,
     request_identifier: requestId === undefined ? null : requestId,
     source_http_request: sourceHttp ? deepClone(sourceHttp) : null,
   };
+
+  // Expand to the full raw address surface so required fields are present
+  // (nullable) for the raw oneOf branch.
+  return (
+    ensureAddressOutputCoverage(minimalPayload) || {
+      ...RAW_ONE_OF_SCHEMA_TEMPLATE,
+      ...minimalPayload,
+    }
+  );
 }
 
 function buildLeanRawAddressPayload(rawValue, options = {}) {
