@@ -1004,6 +1004,68 @@ function buildRawAddressMinimalSurface(sourcePayload, rawValue) {
   return result;
 }
 
+// Ensure the final address.json cleanly selects a single oneOf branch:
+// - emit a normalized payload only when all normalized fields are covered
+// - otherwise fall back to the raw branch populated with the full schema surface
+function finalizeAddressOneOfOutput(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...snapshot });
+  const normalizedComplete =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(value);
+        value = prepared ? deepClone(prepared) : null;
+      } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = buildRawAddressMinimalSurface(snapshot, rawValue);
+  if (rawOut) {
+    writeJSON(addressPath, rawOut);
+  } else {
+    removeFileIfExists(addressPath);
+  }
+}
+
 function sanitizeAddressPayloadForWrite(payload) {
   if (!payload || typeof payload !== "object") {
     return payload;
@@ -23591,6 +23653,7 @@ async function main() {
     }
   }
 
+  finalizeAddressOneOfOutput(addressOutputPath);
   nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
 
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
