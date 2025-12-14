@@ -7608,15 +7608,12 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Keep the raw branch lean: only include the raw string plus standard request
-// metadata so we don't leak normalized fields that force the normalized oneOf
-// schema (which then expects required street/geo fields).
-const RAW_ONE_OF_ALLOWED_FIELDS = [
-  "unnormalized_address",
-  "request_identifier",
-  "source_http_request",
-  "county_name",
-];
+// Align the raw branch with the full address schema surface so the oneOf raw
+// option still carries every nullable field (latitude/longitude, street
+// components, etc.) alongside the unnormalized string. This prevents
+// validation errors complaining about missing required fields when only a raw
+// address is available.
+const RAW_ONE_OF_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
