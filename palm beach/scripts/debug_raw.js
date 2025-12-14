@@ -22058,6 +22058,105 @@ async function main() {
     }
   }
 
+  // Final guard: if we have any unnormalized string, emit the lean raw branch
+  // limited to the raw schema surface; only fall back to normalized when fully
+  // populated and no raw value is available.
+  const terminalOneOfSnapshot = readJSONIfExists(addressOutputPath);
+  if (
+    terminalOneOfSnapshot &&
+    typeof terminalOneOfSnapshot === "object" &&
+    !Array.isArray(terminalOneOfSnapshot)
+  ) {
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalOneOfSnapshot });
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+    const terminalRawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalOneOfSnapshot.unnormalized_address,
+        ...finalUnnormalizedCandidates,
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+      ]),
+    );
+    const terminalRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalOneOfSnapshot.request_identifier,
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+      ]),
+    );
+    const terminalSourceHttp = resolveSourceHttpRequest(
+      terminalOneOfSnapshot.source_http_request,
+      finalSourceHttp,
+      sourceHttpCandidate,
+      seedSource && seedSource.source_http_request,
+      seed && seed.source_http_request,
+    );
+
+    let terminalOutput = null;
+    if (terminalNormalizedComplete && !terminalRawValue) {
+      terminalOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        let value = terminalNormalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        terminalOutput[field] = value;
+      });
+      if (!terminalOutput.postal_code) {
+        terminalOutput.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(terminalOutput.state_code) &&
+        !hasMeaningfulAddressValue(terminalOutput.country_code)
+      ) {
+        terminalOutput.country_code = "US";
+      }
+    } else if (terminalRawValue) {
+      const rawOut =
+        sanitizeRawOneOfPayload(
+          terminalSnapshotFinal,
+          {
+            unnormalized_address: terminalRawValue,
+            request_identifier:
+              terminalRequestId === undefined ? null : terminalRequestId,
+            source_http_request: terminalSourceHttp
+              ? deepClone(terminalSourceHttp)
+              : null,
+            county_name:
+              terminalOneOfSnapshot.county_name ||
+              formattedCountyName ||
+              countyName ||
+              null,
+          },
+        ) || null;
+      if (rawOut) {
+        terminalOutput = ensureAddressOutputCoverage(rawOut) || rawOut;
+      }
+    }
+
+    if (terminalOutput) {
+      writeJSON(addressOutputPath, terminalOutput);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+  }
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
