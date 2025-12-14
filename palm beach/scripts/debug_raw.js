@@ -23009,6 +23009,36 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  // If we still have an unnormalized string but the normalized branch is
+  // incomplete, force the raw oneOf surface so required fields are present as
+  // nullable values and the schema selects a single branch cleanly.
+  const finalAddressChoice = readJSONIfExists(addressOutputPath);
+  if (
+    finalAddressChoice &&
+    typeof finalAddressChoice === "object" &&
+    !Array.isArray(finalAddressChoice)
+  ) {
+    const rawString = safeNullIfEmpty(finalAddressChoice.unnormalized_address);
+    const normalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...finalAddressChoice });
+    const normalizedComplete =
+      normalizedSurface &&
+      hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+    if (rawString && !normalizedComplete) {
+      const rawOut = buildRawAddressMinimalSurface(
+        finalAddressChoice,
+        rawString,
+      );
+      if (rawOut) {
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+  }
+
   // Re-assert null placeholders so downstream can populate URIs without local stubs.
   relationshipTargets.forEach(writeNullRelationshipFile);
   [
