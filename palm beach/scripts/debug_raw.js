@@ -21820,6 +21820,43 @@ async function main() {
   coerceAddressToPreferredBranch(addressOutputPath);
   enforceMinimalAddressBranch(addressOutputPath);
 
+  // Pin the final address to the raw oneOf branch when normalized coverage is
+  // incomplete so we don't emit partial normalized payloads that miss required
+  // fields.
+  const terminalRawAddressSnapshot = readJSONIfExists(addressOutputPath);
+  if (
+    terminalRawAddressSnapshot &&
+    typeof terminalRawAddressSnapshot === "object" &&
+    !Array.isArray(terminalRawAddressSnapshot)
+  ) {
+    const terminalRawString = safeNullIfEmpty(
+      terminalRawAddressSnapshot.unnormalized_address,
+    );
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalRawAddressSnapshot });
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+
+    if (terminalRawString && !terminalNormalizedComplete) {
+      const cleanedRawPayload =
+        sanitizeRawOneOfPayload(terminalRawAddressSnapshot, {
+          unnormalized_address: terminalRawString,
+        }) || null;
+      if (cleanedRawPayload) {
+        const expandedRawPayload =
+          ensureAddressOutputCoverage(cleanedRawPayload) || {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...cleanedRawPayload,
+          };
+        writeJSON(addressOutputPath, expandedRawPayload);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+  }
+
   // Emit property→address relationships using relative refs; downstream will populate URIs.
   const relationshipTargets = [
     path.join(dataDir, "property_has_address.json"),
@@ -21827,13 +21864,7 @@ async function main() {
     path.join(relationshipsDir, "property_has_address.json"),
     path.join(relationshipsDir, "relationship_property_has_address.json"),
   ];
-  if (fs.existsSync(propertyFilePath) && fs.existsSync(addressOutputPath)) {
-    relationshipTargets.forEach((targetPath) =>
-      writeRelationshipFile(targetPath, propertyFileRelative, addressFileRelative),
-    );
-  } else {
-    relationshipTargets.forEach(removeFileIfExists);
-  }
+  relationshipTargets.forEach(removeFileIfExists);
   // Explicitly drop address→fact_sheet placeholders when no fact_sheet payload exists.
   [
     path.join(dataDir, "address_has_fact_sheet.json"),
