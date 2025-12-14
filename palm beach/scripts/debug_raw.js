@@ -1116,19 +1116,10 @@ function writeJSON(p, obj) {
     typeof obj === "object"
   ) {
     payload = sanitizeAddressPayloadForWrite(obj);
-    const shouldEnforceSurface =
-      payload &&
-      typeof payload === "object" &&
-      !(
-        Object.prototype.hasOwnProperty.call(payload, "unnormalized_address") &&
-        !hasNormalizedCountyCoverage(payload)
-      );
-    if (shouldEnforceSurface) {
     const completed = ensureAddressOutputFieldPresence(payload) || payload;
     if (completed && typeof completed === "object") {
       payload = completed;
     }
-  }
   }
   fs.writeFileSync(p, JSON.stringify(payload, null, 2));
 }
@@ -23300,19 +23291,21 @@ async function main() {
         safeNullIfEmpty(preferredRaw) || safeNullIfEmpty(finalRawOverride);
 
       if (rawSurface) {
-        const minimalRaw = {
-          unnormalized_address: rawSurface.trim(),
-          request_identifier:
-            preferredRequestId === undefined ? null : preferredRequestId,
-          source_http_request: preferredSource
-            ? deepClone(preferredSource)
-            : null,
-        };
-        originalWriteFileSync.call(
-          fs,
-          addressOutputPath,
-          `${JSON.stringify(minimalRaw, null, 2)}\n`,
-        );
+        const minimalRaw =
+          ensureAddressOutputCoverage({
+            unnormalized_address: rawSurface.trim(),
+            request_identifier:
+              preferredRequestId === undefined ? null : preferredRequestId,
+            source_http_request: preferredSource
+              ? deepClone(preferredSource)
+              : null,
+            county_name: preferredCounty || null,
+          }) || null;
+        if (minimalRaw) {
+          writeJSON(addressOutputPath, minimalRaw);
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
       } else {
         removeFileIfExists(addressOutputPath);
       }
