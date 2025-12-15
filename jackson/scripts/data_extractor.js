@@ -1480,10 +1480,28 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   veteran_status: null,
   }));
   const validPeople = validateAndFilterPeople(people);
+
+  // Build a map from person key (FIRSTNAME|LASTNAME) to person index
+  // This ensures we can find the person index reliably when creating relationships
+  const personKeyToIndex = new Map();
+  validPeople.forEach((p, idx) => {
+    if (p.first_name && p.last_name) {
+      const key = `${p.first_name.trim().toUpperCase()}|${p.last_name.trim().toUpperCase()}`;
+      personKeyToIndex.set(key, idx + 1);
+    }
+  });
+
+  // Helper function to get person index by first and last name using the map
+  const getPersonIndexByKey = (firstName, lastName) => {
+    if (!firstName || !lastName) return null;
+    const key = `${firstName.trim().toUpperCase()}|${lastName.trim().toUpperCase()}`;
+    return personKeyToIndex.get(key) || null;
+  };
+
   validPeople.forEach((p, idx) => {
     writeJSON(path.join("data", `person_${idx + 1}.json`), p);
   });
-  // Update people to be validPeople so findPersonIndexByName searches the correct array
+  // Update people to be validPeople for backward compatibility
   people = validPeople;
 
   // Track which companies will be used in relationships
@@ -1534,7 +1552,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     ownersOnDate
       .filter((o) => o.type === "person")
       .forEach((o) => {
-        const pIdx = findPersonIndexByName(o.first_name, o.last_name);
+        const pIdx = getPersonIndexByKey(o.first_name, o.last_name);
         if (pIdx) {
           usedPersonIdx.add(pIdx);
           writeJSON(
@@ -1547,6 +1565,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
               to: { "/": `./person_${pIdx}.json` },
             },
           );
+        } else {
+          console.warn(`Warning: Could not find person index for: ${o.first_name} ${o.last_name}`);
         }
       });
     ownersOnDate
@@ -1577,7 +1597,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
     let mailingRelCounter = 0;
     currentOwners.forEach((owner) => {
       if (owner.type === "person") {
-        const pIdx = findPersonIndexByName(owner.first_name, owner.last_name);
+        const pIdx = getPersonIndexByKey(owner.first_name, owner.last_name);
         if (pIdx) {
           usedPersonIdx.add(pIdx);
           mailingRelCounter++;
@@ -1588,6 +1608,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
               to: { "/": "./mailing_address.json" },
             }
           );
+        } else {
+          console.warn(`Warning: Could not find person index for mailing address: ${owner.first_name} ${owner.last_name}`);
         }
       } else if (owner.type === "company") {
         const cIdx = findCompanyIndexByName(owner.name);
