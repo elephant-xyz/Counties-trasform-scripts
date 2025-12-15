@@ -2416,8 +2416,9 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
   removeMatchingDataFiles(/^layout_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_has_layout_\d+\.json$/);
   removeMatchingDataFiles(/^relationship_layout_\d+_layout_\d+\.json$/);
+  removeMatchingDataFiles(/^relationship_property_layout_\d+\.json$/);
 
-  if (propertyType === "LandParcel" || buildingEntries.length === 0) {
+  if (buildingEntries.length === 0) {
     return { buildingLayouts: [] };
   }
 
@@ -2585,6 +2586,11 @@ function writeLayout(parcelId, propertySeed, unnormalized) {
         }
       });
     }
+  });
+
+  // Create relationships from property to building layouts
+  buildingLayouts.forEach((layout) => {
+    writeRelationship("property.json", layout.layout_file);
   });
 
   return { buildingLayouts };
