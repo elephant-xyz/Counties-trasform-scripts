@@ -3631,11 +3631,11 @@ function main() {
   const parcelGeometryPath = path.join(dataDir, 'geometry_parcel.json');
   const parcelPath = path.join(dataDir, 'parcel.json');
   if (fs.existsSync(parcelGeometryPath) && fs.existsSync(parcelPath)) {
-    writeJSON(path.join(dataDir, 'relationship_parcel_geometry.json'), {
+    writeJSON(path.join(dataDir, 'relationship_parcel_to_geometry_1.json'), {
       from: { '/': './parcel.json' },
       to: { '/': './geometry_parcel.json' },
     });
-    console.log('✓ Created relationship_parcel_geometry.json');
+    console.log('✓ Created relationship_parcel_to_geometry_1.json');
   }
   
   // address_has_geometry (singleton) - County schema
