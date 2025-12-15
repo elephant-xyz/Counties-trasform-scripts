@@ -1619,11 +1619,20 @@ function tryMapPropertyType(typeText, rawValue) {
   if (!structureForm) {
     structureForm = null;
   }
+
+  // Ensure property_usage_type, build_status, and ownership_estate_type are never null
+  // Set valid defaults from the allowed enum values
   if (!propertyUsageType) {
-    propertyUsageType = null;
+    // Default to 'Unknown' which is in the allowed enum list
+    propertyUsageType = 'Unknown';
+  }
+  if (!buildStatus) {
+    // Default to 'Improved' as the most common case
+    buildStatus = 'Improved';
   }
   if (!ownershipEstateType) {
-    ownershipEstateType = null;
+    // Default to 'FeeSimple' as the most common ownership type
+    ownershipEstateType = 'FeeSimple';
   }
 
   const property = {
