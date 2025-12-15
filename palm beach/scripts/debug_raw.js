@@ -8817,42 +8817,37 @@ const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING
 function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
   const working = { ...address };
-  const coreFields = [
-    "street_number",
-    "street_name",
-    "city_name",
-    "state_code",
-    "postal_code",
-  ];
-  const hasCoreFields = coreFields.every((field) =>
-    hasMeaningfulAddressValue(working[field]),
-  );
-  if (!hasCoreFields) return false;
-
-  ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS.forEach((field) => {
+  for (const field of ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS) {
     if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
       const numeric = parseCoordinate(working[field]);
-      working[field] = Number.isFinite(numeric) ? numeric : null;
-      return;
+      if (!Number.isFinite(numeric)) return false;
+      working[field] = numeric;
+      continue;
     }
-    if (typeof working[field] === "string") {
-      const trimmed = working[field].trim();
-      working[field] = trimmed.length ? trimmed : null;
-      return;
+
+    const value = working[field];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed.length) return false;
+      if (field === "county_name") {
+        const titledCounty = toTitleCase(trimmed);
+        working[field] =
+          titledCounty && titledCounty.trim().length ? titledCounty : null;
+      } else {
+        working[field] = trimmed;
+      }
+      if (!hasMeaningfulAddressValue(working[field])) return false;
+      continue;
     }
-    if (field === "county_name" && hasMeaningfulAddressValue(working[field])) {
-      const titledCounty = toTitleCase(String(working[field]));
-      working[field] =
-        titledCounty && titledCounty.trim().length ? titledCounty : null;
-      return;
+
+    if (value === undefined || value === null) {
+      return false;
     }
-    if (
-      working[field] === undefined &&
-      NORMALIZED_OPTIONAL_NULLABLE_FIELDS.has(field)
-    ) {
-      working[field] = null;
+
+    if (!hasMeaningfulAddressValue(value)) {
+      return false;
     }
-  });
+  }
 
   Object.assign(address, working);
   return true;
