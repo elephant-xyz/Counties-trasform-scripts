@@ -597,12 +597,25 @@ function normalizeSpaceType(value) {
   return 'MAPPING NOT AVAILABLE';
 }
 
-function extractProperty($) {
+function extractProperty($, seedData) {
   // parcel_identifier (STRAP)
   const parcelLabel = $('#parcelLabel').text();
   let parcelIdentifier = null;
   const strapMatch = parcelLabel.match(/STRAP:\s*([^\s]+)\s*/i);
-  if (strapMatch) parcelIdentifier = cleanText(strapMatch[1]);
+  if (strapMatch) {
+    parcelIdentifier = cleanText(strapMatch[1]);
+  } else if (parcelLabel && parcelLabel.trim().length > 0) {
+    // If no "STRAP:" prefix, use the label text directly if it's not all zeros
+    const labelText = cleanText(parcelLabel);
+    if (labelText && labelText !== '00-00-00-00-00000.0000' && labelText !== '0') {
+      parcelIdentifier = labelText;
+    }
+  }
+
+  // Fallback to seed data's parcel_id if HTML extraction failed
+  if (!parcelIdentifier && seedData && seedData.parcel_id) {
+    parcelIdentifier = seedData.parcel_id;
+  }
 
   // legal description - try multiple methods
   let legal = null;
@@ -3016,7 +3029,7 @@ function main() {
   }
 
   // Property
-  const property = extractProperty($);
+  const property = extractProperty($, seedData);
   writeJSON(path.join(dataDir, 'property.json'), property);
 
   const propertyImprovements = extractPropertyImprovements($);
