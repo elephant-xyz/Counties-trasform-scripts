@@ -22712,15 +22712,21 @@ async function main() {
         terminalSourceHttp && prepareSourceHttpRequest
           ? prepareSourceHttpRequest(terminalSourceHttp)
           : terminalSourceHttp;
-      const rawOutput = {
+      const rawSource = {
+        ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+        ...reconciledSnapshot,
         unnormalized_address: terminalRawValue,
-        request_identifier: terminalRequestId === undefined ? null : terminalRequestId,
+        request_identifier:
+          terminalRequestId === undefined ? null : terminalRequestId,
         source_http_request: preparedSource ? deepClone(preparedSource) : null,
+        county_name: hasMeaningfulAddressValue(terminalCounty)
+          ? terminalCounty
+          : reconciledSnapshot.county_name || null,
       };
-      if (hasMeaningfulAddressValue(terminalCounty)) {
-        rawOutput.county_name = terminalCounty;
-      }
-      reconciledTerminal = rawOutput;
+      const rawOutput =
+        ensureAddressOutputCoverage(rawSource) ||
+        buildRawAddressMinimalSurface(rawSource, terminalRawValue);
+      reconciledTerminal = rawOutput || null;
     }
 
     if (reconciledTerminal) {
@@ -23916,13 +23922,36 @@ async function main() {
           seed && seed.source_http_request,
           unAddr && unAddr.source_http_request,
         );
-        const rawOut = {
-          unnormalized_address: rawFallback,
-          request_identifier:
-            resolvedRequestId === undefined ? null : resolvedRequestId,
-          source_http_request: prepareSourceHttpRequest(resolvedSourceHttp) || null,
-        };
-        writeJSON(addressOutputPath, rawOut);
+        const rawOut =
+          ensureAddressOutputCoverage({
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...terminalAddressMinimal,
+            unnormalized_address: rawFallback,
+            request_identifier:
+              resolvedRequestId === undefined ? null : resolvedRequestId,
+            source_http_request:
+              prepareSourceHttpRequest(resolvedSourceHttp) || null,
+            county_name:
+              terminalAddressMinimal.county_name ||
+              formattedCountyName ||
+              countyName ||
+              null,
+          }) ||
+          buildRawAddressMinimalSurface(
+            {
+              ...terminalAddressMinimal,
+              request_identifier:
+                resolvedRequestId === undefined ? null : resolvedRequestId,
+              source_http_request:
+                prepareSourceHttpRequest(resolvedSourceHttp) || null,
+            },
+            rawFallback,
+          );
+        if (rawOut) {
+          writeJSON(addressOutputPath, rawOut);
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
       } else {
         removeFileIfExists(addressOutputPath);
       }
