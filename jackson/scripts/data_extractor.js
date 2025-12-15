@@ -1494,7 +1494,11 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   // Helper function to get person index by first and last name using the map
   const getPersonIndexByKey = (firstName, lastName) => {
     if (!firstName || !lastName) return null;
-    const key = `${firstName.trim().toUpperCase()}|${lastName.trim().toUpperCase()}`;
+    // Format names the same way they were formatted when building personKeyToIndex
+    const formattedFirst = formatNameForSchema(firstName);
+    const formattedLast = formatNameForSchema(lastName);
+    if (!formattedFirst || !formattedLast) return null;
+    const key = `${formattedFirst.trim().toUpperCase()}|${formattedLast.trim().toUpperCase()}`;
     return personKeyToIndex.get(key) || null;
   };
 
