@@ -61,6 +61,14 @@ function isCompanyName(name) {
   ) {
     return true;
   }
+  // Check for common misspellings or variations of "trust"
+  if (/\b(trsut|trst|turst|revocable|irrevocable)\b/.test(n)) {
+    return true;
+  }
+  // Check for "family" combined with trust-related words (even if misspelled)
+  if (/\bfamily\b/.test(n) && /\b(trsut|trst|trust|revocable|irrevocable|dated)\b/.test(n)) {
+    return true;
+  }
   return false;
 }
 
