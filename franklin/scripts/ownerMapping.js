@@ -13,9 +13,38 @@ function normalizeSpace(str) {
 
 // Utility: title-case words conservatively (keep all-caps acronyms)
 function titleCase(str) {
-  return (str || "")
-    .toLowerCase()
-    .replace(/\b([a-z])(\w*)/g, (m, a, b) => a.toUpperCase() + b);
+  if (!str) return null;
+  // Remove any characters that are not letters, spaces, hyphens, apostrophes, commas, or periods
+  let cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
+  if (!cleaned) return null;
+
+  // Convert to lowercase and normalize spacing
+  const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
+
+  // Capitalize first letter of each word (after word boundaries and special chars)
+  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
+
+  // Remove ". " patterns (e.g., "Jr. Smith" -> "Jr Smith")
+  let sanitized = capitalized.replace(/\.\s+/g, " ");
+
+  // Remove trailing special characters that would violate the pattern
+  sanitized = sanitized.replace(/[\s\-',.]+$/, "");
+
+  // Remove leading special characters
+  sanitized = sanitized.replace(/^[\s\-',.]+/, "");
+
+  // Remove multiple consecutive special characters
+  sanitized = sanitized.replace(/[\s\-',.]{2,}/g, " ");
+
+  const result = sanitized.trim();
+
+  // Validate against the pattern before returning
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  if (!result || !pattern.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 // Extract property id
@@ -103,14 +132,31 @@ function isCompanyName(name) {
     "\\bplc\\b", "\\bpc\\b", "\\bp\\.c\\.\\b", "\\bpllc\\b", "\\bllp\\b", "\\blp\\b", "\\bco\\b",
     "\\btrust\\b", "\\btr\\b", "\\bfoundation\\b", "\\bfund\\b", "\\bpartnership\\b",
     "\\bholdings\\b", "\\bholding\\b", "\\bassociation\\b", "\\bassociates\\b",
-    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b"
+    "\\bbank\\b", "\\bn\\.a\\.\\b", "\\bna\\b", "\\bchurch\\b", "\\bschool\\b", "\\bdistrict\\b",
+    "\\bdept\\b", "\\bdep\\b", "\\bdepartment\\b", "\\bgov\\b", "\\bgovernment\\b",
+    "\\bcounty\\b", "\\bcity\\b", "\\bstate\\b", "\\bfederal\\b", "\\bdivision\\b",
+    "\\bauthority\\b", "\\bcommission\\b", "\\bboard\\b", "\\bagency\\b"
   ];
-  
+
   // Check for strict keyword matches
   for (const pattern of strictKeywords) {
     if (new RegExp(pattern, 'i').test(n)) return true;
   }
-  
+
+  // Check for patterns that indicate company/government entities:
+  // - Acronyms with slash: TIITF/MARINE
+  // - Slash followed by acronyms: /DEP
+  // - Dash followed by acronyms: -DEP
+  // Fixed to limit acronym pattern to 2-5 letters only (e.g., FBI, DEP) to avoid matching normal all-caps names
+  const companyPatterns = [
+    /^[A-Z]{2,5}\//,       // Starts with acronym (2-5 letters) followed by slash
+    /\/[A-Z]{2,5}\b/,      // Slash followed by acronym (2-5 letters)
+  ];
+
+  for (const pattern of companyPatterns) {
+    if (pattern.test(name)) return true;
+  }
+
   // Only return true for obvious company patterns, not person names
   return false;
 }
@@ -125,6 +171,22 @@ function splitJointOwners(raw) {
     .map((p) => normalizeSpace(p))
     .filter(Boolean);
   return parts.length ? parts : [s];
+}
+
+// Clean name artifacts like F/K/A, AKA, etc.
+function cleanNameArtifacts(name) {
+  if (!name) return name;
+  // Handle "F/K/A" (formerly known as) by keeping only the FIRST part (current name)
+  // Example: "GRACE F/K/A RUSH" → "GRACE"
+  const fkaMatch = name.match(/^([^]+?)\s+(F\/K\/A|FKA|F\s*\/\s*K\s*\/\s*A|A\/K\/A|AKA|A\s*K\s*A)\b/i);
+  if (fkaMatch) {
+    return normalizeSpace(fkaMatch[1]);
+  }
+  // Remove "F/K/A", "FKA", "AKA", "A/K/A" and similar patterns if in middle or end
+  let cleaned = name.replace(/\s+(F\/K\/A|FKA|F\s*\/\s*K\s*\/\s*A|A\/K\/A|AKA|A\s*K\s*A)\b.*$/gi, '');
+  // Remove extra spaces
+  cleaned = normalizeSpace(cleaned);
+  return cleaned;
 }
 
 // Detect if a string looks like a person name
@@ -305,7 +367,9 @@ function buildOwnersByDate($) {
 
     for (let idx = 0; idx < parts.length; idx++) {
       const raw = parts[idx];
-      const clean = normalizeSpace(raw.replace(/\.$/, "").replace(/\s*\([^)]*\)\s*$/, ""));
+      let clean = normalizeSpace(raw.replace(/\.$/, "").replace(/\s*\([^)]*\)\s*$/, ""));
+      // Clean name artifacts like F/K/A, AKA, etc.
+      clean = cleanNameArtifacts(clean);
 
       if (!clean) continue;
 
