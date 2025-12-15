@@ -2293,7 +2293,7 @@ function extractMailingAddress(ownershipHtml) {
     .trim();
 }
 
-const PERSON_NAME_PATTERN = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+const PERSON_NAME_PATTERN = /^[A-Z][a-zA-Z\s\-',.]*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
@@ -2389,10 +2389,9 @@ function formatName(name) {
   if (!result || result.length === 0) return null;
 
   // Validate against the Elephant schema pattern
-  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
-  // Must start with uppercase letter, then zero or more lowercase letters,
-  // then optionally: one special char + one letter (any case) + zero or more lowercase letters
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  // Must start with uppercase letter, then any combination of letters, spaces, and special chars
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!pattern.test(result)) {
     // Log the invalid name for debugging
     console.log(`formatName: Invalid name after formatting: "${result}"`);
