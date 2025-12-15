@@ -98,12 +98,6 @@ function mapStructure(data) {
     number_of_stories: stories,
   };
 
-  // If it's explicitly single family, we may infer Detached cautiously
-  const dor = (pi.DORDescription || "").toLowerCase();
-  if (dor.includes("single family")) {
-    structure.attachment_type = "Detached";
-  }
-
   return structure;
 }
 

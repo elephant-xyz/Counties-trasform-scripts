@@ -2455,11 +2455,11 @@ function main() {
       writeJson(path.join("data", `deed_${deedIdx}.json`), deed);
       deedMap.set(s.index, deedIdx);
       // relationship_property_deed (property → deed)
-      const relPD = {
-        to: { "/": `./deed_${deedIdx}.json` },
-        from: { "/": "./property.json" },
-      };
-      writeJson(path.join("data", `relationship_property_deed_${deedIdx}.json`), relPD);
+      // const relPD = {
+      //   to: { "/": `./deed_${deedIdx}.json` },
+      //   from: { "/": "./property.json" },
+      // };
+      // writeJson(path.join("data", `relationship_property_deed_${deedIdx}.json`), relPD);
       deedIdx++;
     }
 
@@ -2467,8 +2467,8 @@ function main() {
     let relSDIdx = 1;
     for (const [sIndex, dIndex] of deedMap.entries()) {
       const relSD = {
-        to: { "/": `./sales_${sIndex}.json` },
-        from: { "/": `./deed_${dIndex}.json` },
+        from: { "/": `./sales_${sIndex}.json` },
+        to: { "/": `./deed_${dIndex}.json` },
       };
       writeJson(path.join("data", `relationship_sales_deed_${relSDIdx}.json`), relSD);
       relSDIdx++;
@@ -2633,7 +2633,7 @@ function main() {
       water_heater_model: utilPkg.water_heater_model,
       well_installation_date: utilPkg.well_installation_date,
     };
-    writeJson(path.join("data", "utility.json"), utility);
+    // writeJson(path.join("data", "utility.json"), utility);
   }
 
   // LAYOUTS from owners/layout_data.json only (layout synthesis moved to layoutMapping.js)
@@ -2643,7 +2643,7 @@ function main() {
     for (const l of layoutPkg.layouts) {
       const layoutObj = {
         space_type: l.space_type ?? null,
-        space_index: l.space_index ?? null,
+        space_type_index: l.space_type_index ?? null,
         flooring_material_type: l.flooring_material_type ?? null,
         size_square_feet: l.size_square_feet ?? null,
         floor_level: l.floor_level ?? null,
@@ -2759,7 +2759,7 @@ function main() {
       pInfo && pInfo.FloorCount != null ? Number(pInfo.FloorCount) : null,
     number_of_buildings: numberOfBuildings,
   };
-  writeJson(path.join("data", "structure.json"), structure);
+  // writeJson(path.join("data", "structure.json"), structure);
 }
 
 try {
