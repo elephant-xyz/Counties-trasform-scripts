@@ -8262,20 +8262,6 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// Align the raw branch with the full address schema surface so the oneOf raw
-// option still carries every nullable field (latitude/longitude, street
-// components, etc.) alongside the unnormalized string. This prevents
-// validation errors complaining about missing required fields when only a raw
-// address is available.
-const RAW_ONE_OF_ALLOWED_FIELDS = [...ADDRESS_SCHEMA_FIELDS];
-const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
-
-const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
-
-const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
-  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
-);
-
 // The raw oneOf branch only needs the unnormalized string plus minimal metadata.
 const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([
   "unnormalized_address",
@@ -8284,6 +8270,25 @@ const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([
   "source_http_request",
 ]);
 const RAW_BRANCH_ALLOWED_FIELD_SET = new Set(RAW_BRANCH_ALLOWED_FIELDS);
+
+// Align the raw branch with the full address schema surface so the oneOf raw
+// option still carries every nullable field (latitude/longitude, street
+// components, etc.) alongside the unnormalized string. This prevents
+// validation errors complaining about missing required fields when only a raw
+// address is available.
+// The raw branch should stay lean: only the unnormalized source string plus
+// minimal metadata that the schema allows.
+const RAW_ONE_OF_ALLOWED_FIELDS = [...RAW_BRANCH_ALLOWED_FIELDS];
+const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
+
+const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
+
+// Keep the raw address template limited to the minimal raw branch surface so
+// we don't leak normalized fields that make the oneOf validation pick the
+// wrong schema branch.
+const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
+  new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
+);
 
 // Keep raw (unnormalized) address payloads limited to the oneOf surface so we
 // don't leak normalized fields that break validation.
@@ -17872,6 +17877,81 @@ function pruneRawAddressToMinimalSurface(addressPath) {
   writeJSON(addressPath, stabilized);
 }
 
+// Reduce the final address payload to the strict raw branch when we only have
+// an unnormalized string. This prevents normalized-only required fields from
+// leaking into the output and breaking the oneOf selection.
+function enforceMinimalRawAddressBranch(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+
+  const payload = readJSONIfExists(addressPath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : null;
+  const normalizedComplete =
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (field === "source_http_request") {
+        const prepared = prepareSourceHttpRequest(value);
+        value = prepared ? deepClone(prepared) : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(payload.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const rawOut = {
+    unnormalized_address: rawValue,
+    county_name: safeNullIfEmpty(payload.county_name) || null,
+    request_identifier: Object.prototype.hasOwnProperty.call(
+      payload,
+      "request_identifier",
+    )
+      ? safeNullIfEmpty(payload.request_identifier) ?? null
+      : null,
+    source_http_request: prepareSourceHttpRequest(
+      payload.source_http_request,
+    ) || null,
+  };
+
+  writeJSON(addressPath, rawOut);
+}
+
 // Keep the final address payload aligned to a single oneOf branch:
 // - Prefer normalized when all required normalized fields (including lat/long) are present.
 // - Otherwise emit a lean raw variant anchored by the unnormalized string while retaining
@@ -25636,6 +25716,7 @@ async function main() {
       preferRaw: preferRawOutput || !!forcedRawAddress,
     });
 
+    enforceMinimalRawAddressBranch(addressOutputPath);
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
