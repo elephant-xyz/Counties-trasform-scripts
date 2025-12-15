@@ -158,10 +158,13 @@ function cleanInvalidCharsFromName(raw) {
 
 // Person parsing: assume common property appraiser format: LAST FIRST [MIDDLE...]
 function parsePersonName(raw) {
-  const cleaned = normalizeSpace(raw)
+  let cleaned = normalizeSpace(raw)
     .replace(/\bet\.?\s*al\.?$/i, "")
     .replace(/\b(joint\s+account|acct)\b/i, "")
     .trim();
+
+  // Remove common prefixes like "PLA -", "INC -", etc.
+  cleaned = cleaned.replace(/^[A-Z]{2,4}\s*-\s*/i, "").trim();
 
   if (!cleaned || /&/g.test(cleaned)) return null; // ambiguous multi-party
   if (/[0-9]/.test(cleaned)) return null; // unlikely a person
@@ -178,12 +181,16 @@ function parsePersonName(raw) {
   const first = toks[1];
   const middle = toks.slice(2).join(" ").trim() || null;
 
-  if (!first || !last) return null;
+  const cleanedFirst = cleanInvalidCharsFromName(first);
+  const cleanedLast = cleanInvalidCharsFromName(last);
+
+  // If first or last name is empty after cleaning, return null
+  if (!cleanedFirst || !cleanedLast) return null;
 
   return {
     type: "person",
-    first_name: cleanInvalidCharsFromName(first),
-    last_name: cleanInvalidCharsFromName(last),
+    first_name: cleanedFirst,
+    last_name: cleanedLast,
     middle_name: cleanInvalidCharsFromName(middle) || null,
   };
 }
