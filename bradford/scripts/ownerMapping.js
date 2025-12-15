@@ -12,6 +12,90 @@ const $ = cheerio.load(html);
 // Helper: normalize a string's whitespace
 const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
 
+const PAREN_QUALIFIER_SET = new Set([
+  "DEC",
+  "DECD",
+  "DECEASED",
+  "EST",
+  "ESTATE",
+  "HRS",
+  "HEIRS",
+  "DEV",
+  "DEVISEES",
+  "SUCC",
+  "SUCCESSORS",
+  "SURV",
+  "SURVIVING",
+]);
+
+const TRAILING_QUALIFIER_PATTERNS = [
+  "ET\\s+AL",
+  "ET\\s+UX",
+  "ET\\s+VIR",
+  "ET\\s+CON",
+  "JT\\s+TEN",
+  "TEN\\s+COM",
+  "TEN\\s+ENT",
+  "HRS",
+  "HEIRS",
+  "DEV",
+  "DEVISEES",
+  "SUCC",
+  "SUCCESSORS",
+  "SURV",
+  "SURVIVING",
+  "EST",
+  "ESTATE",
+  "PERS\\s+REP",
+  "PERSONAL\\s+REPRESENTATIVE",
+  "ADMIN",
+  "ADMINISTRATOR",
+  "EXEC",
+  "EXECUTOR",
+  "ATTY",
+];
+
+const BREAK_TERMS = ["AKA", "FKA", "DBA"];
+
+function stripOwnerQualifiers(name) {
+  if (!name) return "";
+  let cleaned = name;
+
+  cleaned = cleaned.replace(/\b(?:C\/O|CARE OF)\b.*$/i, "");
+
+  BREAK_TERMS.forEach((term) => {
+    const regex = new RegExp(`\\b${term}\\b.*$`, "i");
+    cleaned = cleaned.replace(regex, "");
+  });
+
+  cleaned = cleaned.replace(/\(([^)]+)\)/g, (match, inner) => {
+    const normalized = inner.replace(/[^A-Za-z]/g, "").toUpperCase();
+    if (PAREN_QUALIFIER_SET.has(normalized)) {
+      return " ";
+    }
+    return match;
+  });
+
+  let trimmed = norm(cleaned);
+  if (!trimmed) return "";
+
+  let updated = true;
+  while (updated && trimmed) {
+    updated = false;
+    for (const pattern of TRAILING_QUALIFIER_PATTERNS) {
+      const regex = new RegExp(`(?:,\\s*)?${pattern}(?:\\.?)$`, "i");
+      if (regex.test(trimmed)) {
+        trimmed = trimmed.replace(regex, "").trim();
+        updated = true;
+      }
+    }
+  }
+
+  trimmed = trimmed.replace(/[,\-\/]+$/g, "").trim();
+
+  return norm(trimmed);
+}
+
 // Helper: extract visible text including <br> as newlines
 function textWithBreaks($el) {
   const parts = [];
@@ -55,7 +139,7 @@ function isCompanyName(name) {
   const n = (name || "").toLowerCase();
   // direct boundary checks for common suffixes/patterns
   if (
-    /\b(inc|inc\.|corp|corp\.|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
+    /\b(inc|inc\.|corp|corp\.|corporation|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
       n,
     )
   ) {
@@ -67,8 +151,13 @@ function isCompanyName(name) {
 // Normalize for deduplication
 function normalizeOwnerKey(owner) {
   if (!owner) return "";
-  if (owner.type === "company") return norm(owner.name).toLowerCase();
-  const parts = [owner.first_name, owner.middle_name || "", owner.last_name]
+  if (owner.type === "company") {
+    return norm(stripOwnerQualifiers(owner.name)).toLowerCase();
+  }
+  const first = stripOwnerQualifiers(owner.first_name);
+  const middle = stripOwnerQualifiers(owner.middle_name || "");
+  const last = stripOwnerQualifiers(owner.last_name);
+  const parts = [first, middle, last]
     .filter(Boolean)
     .join(" ");
   return norm(parts).toLowerCase();
@@ -76,10 +165,46 @@ function normalizeOwnerKey(owner) {
 
 function formatNameToPattern(name) {
   if (!name) return null;
-  const cleaned = name.trim().replace(/\s+/g, ' ');
-  return cleaned.split(' ').map(part =>
-    part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-  ).join(' ');
+
+  // Clean and normalize whitespace
+  let cleaned = name.trim().replace(/\s+/g, ' ');
+
+  // Remove trailing periods
+  cleaned = cleaned.replace(/\.+$/, '');
+
+  // Handle abbreviations: ensure letters after periods, hyphens, apostrophes are uppercase
+  // Pattern: letter + special char + letter should be: Upper + special + Upper
+  cleaned = cleaned.replace(/([A-Za-z])([.\-',])([A-Za-z])/g, (match, before, sep, after) => {
+    return before.charAt(0).toUpperCase() + sep + after.charAt(0).toUpperCase();
+  });
+
+  // Split by spaces and format each word part
+  const result = cleaned.split(' ').map(part => {
+    // For parts with special characters (abbreviations), handle carefully
+    if (/[.\-',]/.test(part)) {
+      // Split by special characters and capitalize each segment
+      return part.split(/([.\-',])/).map((segment, idx) => {
+        // If it's a separator, keep it
+        if (/[.\-',]/.test(segment)) return segment;
+        // If it's a letter segment, capitalize first letter
+        if (segment.length > 0) {
+          return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+        }
+        return segment;
+      }).join('');
+    } else {
+      // Normal word: capitalize first letter, lowercase rest
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+  }).join(' ');
+
+  // Validate result matches required pattern: must start with uppercase letter
+  // and only contain letters, spaces, hyphens, apostrophes, commas, periods
+  if (!result || result.length === 0 || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+    return null;
+  }
+
+  return result;
 }
 
 // Build owner object(s) from a raw string
@@ -92,15 +217,21 @@ function buildOwnersFromRaw(raw) {
   if (/^(c\/o|care of)\b/i.test(s)) return owners; // ignore care-of lines entirely
   if (/^(po box|p\.?o\.? box)/i.test(s)) return owners;
 
+  const cleaned = stripOwnerQualifiers(s);
+  if (!cleaned) return owners;
+
   // If name contains company indicators -> company
-  if (isCompanyName(s)) {
-    owners.push({ type: "company", name: s });
+  if (isCompanyName(cleaned)) {
+    owners.push({ type: "company", name: cleaned });
     return owners;
   }
 
   // Handle multiple names separated by newlines or specific patterns
   // Split by common separators that indicate multiple people
-  const nameLines = s.split(/\n|\s*&\s*/).map(line => norm(line)).filter(Boolean);
+  const nameLines = cleaned
+    .split(/\n|\s*&\s*/)
+    .map((line) => stripOwnerQualifiers(norm(line)))
+    .filter(Boolean);
 
   nameLines.forEach(nameLine => {
     if (isCompanyName(nameLine)) {
@@ -115,7 +246,9 @@ function buildOwnersFromRaw(raw) {
 
 function buildPersonFromSingleName(s) {
   const out = [];
-  const cleaned = s.replace(/\s{2,}/g, " ");
+  const stripped = stripOwnerQualifiers(s);
+  if (!stripped) return out;
+  const cleaned = stripped.replace(/\s{2,}/g, " ");
   const parts = cleaned.split(/\s+/).filter(Boolean);
 
   if (parts.length < 2) {
@@ -201,17 +334,26 @@ function extractOwnerCandidates($) {
     // Updated selector to target the owner name within the parcelDetails_insideTable
     const ownerTd = $(".parcelDetails_insideTable td:contains('Owner')").next("td");
     if (ownerTd && ownerTd.length) {
-      const boldText = ownerTd.find("b").text();
-      if (boldText) {
-        // Split by <br> tags to get individual owner names
-        const ownerLines = boldText.split(/\n/).map(line => norm(line)).filter(Boolean);
-        ownerLines.forEach(line => {
-          // Filter out address lines
-          if (!/\b(\d{5})(?:-\d{4})?$/.test(line) &&
-              !/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) &&
-              !/^\d+\s/.test(line)) {
-            cand.push(line);
+      const boldEl = ownerTd.find("b").first();
+      if (boldEl && boldEl.length) {
+        const rawHtml = boldEl.html() || "";
+        const segments = rawHtml
+          .split(/<br\s*\/?>/i)
+          .map((segment) => norm(segment.replace(/<[^>]+>/g, "")))
+          .filter(Boolean);
+        const ownerLines =
+          segments.length > 0 ? segments : [norm(boldEl.text())].filter(Boolean);
+        ownerLines.forEach((line) => {
+          if (!line) return;
+          const looksLikeCompany = isCompanyName(line);
+          if (
+            /\b(\d{5})(?:-\d{4})?$/.test(line) ||
+            (/\b(ave|st|rd|dr|blvd|ln|lane|road|street|drive|suite|ste|fl|po box)\b/i.test(line) && !looksLikeCompany) ||
+            (/^\d+\s/.test(line) && !looksLikeCompany)
+          ) {
+            return;
           }
+          cand.push(line);
         });
       }
     }

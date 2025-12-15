@@ -416,7 +416,8 @@ function buildLayouts(input) {
 function buildFeatureLayouts(input) {
   const features = input && input.Features && input.Features.response;
   let layouts = [];
-  let spaceTypeCounter = new MultiCounter();
+  let spaceTypeCounter = {};
+  spaceTypeCounter["NoBuilding"] = new MultiCounter();
   if (features && Array.isArray(features.rows) && features.rows.length > 0) {
     // Determine indexes from cols
     const cols = features.cols || [];
@@ -431,6 +432,10 @@ function buildFeatureLayouts(input) {
       const featureType = feature[idx["Description"]].toUpperCase();
       const area = toInt(feature[idx["Area"]]);
       const builtYear = toIntRounded(feature[idx["YrBlt"]]);
+      const buildingNum = toIntRounded(feature[idx["Bldg"]]);
+      if (buildingNum && spaceTypeCounter[buildingNum.toString()] === undefined) {
+        spaceTypeCounter[buildingNum.toString()] = new MultiCounter();
+      }
       let spaceType = null;
       if (featureType.includes("POOL") && featureType.includes("DECK")) {
         spaceType = "Pool Area";
@@ -461,12 +466,18 @@ function buildFeatureLayouts(input) {
       //   };
       // }
       if (spaceType) {
-        spaceTypeCounter.increment(spaceType);
-        const spaceTypeIndex = spaceTypeCounter.get(spaceType);
+        let spaceTypeIndex = null;
+        if (buildingNum) {
+          spaceTypeCounter[buildingNum.toString()].increment(spaceType);
+          spaceTypeIndex = `${buildingNum}.${spaceTypeCounter[buildingNum.toString()].get(spaceType)}`;
+        } else {
+          spaceTypeCounter["NoBuilding"].increment(spaceType);
+          spaceTypeIndex = `${spaceTypeCounter["NoBuilding"].get(spaceType)}`;
+        }
         layouts.push({
-          building_number: null,
+          building_number: buildingNum ? buildingNum : null,
           space_type: spaceType,
-          space_type_index: `${spaceTypeIndex}`,
+          space_type_index: spaceTypeIndex,
           flooring_material_type: null,
           size_square_feet: null,
           has_windows: null,
