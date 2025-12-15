@@ -1420,7 +1420,9 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   // First pass: identify which persons will actually be used in relationships
   const personsToUseMap = new Map();
 
-  // Add persons from valid sale dates
+  // Add persons from valid sale dates ONLY
+  // DO NOT add persons from current owners because mailing_address is not supported
+  // in this data group and those relationships will be deleted in final cleanup
   sales.forEach((rec) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
@@ -1444,28 +1446,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       });
   });
 
-  // Add persons from current owners (for mailing address)
-  if (hasOwnerMailingAddress && ownersByDate['current']) {
-    const currentOwners = ownersByDate['current'];
-    currentOwners
-      .filter((o) => o.type === "person")
-      .forEach((o) => {
-        const k = `${(o.first_name || "").trim().toUpperCase()}|${(o.last_name || "").trim().toUpperCase()}`;
-        if (!personsToUseMap.has(k)) {
-          personsToUseMap.set(k, {
-            first_name: o.first_name,
-            middle_name: o.middle_name || null,
-            last_name: o.last_name,
-            prefix_name: o.prefix_name || null,
-            suffix_name: o.suffix_name || null
-          });
-        } else {
-          const existing = personsToUseMap.get(k);
-          if (!existing.middle_name && o.middle_name)
-            existing.middle_name = o.middle_name;
-        }
-      });
-  }
+  // REMOVED: Code that added persons from current owners for mailing address
+  // Reason: mailing_address class is not supported in this data group,
+  // and the final cleanup deletes all mailing_address relationships.
+  // Creating persons for mailing_address relationships would leave them orphaned.
 
   // Now create person files only for persons that will be used
   people = Array.from(personsToUseMap.values()).map((p) => ({
@@ -1512,7 +1496,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   const usedCompanyNames = new Set();
   const usedPersonIdx = new Set();
 
-  // Identify companies used in sales relationships
+  // Identify companies used in sales relationships ONLY
+  // DO NOT add companies from current owners for mailing address
   sales.forEach((rec) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
@@ -1526,18 +1511,8 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       });
   });
 
-  // Identify companies used in mailing address relationships
-  if (hasOwnerMailingAddress && ownersByDate['current']) {
-    const currentOwners = ownersByDate['current'];
-    currentOwners.forEach((owner) => {
-      if (owner.type === "company") {
-        const normalized = normalizeCompanyName(owner.name);
-        if (normalized) {
-          usedCompanyNames.add(normalized);
-        }
-      }
-    });
-  }
+  // REMOVED: Code that added companies from current owners for mailing address
+  // Reason: mailing_address class is not supported in this data group
 
   // Only create company files for companies that will be used
   companies = Array.from(usedCompanyNames).map((n) => ({
@@ -1595,44 +1570,12 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
       });
   });
 
-  // Create mailing address relationships with current owners
-  if (hasOwnerMailingAddress && ownersByDate['current']) {
-    const currentOwners = ownersByDate['current'];
-    let mailingRelCounter = 0;
-    currentOwners.forEach((owner) => {
-      if (owner.type === "person") {
-        const pIdx = getPersonIndexByKey(owner.first_name, owner.last_name);
-        if (pIdx) {
-          usedPersonIdx.add(pIdx);
-          mailingRelCounter++;
-          writeJSON(
-            path.join("data", `relationship_person_has_mailing_address_${mailingRelCounter}.json`),
-            {
-              from: { "/": `./person_${pIdx}.json` },
-              to: { "/": "./mailing_address.json" },
-            }
-          );
-        } else {
-          console.warn(`Warning: Could not find person index for mailing address: ${owner.first_name} ${owner.last_name}`);
-        }
-      } else if (owner.type === "company") {
-        const cIdx = findCompanyIndexByName(owner.name);
-        if (cIdx) {
-          usedCompanyIdx.add(cIdx);
-          mailingRelCounter++;
-          writeJSON(
-            path.join("data", `relationship_company_has_mailing_address_${mailingRelCounter}.json`),
-            {
-              from: { "/": `./company_${cIdx}.json` },
-              to: { "/": "./mailing_address.json" }
-            }
-          );
-        } else {
-          console.warn(`Warning: Could not find company index for mailing address: ${owner.name}`);
-        }
-      }
-    });
-  }
+  // DISABLED: Mailing address relationships not supported in this data group
+  // The hasOwnerMailingAddress flag is set to false (line 2460) because
+  // mailing_address class is not part of this data group.
+  // Creating these relationships would result in them being deleted in final cleanup,
+  // which would leave person/company files orphaned without any relationships.
+  // Code removed to prevent accidental creation of orphaned entity files.
 
   // Remove unused person and company files
   console.log(`Created ${companies.length} company files, ${usedCompanyIdx.size} are referenced in relationships`);
