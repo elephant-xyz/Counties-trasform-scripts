@@ -102,8 +102,17 @@ function normalizeNameForPattern(name) {
     return null;
   }
 
+  // Apply title case
+  const normalized = titleCase(name);
+
+  // Validate that the normalized name matches the required pattern
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!namePattern.test(normalized)) {
+    return null;
+  }
+
   // Otherwise, return title-cased version
-  return titleCase(name);
+  return normalized;
 }
 
 function buildPersonFromTokens(tokens, fallbackLastName) {
