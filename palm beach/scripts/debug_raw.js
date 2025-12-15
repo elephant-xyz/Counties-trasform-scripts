@@ -8177,21 +8177,10 @@ function clampAddressToSingleBranch(addressPath, options = {}) {
 const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "street_number",
   "street_name",
-  "street_suffix_type",
-  "street_pre_directional_text",
-  "street_post_directional_text",
-  "unit_identifier",
-  "route_number",
   "city_name",
   "state_code",
   "postal_code",
-  "plus_four_postal_code",
   "country_code",
-  "county_name",
-  "township",
-  "range",
-  "section",
-  "block",
 ];
 
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
@@ -8200,7 +8189,6 @@ const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
 
 const ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS = Object.freeze([
   ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
-  ...NORMALIZED_ADDRESS_COORDINATE_FIELDS,
 ]);
 
 // Fields that may accompany the raw (unnormalized) address payload.
