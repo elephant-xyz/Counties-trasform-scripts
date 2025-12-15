@@ -24909,6 +24909,139 @@ async function main() {
       removeFileIfExists(addressOutputPath);
     }
 
+    // Hard-stop override: if we have any raw address string from the source, emit
+    // the raw branch with the full schema surface (nullable fields included) so
+    // oneOf lands on the unnormalized variant. Only fall back to normalized when
+    // we truly lack a raw string but have complete normalized coverage.
+    const overrideSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const overrideRawValue = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        overrideSnapshot.unnormalized_address,
+        strictRawCandidate,
+        finalClampRawValue,
+        finalRawCandidateClamp,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const overrideRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        overrideSnapshot.request_identifier,
+        finalClampRequestId,
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ]),
+    );
+    const overrideSourceHttp = resolveSourceHttpRequest(
+      overrideSnapshot.source_http_request,
+      finalClampSourceHttp,
+      finalSourceHttp,
+      resolvedSourceHttp,
+      sourceHttpCandidate,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+    );
+    const overrideCounty = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        overrideSnapshot.county_name,
+        formattedCountyName,
+        countyName,
+        unAddr && unAddr.county_jurisdiction,
+      ]),
+    );
+    const overrideNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({
+        ...bestNormalizedAddress,
+        ...overrideSnapshot,
+      });
+    const overrideNormalizedComplete =
+      overrideNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...overrideNormalizedSurface });
+
+    let finalOverride = null;
+    if (overrideRawValue) {
+      const rawOut =
+        ensureAddressOutputCoverage({
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...overrideSnapshot,
+          unnormalized_address: overrideRawValue,
+          request_identifier: overrideRequestId === undefined ? null : overrideRequestId,
+          source_http_request: overrideSourceHttp
+            ? prepareSourceHttpRequest(overrideSourceHttp)
+            : null,
+          county_name: overrideCounty || overrideSnapshot.county_name || null,
+        }) || null;
+      if (rawOut) {
+        if (!rawOut.postal_code) {
+          rawOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(rawOut.state_code) &&
+          !hasMeaningfulAddressValue(rawOut.country_code)
+        ) {
+          rawOut.country_code = "US";
+        }
+        if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+          rawOut.latitude = null;
+          rawOut.longitude = null;
+        }
+        finalOverride = rawOut;
+      }
+    } else if (overrideNormalizedComplete) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        let value = overrideNormalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (field === "source_http_request") {
+          const prepared = prepareSourceHttpRequest(value);
+          value = prepared ? deepClone(prepared) : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        normalizedOut[field] = value;
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      finalOverride = normalizedOut;
+    }
+
+    if (finalOverride) {
+      writeJSON(addressOutputPath, finalOverride);
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
