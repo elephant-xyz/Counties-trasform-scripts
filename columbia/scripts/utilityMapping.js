@@ -213,16 +213,7 @@ function extractExtraFeatures($) {
 
 function buildUtilityFromFeature(feature) {
   const description = feature.description || "";
-  const util = {
-    feature_code: feature.code,
-    feature_description: description,
-    feature_year_built: feature.year_built,
-    feature_units: feature.units,
-    feature_dimensions: feature.dimensions,
-    feature_value_dollars: feature.value_dollars,
-    feature_area_square_feet: feature.area_square_feet ?? null,
-    public_utility_type_other_description: description || null,
-  };
+  const util = {};
 
   if (/SEPTIC/i.test(description)) {
     util.sewer_type = "Septic";
