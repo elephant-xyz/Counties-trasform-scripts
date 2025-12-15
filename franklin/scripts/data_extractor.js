@@ -2484,7 +2484,8 @@ function extractOwnerInfo(ownershipHtml) {
   const ownerLines = [];
   for (const line of allLines) {
     // Stop when we hit address-like content
-    if (/\b(PO\s+BOX|\d{5}(-\d{4})?$|\d+\s+[A-Z]+\s+(ST|AVE|RD|DR|LN|WAY|BLVD|CT|PL|PKWY))/i.test(line)) {
+    // Check for: PO BOX, zip codes, street numbers (e.g., "3860 KINDERLOU FOREST")
+    if (/\b(PO\s+BOX|\d{5}(-\d{4})?$|\d+\s+[A-Z])/i.test(line)) {
       break;
     }
     ownerLines.push(line);
@@ -3106,7 +3107,10 @@ function main() {
       }
 
       // Only create person if we have valid required fields (first_name and last_name)
-      if (!firstName || !lastName) {
+      // Ensure they are non-empty strings
+      if (!firstName || !lastName ||
+          typeof firstName !== 'string' || typeof lastName !== 'string' ||
+          firstName.trim().length === 0 || lastName.trim().length === 0) {
         console.log(`Skipping person with invalid name: firstName="${firstName}", lastName="${lastName}"`);
         return;
       }
@@ -3118,9 +3122,9 @@ function main() {
         },
         request_identifier: parcelIdentifier || seed.parcel_id || "",
         birth_date: null,
-        first_name: firstName,
-        last_name: lastName,
-        middle_name: middleName,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        middle_name: middleName && typeof middleName === 'string' && middleName.trim().length > 0 ? middleName.trim() : null,
         prefix_name: parsed.prefix ? validatePrefix(parsed.prefix) : null,
         suffix_name: parsed.suffix ? validateSuffix(parsed.suffix) : null,
         us_citizenship_status: null,
@@ -3410,7 +3414,10 @@ function main() {
         }
 
         // Only create person if we have valid required fields (first_name and last_name)
-        if (!firstName || !lastName) {
+        // Ensure they are non-empty strings
+        if (!firstName || !lastName ||
+            typeof firstName !== 'string' || typeof lastName !== 'string' ||
+            firstName.trim().length === 0 || lastName.trim().length === 0) {
           console.log(`Skipping person with invalid name: firstName="${firstName}", lastName="${lastName}"`);
           return null;
         }
@@ -3422,9 +3429,9 @@ function main() {
           },
           request_identifier: parcelIdentifier || seed.parcel_id || "",
           birth_date: null,
-          first_name: firstName,
-          last_name: lastName,
-          middle_name: middleName,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          middle_name: middleName && typeof middleName === 'string' && middleName.trim().length > 0 ? middleName.trim() : null,
           prefix_name: owner.prefix_name ? validatePrefix(owner.prefix_name) : null,
           suffix_name: owner.suffix_name ? validateSuffix(owner.suffix_name) : null,
           us_citizenship_status: null,
