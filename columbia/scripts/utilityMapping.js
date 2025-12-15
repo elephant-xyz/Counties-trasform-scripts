@@ -257,13 +257,36 @@ function main() {
     Object.assign({}, buildUtilityObject(), buildUtilityFromFeature(feature)),
   );
 
+  // Deduplicate extra utilities based on meaningful properties
+  const deduplicateUtilities = (utilities) => {
+    const seen = new Map();
+    return utilities.filter((util) => {
+      const key = JSON.stringify({
+        feature_code: util.feature_code,
+        feature_description: util.feature_description,
+        feature_value_dollars: util.feature_value_dollars,
+        feature_year_built: util.feature_year_built,
+        water_source_type: util.water_source_type,
+        sewer_type: util.sewer_type,
+        public_utility_type: util.public_utility_type,
+      });
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.set(key, true);
+      return true;
+    });
+  };
+
+  const dedupedExtraUtilities = deduplicateUtilities(extraUtilities);
+
   const outputDir = path.resolve("owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
   const outPath = path.join(outputDir, "utilities_data.json");
   const out = {};
   out[`property_${parcelId}`] = {
     utilities: [util],
-    extra_utilities: extraUtilities,
+    extra_utilities: dedupedExtraUtilities,
   };
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2), "utf8");
   console.log("Wrote", outPath);
