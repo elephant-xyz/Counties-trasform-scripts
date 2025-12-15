@@ -1362,10 +1362,17 @@ function buildStructureRecord($, buildingNode, extraFeatures, totalBuildings) {
     mapInteriorWallSurface(interiorWalls[0] || ""),
     STRUCTURE_ENUMS.interiorWallSurface,
   );
-  const interior_wall_surface_material_secondary = ensureEnum(
+  let interior_wall_surface_material_secondary = ensureEnum(
     mapInteriorWallSurfaceSecondary(interiorWalls[1] || ""),
     STRUCTURE_ENUMS.interiorWallSurfaceSecondary,
   );
+  // Ensure the value is strictly null or a valid enum string, never empty string or other invalid values
+  if (interior_wall_surface_material_secondary !== null &&
+      (!interior_wall_surface_material_secondary ||
+       typeof interior_wall_surface_material_secondary !== 'string' ||
+       !STRUCTURE_ENUMS.interiorWallSurfaceSecondary.has(interior_wall_surface_material_secondary))) {
+    interior_wall_surface_material_secondary = null;
+  }
 
   const flooringSet = new Set();
   intFlooring.forEach((detail) => addFlooringMaterial(detail, flooringSet));
