@@ -2471,55 +2471,66 @@ function parsePerson(name) {
 function extractOwnerInfo(ownershipHtml) {
   if (!ownershipHtml) return [];
 
-  // Remove content within <p></p> tags (addresses)
-  const htmlWithoutAddresses = ownershipHtml.replace(/<p>.*?<\/p>/gs, '');
-
-  // Split by <br> tags to get individual owner lines
-  const ownerLines = htmlWithoutAddresses.split(/<br\s*\/?>/i)
+  // Split by <br> tags first to get all lines
+  const allLines = ownershipHtml.split(/<br\s*\/?>/i)
+    .map(line => {
+      // Remove <p> and </p> tags but keep content
+      return line.replace(/<\/?p[^>]*>/gi, '');
+    })
     .map(line => line.replace(/<[^>]*>/g, '').trim())
     .filter(line => line.length > 0);
+
+  // The owner name is typically the first 1-2 lines before the address
+  // Address lines usually contain patterns like "PO BOX", street numbers, zip codes, etc.
+  const ownerLines = [];
+  for (const line of allLines) {
+    // Stop when we hit address-like content
+    if (/\b(PO\s+BOX|\d{5}(-\d{4})?$|\d+\s+[A-Z]+\s+(ST|AVE|RD|DR|LN|WAY|BLVD|CT|PL|PKWY))/i.test(line)) {
+      break;
+    }
+    ownerLines.push(line);
+  }
 
   const owners = [];
   // Enhanced company indicators to catch government entities, departments, and acronyms
   // Fixed to limit acronym pattern to 2-5 letters only (e.g., FBI, DEP) to avoid matching normal all-caps names
   const companyIndicators = /\b(LLC|INC|CORP|CORPORATION|LTD|LIMITED|LP|COMPANY|CO\.|TRUST|TRUSTEE|ESTATE|BANK|ASSOCIATION|ASSOC|PARTNERSHIP|DEPT|DEP|DEPARTMENT|GOV|GOVERNMENT|COUNTY|CITY|STATE|FEDERAL|DISTRICT|DIVISION|AUTHORITY|COMMISSION|BOARD|AGENCY|SERVICES|PROPERTIES|INVESTMENTS|GROUP|HOLDINGS|ENTERPRISES)\b|^[A-Z]{2,5}\/|\/[A-Z]{2,5}\b/i;
 
-  for (const line of ownerLines) {
-    let cleanName = line.trim();
-    if (cleanName && cleanName.length > 2) {
-      // Decode HTML entities like &amp; to &
-      cleanName = cleanName.replace(/&amp;/g, '&');
+  // Join all owner lines into a single name string
+  const fullOwnerText = ownerLines.join(' ').trim();
+  if (!fullOwnerText) return [];
 
-      // Split by & to handle multiple owners on same line
-      const namesParts = cleanName.split(/\s*&\s*/);
+  // Decode HTML entities like &amp; to &
+  const cleanedOwnerText = fullOwnerText.replace(/&amp;/g, '&');
 
-      // Track last name from first owner for shared surnames
-      let sharedLastName = null;
+  // Split by & to handle multiple owners
+  const namesParts = cleanedOwnerText.split(/\s*&\s*/);
 
-      for (let i = 0; i < namesParts.length; i++) {
-        const trimmedName = namesParts[i].trim();
-        if (trimmedName && trimmedName.length > 2) {
-          const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
+  // Track last name from first owner for shared surnames
+  let sharedLastName = null;
 
-          // Check if this is a short name (FIRSTNAME MIDDLE) that might share a surname
-          const tokens = trimmedName.split(/\s+/);
-          const isShortName = tokens.length === 2 && tokens[1].length === 1 && trimmedName === trimmedName.toUpperCase();
+  for (let i = 0; i < namesParts.length; i++) {
+    const trimmedName = namesParts[i].trim();
+    if (trimmedName && trimmedName.length > 2) {
+      const ownerType = companyIndicators.test(trimmedName) ? 'Company' : 'Person';
 
-          if (isShortName && sharedLastName && i > 0) {
-            // This is likely FIRSTNAME MIDDLE sharing the previous owner's last name
-            // Reconstruct full name as "LASTNAME FIRSTNAME MIDDLE"
-            const fullName = `${sharedLastName} ${trimmedName}`;
-            owners.push({ name: fullName, type: 'Person' });
-          } else {
-            owners.push({ name: trimmedName, type: ownerType });
+      // Check if this is a short name (FIRSTNAME MIDDLE) that might share a surname
+      const tokens = trimmedName.split(/\s+/);
+      const isShortName = tokens.length === 2 && tokens[1].length === 1 && trimmedName === trimmedName.toUpperCase();
 
-            // If this is the first owner and it's a person, extract the last name for potential sharing
-            if (i === 0 && ownerType === 'Person') {
-              const parsed = parsePerson(trimmedName);
-              if (parsed && parsed.lastName) {
-                sharedLastName = parsed.lastName;
-              }
-            }
+      if (isShortName && sharedLastName && i > 0) {
+        // This is likely FIRSTNAME MIDDLE sharing the previous owner's last name
+        // Reconstruct full name as "LASTNAME FIRSTNAME MIDDLE"
+        const fullName = `${sharedLastName} ${trimmedName}`;
+        owners.push({ name: fullName, type: 'Person' });
+      } else {
+        owners.push({ name: trimmedName, type: ownerType });
+
+        // If this is the first owner and it's a person, extract the last name for potential sharing
+        if (i === 0 && ownerType === 'Person') {
+          const parsed = parsePerson(trimmedName);
+          if (parsed && parsed.lastName) {
+            sharedLastName = parsed.lastName;
           }
         }
       }

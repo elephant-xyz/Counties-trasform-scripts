@@ -308,16 +308,38 @@ function dedupeOwners(arr) {
 function extractCurrentOwnerCandidates($) {
   const owners = [];
   $(".parcel-info .parcel-detail .ownership > div").each((i, el) => {
-    const clone = $(el).clone();
-    clone.find("p").remove();
-    const raw = normalizeSpace(
-      clone
-        .text()
-        .replace(/\s*\n\s*/g, " ")
-        .replace(/\s{2,}/g, " ")
-        .trim(),
-    );
-    if (raw) owners.push(raw);
+    const $el = $(el);
+    // Get all text content, then split by <br> to get individual lines
+    const html = $el.html();
+    if (!html) return;
+
+    // Split by <br> tags and <p> tags to get lines
+    const lines = html
+      .split(/<br\s*\/?>/i)
+      .map(line => {
+        // Remove <p> and </p> tags but keep the content
+        return line.replace(/<\/?p[^>]*>/gi, '');
+      })
+      .map(line => normalizeSpace(line.replace(/<[^>]*>/g, '')))
+      .filter(Boolean);
+
+    if (!lines.length) return;
+
+    // The owner name is typically the first 1-2 lines before the address
+    // Address lines usually contain patterns like "PO BOX", street numbers, zip codes, etc.
+    const ownerLines = [];
+    for (const line of lines) {
+      // Stop when we hit address-like content
+      if (/\b(PO\s+BOX|\d{5}(-\d{4})?$|\d+\s+[A-Z]+\s+(ST|AVE|RD|DR|LN|WAY|BLVD|CT|PL|PKWY))/i.test(line)) {
+        break;
+      }
+      ownerLines.push(line);
+    }
+
+    if (ownerLines.length > 0) {
+      const raw = ownerLines.join(" ");
+      owners.push(raw);
+    }
   });
   return owners;
 }
