@@ -24144,35 +24144,73 @@ async function main() {
             unAddr && unAddr.county_jurisdiction,
           ]),
         );
-        const rawOutBase = {
-          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
-          ...terminalSnapshot,
-          unnormalized_address: rawValue,
-          request_identifier:
-            terminalSnapshot.request_identifier === undefined
-              ? safeNullIfEmpty(resolvedRequestIdentifier)
-              : terminalSnapshot.request_identifier,
-          source_http_request:
-            prepareSourceHttpRequest(
-              terminalSnapshot.source_http_request ||
-                resolvedSourceHttp ||
-                sourceHttpCandidate ||
-                (seed && seed.source_http_request),
-            ) || null,
-          county_name: countyValue || terminalSnapshot.county_name || null,
-        };
-        const hydratedRaw =
-          ensureAddressOutputCoverage(rawOutBase) ||
-          buildRawAddressMinimalSurface(rawOutBase, rawValue);
-        if (hydratedRaw) {
-          if ((hydratedRaw.latitude == null) !== (hydratedRaw.longitude == null)) {
-            hydratedRaw.latitude = null;
-            hydratedRaw.longitude = null;
+        const resolvedRequestId =
+          terminalSnapshot.request_identifier === undefined
+            ? safeNullIfEmpty(resolvedRequestIdentifier)
+            : terminalSnapshot.request_identifier;
+        const preparedSourceHttp =
+          prepareSourceHttpRequest(
+            terminalSnapshot.source_http_request ||
+              resolvedSourceHttp ||
+              sourceHttpCandidate ||
+              (seed && seed.source_http_request),
+          ) || null;
+
+        const candidateSources = [
+          terminalSnapshot,
+          finalNormalizedSurface,
+          bestNormalizedAddress,
+          seed,
+          unAddr,
+        ].filter((src) => src && typeof src === "object");
+        const pickField = (field) => {
+          for (const source of candidateSources) {
+            if (
+              Object.prototype.hasOwnProperty.call(source, field) &&
+              hasMeaningfulAddressValue(source[field])
+            ) {
+              return sanitizeAddressFieldValue(field, source[field]);
+            }
           }
-          writeJSON(addressOutputPath, hydratedRaw);
-        } else {
-          removeFileIfExists(addressOutputPath);
+          return null;
+        };
+        const pickCoordinate = (field) => {
+          for (const source of candidateSources) {
+            if (Object.prototype.hasOwnProperty.call(source, field)) {
+              const numeric = parseCoordinate(source[field]);
+              if (Number.isFinite(numeric)) return numeric;
+            }
+          }
+          return null;
+        };
+
+        const leanRaw = {
+          unnormalized_address: rawValue,
+          request_identifier: resolvedRequestId === undefined ? null : resolvedRequestId,
+          source_http_request: preparedSourceHttp,
+          county_name: countyValue || terminalSnapshot.county_name || null,
+          country_code: "US",
+        };
+
+        ["section", "township", "range", "block", "lot"].forEach((field) => {
+          const value = pickField(field);
+          if (value !== null && value !== undefined) {
+            leanRaw[field] = value;
+          }
+        });
+
+        const lat = pickCoordinate("latitude");
+        const lon = pickCoordinate("longitude");
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          leanRaw.latitude = lat;
+          leanRaw.longitude = lon;
         }
+
+        originalWriteFileSync.call(
+          fs,
+          addressOutputPath,
+          `${JSON.stringify(leanRaw, null, 2)}\n`,
+        );
       } else {
         removeFileIfExists(addressOutputPath);
       }
