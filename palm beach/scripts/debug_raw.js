@@ -145,11 +145,16 @@ function enforcePropertyRelationshipNulls(propertyPath) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return;
   }
-  // Downstream processes populate relationship URIs; strip any locally
-  // generated placeholders to avoid invalid relationship payloads.
-  if (payload.relationships) {
-    delete payload.relationships;
-  }
+  // Downstream processes populate relationship URIs; ensure we only emit the
+  // null placeholders expected by the schema so validation doesn't see local
+  // stubs or bad URIs.
+  const relationships =
+    payload.relationships && typeof payload.relationships === "object"
+      ? payload.relationships
+      : {};
+  relationships.property_has_address = null;
+  relationships.address_has_fact_sheet = null;
+  payload.relationships = relationships;
   writeJSON(propertyPath, payload);
 }
 
@@ -26091,7 +26096,10 @@ async function main() {
         unAddr && unAddr.full_address,
         unAddr && unAddr.unnormalized_address,
       ],
-      preferRaw: false,
+      // Prefer the raw branch whenever an unnormalized string exists; only fall
+      // back to normalized when we truly lack raw input but have a complete
+      // normalized address.
+      preferRaw: true,
     });
 
     // Drop locally generated address relationships; downstream populates them.
