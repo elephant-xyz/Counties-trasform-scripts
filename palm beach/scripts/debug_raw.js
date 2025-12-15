@@ -8263,6 +8263,15 @@ const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
   new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
 );
 
+// The raw oneOf branch only needs the unnormalized string plus minimal metadata.
+const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([
+  "unnormalized_address",
+  "county_name",
+  "request_identifier",
+  "source_http_request",
+]);
+const RAW_BRANCH_ALLOWED_FIELD_SET = new Set(RAW_BRANCH_ALLOWED_FIELDS);
+
 // Keep raw (unnormalized) address payloads limited to the oneOf surface so we
 // don't leak normalized fields that break validation.
 function sanitizeRawOneOfPayload(payload = {}, overrides = {}) {
@@ -8603,6 +8612,39 @@ function buildLeanRawAddressPayload(rawValue, options = {}) {
   }
 
   return ensureAddressOutputCoverage(hydrated) || hydrated;
+}
+
+function buildStrictRawOneOfPayload(source = {}) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return null;
+  }
+
+  const rawValue = safeNullIfEmpty(source.unnormalized_address);
+  if (!rawValue) return null;
+
+  const output = {};
+  RAW_BRANCH_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") {
+      output.unnormalized_address = rawValue;
+      return;
+    }
+    if (field === "request_identifier") {
+      const rid =
+        source.request_identifier === undefined
+          ? null
+          : safeNullIfEmpty(source.request_identifier);
+      output.request_identifier = rid === undefined ? null : rid;
+      return;
+    }
+    if (field === "source_http_request") {
+      const prepared = prepareSourceHttpRequest(source.source_http_request);
+      output.source_http_request = prepared ? deepClone(prepared) : null;
+      return;
+    }
+    output[field] = sanitizeAddressFieldValue(field, source[field]);
+  });
+
+  return output;
 }
 
 function writeMinimalRawAddress(addressPath, options = {}) {
@@ -21418,8 +21460,9 @@ async function main() {
   const hasRawAddress =
     typeof resolvedRaw === "string" && resolvedRaw.trim().length > 0;
   const preferRawOutput =
-    prefersRawAddressBranch || hasRawAddress;
-  const shouldUseNormalized = hasCompleteNormalized && !preferRawOutput;
+    !hasCompleteNormalized && (prefersRawAddressBranch || hasRawAddress);
+  const shouldUseNormalized =
+    hasCompleteNormalized && !prefersRawAddressBranch;
 
   let finalAddressPayload = null;
   if (shouldUseNormalized) {
@@ -25246,6 +25289,60 @@ async function main() {
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
+
+    // Final clamp: if normalized coverage is incomplete, emit a lean raw branch
+    // limited to the raw oneOf surface so validation does not expect normalized
+    // fields. When normalized coverage is complete, drop the raw string to stay
+    // on the normalized branch.
+    const terminalBranchSnapshot = readJSONIfExists(addressOutputPath);
+    if (
+      terminalBranchSnapshot &&
+      typeof terminalBranchSnapshot === "object" &&
+      !Array.isArray(terminalBranchSnapshot)
+    ) {
+      const normalizedSurface =
+        typeof ensureNormalizedAddressSchemaSurface === "function"
+          ? ensureNormalizedAddressSchemaSurface({ ...terminalBranchSnapshot })
+          : null;
+      const normalizedReady =
+        normalizedSurface &&
+        hasCompleteNormalizedAddress({ ...normalizedSurface });
+      const rawValue = safeNullIfEmpty(
+        terminalBranchSnapshot.unnormalized_address,
+      );
+
+      if (normalizedReady) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            terminalBranchSnapshot,
+            "unnormalized_address",
+          )
+        ) {
+          delete terminalBranchSnapshot.unnormalized_address;
+        }
+        writeJSON(
+          addressOutputPath,
+          ensureAddressOutputCoverage(terminalBranchSnapshot) ||
+            terminalBranchSnapshot,
+        );
+      } else if (rawValue) {
+        const leanRaw =
+          buildStrictRawOneOfPayload({
+            ...terminalBranchSnapshot,
+            unnormalized_address: rawValue,
+          }) || null;
+        if (leanRaw) {
+          originalWriteFileSync(
+            addressOutputPath,
+            `${JSON.stringify(leanRaw, null, 2)}\n`,
+          );
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
 
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
