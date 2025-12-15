@@ -8783,37 +8783,20 @@ function finalizeMinimalAddressBranch(addressPath, options = {}) {
   }
 
   if (rawValue) {
-    const rawOut = {
+    const rawSeed = {
+      ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+      ...snapshot,
       unnormalized_address: rawValue,
       request_identifier: requestId === undefined ? null : requestId,
       source_http_request: preparedSource ? deepClone(preparedSource) : null,
     };
+
     if (countyName) {
-      rawOut.county_name = countyName;
+      rawSeed.county_name = countyName;
     }
-    const carryFields = [
-      "country_code",
-      "section",
-      "township",
-      "range",
-      "block",
-      "lot",
-      "postal_code",
-      "plus_four_postal_code",
-      "city_name",
-      "state_code",
-    ];
-    carryFields.forEach((field) => {
-      if (!Object.prototype.hasOwnProperty.call(snapshot, field)) return;
-      const sanitized = sanitizeAddressFieldValue(field, snapshot[field]);
-      if (sanitized !== undefined && sanitized !== null) {
-        rawOut[field] = sanitized;
-      }
-    });
-    originalWriteFileSync(
-      addressPath,
-      `${JSON.stringify(rawOut, null, 2)}\n`,
-    );
+
+    const rawOut = ensureAddressOutputCoverage(rawSeed) || rawSeed;
+    writeJSON(addressPath, rawOut);
     return;
   }
 
