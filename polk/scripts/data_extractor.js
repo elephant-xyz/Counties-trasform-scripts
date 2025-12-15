@@ -3379,7 +3379,8 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
       const firstName = toTitleCase(o.first_name); // Apply title case
       const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
-      const personKey = `${firstName}|${middleName || ""}|${lastName}`;
+      const suffixName = o.suffix_name || null; // Preserve suffix from owner data
+      const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
       if (!res.personIndexByKey.has(personKey)) {
         res.persons.push({
           birth_date: null,
@@ -3387,7 +3388,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
           last_name: lastName,
           middle_name: middleName,
           prefix_name: null,
-          suffix_name: null,
+          suffix_name: suffixName,
           us_citizenship_status: null,
           veteran_status: null,
         });
@@ -3412,7 +3413,8 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
         const firstName = toTitleCase(o.first_name); // Apply title case
         const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
-        const personKey = `${firstName}|${middleName || ""}|${lastName}`;
+        const suffixName = o.suffix_name || null; // Preserve suffix from owner data
+        const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
         if (!res.personIndexByKey.has(personKey)) {
           res.persons.push({
             birth_date: null,
@@ -3420,7 +3422,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
             last_name: lastName,
             middle_name: middleName,
             prefix_name: null,
-            suffix_name: null,
+            suffix_name: suffixName,
             us_citizenship_status: null,
             veteran_status: null,
           });
@@ -3955,11 +3957,27 @@ function main() {
     const f = (p.first_name || "").trim();
     const m = (p.middle_name || "").trim();
     const l = (p.last_name || "").trim();
+    const s = (p.suffix_name || "").trim();
     if (f && l) {
       // Use the capitalized names for matching
       nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
       nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
       nameVariants.push(`${l} ${f}`.toUpperCase());
+      // Add variants with suffix if present (both with and without periods for matching)
+      if (s) {
+        const sNoPeriod = s.replace(/\./g, "").toUpperCase();
+        const sWithPeriod = s.toUpperCase();
+        // Add variants with suffix (without period for better matching)
+        nameVariants.push(`${l} ${f}${m ? " " + m : ""} ${sNoPeriod}`.toUpperCase());
+        nameVariants.push(`${f} ${m ? m + " " : ""}${l} ${sNoPeriod}`.toUpperCase());
+        nameVariants.push(`${l} ${f} ${sNoPeriod}`.toUpperCase());
+        // Also add with period if different
+        if (sWithPeriod !== sNoPeriod) {
+          nameVariants.push(`${l} ${f}${m ? " " + m : ""} ${sWithPeriod}`.toUpperCase());
+          nameVariants.push(`${f} ${m ? m + " " : ""}${l} ${sWithPeriod}`.toUpperCase());
+          nameVariants.push(`${l} ${f} ${sWithPeriod}`.toUpperCase());
+        }
+      }
     }
     const pth = `./person_${i + 1}.json`;
     nameVariants.forEach((v) => personNameToPath.set(v, pth));
