@@ -401,8 +401,8 @@ function extractCurrentOwners($) {
       // Addresses typically include numbers and common address abbreviations
       let cleanedName = t.replace(/\d+\s+[A-Z\s]+(?:ST|AVE|RD|DR|LN|CT|WAY|BLVD|PL|TER|CIR|PKWY)\s+[A-Z\s,\d]+$/i, '').trim();
       if (cleanedName) {
-        // Remove trailing "&" and any following text
-        cleanedName = cleanedName.replace(/\s*&.*$/,'').trim();
+        // Remove trailing "&", "AND", and any following text
+        cleanedName = cleanedName.replace(/\s*(&|AND)\s*.*$/i,'').trim();
         if (cleanedName) {
           rawNames.push(cleanedName);
         }
@@ -433,14 +433,23 @@ function extractCurrentOwners($) {
       const original = `${t1} ${t2} ${t3}`;
       const reordered = `${t2} ${t3} ${t1}`; // Assume LAST FIRST MIDDLE → FIRST MIDDLE LAST
 
-      // Check if reordered version appears in sales data
-      if (salesNamesStr.includes(reordered.toUpperCase())) {
-        finalName = reordered;
-      } else if (salesNamesStr.includes(original.toUpperCase())) {
+      // Check if original version appears in sales data (already in correct format)
+      if (salesNamesStr.includes(original.toUpperCase())) {
         finalName = original;
-      } else {
-        // Default to reordering for 3-token names (common pattern in this data)
+      } else if (salesNamesStr.includes(reordered.toUpperCase())) {
         finalName = reordered;
+      } else {
+        // Check if name looks like LAST FIRST MIDDLE by checking if t1 is commonly a last name pattern
+        // If all tokens are capitalized and t2 looks like a first name, reorder
+        // Otherwise keep original (likely already FIRST MIDDLE LAST)
+        const commonFirstNames = ['MICHAEL', 'JOHN', 'JAMES', 'ROBERT', 'WILLIAM', 'DAVID', 'RICHARD', 'CHARLES', 'THOMAS', 'DONALD'];
+        if (commonFirstNames.includes(t2.toUpperCase())) {
+          // t2 is likely a first name, so original is LAST FIRST MIDDLE
+          finalName = reordered;
+        } else {
+          // Keep original format
+          finalName = original;
+        }
       }
     } else if (tokens.length === 2) {
       const [t1, t2] = tokens;
@@ -448,12 +457,12 @@ function extractCurrentOwners($) {
       const reordered = `${t2} ${t1}`;
 
       // Check which version appears in sales data
-      if (salesNamesStr.includes(reordered.toUpperCase())) {
-        finalName = reordered;
-      } else if (salesNamesStr.includes(original.toUpperCase())) {
+      if (salesNamesStr.includes(original.toUpperCase())) {
         finalName = original;
+      } else if (salesNamesStr.includes(reordered.toUpperCase())) {
+        finalName = reordered;
       } else {
-        // Default to reordering for 2-token names
+        // Default to reordering for 2-token names (common pattern: LAST FIRST)
         finalName = reordered;
       }
     }
