@@ -1537,10 +1537,14 @@ function formatMiddleName(name) {
 
   if (!normalizedSpacing) return null;
 
-  // Capitalize the first letter, convert rest to lowercase for proper title case
-  // This ensures multi-letter middle names like "WELLS" become "Wells"
-  // while single letters like "L" remain "L"
-  const result = normalizedSpacing.charAt(0).toUpperCase() + normalizedSpacing.slice(1).toLowerCase();
+  // Title case each word: capitalize first letter of each word, lowercase the rest
+  // This ensures multi-word middle names like "MARY WELLS" become "Mary Wells"
+  // and single-word names like "WELLS" become "Wells"
+  const result = normalizedSpacing
+    .toLowerCase()
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 
   // Validate against the middle name pattern
   if (!MIDDLE_NAME_PATTERN.test(result)) {
