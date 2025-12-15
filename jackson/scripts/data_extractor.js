@@ -1885,7 +1885,6 @@ function createStructureFiles(seed,parcelIdentifier) {
         flooring_condition: struct?.flooring_condition ?? null,
         interior_wall_structure_material: struct?.interior_wall_structure_material ?? null,
         interior_wall_surface_material_primary: struct?.interior_wall_surface_material_primary ?? null,
-        interior_wall_surface_material_secondary: validatedSecondary,
         interior_wall_finish_primary: struct?.interior_wall_finish_primary ?? null,
         interior_wall_finish_secondary: struct?.interior_wall_finish_secondary ?? null,
         interior_wall_condition: struct?.interior_wall_condition ?? null,
@@ -1926,6 +1925,10 @@ function createStructureFiles(seed,parcelIdentifier) {
         foundation_repair_date: struct?.foundation_repair_date ?? null,
         window_installation_date: struct?.window_installation_date ?? null
       };
+      // Only add interior_wall_surface_material_secondary if it has a valid non-null value
+      if (validatedSecondary !== null) {
+        structureOut.interior_wall_surface_material_secondary = validatedSecondary;
+      }
       const structureIndex = struct.structure_index || idx + 1;
       writeJSON(path.join("data", `structure_${structureIndex}.json`), structureOut);
 
