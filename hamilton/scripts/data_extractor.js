@@ -1415,10 +1415,17 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   // console.log("ownersByDate",ownersByDate);
 
   //Person processing and mapping creation.
+  // Build a set of date keys that will be used for relationships
+  const salesDates = new Set(sales.map(rec => parseDateToISO(rec.saleDate)).filter(d => d !== null));
+  salesDates.add("current");
+
   const personMap = new Map();
   Object.keys(ownersByDate).forEach((dateKey) => {
     // Skip unknown_date_* entries as they won't be linked to any sale
     if (/^unknown_date_\d+$/.test(dateKey)) return;
+
+    // Skip date keys that won't be used for relationships
+    if (!salesDates.has(dateKey)) return;
 
     const arr = ownersByDate[dateKey];
     (arr || []).forEach((o) => {
