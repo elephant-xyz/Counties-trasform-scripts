@@ -26216,6 +26216,117 @@ async function main() {
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
 
+    // Final safety: when only the raw address string is available, emit a lean
+    // raw branch while keeping any coordinates we already resolved so downstream
+    // relationship builders don't see missing latitude/longitude.
+    const terminalAddressState = readJSONIfExists(addressOutputPath) || {};
+    const finalPassNormalizedSurface =
+      (ensureNormalizedAddressSchemaSurface &&
+        ensureNormalizedAddressSchemaSurface({ ...terminalAddressState })) ||
+      null;
+    const finalPassNormalizedComplete =
+      finalPassNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...finalPassNormalizedSurface });
+    const terminalRawValue = safeNullIfEmpty(
+      terminalAddressState.unnormalized_address,
+    );
+
+    if (terminalRawValue && !finalPassNormalizedComplete) {
+      const coordinateSources = [
+        terminalAddressState,
+        finalPassNormalizedSurface,
+        bestNormalizedAddress,
+        { latitude: initialLatitude, longitude: initialLongitude },
+        parcelCentroid,
+      ];
+      const pickCoordinate = (field) => {
+        for (const source of coordinateSources) {
+          const numeric = parseCoordinate(source && source[field]);
+          if (Number.isFinite(numeric)) return numeric;
+        }
+        return null;
+      };
+
+      const finalRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          terminalAddressState.request_identifier,
+          finalRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
+      const finalSourceHttpResolved = resolveSourceHttpRequest(
+        terminalAddressState.source_http_request,
+        finalSourceHttp,
+        resolvedSourceHttp,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      );
+
+      const candidateSources = [
+        terminalAddressState,
+        finalPassNormalizedSurface,
+        bestNormalizedAddress,
+        seed,
+        unAddr,
+      ].filter((src) => src && typeof src === "object");
+
+      const pickField = (field) => {
+        for (const source of candidateSources) {
+          if (!Object.prototype.hasOwnProperty.call(source, field)) continue;
+          const value = source[field];
+          if (
+            value === undefined ||
+            value === null ||
+            (typeof value === "string" && !value.trim())
+          ) {
+            continue;
+          }
+          return value;
+        }
+        return null;
+      };
+
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      rawOut.unnormalized_address = terminalRawValue;
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address") return;
+        if (field === "request_identifier") {
+          rawOut.request_identifier =
+            finalRequestId === undefined ? null : finalRequestId;
+          return;
+        }
+        if (field === "source_http_request") {
+          rawOut.source_http_request = finalSourceHttpResolved
+            ? deepClone(prepareSourceHttpRequest(finalSourceHttpResolved))
+            : null;
+          return;
+        }
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          rawOut[field] = pickCoordinate(field);
+          return;
+        }
+        rawOut[field] = sanitizeAddressFieldValue(field, pickField(field));
+      });
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+      writeJSON(addressOutputPath, rawOut);
+    }
+
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
     console.log("All mapping scripts completed successfully");
