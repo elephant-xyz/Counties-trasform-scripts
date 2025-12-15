@@ -8,7 +8,7 @@ const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
 const PARCEL_SELECTOR = "#ctlBodyPane_ctl08_ctl01_lblParcelID";
-const CURRENT_OWNER_SELECTOR = "#ctlBodyPane_ctl09_ctl01_lstPrimaryOwner_ctl00_lblPrimaryOwnerName_lnkUpmSearchLinkSuppressed_lblSearch";
+const CURRENT_OWNER_SELECTOR = '[id*="lstPrimaryOwner"][id*="lblPrimaryOwnerName"][id$="lnkSearch"]';
 const SALES_TABLE_SELECTOR = "#ctlBodyPane_ctl18_ctl01_grdSales tbody tr";
 
 // Utility helpers
@@ -95,6 +95,7 @@ const COMPANY_KEYWORDS = [
   "services",
   "trust",
   "tr",
+  "estate",
   "associates",
   "association",
   "holdings",
@@ -229,8 +230,9 @@ function extractSalesOwnersByDate($) {
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(grantee);
     }
-    const grantor = txt(tds.eq(tds.length - 2).text());
-    if (grantor) priorOwners.push(grantor);
+    // Note: grantors (sellers) are not tracked as they don't have relationships in the schema
+    // const grantor = txt(tds.eq(tds.length - 2).text());
+    // if (grantor) priorOwners.push(grantor);
   });
   return { map, priorOwners };
 }
@@ -271,56 +273,8 @@ for (const d of dates) {
   }
 }
 
-if (priorOwners && priorOwners.length > 0) {
-  const granteeNamesNorm = new Set();
-  Object.values(owners_by_date).forEach((arr) => {
-    arr.forEach((o) => {
-      if (o.type === "company")
-        granteeNamesNorm.add(`company:${normalizeName(o.name)}`);
-      else
-        granteeNamesNorm.add(
-          `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`,
-        );
-    });
-  });
-  const placeholderRaw = [];
-  for (const p of priorOwners) {
-    const parts = splitCompositeNames(p);
-    for (const part of parts) {
-      const res = classifyOwner(part);
-      if (res.valid) {
-        const o = res.owner;
-        let key;
-        if (o.type === "company") key = `company:${normalizeName(o.name)}`;
-        else
-          key = `person:${normalizeName(o.first_name)}|${o.middle_name ? normalizeName(o.middle_name) : ""}|${normalizeName(o.last_name)}`;
-        if (!granteeNamesNorm.has(key)) {
-          placeholderRaw.push(part);
-        }
-      } else {
-        invalid_owners.push({
-          raw: part,
-          reason: res.reason || "invalid_owner",
-        });
-      }
-    }
-  }
-  if (placeholderRaw.length > 0) {
-    const unknownOwners = resolveOwnersFromRawStrings(
-      placeholderRaw,
-      invalid_owners,
-    );
-    if (unknownOwners.length > 0) {
-      let idx = 1;
-      let unknownKey = `unknown_date_${idx}`;
-      while (Object.prototype.hasOwnProperty.call(owners_by_date, unknownKey)) {
-        idx += 1;
-        unknownKey = `unknown_date_${idx}`;
-      }
-      owners_by_date[unknownKey] = unknownOwners;
-    }
-  }
-}
+// Removed grantor tracking logic - grantors (sellers) don't have relationships in the schema
+// Only grantees (buyers) are tracked through sales relationships
 
 const currentOwnersStructured = resolveOwnersFromRawStrings(
   currentOwnerRaw,
@@ -343,10 +297,11 @@ Object.keys(owners_by_date)
   .forEach((k) => {
     orderedOwnersByDate[k] = owners_by_date[k];
   });
-if (dateKeys.length > 0) {
-  orderedOwnersByDate["current"] = owners_by_date[dateKeys[dateKeys.length - 1]];
-} else if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
+// Preserve actual current owners from the page, don't overwrite with last sale owners
+if (Object.prototype.hasOwnProperty.call(owners_by_date, "current")) {
   orderedOwnersByDate["current"] = owners_by_date["current"];
+} else if (dateKeys.length > 0) {
+  orderedOwnersByDate["current"] = owners_by_date[dateKeys[dateKeys.length - 1]];
 }
 
 const propKey = `property_${parcelId || "unknown_id"}`;
