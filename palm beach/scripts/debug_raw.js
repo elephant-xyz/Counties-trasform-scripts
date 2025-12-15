@@ -24238,6 +24238,96 @@ async function main() {
       }
     }
 
+    // Final hard clamp: if we have any raw address string from the source,
+    // emit the raw oneOf branch with the full schema surface populated. This
+    // avoids mixed-branch payloads that trigger oneOf validation errors.
+    const terminalAddressPayload = readJSONIfExists(addressOutputPath);
+    const terminalRawAddress = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalAddressPayload && terminalAddressPayload.unnormalized_address,
+        finalRawCandidateClamp,
+        finalRawPreferred,
+        finalRawResolved,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+
+    if (terminalRawAddress) {
+      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
+      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+        if (field === "unnormalized_address") {
+          rawOut.unnormalized_address = terminalRawAddress;
+          return;
+        }
+        if (field === "request_identifier") {
+          rawOut.request_identifier =
+            safeNullIfEmpty(
+              resolveFirstNonEmptyString([
+                terminalAddressPayload && terminalAddressPayload.request_identifier,
+                finalRequestIdentifier,
+                trimmedRequestIdentifier,
+                parcelId,
+                seed && seed.request_identifier,
+                unAddr && unAddr.request_identifier,
+              ]),
+            ) ?? null;
+          return;
+        }
+        if (field === "source_http_request") {
+          rawOut.source_http_request =
+            resolveSourceHttpRequest(
+              terminalAddressPayload && terminalAddressPayload.source_http_request,
+              finalSourceHttp,
+              resolvedSourceHttp,
+              sourceHttpCandidate,
+              seed && seed.source_http_request,
+              unAddr && unAddr.source_http_request,
+            ) || null;
+          return;
+        }
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(
+            terminalAddressPayload ? terminalAddressPayload[field] : null,
+          );
+          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+          return;
+        }
+        if (
+          terminalAddressPayload &&
+          Object.prototype.hasOwnProperty.call(terminalAddressPayload, field)
+        ) {
+          rawOut[field] = sanitizeAddressFieldValue(
+            field,
+            terminalAddressPayload[field],
+          );
+        } else {
+          rawOut[field] = null;
+        }
+      });
+      if (!rawOut.postal_code) {
+        rawOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(rawOut.state_code) &&
+        !hasMeaningfulAddressValue(rawOut.country_code)
+      ) {
+        rawOut.country_code = "US";
+      }
+      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+        rawOut.latitude = null;
+        rawOut.longitude = null;
+      }
+      writeJSON(addressOutputPath, rawOut);
+    }
+
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
     console.log("All mapping scripts completed successfully");
