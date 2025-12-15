@@ -60,6 +60,22 @@ function removeEtAl(name) {
   );
 }
 
+function removeInvalidNameSuffixes(name) {
+  // Remove R/S (revocable/living trust abbreviation) and similar suffixes
+  // Also remove T/C (trustee/co-trustee), TTE (trustee), TR (trustee), etc.
+  return cleanText(
+    name.replace(/\bR\/S\b\.?/gi, "")
+        .replace(/\bR\/s\b\.?/g, "")
+        .replace(/\bT\/C\b\.?/gi, "")  // Remove T/C (trustee/co-trustee)
+        .replace(/\bT\/c\b\.?/g, "")
+        .replace(/\bTTE\b\.?/gi, "")   // Remove TTE (trustee)
+        .replace(/\bTR\b\.?/gi, "")    // Remove TR (trustee) - but only as suffix
+        .replace(/\s+\/\s+/g, " ")
+        .replace(/\s+[A-Z]\s*\/\s*[A-Za-z]\b/gi, "")  // Remove any X/Y patterns
+        .replace(/\s+R\s*\/\s*[A-Za-z]\b/gi, ""),
+  );
+}
+
 function normalizeNameKey(obj) {
   if (!obj) return "";
   if (obj.type === "company") {
@@ -99,6 +115,7 @@ function classifyOwner(raw, invalid) {
     name = cleanText(name.replace(/\baka\b|\bfka\b/gi, ""));
   }
   name = removeEtAl(name);
+  name = removeInvalidNameSuffixes(name);
 
   // If mostly address-like (contains digits and street terms), exclude
   if (
@@ -120,14 +137,38 @@ function classifyOwner(raw, invalid) {
   let personStr = name;
   personStr = personStr.replace(/\s*&\s*/g, " ").replace(/\s{2,}/g, " ");
 
-  // Common person formats: "LAST, FIRST M" or "First M Last"
+  // Function to extract and remove suffix from token array
+  function extractSuffix(tokens) {
+    if (tokens.length === 0) return { tokens, suffix: null };
+
+    const suffixes = new Set([
+      "JR", "JR.", "SR", "SR.", "I", "II", "III", "IV", "V",
+      "VI", "VII", "VIII", "IX", "X", "ESQ", "ESQ.", "PHD", "PHD.",
+      "MD", "MD.", "DDS", "DDS."
+    ]);
+
+    const lastToken = tokens[tokens.length - 1].toUpperCase().replace(/,/g, "");
+    if (suffixes.has(lastToken)) {
+      const suffix = tokens[tokens.length - 1].replace(/,/g, "");
+      return { tokens: tokens.slice(0, -1), suffix: toTitleCaseName(suffix) };
+    }
+
+    return { tokens, suffix: null };
+  }
+
+  // Common person formats: "LAST, FIRST M" or "LAST FIRST M" or "First M Last"
   let first = null,
     middle = null,
-    last = null;
+    last = null,
+    suffix = null;
   if (/,/.test(personStr)) {
-    // Format: LAST, FIRST [MIDDLE]
+    // Format: LAST, FIRST [MIDDLE] [SUFFIX]
     const [l, rest] = personStr.split(",", 2).map((s) => cleanText(s));
-    const tokens = rest.split(" ").filter(Boolean);
+    let tokens = rest.split(" ").filter(Boolean);
+    const extracted = extractSuffix(tokens);
+    tokens = extracted.tokens;
+    suffix = extracted.suffix;
+
     if (tokens.length >= 1) {
       last = toTitleCaseName(l);
       first = toTitleCaseName(tokens[0]);
@@ -136,12 +177,32 @@ function classifyOwner(raw, invalid) {
       }
     }
   } else {
-    const tokens = personStr.split(" ").filter(Boolean);
+    let tokens = personStr.split(" ").filter(Boolean);
+    const extracted = extractSuffix(tokens);
+    tokens = extracted.tokens;
+    suffix = extracted.suffix;
+
     if (tokens.length >= 2) {
-      first = toTitleCaseName(tokens[0]);
-      last = toTitleCaseName(tokens[tokens.length - 1]);
-      if (tokens.length > 2) {
-        middle = toTitleCaseName(tokens.slice(1, -1).join(" "));
+      // Check if the first token is all uppercase (likely last name)
+      // or if it's from a structured field (e.g., property records typically use LAST FIRST MIDDLE format)
+      const firstTokenAllCaps = tokens[0] === tokens[0].toUpperCase();
+      const allTokensAllCaps = tokens.every(t => t === t.toUpperCase());
+
+      // If all tokens are uppercase or first token is all caps with length > 3, assume LAST FIRST MIDDLE format
+      if (allTokensAllCaps || (firstTokenAllCaps && tokens[0].length > 3)) {
+        // Format: LAST FIRST [MIDDLE]
+        last = toTitleCaseName(tokens[0]);
+        first = toTitleCaseName(tokens[1]);
+        if (tokens.length > 2) {
+          middle = toTitleCaseName(tokens.slice(2).join(" "));
+        }
+      } else {
+        // Format: FIRST [MIDDLE] LAST
+        first = toTitleCaseName(tokens[0]);
+        last = toTitleCaseName(tokens[tokens.length - 1]);
+        if (tokens.length > 2) {
+          middle = toTitleCaseName(tokens.slice(1, -1).join(" "));
+        }
       }
     }
   }
@@ -153,6 +214,7 @@ function classifyOwner(raw, invalid) {
 
   const person = { type: "person", first_name: first, last_name: last };
   if (middle && cleanText(middle)) person.middle_name = middle;
+  if (suffix) person.suffix = suffix;
   return person;
 }
 

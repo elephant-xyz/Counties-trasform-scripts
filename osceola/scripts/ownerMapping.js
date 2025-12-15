@@ -66,9 +66,12 @@ function classifyOwner(raw) {
     const noAmp = s.replace(/&/g, " ").replace(/\s+/g, " ").trim();
     const tokens = noAmp.split(" ").filter(Boolean);
     if (tokens.length >= 2) {
-      const first = tokens[0];
-      const last = tokens[tokens.length - 1];
-      const middle = tokens.slice(1, -1).join(" ");
+      const first = cleanInvalidCharsFromName(tokens[0]);
+      const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
+      const middle = cleanInvalidCharsFromName(tokens.slice(1, -1).join(" "));
+      if (!first || !last) {
+        return { valid: false, reason: "insufficient_tokens_ampersand", raw: s };
+      }
       const obj = { type: "person", first_name: first, last_name: last };
       if (middle) obj.middle_name = middle;
       else obj.middle_name = null;
@@ -81,9 +84,12 @@ function classifyOwner(raw) {
   if (tokens.length < 2) {
     return { valid: false, reason: "insufficient_tokens", raw: s };
   }
-  const first = tokens[0];
-  const last = tokens[tokens.length - 1];
-  const middle = tokens.slice(1, -1).join(" ");
+  const first = cleanInvalidCharsFromName(tokens[0]);
+  const last = cleanInvalidCharsFromName(tokens[tokens.length - 1]);
+  const middle = cleanInvalidCharsFromName(tokens.slice(1, -1).join(" "));
+  if (!first || !last) {
+    return { valid: false, reason: "insufficient_tokens", raw: s };
+  }
   const obj = { type: "person", first_name: first, last_name: last };
   if (middle) obj.middle_name = middle;
   else obj.middle_name = null;
@@ -97,6 +103,27 @@ function normOwnerKey(owner) {
     return `company|${owner.name.toLowerCase().trim()}`;
   const mid = owner.middle_name ? owner.middle_name.toLowerCase().trim() : "";
   return `person|${owner.first_name.toLowerCase().trim()}|${mid}|${owner.last_name.toLowerCase().trim()}`;
+}
+
+function normalizeWhitespace(str) {
+  return (str || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\u00A0\s]+/g, " ")
+    .trim();
+}
+
+function cleanInvalidCharsFromName(raw) {
+  let parsedName = normalizeWhitespace(raw)
+    .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
+    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .trim();
+  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(1);
+  }
+  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+    parsedName = parsedName.slice(0, parsedName.length - 1);
+  }
+  return parsedName;
 }
 
 // Extract property ID with fallbacks
