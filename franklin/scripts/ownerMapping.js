@@ -407,7 +407,7 @@ function buildOwnersByDate($) {
 
       if (looksLikePerson(clean)) {
         const person = parsePerson(clean);
-        if (person) {
+        if (person && person.first_name && person.last_name) {
           owners.push(person);
           sharedLastName = person.last_name; // Save last name for next person
         } else {
@@ -437,7 +437,7 @@ function buildOwnersByDate($) {
         } else {
           // Try parsing as person even if looksLikePerson failed
           const person = parsePerson(clean);
-          if (person) {
+          if (person && person.first_name && person.last_name) {
             owners.push(person);
             sharedLastName = person.last_name;
           } else {
