@@ -2536,17 +2536,48 @@ const specificDocumentTypeMap = {
 
     const assignStructures = () => {
       if (!structureRecords.length) {
-        propertyStructureRecords.forEach((record) => {
-          if (singleBuildingLayoutIndex) {
-            createLayoutToStructureRelationship(
-              singleBuildingLayoutIndex,
-              record.index,
+        // Handle propertyStructureRecords when no structureRecords exist
+        if (propertyStructureRecords.length) {
+          // Check if we need to create a default layout
+          if (!singleBuildingLayoutIndex && !buildingLayoutRecords.length) {
+            // Create a default building layout for propertyStructureRecords
+            const defaultLayoutIndex = addLayout(
+              {
+                space_type: "Building",
+                space_type_index: "1",
+                total_area_sq_ft: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+                livable_area_sq_ft: toNumber(livable) ?? null,
+                area_under_air_sq_ft: toNumber(livable) ?? null,
+                size_square_feet: toNumber(totalAreaSqft) ?? toNumber(livable) ?? null,
+                building_number: 1,
+              },
+              null,
             );
-          } else if (buildingLayoutRecords.length) {
-            const layoutIdx = buildingLayoutRecords[0].index;
-            createLayoutToStructureRelationship(layoutIdx, record.index);
+            buildingLayoutRecords.push({
+              index: defaultLayoutIndex,
+              building_order: 1,
+              space_type_index: "1",
+            });
+            // Create property to layout relationship
+            const relName = `relationship_property_has_layout_${defaultLayoutIndex}.json`;
+            writeJson(path.join("data", relName), {
+              from: { "/": "./property.json" },
+              to: { "/": `./layout_${defaultLayoutIndex}.json` },
+            });
           }
-        });
+          // Now create relationships for all propertyStructureRecords
+          propertyStructureRecords.forEach((record) => {
+            if (singleBuildingLayoutIndex) {
+              createLayoutToStructureRelationship(
+                singleBuildingLayoutIndex,
+                record.index,
+              );
+            } else if (buildingLayoutRecords.length) {
+              const layoutIdx = buildingLayoutRecords[0].index;
+              createLayoutToStructureRelationship(layoutIdx, record.index);
+            }
+          });
+        }
         return;
       }
       if (!buildingLayoutRecords.length) {
