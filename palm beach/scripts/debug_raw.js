@@ -25717,7 +25717,122 @@ async function main() {
     });
 
     enforceMinimalRawAddressBranch(addressOutputPath);
+
+    // Final oneOf clamp: prefer normalized only when fully populated; otherwise emit
+    // the lean raw branch anchored by the unnormalized string from the source.
+    const finalOneOfSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const finalOneOfNormalizedSurface =
+      typeof ensureNormalizedAddressSchemaSurface === "function"
+        ? ensureNormalizedAddressSchemaSurface({ ...finalOneOfSnapshot })
+        : null;
+    const finalOneOfNormalizedComplete =
+      finalOneOfNormalizedSurface &&
+      typeof hasCompleteNormalizedAddress === "function" &&
+      hasCompleteNormalizedAddress({ ...finalOneOfNormalizedSurface });
+
+    if (finalOneOfNormalizedComplete) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        let value = finalOneOfNormalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (field === "source_http_request") {
+          const prepared = prepareSourceHttpRequest(value);
+          value = prepared ? deepClone(prepared) : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        normalizedOut[field] = value;
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          normalizedOut,
+          "unnormalized_address",
+        )
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else {
+      const terminalRawCandidate = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          finalOneOfSnapshot.unnormalized_address,
+          ...(finalUnnormalizedCandidates || []),
+          unnormalizedAddressCandidate,
+          combinedModelAddress,
+          siteLocationLine,
+          addressLineCombined,
+          fullAddr,
+          fullAddrInput,
+          unAddr && unAddr.full_address,
+          unAddr && unAddr.unnormalized_address,
+        ]),
+      );
+
+      if (terminalRawCandidate) {
+        const resolvedCounty = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            finalOneOfSnapshot.county_name,
+            formattedCountyName,
+            countyName,
+            unAddr && unAddr.county_jurisdiction,
+          ]),
+        );
+        const resolvedRequestIdentifier = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            finalOneOfSnapshot.request_identifier,
+            finalRequestIdentifier,
+            trimmedRequestIdentifier,
+            parcelId,
+            seed && seed.request_identifier,
+            unAddr && unAddr.request_identifier,
+          ]),
+        );
+        const resolvedSourceHttp =
+          resolveSourceHttpRequest(
+            finalOneOfSnapshot.source_http_request,
+            finalSourceHttp,
+            sourceHttpCandidate,
+            seed && seed.source_http_request,
+            unAddr && unAddr.source_http_request,
+          ) || null;
+
+        const rawOut = {
+          ...RAW_ONE_OF_SCHEMA_TEMPLATE,
+          unnormalized_address: terminalRawCandidate,
+          county_name: resolvedCounty || null,
+          request_identifier:
+            resolvedRequestIdentifier === undefined
+              ? null
+              : resolvedRequestIdentifier,
+          source_http_request: resolvedSourceHttp
+            ? deepClone(resolvedSourceHttp)
+            : null,
+        };
+
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+
+    // Drop locally generated address relationships; downstream populates them.
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
+    removeAddressRelationshipFiles(dataDir);
+    removeAddressRelationshipFiles(relationshipsDir);
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
