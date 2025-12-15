@@ -1915,7 +1915,7 @@ function loadInput() {
   } catch (jsonError) {
     // If input.json doesn't exist or is unreadable, try input.html
     if (jsonError.code === 'ENOENT' || jsonError instanceof SyntaxError) {
-      console.warn(`Could not read or parse input.json: ${jsonError.message}. Attempting to read from input.html.`);
+      console.log(`Could not read or parse input.json: ${jsonError.message}. Attempting to read from input.html.`);
       try {
         // 2. Read input.html synchronously
         const htmlData = fs.readFileSync(htmlFilePath, 'utf8');
