@@ -25817,24 +25817,34 @@ async function main() {
             unAddr && unAddr.source_http_request,
           ) || null;
 
-        // Emit a lean raw branch so the address cleanly matches the raw oneOf
-        // variant without dragging along nullable normalized fields.
-        const rawOut = {
-          unnormalized_address: terminalRawCandidate,
-          county_name: resolvedCounty || null,
+        // Emit the raw oneOf branch with the full address schema surface so
+        // required nullable fields are present (latitude/longitude, street
+        // pieces, etc.) even when the source only provides an unnormalized
+        // string.
+        const rawSourcePayload = {
+          ...finalOneOfSnapshot,
+          county_name: resolvedCounty || finalOneOfSnapshot.county_name || null,
           request_identifier:
             resolvedRequestIdentifier === undefined
               ? null
               : resolvedRequestIdentifier,
-          source_http_request: resolvedSourceHttp
-            ? deepClone(resolvedSourceHttp)
-            : null,
+          source_http_request: resolvedSourceHttp,
         };
 
-        originalWriteFileSync(
-          addressOutputPath,
-          `${JSON.stringify(rawOut, null, 2)}\n`,
-        );
+        const rawOut =
+          buildRawAddressMinimalSurface(
+            rawSourcePayload,
+            terminalRawCandidate,
+          ) || null;
+
+        if (rawOut) {
+          originalWriteFileSync(
+            addressOutputPath,
+            `${JSON.stringify(rawOut, null, 2)}\n`,
+          );
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
       } else {
         removeFileIfExists(addressOutputPath);
       }
