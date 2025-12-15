@@ -1635,26 +1635,64 @@ function writePersonCompaniesSalesRelationships(
   });
 
   // Clean up any person/company files that don't have relationships
+  // This is critical to prevent "Unused data JSON file detected" errors
   try {
     const files = fs.readdirSync("data");
+
+    // Build a comprehensive map of which person/company indices are referenced by ANY relationship
+    const personsReferencedByRelationships = new Set();
+    const companiesReferencedByRelationships = new Set();
+
+    for (const f of files) {
+      // Check all relationship files to see which persons/companies they reference
+      if (f.startsWith("relationship_") && f.endsWith(".json")) {
+        try {
+          const relContent = JSON.parse(fs.readFileSync(path.join("data", f), "utf8"));
+
+          // Extract person/company references from "from" and "to" fields
+          const fromRef = relContent.from && relContent.from["/"] ? relContent.from["/"] : null;
+          const toRef = relContent.to && relContent.to["/"] ? relContent.to["/"] : null;
+
+          [fromRef, toRef].forEach(ref => {
+            if (ref) {
+              const personMatch = ref.match(/person_(\d+)\.json/);
+              const companyMatch = ref.match(/company_(\d+)\.json/);
+
+              if (personMatch) {
+                personsReferencedByRelationships.add(parseInt(personMatch[1]));
+              } else if (companyMatch) {
+                companiesReferencedByRelationships.add(parseInt(companyMatch[1]));
+              }
+            }
+          });
+        } catch (parseError) {
+          console.warn(`Warning: Failed to parse relationship file ${f}:`, parseError.message);
+        }
+      }
+    }
+
+    // Now delete person/company files that are NOT referenced by any relationship
     for (const f of files) {
       try {
         const personMatch = f.match(/^person_(\d+)\.json$/);
         const companyMatch = f.match(/^company_(\d+)\.json$/);
+
         if (personMatch) {
           const idx = parseInt(personMatch[1]);
-          if (!personsWithRelationships.has(idx)) {
+          if (!personsReferencedByRelationships.has(idx)) {
             const filePath = path.join("data", f);
             if (fs.existsSync(filePath)) {
               fs.unlinkSync(filePath);
+              console.log(`Deleted unused person file: ${f}`);
             }
           }
         } else if (companyMatch) {
           const idx = parseInt(companyMatch[1]);
-          if (!companiesWithRelationships.has(idx)) {
+          if (!companiesReferencedByRelationships.has(idx)) {
             const filePath = path.join("data", f);
             if (fs.existsSync(filePath)) {
               fs.unlinkSync(filePath);
+              console.log(`Deleted unused company file: ${f}`);
             }
           }
         }
