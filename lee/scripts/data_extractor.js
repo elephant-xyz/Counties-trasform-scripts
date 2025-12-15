@@ -2358,7 +2358,7 @@ function extractLot($) {
 }
 
 function normalizeDeedType(value) {
-  if (!value) return 'MAPPING NOT AVAILABLE';
+  if (!value) return 'Miscellaneous';
   
   const normalized = value.trim();
   const upper = normalized.toUpperCase();
@@ -2435,7 +2435,7 @@ function normalizeDeedType(value) {
   const processed = leadingCodeMatch && leadingCodeMatch[1] ? leadingCodeMatch[1].trim() : sanitized;
 
   if (!/[a-zA-Z]/.test(processed)) {
-    return 'MAPPING NOT AVAILABLE';
+    return 'Miscellaneous';
   }
 
   const lower = processed.toLowerCase();
@@ -2609,11 +2609,11 @@ function normalizeDeedType(value) {
     'vacation of plat deed': 'Vacation of Plat Deed',
     'assignment of contract': 'Assignment of Contract',
     'release of contract': 'Release of Contract',
-    'notice': 'MAPPING NOT AVAILABLE', // Notice/Development Order
-    'development order': 'MAPPING NOT AVAILABLE',
-    'do': 'MAPPING NOT AVAILABLE',
-    'ldo': 'MAPPING NOT AVAILABLE',
-    'limited development order': 'MAPPING NOT AVAILABLE',
+    'notice': 'Miscellaneous', // Notice/Development Order - not a deed type
+    'development order': 'Miscellaneous',
+    'do': 'Miscellaneous',
+    'ldo': 'Miscellaneous',
+    'limited development order': 'Miscellaneous',
   };
   
   // Check for exact match
@@ -2675,8 +2675,8 @@ function normalizeDeedType(value) {
     return 'Deed in Lieu of Foreclosure';
   }
 
-  // If no match, return "MAPPING NOT AVAILABLE" so validation fails and it can be fixed
-  return 'MAPPING NOT AVAILABLE';
+  // If no match, return "Miscellaneous" for unknown deed types (valid enum value)
+  return 'Miscellaneous';
 }
 
 function normalizeDeedUrl(url) {
@@ -2787,8 +2787,8 @@ function extractDeeds($, requestIdentifier) {
       const deedType = normalizeDeedType(deedTypeRaw);
       console.log(`extractDeeds: Row ${i} - Normalized deed_type: "${deedType}"`);
 
-      const finalDeedType = deedType && deedType !== null ? deedType : 'MAPPING NOT AVAILABLE';
-      const safeDeedType = finalDeedType || 'MAPPING NOT AVAILABLE';
+      const finalDeedType = deedType && deedType !== null ? deedType : 'Miscellaneous';
+      const safeDeedType = finalDeedType || 'Miscellaneous';
 
       const deed = {
         request_identifier: requestIdentifier,
@@ -2851,13 +2851,13 @@ function extractDeeds($, requestIdentifier) {
       if (volume && volume.length > 0) {
         deed.volume = volume;
       }
-      
+
       // Double-check before pushing
       if (!deed.deed_type || deed.deed_type === null) {
-        deed.deed_type = 'MAPPING NOT AVAILABLE';
-        console.log(`extractDeeds: Row ${i} - Force set deed_type to "MAPPING NOT AVAILABLE" for safety`);
+        deed.deed_type = 'Miscellaneous';
+        console.log(`extractDeeds: Row ${i} - Force set deed_type to "Miscellaneous" for safety`);
       }
-      
+
       deeds.push(deed);
       
       // Store the file URL if available
@@ -3090,11 +3090,11 @@ function main() {
   const deedSourceRequests = deedResult.sourceRequests || [];
   
   deedsList.forEach((d, idx) => {
-    // Ensure deed_type is never null - use "MAPPING NOT AVAILABLE" as fallback if unmapped
+    // Ensure deed_type is never null - use "Miscellaneous" as fallback for unknown deed types
     // This is a safety check - normalizeDeedType should already handle this, but ensure it here too
     if (!d.deed_type || d.deed_type === null || d.deed_type === undefined) {
-      d.deed_type = 'MAPPING NOT AVAILABLE';
-      console.log(`✓ Set deed_type to "MAPPING NOT AVAILABLE" for deed ${idx + 1} (instrument_number: ${d.instrument_number})`);
+      d.deed_type = 'Miscellaneous';
+      console.log(`✓ Set deed_type to "Miscellaneous" for deed ${idx + 1} (instrument_number: ${d.instrument_number})`);
     }
     // Add source_http_request if available from seed data
     if (deedSourceRequests[idx]) {
