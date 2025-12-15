@@ -3379,17 +3379,15 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
       const firstName = toTitleCase(o.first_name); // Apply title case
       const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
-      const prefixName = o.prefix_name || null;
-      const suffixName = o.suffix_name || null;
-      const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
+      const personKey = `${firstName}|${middleName || ""}|${lastName}`;
       if (!res.personIndexByKey.has(personKey)) {
         res.persons.push({
           birth_date: null,
           first_name: firstName,
           last_name: lastName,
           middle_name: middleName,
-          prefix_name: prefixName,
-          suffix_name: suffixName,
+          prefix_name: null,
+          suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
         });
@@ -3414,17 +3412,15 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
         const firstName = toTitleCase(o.first_name); // Apply title case
         const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
-        const prefixName = o.prefix_name || null;
-        const suffixName = o.suffix_name || null;
-        const personKey = `${firstName}|${middleName || ""}|${lastName}|${suffixName || ""}`;
+        const personKey = `${firstName}|${middleName || ""}|${lastName}`;
         if (!res.personIndexByKey.has(personKey)) {
           res.persons.push({
             birth_date: null,
             first_name: firstName,
             last_name: lastName,
             middle_name: middleName,
-            prefix_name: prefixName,
-            suffix_name: suffixName,
+            prefix_name: null,
+            suffix_name: null,
             us_citizenship_status: null,
             veteran_status: null,
           });
@@ -3959,20 +3955,11 @@ function main() {
     const f = (p.first_name || "").trim();
     const m = (p.middle_name || "").trim();
     const l = (p.last_name || "").trim();
-    const s = (p.suffix_name || "").trim();
     if (f && l) {
       // Use the capitalized names for matching
-      // Include suffix in all variants
-      const suffix = s ? " " + s : "";
-      nameVariants.push(`${l} ${f}${m ? " " + m : ""}${suffix}`.toUpperCase());
-      nameVariants.push(`${f} ${m ? m + " " : ""}${l}${suffix}`.toUpperCase());
-      nameVariants.push(`${l} ${f}${suffix}`.toUpperCase());
-      // Also add variants without suffix for backward compatibility
-      if (s) {
-        nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
-        nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
-        nameVariants.push(`${l} ${f}`.toUpperCase());
-      }
+      nameVariants.push(`${l} ${f}${m ? " " + m : ""}`.toUpperCase());
+      nameVariants.push(`${f} ${m ? m + " " : ""}${l}`.toUpperCase());
+      nameVariants.push(`${l} ${f}`.toUpperCase());
     }
     const pth = `./person_${i + 1}.json`;
     nameVariants.forEach((v) => personNameToPath.set(v, pth));
