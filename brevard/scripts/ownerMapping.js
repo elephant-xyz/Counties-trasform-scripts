@@ -128,12 +128,23 @@ const SUFFIX_SYNONYMS = {
 };
 
 function toTitleCase(str) {
-  return str
+  if (!str) return str;
+
+  // Remove parenthetical suffixes like "(GDN)", "(GUARDIAN)", etc.
+  let cleaned = str.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+
+  // Convert to title case
+  cleaned = cleaned
     .toLowerCase()
     .replace(
       /\b([A-Za-z][A-Za-z'\-]*)/g,
       (m) => m.charAt(0).toUpperCase() + m.slice(1),
     );
+
+  // Remove leading and trailing separators (commas, periods, spaces, hyphens, apostrophes)
+  cleaned = cleaned.replace(/^[ \-',.]+|[ \-',.]+$/g, '').trim();
+
+  return cleaned;
 }
 
 function isValidElephantName(name) {

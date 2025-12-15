@@ -3525,7 +3525,11 @@ function titleCaseName(name) {
   // Handles names like "McDonald", "O'Brien", "Jean-Pierre", etc.
   if (!name || typeof name !== 'string') return null;
 
-  const trimmed = name.trim();
+  let trimmed = name.trim();
+  if (!trimmed) return null;
+
+  // Remove parenthetical suffixes like "(GDN)", "(GUARDIAN)", etc.
+  trimmed = trimmed.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
   if (!trimmed) return null;
 
   // Split by word boundaries (spaces, hyphens, apostrophes, etc.)
@@ -3542,7 +3546,10 @@ function titleCaseName(name) {
     return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
   }).join('');
 
-  return formatted || null;
+  // Remove leading and trailing separators (commas, periods, spaces, hyphens, apostrophes)
+  const cleaned = formatted.replace(/^[ \-',.]+|[ \-',.]+$/g, '').trim();
+
+  return cleaned || null;
 }
 
 function isValidMiddleName(name) {
