@@ -3877,7 +3877,7 @@ function main() {
       ownership_transfer_date: s.ownership_transfer_date || null,
       purchase_price_amount: s.purchase_price_amount ?? null,
     };
-    writeJSON(path.join("data", `sales_${idx + 1}.json`), saleOut);
+    writeJSON(path.join("data", `sales_history_${idx + 1}.json`), saleOut);
     let deed = { deed_type: s.instrumentType };
     if (s.book) {
       deed.book = s.book;
@@ -3906,11 +3906,11 @@ function main() {
     );
 
     const relSalesDeed = {
-      from: { "/": `./sales_${idx + 1}.json` },
+      from: { "/": `./sales_history_${idx + 1}.json` },
       to: { "/": `./deed_${idx + 1}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_deed_${idx + 1}.json`),
+      path.join("data", `relationship_sales_history_deed_${idx + 1}.json`),
       relSalesDeed,
     );
   });
@@ -4007,10 +4007,10 @@ function main() {
       }
       const rel = {
         to: { "/": companyPath },
-        from: { "/": `./sales_${idx + 1}.json` },
+        from: { "/": `./sales_history_${idx + 1}.json` },
       };
       writeJSON(
-        path.join("data", `relationship_sales_company_${idx + 1}.json`),
+        path.join("data", `relationship_sales_history_company_${idx + 1}.json`),
         rel,
       );
     } else {
@@ -4036,10 +4036,10 @@ function main() {
         }
         const rel = {
           to: { "/": toPath },
-          from: { "/": `./sales_${idx + 1}.json` },
+          from: { "/": `./sales_history_${idx + 1}.json` },
         };
         writeJSON(
-          path.join("data", `relationship_sales_person_${idx + 1}.json`),
+          path.join("data", `relationship_sales_history_person_${idx + 1}.json`),
           rel,
         );
       }
