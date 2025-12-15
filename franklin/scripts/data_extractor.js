@@ -2314,9 +2314,13 @@ function validatePersonName(value, fieldName) {
   if (value === null || value === undefined || value === "") {
     return null;
   }
-  const str = String(value);
+  const str = String(value).trim();
+  if (!str) {
+    return null;
+  }
+  // Validate against the strict pattern
   if (!PERSON_NAME_PATTERN.test(str)) {
-    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}, got: ${str}`);
+    console.log(`${fieldName} must match pattern ${PERSON_NAME_PATTERN.source}, got: "${str}"`);
     return null;
   }
   return str;
@@ -2325,35 +2329,73 @@ function validatePersonName(value, fieldName) {
 
 
 function formatName(name) {
-  if (!name || name.trim() === "") return null;
-  // Remove any characters that are not letters, spaces, hyphens, apostrophes, commas, or periods
+  if (!name || typeof name !== 'string') return null;
+
+  // Trim and remove any non-letter, non-allowed-special-char characters
   let cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
-  if (!cleaned) return null;
+  if (!cleaned || cleaned.length === 0) return null;
 
-  // Convert to lowercase and normalize spacing
-  const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
+  // Normalize whitespace (collapse multiple spaces/tabs into one space)
+  cleaned = cleaned.replace(/\s+/g, " ");
 
-  // Capitalize first letter of each word (after word boundaries and special chars)
-  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
+  // Remove periods followed by whitespace (e.g., "Jr. Smith" -> "Jr Smith")
+  cleaned = cleaned.replace(/\.\s+/g, " ");
 
-  // Remove ". " patterns (e.g., "Jr. Smith" -> "Jr Smith")
-  let sanitized = capitalized.replace(/\.\s+/g, " ");
+  // Remove all remaining periods (e.g., "Jr." -> "Jr", "J.A." -> "JA")
+  cleaned = cleaned.replace(/\./g, "");
 
-  // Remove trailing special characters that would violate the pattern
-  sanitized = sanitized.replace(/[\s\-',.]+$/, "");
+  // Replace multiple consecutive special characters (not spaces) with a single space
+  cleaned = cleaned.replace(/[\-',]{2,}/g, " ");
 
-  // Remove leading special characters
-  sanitized = sanitized.replace(/^[\s\-',.]+/, "");
+  // Remove leading/trailing special characters
+  cleaned = cleaned.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "");
 
-  // Remove multiple consecutive special characters
-  sanitized = sanitized.replace(/[\s\-',.]{2,}/g, " ");
+  if (!cleaned || cleaned.length === 0) return null;
 
-  const result = sanitized.trim();
+  // Split into tokens by spaces and special chars, but preserve special chars
+  const tokens = [];
+  let currentToken = "";
 
-  // Validate against the Elephant schema person name pattern before returning
-  // Pattern: Must start with uppercase letter, followed by lowercase letters, then optionally (special char + letter + lowercase)*
+  for (let i = 0; i < cleaned.length; i++) {
+    const char = cleaned[i];
+    if (/[ \-',]/.test(char)) {
+      if (currentToken) {
+        tokens.push(currentToken);
+        currentToken = "";
+      }
+      tokens.push(char);
+    } else {
+      currentToken += char;
+    }
+  }
+  if (currentToken) {
+    tokens.push(currentToken);
+  }
+
+  // Format each token
+  const formatted = tokens.map((token, idx) => {
+    // If it's a separator, keep it
+    if (token.length === 1 && /[ \-',]/.test(token)) {
+      return token;
+    }
+    // Otherwise it's a word - capitalize properly
+    if (token.length === 0) return "";
+    return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+  }).join("");
+
+  // Final cleanup: remove leading/trailing special characters and trim
+  let result = formatted.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "").trim();
+
+  if (!result || result.length === 0) return null;
+
+  // Validate against the Elephant schema pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // Must start with uppercase letter, then zero or more lowercase letters,
+  // then optionally: one special char + one letter (any case) + zero or more lowercase letters
   const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
-  if (!result || !pattern.test(result)) {
+  if (!pattern.test(result)) {
+    // Log the invalid name for debugging
+    console.log(`formatName: Invalid name after formatting: "${result}"`);
     return null;
   }
 
