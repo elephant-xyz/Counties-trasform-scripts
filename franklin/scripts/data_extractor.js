@@ -2350,8 +2350,9 @@ function formatName(name) {
 
   const result = sanitized.trim();
 
-  // Validate against the correct person name pattern before returning
-  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  // Validate against the Elephant schema person name pattern before returning
+  // Pattern: Must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
+  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
   if (!result || !pattern.test(result)) {
     return null;
   }
