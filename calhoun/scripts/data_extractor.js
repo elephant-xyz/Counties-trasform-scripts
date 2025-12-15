@@ -2262,6 +2262,11 @@ function writeExtraLayouts(parcelId, extraLayouts, startLayoutIndex, startSpaceI
 function writeExtraStructures(parcelId, extraStructures, startStructureIndex, primaryLayoutFileName) {
   let structureIndex = startStructureIndex;
   extraStructures.forEach((info) => {
+    // Skip structures with no meaningful data (no area)
+    // A structure needs either an area measurement or it's not worth generating
+    if (info.finished_base_area == null || info.finished_base_area === 0) {
+      return;
+    }
     const record = createDefaultStructureRecord(parcelId);
     if (info.exterior_wall_material_primary) {
       record.exterior_wall_material_primary = info.exterior_wall_material_primary;
