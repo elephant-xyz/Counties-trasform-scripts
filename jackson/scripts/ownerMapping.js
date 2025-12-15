@@ -49,8 +49,6 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
-    /\bJR\.?\b/gi,
-    /\bSR\.?\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -97,35 +95,192 @@ function cleanInvalidCharsFromName(raw) {
 
 const COMPANY_KEYWORDS = [
   "inc",
+  "inc.",
+  "incorporated",
   "llc",
   "l.l.c",
+  "llp",
+  "l.l.p",
   "ltd",
+  "ltd.",
+  "limited",
   "foundation",
   "alliance",
   "solutions",
   "corp",
+  "corporation",
   "co",
+  "co.",
   "company",
+  "comp",
   "services",
+  "svc",
   "trust",
-  "tr",
+  "trustee",
+  "trs",
+  "revocable",
+  "irrevocable",
   "associates",
   "association",
   "holdings",
   "group",
   "partners",
+  "partnership",
   "lp",
-  "llp",
   "plc",
   "pllc",
+  "pc",
+  "p.c",
+  "pa",
+  "p.a",
   "bank",
   "church",
+  "ministries",
+  "temple",
+  "synagogue",
   "school",
+  "academy",
   "university",
   "authority",
+  "auth",
+  "authorities",
   "clerk",
   "court",
+  "county",
+  "cnty",
+  "co.",
+  "city",
+  "cty",
+  "cit",
+  "municipality",
+  "muni",
+  "government",
+  "gov",
+  "govt",
+  "agency",
+  "agcy",
+  "dept",
+  "dept.",
+  "department",
+  "board",
+  "bd",
+  "hoa",
+  "poa",
+  "condominium",
+  "condo",
+  "homeowners",
+  "properties",
+  "property",
+  "management",
+  "ventures",
+  "capital",
+  "investments",
+  "investment",
+  "realty",
+  "real estate",
+  "estate",
+  "club",
+  "lodges",
+  "chapel",
+  "mortgage"
 ];
+
+const PERSON_PREFIX_DEFS = [
+  { value: "Mr.", variants: ["MR", "MISTER"] },
+  { value: "Mrs.", variants: ["MRS", "MISSES"] },
+  { value: "Ms.", variants: ["MS"] },
+  { value: "Miss", variants: ["MISS"] },
+  { value: "Mx.", variants: ["MX"] },
+  { value: "Dr.", variants: ["DR", "DOCTOR"] },
+  { value: "Prof.", variants: ["PROF", "PROFESSOR"] },
+  { value: "Rev.", variants: ["REV", "REVEREND"] },
+  { value: "Fr.", variants: ["FR", "FATHER"] },
+  { value: "Sr.", variants: ["SR.", "SISTER"] },
+  { value: "Br.", variants: ["BROTHER", "BR"] },
+  { value: "Capt.", variants: ["CAPT", "CAPTAIN"] },
+  { value: "Col.", variants: ["COL", "COLONEL"] },
+  { value: "Maj.", variants: ["MAJ", "MAJOR"] },
+  { value: "Lt.", variants: ["LT", "LIEUTENANT"] },
+  { value: "Sgt.", variants: ["SGT", "SERGEANT"] },
+  { value: "Hon.", variants: ["HON", "HONORABLE"] },
+  { value: "Judge", variants: ["JUDGE"] },
+  { value: "Rabbi", variants: ["RABBI"] },
+  { value: "Imam", variants: ["IMAM"] },
+  { value: "Sheikh", variants: ["SHEIKH", "SHAIKH"] },
+  { value: "Sir", variants: ["SIR"] },
+  { value: "Dame", variants: ["DAME"] },
+];
+
+const PERSON_SUFFIX_DEFS = [
+  { value: "Jr.", variants: ["JR", "JR.", "JUNIOR"] },
+  { value: "Sr.", variants: ["SR", "SR.", "SENIOR"] },
+  { value: "II", variants: ["2ND", "II"] },
+  { value: "III", variants: ["3RD", "III"] },
+  { value: "IV", variants: ["4TH", "IV"] },
+  { value: "PhD", variants: ["PHD"] },
+  { value: "MD", variants: ["MD"] },
+  { value: "Esq.", variants: ["ESQ", "ESQUIRE"] },
+  { value: "JD", variants: ["JD"] },
+  { value: "LLM", variants: ["LLM"] },
+  { value: "MBA", variants: ["MBA"] },
+  { value: "RN", variants: ["RN"] },
+  { value: "DDS", variants: ["DDS"] },
+  { value: "DVM", variants: ["DVM"] },
+  { value: "CFA", variants: ["CFA"] },
+  { value: "CPA", variants: ["CPA"] },
+  { value: "PE", variants: ["PE"] },
+  { value: "PMP", variants: ["PMP"] },
+  { value: "Emeritus", variants: ["EMERITUS"] },
+  { value: "Ret.", variants: ["RET", "RETIRED"] },
+];
+
+function normalizeAffixToken(token) {
+  return (token || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+}
+
+function buildAffixLookup(defs) {
+  const map = new Map();
+  defs.forEach(({ value, variants }) => {
+    const normBase = normalizeAffixToken(value);
+    if (normBase) map.set(normBase, value);
+    (variants || []).forEach((variant) => {
+      const norm = normalizeAffixToken(variant);
+      if (norm) map.set(norm, value);
+    });
+  });
+  return map;
+}
+
+const PERSON_PREFIX_LOOKUP = buildAffixLookup(PERSON_PREFIX_DEFS);
+const PERSON_SUFFIX_LOOKUP = buildAffixLookup(PERSON_SUFFIX_DEFS);
+
+function extractNameAffixes(tokens) {
+  const remaining = [...tokens];
+  let prefix_name = null;
+  let suffix_name = null;
+
+  if (remaining.length) {
+    const prefixCandidate = PERSON_PREFIX_LOOKUP.get(
+      normalizeAffixToken(remaining[0]),
+    );
+    if (prefixCandidate) {
+      prefix_name = prefixCandidate;
+      remaining.shift();
+    }
+  }
+
+  if (remaining.length) {
+    const suffixCandidate = PERSON_SUFFIX_LOOKUP.get(
+      normalizeAffixToken(remaining[remaining.length - 1]),
+    );
+    if (suffixCandidate) {
+      suffix_name = suffixCandidate;
+      remaining.pop();
+    }
+  }
+
+  return { tokens: remaining, prefix_name, suffix_name };
+}
 
 
 function isCompanyName(name) {
@@ -153,7 +308,10 @@ function classifyOwner(raw) {
   if (isCompanyName(cleaned)) {
     return { valid: true, owner: { type: "company", name: cleaned } };
   }
-  const tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
+  let tokens = cleaned.split(/\s+/).map((p) => p.trim()).filter(Boolean);
+  const { tokens: strippedTokens, prefix_name, suffix_name } =
+    extractNameAffixes(tokens);
+  tokens = strippedTokens;
   if (tokens.length < 2) {
     return { valid: false, reason: "person_missing_last_name", raw: cleaned };
   }
@@ -171,6 +329,8 @@ function classifyOwner(raw) {
       last_name: last,
       middle_name: middle ? middle : null,
     };
+    if (prefix_name) person.prefix_name = prefix_name;
+    if (suffix_name) person.suffix_name = suffix_name;
     return { valid: true, owner: person };
   }
   return { valid: false, reason: "person_missing_first_or_last", raw: cleaned };
@@ -185,7 +345,9 @@ function dedupeOwners(owners) {
       norm = `company:${normalizeName(o.name)}`;
     } else {
       const middle = o.middle_name ? normalizeName(o.middle_name) : "";
-      norm = `person:${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}`;
+      const prefix = o.prefix_name ? normalizeName(o.prefix_name) : "";
+      const suffix = o.suffix_name ? normalizeName(o.suffix_name) : "";
+      norm = `person:${prefix}|${normalizeName(o.first_name)}|${middle}|${normalizeName(o.last_name)}|${suffix}`;
     }
     if (!seen.has(norm)) {
       seen.add(norm);
@@ -205,9 +367,9 @@ function getParcelId($) {
 
 function extractCurrentOwners($) {
   const owners = [];
-  $(CURRENT_OWNER_SELECTOR).find('a').each((i, el) => {
+  $(CURRENT_OWNER_SELECTOR).find('a, span').each((i, el) => {
     const ownerText = $(el).text().trim();
-    if (ownerText) {
+    if (ownerText && !ownerText.includes('Primary Owner') && !/\d+\s+\w+\s+ST\s+N\s+#\d+/.test(ownerText)) {
       const t = txt(ownerText);
       owners.push(t);
     }
