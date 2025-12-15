@@ -471,10 +471,7 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Strip trailing periods before processing
   const stripTrailingPeriod = (str) => {
     if (!str) return str;
-    const stripped = str.replace(/\.$/, '');
-    // If the result is empty or contains no letters, return null
-    if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
-    return stripped;
+    return str.replace(/\.$/, '');
   };
 
   // Extract suffix from tokens - check last token(s)
@@ -514,9 +511,9 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Check last token for suffix
   if (workingTokens.length > 2) {
     const lastToken = workingTokens[workingTokens.length - 1];
-    const stripped = stripTrailingPeriod(lastToken);
-    if (stripped && suffixMap[stripped.toLowerCase()]) {
-      suffix = suffixMap[stripped.toLowerCase()];
+    const stripped = stripTrailingPeriod(lastToken).toLowerCase();
+    if (suffixMap[stripped]) {
+      suffix = suffixMap[stripped];
       workingTokens.pop();
     }
   }
@@ -574,8 +571,8 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   const titleCasedLast = titleCase(last || "");
   const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
 
-  // Validate names match the schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
 
   if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
@@ -646,14 +643,11 @@ function parseOwnersFromText(rawText) {
       // Check if last token is a suffix before trying to split multiple persons
       const stripTrailingPeriod = (str) => {
         if (!str) return str;
-        const stripped = str.replace(/\.$/, '');
-        // If the result is empty or contains no letters, return null
-        if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
-        return stripped;
+        return str.replace(/\.$/, '');
       };
       const lastToken = tokens[tokens.length - 1];
-      const lastTokenStripped = stripTrailingPeriod(lastToken);
-      const isLastTokenSuffix = lastTokenStripped && SUFFIXES_IGNORE.test(lastTokenStripped.toLowerCase());
+      const lastTokenStripped = stripTrailingPeriod(lastToken).toLowerCase();
+      const isLastTokenSuffix = SUFFIXES_IGNORE.test(lastTokenStripped);
 
       if (andParts.length === 1 && tokens.length >= 4 && !isLastTokenSuffix) {
         const multi = splitMultiplePersonsWithSharedLast(tokens);
@@ -1595,6 +1589,7 @@ function parseBuildingInfo($) {
       }
     }
   }
+
   const hvac =
     getValue(rightMap, ["hvac", "cooling type", "cooling", "air conditioning"]) ||
     getValue(leftMap, ["air conditioning"]);
@@ -1849,12 +1844,12 @@ function parseSales($) {
     if (!instrumentNumberText) {
       instrumentNumberText = cleanText(instrumentCell.find("span").text());
     }
-    const book = cleanText(textOf($, tds.eq(2)) || "");
-    const page = cleanText(textOf($, tds.eq(3)) || "");
-    const qualification = textOf($, tds.eq(4));
-    const vacantImproved = textOf($, tds.eq(5));
-    const grantor = textOf($, tds.eq(6));
-    const grantee = textOf($, tds.eq(7));
+    const book = cleanText(textOf($, tds.eq(3)) || "");
+    const page = cleanText(textOf($, tds.eq(4)) || "");
+    const qualification = textOf($, tds.eq(5));
+    const vacantImproved = textOf($, tds.eq(6));
+    const grantor = textOf($, tds.eq(7));
+    const grantee = textOf($, tds.eq(8));
     let clerkUrl = null;
     const linkTd = tds.length > 9 ? tds.eq(9) : null;
     if (linkTd && linkTd.find("input").length) {
@@ -2166,10 +2161,7 @@ function main() {
     // Strip trailing periods before processing (handles abbreviations like "C.")
     const stripTrailingPeriod = (str) => {
       if (!str) return str;
-      const stripped = str.replace(/\.$/, '');
-      // If the result is empty or contains no letters, return null
-      if (!stripped || !/[a-zA-Z]/.test(stripped)) return null;
-      return stripped;
+      return str.replace(/\.$/, '');
     };
 
     const firstNameRaw =
@@ -2193,8 +2185,8 @@ function main() {
     const lastName = lastNameStripped ? titleCase(lastNameStripped) : "";
     const middleNameRaw = middleStripped ? titleCase(middleStripped) : null;
 
-    // Validate names match the schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-    const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+    // Validate names match the required pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+    const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
     const isValidName = (name) => name && namePattern.test(name);
 
     // Both first_name and last_name are required and must match pattern
