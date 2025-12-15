@@ -111,12 +111,16 @@ function normalizeWhitespace(str) {
 function cleanInvalidCharsFromName(raw) {
   let parsedName = normalizeWhitespace(raw)
     .replace(/\([^)]*\)/g, '') // Remove anything in parentheses
-    .replace(/[^A-Za-z\-', .]/g, "") // Only keep valid characters
+    .replace(/\*/g, '') // Remove asterisks
+    .replace(/\bLE\b/g, '') // Remove "LE" suffix
+    .replace(/\bAS\s+SUCC\b/gi, '') // Remove "AS SUCC" suffix
+    .replace(/[^A-Za-z\-' .]/g, "") // Only keep valid characters (removed comma - not valid in individual name parts)
+    .replace(/\s+/g, ' ') // Normalize spaces
     .trim();
-  while (/^[\-', .]/i.test(parsedName)) { // Cannot start or end with special characters
+  while (/^[\-' .]/i.test(parsedName)) { // Cannot start with special characters
     parsedName = parsedName.slice(1);
   }
-  while (/[\-', .]$/i.test(parsedName)) { // Cannot start or end with special characters
+  while (/[\-' .]$/i.test(parsedName)) { // Cannot end with special characters
     parsedName = parsedName.slice(0, parsedName.length - 1);
   }
   return parsedName;
@@ -132,26 +136,55 @@ function isCompany(name) {
   return false;
 }
 
+function titleCaseName(s) {
+  if (!s) return null;
+
+  // Trim leading/trailing whitespace and remove leading/trailing delimiters
+  s = s.trim().replace(/^[\s\-',.]+|[\s\-',.]+$/g, '');
+  if (!s) return null;
+
+  // Normalize the string:
+  // 1. Remove spaces adjacent to hyphens, apostrophes, periods (e.g., "- " → "-", " -" → "-")
+  // 2. Collapse multiple spaces to single space
+  // 3. Replace commas with spaces (commas separate name parts)
+  const normalized = s
+    .toLowerCase()
+    .replace(/,/g, ' ') // Replace commas with spaces
+    .replace(/\s*([-'])\s*/g, '$1') // Remove spaces around hyphens and apostrophes
+    .replace(/\.\s+/g, ' ') // Replace period+space with space (e.g., "St. James" → "St James")
+    .replace(/\s+/g, ' ') // Collapse multiple spaces
+    .trim();
+
+  // Capitalize first letter and any letter after a delimiter
+  const result = normalized
+    .replace(/(^|[\s\-'.])([a-z])/g, (match, delimiter, letter) => {
+      return delimiter + letter.toUpperCase();
+    });
+
+  // Validate the result matches the expected pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!result || !namePattern.test(result)) {
+    return null;
+  }
+
+  return result;
+}
+
 function parsePerson(name) {
   let v = norm(name);
   if (!v) return null;
-  // If contains '&', remove it per spec and split into first/last around it
-  if (v.includes("&")) {
-    const parts = v
-      .split("&")
-      .map((s) => norm(s))
-      .filter(Boolean);
-    if (parts.length >= 2) {
-      const first = cleanInvalidCharsFromName(parts[0]);
-      const last = cleanInvalidCharsFromName(parts.slice(1).join(" "));
-      return {
-        type: "person",
-        first_name: first || null,
-        last_name: last || null,
-        middle_name: null,
-      };
-    }
+
+  // Reject common placeholder/invalid names
+  const upperV = v.toUpperCase();
+  if (upperV === "NO NAME FOUND" ||
+      upperV === "NO NAME" ||
+      upperV === "NAME NOT FOUND" ||
+      upperV === "NOT FOUND" ||
+      upperV === "UNKNOWN") {
+    return null;
   }
+
   // Handle comma separated Last, First Middle
   if (v.includes(",")) {
     const segs = v
@@ -164,11 +197,21 @@ function parsePerson(name) {
       const tokens = rest.split(/\s+/).filter(Boolean);
       const first = cleanInvalidCharsFromName(tokens.shift()) || "";
       const middle = cleanInvalidCharsFromName(tokens.join(" ")) || null;
+
+      const firstName = titleCaseName(first);
+      const lastName = titleCaseName(last);
+      const middleName = titleCaseName(middle);
+
+      // Validate that at least first and last names are valid
+      if (!firstName || !lastName) {
+        return null;
+      }
+
       return {
         type: "person",
-        first_name: first || null,
-        last_name: last || null,
-        middle_name: middle && middle.length ? middle : null,
+        first_name: firstName,
+        last_name: lastName,
+        middle_name: middleName,
       };
     }
   }
@@ -178,11 +221,21 @@ function parsePerson(name) {
     const first = cleanInvalidCharsFromName(tokens.shift());
     const last = cleanInvalidCharsFromName(tokens.pop());
     const middle = cleanInvalidCharsFromName(tokens.join(" ")) || null;
+
+    const firstName = titleCaseName(first);
+    const lastName = titleCaseName(last);
+    const middleName = titleCaseName(middle);
+
+    // Validate that at least first and last names are valid
+    if (!firstName || !lastName) {
+      return null;
+    }
+
     return {
       type: "person",
-      first_name: first || null,
-      last_name: last || null,
-      middle_name: middle && middle.length ? middle : null,
+      first_name: firstName,
+      last_name: lastName,
+      middle_name: middleName,
     };
   }
   return null;
@@ -253,9 +306,9 @@ function extractOwnersFromHTML($) {
 function splitPotentialMultiOwner(str) {
   const v = cleanOwnerCandidate(str);
   if (!v) return [];
-  // Split on semicolons or pipes when clearly separating entities, but keep '&' intact per special rule
+  // Split on semicolons, pipes, or ampersands to separate multiple entities
   const parts = v
-    .split(/[;\|]/)
+    .split(/[;\|&]/)
     .map((s) => norm(s))
     .filter(Boolean);
   return parts.length ? parts : [v];
