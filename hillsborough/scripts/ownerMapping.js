@@ -153,7 +153,12 @@ function parsePerson(name, pin) {
 
   if (!first.trim() || !last.trim()) return null;
 
-  // Clean and validate middle name
+  // Clean and validate first, last, and middle names
+  const cleanedFirst = cleanInvalidCharsFromName(first.trim());
+  const cleanedLast = cleanInvalidCharsFromName(last.trim());
+
+  if (!cleanedFirst || !cleanedLast) return null;
+
   let cleanedMiddle = null;
   if (middle.trim()) {
     const cleaned = cleanInvalidCharsFromName(middle.trim());
@@ -170,8 +175,8 @@ function parsePerson(name, pin) {
     },
     request_identifier: pin || null,
     birth_date: null,
-    first_name: toTitleCase(first.trim()),
-    last_name: toTitleCase(last.trim()),
+    first_name: toTitleCase(cleanedFirst),
+    last_name: toTitleCase(cleanedLast),
     middle_name: cleanedMiddle,
     prefix_name,
     suffix_name,
