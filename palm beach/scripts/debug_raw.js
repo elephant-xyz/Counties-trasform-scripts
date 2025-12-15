@@ -23855,6 +23855,69 @@ async function main() {
   enforceFinalAddressBranch(addressOutputPath);
   finalizeAddressOneOfOutput(addressOutputPath);
   enforceTerminalAddressSurface(addressOutputPath);
+
+  // If normalized coverage is still incomplete, force the lean raw branch so the
+  // address satisfies exactly one oneOf schema with the unnormalized string.
+  const terminalAddressMinimal = readJSONIfExists(addressOutputPath);
+  if (
+    terminalAddressMinimal &&
+    typeof terminalAddressMinimal === "object" &&
+    !Array.isArray(terminalAddressMinimal)
+  ) {
+    const terminalNormalizedSurface =
+      ensureNormalizedAddressSchemaSurface &&
+      ensureNormalizedAddressSchemaSurface({ ...terminalAddressMinimal });
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+
+    if (!terminalNormalizedComplete) {
+      const rawFallback = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          terminalAddressMinimal.unnormalized_address,
+          finalRawCandidateClamp,
+          ...(finalUnnormalizedCandidates || []),
+          unnormalizedAddressCandidate,
+          combinedModelAddress,
+          siteLocationLine,
+          addressLineCombined,
+          fullAddr,
+          fullAddrInput,
+          unAddr && unAddr.full_address,
+          unAddr && unAddr.unnormalized_address,
+        ]),
+      );
+      if (rawFallback) {
+        const resolvedRequestId = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            terminalAddressMinimal.request_identifier,
+            trimmedRequestIdentifier,
+            finalRequestIdentifier,
+            parcelId,
+            seed && seed.request_identifier,
+            unAddr && unAddr.request_identifier,
+          ]),
+        );
+        const resolvedSourceHttp = resolveSourceHttpRequest(
+          terminalAddressMinimal.source_http_request,
+          finalSourceHttp,
+          sourceHttpCandidate,
+          seed && seed.source_http_request,
+          unAddr && unAddr.source_http_request,
+        );
+        const rawOut = {
+          unnormalized_address: rawFallback,
+          request_identifier:
+            resolvedRequestId === undefined ? null : resolvedRequestId,
+          source_http_request: prepareSourceHttpRequest(resolvedSourceHttp) || null,
+        };
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+  }
+
   nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
   purgeAddressRelationshipArtifacts(dataDir);
   purgeAddressRelationshipArtifacts(relationshipsDir);
