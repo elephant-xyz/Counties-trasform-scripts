@@ -19,12 +19,35 @@ function text(val) {
   return t.length ? t : null;
 }
 
+function titleCase(str) {
+  if (!str) return null;
+  return String(str)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function parseIntSafe(str) {
+  if (!str) return null;
+  const n = parseInt(String(str).replace(/[^0-9]/g, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseFloatSafe(str) {
+  if (!str) return null;
+  const cleaned = String(str).replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 function getPropId($) {
   let parcelId = null;
   $("#ctlBodyPane_ctl03_ctl01_dynamicSummaryData_divSummary table tr").each(
-    (i, el) => {
+    (_, el) => {
       const label = text($(el).find("th strong").first().text());
-      // Look for "Parcel ID" not "Prop ID" to match data_extractor.js
       if (label && label.toLowerCase().includes("parcel id")) {
         const val = text($(el).find("td span").first().text());
         if (val) parcelId = val;
@@ -34,143 +57,281 @@ function getPropId($) {
   return parcelId || "unknown";
 }
 
-function parseIntSafe(str) {
-  if (!str) return null;
-  const n = parseInt(String(str).replace(/[^0-9]/g, ""), 10);
-  return Number.isFinite(n) ? n : null;
-}
-
-function getBedroomsAndBaths($) {
-  const right = $("#ctlBodyPane_ctl10_mSection").find(
-    "#ctlBodyPane_ctl10_ctl01_lstBuildings_ctl00_dynamicBuildingDataRightColumn_divSummary",
-  );
-  const rows = right.find("tr");
-  let beds = 0;
-  let baths = 0;
-  let halfBaths = 0;
-
-  rows.each((_, tr) => {
-    const label = text(cheerio.load(tr)("th strong").first().text());
-    const val = text(cheerio.load(tr)("td span").first().text());
-    if (!label || !val) return;
-
-    // Parse bedrooms: "3 BEDROOMS" -> 3
-    if (/Bedrooms/i.test(label)) {
-      const bedMatch = val.match(/(\d+)/);
-      if (bedMatch) {
-        beds = parseInt(bedMatch[1], 10) || 0;
-      }
-    }
-
-    // Parse bathrooms: "2.0-Baths" -> 2 full baths, "2.5-Baths" -> 2 full + 1 half
-    if (/Bathrooms/i.test(label)) {
-      const bathMatch = val.match(/(\d+)\.?(\d*)/);
-      if (bathMatch) {
-        const wholeBaths = parseInt(bathMatch[1], 10) || 0;
-        const decimal = bathMatch[2] ? parseFloat(`0.${bathMatch[2]}`) : 0;
-
-        if (decimal >= 0.5) {
-          baths = wholeBaths;
-          halfBaths = 1;
-        } else {
-          baths = wholeBaths;
-          halfBaths = 0;
-        }
-      }
+function findModuleByTitle($, title) {
+  const wanted = title ? String(title).toLowerCase() : null;
+  if (!wanted) return null;
+  let found = null;
+  $("section[id^='ctlBodyPane_']").each((_, section) => {
+    if (found) return;
+    const $section = $(section);
+    const headerTitle = text(
+      $section.find("> header .title, > header div.title").first().text(),
+    );
+    if (headerTitle && headerTitle.toLowerCase() === wanted) {
+      found = $section;
     }
   });
-
-  return { beds, baths, halfBaths };
+  return found;
 }
 
-function defaultRoom(space_type, index, parcelId) {
-  return {
-    space_type,
-    space_index: index,
-    flooring_material_type: null,
-    size_square_feet: null,
-    floor_level: "1st Floor",
-    has_windows: null,
-    window_design_type: null,
-    window_material_type: null,
-    window_treatment_type: null,
-    is_finished: true,
-    furnished: null,
-    paint_condition: null,
-    flooring_wear: null,
-    clutter_level: null,
-    visible_damage: null,
-    countertop_material: null,
-    cabinet_style: null,
-    fixture_finish_quality: null,
-    design_style: null,
-    natural_light_quality: null,
-    decor_elements: null,
-    pool_type: null,
-    pool_equipment: null,
-    spa_type: null,
-    safety_features: null,
-    view_type: null,
-    lighting_features: null,
-    condition_issues: null,
-    is_exterior: false,
-    pool_condition: null,
-    pool_surface_type: null,
-    pool_water_quality: null,
-    source_http_request: {
-      method: "GET",
-      url: "https://qpublic.schneidercorp.com/Application.aspx"
-    },
-    request_identifier: parcelId || null
-  };
+function extractTableKeyValueMap($container) {
+  const map = {};
+  if (!$container || !$container.length) return map;
+  $container.find("tr").each((_, tr) => {
+    const $row = cheerio.load(tr);
+    const label = text($row("th strong").first().text());
+    if (!label) return;
+    let value = text($row("td span").first().text());
+    if (value == null) {
+      value = text($row("td").first().text());
+    }
+    map[label.toLowerCase()] = value;
+  });
+  return map;
 }
 
-function buildLayouts($, parcelId) {
-  const { beds, baths, halfBaths } = getBedroomsAndBaths($);
+function parseBedroomCount(value) {
+  const n = parseIntSafe(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseBathroomCounts(value) {
+  const result = { full: 0, half: 0 };
+  if (!value) return result;
+  const raw = String(value);
+
+  const slashMatch = raw.match(/(\d+)\s*\/\s*(\d+)/);
+  if (slashMatch) {
+    result.full = parseIntSafe(slashMatch[1]) || 0;
+    result.half = parseIntSafe(slashMatch[2]) || 0;
+    return result;
+  }
+
+  const decimalMatch = raw.match(/(\d+)[\.,](\d+)/);
+  if (decimalMatch) {
+    result.full = parseIntSafe(decimalMatch[1]) || 0;
+    result.half = parseIntSafe(decimalMatch[2]) || 0;
+    return result;
+  }
+
+  const fullMatch = raw.match(/(\d+)\s*(?:full\b|f\b)/i);
+  const halfMatch = raw.match(/(\d+)\s*(?:half\b|h\b)/i);
+  if (fullMatch || halfMatch) {
+    result.full = fullMatch ? parseIntSafe(fullMatch[1]) || 0 : 0;
+    result.half = halfMatch ? parseIntSafe(halfMatch[1]) || 0 : 0;
+    return result;
+  }
+
+  const numbers = raw.match(/\d+/g);
+  if (numbers && numbers.length) {
+    result.full = parseIntSafe(numbers[0]) || 0;
+    if (numbers.length > 1) {
+      result.half = parseIntSafe(numbers[1]) || 0;
+    }
+  }
+  return result;
+}
+
+function parseBuildingSummaries($) {
+  const buildingModule = findModuleByTitle($, "Building Information");
+  if (!buildingModule) return [];
+
+  const leftSelector =
+    "div[id$='dynamicBuildingDataLeftColumn_divSummary']";
+  const buildings = [];
+
+  buildingModule.find(leftSelector).each((idx, leftEl) => {
+    const $left = $(leftEl);
+    const leftId = $left.attr("id") || "";
+    const prefix = leftId.replace(
+      "_dynamicBuildingDataLeftColumn_divSummary",
+      "",
+    );
+    const rightId = `${prefix}_dynamicBuildingDataRightColumn_divSummary`;
+    const $right = buildingModule.find(`[id='${rightId}']`);
+
+    const leftMap = extractTableKeyValueMap($left);
+    const rightMap = extractTableKeyValueMap($right);
+
+    const bedroomsVal =
+      rightMap.bedrooms ||
+      rightMap["bedroom"] ||
+      rightMap["bed rooms"] ||
+      rightMap["bed room"] ||
+      null;
+    const combinedBathVal =
+      rightMap.bathrooms ||
+      rightMap.baths ||
+      rightMap["bath rooms"] ||
+      rightMap["bath room"] ||
+      null;
+    const fullBathVal =
+      rightMap["full bathrooms"] ||
+      rightMap["full baths"] ||
+      rightMap["full bath"] ||
+      null;
+    const halfBathVal =
+      rightMap["half bathrooms"] ||
+      rightMap["half baths"] ||
+      rightMap["half bath"] ||
+      null;
+
+    const bathrooms =
+      fullBathVal != null || halfBathVal != null
+        ? {
+            full: fullBathVal != null ? parseIntSafe(fullBathVal) || 0 : 0,
+            half: halfBathVal != null ? parseIntSafe(halfBathVal) || 0 : 0,
+          }
+        : parseBathroomCounts(combinedBathVal);
+
+    const identifierMatch = prefix.match(/lstBuildings_(ctl\d+)/i);
+
+    buildings.push({
+      building_index: idx + 1,
+      building_identifier: identifierMatch ? identifierMatch[1] : null,
+      building_type:
+        leftMap.type != null ? titleCase(leftMap.type) : null,
+      total_area_sq_ft: parseIntSafe(leftMap["total area"]),
+      heated_area_sq_ft: parseIntSafe(leftMap["heated area"]),
+      bedrooms: parseBedroomCount(bedroomsVal),
+      full_bathrooms: bathrooms.full || 0,
+      half_bathrooms: bathrooms.half || 0,
+      stories: parseFloatSafe(rightMap.stories),
+      sub_areas: [],
+    });
+  });
+
+  return buildings;
+}
+
+function parseSubAreas($) {
+  const subAreaModule = findModuleByTitle($, "Sub Area");
+  if (!subAreaModule) return [];
+  const tables = [];
+  subAreaModule
+    .find("table[id*='lstSubAreaSqFt']")
+    .each((_, table) => {
+      const rows = [];
+      const $table = $(table);
+      $table.find("tbody tr").each((__, tr) => {
+        const $tr = $(tr);
+        const type = text($tr.find("th").first().text());
+        const description = text($tr.find("td").eq(0).text());
+        const squareFeet = parseIntSafe($tr.find("td").eq(1).text());
+        const actYear = parseIntSafe($tr.find("td").eq(2).text());
+        const effYear = parseIntSafe($tr.find("td").eq(3).text());
+        const quality = text($tr.find("td").eq(4).text());
+        const improvementUse = text($tr.find("td").eq(5).text());
+        const improvementUseDescription = text(
+          $tr.find("td").eq(6).text(),
+        );
+        if (!type && !description && squareFeet == null) return;
+        rows.push({
+          type: type || null,
+          description: description || null,
+          square_feet: squareFeet,
+          actual_year_built: actYear,
+          effective_year_built: effYear,
+          quality: quality || null,
+          improvement_use: improvementUse || null,
+          improvement_use_description: improvementUseDescription || null,
+        });
+      });
+      tables.push(rows);
+    });
+  return tables;
+}
+
+function mapSubAreaSpaceType(subArea) {
+  if (!subArea) return null;
+  const typeCode = subArea.type ? subArea.type.toUpperCase() : "";
+  const desc = subArea.description ? subArea.description.toUpperCase() : "";
+
+  if (typeCode === "BAS" || desc.includes("BASE AREA")) return "Living Area";
+  if (typeCode === "FOP" || desc.includes("OPEN PORCH")) return "Open Porch";
+  if (desc.includes("SCREEN") && desc.includes("PORCH")) return "Screened Porch";
+  if (desc.includes("PORCH")) return "Porch";
+  if (desc.includes("BALCONY")) return "Balcony";
+  if (desc.includes("DECK")) return "Deck";
+  if (desc.includes("PATIO")) return "Patio";
+  if (desc.includes("GAZEBO")) return "Gazebo";
+  if (desc.includes("STORAGE")) return "Storage Room";
+  if (desc.includes("GARAGE")) return desc.includes("DET") ? "Detached Garage" : "Attached Garage";
+  if (desc.includes("CARPORT")) return "Carport";
+  if (desc.includes("POOL")) return "Pool Area";
+  if (desc.includes("LANAI")) return "Lanai";
+  if (desc.includes("SUN ROOM") || desc.includes("SUNROOM")) return "Sunroom";
+  if (desc.includes("ENCLOSED PORCH")) return "Enclosed Porch";
+  if (desc.includes("OPEN PORCH")) return "Open Porch";
+  if (desc.includes("PAVILION")) return "Gazebo";
+  if (desc.includes("CABANA")) return "Enclosed Cabana";
+  if (desc.includes("BARN")) return "Barn";
+  if (desc.includes("STAIR") || desc.includes("STAIRWELL")) return null;
+  return null;
+}
+
+function buildLayoutData($) {
+  const buildings = parseBuildingSummaries($);
+  const subAreaSets = parseSubAreas($);
+
+  buildings.forEach((building, idx) => {
+    building.sub_areas = Array.isArray(subAreaSets[idx])
+      ? subAreaSets[idx]
+      : [];
+  });
+
   const layouts = [];
-  let idx = 1;
-  // Create Bedroom entries
-  for (let i = 0; i < (beds || 0); i++) {
-    layouts.push(defaultRoom("Bedroom", idx++, parcelId));
-  }
-  // Create Full Bathroom entries
-  for (let i = 0; i < (baths || 0); i++) {
-    layouts.push(defaultRoom("Full Bathroom", idx++, parcelId));
-  }
-  // Create Half Bathroom entries
-  for (let i = 0; i < (halfBaths || 0); i++) {
-    layouts.push(defaultRoom("Half Bathroom / Powder Room", idx++, parcelId));
-  }
-  // Add Living Room and Kitchen as common spaces if heated area exists
-  const heatedAreaText = $("#ctlBodyPane_ctl10_mSection")
-    .find(
-      "#ctlBodyPane_ctl10_ctl01_lstBuildings_ctl00_dynamicBuildingDataLeftColumn_divSummary tr",
-    )
-    .filter((i, el) =>
-      /Heated Area/i.test(cheerio.load(el)("th strong").text()),
-    )
-    .find("td span")
-    .text();
-  const heatedArea = parseIntSafe(heatedAreaText);
-  if (heatedArea) {
-    layouts.push(defaultRoom("Living Room", idx++, parcelId));
-    layouts.push(defaultRoom("Kitchen", idx++, parcelId));
-  }
-  return layouts;
+
+  buildings.forEach((building) => {
+    const buildingIndex = building.building_index;
+    for (let i = 0; i < (building.bedrooms || 0); i += 1) {
+      layouts.push({
+        space_type: "Bedroom",
+        floor_level: "1st Floor",
+        parent_building_index: buildingIndex,
+      });
+    }
+    for (let i = 0; i < (building.full_bathrooms || 0); i += 1) {
+      layouts.push({
+        space_type: "Full Bathroom",
+        floor_level: "1st Floor",
+        parent_building_index: buildingIndex,
+      });
+    }
+    for (let i = 0; i < (building.half_bathrooms || 0); i += 1) {
+      layouts.push({
+        space_type: "Half Bathroom / Powder Room",
+        floor_level: "1st Floor",
+        parent_building_index: buildingIndex,
+      });
+    }
+    (building.sub_areas || []).forEach((subArea) => {
+      const mapped = mapSubAreaSpaceType(subArea);
+      if (!mapped) return;
+      layouts.push({
+        space_type: mapped,
+        floor_level: "1st Floor",
+        size_square_feet: subArea.square_feet || null,
+        parent_building_index: buildingIndex,
+      });
+    });
+  });
+
+  return { buildings, layouts };
 }
 
 function main() {
   const html = readHtml();
   const $ = cheerio.load(html);
-  const parcelId = getPropId($); // This now gets parcel ID, not prop ID
-  const layouts = buildLayouts($, parcelId);
+  const parcelId = getPropId($);
+  const layoutData = buildLayoutData($);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "layout_data.json");
 
   const data = {};
-  data[`property_${parcelId}`] = { layouts };
+  data[`property_${parcelId}`] = layoutData;
   fs.writeFileSync(outPath, JSON.stringify(data, null, 2), "utf8");
   console.log(`Wrote ${outPath} for property_${parcelId}`);
 }

@@ -1686,6 +1686,10 @@ function findValuationRow(rowMap, labelOptions) {
         return values;
       }
     }
+  });
+
+  if (!years.length || !Object.keys(rows).length) {
+    return null;
   }
   return null;
 }
