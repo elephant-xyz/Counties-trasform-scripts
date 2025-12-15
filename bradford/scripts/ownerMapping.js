@@ -139,7 +139,7 @@ function isCompanyName(name) {
   const n = (name || "").toLowerCase();
   // direct boundary checks for common suffixes/patterns
   if (
-    /\b(inc|inc\.|corp|corp\.|corporation|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|properties|enterprises|management|investments|group|development)\b\.?/.test(
+    /\b(inc|inc\.|corp|corp\.|corporation|co|co\.|ltd|ltd\.|llc|l\.l\.c\.|plc|plc\.|pc|p\.c\.|pllc|trust|tr|n\.?a\.?|bank|foundation|alliance|solutions|services|associates|association|holdings|partners|partnership|properties|enterprises|management|investments|group|development)\b\.?/.test(
       n,
     )
   ) {
@@ -172,35 +172,56 @@ function formatNameToPattern(name) {
   // Remove trailing periods
   cleaned = cleaned.replace(/\.+$/, '');
 
-  // Handle abbreviations: ensure letters after periods, hyphens, apostrophes are uppercase
-  // Pattern: letter + special char + letter should be: Upper + special + Upper
-  cleaned = cleaned.replace(/([A-Za-z])([.\-',])([A-Za-z])/g, (match, before, sep, after) => {
-    return before.charAt(0).toUpperCase() + sep + after.charAt(0).toUpperCase();
-  });
+  // Remove commas followed by spaces and what follows (usually suffixes like ", Jr." or ", III")
+  // These don't fit the strict pattern which doesn't allow consecutive separators
+  cleaned = cleaned.replace(/,\s+.*$/, '');
+
+  // Remove any characters that are not letters, spaces, or allowed separators
+  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, '');
+
+  // Remove any remaining commas and periods that aren't part of valid name patterns
+  cleaned = cleaned.replace(/,/g, '');
+
+  // Remove standalone periods (but keep them in abbreviations like "St.John" -> "St.John")
+  cleaned = cleaned.replace(/\.\s+/g, ' ');
+  cleaned = cleaned.replace(/\s+\./g, '');
+
+  if (!cleaned || cleaned.length === 0) return null;
 
   // Split by spaces and format each word part
   const result = cleaned.split(' ').map(part => {
-    // For parts with special characters (abbreviations), handle carefully
-    if (/[.\-',]/.test(part)) {
-      // Split by special characters and capitalize each segment
-      return part.split(/([.\-',])/).map((segment, idx) => {
-        // If it's a separator, keep it
-        if (/[.\-',]/.test(segment)) return segment;
-        // If it's a letter segment, capitalize first letter
-        if (segment.length > 0) {
-          return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+    if (!part || part.length === 0) return '';
+
+    // For parts with special characters (like O'Brien, Mary-Jane, St.John)
+    if (/[\-'.]/.test(part)) {
+      // Split by separators while keeping them
+      const segments = part.split(/([\-'.])/).filter(s => s.length > 0);
+      let formatted = '';
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+
+        // If it's a separator, keep it as is
+        if (/[\-'.]/.test(segment)) {
+          formatted += segment;
+        } else if (segment.length > 0) {
+          // Format as: First letter uppercase, rest lowercase
+          formatted += segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
         }
-        return segment;
-      }).join('');
+      }
+      return formatted;
     } else {
       // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
     }
-  }).join(' ');
+  }).filter(p => p.length > 0).join(' ');
 
-  // Validate result matches required pattern: must start with uppercase letter
-  // and only contain letters, spaces, hyphens, apostrophes, commas, periods
-  if (!result || result.length === 0 || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) {
+  // Validate result matches the STRICT required pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // - Must start with uppercase letter
+  // - Followed by zero or more lowercase letters
+  // - Then optionally: (separator + one letter (any case) + lowercase letters)*
+  if (!result || result.length === 0 || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
     return null;
   }
 

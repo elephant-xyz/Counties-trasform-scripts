@@ -1635,26 +1635,74 @@ function writePersonCompaniesSalesRelationships(
   });
 
   // Clean up any person/company files that don't have relationships
+  // This is critical to prevent "Unused data JSON file detected" errors
   try {
+    // Re-read the directory to ensure we have the latest file list after all relationships are created
     const files = fs.readdirSync("data");
+
+    // Build a comprehensive map of which person/company indices are referenced by ANY relationship
+    const personsReferencedByRelationships = new Set();
+    const companiesReferencedByRelationships = new Set();
+
+    // First pass: scan all relationship files to build the referenced sets
+    for (const f of files) {
+      // Check all relationship files to see which persons/companies they reference
+      if (f.startsWith("relationship_") && f.endsWith(".json")) {
+        try {
+          const relContent = JSON.parse(fs.readFileSync(path.join("data", f), "utf8"));
+
+          // Extract person/company references from "from" and "to" fields
+          const fromRef = relContent.from && relContent.from["/"] ? relContent.from["/"] : null;
+          const toRef = relContent.to && relContent.to["/"] ? relContent.to["/"] : null;
+
+          [fromRef, toRef].forEach(ref => {
+            if (ref) {
+              // Handle both ./person_N.json and person_N.json formats
+              const personMatch = ref.match(/person_(\d+)\.json/);
+              const companyMatch = ref.match(/company_(\d+)\.json/);
+
+              if (personMatch) {
+                personsReferencedByRelationships.add(parseInt(personMatch[1]));
+              } else if (companyMatch) {
+                companiesReferencedByRelationships.add(parseInt(companyMatch[1]));
+              }
+            }
+          });
+        } catch (parseError) {
+          console.warn(`Warning: Failed to parse relationship file ${f}:`, parseError.message);
+        }
+      }
+    }
+
+    console.log(`Cleanup: Found ${personsReferencedByRelationships.size} persons with relationships, ${companiesReferencedByRelationships.size} companies with relationships`);
+
+    // Second pass: delete person/company files that are NOT referenced by any relationship
+    let deletedPersonCount = 0;
+    let deletedCompanyCount = 0;
+
     for (const f of files) {
       try {
         const personMatch = f.match(/^person_(\d+)\.json$/);
         const companyMatch = f.match(/^company_(\d+)\.json$/);
+
         if (personMatch) {
           const idx = parseInt(personMatch[1]);
-          if (!personsWithRelationships.has(idx)) {
+          if (!personsReferencedByRelationships.has(idx)) {
             const filePath = path.join("data", f);
             if (fs.existsSync(filePath)) {
               fs.unlinkSync(filePath);
+              deletedPersonCount++;
+              console.log(`Deleted unused person file: ${f}`);
             }
           }
         } else if (companyMatch) {
           const idx = parseInt(companyMatch[1]);
-          if (!companiesWithRelationships.has(idx)) {
+          if (!companiesReferencedByRelationships.has(idx)) {
             const filePath = path.join("data", f);
             if (fs.existsSync(filePath)) {
               fs.unlinkSync(filePath);
+              deletedCompanyCount++;
+              console.log(`Deleted unused company file: ${f}`);
             }
           }
         }
@@ -1663,8 +1711,11 @@ function writePersonCompaniesSalesRelationships(
         console.warn(`Warning: Failed to process/delete ${f}:`, fileError.message);
       }
     }
+
+    console.log(`Cleanup complete: Deleted ${deletedPersonCount} unused person files, ${deletedCompanyCount} unused company files`);
   } catch (e) {
     console.warn("Warning: Error during person/company cleanup:", e.message);
+    console.warn("Stack trace:", e.stack);
   }
 
 }
@@ -1888,6 +1939,11 @@ function linkLayoutsToAssets(layoutCtx, structureCtx, utilityCtx) {
   });
 
   const buildingCount = buildingLayouts.length;
+
+  // Link building layouts to property
+  buildingLayouts.forEach((layout) => {
+    writeRelationshipFile("property.json", layout.fileName);
+  });
 
   if (
     structureCtx &&
@@ -2249,9 +2305,10 @@ function writeExtraLayouts(parcelId, extraLayouts, startLayoutIndex, startSpaceI
     record.building_number = null;
     if (info.size_square_feet != null)
       record.size_square_feet = info.size_square_feet;
-    if (info.built_year != null) record.built_year = info.built_year;
+    if (info.built_year != null && info.built_year >= 1) record.built_year = info.built_year;
     const fileName = `layout_${layoutIndex++}.json`;
     writeJSON(path.join("data", fileName), record);
+    writeRelationshipFile("property.json", fileName);
   });
   return {
     nextLayoutIndex: layoutIndex,
