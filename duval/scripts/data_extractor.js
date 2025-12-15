@@ -71,20 +71,52 @@ function titleCaseNamePart(part) {
   if (!part) return null;
   const trimmed = String(part).trim();
   if (trimmed === "") return null;
-  return trimmed
+
+  // Remove invalid characters like "/" that don't match the schema pattern
+  // Pattern allows: letters, spaces, hyphens, apostrophes, commas, and periods
+  const cleaned = trimmed
+    .replace(/[^a-zA-Z\s\-',.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned === "") return null;
+
+  // Roman numerals and common suffixes that should stay uppercase
+  const preserveUppercase = new Set([
+    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
+    "JR", "SR", "ESQ", "PHD", "MD", "DDS", "DVM", "LLC", "INC", "LTD", "LP", "LLP"
+  ]);
+
+  const result = cleaned
     .toLowerCase()
     .split(/\s+/)
-    .map((word) =>
-      word
-        .split(/([-'.])/)
+    .map((word) => {
+      // Check if the word (without trailing punctuation) should be preserved in uppercase
+      const wordUpper = word.replace(/[,.]$/g, "").toUpperCase();
+      const trailingPunct = word.match(/[,.]$/)?.[0] || "";
+
+      if (preserveUppercase.has(wordUpper)) {
+        return wordUpper + trailingPunct;
+      }
+
+      return word
+        .split(/([-',.])/)
         .map((segment) =>
-          /[-'.]/.test(segment)
+          /[-',.]/.test(segment)
             ? segment
             : segment.charAt(0).toUpperCase() + segment.slice(1),
         )
-        .join(""),
-    )
+        .join("");
+    })
     .join(" ");
+
+  // Remove any trailing or leading separators that don't belong
+  const finalResult = result
+    .replace(/^[\s\-',.]+/, "")  // Remove leading separators
+    .replace(/[\s\-',.]+$/, "");  // Remove trailing separators
+
+  return finalResult || null;
 }
 
 function cleanMoneyToNumber(str) {
@@ -231,6 +263,26 @@ function findEnumMatch(enumMap, rawValue) {
     }
   }
   return null;
+}
+
+// Maps primary exterior wall materials to secondary accent/trim types
+function mapPrimaryToSecondaryWallMaterial(primaryMaterial) {
+  if (!primaryMaterial) return null;
+
+  const mapping = {
+    "Brick": "Brick Accent",
+    "Natural Stone": "Stone Accent",
+    "Manufactured Stone": "Stone Accent",
+    "Stucco": "Stucco Accent",
+    "Vinyl Siding": "Vinyl Accent",
+    "Wood Siding": "Wood Trim",
+    "Fiber Cement Siding": "Wood Trim",
+    "Metal Siding": "Metal Trim",
+    "Concrete Block": "Decorative Block",
+    "EIFS": "Stucco Accent",
+  };
+
+  return mapping[primaryMaterial] || null;
 }
 
 const LAYOUT_SPACE_TYPE_VALUES = [
@@ -1669,7 +1721,7 @@ function extractStructure($) {
           }
           if (/vertical\s+sheet/i.test(detail)) {
             if (result.exterior_wall_material_primary)
-              result.exterior_wall_material_secondary = "Wood Siding";
+              result.exterior_wall_material_secondary = "Wood Trim";
             else result.exterior_wall_material_primary = "Wood Siding";
           }
         }
@@ -1840,7 +1892,7 @@ function applyExtraFeaturesToStructure(features, structureRecord) {
           structureRecord.exterior_wall_material_primary !== wallMatch &&
           !structureRecord.exterior_wall_material_secondary
         )
-          structureRecord.exterior_wall_material_secondary = wallMatch;
+          structureRecord.exterior_wall_material_secondary = mapPrimaryToSecondaryWallMaterial(wallMatch);
       }
 
       const floorMatch = findEnumMatch(
@@ -2090,48 +2142,26 @@ function main() {
     writeJSON("property.json", propertyPayload);
   }
 
-  const addrPartsFull =
-    unnormalizedAddress && unnormalizedAddress.full_address
-      ? parseAddressPartsFromFull(unnormalizedAddress.full_address)
-      : {};
-  const cityStateZipFromHtml = parseCityStateZipFromHtml($);
   const trs = parsePLSTrsFromLegalRows(legalRows);
   const lotStr = parseLotFromLegalRows(legalRows);
+  const fullAddress = unnormalizedAddress && unnormalizedAddress.full_address
+    ? unnormalizedAddress.full_address
+    : null;
+
   writeJSON("address.json", {
-    street_number: addrPartsFull.street_number || null,
-    street_name: addrPartsFull.street_name || null,
-    street_suffix_type: addrPartsFull.street_suffix_type || null,
-    street_pre_directional_text:
-      addrPartsFull.street_pre_directional_text || null,
-    street_post_directional_text:
-      addrPartsFull.street_post_directional_text || null,
-    unit_identifier: addrPartsFull.unit_identifier || null,
-    city_name:
-      addrPartsFull.city_name || cityStateZipFromHtml.city_name || null,
-    state_code:
-      addrPartsFull.state_code || cityStateZipFromHtml.state_code || null,
-    postal_code:
-      addrPartsFull.postal_code || cityStateZipFromHtml.postal_code || null,
-    plus_four_postal_code:
-      addrPartsFull.plus_four_postal_code ||
-      cityStateZipFromHtml.plus_four_postal_code ||
-      null,
+    unnormalized_address: fullAddress,
     county_name: "Duval",
-    country_code: "US",
-    latitude: null,
-    longitude: null,
     lot: lotStr || null,
-    municipality_name: null,
     range: trs.range,
-    route_number: null,
     section: trs.section,
     township: trs.township,
-    block: null,
   });
 
-  if (mailingAddress) {
-    writeJSON("mailing_address.json", mailingAddress);
-  }
+  // Create property_has_address relationship
+  writeJSON("relationship_property_has_address.json", {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" },
+  });
 
   const sales = [];
   $("#ctl00_cphBody_gridSalesHistory tr").each((i, el) => {
@@ -2349,7 +2379,9 @@ function main() {
         });
       }
 
-      if (mailingAddress) {
+      if (mailingAddress && (personPaths.length > 0 || companyPaths.length > 0)) {
+        // Only write mailing_address.json if there are owners to create relationships with
+        writeJSON("mailing_address.json", mailingAddress);
         const mailingPath = "./mailing_address.json";
         personPaths.forEach((personPath) => {
         const relName = relationshipFileName(personPath, mailingPath);
@@ -2455,17 +2487,28 @@ function main() {
   if (structureRecords.length === 0) {
     const fallbackRecord = extractStructure($);
     if (fallbackRecord && typeof fallbackRecord === "object") {
-      const fallbackNumberText = textOrNull(
-        $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
-      );
-      const buildingNumber = normalizeBuildingNumber(
-        fallbackRecord.building_number ?? fallbackNumberText,
-        1,
-      );
-      structureRecords.push({
-        record: fallbackRecord,
-        buildingNumber,
+      // Check if the structure has meaningful data
+      // Skip if number_of_buildings is 0 or null and no other meaningful data exists
+      const hasBuildings = fallbackRecord.number_of_buildings != null &&
+                          fallbackRecord.number_of_buildings !== 0;
+      const hasMeaningfulData = Object.entries(fallbackRecord).some(([key, value]) => {
+        if (key === 'number_of_buildings') return false; // Already checked above
+        return value != null && value !== 0;
       });
+
+      if (hasBuildings || hasMeaningfulData) {
+        const fallbackNumberText = textOrNull(
+          $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
+        );
+        const buildingNumber = normalizeBuildingNumber(
+          fallbackRecord.building_number ?? fallbackNumberText,
+          1,
+        );
+        structureRecords.push({
+          record: fallbackRecord,
+          buildingNumber,
+        });
+      }
     }
   }
 
