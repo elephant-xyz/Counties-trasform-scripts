@@ -2293,7 +2293,7 @@ function extractMailingAddress(ownershipHtml) {
     .trim();
 }
 
-const PERSON_NAME_PATTERN = /^[A-Z][a-zA-Z\s\-',.]*$/;
+const PERSON_NAME_PATTERN = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
 
 function validateNotNull(value, fieldName) {
   if (value === null || value === undefined || value === "") {
@@ -2351,8 +2351,8 @@ function formatName(name) {
   const result = sanitized.trim();
 
   // Validate against the Elephant schema person name pattern before returning
-  // Pattern: Must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  // Pattern: Must start with uppercase letter, followed by lowercase letters, then optionally (special char + letter + lowercase)*
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
   if (!result || !pattern.test(result)) {
     return null;
   }
