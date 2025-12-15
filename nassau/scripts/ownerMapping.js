@@ -19,9 +19,14 @@ function titleCase(str) {
   const cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
   if (!cleaned || cleaned.length === 0) return "";
 
-  const normalized = cleaned.toLowerCase();
+  // Normalize spacing: collapse multiple spaces into one
+  const normalizedSpacing = cleaned.replace(/\s+/g, " ").trim();
+  if (!normalizedSpacing) return "";
+
+  const normalized = normalizedSpacing.toLowerCase();
   let result = "";
   let capitalizeNext = true;
+  let lastWasSpecial = false;
 
   for (let i = 0; i < normalized.length; i++) {
     const char = normalized[i];
@@ -34,19 +39,25 @@ function titleCase(str) {
       } else {
         result += char;
       }
+      lastWasSpecial = false;
     } else if (/[ \-',.]/.test(char)) {
       // It's a special character allowed in names
-      result += char;
-      // Next letter should be capitalized
-      capitalizeNext = true;
-    } else {
-      // Should not happen after cleaning, but just in case
-      result += char;
+      // Only add if the previous character was not a special character
+      // and if there's a next character that is a letter
+      if (!lastWasSpecial && i + 1 < normalized.length && /[a-z]/.test(normalized[i + 1])) {
+        result += char;
+        // Next letter should be capitalized
+        capitalizeNext = true;
+        lastWasSpecial = true;
+      }
     }
   }
 
+  // If the result is empty or doesn't start with a letter, return empty string
+  if (!result || result.length === 0 || !/^[A-Z]/.test(result)) return "";
+
   // Validate result matches the pattern, return empty string if not
-  if (!result || !/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
+  if (!/^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(result)) {
     return "";
   }
 
