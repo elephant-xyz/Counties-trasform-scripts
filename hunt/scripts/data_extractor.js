@@ -1982,8 +1982,7 @@ function main() {
         if (!granteesToPersonId.has(personKey)) {
           writeJson(path.join("data", `person_${personIdCounter}.json`), person);
           granteesToPersonId.set(personKey, personIdCounter);
-          // Note: Do NOT map granteeName when multiple people are parsed
-          // Each person must be looked up by their individual personKey to avoid overwrites
+          granteesToPersonId.set(granteeName, personIdCounter); // Also map original name
           personIdCounter++;
         }
       }
@@ -2051,11 +2050,12 @@ function main() {
       let mailingAddr = null;
       if (owner.mailing_address) {
         mailingAddr = parseMailingAddress(owner.mailing_address);
+        if (mailingAddr) {
+          writeJson(path.join("data", "mailing_address.json"), mailingAddr);
+        }
       }
 
       // Process ALL persons (handles multiple owners like "OWENS GORDON T & ERIKA M")
-      // Only create mailing_address.json if we have at least one valid person
-      let mailingAddressCreated = false;
       for (const ownerPerson of ownerPersons) {
         const personKey = `${ownerPerson.first_name}|${ownerPerson.middle_name}|${ownerPerson.last_name}|${ownerPerson.suffix_name}`;
 
@@ -2084,14 +2084,8 @@ function main() {
           }
         );
 
-        // Create mailing_address.json once (on first person) and relationships for each person
+        // Create relationship from person to mailing address (if mailing address exists)
         if (mailingAddr) {
-          // Create mailing_address.json file only once
-          if (!mailingAddressCreated) {
-            writeJson(path.join("data", "mailing_address.json"), mailingAddr);
-            mailingAddressCreated = true;
-          }
-
           // Create relationship from person to mailing address (lexicon-compliant: person_has_mailing_address)
           writeJson(
             path.join("data", `relationship_person_${ownerPersonId}_has_mailing_address.json`),
@@ -2306,7 +2300,7 @@ function main() {
         // Create relationships for each person parsed from this grantee
         for (const person of granteePersons) {
           const personKey = `${person.first_name}|${person.middle_name}|${person.last_name}|${person.suffix_name}`;
-          const personId = granteesToPersonId.get(personKey);
+          const personId = granteesToPersonId.get(personKey) || granteesToPersonId.get(sale.grantee);
 
           if (personId) {
             // Create relationship from sale to person (as grantee)
