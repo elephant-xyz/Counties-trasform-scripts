@@ -1445,8 +1445,8 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
     const relDeedFile = {
-      from: { "/": `./deed_${idx}.json` },
-      to: { "/": `./file_${idx}.json` }
+      to: { "/": `./deed_${idx}.json` },
+      from: { "/": `./file_${idx}.json` }
     };
     writeJSON(
       path.join("data", `relationship_deed_file_${idx}.json`),
