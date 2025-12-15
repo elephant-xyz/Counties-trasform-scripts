@@ -1063,7 +1063,7 @@ function cleanRelationshipComponent(name) {
 }
 
 function relationshipFileName(fromFile, toFile) {
-  return `relationship_${cleanRelationshipComponent(fromFile)}_has_${cleanRelationshipComponent(toFile)}.json`;
+  return `relationship_${cleanRelationshipComponent(fromFile)}_${cleanRelationshipComponent(toFile)}.json`;
 }
 
 function writeRelationship(fromFile, toFile) {
