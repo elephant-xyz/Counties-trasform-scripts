@@ -24107,7 +24107,17 @@ async function main() {
         ]),
       );
       if (rawValue) {
-        const rawOut = {
+        const countyValue = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            terminalSnapshot.county_name,
+            formattedCountyName,
+            countyName,
+            unAddr && unAddr.county_jurisdiction,
+          ]),
+        );
+        const rawOutBase = {
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...terminalSnapshot,
           unnormalized_address: rawValue,
           request_identifier:
             terminalSnapshot.request_identifier === undefined
@@ -24120,20 +24130,20 @@ async function main() {
                 sourceHttpCandidate ||
                 (seed && seed.source_http_request),
             ) || null,
+          county_name: countyValue || terminalSnapshot.county_name || null,
         };
-        const countyValue = safeNullIfEmpty(
-          resolveFirstNonEmptyString([
-            terminalSnapshot.county_name,
-            formattedCountyName,
-            countyName,
-            unAddr && unAddr.county_jurisdiction,
-          ]),
-        );
-      if (countyValue) rawOut.county_name = countyValue;
-        originalWriteFileSync(
-          addressOutputPath,
-          `${JSON.stringify(rawOut, null, 2)}\n`,
-        );
+        const hydratedRaw =
+          ensureAddressOutputCoverage(rawOutBase) ||
+          buildRawAddressMinimalSurface(rawOutBase, rawValue);
+        if (hydratedRaw) {
+          if ((hydratedRaw.latitude == null) !== (hydratedRaw.longitude == null)) {
+            hydratedRaw.latitude = null;
+            hydratedRaw.longitude = null;
+          }
+          writeJSON(addressOutputPath, hydratedRaw);
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
       } else {
         removeFileIfExists(addressOutputPath);
       }
