@@ -26327,6 +26327,89 @@ async function main() {
       writeJSON(addressOutputPath, rawOut);
     }
 
+    // Final clamp: pick a single address branch. Use normalized only when
+    // complete; otherwise emit the raw branch and keep every schema field
+    // present (nullable) so oneOf validation passes.
+    const finalSnapshotForClamp = readJSONIfExists(addressOutputPath);
+    if (
+      finalSnapshotForClamp &&
+      typeof finalSnapshotForClamp === "object" &&
+      !Array.isArray(finalSnapshotForClamp)
+    ) {
+      const finalNormalizedSurface =
+        ensureNormalizedAddressSchemaSurface &&
+        ensureNormalizedAddressSchemaSurface({ ...finalSnapshotForClamp });
+      const finalNormalizedComplete =
+        finalNormalizedSurface &&
+        hasCompleteNormalizedAddress({ ...finalNormalizedSurface });
+      const finalRawString = safeNullIfEmpty(
+        finalSnapshotForClamp.unnormalized_address,
+      );
+
+      if (finalNormalizedComplete) {
+        const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+        NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+          normalizedOut[field] = sanitizeAddressFieldValue(
+            field,
+            finalNormalizedSurface[field],
+          );
+        });
+        if (!normalizedOut.postal_code) {
+          normalizedOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(normalizedOut.state_code) &&
+          !hasMeaningfulAddressValue(normalizedOut.country_code)
+        ) {
+          normalizedOut.country_code = "US";
+        }
+        writeJSON(addressOutputPath, normalizedOut);
+      } else if (finalRawString) {
+        const rawSourceHttp = finalSnapshotForClamp.source_http_request
+          ? deepClone(
+              prepareSourceHttpRequest(
+                finalSnapshotForClamp.source_http_request,
+              ),
+            )
+          : null;
+        const rawSources = {
+          ...finalSnapshotForClamp,
+          unnormalized_address: finalRawString,
+          request_identifier:
+            finalSnapshotForClamp.request_identifier === undefined
+              ? null
+              : finalSnapshotForClamp.request_identifier,
+          source_http_request: rawSourceHttp,
+        };
+        const rawOut =
+          ensureAddressOutputCoverage(rawSources) || {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...rawSources,
+          };
+        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(rawOut, field)) {
+            rawOut[field] = null;
+          }
+        });
+        if (!rawOut.postal_code) {
+          rawOut.plus_four_postal_code = null;
+        }
+        if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+          rawOut.latitude = null;
+          rawOut.longitude = null;
+        }
+        if (
+          hasMeaningfulAddressValue(rawOut.state_code) &&
+          !hasMeaningfulAddressValue(rawOut.country_code)
+        ) {
+          rawOut.country_code = "US";
+        }
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
     console.log("All mapping scripts completed successfully");
