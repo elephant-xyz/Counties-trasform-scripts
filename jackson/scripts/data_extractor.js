@@ -2379,30 +2379,40 @@ function attemptWriteAddress(unnorm, secTwpRng) {
 function main() {
   ensureDir("data");
 
-  // CLEANUP: Remove unsupported files
-  // Property_Improvement data group INCLUDES person, company, structure, utility, layout
-  // Only remove tax and mailing_address files which are not in Property_Improvement
+  // CLEANUP: Remove all old data files to ensure clean slate
+  // This prevents leftover files from previous runs (e.g., person_17.json from a different input)
   try {
     const dataDir = "data";
     if (fs.existsSync(dataDir)) {
       const files = fs.readdirSync(dataDir);
       files.forEach((file) => {
-        // Only remove tax and mailing_address files (not in Property_Improvement)
-        // Person and company ARE supported in Property_Improvement, so keep them
-        if (file === "mailing_address.json" ||
-            /^tax_\d+\.json$/.test(file)) {
-          console.log(`Early cleanup: Removing unsupported file: ${file}`);
-          fs.unlinkSync(path.join(dataDir, file));
-        }
-        // Remove mailing_address relationship files
-        if (/^relationship_.*mailing_address.*\.json$/.test(file)) {
-          console.log(`Early cleanup: Removing unsupported relationship file: ${file}`);
+        // Remove all generated data files and relationships
+        // This ensures that any leftover files from previous runs are cleaned up
+        if (
+          // Remove person, company files
+          /^person_\d+\.json$/.test(file) ||
+          /^company_\d+\.json$/.test(file) ||
+          // Remove sales_history, file, structure, utility, layout files
+          /^sales_history_\d+\.json$/.test(file) ||
+          /^file_\d+\.json$/.test(file) ||
+          /^structure(_\d+)?\.json$/.test(file) ||
+          /^utility(_\d+)?\.json$/.test(file) ||
+          /^layout_\d+\.json$/.test(file) ||
+          // Remove relationship files
+          /^relationship_.*\.json$/.test(file) ||
+          // Remove unsupported files
+          file === "mailing_address.json" ||
+          /^tax_\d+\.json$/.test(file) ||
+          // Remove property file (will be recreated)
+          file === "property.json"
+        ) {
+          console.log(`Initial cleanup: Removing ${file}`);
           fs.unlinkSync(path.join(dataDir, file));
         }
       });
     }
   } catch (e) {
-    console.error("Error in early cleanup:", e);
+    console.error("Error in initial cleanup:", e);
   }
 
   const $ = loadHTML();
