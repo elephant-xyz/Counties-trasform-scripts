@@ -28,6 +28,52 @@ function slugify(value) {
   return sanitized || "unknown";
 }
 
+// Valid suffix values according to Elephant schema
+const VALID_SUFFIXES = new Set([
+  "Jr.", "Sr.", "II", "III", "IV", "PhD", "MD", "Esq.", "JD", "LLM",
+  "MBA", "RN", "DDS", "DVM", "CFA", "CPA", "PE", "PMP", "Emeritus", "Ret."
+]);
+
+// Mapping for common suffix variations to valid schema values
+const SUFFIX_NORMALIZATION_MAP = {
+  'jr': 'Jr.', 'jr.': 'Jr.', 'junior': 'Jr.',
+  'sr': 'Sr.', 'sr.': 'Sr.', 'senior': 'Sr.',
+  'ii': 'II', 'iii': 'III', 'iv': 'IV',
+  'md': 'MD', 'md.': 'MD', 'm.d.': 'MD',
+  'phd': 'PhD', 'phd.': 'PhD', 'ph.d.': 'PhD',
+  'esq': 'Esq.', 'esq.': 'Esq.', 'esquire': 'Esq.',
+  'jd': 'JD', 'jd.': 'JD', 'j.d.': 'JD',
+  'llm': 'LLM', 'llm.': 'LLM', 'll.m.': 'LLM',
+  'mba': 'MBA', 'mba.': 'MBA', 'm.b.a.': 'MBA',
+  'rn': 'RN', 'rn.': 'RN', 'r.n.': 'RN',
+  'dds': 'DDS', 'dds.': 'DDS', 'd.d.s.': 'DDS',
+  'dvm': 'DVM', 'dvm.': 'DVM', 'd.v.m.': 'DVM',
+  'cfa': 'CFA', 'cfa.': 'CFA', 'c.f.a.': 'CFA',
+  'cpa': 'CPA', 'cpa.': 'CPA', 'c.p.a.': 'CPA',
+  'pe': 'PE', 'pe.': 'PE', 'p.e.': 'PE',
+  'pmp': 'PMP', 'pmp.': 'PMP', 'p.m.p.': 'PMP',
+  'emeritus': 'Emeritus',
+  'ret': 'Ret.', 'ret.': 'Ret.', 'retired': 'Ret.'
+};
+
+// Validates and normalizes suffix_name to schema-compliant values
+function validateAndNormalizeSuffix(suffix) {
+  if (suffix == null) return null;
+
+  const suffixStr = String(suffix).trim();
+  if (!suffixStr) return null;
+
+  // Check if already a valid suffix
+  if (VALID_SUFFIXES.has(suffixStr)) return suffixStr;
+
+  // Try to map from common variations
+  const normalized = SUFFIX_NORMALIZATION_MAP[suffixStr.toLowerCase()];
+  if (normalized) return normalized;
+
+  // If no valid mapping found, return null
+  return null;
+}
+
 function parseJsonLike(raw) {
   if (raw == null) return null;
   const text = String(raw).trim();
@@ -584,7 +630,7 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     first_name: titleCasedFirst,
     last_name: titleCasedLast,
     middle_name: titleCasedMiddle,
-    suffix_name: suffix,
+    suffix_name: validateAndNormalizeSuffix(suffix),
   };
 }
 
@@ -1686,10 +1732,6 @@ function findValuationRow(rowMap, labelOptions) {
         return values;
       }
     }
-  });
-
-  if (!years.length || !Object.keys(rows).length) {
-    return null;
   }
   return null;
 }
@@ -2228,10 +2270,11 @@ function main() {
         personData && personData.prefix_name != null
           ? personData.prefix_name
           : null,
-      suffix_name:
+      suffix_name: validateAndNormalizeSuffix(
         personData && personData.suffix_name != null
           ? personData.suffix_name
-          : null,
+          : null
+      ),
       us_citizenship_status:
         personData && personData.us_citizenship_status != null
           ? personData.us_citizenship_status
