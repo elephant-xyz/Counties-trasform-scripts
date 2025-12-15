@@ -2466,7 +2466,7 @@ const extraFeaturesCodeListMapping = [
     "code": "WALL 5",
     "class": "Structure",
     "property": "exterior_wall_material_primary",
-    "value": "Poured Concrete"
+    "value": "Precast Concrete"
   },
   {
     "code": "WDA N2",
