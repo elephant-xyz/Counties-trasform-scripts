@@ -8635,29 +8635,14 @@ function buildStrictRawOneOfPayload(source = {}) {
   const rawValue = safeNullIfEmpty(source.unnormalized_address);
   if (!rawValue) return null;
 
-  const output = {};
-  RAW_BRANCH_ALLOWED_FIELDS.forEach((field) => {
-    if (field === "unnormalized_address") {
-      output.unnormalized_address = rawValue;
-      return;
-    }
-    if (field === "request_identifier") {
-      const rid =
-        source.request_identifier === undefined
-          ? null
-          : safeNullIfEmpty(source.request_identifier);
-      output.request_identifier = rid === undefined ? null : rid;
-      return;
-    }
-    if (field === "source_http_request") {
-      const prepared = prepareSourceHttpRequest(source.source_http_request);
-      output.source_http_request = prepared ? deepClone(prepared) : null;
-      return;
-    }
-    output[field] = sanitizeAddressFieldValue(field, source[field]);
-  });
+  const seededPayload = {
+    ...source,
+    unnormalized_address: rawValue,
+  };
+  const hydrated = buildRawAddressMinimalSurface(seededPayload, rawValue);
+  if (!hydrated) return null;
 
-  return output;
+  return hydrated;
 }
 
 function clampAddressToStrictOneOf(addressPath, options = {}) {
@@ -25435,10 +25420,10 @@ async function main() {
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
 
-    // Final clamp: if normalized coverage is incomplete, emit a lean raw branch
-    // limited to the raw oneOf surface so validation does not expect normalized
-    // fields. When normalized coverage is complete, drop the raw string to stay
-    // on the normalized branch.
+    // Final clamp: if normalized coverage is incomplete, emit the raw branch
+    // with the full address surface (nullable) so required keys still exist.
+    // When normalized coverage is complete, drop the raw string to stay on the
+    // normalized branch.
     const terminalBranchSnapshot = readJSONIfExists(addressOutputPath);
     if (
       terminalBranchSnapshot &&
@@ -25547,12 +25532,25 @@ async function main() {
           finalBranchSnapshot && finalBranchSnapshot.source_http_request,
         ),
       );
-      writeJSON(addressOutputPath, {
-        unnormalized_address: forcedRawAddress,
-        county_name: forcedCounty || null,
-        request_identifier: forcedRequestId === undefined ? null : forcedRequestId,
-        source_http_request: forcedSourceHttp || null,
-      });
+      const forcedRawPayload =
+        buildRawAddressMinimalSurface(
+          {
+            ...finalBranchSnapshot,
+            county_name:
+              forcedCounty ||
+              (finalBranchSnapshot && finalBranchSnapshot.county_name) ||
+              null,
+            request_identifier:
+              forcedRequestId === undefined ? null : forcedRequestId,
+            source_http_request: forcedSourceHttp || null,
+          },
+          forcedRawAddress,
+        ) || null;
+      if (forcedRawPayload) {
+        writeJSON(addressOutputPath, forcedRawPayload);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
     } else if (forcedNormalizedReady) {
       const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
