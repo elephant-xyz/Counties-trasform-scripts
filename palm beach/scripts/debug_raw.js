@@ -175,7 +175,9 @@ function enforceFinalAddressBranch(addressPath) {
       ensureNormalizedAddressSchemaSurface({ ...snapshot })) ||
     null;
   const normalizedReady =
-    normalizedSurface && hasNormalizedOneOfCoverage({ ...normalizedSurface });
+    normalizedSurface &&
+    typeof hasCompleteNormalizedAddress === "function" &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
 
   const rawValue = safeNullIfEmpty(
     resolveFirstNonEmptyString([
@@ -183,8 +185,41 @@ function enforceFinalAddressBranch(addressPath) {
       ...(ADDRESS_FALLBACK_CONTEXT.unnormalizedCandidates || []),
     ]),
   );
-  // Prefer the raw branch whenever an unnormalized source string is available;
-  // only fall back to normalized when we truly lack raw input.
+  if (normalizedReady) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  // Fall back to the raw branch only when we lack a complete normalized
+  // address but still have an unnormalized string from the source.
   if (rawValue) {
     const prepared = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
     prepared.unnormalized_address = rawValue;
@@ -246,39 +281,6 @@ function enforceFinalAddressBranch(addressPath) {
       prepared.longitude = null;
     }
     writeJSON(addressPath, prepared);
-    return;
-  }
-
-  if (normalizedReady) {
-    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
-    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-      let value = normalizedSurface[field];
-      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-        const numeric = parseCoordinate(value);
-        value = Number.isFinite(numeric) ? numeric : null;
-      } else if (typeof value === "string") {
-        const trimmed = value.trim();
-        value = trimmed.length ? trimmed : null;
-      } else if (value === undefined) {
-        value = null;
-      }
-      normalizedOut[field] = value;
-    });
-    if (!normalizedOut.postal_code) {
-      normalizedOut.plus_four_postal_code = null;
-    }
-    if (
-      hasMeaningfulAddressValue(normalizedOut.state_code) &&
-      !hasMeaningfulAddressValue(normalizedOut.country_code)
-    ) {
-      normalizedOut.country_code = "US";
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
-    ) {
-      delete normalizedOut.unnormalized_address;
-    }
-    writeJSON(addressPath, normalizedOut);
     return;
   }
 
