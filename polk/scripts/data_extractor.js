@@ -3379,7 +3379,6 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
       const firstName = toTitleCase(o.first_name); // Apply title case
       const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
       const lastName = toTitleCase(o.last_name); // Apply title case
-      const suffixName = o.suffix_name || null;
       const personKey = `${firstName}|${middleName || ""}|${lastName}`;
       if (!res.personIndexByKey.has(personKey)) {
         res.persons.push({
@@ -3388,7 +3387,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
           last_name: lastName,
           middle_name: middleName,
           prefix_name: null,
-          suffix_name: suffixName,
+          suffix_name: null,
           us_citizenship_status: null,
           veteran_status: null,
         });
@@ -3413,7 +3412,6 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
         const firstName = toTitleCase(o.first_name); // Apply title case
         const middleName = o.middle_name ? toTitleCase(o.middle_name) : null;
         const lastName = toTitleCase(o.last_name); // Apply title case
-        const suffixName = o.suffix_name || null;
         const personKey = `${firstName}|${middleName || ""}|${lastName}`;
         if (!res.personIndexByKey.has(personKey)) {
           res.persons.push({
@@ -3422,7 +3420,7 @@ function buildPersonsAndCompanies(ownerJSON, parcelId) {
             last_name: lastName,
             middle_name: middleName,
             prefix_name: null,
-            suffix_name: suffixName,
+            suffix_name: null,
             us_citizenship_status: null,
             veteran_status: null,
           });
@@ -3557,7 +3555,7 @@ function parseAddressSection($, headingText) {
 
 function attemptWriteAddress(unnorm, siteAddress, mailingAddress) {
   let hasOwnerMailingAddress = false;
-  let inputCounty = (unnorm.county_jurisdiction || "").trim();
+  const inputCounty = (unnorm.county_jurisdiction || "").trim();
   if (!inputCounty) {
     inputCounty = (unnorm.county_name || "").trim();
   }
@@ -3972,24 +3970,18 @@ function main() {
     if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
   });
 
-  // Track which persons/companies have relationships
-  const personsWithRelationships = new Set();
-  const companiesWithRelationships = new Set();
-
   sales.forEach((s, idx) => {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
     if (companyNameToPath.has(g)) {
-      const companyPath = companyNameToPath.get(g);
       const rel = {
-        to: { "/": companyPath },
+        to: { "/": companyNameToPath.get(g) },
         from: { "/": `./sales_${idx + 1}.json` },
       };
       writeJSON(
         path.join("data", `relationship_sales_company_${idx + 1}.json`),
         rel,
       );
-      companiesWithRelationships.add(companyPath);
     } else {
       // try direct or swapped person match
       let toPath = null;
@@ -4014,47 +4006,9 @@ function main() {
           path.join("data", `relationship_sales_person_${idx + 1}.json`),
           rel,
         );
-        personsWithRelationships.add(toPath);
       }
     }
   });
-
-  // Fallback: Connect all persons/companies to the most recent sale if they don't have relationships
-  if (sales.length > 0) {
-    const mostRecentSalesPath = `./sales_1.json`;
-
-    // Connect ALL persons without relationships (both current and historical)
-    pc.persons.forEach((p, i) => {
-      const personPath = `./person_${i + 1}.json`;
-      if (!personsWithRelationships.has(personPath)) {
-        const rel = {
-          to: { "/": personPath },
-          from: { "/": mostRecentSalesPath },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_person_${i + 1}.json`),
-          rel,
-        );
-        personsWithRelationships.add(personPath);
-      }
-    });
-
-    // Connect ALL companies without relationships (both current and historical)
-    pc.companies.forEach((c, i) => {
-      const companyPath = `./company_${i + 1}.json`;
-      if (!companiesWithRelationships.has(companyPath)) {
-        const rel = {
-          to: { "/": companyPath },
-          from: { "/": mostRecentSalesPath },
-        };
-        writeJSON(
-          path.join("data", `relationship_sales_company_${i + 1}.json`),
-          rel,
-        );
-        companiesWithRelationships.add(companyPath);
-      }
-    });
-  }
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     const lset =
