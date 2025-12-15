@@ -3334,7 +3334,8 @@ function main() {
     const priceStr = tds.eq(6).text().trim();
 
     // Skip rows where both instAbbr and bookPage are empty (placeholder rows)
-    if (!instAbbr && !bookPage) {
+    // Also skip if the date is empty, which indicates an invalid/placeholder row
+    if ((!instAbbr && !bookPage) || !dateStr) {
       return;
     }
 
@@ -3375,6 +3376,11 @@ function main() {
     let fileName = (instAbbrPart + (instAbbrPart && bookPagePart ? " " : "") + bookPagePart).trim();
     // Check for empty string or whitespace-only string - must have at least 1 character
     if (!fileName || fileName.length === 0) {
+      fileName = "Deed Document";
+    }
+
+    // Final safety check to ensure fileName is never empty
+    if (typeof fileName !== 'string' || fileName.length < 1) {
       fileName = "Deed Document";
     }
 
