@@ -1532,18 +1532,32 @@ function formatMiddleName(name) {
 
   if (!cleaned || cleaned.length === 0) return null;
 
+  // Remove leading special characters to ensure it starts with a letter
+  const startsWithLetter = cleaned.replace(/^[\s\-',.]+/, "");
+
+  if (!startsWithLetter || startsWithLetter.length === 0) return null;
+
   // Normalize spacing: collapse multiple spaces into one
-  const normalizedSpacing = cleaned.replace(/\s+/g, " ").trim();
+  const normalizedSpacing = startsWithLetter.replace(/\s+/g, " ").trim();
 
   if (!normalizedSpacing) return null;
 
-  // Title case each word: capitalize first letter of each word, lowercase the rest
+  // Title case each word: capitalize first LETTER of each word, lowercase the rest
   // This ensures multi-word middle names like "MARY WELLS" become "Mary Wells"
   // and single-word names like "WELLS" become "Wells"
   const result = normalizedSpacing
     .toLowerCase()
     .split(/\s+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map(word => {
+      // Find the first letter in the word
+      const firstLetterIndex = word.search(/[a-z]/);
+      if (firstLetterIndex === -1) return word; // No letters found, return as-is
+
+      // Capitalize the first letter
+      return word.substring(0, firstLetterIndex) +
+             word.charAt(firstLetterIndex).toUpperCase() +
+             word.substring(firstLetterIndex + 1);
+    })
     .join(" ");
 
   // Validate against the middle name pattern
