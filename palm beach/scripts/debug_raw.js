@@ -8434,6 +8434,24 @@ const NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS = [
   "country_code",
 ];
 
+// Require a fuller normalized surface (including coordinates and core street
+// components) before emitting the normalized branch. Otherwise, fall back to
+// the raw branch anchored by the unnormalized string so oneOf validation
+// doesn't complain about missing required address pieces.
+const NORMALIZED_STRICT_STRING_FIELDS = Object.freeze([
+  "street_number",
+  "street_name",
+  "street_suffix_type",
+  "city_name",
+  "state_code",
+  "postal_code",
+  "country_code",
+]);
+const NORMALIZED_SCHEMA_STRICT_FIELDS = Object.freeze([
+  ...NORMALIZED_STRICT_STRING_FIELDS,
+  ...NORMALIZED_ADDRESS_COORDINATE_FIELDS,
+]);
+
 const RAW_SCHEMA_REQUIRED_FIELDS = [];
 
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
@@ -9136,6 +9154,25 @@ function hasNormalizedCountyCoverage(address) {
       return false;
     }
     address[coord] = numeric;
+  }
+
+  return true;
+}
+
+function hasNormalizedStrictCoverage(address) {
+  if (!address || typeof address !== "object") {
+    return false;
+  }
+
+  for (const field of NORMALIZED_STRICT_STRING_FIELDS) {
+    if (!hasMeaningfulAddressValue(address[field])) {
+      return false;
+    }
+  }
+
+  for (const coord of ADDRESS_COORDINATE_FIELDS) {
+    const numeric = parseCoordinate(address[coord]);
+    if (!Number.isFinite(numeric)) return false;
   }
 
   return true;
@@ -24762,6 +24799,116 @@ async function main() {
     } else {
       removeFileIfExists(addressOutputPath);
     }
+
+    // Final strict clamp: only keep the normalized branch when the core street
+    // pieces and coordinates are present; otherwise emit the raw branch anchored
+    // by the unnormalized address string with the full schema surface so oneOf
+    // validation doesn't request missing fields.
+    const strictSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const strictRawCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        strictSnapshot.unnormalized_address,
+        finalClampRawValue,
+        finalRawCandidateClamp,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const strictNormalizedSurface =
+      typeof ensureNormalizedAddressSchemaSurface === "function" &&
+      strictSnapshot &&
+      !Array.isArray(strictSnapshot)
+        ? ensureNormalizedAddressSchemaSurface({ ...strictSnapshot })
+        : null;
+    const strictNormalizedWithDefaults =
+      strictNormalizedSurface &&
+      (ensureAddressOutputCoverage({
+        ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+        ...strictNormalizedSurface,
+        unnormalized_address: undefined,
+      }) ||
+        {
+          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+          ...strictNormalizedSurface,
+        });
+    const strictNormalizedReady =
+      strictNormalizedWithDefaults &&
+      hasNormalizedStrictCoverage(strictNormalizedWithDefaults) &&
+      !prefersRawAddressBranch;
+
+    let strictOut = null;
+    if (strictNormalizedReady) {
+      strictOut = { ...strictNormalizedWithDefaults };
+      if (
+        Object.prototype.hasOwnProperty.call(strictOut, "unnormalized_address")
+      ) {
+        delete strictOut.unnormalized_address;
+      }
+    } else if (strictRawCandidate) {
+      const strictRequestId = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          strictSnapshot.request_identifier,
+          finalClampRequestId,
+          finalRequestIdentifier,
+          trimmedRequestIdentifier,
+          parcelId,
+          seed && seed.request_identifier,
+          unAddr && unAddr.request_identifier,
+        ]),
+      );
+      const strictSourceHttp = resolveSourceHttpRequest(
+        strictSnapshot.source_http_request,
+        finalClampSourceHttp,
+        finalSourceHttp,
+        resolvedSourceHttp,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      );
+      const strictCounty = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          strictSnapshot.county_name,
+          formattedCountyName,
+          countyName,
+          unAddr && unAddr.county_jurisdiction,
+        ]),
+      );
+
+      strictOut =
+        buildRawAddressMinimalSurface(
+          {
+            ...strictSnapshot,
+            request_identifier:
+              strictRequestId === undefined ? null : strictRequestId,
+            source_http_request: strictSourceHttp
+              ? prepareSourceHttpRequest(strictSourceHttp)
+              : null,
+            county_name: strictCounty || strictSnapshot.county_name || null,
+          },
+          strictRawCandidate,
+        ) || null;
+    }
+
+    if (strictOut) {
+      if ((strictOut.latitude == null) !== (strictOut.longitude == null)) {
+        strictOut.latitude = null;
+        strictOut.longitude = null;
+      }
+      writeJSON(
+        addressOutputPath,
+        ensureAddressOutputCoverage(strictOut) || strictOut,
+      );
+    } else {
+      removeFileIfExists(addressOutputPath);
+    }
+
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
