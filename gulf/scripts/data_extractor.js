@@ -1827,15 +1827,12 @@ function createGeometryInstances(csvContent) {
     }, {})
   );
 
-  console.log("hello", records.flatMap((record) => splitGeometry(record)))
-
   return records.flatMap((record) => splitGeometry(record));
 }
 
 function createGeometryClass(geometryInstances) {
 
   let geomIndex = 1;
-  console.log("geometryInstances", geometryInstances)
   for(let geom of geometryInstances) {
     let polygon = [];
     if (!geom || !geom.polygon) {
@@ -1850,7 +1847,6 @@ function createGeometryClass(geometryInstances) {
       "polygon": polygon,
     }
 
-    console.log("geometry- output", geometry);
     writeOut(`geometry_${geomIndex}.json`, geometry);
     writeOut(`relationship_parcel_to_geometry_${geomIndex}.json`, {
         from: { "/": `./parcel.json` },
@@ -1876,21 +1872,6 @@ function main() {
   const utilitiesData = readJSON(path.join("owners", "utilities_data.json"));
   const structureData = readJSON(path.join("owners", "structure_data.json"));
   const key = `property_${parcelId}`;  
-  // try {
-  //   const seedCsvPath = path.join(".", "input.csv");
-  //   const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-  //   createGeometryClass(createGeometryInstances(seedCsv));
-  // } catch (e) {
-  //   const latitude = unnormalized && unnormalized.latitude ? unnormalized.latitude : null;
-  //   const longitude = unnormalized && unnormalized.longitude ? unnormalized.longitude : null;
-  //   if (latitude && longitude) {
-  //     const coordinate = new Geometry({
-  //       latitude: latitude,
-  //       longitude: longitude
-  //     });
-  //     createGeometryClass([coordinate]);
-  //   }
-  // }
 
   const geometryCsvCandidates = [
       path.join(SCRIPT_DIR, "input.csv"),
@@ -1907,9 +1888,7 @@ function main() {
       throw new Error("Unable to locate input.csv or seed.csv for geometry creation.");
     }
     const seedCsv = fs.readFileSync(seedCsvPath, "utf8");
-    console.log("seedCsv", seedCsv)
     const instance = createGeometryInstances(seedCsv);
-    console.log(instance)
     createGeometryClass(instance);
 
   let struct = null;
