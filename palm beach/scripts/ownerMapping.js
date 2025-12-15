@@ -199,7 +199,10 @@ function toISODate(mdy) {
 }
 
 // Read and parse input
-const html = fs.readFileSync(path.join(process.cwd(), "input.html"), "utf-8");
+const htmlPath = fs.existsSync(path.join(process.cwd(), "input.html"))
+  ? path.join(process.cwd(), "input.html")
+  : path.join(process.cwd(), "input", "input.html");
+const html = fs.readFileSync(htmlPath, "utf-8");
 const $ = cheerio.load(html);
 
 // Extract property ID (Parcel Control Number)
@@ -360,8 +363,8 @@ currentOwnerRaws.forEach((raw) => {
 const currentDeduped = dedupOwners(currentOwners);
 ownersByDate["current"] = currentDeduped;
 
-// Compose final JSON structure without generating synthetic UR keys.
-const result = {
+const output = {};
+output[`property_${propertyId}`] = {
   owners_by_date: ownersByDate,
   invalid_owners: invalidOwners,
 };
@@ -370,13 +373,9 @@ const result = {
 const outDir = path.join(process.cwd(), "owners");
 fs.mkdirSync(outDir, { recursive: true });
 const outPath = path.join(outDir, "owner_data.json");
-fs.writeFileSync(outPath, JSON.stringify(result, null, 2), "utf-8");
+fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf-8");
 
 // Print to console for debugging
 console.log(
-  JSON.stringify({
-    property_id: propertyId || null,
-    owners_by_date: ownersByDate,
-    invalid_owners: invalidOwners,
-  }),
+  JSON.stringify(output),
 );
