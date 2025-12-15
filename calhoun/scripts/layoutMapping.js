@@ -106,6 +106,12 @@ function toIntegerOrNull(val) {
   return Number.isFinite(rounded) ? rounded : null;
 }
 
+function toIntegerOrNullMinOne(val) {
+  const num = toIntegerOrNull(val);
+  if (num == null || num < 1) return null;
+  return num;
+}
+
 function buildBuildingLayoutData(buildings) {
   return buildings
     .map((b, idx) => {
@@ -138,7 +144,7 @@ function buildBuildingLayoutData(buildings) {
         building_type: b["Type"] ? textTrim(b["Type"]) || null : null,
         total_area_sq_ft: totalArea,
         livable_area_sq_ft: heatedArea,
-        built_year: toIntegerOrNull(b["Actual Year Built"]),
+        built_year: toIntegerOrNullMinOne(b["Actual Year Built"]),
         number_of_stories: toIntegerOrNull(b["Stories"]),
         rooms,
       };
