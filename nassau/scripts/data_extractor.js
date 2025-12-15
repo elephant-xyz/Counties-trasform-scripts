@@ -1551,13 +1551,14 @@ function formatMiddleName(name) {
     .map(word => {
       // Find the first letter in the word
       const firstLetterIndex = word.search(/[a-z]/);
-      if (firstLetterIndex === -1) return word; // No letters found, return as-is
+      if (firstLetterIndex === -1) return ""; // No letters found, skip this word
 
-      // Capitalize the first letter
-      return word.substring(0, firstLetterIndex) +
-             word.charAt(firstLetterIndex).toUpperCase() +
-             word.substring(firstLetterIndex + 1);
+      // Skip any leading special characters and capitalize first letter
+      // This ensures the word starts with a letter, not a special character
+      const letterPart = word.substring(firstLetterIndex);
+      return letterPart.charAt(0).toUpperCase() + letterPart.slice(1);
     })
+    .filter(Boolean) // Remove empty strings from array
     .join(" ");
 
   // Validate against the middle name pattern
