@@ -90,11 +90,46 @@ function mapExteriorMaterials(tokens) {
       out.push("Wood Siding"); // Added T-111
     if (t.includes("STUC")) out.push("Stucco");
     if (t.includes("VINYL")) out.push("Vinyl Siding");
-    if (t.includes("BLOCK") || t.includes("CONCRETE"))
+    if (t.includes("BLOCK") || t.includes("CONCRETE") || t === "CB")
       out.push("Concrete Block");
     if (t.includes("METAL")) out.push("Metal Siding");
     if (t.includes("SIDING") && !t.includes("VINYL") && !t.includes("WOOD"))
       out.push("Metal Siding");
+  });
+  return out;
+}
+
+function mapExteriorMaterialSecondary(token) {
+  if (!token) return null;
+  const upper = token.toUpperCase();
+  // Check BRICK first (includes BRK abbreviation)
+  if (upper.includes("BRICK") || upper.includes("BRK")) return "Brick Accent";
+  // Check STONE
+  if (upper.includes("STONE")) return "Stone Accent";
+  // Check WOOD-related materials
+  if (upper.includes("WOOD") || upper.includes("CEDAR") || upper.includes("T-111")) return "Wood Trim";
+  // Check METAL materials
+  if (upper.includes("METAL") || upper.includes("ALUMIN")) return "Metal Trim";
+  // Check STUCCO (includes STUC abbreviation)
+  if (upper.includes("STUCCO") || upper.includes("STUC")) return "Stucco Accent";
+  // Check VINYL
+  if (upper.includes("VINYL")) return "Vinyl Accent";
+  // Check CONCRETE BLOCK before checking BLOCK alone to avoid incorrect mapping
+  if (upper.includes("CONCRETE BLOCK") || upper.startsWith("CB") || upper.includes("BLOCK")) {
+    return "Decorative Block";
+  }
+  // If no match, return null (don't set secondary material)
+  return null;
+}
+
+function mapExteriorSecondaryMaterials(tokens) {
+  const out = [];
+  tokens.forEach((tok) => {
+    const t = tok.trim();
+    if (!t) return;
+    // Map to accent/trim materials only - these are the valid enum values
+    const mapped = mapExteriorMaterialSecondary(t);
+    if (mapped) out.push(mapped);
   });
   return out;
 }
@@ -287,8 +322,14 @@ function buildStructureRecords(parcelId, buildings) {
     const exteriorMaterials = mapExteriorMaterials(extTokens);
     if (exteriorMaterials.length) {
       structure.exterior_wall_material_primary = exteriorMaterials[0];
-      if (exteriorMaterials.length > 1) {
-        structure.exterior_wall_material_secondary = exteriorMaterials[1];
+    }
+
+    // Map secondary materials separately from the second token onwards - only accent/trim materials are valid
+    if (extTokens.length > 1) {
+      const secondaryTokens = extTokens.slice(1);
+      const exteriorSecondary = mapExteriorSecondaryMaterials(secondaryTokens);
+      if (exteriorSecondary.length > 0) {
+        structure.exterior_wall_material_secondary = exteriorSecondary[0];
       }
     }
 

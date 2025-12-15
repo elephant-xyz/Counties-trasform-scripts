@@ -73,19 +73,6 @@ function validatePersonName(name) {
   return cleaned;
 }
 
-function validatePersonName(name) {
-  if (!name || typeof name !== 'string') return null;
-  const trimmed = name.trim();
-  if (!trimmed) return null;
-  // Pattern from Elephant schema: ^[A-Z][a-zA-Z\s\-',.]*$
-  // Must start with uppercase letter, followed by any letters (upper or lower), spaces, hyphens, apostrophes, commas, or periods
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!pattern.test(trimmed)) {
-    return null;
-  }
-  return trimmed;
-}
-
 function parseCurrency(str) {
   if (!str) return null;
   const n = parseFloat(String(str).replace(/[^0-9.\-]/g, ""));
@@ -2152,10 +2139,8 @@ function main() {
       longitude: null,
       unnormalized_address: mailingAddressString,
     };
-    fs.writeFileSync(
-      path.join(dataDir, "mailing_address.json"),
-      JSON.stringify(mailingAddressRecord, null, 2),
-    );
+    // Note: The actual file creation is deferred until we know there are person/company files to relate it to
+    // See lines below where relationships are created
   }
 
   // Define allowed enum values for Lot
@@ -2697,7 +2682,12 @@ function main() {
     });
   }
 
-  if (mailingAddressRecord) {
+  if (mailingAddressRecord && (personFiles.length > 0 || companyFiles.length > 0)) {
+    // Only create mailing_address.json if there are person/company files to relate it to
+    fs.writeFileSync(
+      path.join(dataDir, "mailing_address.json"),
+      JSON.stringify(mailingAddressRecord, null, 2),
+    );
     personFiles.forEach((fileName) => {
       writeRelationship(fileName, "mailing_address.json");
     });

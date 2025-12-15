@@ -2432,20 +2432,6 @@ function main() {
   }
 
   const ownerMailingInfo = parseOwnerMailingAddresses($);
-  const mailingAddressFiles = [];
-  ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
-    if (!addr) return;
-    const fileName = `mailing_address_${idx + 1}.json`;
-    const mailingObj = {
-      unnormalized_address: addr,
-      latitude: null,
-      longitude: null,
-      source_http_request: clone(defaultSourceHttpRequest),
-      request_identifier: requestIdentifier,
-    };
-    writeJSON(path.join(dataDir, fileName), mailingObj);
-    mailingAddressFiles.push({ path: `./${fileName}` });
-  });
 
   const ownersByDate =
     ownersEntry && ownersEntry.owners_by_date
@@ -2466,6 +2452,23 @@ function main() {
         currentOwners = latestOwners;
       }
     }
+  }
+
+  const mailingAddressFiles = [];
+  if (currentOwners.length > 0) {
+    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+      if (!addr) return;
+      const fileName = `mailing_address_${idx + 1}.json`;
+      const mailingObj = {
+        unnormalized_address: addr,
+        latitude: null,
+        longitude: null,
+        source_http_request: clone(defaultSourceHttpRequest),
+        request_identifier: requestIdentifier,
+      };
+      writeJSON(path.join(dataDir, fileName), mailingObj);
+      mailingAddressFiles.push({ path: `./${fileName}` });
+    });
   }
 
   const currentOwnerEntities = [];

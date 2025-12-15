@@ -1413,7 +1413,7 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
   const ownersByDate = record.owners_by_date;
 
   const personCanonical = new Map();
-  const companySet = new Set();
+  const companyCanonical = new Map();
   Object.values(ownersByDate).forEach((arr) => {
     (arr || []).forEach((o) => {
       if (o.type === "person") {
@@ -1460,6 +1460,7 @@ function writePersonCompaniesSalesRelationships($, parcelId, salesRecords) {
   });
 
   const companyIndexMap = new Map();
+  Array.from(companyCanonical.values()).forEach((name, idx) => {
   Array.from(companySet).forEach((name, idx) => {
     const companyObj = {
       name,
@@ -1776,7 +1777,7 @@ function mapFoundationMaterial(value) {
   if (upper.includes("CONCRETE") && upper.includes("BLOCK")) return "Concrete Block";
   if (upper.includes("POURED") && upper.includes("CONCRETE")) return "Poured Concrete";
   if (upper.includes("CONCRETE")) return "Poured Concrete";
-  if (upper.includes("MASONRY")) return "Masonry";
+  if (upper.includes("MASONRY")) return "Concrete Block";
   if (upper.includes("STONE")) return "Stone";
   if (upper.includes("BRICK")) return "Brick";
   if (upper.includes("STEEL")) return "Steel Piers";

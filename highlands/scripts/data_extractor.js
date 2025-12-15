@@ -24,6 +24,7 @@ const DEED_TYPE_MAP = {
   SD: "Sheriff's Deed",
   "SHRF'S DEED": "Sheriff's Deed",
   TD: "Tax Deed",
+  TR: "Trustee's Deed",
   TRD: "Trustee's Deed",
   "TRUSTEE DEED": "Trustee's Deed",
   PRD: "Personal Representative Deed",
@@ -39,9 +40,10 @@ const DEED_TYPE_MAP = {
   "GIFT DEED": "Gift Deed",
   ITD: "Interspousal Transfer Deed",
   "WILD D": "Wild Deed",
-  SMD: "Special Master’s Deed",
+  SMD: "Special Master's Deed",
   COD: "Court Order Deed",
   CFD: "Contract for Deed",
+  LC: "Contract for Deed",
   QTD: "Quiet Title Deed",
   AD: "Administrator's Deed",
   "GD (GUARDIAN)": "Guardian's Deed",
@@ -50,32 +52,7 @@ const DEED_TYPE_MAP = {
   VPD: "Vacation of Plat Deed",
   AOC: "Assignment of Contract",
   ROC: "Release of Contract",
-  LC: "Land Contract",
-  MTG: "Mortgage",
-  LIS: "Lis Pendens",
-  EASE: "Easement",
-  AGMT: "Agreement",
-  AFF: "Affidavit",
-  ORD: "Order",
-  CERT: "Certificate",
-  RES: "Resolution",
-  DECL: "Declaration",
-  COV: "Covenant",
-  SUB: "Subordination",
-  MOD: "Modification",
-  REL: "Release",
-  ASSG: "Assignment",
-  LEAS: "Lease",
-  TR: "Trust",
-  WILL: "Will",
-  PROB: "Probate",
-  JUDG: "Judgment",
-  LIEN: "Lien",
-  SAT: "Satisfaction",
-  PART: "Partition",
-  EXCH: "Exchange",
-  CONV: "Conveyance",
-  OTH: "Other",
+  PB: "Miscellaneous",
 };
 
 function clearDir(p) {
@@ -1638,10 +1615,10 @@ function main() {
       DEED_TYPE_MAP[instNormalized] ||
       DEED_TYPE_MAP[instKey] ||
       DEED_TYPE_MAP[instKey.replace(/[^A-Z0-9' ]/g, "")] ||
-      null;
+      "Miscellaneous";
 
     const deedObj = {};
-    if (deedType) deedObj.deed_type = deedType;
+    deedObj.deed_type = deedType;
     if (row.book || row.linkBook) deedObj.book = row.book || row.linkBook;
     if (row.page || row.linkPage) deedObj.page = row.page || row.linkPage;
     writeJson(path.join("data", `deed_${deedIdx}.json`), deedObj);

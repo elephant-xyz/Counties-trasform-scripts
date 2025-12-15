@@ -84,6 +84,28 @@ function tokenizeNamePart(part) {
     .filter(Boolean);
 }
 
+function isInitials(token) {
+  // Detect if a token looks like initials (e.g., "M.A.", "J.R.", "MA", "J")
+  if (!token) return false;
+  const cleaned = token.replace(/\./g, "").trim();
+  // Initials are typically 1-3 uppercase letters
+  return /^[A-Z]{1,3}$/.test(cleaned) && cleaned.length <= 3;
+}
+
+function normalizeNameForPattern(name) {
+  // Ensure name matches pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // If name contains initials with periods, try to format properly
+  if (!name) return null;
+
+  // If it's pure initials (like "M.A."), we can't use it as first_name
+  if (isInitials(name)) {
+    return null;
+  }
+
+  // Otherwise, return title-cased version
+  return titleCase(name);
+}
+
 function buildPersonFromTokens(tokens, fallbackLastName) {
   // Assume format is LAST FIRST [MIDDLE]
   if (!tokens || tokens.length === 0) return null;
@@ -115,10 +137,40 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // If first name is initials, try to handle it
+  if (first && isInitials(first)) {
+    // If we have middle name, try shifting
+    if (middle) {
+      const middleParts = middle.split(" ").filter(Boolean);
+      if (middleParts.length > 0 && !isInitials(middleParts[0])) {
+        // Move middle to first, move first to middle
+        const newFirst = middleParts[0];
+        const newMiddle = [first, ...middleParts.slice(1)].join(" ").trim() || null;
+        first = newFirst;
+        middle = newMiddle;
+      } else {
+        // All names are initials or problematic, skip this person
+        return null;
+      }
+    } else {
+      // Only have last and first (initials), cannot create valid person
+      return null;
+    }
+  }
+
+  // Normalize names to match pattern
+  const normalizedFirst = normalizeNameForPattern(first);
+  const normalizedLast = normalizeNameForPattern(last);
+
+  if (!normalizedFirst || !normalizedLast) {
+    // Cannot create person without valid first and last name
+    return null;
+  }
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
+    first_name: normalizedFirst,
+    last_name: normalizedLast,
     middle_name: middle ? titleCase(middle) : null,
   };
 }

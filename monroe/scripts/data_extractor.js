@@ -427,6 +427,22 @@ function titleCase(str) {
   return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 }
 
+function isValidFirstOrLastName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  return /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/.test(trimmed);
+}
+
+function isValidMiddleName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must match pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  return /^[A-Z][a-zA-Z\s\-',.]*$/.test(trimmed);
+}
+
 const COMPANY_KEYWORDS =
   /(\b|\s)(inc\.?|l\.l\.c\.|llc|ltd\.?|foundation|alliance|solutions|corp\.?|co\.?|services|trust\b|trustee\b|trustees\b|tr\b|associates|partners|partnership|investment|investments|lp\b|llp\b|bank\b|n\.a\.|na\b|pllc\b|company|enterprises|properties|holdings|estate)(\b|\s)/i;
 const SUFFIXES_IGNORE =
@@ -445,6 +461,28 @@ function tokenizeNamePart(part) {
     .trim()
     .split(" ")
     .filter(Boolean);
+}
+
+function isInitials(token) {
+  // Detect if a token looks like initials (e.g., "M.A.", "J.R.", "MA", "J")
+  if (!token) return false;
+  const cleaned = token.replace(/\./g, "").trim();
+  // Initials are typically 1-3 uppercase letters
+  return /^[A-Z]{1,3}$/.test(cleaned) && cleaned.length <= 3;
+}
+
+function normalizeNameForPattern(name) {
+  // Ensure name matches pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // If name contains initials with periods, try to format properly
+  if (!name) return null;
+
+  // If it's pure initials (like "M.A."), we can't use it as first_name
+  if (isInitials(name)) {
+    return null;
+  }
+
+  // Otherwise, return title-cased version
+  return titleCase(name);
 }
 
 function buildPersonFromTokens(tokens, fallbackLastName) {
@@ -472,10 +510,40 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
+  // If first name is initials, try to handle it
+  if (first && isInitials(first)) {
+    // If we have middle name, try shifting
+    if (middle) {
+      const middleParts = middle.split(" ").filter(Boolean);
+      if (middleParts.length > 0 && !isInitials(middleParts[0])) {
+        // Move middle to first, move first to middle
+        const newFirst = middleParts[0];
+        const newMiddle = [first, ...middleParts.slice(1)].join(" ").trim() || null;
+        first = newFirst;
+        middle = newMiddle;
+      } else {
+        // All names are initials or problematic, skip this person
+        return null;
+      }
+    } else {
+      // Only have last and first (initials), cannot create valid person
+      return null;
+    }
+  }
+
+  // Normalize names to match pattern
+  const normalizedFirst = normalizeNameForPattern(first);
+  const normalizedLast = normalizeNameForPattern(last);
+
+  if (!normalizedFirst || !normalizedLast) {
+    // Cannot create person without valid first and last name
+    return null;
+  }
+
   return {
     type: "person",
-    first_name: titleCase(first || ""),
-    last_name: titleCase(last || ""),
+    first_name: normalizedFirst,
+    last_name: normalizedLast,
     middle_name: middle ? titleCase(middle) : null,
   };
 }
@@ -2087,20 +2155,37 @@ function main() {
 
   function createPersonRecord(personData) {
     if (!personData) return null;
-    const firstName =
+
+    // Extract and normalize names
+    const firstNameRaw =
       personData.first_name != null
         ? String(personData.first_name).trim()
         : "";
-    const lastName =
+    const lastNameRaw =
       personData.last_name != null ? String(personData.last_name).trim() : "";
+
+    // Normalize using titleCase to ensure proper format
+    const firstName = firstNameRaw ? titleCase(firstNameRaw) : "";
+    const lastName = lastNameRaw ? titleCase(lastNameRaw) : "";
+
+    // Validate that names match the required pattern
+    if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+      // Cannot create person without valid first and last name
+      return null;
+    }
+
     const middleRaw =
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleName = middleRaw ? middleRaw : null;
+    const middleNormalized = middleRaw ? titleCase(middleRaw) : null;
+
+    // Validate middle name if present
+    const middleName = middleNormalized && isValidMiddleName(middleNormalized) ? middleNormalized : null;
+
     const key =
       firstName || lastName
-        ? `${firstName.toLowerCase()}|${middleRaw.toLowerCase()}|${lastName.toLowerCase()}`
+        ? `${firstName.toLowerCase()}|${(middleName || "").toLowerCase()}|${lastName.toLowerCase()}`
         : null;
 
     if (key && personLookup.has(key)) {
@@ -2111,8 +2196,8 @@ function main() {
     const filename = `person_${personIndex}.json`;
     const personObj = {
       birth_date: personData.birth_date || null,
-      first_name: firstName || "",
-      last_name: lastName || "",
+      first_name: firstName,
+      last_name: lastName,
       middle_name: middleName,
       prefix_name:
         personData && personData.prefix_name != null

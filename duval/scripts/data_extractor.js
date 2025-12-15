@@ -12,7 +12,6 @@
   - Emits error JSON for unknown enum values when mapping is required.
 */
 
-
 const fs = require("fs");
 const path = require("path");
 const cheerio = require("cheerio");
@@ -82,20 +81,42 @@ function titleCaseNamePart(part) {
 
   if (cleaned === "") return null;
 
-  return cleaned
+  // Roman numerals and common suffixes that should stay uppercase
+  const preserveUppercase = new Set([
+    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
+    "JR", "SR", "ESQ", "PHD", "MD", "DDS", "DVM", "LLC", "INC", "LTD", "LP", "LLP"
+  ]);
+
+  const result = cleaned
     .toLowerCase()
     .split(/\s+/)
-    .map((word) =>
-      word
+    .map((word) => {
+      // Check if the word (without trailing punctuation) should be preserved in uppercase
+      const wordUpper = word.replace(/[,.]$/g, "").toUpperCase();
+      const trailingPunct = word.match(/[,.]$/)?.[0] || "";
+
+      if (preserveUppercase.has(wordUpper)) {
+        return wordUpper + trailingPunct;
+      }
+
+      return word
         .split(/([-',.])/)
         .map((segment) =>
           /[-',.]/.test(segment)
             ? segment
             : segment.charAt(0).toUpperCase() + segment.slice(1),
         )
-        .join(""),
-    )
+        .join("");
+    })
     .join(" ");
+
+  // Remove any trailing or leading separators that don't belong
+  const finalResult = result
+    .replace(/^[\s\-',.]+/, "")  // Remove leading separators
+    .replace(/[\s\-',.]+$/, "");  // Remove trailing separators
+
+  return finalResult || null;
 }
 
 function cleanMoneyToNumber(str) {
@@ -242,6 +263,26 @@ function findEnumMatch(enumMap, rawValue) {
     }
   }
   return null;
+}
+
+// Maps primary exterior wall materials to secondary accent/trim types
+function mapPrimaryToSecondaryWallMaterial(primaryMaterial) {
+  if (!primaryMaterial) return null;
+
+  const mapping = {
+    "Brick": "Brick Accent",
+    "Natural Stone": "Stone Accent",
+    "Manufactured Stone": "Stone Accent",
+    "Stucco": "Stucco Accent",
+    "Vinyl Siding": "Vinyl Accent",
+    "Wood Siding": "Wood Trim",
+    "Fiber Cement Siding": "Wood Trim",
+    "Metal Siding": "Metal Trim",
+    "Concrete Block": "Decorative Block",
+    "EIFS": "Stucco Accent",
+  };
+
+  return mapping[primaryMaterial] || null;
 }
 
 const LAYOUT_SPACE_TYPE_VALUES = [
@@ -1680,7 +1721,7 @@ function extractStructure($) {
           }
           if (/vertical\s+sheet/i.test(detail)) {
             if (result.exterior_wall_material_primary)
-              result.exterior_wall_material_secondary = "Wood Siding";
+              result.exterior_wall_material_secondary = "Wood Trim";
             else result.exterior_wall_material_primary = "Wood Siding";
           }
         }
@@ -1851,7 +1892,7 @@ function applyExtraFeaturesToStructure(features, structureRecord) {
           structureRecord.exterior_wall_material_primary !== wallMatch &&
           !structureRecord.exterior_wall_material_secondary
         )
-          structureRecord.exterior_wall_material_secondary = wallMatch;
+          structureRecord.exterior_wall_material_secondary = mapPrimaryToSecondaryWallMaterial(wallMatch);
       }
 
       const floorMatch = findEnumMatch(
@@ -2122,10 +2163,6 @@ function main() {
     to: { "/": "./address.json" },
   });
 
-  if (mailingAddress) {
-    writeJSON("mailing_address.json", mailingAddress);
-  }
-
   const sales = [];
   $("#ctl00_cphBody_gridSalesHistory tr").each((i, el) => {
     if (i === 0) return;
@@ -2342,7 +2379,9 @@ function main() {
         });
       }
 
-      if (mailingAddress) {
+      if (mailingAddress && (personPaths.length > 0 || companyPaths.length > 0)) {
+        // Only write mailing_address.json if there are owners to create relationships with
+        writeJSON("mailing_address.json", mailingAddress);
         const mailingPath = "./mailing_address.json";
         personPaths.forEach((personPath) => {
         const relName = relationshipFileName(personPath, mailingPath);
@@ -2448,17 +2487,28 @@ function main() {
   if (structureRecords.length === 0) {
     const fallbackRecord = extractStructure($);
     if (fallbackRecord && typeof fallbackRecord === "object") {
-      const fallbackNumberText = textOrNull(
-        $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
-      );
-      const buildingNumber = normalizeBuildingNumber(
-        fallbackRecord.building_number ?? fallbackNumberText,
-        1,
-      );
-      structureRecords.push({
-        record: fallbackRecord,
-        buildingNumber,
+      // Check if the structure has meaningful data
+      // Skip if number_of_buildings is 0 or null and no other meaningful data exists
+      const hasBuildings = fallbackRecord.number_of_buildings != null &&
+                          fallbackRecord.number_of_buildings !== 0;
+      const hasMeaningfulData = Object.entries(fallbackRecord).some(([key, value]) => {
+        if (key === 'number_of_buildings') return false; // Already checked above
+        return value != null && value !== 0;
       });
+
+      if (hasBuildings || hasMeaningfulData) {
+        const fallbackNumberText = textOrNull(
+          $("#ctl00_cphBody_repeaterBuilding_ctl00_lblBuildingNumber").text(),
+        );
+        const buildingNumber = normalizeBuildingNumber(
+          fallbackRecord.building_number ?? fallbackNumberText,
+          1,
+        );
+        structureRecords.push({
+          record: fallbackRecord,
+          buildingNumber,
+        });
+      }
     }
   }
 

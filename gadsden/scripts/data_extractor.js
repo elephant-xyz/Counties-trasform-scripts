@@ -484,12 +484,6 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     'ii': 'II',
     'iii': 'III',
     'iv': 'IV',
-    'v': 'V',
-    'vi': 'VI',
-    'vii': 'VII',
-    'viii': 'VIII',
-    'ix': 'IX',
-    'x': 'X',
     'md': 'MD',
     'phd': 'PhD',
     'esq': 'Esq.',
@@ -1595,18 +1589,6 @@ function parseBuildingInfo($) {
       }
     }
   }
-  if (txt.includes("ELECTR")) return "Electrical";
-  if (txt.includes("PLUMB")) return "Plumbing";
-  if (txt.includes("PAVE")) return "SiteDevelopment";
-  if (txt.includes("DOCK") || txt.includes("SHORE")) return "DockAndShore";
-  if (txt.includes("DECK")) return "BuildingAddition";
-  if (txt.includes("SIGN")) return "GeneralBuilding";
-  if (txt.includes("DEMOL")) return "Demolition";
-  if (txt.includes("IRRIG")) return "LandscapeIrrigation";
-  if (txt.includes("SOLAR")) return "Solar";
-  return "GeneralBuilding";
-}
-
   const hvac =
     getValue(rightMap, ["hvac", "cooling type", "cooling", "air conditioning"]) ||
     getValue(leftMap, ["air conditioning"]);
@@ -1704,6 +1686,10 @@ function findValuationRow(rowMap, labelOptions) {
         return values;
       }
     }
+  });
+
+  if (!years.length || !Object.keys(rows).length) {
+    return null;
   }
   return null;
 }
@@ -2205,17 +2191,22 @@ function main() {
     const lastName = lastNameStripped ? titleCase(lastNameStripped) : "";
     const middleNameRaw = middleStripped ? titleCase(middleStripped) : null;
 
-    // Validate names match the schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-    const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-    const isValidName = (name) => name && namePattern.test(name);
+    // Validate names match the schema patterns from Elephant
+    // Pattern for first_name and last_name: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+    const firstLastNamePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+    // Pattern for middle_name: ^[A-Z][a-zA-Z\s\-',.]*$
+    const middleNamePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+
+    const isValidFirstLastName = (name) => name && firstLastNamePattern.test(name);
+    const isValidMiddleName = (name) => name && middleNamePattern.test(name);
 
     // Both first_name and last_name are required and must match pattern
-    if (!isValidName(firstName) || !isValidName(lastName)) {
+    if (!isValidFirstLastName(firstName) || !isValidFirstLastName(lastName)) {
       return null;
     }
 
     // Validate middle_name if present - set to null if it doesn't match pattern
-    const middleName = middleNameRaw && isValidName(middleNameRaw) ? middleNameRaw : null;
+    const middleName = middleNameRaw && isValidMiddleName(middleNameRaw) ? middleNameRaw : null;
 
     const key =
       firstName || lastName
