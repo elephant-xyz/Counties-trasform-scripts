@@ -43,9 +43,11 @@ const formatNameToPattern = (s) => {
         const part = parts[i];
         if (!part) continue;
 
-        // If it's a separator (space, hyphen, etc.), keep it as-is
+        // If it's a separator (space, hyphen, etc.), normalize to single character
+        // Pattern requires exactly one separator character, not multiple
         if (/^[ \-',.]+$/.test(part)) {
-            result += part;
+            // Take only the first separator character to match the pattern
+            result += part.charAt(0);
             continue;
         }
 
