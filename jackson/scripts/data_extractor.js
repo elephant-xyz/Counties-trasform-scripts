@@ -1485,16 +1485,6 @@ function writePersonCompaniesSalesRelationships(parcelId, sales, hasOwnerMailing
   });
   // Update people to be validPeople so findPersonIndexByName searches the correct array
   people = validPeople;
-  // Collect all unique company names
-  const companyNamesMap = new Map();
-  Object.values(ownersByDate).forEach((arr) => {
-    (arr || []).forEach((o) => {
-      if (o.type === "company" && (o.name || "").trim()) {
-        const normalizedName = (o.name || "").trim();
-        companyNamesMap.set(normalizedName, normalizedName);
-      }
-    });
-  });
 
   // Track which companies will be used in relationships
   const usedCompanyNames = new Set();
