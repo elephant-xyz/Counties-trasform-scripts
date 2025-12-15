@@ -1637,8 +1637,8 @@ function main() {
           `relationship_deed_${deedIdx}_has_file_${fileIdx}.json`,
         ),
         {
-          from: { "/": `./file_${fileIdx}.json` },
-          to: { "/": `./deed_${deedIdx}.json` },
+          from: { "/": `./deed_${deedIdx}.json` },
+          to: { "/": `./file_${fileIdx}.json` },
         },
       );
     }
