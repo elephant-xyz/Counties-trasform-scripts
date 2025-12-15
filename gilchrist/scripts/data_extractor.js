@@ -2117,20 +2117,23 @@ function finalCleanupOrphanedFiles() {
 }
 
 if (require.main === module) {
+  let exitCode = 0;
   try {
     main();
     console.log("Extraction complete.");
   } catch (e) {
+    exitCode = 1;
     if (e && e.type === "error") {
       writeJSON(path.join("data", "error.json"), e);
       console.error("Extraction error:", e);
-      process.exit(1);
     } else {
       console.error("Unexpected error:", e);
-      process.exit(1);
     }
   } finally {
     // Always run final cleanup, even if there were errors
     finalCleanupOrphanedFiles();
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
   }
 }
