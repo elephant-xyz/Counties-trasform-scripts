@@ -422,6 +422,69 @@ function collapseAddressToMinimalRaw(addressPath) {
   );
 }
 
+// Pick a single address branch for final output. Use normalized only when the
+// schema-required fields are fully present; otherwise emit a lean raw payload
+// anchored on the unnormalized string with just the schema-safe metadata.
+function clampAddressToSingleBranchStrict(addressPath) {
+  if (!addressPath || !fs.existsSync(addressPath)) return;
+  const snapshot = readJSONIfExists(addressPath);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const normalizedSurface =
+    ensureNormalizedAddressSchemaSurface &&
+    ensureNormalizedAddressSchemaSurface({ ...snapshot });
+  const normalizedComplete =
+    normalizedSurface && hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+  if (normalizedComplete) {
+    const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      if (field === "unnormalized_address") return;
+      let value = normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = sanitizeAddressFieldValue
+        ? sanitizeAddressFieldValue(field, value)
+        : value;
+    });
+    writeJSON(addressPath, normalizedOut);
+    return;
+  }
+
+  const rawValue = safeNullIfEmpty(snapshot.unnormalized_address);
+  if (!rawValue) {
+    removeFileIfExists(addressPath);
+    return;
+  }
+
+  const requestId = safeNullIfEmpty(snapshot.request_identifier);
+  const sourceHttp = prepareSourceHttpRequest(snapshot.source_http_request);
+  const countyName = sanitizeAddressFieldValue
+    ? sanitizeAddressFieldValue("county_name", snapshot.county_name)
+    : snapshot.county_name;
+
+  const rawOut = {
+    unnormalized_address: rawValue,
+    request_identifier: requestId === undefined ? null : requestId,
+    source_http_request: sourceHttp || null,
+  };
+  if (countyName !== undefined) {
+    rawOut.county_name = countyName;
+  }
+
+  writeJSON(addressPath, rawOut);
+}
+
 fs.writeFileSync = function patchedWriteFileSync(targetPath, data, ...args) {
   if (lockedAddressPath) {
     const normalizedTarget = path.resolve(targetPath || "");
@@ -26699,6 +26762,10 @@ async function main() {
         unAddr && unAddr.county_jurisdiction,
       ],
     });
+
+    // Force a single schema branch on output: prefer normalized only when complete,
+    // otherwise emit the lean raw branch tied to the unnormalized string.
+    clampAddressToSingleBranchStrict(addressOutputPath);
 
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
