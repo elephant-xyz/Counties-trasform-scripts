@@ -1927,6 +1927,11 @@ function linkLayoutsToAssets(layoutCtx, structureCtx, utilityCtx) {
 
   const buildingCount = buildingLayouts.length;
 
+  // Link building layouts to property
+  buildingLayouts.forEach((layout) => {
+    writeRelationshipFile("property.json", layout.fileName);
+  });
+
   if (
     structureCtx &&
     Array.isArray(structureCtx.structures) &&
@@ -2287,9 +2292,10 @@ function writeExtraLayouts(parcelId, extraLayouts, startLayoutIndex, startSpaceI
     record.building_number = null;
     if (info.size_square_feet != null)
       record.size_square_feet = info.size_square_feet;
-    if (info.built_year != null) record.built_year = info.built_year;
+    if (info.built_year != null && info.built_year >= 1) record.built_year = info.built_year;
     const fileName = `layout_${layoutIndex++}.json`;
     writeJSON(path.join("data", fileName), record);
+    writeRelationshipFile("property.json", fileName);
   });
   return {
     nextLayoutIndex: layoutIndex,
