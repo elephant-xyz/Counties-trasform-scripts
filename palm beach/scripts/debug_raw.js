@@ -8262,12 +8262,11 @@ const ADDRESS_SCHEMA_FIELDS = [
   "unnormalized_address",
 ];
 
-// The raw oneOf branch only needs the unnormalized string plus minimal metadata.
+// The raw oneOf branch still needs to surface every address field (nullable)
+// alongside the unnormalized string so required keys exist even when the source
+// only provides a raw address.
 const RAW_BRANCH_ALLOWED_FIELDS = Object.freeze([
-  "unnormalized_address",
-  "county_name",
-  "request_identifier",
-  "source_http_request",
+  ...ADDRESS_SCHEMA_FIELDS,
 ]);
 const RAW_BRANCH_ALLOWED_FIELD_SET = new Set(RAW_BRANCH_ALLOWED_FIELDS);
 
@@ -8276,16 +8275,15 @@ const RAW_BRANCH_ALLOWED_FIELD_SET = new Set(RAW_BRANCH_ALLOWED_FIELDS);
 // components, etc.) alongside the unnormalized string. This prevents
 // validation errors complaining about missing required fields when only a raw
 // address is available.
-// The raw branch should stay lean: only the unnormalized source string plus
-// minimal metadata that the schema allows.
+// The raw branch still includes the unnormalized source string and permits the
+// normalized fields to remain null when they are not provided by the source.
 const RAW_ONE_OF_ALLOWED_FIELDS = [...RAW_BRANCH_ALLOWED_FIELDS];
 const RAW_ONE_OF_ALLOWED_FIELD_SET = new Set(RAW_ONE_OF_ALLOWED_FIELDS);
 
 const RAW_MINIMAL_ADDRESS_FIELDS = [...RAW_ONE_OF_ALLOWED_FIELDS];
 
-// Keep the raw address template limited to the minimal raw branch surface so
-// we don't leak normalized fields that make the oneOf validation pick the
-// wrong schema branch.
+// Keep the raw address template aligned with the address schema surface while
+// anchoring on the unnormalized string.
 const RAW_ADDRESS_ALLOWED_FIELDS = Array.from(
   new Set([...RAW_ONE_OF_ALLOWED_FIELDS]),
 );
