@@ -23917,6 +23917,109 @@ async function main() {
   purgeAddressRelationshipArtifacts(dataDir);
   purgeAddressRelationshipArtifacts(relationshipsDir);
 
+  // Final deterministic oneOf selection: if normalized coverage is complete use it;
+  // otherwise emit the raw branch seeded with the unnormalized string and keep the
+  // full schema surface so required fields aren't flagged as missing.
+  const terminalAddressFinal = readJSONIfExists(addressOutputPath);
+  if (
+    terminalAddressFinal &&
+    typeof terminalAddressFinal === "object" &&
+    !Array.isArray(terminalAddressFinal)
+  ) {
+    const terminalNormalizedSurface =
+      typeof ensureNormalizedAddressSchemaSurface === "function"
+        ? ensureNormalizedAddressSchemaSurface({ ...terminalAddressFinal })
+        : null;
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      typeof hasCompleteNormalizedAddress === "function" &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+
+    const terminalRawCandidate = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalAddressFinal.unnormalized_address,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ]),
+    );
+    const terminalRequestId = safeNullIfEmpty(
+      resolveFirstNonEmptyString([
+        terminalAddressFinal.request_identifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+      ]),
+    );
+    const terminalSourceHttp = resolveSourceHttpRequest(
+      terminalAddress.source_http_request,
+      seed && seed.source_http_request,
+      unAddr && unAddr.source_http_request,
+      sourceHttpCandidate,
+    );
+
+    if (!terminalNormalizedComplete && terminalRawCandidate) {
+      const rawOut =
+        ensureAddressOutputCoverage({
+          ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+          ...terminalAddressFinal,
+          unnormalized_address: terminalRawCandidate,
+          request_identifier:
+            terminalRequestId === undefined ? null : terminalRequestId,
+          source_http_request: prepareSourceHttpRequest(terminalSourceHttp) || null,
+          county_name:
+            terminalAddressFinal.county_name ||
+            formattedCountyName ||
+            countyName ||
+            (unAddr && unAddr.county_jurisdiction) ||
+            null,
+        }) || null;
+      if (rawOut) {
+        if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+          rawOut.latitude = null;
+          rawOut.longitude = null;
+        }
+        writeJSON(addressOutputPath, rawOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    } else if (terminalNormalizedComplete) {
+      const normalizedOut =
+        ensureAddressOutputCoverage({
+          ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE,
+          ...terminalNormalizedSurface,
+        }) || null;
+      if (normalizedOut) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            normalizedOut,
+            "unnormalized_address",
+          )
+        ) {
+          delete normalizedOut.unnormalized_address;
+        }
+        if (!normalizedOut.postal_code) {
+          normalizedOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(normalizedOut.state_code) &&
+          !hasMeaningfulAddressValue(normalizedOut.country_code)
+        ) {
+          normalizedOut.country_code = "US";
+        }
+        writeJSON(addressOutputPath, normalizedOut);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+  }
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log(
     "Final address object",
