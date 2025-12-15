@@ -3923,8 +3923,14 @@ function main() {
   pc.companies.forEach((c, i) =>
     writeJSON(path.join("data", `company_${i + 1}.json`), c),
   );
+
+  // Track which person/company indices are actually used
+  const usedPersonIndices = new Set();
+  const usedCompanyIndices = new Set();
+
   if (hasOwnerMailingAddress) {
-    pc.personCurrentOwners.forEach((idx, i) =>
+    pc.personCurrentOwners.forEach((idx, i) => {
+      usedPersonIndices.add(idx);
       writeJSON(
         path.join(
           "data",
@@ -3935,8 +3941,9 @@ function main() {
           to: { "/": `./mailing_address.json` },
         }
       )
-    );
-    pc.companyCurrentOwners.forEach((idx, i) =>
+    });
+    pc.companyCurrentOwners.forEach((idx, i) => {
+      usedCompanyIndices.add(idx);
       writeJSON(
         path.join(
           "data",
@@ -3947,7 +3954,7 @@ function main() {
           to: { "/": `./mailing_address.json` },
         }
       )
-    );
+    });
   }
 
   // Relationships person/company -> sales
@@ -3992,8 +3999,14 @@ function main() {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
     if (companyNameToPath.has(g)) {
+      const companyPath = companyNameToPath.get(g);
+      // Extract company index from path (e.g., "./company_1.json" -> 1)
+      const companyMatch = companyPath.match(/company_(\d+)\.json/);
+      if (companyMatch) {
+        usedCompanyIndices.add(parseInt(companyMatch[1], 10));
+      }
       const rel = {
-        to: { "/": companyNameToPath.get(g) },
+        to: { "/": companyPath },
         from: { "/": `./sales_${idx + 1}.json` },
       };
       writeJSON(
@@ -4016,6 +4029,11 @@ function main() {
         }
       }
       if (toPath) {
+        // Extract person index from path (e.g., "./person_1.json" -> 1)
+        const personMatch = toPath.match(/person_(\d+)\.json/);
+        if (personMatch) {
+          usedPersonIndices.add(parseInt(personMatch[1], 10));
+        }
         const rel = {
           to: { "/": toPath },
           from: { "/": `./sales_${idx + 1}.json` },
@@ -4118,7 +4136,38 @@ function main() {
       idx++;
     }
   }
-  
+
+  // Remove unused person and company files
+  // Check all generated person files and remove those not in usedPersonIndices
+  pc.persons.forEach((p, i) => {
+    const personIdx = i + 1;
+    if (!usedPersonIndices.has(personIdx)) {
+      const personFile = path.join("data", `person_${personIdx}.json`);
+      try {
+        if (fs.existsSync(personFile)) {
+          fs.unlinkSync(personFile);
+        }
+      } catch (e) {
+        // Ignore errors when removing unused files
+      }
+    }
+  });
+
+  // Check all generated company files and remove those not in usedCompanyIndices
+  pc.companies.forEach((c, i) => {
+    const companyIdx = i + 1;
+    if (!usedCompanyIndices.has(companyIdx)) {
+      const companyFile = path.join("data", `company_${companyIdx}.json`);
+      try {
+        if (fs.existsSync(companyFile)) {
+          fs.unlinkSync(companyFile);
+        }
+      } catch (e) {
+        // Ignore errors when removing unused files
+      }
+    }
+  });
+
 }
 
 if (require.main === module) {
