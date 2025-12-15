@@ -1265,39 +1265,33 @@ function main() {
     .text()
     .match(/Acres:\s*([0-9.]+)/i);
   let acres = acresMatch ? parseFloat(acresMatch[1]) : null;
+  const lot = {
+    driveway_condition: null,
+    driveway_material: null,
+    fence_height: null,
+    fence_length: null,
+    fencing_type: null,
+    landscaping_features: null,
+    lot_area_sqft: acres != null && acres > 0 ? Math.round(acres * 43560) : null,
+    lot_condition_issues: null,
+    lot_length_feet: null,
+    lot_size_acre: acres != null ? acres : null,
+    lot_type:
+      acres != null
+        ? acres > 0.25
+          ? "GreaterThanOneQuarterAcre"
+          : "LessThanOrEqualToOneQuarterAcre"
+        : null,
+    lot_width_feet: null,
+    view: null,
+  };
+  writeJSON(path.join(dataDir, "lot.json"), lot);
 
-  // Only create lot.json and relationship if we have lot data
-  const lotAreaSqft = acres != null && acres > 0 ? Math.round(acres * 43560) : null;
-  const lotType = acres != null
-    ? acres > 0.25
-      ? "GreaterThanOneQuarterAcre"
-      : "LessThanOrEqualToOneQuarterAcre"
-    : null;
-
-  if (lotType || lotAreaSqft) {
-    const lot = {
-      driveway_condition: null,
-      driveway_material: null,
-      fence_height: null,
-      fence_length: null,
-      fencing_type: null,
-      landscaping_features: null,
-      lot_area_sqft: lotAreaSqft,
-      lot_condition_issues: null,
-      lot_length_feet: null,
-      lot_size_acre: acres,
-      lot_type: lotType,
-      lot_width_feet: null,
-      view: null,
-    };
-    writeJSON(path.join(dataDir, "lot.json"), lot);
-
-    // property_has_lot relationship - only create if lot.json exists
-    writeJSON(path.join(dataDir, "relationship_property_has_lot.json"), {
-      from: { "/": "./property.json" },
-      to: { "/": "./lot.json" },
-    });
-  }
+  // property_has_lot relationship
+  writeJSON(path.join(dataDir, "relationship_property_has_lot.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./lot.json" },
+  });
 
   // // structure.json (minimal)
   // const struct = {
