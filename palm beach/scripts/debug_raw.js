@@ -24037,6 +24037,28 @@ async function main() {
     removeFileIfExists(addressOutputPath);
   }
 
+  // Hydrate the final address to the full raw schema surface when an
+  // unnormalized string is available so the chosen oneOf branch includes
+  // every field (as null when unknown) and avoids partial normalized payloads.
+  const hydratedFinalAddress =
+    ensureAddressOutputCoverage(readJSONIfExists(addressOutputPath) || {}) || null;
+  if (hydratedFinalAddress) {
+    RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+      if (!Object.prototype.hasOwnProperty.call(hydratedFinalAddress, field)) {
+        hydratedFinalAddress[field] = null;
+      }
+    });
+    if (hydratedFinalAddress.request_identifier === undefined) {
+      hydratedFinalAddress.request_identifier = null;
+    }
+    hydratedFinalAddress.source_http_request = prepareSourceHttpRequest(
+      hydratedFinalAddress.source_http_request,
+    );
+    writeJSON(addressOutputPath, hydratedFinalAddress);
+  } else {
+    removeFileIfExists(addressOutputPath);
+  }
+
   const loggedAddress = readJSONIfExists(addressOutputPath) || {};
   console.log("Final address object", loggedAddress);
   console.log("All mapping scripts completed successfully");
