@@ -10450,6 +10450,11 @@ function sanitizePlus4(value) {
     return hyphenatedMatch[1];
   }
 
+  const digitsOnly = stringValue.replace(/\D/g, "");
+  if (digitsOnly.length === 4) {
+    return digitsOnly;
+  }
+
   return null;
 }
 
@@ -25861,6 +25866,93 @@ async function main() {
       }
     }
 
+    // If we still lack a fully normalized surface, emit a lean raw payload
+    // anchored on the unnormalized address string while keeping only the
+    // fields the schema permits for the raw branch.
+    const finalAddressSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const finalLeanNormalizedSurface =
+      typeof ensureNormalizedAddressSchemaSurface === "function"
+        ? ensureNormalizedAddressSchemaSurface({ ...finalAddressSnapshot })
+        : null;
+    const finalNormalizedReady =
+      finalLeanNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...finalLeanNormalizedSurface });
+
+    if (!finalNormalizedReady) {
+      const finalRawString = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          finalAddressSnapshot.unnormalized_address,
+          ...(finalUnnormalizedCandidates || []),
+          unnormalizedAddressCandidate,
+          combinedModelAddress,
+          siteLocationLine,
+          addressLineCombined,
+          fullAddr,
+          fullAddrInput,
+          unAddr && unAddr.full_address,
+          unAddr && unAddr.unnormalized_address,
+        ]),
+      );
+
+      if (finalRawString) {
+        const localitySlice = (() => {
+          const parts = finalRawString.split(",");
+          if (parts.length > 1) {
+            return parts.slice(1).join(",").trim();
+          }
+          return finalRawString;
+        })();
+
+        const parsedLocality = parseCityStatePostal(localitySlice);
+        let resolvedPlus4 = parsedLocality.plus4 || null;
+        if (!resolvedPlus4) {
+          const plus4Source = addressLine3 || fullAddr || fullAddrInput || "";
+          const plus4Match = String(plus4Source).match(/(\d{4})\s*$/);
+          resolvedPlus4 = plus4Match ? plus4Match[1] : null;
+        }
+
+        const leanRaw = {
+          unnormalized_address: finalRawString,
+          county_name: formattedCountyName || countyName || null,
+          request_identifier:
+            safeNullIfEmpty(
+              resolveFirstNonEmptyString([
+                finalAddressSnapshot.request_identifier,
+                finalRequestIdentifier,
+                trimmedRequestIdentifier,
+                parcelId,
+                seed && seed.request_identifier,
+                unAddr && unAddr.request_identifier,
+              ]),
+            ) ?? null,
+          source_http_request:
+            prepareSourceHttpRequest(
+              resolveSourceHttpRequest(
+                finalAddressSnapshot.source_http_request,
+                finalSourceHttp,
+                sourceHttpCandidate,
+                seed && seed.source_http_request,
+                unAddr && unAddr.source_http_request,
+              ),
+            ) || null,
+          city_name: parsedLocality.city
+            ? parsedLocality.city.toUpperCase()
+            : null,
+          state_code: parsedLocality.state || null,
+          postal_code: parsedLocality.postal || null,
+          plus_four_postal_code: resolvedPlus4,
+        };
+
+        if (leanRaw.state_code && !leanRaw.country_code) {
+          leanRaw.country_code = "US";
+        }
+
+        writeJSON(addressOutputPath, leanRaw);
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+
     // Drop locally generated address relationships; downstream populates them.
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
     removeAddressRelationshipFiles(dataDir);
@@ -25868,6 +25960,17 @@ async function main() {
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
+
+    // Emit explicit null placeholders for auto-populated address relationships
+    // so validation doesn't fail on locally generated URIs.
+    const relationshipPlaceholders = [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ];
+    writeNullRelationshipPlaceholders(dataDir, relationshipPlaceholders);
+    writeNullRelationshipPlaceholders(relationshipsDir, relationshipPlaceholders);
 
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
