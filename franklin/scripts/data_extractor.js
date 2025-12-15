@@ -3296,8 +3296,10 @@ function main() {
     writeJSON(path.join("data", deedFileName), deedObj);
 
     // Construct the file name, ensuring it's never empty
-    let fileName = ((instAbbr ? instAbbr.trim() + " " : "") + (bookPage || "")).trim();
-    // Check for empty string or whitespace-only string
+    const instAbbrPart = instAbbr && instAbbr.trim() ? instAbbr.trim() : "";
+    const bookPagePart = bookPage && bookPage.trim() ? bookPage.trim() : "";
+    let fileName = (instAbbrPart + (instAbbrPart && bookPagePart ? " " : "") + bookPagePart).trim();
+    // Check for empty string or whitespace-only string - must have at least 1 character
     if (!fileName || fileName.length === 0) {
       fileName = "Deed Document";
     }
