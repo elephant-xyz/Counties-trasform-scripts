@@ -424,7 +424,39 @@ function cleanText(text) {
 }
 
 function titleCase(str) {
-  return (str || "").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  if (!str) return "";
+  const text = String(str).trim();
+  if (!text) return "";
+
+  // Split on word boundaries while preserving delimiters
+  // Handle space, hyphen, apostrophe, comma, period as separators
+  // After each separator, the next letter should be capitalized
+  const parts = [];
+  let current = "";
+  let shouldCapitalize = true;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (/[ \-',.]/.test(char)) {
+      // This is a separator
+      if (current) {
+        parts.push(current);
+        current = "";
+      }
+      parts.push(char);
+      shouldCapitalize = true;
+    } else if (shouldCapitalize) {
+      current = char.toUpperCase();
+      shouldCapitalize = false;
+    } else {
+      current += char.toLowerCase();
+    }
+  }
+  if (current) {
+    parts.push(current);
+  }
+
+  return parts.join("");
 }
 
 function isValidFirstOrLastName(name) {
@@ -476,13 +508,20 @@ function normalizeNameForPattern(name) {
   // If name contains initials with periods, try to format properly
   if (!name) return null;
 
+  // Clean the name: trim and remove leading/trailing punctuation
+  let cleaned = String(name).trim();
+  // Remove leading/trailing punctuation (but not internal)
+  cleaned = cleaned.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
+  if (!cleaned) return null;
+
   // If it's pure initials (like "M.A."), we can't use it as first_name
-  if (isInitials(name)) {
+  if (isInitials(cleaned)) {
     return null;
   }
 
   // Apply title case
-  const normalized = titleCase(name);
+  const normalized = titleCase(cleaned);
+  if (!normalized) return null;
 
   // Validate that the normalized name matches the required pattern
   const namePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
@@ -2177,12 +2216,16 @@ function main() {
     const lastNameRaw =
       personData.last_name != null ? String(personData.last_name).trim() : "";
 
+    // Clean names: remove leading/trailing non-alphabetic characters
+    const firstCleaned = firstNameRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
+    const lastCleaned = lastNameRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "");
+
     // Normalize using titleCase to ensure proper format
-    const firstName = firstNameRaw ? titleCase(firstNameRaw) : "";
-    const lastName = lastNameRaw ? titleCase(lastNameRaw) : "";
+    const firstName = firstCleaned ? titleCase(firstCleaned) : "";
+    const lastName = lastCleaned ? titleCase(lastCleaned) : "";
 
     // Validate that names match the required pattern
-    if (!isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
+    if (!firstName || !lastName || !isValidFirstOrLastName(firstName) || !isValidFirstOrLastName(lastName)) {
       // Cannot create person without valid first and last name
       return null;
     }
@@ -2191,7 +2234,9 @@ function main() {
       personData.middle_name != null
         ? String(personData.middle_name).trim()
         : "";
-    const middleNormalized = middleRaw ? titleCase(middleRaw) : null;
+    // Clean middle name
+    const middleCleaned = middleRaw ? middleRaw.replace(/^[^A-Za-z]+/, "").replace(/[^A-Za-z]+$/, "") : "";
+    const middleNormalized = middleCleaned ? titleCase(middleCleaned) : null;
 
     // Validate middle name if present
     const middleName = middleNormalized && isValidMiddleName(middleNormalized) ? middleNormalized : null;
