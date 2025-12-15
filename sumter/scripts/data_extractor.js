@@ -1399,7 +1399,7 @@ function writeSalesDeedsFilesAndRelationships($) {
   // Remove old deed/file and sales_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_deed)(?:_\d+)?\.json$/.test(f)) {
+      if (/^relationship_(deed_file|file_deed|deed_\d+_has_file_\d+|sales_deed)(?:_\d+)?\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -1445,11 +1445,11 @@ function writeSalesDeedsFilesAndRelationships($) {
     writeJSON(path.join("data", `file_${idx}.json`), file);
 
     const relDeedFile = {
-      from: { "/": `./file_${idx}.json` },
-      to: { "/": `./deed_${idx}.json` }
+      from: { "/": `./deed_${idx}.json` },
+      to: { "/": `./file_${idx}.json` }
     };
     writeJSON(
-      path.join("data", `relationship_file_deed_${idx}.json`),
+      path.join("data", `relationship_deed_${idx}_has_file_${idx}.json`),
       relDeedFile,
     );
 
