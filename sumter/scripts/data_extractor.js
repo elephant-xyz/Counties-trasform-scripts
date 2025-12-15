@@ -1448,10 +1448,6 @@ function writeSalesDeedsFilesAndRelationships($) {
       from: { "/": `./deed_${idx}.json` },
       to: { "/": `./file_${idx}.json` }
     };
-    // Add page property only if it exists and is valid
-    if (pageValue && pageValue.length > 0) {
-      relDeedFile.from.page = String(pageValue);
-    }
     writeJSON(
       path.join("data", `relationship_deed_file_${idx}.json`),
       relDeedFile,
