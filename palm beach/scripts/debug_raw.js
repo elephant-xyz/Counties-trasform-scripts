@@ -24048,6 +24048,97 @@ async function main() {
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
 
+    // Final clamp: prefer a fully populated normalized address; otherwise emit a
+    // lean raw payload limited to the raw oneOf surface so validation does not
+    // expect normalized fields.
+    const terminalSnapshot = readJSONIfExists(addressOutputPath) || {};
+    const terminalNormalizedSurface =
+      typeof ensureNormalizedAddressSchemaSurface === "function"
+        ? ensureNormalizedAddressSchemaSurface({ ...terminalSnapshot })
+        : null;
+    const terminalNormalizedComplete =
+      terminalNormalizedSurface &&
+      hasCompleteNormalizedAddress({ ...terminalNormalizedSurface });
+
+    if (terminalNormalizedComplete) {
+      const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+      NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+        let value = terminalNormalizedSurface[field];
+        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+          const numeric = parseCoordinate(value);
+          value = Number.isFinite(numeric) ? numeric : null;
+        } else if (typeof value === "string") {
+          const trimmed = value.trim();
+          value = trimmed.length ? trimmed : null;
+        } else if (value === undefined) {
+          value = null;
+        }
+        normalizedOut[field] = value;
+      });
+      if (!normalizedOut.postal_code) {
+        normalizedOut.plus_four_postal_code = null;
+      }
+      if (
+        hasMeaningfulAddressValue(normalizedOut.state_code) &&
+        !hasMeaningfulAddressValue(normalizedOut.country_code)
+      ) {
+        normalizedOut.country_code = "US";
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+      ) {
+        delete normalizedOut.unnormalized_address;
+      }
+      writeJSON(addressOutputPath, normalizedOut);
+    } else {
+      const rawValue = safeNullIfEmpty(
+        resolveFirstNonEmptyString([
+          terminalSnapshot.unnormalized_address,
+          resolvedRaw,
+          ...(finalUnnormalizedCandidates || []),
+          unnormalizedAddressCandidate,
+          combinedModelAddress,
+          siteLocationLine,
+          addressLineCombined,
+          fullAddr,
+          fullAddrInput,
+          unAddr && unAddr.full_address,
+          unAddr && unAddr.unnormalized_address,
+        ]),
+      );
+      if (rawValue) {
+        const rawOut = {
+          unnormalized_address: rawValue,
+          request_identifier:
+            terminalSnapshot.request_identifier === undefined
+              ? safeNullIfEmpty(resolvedRequestIdentifier)
+              : terminalSnapshot.request_identifier,
+          source_http_request:
+            prepareSourceHttpRequest(
+              terminalSnapshot.source_http_request ||
+                resolvedSourceHttp ||
+                sourceHttpCandidate ||
+                (seed && seed.source_http_request),
+            ) || null,
+        };
+        const countyValue = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            terminalSnapshot.county_name,
+            formattedCountyName,
+            countyName,
+            unAddr && unAddr.county_jurisdiction,
+          ]),
+        );
+      if (countyValue) rawOut.county_name = countyValue;
+        originalWriteFileSync(
+          addressOutputPath,
+          `${JSON.stringify(rawOut, null, 2)}\n`,
+        );
+      } else {
+        removeFileIfExists(addressOutputPath);
+      }
+    }
+
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
     console.log("All mapping scripts completed successfully");
