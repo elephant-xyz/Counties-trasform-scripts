@@ -468,10 +468,82 @@ function classifyOwner(part, candidateLastNames) {
     const lastTokensSnapshot = [...lastTokens];
     let givenTokens = tokenizeNameSection(restSegment);
     givenTokens = stripLeadingPrefixes(givenTokens);
+    const givenTokensBeforeSuffixStrip = [...givenTokens];
     givenTokens = stripTrailingSuffixes(givenTokens);
-    if (!givenTokens.length) {
-      givenTokens = tokenizeNameSection(restSegment);
+
+    // If stripping suffixes removed all tokens, check if the original tokens were only suffixes
+    // In that case, this is likely "Last Name, Suffix" format (e.g., "GLENN COOPER, JR")
+    // We should treat the lastSegment as the full name and parse it instead
+    if (!givenTokens.length && givenTokensBeforeSuffixStrip.length > 0) {
+      // All tokens after comma were suffixes - this means lastSegment is actually the full name
+      // Parse lastSegment as "First Middle Last" format instead
+      const fullNameTokens = stripLeadingPrefixes(tokenizeNameSection(lastSegment));
+      const fullNameTokensAfterSuffixStrip = stripTrailingSuffixes(fullNameTokens);
+
+      if (fullNameTokensAfterSuffixStrip.length === 0) {
+        return {
+          valid: false,
+          reason: "person_missing_first_name",
+          raw: cleaned,
+        };
+      }
+
+      const surnameTokensFromFull = extractLastNameTokens(fullNameTokensAfterSuffixStrip);
+      const remainingFromFull = fullNameTokensAfterSuffixStrip.slice(0, fullNameTokensAfterSuffixStrip.length - surnameTokensFromFull.length);
+
+      if (!remainingFromFull.length) {
+        return {
+          valid: false,
+          reason: "person_missing_first_name",
+          raw: cleaned,
+        };
+      }
+
+      const firstNameFromFull = cleanInvalidCharsFromName(remainingFromFull.shift());
+      const middleTokensFromFull = remainingFromFull.map(cleanInvalidCharsFromName).filter(Boolean);
+      const lastNameFromFull = formatLastNameTokens(surnameTokensFromFull);
+
+      if (!lastNameFromFull || normalizeComparisonToken(lastNameFromFull).length <= 1) {
+        return {
+          valid: false,
+          reason: "person_missing_last_name",
+          raw: cleaned,
+        };
+      }
+
+      if (!firstNameFromFull) {
+        return {
+          valid: false,
+          reason: "person_missing_first_name",
+          raw: cleaned,
+        };
+      }
+
+      const formattedFirstName = titleCaseName(firstNameFromFull);
+      const formattedLastName = titleCaseName(lastNameFromFull);
+      const formattedMiddleName = middleTokensFromFull.length
+        ? titleCaseMiddleName(middleTokensFromFull.join(" "))
+        : null;
+
+      if (!formattedFirstName || !formattedLastName) {
+        return {
+          valid: false,
+          reason: "name_formatting_failed",
+          raw: cleaned,
+        };
+      }
+
+      return {
+        valid: true,
+        owner: {
+          type: "person",
+          first_name: formattedFirstName,
+          last_name: formattedLastName,
+          middle_name: formattedMiddleName,
+        },
+      };
     }
+
     if (!givenTokens.length) {
       return {
         valid: false,
