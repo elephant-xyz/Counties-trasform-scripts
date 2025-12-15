@@ -82,7 +82,16 @@ function normalizeOwnerKey(owner) {
 }
 
 function isCompanyName(txt) {
-  return COMPANY_KEYWORDS.test(txt);
+  // Check for standard company keywords
+  if (COMPANY_KEYWORDS.test(txt)) return true;
+
+  // Check for telecom/wireless company patterns (AT&T, T-Mobile, etc.)
+  if (/\b(AT&T|T-Mobile|NCWPCS|wireless|cellular|telecom)\b/i.test(txt)) return true;
+
+  // If text contains & followed by single letter or T- pattern, likely a company
+  if (/\b[A-Z]&[A-Z]\b|\b[A-Z]-\s|&\s*[A-Z]-/i.test(txt)) return true;
+
+  return false;
 }
 
 function tokenizeNamePart(part) {
@@ -126,31 +135,33 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
     middle = mids.join(" ") || null;
   }
 
-  // Strip trailing periods before title casing to handle abbreviations like "Fl."
-  const stripTrailingPeriod = (str) => {
+  // Strip trailing periods and hyphens before title casing to handle abbreviations like "Fl." or "T-"
+  const stripTrailingPunctuation = (str) => {
     if (!str) return str;
-    return str.replace(/\.$/, '');
+    return str.replace(/[\.\-]+$/, '');
   };
 
-  first = stripTrailingPeriod(first);
-  last = stripTrailingPeriod(last);
-  middle = middle ? stripTrailingPeriod(middle) : null;
+  first = stripTrailingPunctuation(first);
+  last = stripTrailingPunctuation(last);
+  middle = middle ? stripTrailingPunctuation(middle) : null;
 
   const titleCasedFirst = titleCase(first || "");
   const titleCasedLast = titleCase(last || "");
   const titleCasedMiddleRaw = middle ? titleCase(middle) : null;
 
-  // Validate names match the schema pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  const isValidName = (name) => name && /[a-zA-Z]/.test(name) && namePattern.test(name);
+  // Validate names match the Elephant schema pattern for first_name and last_name:
+  // ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  // This requires: uppercase start, lowercase letters, then optional (separator + letter + lowercase)*
+  const firstLastNamePattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  const isValidFirstLastName = (name) => name && /[a-zA-Z]/.test(name) && firstLastNamePattern.test(name);
 
   // Both first_name and last_name are required and must match pattern
-  if (!isValidName(titleCasedFirst) || !isValidName(titleCasedLast)) {
+  if (!isValidFirstLastName(titleCasedFirst) || !isValidFirstLastName(titleCasedLast)) {
     return null;
   }
 
   // Validate middle_name if present - set to null if it doesn't match pattern
-  const titleCasedMiddle = titleCasedMiddleRaw && isValidName(titleCasedMiddleRaw) ? titleCasedMiddleRaw : null;
+  const titleCasedMiddle = titleCasedMiddleRaw && isValidFirstLastName(titleCasedMiddleRaw) ? titleCasedMiddleRaw : null;
 
   return {
     type: "person",
@@ -315,8 +326,15 @@ function extractCurrentOwners($) {
         .find("a, span")
         .each((i, el) => {
           const id = (el.attribs && el.attribs.id) || "";
+          const className = (el.attribs && el.attribs.class) || "";
+          const role = (el.attribs && el.attribs.role) || "";
           const t = cleanText($(el).text());
           if (!t) return;
+
+          // Skip section titles, headings, and labels
+          if (className.includes("title") || role === "heading") return;
+          if (t.toLowerCase() === "owner information") return;
+
           const lowered = id.toLowerCase();
           if (lowered.includes("address")) return;
           if (/\d{3,}/.test(t)) return;
