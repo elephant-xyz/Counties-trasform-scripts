@@ -495,8 +495,11 @@ function buildPersonFromTokens(tokens, fallbackLastName) {
   // Helper to clean name parts - remove trailing periods and special chars
   const cleanNamePart = (part) => {
     if (!part) return part;
-    // Remove any non-letter characters except internal spaces, hyphens, apostrophes
-    return part.replace(/[^A-Za-z\s\-']/g, "").trim();
+    // Remove any non-letter characters except internal spaces, hyphens, apostrophes, commas, periods
+    let cleaned = part.replace(/[^A-Za-z\s\-',.]/g, "").trim();
+    // Remove trailing delimiters (periods, commas, hyphens, apostrophes) to match pattern
+    cleaned = cleaned.replace(/[ \-',.]+$/, '');
+    return cleaned;
   };
 
   let last = cleanNamePart(tokens[0]);
