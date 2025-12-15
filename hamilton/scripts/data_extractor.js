@@ -1389,9 +1389,9 @@ function findPersonIndexByName(first, last) {
 }
 
 function findCompanyIndexByName(name) {
-  const tn = (name || "").trim();
+  const tn = (name || "").trim().toUpperCase();
   for (let i = 0; i < companies.length; i++) {
-    if ((companies[i].name || "").trim() === tn) return i + 1;
+    if ((companies[i].name || "").trim().toUpperCase() === tn) return i + 1;
   }
   return null;
 }
@@ -1469,7 +1469,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .filter((o) => o.type === "company")
       .forEach((o) => {
         if ((o.name || "").trim()) {
-          companiesLinkedToSales.add((o.name || "").trim());
+          companiesLinkedToSales.add((o.name || "").trim().toUpperCase());
         }
       });
   });
@@ -1484,15 +1484,15 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       if (owner.type === "company" && (owner.name || "").trim()) {
         // Check if this company already appears on the first sale date
         const alreadyOnFirstSale = ownersOnFirstSale.some(existingOwner => {
-          return existingOwner.type === "company" && existingOwner.name === owner.name;
+          return existingOwner.type === "company" &&
+                 (existingOwner.name || "").trim().toUpperCase() === (owner.name || "").trim().toUpperCase();
         });
-        // If not already on first sale, it will be linked as current owner
+        // Only add if not already on first sale (will be linked as current owner in second loop)
+        // OR if there are no owners on first sale (will be linked in second loop)
         if (!alreadyOnFirstSale || ownersOnFirstSale.length === 0) {
-          companiesLinkedToSales.add((owner.name || "").trim());
-        } else {
-          // Already on first sale, so it's already in the set
-          companiesLinkedToSales.add((owner.name || "").trim());
+          companiesLinkedToSales.add((owner.name || "").trim().toUpperCase());
         }
+        // If already on first sale, it's already in the set from the first loop (lines 1465-1475)
       }
     });
   }
@@ -1564,7 +1564,7 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           return owner.first_name === existingOwner.first_name && owner.last_name === existingOwner.last_name;
         }
         if (owner.type === "company" && existingOwner.type === "company") {
-          return owner.name === existingOwner.name;
+          return (owner.name || "").trim().toUpperCase() === (existingOwner.name || "").trim().toUpperCase();
         }
         return false;
       });
