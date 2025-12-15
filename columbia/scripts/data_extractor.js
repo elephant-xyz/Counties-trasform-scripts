@@ -1979,14 +1979,6 @@ const specificDocumentTypeMap = {
     const UTILITY_ALLOWED_KEYS = new Set([
       ...Object.keys(UTILITY_REQUIRED_DEFAULTS),
       "request_identifier",
-      "feature_code",
-      "feature_description",
-      "feature_year_built",
-      "feature_units",
-      "feature_dimensions",
-      "feature_value_dollars",
-      "feature_area_square_feet",
-      "public_utility_type_other_description",
     ]);
 
     const hasNonDefaultValues = (payload, defaults) =>
