@@ -1465,10 +1465,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
   });
 
   //Company processing and mapping creation.
-  // First, collect companies that will actually be linked to sales
-  const companiesLinkedToSales = new Set();
+  // Build a map to track which companies will actually get relationships
+  const companyRelationshipsMap = new Map();
 
-  // Collect companies from sales dates
+  // First pass: collect all companies that appear on sales dates
   sales.forEach((rec) => {
     const d = parseDateToISO(rec.saleDate);
     const ownersOnDate = ownersByDate[d] || [];
@@ -1476,12 +1476,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       .filter((o) => o.type === "company")
       .forEach((o) => {
         if ((o.name || "").trim()) {
-          companiesLinkedToSales.add((o.name || "").trim().toUpperCase());
+          const key = (o.name || "").trim().toUpperCase();
+          if (!companyRelationshipsMap.has(key)) {
+            companyRelationshipsMap.set(key, []);
+          }
+          companyRelationshipsMap.get(key).push({ type: 'sale', saleIndex: sales.indexOf(rec) + 1 });
         }
       });
   });
 
-  // Also check if current owners need to be linked to first sale
+  // Second pass: check if current owners need to be linked to first sale
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
@@ -1489,23 +1493,25 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
 
     currentOwners.forEach((owner) => {
       if (owner.type === "company" && (owner.name || "").trim()) {
+        const key = (owner.name || "").trim().toUpperCase();
         // Check if this company already appears on the first sale date
         const alreadyOnFirstSale = ownersOnFirstSale.some(existingOwner => {
           return existingOwner.type === "company" &&
-                 (existingOwner.name || "").trim().toUpperCase() === (owner.name || "").trim().toUpperCase();
+                 (existingOwner.name || "").trim().toUpperCase() === key;
         });
-        // Only add if not already on first sale (will be linked as current owner in second loop)
-        // OR if there are no owners on first sale (will be linked in second loop)
-        if (!alreadyOnFirstSale || ownersOnFirstSale.length === 0) {
-          companiesLinkedToSales.add((owner.name || "").trim().toUpperCase());
+        // Only add if not already on first sale
+        if (!alreadyOnFirstSale) {
+          if (!companyRelationshipsMap.has(key)) {
+            companyRelationshipsMap.set(key, []);
+          }
+          companyRelationshipsMap.get(key).push({ type: 'current_to_first_sale' });
         }
-        // If already on first sale, it's already in the set from the first loop (lines 1465-1475)
       }
     });
   }
 
-  // Only create company files for companies that will be linked
-  companies = Array.from(companiesLinkedToSales).map((n) => ({
+  // Only create company files for companies that have relationships
+  companies = Array.from(companyRelationshipsMap.keys()).map((n) => ({
     ...appendSourceInfo(seed),
     name: n,
   }));
