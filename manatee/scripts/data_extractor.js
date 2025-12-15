@@ -2966,10 +2966,13 @@ function main() {
           /^relationship_sales_history_deed_\d+\.json$/.test(f) ||
           /^relationship_sales_history_has_deed_\d+\.json$/.test(f) ||
           /^relationship_sales_history_\d+_has_file_\d+\.json$/.test(f) ||
+          /^relationship_sales_\d+_has_file_\d+\.json$/.test(f) ||
           /^relationship_sales_history_\d+_has_person_\d+\.json$/.test(f) ||
           /^relationship_sales_history_\d+_has_company_\d+\.json$/.test(f) ||
           /^relationship_property_has_sales_history_\d+\.json$/.test(f) ||
-          /^relationship_.*_sales_history_.*\.json$/.test(f)
+          /^relationship_property_has_sales_\d+\.json$/.test(f) ||
+          /^relationship_.*_sales_history_.*\.json$/.test(f) ||
+          /^relationship_.*_sales_.*\.json$/.test(f)
         ) {
           fs.unlinkSync(path.join("data", f));
         }
@@ -3007,13 +3010,13 @@ function main() {
       if (purchase_price_amount !== 0 && !purchase_price_amount) {
         continue;
       }
-      writeOut(`sales_history_${i}.json`, out);
-      // Create property->sales_history relationship
+      writeOut(`sales_${i}.json`, out);
+      // Create property->sales relationship
       const relPropertySales = {
         from: { "/": "./property.json" },
-        to: { "/": `./sales_history_${i}.json` },
+        to: { "/": `./sales_${i}.json` },
       };
-      writeOut(`relationship_property_has_sales_history_${i}.json`, relPropertySales);
+      writeOut(`relationship_property_has_sales_${i}.json`, relPropertySales);
       let book = bookIdx >= 0 ? row[bookIdx] || null : null;
       let page = pageIdx >= 0 ? row[pageIdx] || null : null;
       let instrNumber = instrNumberIdx >= 0 ? row[instrNumberIdx] || null : null;
@@ -3032,10 +3035,10 @@ function main() {
         };
         writeOut(`file_${i}.json`, file);
         const relSalesFile = {
-          from: { "/": `./sales_history_${i}.json` },
+          from: { "/": `./sales_${i}.json` },
           to: { "/": `./file_${i}.json` },
         };
-        writeOut(`relationship_sales_history_${i}_has_file_${i}.json`, relSalesFile);
+        writeOut(`relationship_sales_${i}_has_file_${i}.json`, relSalesFile);
       } else if(book && page) {
         link = `https://records.manateeclerk.com/OfficialRecords/Search/InstrumentBookPage/${book}/${page}`;
         const file = {
@@ -3047,10 +3050,10 @@ function main() {
         };
         writeOut(`file_${i}.json`, file);
         const relSalesFile = {
-          from: { "/": `./sales_history_${i}.json` },
+          from: { "/": `./sales_${i}.json` },
           to: { "/": `./file_${i}.json` },
         };
-        writeOut(`relationship_sales_history_${i}_has_file_${i}.json`, relSalesFile);
+        writeOut(`relationship_sales_${i}_has_file_${i}.json`, relSalesFile);
       }
       i++;
     }
