@@ -21201,6 +21201,15 @@ async function main() {
     console.log("after finalize variant", fs.existsSync(addressOutputPath));
     const addressBeforeEnforce = readJSONIfExists(addressOutputPath);
     console.log("before enforce", addressBeforeEnforce);
+    if (addressBeforeEnforce && typeof addressBeforeEnforce === "object") {
+      const normalizedCandidate =
+        typeof ensureNormalizedAddressSchemaSurface === "function"
+          ? ensureNormalizedAddressSchemaSurface({ ...addressBeforeEnforce })
+          : null;
+      if (normalizedCandidate) {
+        bestNormalizedAddress = { ...normalizedCandidate };
+      }
+    }
     enforceAddressOneOfBranch(addressOutputPath);
     console.log("after enforce branch", fs.existsSync(addressOutputPath));
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
@@ -24003,20 +24012,19 @@ async function main() {
         delete finalAddressOut.unnormalized_address;
       }
     } else if (finalRawValue) {
-      const rawSource = Object.assign(
-        {},
-        finalNormalizedSurface || {},
-        terminalAddressFinal || {},
-        {
-          county_name:
-            finalCounty ||
-            (terminalAddressFinal && terminalAddressFinal.county_name) ||
-            null,
-          request_identifier:
-            finalRequestId === undefined ? null : finalRequestId,
-          source_http_request: prepareSourceHttpRequest(finalSourceHttp) || null,
-        },
-      );
+      const normalizedHints = {
+        ...(bestNormalizedAddress || {}),
+        ...(finalNormalizedSurface || {}),
+      };
+      const rawSource = Object.assign({}, normalizedHints, terminalAddressFinal || {}, {
+        county_name:
+          finalCounty ||
+          (terminalAddressFinal && terminalAddressFinal.county_name) ||
+          (normalizedHints && normalizedHints.county_name) ||
+          null,
+        request_identifier: finalRequestId === undefined ? null : finalRequestId,
+        source_http_request: prepareSourceHttpRequest(finalSourceHttp) || null,
+      });
       finalAddressOut =
         buildRawAddressMinimalSurface(rawSource, finalRawValue) || null;
     }
@@ -24025,9 +24033,11 @@ async function main() {
       const surfaced =
         ensureAddressOutputCoverage(finalAddressOut) || finalAddressOut;
       writeJSON(addressOutputPath, surfaced);
-      // Force the raw branch when an unnormalized address is present so we don't
-      // emit partial normalized payloads that miss required fields.
-      enforceRawOneOfSurface(addressOutputPath);
+      // Keep normalized output when fully covered; only coerce to the raw oneOf
+      // branch when normalized coverage is incomplete and a raw string exists.
+      if (!finalNormalizedComplete && finalRawValue) {
+        enforceRawOneOfSurface(addressOutputPath);
+      }
     } else {
       removeFileIfExists(addressOutputPath);
     }
@@ -24037,18 +24047,6 @@ async function main() {
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
-    writeNullRelationshipPlaceholders(dataDir, [
-      "property_has_address",
-      "relationship_property_has_address",
-      "address_has_fact_sheet",
-      "relationship_address_has_fact_sheet",
-    ]);
-    writeNullRelationshipPlaceholders(relationshipsDir, [
-      "property_has_address",
-      "relationship_property_has_address",
-      "address_has_fact_sheet",
-      "relationship_address_has_fact_sheet",
-    ]);
 
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
