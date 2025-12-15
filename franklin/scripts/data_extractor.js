@@ -2335,6 +2335,9 @@ function formatName(name) {
   let cleaned = name.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
   if (!cleaned || cleaned.length === 0) return null;
 
+  // Convert to lowercase first
+  cleaned = cleaned.toLowerCase();
+
   // Normalize whitespace (collapse multiple spaces/tabs into one space)
   cleaned = cleaned.replace(/\s+/g, " ");
 
@@ -2352,53 +2355,56 @@ function formatName(name) {
 
   if (!cleaned || cleaned.length === 0) return null;
 
-  // Split into tokens by spaces and special chars, but preserve special chars
-  const tokens = [];
-  let currentToken = "";
+  // Split into tokens, keeping track of positions
+  const result = [];
+  let i = 0;
 
-  for (let i = 0; i < cleaned.length; i++) {
+  while (i < cleaned.length) {
     const char = cleaned[i];
-    if (/[ \-',]/.test(char)) {
-      if (currentToken) {
-        tokens.push(currentToken);
-        currentToken = "";
+
+    // If it's a letter, start collecting a word
+    if (/[a-z]/.test(char)) {
+      let word = char;
+      i++;
+
+      // Collect rest of word (lowercase letters only)
+      while (i < cleaned.length && /[a-z]/.test(cleaned[i])) {
+        word += cleaned[i];
+        i++;
       }
-      tokens.push(char);
-    } else {
-      currentToken += char;
+
+      // Capitalize first letter of word
+      word = word.charAt(0).toUpperCase() + word.slice(1);
+      result.push(word);
+    }
+    // If it's a special character (space, hyphen, apostrophe, comma)
+    else if (/[ \-',]/.test(char)) {
+      result.push(char);
+      i++;
+    }
+    else {
+      // Skip any other characters
+      i++;
     }
   }
-  if (currentToken) {
-    tokens.push(currentToken);
-  }
 
-  // Format each token
-  const formatted = tokens.map((token, idx) => {
-    // If it's a separator, keep it
-    if (token.length === 1 && /[ \-',]/.test(token)) {
-      return token;
-    }
-    // Otherwise it's a word - capitalize properly
-    if (token.length === 0) return "";
-    return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
-  }).join("");
+  const finalResult = result.join('');
 
-  // Final cleanup: remove leading/trailing special characters and trim
-  let result = formatted.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "").trim();
+  // Final cleanup: remove trailing special characters and trim
+  let trimmed = finalResult.replace(/[\s\-',.]+$/, '').trim();
 
-  if (!result || result.length === 0) return null;
+  if (!trimmed || trimmed.length === 0) return null;
 
-  // Validate against the Elephant schema pattern
-  // Pattern: ^[A-Z][a-zA-Z\s\-',.]*$
-  // Must start with uppercase letter, then any combination of letters, spaces, and special chars
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!pattern.test(result)) {
+  // Validate against the strict Elephant schema pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!pattern.test(trimmed)) {
     // Log the invalid name for debugging
-    console.log(`formatName: Invalid name after formatting: "${result}"`);
+    console.log(`formatName: Invalid name after formatting: "${trimmed}"`);
     return null;
   }
 
-  return result;
+  return trimmed;
 }
 
 // Validate prefix/suffix against schema

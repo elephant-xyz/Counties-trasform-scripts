@@ -18,33 +18,75 @@ function titleCase(str) {
   let cleaned = str.trim().replace(/[^a-zA-Z\s\-',.]/g, "");
   if (!cleaned) return null;
 
-  // Convert to lowercase and normalize spacing
-  const normalizedSpacing = cleaned.toLowerCase().replace(/\s+/g, " ");
+  // Convert to lowercase first
+  cleaned = cleaned.toLowerCase();
 
-  // Capitalize first letter of each word (after word boundaries and special chars)
-  const capitalized = normalizedSpacing.replace(/\b([a-z])/g, (_, ch) => ch.toUpperCase());
+  // Normalize spacing - replace multiple spaces with single space
+  cleaned = cleaned.replace(/\s+/g, " ");
 
   // Remove ". " patterns (e.g., "Jr. Smith" -> "Jr Smith")
-  let sanitized = capitalized.replace(/\.\s+/g, " ");
+  cleaned = cleaned.replace(/\.\s+/g, " ");
 
-  // Remove trailing special characters that would violate the pattern
-  sanitized = sanitized.replace(/[\s\-',.]+$/, "");
+  // Remove all remaining periods
+  cleaned = cleaned.replace(/\./g, "");
 
-  // Remove leading special characters
-  sanitized = sanitized.replace(/^[\s\-',.]+/, "");
+  // Remove multiple consecutive special characters (not spaces)
+  cleaned = cleaned.replace(/[\-',]{2,}/g, " ");
 
-  // Remove multiple consecutive special characters
-  sanitized = sanitized.replace(/[\s\-',.]{2,}/g, " ");
+  // Remove leading/trailing special characters
+  cleaned = cleaned.replace(/^[\s\-',.]+|[\s\-',.]+$/g, "");
 
-  const result = sanitized.trim();
+  if (!cleaned || cleaned.length === 0) return null;
 
-  // Validate against the pattern before returning
-  const pattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
-  if (!result || !pattern.test(result)) {
+  // Split into tokens, keeping track of positions
+  const result = [];
+  let i = 0;
+
+  while (i < cleaned.length) {
+    const char = cleaned[i];
+
+    // If it's a letter, start collecting a word
+    if (/[a-z]/.test(char)) {
+      let word = char;
+      i++;
+
+      // Collect rest of word (lowercase letters only)
+      while (i < cleaned.length && /[a-z]/.test(cleaned[i])) {
+        word += cleaned[i];
+        i++;
+      }
+
+      // Capitalize first letter of word
+      word = word.charAt(0).toUpperCase() + word.slice(1);
+      result.push(word);
+    }
+    // If it's a special character (space, hyphen, apostrophe, comma)
+    else if (/[ \-',]/.test(char)) {
+      result.push(char);
+      i++;
+    }
+    else {
+      // Skip any other characters
+      i++;
+    }
+  }
+
+  const finalResult = result.join('');
+
+  // Final cleanup: remove trailing special characters
+  const trimmed = finalResult.replace(/[\s\-',.]+$/, '').trim();
+
+  if (!trimmed || trimmed.length === 0) return null;
+
+  // Validate against the strict Elephant schema pattern
+  // Pattern: ^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$
+  const pattern = /^[A-Z][a-z]*([ \-',.][A-Za-z][a-z]*)*$/;
+  if (!pattern.test(trimmed)) {
+    console.log(`titleCase: Invalid name after formatting: "${trimmed}"`);
     return null;
   }
 
-  return result;
+  return trimmed;
 }
 
 // Extract property id
