@@ -829,6 +829,9 @@ function finalizeCountyAddressOutput(addressPath, options = {}) {
   )
     ? options.sourceHttpRequestCandidates
     : [];
+  const countyCandidates = Array.isArray(options.countyCandidates)
+    ? options.countyCandidates
+    : [];
 
   const resolvedRaw = safeNullIfEmpty(
     resolveFirstNonEmptyString([
@@ -836,56 +839,85 @@ function finalizeCountyAddressOutput(addressPath, options = {}) {
       ...rawCandidates,
     ]),
   );
+  const resolvedCounty = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.county_name,
+      payload.county_jurisdiction,
+      ...countyCandidates,
+    ]),
+  );
+  const resolvedRequestIdentifier = safeNullIfEmpty(
+    resolveFirstNonEmptyString([
+      payload.request_identifier,
+      ...requestIdentifierCandidates,
+    ]),
+  );
+  const resolvedSourceHttp = resolveSourceHttpRequest(
+    payload.source_http_request,
+    ...sourceHttpRequestCandidates,
+  );
 
-  let finalAddress = null;
+  const normalizedSurface =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...payload })
+      : null;
+  const normalizedComplete =
+    normalizedSurface &&
+    hasCompleteNormalizedAddress({ ...normalizedSurface });
 
-  if (hasCompleteNormalizedAddress(payload)) {
-    const normalized = buildNormalizedAddressOutputForSchema({ ...payload });
-    if (normalized) {
-      finalAddress = normalized;
-    }
-  }
-
-  if (!finalAddress && resolvedRaw) {
-    const resolvedRequestIdentifier = safeNullIfEmpty(
-      resolveFirstNonEmptyString([
-        payload.request_identifier,
-        ...requestIdentifierCandidates,
-      ]),
-    );
-
-    const resolvedSourceHttpRequest =
-      payload.source_http_request ||
-      sourceHttpRequestCandidates.find(
-        (candidate) => candidate && typeof candidate === "object",
-      );
-
-    const rawSeed = {
-      ...payload,
+  // Prefer the raw branch whenever we have an unnormalized string from the
+  // source to avoid emitting partial normalized payloads that fail oneOf.
+  if (resolvedRaw) {
+    const rawOut = {
       unnormalized_address: resolvedRaw,
+      county_name: resolvedCounty || null,
+      request_identifier:
+        resolvedRequestIdentifier === undefined ? null : resolvedRequestIdentifier,
+      source_http_request: prepareSourceHttpRequest(resolvedSourceHttp) || null,
     };
-
-    if (resolvedRequestIdentifier !== undefined) {
-      rawSeed.request_identifier = resolvedRequestIdentifier;
-    }
-    if (resolvedSourceHttpRequest !== undefined) {
-      rawSeed.source_http_request = resolvedSourceHttpRequest || null;
-    }
-
-    const rawOutput =
-      ensureRawAddressSchemaDefaults(rawSeed) ||
-      buildRawAddressOutputForSchema(resolvedRaw, rawSeed);
-
-    if (rawOutput) {
-      finalAddress = rawOutput;
-    }
+    writeJSON(addressPath, rawOut);
+    return;
   }
 
-  if (finalAddress) {
-    writeJSON(addressPath, finalAddress);
-  } else {
-    removeFileIfExists(addressPath);
+  if (normalizedComplete) {
+    const normalizedOut = {};
+    NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+      let value =
+        field === "request_identifier" && resolvedRequestIdentifier !== undefined
+          ? resolvedRequestIdentifier
+          : field === "source_http_request"
+            ? prepareSourceHttpRequest(resolvedSourceHttp)
+            : normalizedSurface[field];
+      if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+        const numeric = parseCoordinate(value);
+        value = Number.isFinite(numeric) ? numeric : null;
+      } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        value = trimmed.length ? trimmed : null;
+      } else if (value === undefined) {
+        value = null;
+      }
+      normalizedOut[field] = value;
+    });
+    if (!normalizedOut.postal_code) {
+      normalizedOut.plus_four_postal_code = null;
+    }
+    if (
+      hasMeaningfulAddressValue(normalizedOut.state_code) &&
+      !hasMeaningfulAddressValue(normalizedOut.country_code)
+    ) {
+      normalizedOut.country_code = "US";
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedOut, "unnormalized_address")
+    ) {
+      delete normalizedOut.unnormalized_address;
+    }
+    writeJSON(addressPath, normalizedOut);
+    return;
   }
+
+  removeFileIfExists(addressPath);
 }
 
 const ADDRESS_FALLBACK_CONTEXT = {
@@ -8457,6 +8489,20 @@ const RAW_SCHEMA_REQUIRED_FIELDS = [];
 const RAW_ADDRESS_NORMALIZED_ONLY_FIELDS = new Set();
 
 const ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS = Object.freeze([
+  "latitude",
+  "longitude",
+  "plus_four_postal_code",
+  "street_name",
+  "street_post_directional_text",
+  "street_pre_directional_text",
+  "street_number",
+  "street_suffix_type",
+  "unit_identifier",
+  "route_number",
+  "township",
+  "range",
+  "section",
+  "block",
   ...NORMALIZED_ADDRESS_REQUIRED_STRING_FIELDS,
 ]);
 
@@ -25041,6 +25087,47 @@ async function main() {
     } else {
       removeFileIfExists(addressOutputPath);
     }
+
+    finalizeCountyAddressOutput(addressOutputPath, {
+      rawCandidates: [
+        finalRawCandidateClamp,
+        strictRawCandidate,
+        finalClampRawValue,
+        ...(finalUnnormalizedCandidates || []),
+        unnormalizedAddressCandidate,
+        combinedModelAddress,
+        siteLocationLine,
+        addressLineCombined,
+        fullAddr,
+        fullAddrInput,
+        unAddr && unAddr.full_address,
+        unAddr && unAddr.unnormalized_address,
+      ],
+      requestIdentifierCandidates: [
+        overrideRequestId,
+        finalClampRequestId,
+        finalRequestIdentifier,
+        trimmedRequestIdentifier,
+        parcelId,
+        seed && seed.request_identifier,
+        unAddr && unAddr.request_identifier,
+      ],
+      sourceHttpRequestCandidates: [
+        overrideSourceHttp,
+        finalClampSourceHttp,
+        finalSourceHttp,
+        resolvedSourceHttp,
+        sourceHttpCandidate,
+        seed && seed.source_http_request,
+        unAddr && unAddr.source_http_request,
+      ],
+      countyCandidates: [
+        overrideCounty,
+        formattedCountyName,
+        countyName,
+        unAddr && unAddr.county_jurisdiction,
+      ],
+    });
 
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
     purgeAddressRelationshipArtifacts(dataDir);
