@@ -128,7 +128,13 @@ function writeNullRelationshipPlaceholders(directoryPath, baseNames = []) {
   if (!directoryPath || !Array.isArray(baseNames) || !baseNames.length) {
     return;
   }
-  ensureNullRelationshipPlaceholders(directoryPath, baseNames);
+  ensureDir(directoryPath);
+  baseNames
+    .filter((name) => typeof name === "string" && name.trim().length)
+    .forEach((baseName) => {
+      const targetPath = path.join(directoryPath, `${baseName}.json`);
+      writeNullRelationshipFile(targetPath);
+    });
 }
 
 function enforcePropertyRelationshipNulls(propertyPath) {
@@ -24019,6 +24025,9 @@ async function main() {
       const surfaced =
         ensureAddressOutputCoverage(finalAddressOut) || finalAddressOut;
       writeJSON(addressOutputPath, surfaced);
+      // Force the raw branch when an unnormalized address is present so we don't
+      // emit partial normalized payloads that miss required fields.
+      enforceRawOneOfSurface(addressOutputPath);
     } else {
       removeFileIfExists(addressOutputPath);
     }
@@ -24028,6 +24037,18 @@ async function main() {
     purgeAddressRelationshipArtifacts(dataDir);
     purgeAddressRelationshipArtifacts(relationshipsDir);
     enforcePropertyRelationshipNulls(propertyFilePath);
+    writeNullRelationshipPlaceholders(dataDir, [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ]);
+    writeNullRelationshipPlaceholders(relationshipsDir, [
+      "property_has_address",
+      "relationship_property_has_address",
+      "address_has_fact_sheet",
+      "relationship_address_has_fact_sheet",
+    ]);
 
     const loggedAddress = readJSONIfExists(addressOutputPath) || {};
     console.log("Final address object", loggedAddress);
