@@ -269,7 +269,18 @@ function buildOwnersFromRaw(raw) {
 
 function buildPersonFromSingleName(s) {
   const out = [];
-  const cleaned = norm(s.replace(/\s{2,}/g, " "));
+  let cleaned = norm(s.replace(/\s{2,}/g, " "));
+  if (!cleaned) return out;
+
+  // Remove trustee/role markers that appear in parentheses or as trailing words
+  cleaned = cleaned
+    .replace(/\(TRUSTEE\)/gi, "")
+    .replace(/\(TR\)/gi, "")
+    .replace(/\bTRUSTEE\b\.?,?$/i, "")
+    .replace(/\bTR\b\.?,?$/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
   if (!cleaned) return out;
 
   const lowerClean = cleaned.toLowerCase();

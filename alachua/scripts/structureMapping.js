@@ -158,8 +158,10 @@ function mapFrameMaterial(token) {
   const upper = token.toUpperCase();
   if (upper.includes("WOOD")) return "Wood Frame";
   if (upper.includes("MASONRY")) return "Masonry";
-  if (upper.includes("REINFORCED")) return "Reinforced Concrete";
-  if (upper.includes("PRECAST")) return "Precast Concrete";
+  if (upper.includes("REINFORCED")) return "Poured Concrete";
+  if (upper.includes("PRECAST")) return "Poured Concrete";
+  if (upper.includes("STEEL")) return "Steel Frame";
+  if (upper.includes("CONCRETE BLOCK") || upper.includes("BLOCK")) return "Concrete Block";
   return null;
 }
 
