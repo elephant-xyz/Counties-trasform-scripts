@@ -1023,6 +1023,18 @@ function main() {
   const dataDir = path.join("data");
   emptyDir(dataDir);
 
+  // Clean up erroneous property_improvement files from parent data directory
+  const parentDataDir = path.join("..", "..", "..", "data");
+  const erroneousFiles = [
+    path.join(parentDataDir, "property_improvement.json"),
+    path.join(parentDataDir, "relationship_property_improvement_has_property.json")
+  ];
+  erroneousFiles.forEach(file => {
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
+  });
+
   const inputHtml = readText("input.html");
   const $ = cheerio.load(inputHtml);
   const unnorm = fs.existsSync("unnormalized_address.json")
