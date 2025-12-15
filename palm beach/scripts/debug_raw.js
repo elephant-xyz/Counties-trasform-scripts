@@ -26102,6 +26102,112 @@ async function main() {
       preferRaw: true,
     });
 
+    // Hard-stop: keep only one valid address branch. If we cannot satisfy the
+    // normalized surface, emit a raw payload with the full schema surface
+    // (nullable) anchored on the unnormalized string from the source.
+    const hardenedAddress = readJSONIfExists(addressOutputPath);
+    if (hardenedAddress && typeof hardenedAddress === "object" && !Array.isArray(hardenedAddress)) {
+      const normalizedSurface =
+        typeof ensureNormalizedAddressSchemaSurface === "function"
+          ? ensureNormalizedAddressSchemaSurface({ ...hardenedAddress })
+          : null;
+      const normalizedComplete =
+        normalizedSurface &&
+        typeof hasCompleteNormalizedAddress === "function" &&
+        hasCompleteNormalizedAddress({ ...normalizedSurface });
+
+      if (normalizedComplete) {
+        const normalizedOut = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
+        NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
+          let value = normalizedSurface[field];
+          if (field === "source_http_request") {
+            value = prepareSourceHttpRequest(value) || null;
+          } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = parseCoordinate(value);
+            value = Number.isFinite(numeric) ? numeric : null;
+          } else if (typeof value === "string") {
+            const trimmed = value.trim();
+            value = trimmed.length ? trimmed : null;
+          } else if (value === undefined) {
+            value = null;
+          }
+          normalizedOut[field] = value;
+        });
+        if (!normalizedOut.postal_code) {
+          normalizedOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(normalizedOut.state_code) &&
+          !hasMeaningfulAddressValue(normalizedOut.country_code)
+        ) {
+          normalizedOut.country_code = "US";
+        }
+        writeJSON(addressOutputPath, normalizedOut);
+      } else {
+        const rawValue = safeNullIfEmpty(
+          resolveFirstNonEmptyString([
+            hardenedAddress.unnormalized_address,
+            ...(finalUnnormalizedCandidates || []),
+            unnormalizedAddressCandidate,
+            combinedModelAddress,
+            siteLocationLine,
+            addressLineCombined,
+            fullAddr,
+            fullAddrInput,
+            unAddr && unAddr.full_address,
+            unAddr && unAddr.unnormalized_address,
+          ]),
+        );
+
+        if (rawValue) {
+          const rawSkeleton =
+            ensureRawAddressSchemaDefaults(
+              { ...hardenedAddress, unnormalized_address: rawValue },
+              RAW_ONE_OF_ALLOWED_FIELDS,
+            ) || { ...RAW_ONE_OF_SCHEMA_TEMPLATE, unnormalized_address: rawValue };
+
+          RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+            if (field === "unnormalized_address") {
+              rawSkeleton[field] = rawValue;
+              return;
+            }
+            let value = rawSkeleton[field];
+            if (field === "request_identifier") {
+              value = value === undefined ? null : safeNullIfEmpty(value);
+            } else if (field === "source_http_request") {
+              value = prepareSourceHttpRequest(value) || null;
+            } else if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+              const numeric = parseCoordinate(value);
+              value = Number.isFinite(numeric) ? numeric : null;
+            } else if (typeof value === "string") {
+              const trimmed = value.trim();
+              value = trimmed.length ? trimmed : null;
+            } else if (value === undefined) {
+              value = null;
+            }
+            rawSkeleton[field] = value;
+          });
+
+          if (!rawSkeleton.postal_code) {
+            rawSkeleton.plus_four_postal_code = null;
+          }
+          if (
+            hasMeaningfulAddressValue(rawSkeleton.state_code) &&
+            !hasMeaningfulAddressValue(rawSkeleton.country_code)
+          ) {
+            rawSkeleton.country_code = "US";
+          }
+          if ((rawSkeleton.latitude == null) !== (rawSkeleton.longitude == null)) {
+            rawSkeleton.latitude = null;
+            rawSkeleton.longitude = null;
+          }
+          writeJSON(addressOutputPath, rawSkeleton);
+        } else {
+          removeFileIfExists(addressOutputPath);
+        }
+      }
+    }
+
     // Drop locally generated address relationships; downstream populates them.
     nullifyAddressRelationshipFiles(dataDir, relationshipsDir);
     removeAddressRelationshipFiles(dataDir);
