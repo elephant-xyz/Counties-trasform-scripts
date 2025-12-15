@@ -244,9 +244,9 @@ function main() {
     (feature) => feature.category === "utility",
   );
 
-  const extraUtilities = extraFeatures.map((feature) =>
-    Object.assign({}, buildUtilityObject(), buildUtilityFromFeature(feature)),
-  );
+  // Do not create extra_utilities as they are not properly linked in the datagroup
+  // Features like SEPTIC and WELL should be captured in property-level fields instead
+  const extraUtilities = [];
 
   const outputDir = path.resolve("owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
