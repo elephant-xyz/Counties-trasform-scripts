@@ -24184,33 +24184,55 @@ async function main() {
           return null;
         };
 
-        const leanRaw = {
+        const rawSeed = {
           unnormalized_address: rawValue,
-          request_identifier: resolvedRequestId === undefined ? null : resolvedRequestId,
+          request_identifier:
+            resolvedRequestId === undefined ? null : resolvedRequestId,
           source_http_request: preparedSourceHttp,
           county_name: countyValue || terminalSnapshot.county_name || null,
-          country_code: "US",
         };
 
-        ["section", "township", "range", "block", "lot"].forEach((field) => {
-          const value = pickField(field);
-          if (value !== null && value !== undefined) {
-            leanRaw[field] = value;
+        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+          if (
+            field === "unnormalized_address" ||
+            field === "request_identifier" ||
+            field === "source_http_request"
+          ) {
+            return;
           }
+          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+            const numeric = pickCoordinate(field);
+            rawSeed[field] = Number.isFinite(numeric) ? numeric : null;
+            return;
+          }
+          if (field === "county_name") {
+            rawSeed.county_name = hasMeaningfulAddressValue(rawSeed.county_name)
+              ? rawSeed.county_name
+              : null;
+            return;
+          }
+          const value = pickField(field);
+          rawSeed[field] = sanitizeAddressFieldValue(field, value);
         });
 
-        const lat = pickCoordinate("latitude");
-        const lon = pickCoordinate("longitude");
-        if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          leanRaw.latitude = lat;
-          leanRaw.longitude = lon;
+        const rawOut =
+          ensureAddressOutputCoverage(rawSeed) ||
+          ensureRawAddressSchemaDefaults(rawSeed) || {
+            ...RAW_ADDRESS_SCHEMA_TEMPLATE,
+            ...rawSeed,
+          };
+
+        if (!rawOut.postal_code) {
+          rawOut.plus_four_postal_code = null;
+        }
+        if (
+          hasMeaningfulAddressValue(rawOut.state_code) &&
+          !hasMeaningfulAddressValue(rawOut.country_code)
+        ) {
+          rawOut.country_code = "US";
         }
 
-        originalWriteFileSync.call(
-          fs,
-          addressOutputPath,
-          `${JSON.stringify(leanRaw, null, 2)}\n`,
-        );
+        writeJSON(addressOutputPath, rawOut);
       } else {
         removeFileIfExists(addressOutputPath);
       }
