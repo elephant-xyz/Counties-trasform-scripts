@@ -60,6 +60,12 @@ function cleanRawName(raw) {
     /\b%\s*INTEREST\b/gi,
     /\b\d{1,3}%\b/gi,
     /\b\d{1,3}%\s*INTEREST\b/gi,
+    /--TWROS\b/gi,
+    /--JTWROS\b/gi,
+    /\bTWROS\b/gi,
+    /\bJTWROS\b/gi,
+    /\bJT\s+WROS\b/gi,
+    /\bW\/ROS\b/gi,
   ];
   noisePatterns.forEach((re) => {
     s = s.replace(re, " ");
@@ -304,6 +310,12 @@ function isCompanyName(name) {
 function splitCompositeNames(name) {
   const cleaned = cleanRawName(name);
   if (!cleaned) return [];
+
+  // If the entire string is a company name (has company keywords), don't split it
+  if (isCompanyName(cleaned)) {
+    return [cleaned];
+  }
+
   const parts = cleaned
     .split(/\s*&\s*|\s+and\s+/i)
     .map((p) => p.trim())
