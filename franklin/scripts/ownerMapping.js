@@ -161,13 +161,13 @@ function isCompanyName(name) {
   return false;
 }
 
-// Parse possible multiple owners joined by '&' or ' and '
+// Parse possible multiple owners joined by '&', ' and ', or '/'
 function splitJointOwners(raw) {
   const s = normalizeSpace(raw).replace(/&amp;/g, '&').replace(/\s*\([^)]*\)\s*/g, ' ');
   if (!s) return [];
-  // Split on & or ' and ' while preserving meaningful tokens
+  // Split on &, ' and ', or / while preserving meaningful tokens
   const parts = s
-    .split(/\s*(?:&|\band\b)\s*/i)
+    .split(/\s*(?:&|\band\b|\/)\s*/i)
     .map((p) => normalizeSpace(p))
     .filter(Boolean);
   return parts.length ? parts : [s];
@@ -362,6 +362,7 @@ function buildOwnersByDate($) {
   for (const { date, grantee } of sales) {
     const parts = splitJointOwners(grantee);
     const owners = [];
+    let sharedLastName = null;
 
     // Parse each owner independently
 
@@ -378,6 +379,7 @@ function buildOwnersByDate($) {
         /\b(revocable|living)\b\s*\btrust\b/i.test(clean)
       ) {
         owners.push({ type: "company", name: clean });
+        sharedLastName = null; // Reset shared last name for companies
         continue;
       }
 
@@ -385,6 +387,7 @@ function buildOwnersByDate($) {
         const person = parsePerson(clean);
         if (person) {
           owners.push(person);
+          sharedLastName = person.last_name; // Save last name for next person
         } else {
           invalid.push({ raw: clean, reason: "could_not_parse_person" });
         }
@@ -396,13 +399,28 @@ function buildOwnersByDate($) {
 
       if (/\b(trust|revocable|estate)\b/i.test(clean)) {
         owners.push({ type: "company", name: clean });
+        sharedLastName = null; // Reset shared last name for companies
       } else {
-        // Try parsing as person even if looksLikePerson failed
-        const person = parsePerson(clean);
-        if (person) {
-          owners.push(person);
+        // Check if this is a single-token name that could share a last name
+        const tokens = clean.split(/\s+/).filter(Boolean);
+        if (tokens.length === 1 && sharedLastName) {
+          // Use shared last name from previous person
+          const person = buildPerson(clean, sharedLastName, null, null, null);
+          if (person && person.first_name && person.last_name) {
+            owners.push(person);
+            // Keep the same shared last name
+          } else {
+            invalid.push({ raw: clean, reason: "invalid_shared_last_name" });
+          }
         } else {
-          invalid.push({ raw: clean, reason: "unrecognized_owner_format" });
+          // Try parsing as person even if looksLikePerson failed
+          const person = parsePerson(clean);
+          if (person) {
+            owners.push(person);
+            sharedLastName = person.last_name;
+          } else {
+            invalid.push({ raw: clean, reason: "unrecognized_owner_format" });
+          }
         }
       }
     }
