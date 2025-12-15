@@ -1110,34 +1110,6 @@ function main() {
     writeJSON(path.join(dataDir, "property.json"), property);
     writeJSON(path.join(dataDir, "parcel.json"), {parcel_identifier: parcelIdentifier || ""});
 
-    // Create property_improvement.json (main entity for Property_Improvement data group)
-    const propertyImprovement = {
-      request_identifier: requestIdentifier || "",
-      improvement_type: null,
-      improvement_status: null,
-      improvement_action: null,
-      contractor_type: null,
-      permit_number: null,
-      permit_issue_date: null,
-      permit_close_date: null,
-      completion_date: null,
-      application_received_date: null,
-      final_inspection_date: null,
-      fee: null,
-      permit_required: null,
-      is_owner_builder: null,
-      is_disaster_recovery: null,
-      private_provider_inspections: null,
-      private_provider_plan_review: null,
-    };
-    writeJSON(path.join(dataDir, "property_improvement.json"), propertyImprovement);
-
-    // Create property_improvement -> property relationship
-    writeJSON(path.join(dataDir, "relationship_property_improvement_has_property.json"), {
-      from: { "/": "./property_improvement.json" },
-      to: { "/": "./property.json" },
-    });
-
     // Create property -> parcel relationship
     writeJSON(path.join(dataDir, "relationship_property_has_parcel.json"), {
       from: { "/": "./property.json" },
