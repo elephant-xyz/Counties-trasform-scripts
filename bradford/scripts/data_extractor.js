@@ -70,44 +70,26 @@ function formatNameToPattern(name) {
   // Remove trailing periods
   cleaned = cleaned.replace(/\.+$/, '');
 
-  // Remove commas followed by spaces and what follows (usually suffixes like ", Jr." or ", III")
-  // These don't fit the strict pattern which doesn't allow consecutive separators
-  cleaned = cleaned.replace(/,\s+.*$/, '');
-
-  // Remove any characters that are not letters, spaces, or allowed separators
-  cleaned = cleaned.replace(/[^A-Za-z \-',.]/g, '');
-
-  // Remove any remaining commas and periods that aren't part of valid name patterns
-  cleaned = cleaned.replace(/,/g, '');
-
-  // Remove standalone periods (but keep them in abbreviations like "St.John" -> "St.John")
-  cleaned = cleaned.replace(/\.\s+/g, ' ');
-  cleaned = cleaned.replace(/\s+\./g, '');
-
-  if (!cleaned || cleaned.length === 0) return null;
+  // Handle abbreviations: ensure letters after periods, hyphens, apostrophes are uppercase
+  // Pattern: letter + special char + letter should be: Upper + special + Upper
+  cleaned = cleaned.replace(/([A-Za-z])([.\-',])([A-Za-z])/g, (match, before, sep, after) => {
+    return before.charAt(0).toUpperCase() + sep + after.charAt(0).toUpperCase();
+  });
 
   // Split by spaces and format each word part
   const result = cleaned.split(' ').map(part => {
-    if (!part || part.length === 0) return '';
-
-    // For parts with special characters (like O'Brien, Mary-Jane, St.John)
-    if (/[\-'.]/.test(part)) {
-      // Split by separators while keeping them
-      const segments = part.split(/([\-'.])/).filter(s => s.length > 0);
-      let formatted = '';
-
-      for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-
-        // If it's a separator, keep it as is
-        if (/[\-'.]/.test(segment)) {
-          formatted += segment;
-        } else if (segment.length > 0) {
-          // Format as: First letter uppercase, rest lowercase
-          formatted += segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+    // For parts with special characters (abbreviations), handle carefully
+    if (/[.\-',]/.test(part)) {
+      // Split by special characters and capitalize each segment
+      return part.split(/([.\-',])/).map((segment, idx) => {
+        // If it's a separator, keep it
+        if (/[.\-',]/.test(segment)) return segment;
+        // If it's a letter segment, capitalize first letter
+        if (segment.length > 0) {
+          return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
         }
-      }
-      return formatted;
+        return segment;
+      }).join('');
     } else {
       // Normal word: capitalize first letter, lowercase rest
       return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
