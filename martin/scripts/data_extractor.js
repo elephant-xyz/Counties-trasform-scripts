@@ -811,13 +811,19 @@ function titleCaseName(s) {
   if (s == null) return null;
   s = String(s).trim();
   if (!s) return null;
+
+  // Remove any characters that don't match the allowed pattern: letters, spaces, hyphens, apostrophes, commas, periods
+  s = s.replace(/[^a-zA-Z\s\-',.]/g, '');
+  if (!s) return null;
+
   s = s.toLowerCase();
   const result = s.replace(
     /(^|[\s\-\'])([a-z])/g,
     (m, p1, p2) => p1 + p2.toUpperCase(),
   );
-  // Ensure result starts with an uppercase letter (valid name pattern)
-  if (!result || !/^[A-Z]/.test(result)) return null;
+
+  // Ensure result matches the required pattern: ^[A-Z][a-zA-Z\s\-',.]*$
+  if (!result || !/^[A-Z][a-zA-Z\s\-',.]*$/.test(result)) return null;
   return result;
 }
 
