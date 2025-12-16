@@ -4110,6 +4110,36 @@ function main() {
     }
   });
 
+  // Write ownership relationships for current owners (connect to property)
+  pc.personCurrentOwners.forEach((idx) => {
+    if (usedPersonIndices.has(idx)) {
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_property_has_person_owner_${idx}.json`,
+        ),
+        {
+          from: { "/": `./property.json` },
+          to: { "/": `./person_${idx}.json` },
+        }
+      );
+    }
+  });
+  pc.companyCurrentOwners.forEach((idx) => {
+    if (usedCompanyIndices.has(idx)) {
+      writeJSON(
+        path.join(
+          "data",
+          `relationship_property_has_company_owner_${idx}.json`,
+        ),
+        {
+          from: { "/": `./property.json` },
+          to: { "/": `./company_${idx}.json` },
+        }
+      );
+    }
+  });
+
   // Write mailing address relationships for current owners
   if (hasOwnerMailingAddress) {
     pc.personCurrentOwners.forEach((idx) => {
