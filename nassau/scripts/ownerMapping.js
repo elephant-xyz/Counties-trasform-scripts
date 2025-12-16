@@ -449,7 +449,8 @@ function buildOwnersByDate($) {
       grantee
         .replace(/\.$/, "")
         .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
-        .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
+        .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
+        .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
         .replace(/\s+/g, ' ') // Normalize multiple spaces
     ).trim();
 
@@ -480,7 +481,8 @@ function buildOwnersByDate($) {
         raw
           .replace(/\.$/, "")
           .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
-          .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
+          .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
+          .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|CUSTODIAN)\b.*$/i, "")
           .replace(/\s+/g, ' ') // Normalize multiple spaces
       ).trim();
 
@@ -544,8 +546,10 @@ function buildOwnersByDate($) {
 
     const personLike = cand
       .replace(/\s*\([^)]*\)\s*/g, " ") // Remove parenthetical content
+      .replace(/\b(OF\s+(?:DIOCESE|THE\s+ESTATE|THE\s+TRUST|THE|ESTATE))\b.*$/i, "")
+      .replace(/\b(AS\s+(?:TRUSTEE|BISHOP|GUARDIAN|ADMINISTRATOR|EXECUTOR|EXECUTRIX|AGENT|ATTORNEY|REPRESENTATIVE|CONSERVATOR|CUSTODIAN))\b.*$/i, "")
       .replace(
-        /\b(L\/E|TRUSTEE|ET\s+AL|CUSTODIAN|AS\s+TRUSTEE|TTEE|AS\s+TTEE)\b.*$/i,
+        /\b(L\/E|TRUSTEE|ET\s+AL|CUSTODIAN|TTEE)\b.*$/i,
         "",
       )
       .replace(/\s+/g, ' ') // Normalize multiple spaces
