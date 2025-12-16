@@ -19445,6 +19445,8 @@ async function main() {
   ensureDir(relationshipsDir);
   purgeAddressRelationshipArtifacts(dataDir);
   purgeAddressRelationshipArtifacts(relationshipsDir);
+  removeAddressRelationshipFiles(dataDir);
+  removeAddressRelationshipFiles(relationshipsDir);
   const propertyFilePath = path.join(dataDir, "property.json");
   const propertyFileRelative = "./property.json";
   const addressFileRelative = "./address.json";
@@ -19458,6 +19460,7 @@ async function main() {
       removeFileIfExists(relationshipFile);
     }
   }
+  enforcePropertyRelationshipNulls(propertyFilePath);
 
   const inputHTML = readText("input.html");
   const unAddr = readJSON("unnormalized_address.json");
@@ -19746,6 +19749,11 @@ async function main() {
       ? parseInt(effectiveYearStr, 10)
       : null,
     historic_designation: false,
+    // Downstream populates address relationships; keep them null to satisfy the schema.
+    relationships: {
+      property_has_address: null,
+      address_has_fact_sheet: null,
+    },
   };
   writeJSON(path.join(dataDir, "property.json"), property);
 
@@ -26914,46 +26922,27 @@ async function main() {
 
       let oneOfReady = null;
       if (terminalRawString) {
-        oneOfReady = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-          if (field === "unnormalized_address") {
-            oneOfReady.unnormalized_address = terminalRawString;
-            return;
-          }
-          if (field === "request_identifier") {
-            oneOfReady.request_identifier =
-              finalResolvedRequestId === undefined ? null : finalResolvedRequestId;
-            return;
-          }
-          if (field === "source_http_request") {
-            const prepared = prepareSourceHttpRequest(finalResolvedSourceHttp);
-            oneOfReady.source_http_request = prepared ? deepClone(prepared) : null;
-            return;
-          }
-          let value = terminalAddress[field];
-          if (value === undefined && terminalNormalizedSurface) {
-            value = terminalNormalizedSurface[field];
-          }
-          if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-            const numeric = parseCoordinate(value);
-            oneOfReady[field] = Number.isFinite(numeric) ? numeric : null;
-            return;
-          }
-          oneOfReady[field] = sanitizeAddressFieldValue(field, value);
-        });
-        if (!oneOfReady.postal_code) {
-          oneOfReady.plus_four_postal_code = null;
-        }
-        if ((oneOfReady.latitude == null) !== (oneOfReady.longitude == null)) {
-          oneOfReady.latitude = null;
-          oneOfReady.longitude = null;
-        }
-        if (
-          hasMeaningfulAddressValue(oneOfReady.state_code) &&
-          !hasMeaningfulAddressValue(oneOfReady.country_code)
-        ) {
-          oneOfReady.country_code = "US";
-        }
+        oneOfReady =
+          buildFinalRawAddressOutput(terminalRawString, {
+            requestIdentifier: finalResolvedRequestId,
+            sourceHttpRequest: finalResolvedSourceHttp,
+            countyName: resolvedCounty || terminalAddress.county_name,
+            latitude:
+              terminalAddress.latitude ??
+              (terminalNormalizedSurface && terminalNormalizedSurface.latitude),
+            longitude:
+              terminalAddress.longitude ??
+              (terminalNormalizedSurface && terminalNormalizedSurface.longitude),
+            seed: terminalAddress,
+          }) ||
+          ensureAddressOutputCoverage({
+            ...terminalAddress,
+            unnormalized_address: terminalRawString,
+            request_identifier:
+              finalResolvedRequestId === undefined ? null : finalResolvedRequestId,
+            source_http_request:
+              prepareSourceHttpRequest(finalResolvedSourceHttp) || null,
+          });
       } else if (terminalNormalizedComplete) {
         oneOfReady = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
         NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
@@ -26978,10 +26967,19 @@ async function main() {
         ) {
           oneOfReady.country_code = "US";
         }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            oneOfReady,
+            "unnormalized_address",
+          )
+        ) {
+          delete oneOfReady.unnormalized_address;
+        }
       }
 
       if (oneOfReady) {
-        writeJSON(addressOutputPath, oneOfReady);
+        const hydrated = ensureAddressOutputCoverage(oneOfReady) || oneOfReady;
+        writeJSON(addressOutputPath, hydrated);
       } else {
         removeFileIfExists(addressOutputPath);
       }
