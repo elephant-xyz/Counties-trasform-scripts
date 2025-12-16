@@ -2870,37 +2870,49 @@ function main() {
     }
   }
 
+  // Ensure we have a valid unnormalized_address
+  let addressUnnormalized = situsAddress;
+  if (!addressUnnormalized || addressUnnormalized.trim() === "") {
+    // Fallback to situs variable
+    addressUnnormalized = situs;
+  }
+
+  // If still no valid address, construct from legal description (for rural properties)
+  if (!addressUnnormalized || addressUnnormalized.trim() === "") {
+    const parts = [];
+    if (townshipText) parts.push(`Township ${townshipText}`);
+    if (rangeText) parts.push(`Range ${rangeText}`);
+    if (sectionText) parts.push(`Section ${sectionText}`);
+    if (parts.length > 0) {
+      addressUnnormalized = parts.join(", ") + ", Franklin County, FL";
+    } else {
+      // Last resort: use parcel identifier as address
+      addressUnnormalized = parcelIdentifier ? `Parcel ${parcelIdentifier}, Franklin County, FL` : "Franklin County, FL";
+    }
+  }
+
   const address = {
     source_http_request: {
           method: "GET",
           url: seed.source_http_request.url
-        },    
-    // street_number: street_number || null,
-    // street_name: street_name || null,
-    // street_suffix_type: street_suffix_type || null,
-    // street_pre_directional_text: pre_dir || null,
-    // street_post_directional_text: post_dir || null,
-    // unit_identifier: null,
-    // city_name: (cityUpper || "").toUpperCase() || null,
-    // state_code: "FL",
-    // postal_code: postal_code || null,
-    // plus_four_postal_code: plus_four_postal_code || null,
-    // country_code: "US",
+        },
+    request_identifier: parcelIdentifier || seed.parcel_id || "",
     county_name: "Franklin",
-    latitude: unAddr.latitude ?? null,
-    longitude: unAddr.longitude ?? null,
-    // route_number: null,
     township: townshipText || null,
     range: rangeText || null,
     section: sectionText || null,
-    // block: null,
-    // lot: lotNumber || null,
-    // municipality_name: null,
-    unnormalized_address: situsAddress
+    unnormalized_address: addressUnnormalized
   };
   writeJSON(path.join("data", "address.json"), address);
+
+  // Create property-address relationship
+  writeJSON(path.join("data", "relationship_property_has_address.json"), {
+    from: { "/": "./property.json" },
+    to: { "/": "./address.json" }
+  });
+
   console.log(address)
-  
+
   // Extract mailing address and owner info from ownership section
   const ownershipHtml = $(".ownership").html();
   const mailingAddr = ownershipHtml ? extractMailingAddress(ownershipHtml) : null;
