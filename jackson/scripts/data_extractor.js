@@ -1200,6 +1200,20 @@ function writeProperty($, parcelId) {
 
   };
   writeJSON(path.join("data", "property.json"), property);
+
+  // Create parcel.json as the root entity for County data group
+  const parcel = {
+    ...appendSourceInfo(seed),
+    parcel_identifier: parcelId || ""
+  };
+  writeJSON(path.join("data", "parcel.json"), parcel);
+
+  // Create relationship from parcel to property
+  const relParcelProperty = {
+    from: { "/": "./parcel.json" },
+    to: { "/": "./property.json" }
+  };
+  writeJSON(path.join("data", "relationship_parcel_has_property.json"), relParcelProperty);
 }
 
 function writeSalesDeedsFilesAndRelationships($) {
