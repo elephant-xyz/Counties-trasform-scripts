@@ -1926,6 +1926,20 @@ function main() {
       return;
     }
 
+    // FINAL SAFEGUARD: Ensure improvement_type is either null or a valid enum value before writing
+    if (cleanedImprovement.improvement_type !== null) {
+      const finalType = cleanedImprovement.improvement_type;
+      // Check if it's a non-empty string and in the valid list
+      if (typeof finalType !== "string" ||
+          finalType.trim() === "" ||
+          !validImprovementTypes.includes(finalType.trim())) {
+        cleanedImprovement.improvement_type = null;
+      } else {
+        // Ensure no trailing/leading whitespace
+        cleanedImprovement.improvement_type = finalType.trim();
+      }
+    }
+
     const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
     writeJSON(path.join(dataDir, filename), cleanedImprovement);
     propertyImprovementOutputs.push({ filename, path: `./${filename}` });
