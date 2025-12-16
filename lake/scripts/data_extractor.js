@@ -1172,7 +1172,7 @@ function main() {
         if (o.type !== "person") return;
         const first = properCaseName(o.first_name || null);
         const last = properCaseName(o.last_name || null);
-        const middle = properCaseName(o.middle_name || null);
+        const middle = o.middle_name ? o.middle_name : null;
         const person = {
           birth_date: null,
           first_name: first,
