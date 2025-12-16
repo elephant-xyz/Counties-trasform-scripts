@@ -270,7 +270,7 @@ function classifyOwner(raw) {
           type: "person",
           first_name: firstName,
           last_name: lastName,
-          middle_name: middleName || null,
+          middle_name: middleName,
           suffix_name: suffixName,
         });
       }
@@ -295,7 +295,7 @@ function classifyOwner(raw) {
       type: "person",
       first_name: firstName,
       last_name: lastName,
-      middle_name: middleName || null,
+      middle_name: middleName,
       suffix_name: suffixName,
     };
     return { valid: true, owner: person };
@@ -403,7 +403,7 @@ function classifyOwner(raw) {
           type: "person",
           first_name: firstName1,
           last_name: lastName,
-          middle_name: middleName1 || null,
+          middle_name: middleName1,
           suffix_name: suffixName,
         });
       }
@@ -419,7 +419,7 @@ function classifyOwner(raw) {
           type: "person",
           first_name: firstName2,
           last_name: lastName,
-          middle_name: middleName2 || null,
+          middle_name: middleName2,
           suffix_name: suffixName,
         });
       }
@@ -453,7 +453,7 @@ function classifyOwner(raw) {
       type: "person",
       first_name: firstName,
       last_name: lastName,
-      middle_name: middleName || null,
+      middle_name: middleName,
       suffix_name: suffixName,
     };
     return { valid: true, owner: person };
