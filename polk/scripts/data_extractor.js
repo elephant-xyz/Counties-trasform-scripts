@@ -4139,23 +4139,24 @@ function main() {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
 
+    let personCounter = 0;
+    let companyCounter = 0;
+
     // Check if grantee contains ampersand (joint ownership)
     if (g.includes('&')) {
       // Split by ampersand and create relationships for each matched person/company
       const names = g.split('&').map(n => n.trim()).filter(n => n);
-      let relationshipCounter = 0;
       names.forEach(name => {
         // Try company match first
         if (companyNameToPath.has(name)) {
           const companyPath = companyNameToPath.get(name);
+          companyCounter++;
           const rel = {
-            to: { "/": companyPath },
             from: { "/": `./sales_history_${idx + 1}.json` },
+            to: { "/": companyPath },
           };
-          relationshipCounter++;
-          const suffix = relationshipCounter > 1 ? `_${relationshipCounter}` : '';
           writeJSON(
-            path.join("data", `relationship_sales_history_company_${idx + 1}${suffix}.json`),
+            path.join("data", `relationship_sales_history_${idx + 1}_buyer_company_${companyCounter}.json`),
             rel,
           );
         } else {
@@ -4174,14 +4175,13 @@ function main() {
             }
           }
           if (toPath) {
+            personCounter++;
             const rel = {
-              to: { "/": toPath },
               from: { "/": `./sales_history_${idx + 1}.json` },
+              to: { "/": toPath },
             };
-            relationshipCounter++;
-            const suffix = relationshipCounter > 1 ? `_${relationshipCounter}` : '';
             writeJSON(
-              path.join("data", `relationship_sales_history_person_${idx + 1}${suffix}.json`),
+              path.join("data", `relationship_sales_history_${idx + 1}_buyer_person_${personCounter}.json`),
               rel,
             );
           }
@@ -4191,12 +4191,13 @@ function main() {
       // Single owner - use original logic
       if (companyNameToPath.has(g)) {
         const companyPath = companyNameToPath.get(g);
+        companyCounter++;
         const rel = {
-          to: { "/": companyPath },
           from: { "/": `./sales_history_${idx + 1}.json` },
+          to: { "/": companyPath },
         };
         writeJSON(
-          path.join("data", `relationship_sales_history_company_${idx + 1}.json`),
+          path.join("data", `relationship_sales_history_${idx + 1}_buyer_company_${companyCounter}.json`),
           rel,
         );
       } else {
@@ -4215,12 +4216,13 @@ function main() {
           }
         }
         if (toPath) {
+          personCounter++;
           const rel = {
-            to: { "/": toPath },
             from: { "/": `./sales_history_${idx + 1}.json` },
+            to: { "/": toPath },
           };
           writeJSON(
-            path.join("data", `relationship_sales_history_person_${idx + 1}.json`),
+            path.join("data", `relationship_sales_history_${idx + 1}_buyer_person_${personCounter}.json`),
             rel,
           );
         }
