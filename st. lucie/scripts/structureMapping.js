@@ -267,6 +267,20 @@ function mapExteriorWallMaterial(text) {
   return null;
 }
 
+function mapExteriorWallMaterialSecondary(text) {
+  if (!text) return null;
+  const t = text.toLowerCase();
+  // Map to accent/trim values only (valid for exterior_wall_material_secondary)
+  if (t.includes("brick")) return "Brick Accent";
+  if (t.includes("stone")) return "Stone Accent";
+  if (t.includes("wood")) return "Wood Trim";
+  if (t.includes("metal")) return "Metal Trim";
+  if (t.includes("stucco")) return "Stucco Accent";
+  if (t.includes("vinyl")) return "Vinyl Accent";
+  if (t.includes("block")) return "Decorative Block";
+  return null;
+}
+
 function mapRoofCover(text) {
   if (!text) return null;
   const t = text.toLowerCase();
@@ -431,7 +445,7 @@ function extractStructure($, buildingElement, buildingNumber) {
     exterior_wall_insulation_type_primary: null,
     exterior_wall_insulation_type_secondary: null,
     exterior_wall_material_primary: mapExteriorWallMaterial(primaryWallRaw),
-    exterior_wall_material_secondary: mapExteriorWallMaterial(secondaryWallRaw),
+    exterior_wall_material_secondary: mapExteriorWallMaterialSecondary(secondaryWallRaw),
     finished_base_area: null,
     finished_basement_area: null,
     finished_upper_story_area: null,
@@ -559,16 +573,16 @@ function applyExtraFeaturesToStructure(structure, extraFeatures, buildingNumber)
     hasAllTokens(feature, ["STONE", "TRIM"]),
   );
   if (stoneTrim && !structure.exterior_wall_material_secondary) {
-    structure.exterior_wall_material_secondary = "Natural Stone";
-    registerUsage(stoneTrim, { exterior_wall_material_secondary: "Natural Stone" });
+    structure.exterior_wall_material_secondary = "Stone Accent";
+    registerUsage(stoneTrim, { exterior_wall_material_secondary: "Stone Accent" });
   }
 
   const brickTrim = extraFeatures.find((feature) =>
     hasAllTokens(feature, ["BRICK", "TRIM"]),
   );
   if (brickTrim && !structure.exterior_wall_material_secondary) {
-    structure.exterior_wall_material_secondary = "Brick";
-    registerUsage(brickTrim, { exterior_wall_material_secondary: "Brick" });
+    structure.exterior_wall_material_secondary = "Brick Accent";
+    registerUsage(brickTrim, { exterior_wall_material_secondary: "Brick Accent" });
   }
 
   const metalRoof = extraFeatures.find((feature) =>

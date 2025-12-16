@@ -2,6 +2,218 @@ const fs = require('fs');
 const path = require('path');
 const cheerio = require('cheerio');
 
+/**
+ * Parse a polygon string from CSV and convert to new format
+ * @param {string} polygonStr - Polygon string from CSV
+ * @returns {Array<{latitude: number, longitude: number}>|null} - Parsed polygon or null
+ */
+function parsePolygonFromString(polygonStr) {
+  if (!polygonStr) return null;
+  
+  // Remove outer quotes if present
+  const cleanedStr = polygonStr.trim().replace(/^["']+|["']+$/g, '');
+  if (!cleanedStr || cleanedStr.length === 0) return null;
+  
+  try {
+    const parsed = JSON.parse(cleanedStr);
+    
+    // Handle old format: [[[lon, lat], [lon, lat], ...]]
+    if (Array.isArray(parsed) && Array.isArray(parsed[0]) && Array.isArray(parsed[0][0])) {
+      // Convert from [[[lon, lat], ...]] to [{latitude: lat, longitude: lon}, ...]
+      const coords = parsed[0]; // Get first ring
+      if (coords.length >= 3) {
+        const polygon = coords.map(coord => {
+          if (Array.isArray(coord) && coord.length >= 2) {
+            return {
+              latitude: coord[1], // lat is second element
+              longitude: coord[0]  // lon is first element
+            };
+          }
+          return null;
+        }).filter(c => c !== null);
+        
+        if (polygon.length >= 3) {
+          return polygon;
+        }
+      }
+      return null;
+    } else if (Array.isArray(parsed)) {
+      // Check if already in new format: [{latitude: lat, longitude: lon}, ...]
+      if (parsed.length >= 3 && parsed[0] && typeof parsed[0] === 'object' && 'latitude' in parsed[0] && 'longitude' in parsed[0]) {
+        return parsed;
+      } else {
+        // Try to convert if it's [[lon, lat], ...] format
+        if (parsed.length >= 3 && Array.isArray(parsed[0]) && parsed[0].length >= 2) {
+          return parsed.map(coord => ({
+            latitude: coord[1],
+            longitude: coord[0]
+          }));
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error parsing polygon from CSV:', error.message);
+    console.error('Polygon string (first 100 chars):', cleanedStr.substring(0, 100));
+    return null;
+  }
+}
+
+/**
+ * Extract geometry information from CSV
+ * Returns three separate geometry objects: address (lat/long only), parcel (parcel_polygon), and building (building_polygon)
+ * @param {string} csvPath - Path to CSV file
+ * @param {string} requestIdentifier - Request identifier from seed
+ * @returns {object|null} - Object with addressGeometry, parcelGeometry, and buildingGeometry properties, or null
+ */
+function extractGeometryFromCsv(csvPath, requestIdentifier) {
+  if (!fs.existsSync(csvPath)) {
+    return null;
+  }
+  
+  const csvContent = fs.readFileSync(csvPath, 'utf8');
+  const lines = csvContent.split('\n').filter(line => line.trim());
+  if (lines.length < 2) {
+    return null;
+  }
+  
+  // Parse CSV header - use proper CSV parsing for headers too
+  const parseCsvRow = (row) => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    let escaped = false;
+    
+    for (let i = 0; i < row.length; i++) {
+      const char = row[i];
+      
+      if (escaped) {
+        current += char;
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escaped = true;
+        current += char;
+        continue;
+      }
+      
+      if (char === '"') {
+        // Handle escaped quotes within quoted strings
+        if (inQuotes && i + 1 < row.length && row[i + 1] === '"') {
+          current += '"';
+          i++; // Skip next quote
+          continue;
+        }
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+  
+  // Parse headers
+  const headers = parseCsvRow(lines[0]).map(h => h.replace(/^["']|["']$/g, '').trim());
+  const dataLine = lines[1];
+  
+  // Find indices for relevant columns
+  const parcelPolygonIdx = headers.indexOf('parcel_polygon');
+  const buildingPolygonIdx = headers.indexOf('building_polygon');
+  const longitudeIdx = headers.indexOf('longitude');
+  const latitudeIdx = headers.indexOf('latitude');
+  
+  if (parcelPolygonIdx === -1 && buildingPolygonIdx === -1 && longitudeIdx === -1 && latitudeIdx === -1) {
+    return null;
+  }
+  
+  // Parse CSV data row
+  const values = parseCsvRow(dataLine);
+  
+  let latitude = null;
+  let longitude = null;
+  let parcelPolygon = null;
+  let buildingPolygon = null;
+  
+  // Extract latitude/longitude (for address geometry)
+  if (latitudeIdx !== -1 && values[latitudeIdx]) {
+    const lat = parseFloat(values[latitudeIdx]);
+    if (!isNaN(lat) && lat >= -90 && lat <= 90) {
+      latitude = lat;
+    }
+  }
+  
+  if (longitudeIdx !== -1 && values[longitudeIdx]) {
+    const lon = parseFloat(values[longitudeIdx]);
+    if (!isNaN(lon) && lon >= -180 && lon <= 180) {
+      longitude = lon;
+    }
+  }
+  
+  // Extract parcel polygon
+  if (parcelPolygonIdx !== -1 && parcelPolygonIdx < values.length) {
+    parcelPolygon = parsePolygonFromString(values[parcelPolygonIdx]);
+    if (parcelPolygon) {
+      console.log(`✓ Parsed parcel polygon with ${parcelPolygon.length} points from CSV`);
+    }
+  }
+  
+  // Extract building polygon
+  if (buildingPolygonIdx !== -1 && buildingPolygonIdx < values.length) {
+    buildingPolygon = parsePolygonFromString(values[buildingPolygonIdx]);
+    if (buildingPolygon) {
+      console.log(`✓ Parsed building polygon with ${buildingPolygon.length} points from CSV`);
+    }
+  }
+  
+  // Create three separate geometry objects
+  const result = {
+    addressGeometry: null,
+    parcelGeometry: null,
+    buildingGeometry: null
+  };
+  
+  // Address geometry: only lat/long (no polygon)
+  if (latitude !== null || longitude !== null) {
+    result.addressGeometry = {
+      request_identifier: requestIdentifier,
+      latitude: latitude,
+      longitude: longitude,
+      // No polygon for address geometry (polygon field not included)
+    };
+  }
+  
+  // Parcel geometry: parcel_polygon only (no lat/long fields)
+  if (parcelPolygon && Array.isArray(parcelPolygon) && parcelPolygon.length >= 3) {
+    result.parcelGeometry = {
+      request_identifier: requestIdentifier,
+      polygon: parcelPolygon,
+      // No latitude/longitude fields - polygon only
+    };
+  }
+  
+  // Building geometry: building_polygon only (no lat/long fields)
+  if (buildingPolygon && Array.isArray(buildingPolygon) && buildingPolygon.length >= 3) {
+    result.buildingGeometry = {
+      request_identifier: requestIdentifier,
+      polygon: buildingPolygon,
+      // No latitude/longitude fields - polygon only
+    };
+  }
+  
+  // Return null if no geometries were created
+  if (!result.addressGeometry && !result.parcelGeometry && !result.buildingGeometry) {
+    return null;
+  }
+  
+  return result;
+}
+
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
@@ -41,79 +253,114 @@ function writeJSON(filePath, obj) {
 }
 
 function normalizeSpaceType(value) {
-  if (value == null) return null;
-  const allowed = [
-    "Living Room",
-    "Family Room",
-    "Great Room",
-    "Dining Room",
-    "Kitchen",
-    "Breakfast Nook",
-    "Pantry",
-    "Primary Bedroom",
-    "Secondary Bedroom",
-    "Guest Bedroom",
-    "Children’s Bedroom",
-    "Nursery",
-    "Full Bathroom",
-    "Three-Quarter Bathroom",
-    "Half Bathroom / Powder Room",
-    "En-Suite Bathroom",
-    "Jack-and-Jill Bathroom",
-    "Primary Bathroom",
-    "Laundry Room",
-    "Mudroom",
-    "Closet",
-    "Bedroom",
-    "Walk-in Closet",
-    "Mechanical Room",
-    "Storage Room",
-    "Server/IT Closet",
-    "Home Office",
-    "Library",
-    "Den",
-    "Study",
-    "Media Room / Home Theater",
-    "Game Room",
-    "Home Gym",
-    "Music Room",
-    "Craft Room / Hobby Room",
-    "Prayer Room / Meditation Room",
-    "Safe Room / Panic Room",
-    "Wine Cellar",
-    "Bar Area",
-    "Greenhouse",
-    "Attached Garage",
-    "Detached Garage",
-    "Carport",
-    "Workshop",
-    "Storage Loft",
-    "Porch",
-    "Screened Porch",
-    "Sunroom",
-    "Deck",
-    "Patio",
-    "Pergola",
-    "Balcony",
-    "Terrace",
-    "Gazebo",
-    "Pool House",
-    "Outdoor Kitchen",
-    "Lobby / Entry Hall",
-    "Common Room",
-    "Utility Closet",
-    "Elevator Lobby",
-    "Mail Room",
-    "Janitor’s Closet",
-    "Pool Area",
-    "Indoor Pool",
-    "Outdoor Pool",
-    "Hot Tub / Spa Area",
-    "Shed",
-    null
-  ].filter(v => v !== null);
+  if (value == null) return 'MAPPING NOT AVAILABLE';
+  const allowed = Array.from(
+    new Set([
+      "Building",
+      "Living Room",
+      "Family Room",
+      "Great Room",
+      "Dining Room",
+      "Office Room",
+      "Conference Room",
+      "Class Room",
+      "Plant Floor",
+      "Kitchen",
+      "Breakfast Nook",
+      "Pantry",
+      "Primary Bedroom",
+      "Secondary Bedroom",
+      "Guest Bedroom",
+      "Children's Bedroom",
+      "Children’s Bedroom",
+      "Nursery",
+      "Full Bathroom",
+      "Three-Quarter Bathroom",
+      "Half Bathroom / Powder Room",
+      "En-Suite Bathroom",
+      "Jack-and-Jill Bathroom",
+      "Primary Bathroom",
+      "Laundry Room",
+      "Mudroom",
+      "Closet",
+      "Bedroom",
+      "Walk-in Closet",
+      "Mechanical Room",
+      "Storage Room",
+      "Server/IT Closet",
+      "Home Office",
+      "Library",
+      "Den",
+      "Study",
+      "Media Room / Home Theater",
+      "Game Room",
+      "Home Gym",
+      "Music Room",
+      "Craft Room / Hobby Room",
+      "Prayer Room / Meditation Room",
+      "Safe Room / Panic Room",
+      "Wine Cellar",
+      "Bar Area",
+      "Greenhouse",
+      "Attached Garage",
+      "Detached Garage",
+      "Carport",
+      "Workshop",
+      "Storage Loft",
+      "Porch",
+      "Screened Porch",
+      "Sunroom",
+      "Deck",
+      "Patio",
+      "Pergola",
+      "Balcony",
+      "Terrace",
+      "Gazebo",
+      "Pool House",
+      "Outdoor Kitchen",
+      "Lobby / Entry Hall",
+      "Common Room",
+      "Utility Closet",
+      "Elevator Lobby",
+      "Mail Room",
+      "Janitor's Closet",
+      "Janitor’s Closet",
+      "Pool Area",
+      "Indoor Pool",
+      "Outdoor Pool",
+      "Hot Tub / Spa Area",
+      "Shed",
+      "Lanai",
+      "Open Porch",
+      "Enclosed Porch",
+      "Attic",
+      "Enclosed Cabana",
+      "Attached Carport",
+      "Detached Carport",
+      "Detached Utility Closet",
+      "Jacuzzi",
+      "Courtyard",
+      "Open Courtyard",
+      "Screen Porch (1-Story)",
+      "Screen Enclosure (2-Story)",
+      "Screen Enclosure (3-Story)",
+      "Screen Enclosure (Custom)",
+      "Lower Garage",
+      "Lower Screened Porch",
+      "Stoop",
+      "First Floor",
+      "Second Floor",
+      "Third Floor",
+      "Fourth Floor",
+      "Floor",
+      "Basement",
+      "Sub-Basement",
+      "Living Area",
+      "Barn",
+    ]),
+  );
   const s = cleanText(String(value));
-  if (!s) return null;
+  if (!s) return 'MAPPING NOT AVAILABLE';
   const lower = s.toLowerCase();
 
   // Exact match against allowed (case-insensitive)
@@ -123,7 +370,7 @@ function normalizeSpaceType(value) {
 
   // Normalize straight/curly quotes and common punctuation
   const norm = lower
-    .replace(/[’']/g, "'")
+    .replace(/[']/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -163,11 +410,11 @@ function normalizeSpaceType(value) {
     ['guest bedroom', 'Guest Bedroom'],
     ['guest room', 'Guest Bedroom'],
 
-    ["children's bedroom", 'Children’s Bedroom'],
-    ['childrens bedroom', 'Children’s Bedroom'],
-    ['children’s bedroom', 'Children’s Bedroom'],
-    ['kids bedroom', 'Children’s Bedroom'],
-    ['child bedroom', 'Children’s Bedroom'],
+    ["children's bedroom", 'Children\'s Bedroom'],
+    ['childrens bedroom', 'Children\'s Bedroom'],
+    ["children's bedroom", 'Children\'s Bedroom'],
+    ['kids bedroom', 'Children\'s Bedroom'],
+    ['child bedroom', 'Children\'s Bedroom'],
 
     ['nursery', 'Nursery'],
 
@@ -323,9 +570,9 @@ function normalizeSpaceType(value) {
     ['mail room', 'Mail Room'],
     ['mailroom', 'Mail Room'],
 
-    ["janitor's closet", 'Janitor’s Closet'],
-    ['janitors closet', 'Janitor’s Closet'],
-    ['janitor’s closet', 'Janitor’s Closet'],
+    ["janitor's closet", 'Janitor\'s Closet'],
+    ['janitors closet', 'Janitor\'s Closet'],
+    ["janitor's closet", 'Janitor\'s Closet'],
 
     ['pool area', 'Pool Area'],
     ['pool deck', 'Pool Area'],
@@ -346,8 +593,8 @@ function normalizeSpaceType(value) {
 
   if (map.has(norm)) return map.get(norm);
 
-  // Not recognized; return null to satisfy schema
-  return null;
+  // Not recognized; return "MAPPING NOT AVAILABLE" so validation fails
+  return 'MAPPING NOT AVAILABLE';
 }
 
 function extractProperty($) {
@@ -357,26 +604,85 @@ function extractProperty($) {
   const strapMatch = parcelLabel.match(/STRAP:\s*([^\s]+)\s*/i);
   if (strapMatch) parcelIdentifier = cleanText(strapMatch[1]);
 
-  // legal description
+  // legal description - try multiple methods
   let legal = null;
-  $('#PropertyDetailsCurrent')
-    .find('.sectionSubTitle')
-    .each((i, el) => {
-      const t = cleanText($(el).text());
-      if (/Property Description/i.test(t)) {
-        const txt = cleanText($(el).next('.textPanel').text());
-        if (txt) legal = txt.replace(/\s+/g, ' ').trim();
+  
+  // Method 1: Look for Property Description section
+  $('.sectionSubTitle').each((i, el) => {
+    const t = cleanText($(el).text());
+    if (/Property Description/i.test(t)) {
+      const $next = $(el).next('.textPanel');
+      if ($next.length) {
+        const txt = cleanText($next.text());
+        if (txt && txt.trim().length > 0) {
+          legal = txt.replace(/\s+/g, ' ').trim();
+          return false; // break
+        }
+      }
+      // Also check if text is in the same element or siblings
+      const $siblings = $(el).siblings('.textPanel');
+      if ($siblings.length) {
+        const txt = cleanText($siblings.first().text());
+        if (txt && txt.trim().length > 0) {
+          legal = txt.replace(/\s+/g, ' ').trim();
+          return false;
+        }
+      }
+    }
+  });
+  
+  // Method 2: Look in PropertyDetailsCurrent
+  if (!legal) {
+    $('#PropertyDetailsCurrent')
+      .find('.sectionSubTitle')
+      .each((i, el) => {
+        const t = cleanText($(el).text());
+        if (/Property Description/i.test(t)) {
+          const txt = cleanText($(el).next('.textPanel').text());
+          if (txt && txt.trim().length > 0) {
+            legal = txt.replace(/\s+/g, ' ').trim();
+            return false;
+          }
+        }
+      });
+  }
+  
+  // Method 3: Look for textPanel after sectionSubTitle containing "Property Description"
+  if (!legal) {
+    $('div.sectionSubTitle').each((i, el) => {
+      const text = cleanText($(el).text());
+      if (/Property Description/i.test(text)) {
+        const $textPanel = $(el).nextAll('.textPanel').first();
+        if ($textPanel.length) {
+          const txt = cleanText($textPanel.text());
+          if (txt && txt.trim().length > 0) {
+            legal = txt.replace(/\s+/g, ' ').trim();
+            return false;
+          }
+        }
       }
     });
-  if (!legal) {
-    // fallback to the earlier property description section inside the top box
-    const section = $('div.sectionSubTitle:contains("Property Description")');
-    const txt = cleanText(section.next('.textPanel').text());
-    if (txt) legal = txt;
   }
+  
+  // Method 4: Look for any textPanel with substantial content near Property Description
+  if (!legal) {
+    $('div.sectionSubTitle:contains("Property Description")').each((i, el) => {
+      const $panel = $(el).next('.textPanel');
+      if ($panel.length) {
+        const txt = cleanText($panel.text());
+        if (txt && txt.trim().length > 10) { // At least 10 chars
+          legal = txt.replace(/\s+/g, ' ').trim();
+          return false;
+        }
+      }
+    });
+  }
+  
   if (legal) {
-    // normalize spacing
-    legal = legal.replace(/\s{2,}/g, ' ');
+    // normalize spacing and remove excessive whitespace
+    legal = legal.replace(/\s{2,}/g, ' ').trim();
+    // Remove common disclaimer text
+    legal = legal.replace(/NOTE:.*?should not be used.*?\./gi, '').trim();
   }
 
   // Gross Living Area: prefer explicit th contains selector
@@ -445,7 +751,7 @@ function extractProperty($) {
   let rawModelType = null;
 
   // Extract living units and model type from building characteristics
-  $('table.appraisalAttributes').each((_, table) => {
+  $('table.appraisalAttributes, table.appraisalDetails').each((_, table) => {
     const rows = $(table).find('tr');
     rows.each((i, row) => {
       const cells = $(row).find('td, th');
@@ -475,57 +781,36 @@ function extractProperty($) {
     });
   });
 
-  // Extract Use Code Description from Land Tracts table as fallback
+  // Extract Use Code Description from Land Tracts table or other locations
   let useCodeDescription = null;
   let rawUseCodeDescription = null;
 
-  const sections = $('#PropertyDetailsCurrent, #PropertyDetails');
-  sections.each((_, section) => {
-    $(section).find('table.appraisalAttributes').each((_, table) => {
-      $(table).find('tr').each((_, row) => {
-        const cells = $(row).find('td, th');
-        if (cells.length >= 1 && cleanText($(cells[0]).text()).toLowerCase().includes('land tracts')) {
-          let headerRow = null;
-          const dataRows = [];
-
-          let currentRow = $(row).next();
-          while (currentRow.length) {
-            const rowCells = currentRow.find('td, th');
-            if (!rowCells.length) break;
-
-            if (rowCells.toArray().some(cell => cleanText($(cell).text()).toLowerCase().includes('use code description'))) {
-              headerRow = currentRow;
-            } else if (headerRow && rowCells.length) {
-              dataRows.push(currentRow);
-            } else if (dataRows.length > 0 && !rowCells.toArray().some(cell => cleanText($(cell).text()))) {
-              break;
-            }
-
-            currentRow = currentRow.next();
-          }
-
-          if (headerRow && dataRows.length) {
-            const headerCells = headerRow.find('td, th');
-            const headers = headerCells.toArray().map(cell => cleanText($(cell).text()).toLowerCase());
-
-            let descColIndex = null;
-            headers.forEach((header, i) => {
-              if (header.includes('use code description')) {
-                descColIndex = i;
-              }
-            });
-
-            if (descColIndex !== null && dataRows.length) {
-              const firstDataRow = dataRows[0];
-              const dataCells = firstDataRow.find('td, th');
-              if (descColIndex < dataCells.length) {
-                rawUseCodeDescription = cleanText($(dataCells[descColIndex]).text());
-                useCodeDescription = rawUseCodeDescription.toLowerCase();
-
-                console.log(`Use Code Description: "${rawUseCodeDescription}"`);
-                console.log(`Use Code Description (lowercase): "${useCodeDescription}"`);
-
-                return false;
+  // Method 1: Look for "Use Code" or "Land Use" in any table
+  let foundUseCode = false;
+  $('table').each((_, table) => {
+    if (foundUseCode) return false;
+    $(table).find('tr').each((_, row) => {
+      if (foundUseCode) return false;
+      const cells = $(row).find('td, th');
+      cells.each((_, cell) => {
+        if (foundUseCode) return false;
+        const text = cleanText($(cell).text()).toLowerCase();
+        if (text.includes('use code') || text.includes('land use') || text.includes('use code description')) {
+          // Found a header, look for data in next row or same row
+          const $nextRow = $(row).next();
+          if ($nextRow.length) {
+            const dataCells = $nextRow.find('td, th');
+            const cellIndex = $(cell).index();
+            if (cellIndex < dataCells.length) {
+              let dataText = cleanText($(dataCells[cellIndex]).text());
+              // Remove leading numbers and dashes (e.g., "100 - Single Family Residential" -> "Single Family Residential")
+              dataText = dataText.replace(/^\d+\s*[-–]\s*/, '').trim();
+              if (dataText && dataText.trim().length > 0 && /[a-zA-Z]/.test(dataText)) {
+                rawUseCodeDescription = dataText;
+                useCodeDescription = dataText.toLowerCase();
+                console.log(`Found Use Code Description (Method 1): "${rawUseCodeDescription}"`);
+                foundUseCode = true;
+                return false; // break this loop
               }
             }
           }
@@ -533,6 +818,166 @@ function extractProperty($) {
       });
     });
   });
+
+  // Method 2: Look in Land Tracts table (original method)
+  if (!useCodeDescription) {
+    const sections = $('#PropertyDetailsCurrent, #PropertyDetails');
+    sections.each((_, section) => {
+      $(section).find('table.appraisalAttributes, table.appraisalDetails').each((_, table) => {
+        // First, check if this table has "Land Tracts" header
+        const hasLandTracts = $(table).text().toLowerCase().includes('land tracts');
+        if (!hasLandTracts) return; // Skip tables without Land Tracts
+        
+        // Look for header row with "Use Code Description"
+        let useCodeDescColIndex = null;
+        let foundHeader = false;
+        $(table).find('tr').each(function() {
+          if (foundHeader) return false;
+          const cells = $(this).find('th, td');
+          cells.each(function(idx) {
+            const cellText = cleanText($(this).text()).toLowerCase();
+            if (cellText.includes('use code description')) {
+              useCodeDescColIndex = idx;
+              foundHeader = true;
+              return false; // break
+            }
+          });
+          if (useCodeDescColIndex !== null) return false; // break
+        });
+        
+        // If we found the column, get the value from the data row
+        if (useCodeDescColIndex !== null) {
+          let foundValue = false;
+          $(table).find('tr').each(function() {
+            if (foundValue) return false;
+            const cells = $(this).find('td');
+            if (cells.length > useCodeDescColIndex) {
+              let cellText = cleanText($(cells[useCodeDescColIndex]).text());
+              // Remove leading numbers and dashes (e.g., "100 - Single Family Residential" -> "Single Family Residential")
+              cellText = cellText.replace(/^\d+\s*[-–]\s*/, '').trim();
+              // Check if this looks like a use code description (not a number, not empty, has letters)
+              if (cellText && cellText.trim().length > 0 && !/^\d+$/.test(cellText.trim()) && /[a-zA-Z]/.test(cellText)) {
+                rawUseCodeDescription = cellText;
+                useCodeDescription = cellText.toLowerCase();
+                console.log(`Found Use Code Description (Method 2): "${rawUseCodeDescription}"`);
+                foundValue = true;
+                return false; // break
+              }
+            }
+          });
+          if (foundValue) return false; // break outer loop
+        }
+        
+        // Fallback: old method
+        $(table).find('tr').each((_, row) => {
+          const cells = $(row).find('td, th');
+          if (cells.length >= 1 && cleanText($(cells[0]).text()).toLowerCase().includes('land tracts')) {
+            let headerRow = null;
+            const dataRows = [];
+
+            let currentRow = $(row).next();
+            while (currentRow.length) {
+              const rowCells = currentRow.find('td, th');
+              if (!rowCells.length) break;
+
+              const hasUseCodeHeader = rowCells.toArray().some(function(cell) {
+              return cleanText($(cell).text()).toLowerCase().includes('use code description');
+            });
+              if (hasUseCodeHeader) {
+                headerRow = currentRow;
+              } else if (headerRow && rowCells.length) {
+                dataRows.push(currentRow);
+              } else if (dataRows.length > 0 && !rowCells.toArray().some(function(cell) {
+                return cleanText($(cell).text());
+              })) {
+                break;
+              }
+
+              currentRow = currentRow.next();
+            }
+
+            if (headerRow && dataRows.length) {
+              const headerCells = headerRow.find('td, th');
+              const headers = headerCells.toArray().map(function(cell) {
+                return cleanText($(cell).text()).toLowerCase();
+              });
+
+              let descColIndex = null;
+              headers.forEach((header, i) => {
+                if (header.includes('use code description')) {
+                  descColIndex = i;
+                }
+              });
+
+              if (descColIndex !== null && dataRows.length) {
+                const firstDataRow = dataRows[0];
+                const dataCells = firstDataRow.find('td, th');
+                if (descColIndex < dataCells.length) {
+                  let cellText = cleanText($(dataCells[descColIndex]).text());
+                  // Remove leading numbers and dashes (e.g., "100 - Single Family Residential" -> "Single Family Residential")
+                  cellText = cellText.replace(/^\d+\s*[-–]\s*/, '').trim();
+                  rawUseCodeDescription = cellText;
+                  useCodeDescription = rawUseCodeDescription.toLowerCase();
+
+                  console.log(`Use Code Description: "${rawUseCodeDescription}"`);
+                  console.log(`Use Code Description (lowercase): "${useCodeDescription}"`);
+
+                  return false;
+                }
+              }
+            }
+          }
+        });
+      });
+    });
+  }
+  
+  // Method 3: Look for use code in certified roll data or other sections
+  if (!useCodeDescription) {
+    $('.certifiedRollData, .appraisalDetails').each((_, el) => {
+      const text = $(el).text();
+      const useCodeMatch = text.match(/Use\s+Code[:\s]+([^\n]+)/i);
+      if (useCodeMatch) {
+        let cellText = cleanText(useCodeMatch[1]);
+        // Remove leading numbers and dashes
+        cellText = cellText.replace(/^\d+\s*[-–]\s*/, '').trim();
+        rawUseCodeDescription = cellText;
+        useCodeDescription = rawUseCodeDescription.toLowerCase();
+        console.log(`Found Use Code Description (Method 3): "${rawUseCodeDescription}"`);
+        return false;
+      }
+    });
+  }
+
+  // Extract Improvement Type (for fallback mapping)
+  let improvementType = null;
+  $('table.appraisalAttributes, table.appraisalDetails').each(function () {
+    if (improvementType) return false;
+    const $table = $(this);
+    $table.find('tr').each(function () {
+      if (improvementType) return false;
+      const ths = $(this).find('th');
+      if (ths.length && /Improvement Type/i.test(cleanText($(ths[0]).text()))) {
+        const nextRow = $(this).next();
+        if (nextRow && nextRow.length) {
+          const tds = nextRow.find('td, th');
+          if (tds.length) {
+            const text = cleanText($(tds[0]).text());
+            if (text) {
+              improvementType = text;
+              console.log(`Found Improvement Type: "${improvementType}"`);
+              return false;
+            }
+          }
+        }
+      }
+      return undefined;
+    });
+    return undefined;
+  });
+  if (!improvementType) {
+    console.log('Improvement Type not found');
+  }
 
   // Map living units to number_of_units_type
   let numberOfUnitsType = 'One'; // default
@@ -860,15 +1305,337 @@ function tryMapPropertyType(typeText, rawValue) {
     });
   }
 
+  // Map property_type to only 4 allowed values: LandParcel, Building, Unit, ManufacturedHome
+  let mappedPropertyType = null;
+  if (propertyType) {
+    const lowerType = String(propertyType).toLowerCase();
+    if (lowerType.includes('vacant') || lowerType.includes('land')) {
+      mappedPropertyType = 'LandParcel';
+    } else if (lowerType.includes('manufactured') || lowerType.includes('mobile')) {
+      mappedPropertyType = 'ManufacturedHome';
+    } else if (lowerType.includes('condominium') || lowerType.includes('cooperative') || lowerType.includes('unit')) {
+      mappedPropertyType = 'Unit';
+    } else {
+      // Default to Building for residential structures
+      mappedPropertyType = 'Building';
+    }
+  } else {
+    // Default fallback
+    mappedPropertyType = 'Building';
+  }
+
+  // Extract land use code for structure_form, property_usage_type, build_status, ownership_estate_type
+  // The useCodeDescription was already extracted above
+  let structureForm = null;
+  let propertyUsageType = null;
+  let buildStatus = null;
+  let ownershipEstateType = null;
+
+  console.log(`DEBUG: useCodeDescription = "${useCodeDescription}"`);
+  console.log(`DEBUG: rawUseCodeDescription = "${rawUseCodeDescription}"`);
+
+  if (useCodeDescription) {
+    const lowerUseCode = useCodeDescription.toLowerCase();
+    console.log(`DEBUG: lowerUseCode = "${lowerUseCode}"`);
+    
+    // Map build_status
+    if (lowerUseCode.includes('vacant')) {
+      buildStatus = 'VacantLand';
+    } else if (lowerUseCode.includes('under construction') || lowerUseCode.includes('construction')) {
+      buildStatus = 'UnderConstruction';
+    } else {
+      buildStatus = 'Improved';
+    }
+
+    // Map structure_form from use code description
+    // Check in order of specificity (most specific first)
+    console.log(`DEBUG: Mapping structure_form from: "${lowerUseCode}"`);
+    if (lowerUseCode.includes('manufactured') || lowerUseCode.includes('mobile home')) {
+      if (lowerUseCode.includes('park') || lowerUseCode.includes('mobile home park')) {
+        structureForm = 'ManufacturedHomeInPark';
+      } else {
+        structureForm = 'ManufacturedHomeOnLand';
+      }
+    } else if (lowerUseCode.includes('modular')) {
+      structureForm = 'Modular';
+    } else if (lowerUseCode.includes('single family') && (lowerUseCode.includes('attached') || lowerUseCode.includes('semi') || lowerUseCode.includes('semi-detached'))) {
+      structureForm = 'SingleFamilySemiDetached';
+    } else if (lowerUseCode.includes('single family') && !lowerUseCode.includes('attached')) {
+      structureForm = 'SingleFamilyDetached';
+    } else if (lowerUseCode.includes('townhouse') || lowerUseCode.includes('town house') || lowerUseCode.includes('townhome') || lowerUseCode.includes('rowhouse') || lowerUseCode.includes('row house')) {
+      structureForm = 'TownhouseRowhouse';
+    } else if (lowerUseCode.includes('duplex') || lowerUseCode.includes('2 unit') || lowerUseCode.includes('two unit')) {
+      structureForm = 'Duplex';
+    } else if (lowerUseCode.includes('triplex') || lowerUseCode.includes('3 unit') || lowerUseCode.includes('three unit')) {
+      structureForm = 'Triplex';
+    } else if (lowerUseCode.includes('fourplex') || lowerUseCode.includes('4 unit') || lowerUseCode.includes('four unit') || lowerUseCode.includes('quadplex')) {
+      structureForm = 'Quadplex';
+    } else if (lowerUseCode.includes('multi-family') || lowerUseCode.includes('multifamily') || lowerUseCode.includes('multi family')) {
+      // Check for more than 10 units first (most specific)
+      if (lowerUseCode.includes('more than 10') || lowerUseCode.includes('10+') || lowerUseCode.includes('11') || lowerUseCode.includes('12') || lowerUseCode.includes('15') || lowerUseCode.includes('20')) {
+        structureForm = 'MultiFamilyMoreThan10';
+      } else if (lowerUseCode.includes('5') || lowerUseCode.includes('6') || lowerUseCode.includes('7') || lowerUseCode.includes('8') || lowerUseCode.includes('9') || lowerUseCode.includes('10') || lowerUseCode.includes('more than 5') || lowerUseCode.includes('5+')) {
+        structureForm = 'MultiFamily5Plus';
+      } else if (lowerUseCode.includes('less than 10') || lowerUseCode.includes('less than 5') || lowerUseCode.includes('<10') || lowerUseCode.includes('<5')) {
+        structureForm = 'MultiFamilyLessThan10';
+      } else {
+        // Default for multi-family without specific count
+        structureForm = 'MultiFamilyLessThan10';
+      }
+    } else if (lowerUseCode.includes('apartment') || lowerUseCode.includes('apt')) {
+      structureForm = 'ApartmentUnit';
+    } else if (lowerUseCode.includes('loft')) {
+      structureForm = 'Loft';
+    }
+
+    // Map property_usage_type from use code description
+    // Check in order of specificity (most specific first)
+    console.log(`DEBUG: Mapping property_usage_type from: "${lowerUseCode}"`);
+    if (lowerUseCode.includes('retail store') || lowerUseCode.includes('retail shop')) {
+      propertyUsageType = 'RetailStore';
+    } else if (lowerUseCode.includes('department store')) {
+      propertyUsageType = 'DepartmentStore';
+    } else if (lowerUseCode.includes('supermarket') || lowerUseCode.includes('grocery store')) {
+      propertyUsageType = 'Supermarket';
+    } else if (lowerUseCode.includes('shopping center') || lowerUseCode.includes('shopping mall')) {
+      if (lowerUseCode.includes('regional')) {
+        propertyUsageType = 'ShoppingCenterRegional';
+      } else {
+        propertyUsageType = 'ShoppingCenterCommunity';
+      }
+    } else if (lowerUseCode.includes('office building') || lowerUseCode.includes('office complex')) {
+      propertyUsageType = 'OfficeBuilding';
+    } else if (lowerUseCode.includes('medical office') || lowerUseCode.includes('doctor office') || lowerUseCode.includes('clinic')) {
+      propertyUsageType = 'MedicalOffice';
+    } else if (lowerUseCode.includes('restaurant') || lowerUseCode.includes('cafe') || lowerUseCode.includes('diner')) {
+      propertyUsageType = 'Restaurant';
+    } else if (lowerUseCode.includes('hotel') || lowerUseCode.includes('motel') || lowerUseCode.includes('inn')) {
+      propertyUsageType = 'Hotel';
+    } else if (lowerUseCode.includes('golf course')) {
+      propertyUsageType = 'GolfCourse';
+    } else if (lowerUseCode.includes('warehouse') || lowerUseCode.includes('storage facility')) {
+      propertyUsageType = 'Warehouse';
+    } else if (lowerUseCode.includes('manufacturing') || lowerUseCode.includes('factory')) {
+      if (lowerUseCode.includes('heavy') || lowerUseCode.includes('heavy manufacturing')) {
+        propertyUsageType = 'HeavyManufacturing';
+      } else {
+        propertyUsageType = 'LightManufacturing';
+      }
+    } else if (lowerUseCode.includes('school')) {
+      if (lowerUseCode.includes('public') || lowerUseCode.includes('public school')) {
+        propertyUsageType = 'PublicSchool';
+      } else {
+        propertyUsageType = 'PrivateSchool';
+      }
+    } else if (lowerUseCode.includes('hospital')) {
+      if (lowerUseCode.includes('public') || lowerUseCode.includes('public hospital')) {
+        propertyUsageType = 'PublicHospital';
+      } else {
+        propertyUsageType = 'PrivateHospital';
+      }
+    } else if (lowerUseCode.includes('church') || lowerUseCode.includes('temple') || lowerUseCode.includes('mosque') || lowerUseCode.includes('synagogue')) {
+      propertyUsageType = 'Church';
+    } else if (lowerUseCode.includes('mobile home park') || lowerUseCode.includes('trailer park')) {
+      propertyUsageType = 'MobileHomePark';
+    } else if (lowerUseCode.includes('service station') || lowerUseCode.includes('gas station')) {
+      propertyUsageType = 'ServiceStation';
+    } else if (lowerUseCode.includes('auto sales') || lowerUseCode.includes('car dealership') || lowerUseCode.includes('auto repair')) {
+      propertyUsageType = 'AutoSalesRepair';
+    } else if (lowerUseCode.includes('financial') || lowerUseCode.includes('bank') || lowerUseCode.includes('credit union')) {
+      propertyUsageType = 'FinancialInstitution';
+    } else if (lowerUseCode.includes('theater') || lowerUseCode.includes('cinema') || lowerUseCode.includes('movie theater')) {
+      propertyUsageType = 'Theater';
+    } else if (lowerUseCode.includes('entertainment') || lowerUseCode.includes('amusement')) {
+      propertyUsageType = 'Entertainment';
+    } else if (lowerUseCode.includes('nursery') || lowerUseCode.includes('greenhouse')) {
+      propertyUsageType = 'NurseryGreenhouse';
+    } else if (lowerUseCode.includes('vineyard') || lowerUseCode.includes('winery')) {
+      propertyUsageType = 'VineyardWinery';
+    } else if (lowerUseCode.includes('data center') || lowerUseCode.includes('datacenter')) {
+      propertyUsageType = 'DataCenter';
+    } else if (lowerUseCode.includes('solar') || lowerUseCode.includes('solar farm')) {
+      propertyUsageType = 'SolarFarm';
+    } else if (lowerUseCode.includes('wind') || lowerUseCode.includes('wind farm')) {
+      propertyUsageType = 'WindFarm';
+    } else if (lowerUseCode.includes('residential') || lowerUseCode.includes('single family') || lowerUseCode.includes('multi-family') || lowerUseCode.includes('multifamily') || lowerUseCode.includes('condominium') || lowerUseCode.includes('condo') || lowerUseCode.includes('townhouse') || lowerUseCode.includes('town house')) {
+      propertyUsageType = 'Residential';
+    } else if (lowerUseCode.includes('commercial') || lowerUseCode.includes('retail') || lowerUseCode.includes('office') || lowerUseCode.includes('store') || lowerUseCode.includes('business')) {
+      propertyUsageType = 'Commercial';
+    } else if (lowerUseCode.includes('industrial') || lowerUseCode.includes('manufacturing')) {
+      propertyUsageType = 'Industrial';
+    } else if (lowerUseCode.includes('agricultural') || lowerUseCode.includes('farm') || lowerUseCode.includes('grove') || lowerUseCode.includes('orchard') || lowerUseCode.includes('pasture') || lowerUseCode.includes('timber') || lowerUseCode.includes('cropland') || lowerUseCode.includes('hay') || lowerUseCode.includes('grazing') || lowerUseCode.includes('livestock') || lowerUseCode.includes('poultry')) {
+      // More specific agricultural types
+      if (lowerUseCode.includes('cropland') || lowerUseCode.includes('crop land')) {
+        if (lowerUseCode.includes('class 2') || lowerUseCode.includes('class2')) {
+          propertyUsageType = 'CroplandClass2';
+        } else if (lowerUseCode.includes('class 3') || lowerUseCode.includes('class3')) {
+          propertyUsageType = 'CroplandClass3';
+        } else {
+          propertyUsageType = 'DrylandCropland';
+        }
+      } else if (lowerUseCode.includes('hay') || lowerUseCode.includes('meadow')) {
+        propertyUsageType = 'HayMeadow';
+      } else if (lowerUseCode.includes('timber') || lowerUseCode.includes('forest')) {
+        propertyUsageType = 'TimberLand';
+      } else if (lowerUseCode.includes('grazing') || lowerUseCode.includes('range')) {
+        if (lowerUseCode.includes('improved') || lowerUseCode.includes('native')) {
+          propertyUsageType = lowerUseCode.includes('improved') ? 'ImprovedPasture' : 'NativePasture';
+        } else {
+          propertyUsageType = 'GrazingLand';
+        }
+      } else if (lowerUseCode.includes('orchard') || lowerUseCode.includes('grove')) {
+        propertyUsageType = 'OrchardGroves';
+      } else if (lowerUseCode.includes('poultry')) {
+        propertyUsageType = 'Poultry';
+      } else if (lowerUseCode.includes('livestock')) {
+        propertyUsageType = 'LivestockFacility';
+      } else {
+        propertyUsageType = 'Agricultural';
+      }
+    } else if (lowerUseCode.includes('recreational') || lowerUseCode.includes('golf') || lowerUseCode.includes('park') || lowerUseCode.includes('recreation')) {
+      propertyUsageType = 'Recreational';
+    } else if (lowerUseCode.includes('conservation') || lowerUseCode.includes('preserve') || lowerUseCode.includes('conservation')) {
+      propertyUsageType = 'Conservation';
+    } else if (lowerUseCode.includes('retirement') || lowerUseCode.includes('retirement home') || lowerUseCode.includes('senior')) {
+      propertyUsageType = 'Retirement';
+    }
+    
+    console.log(`DEBUG: Mapped structureForm = "${structureForm}"`);
+    console.log(`DEBUG: Mapped propertyUsageType = "${propertyUsageType}"`);
+
+    // Map ownership_estate_type from use code description
+    if (lowerUseCode.includes('condominium') || lowerUseCode.includes('condo')) {
+      ownershipEstateType = 'Condominium';
+    } else if (lowerUseCode.includes('cooperative') || lowerUseCode.includes('co-op')) {
+      ownershipEstateType = 'Cooperative';
+    } else if (lowerUseCode.includes('timeshare') || lowerUseCode.includes('interval ownership')) {
+      ownershipEstateType = 'Timeshare';
+    } else if (lowerUseCode.includes('lease') || lowerUseCode.includes('leasehold')) {
+      ownershipEstateType = 'Leasehold';
+    } else {
+      // Default to FeeSimple for most properties
+      ownershipEstateType = 'FeeSimple';
+    }
+  }
+
+  // Fallback mapping using Improvement Type when use code description mapping fails
+  if (!structureForm && improvementType) {
+    const normalizedImprovement = improvementType.replace(/^\d+\s*[-–]\s*/, '').trim();
+    const lowerImp = normalizedImprovement.toLowerCase();
+    console.log(`DEBUG: Fallback mapping structure_form from improvementType: "${normalizedImprovement}"`);
+
+    if (lowerImp.includes('manufactured') || lowerImp.includes('mobile home')) {
+      if (lowerImp.includes('park')) {
+        structureForm = 'ManufacturedHomeInPark';
+      } else {
+        structureForm = 'ManufacturedHomeOnLand';
+      }
+    } else if (lowerImp.includes('modular')) {
+      structureForm = 'Modular';
+    } else if (lowerImp.includes('single') && lowerImp.includes('family')) {
+      if (lowerImp.includes('attached') || lowerImp.includes('semi')) {
+        structureForm = 'SingleFamilySemiDetached';
+      } else {
+        structureForm = 'SingleFamilyDetached';
+      }
+    } else if (lowerImp.includes('ranch') || lowerImp.includes('bungalow') || lowerImp.includes('cottage')) {
+      structureForm = 'SingleFamilyDetached';
+    } else if (lowerImp.includes('town') || lowerImp.includes('row') || lowerImp.includes('twnh')) {
+      structureForm = 'TownhouseRowhouse';
+    } else if (lowerImp.includes('duplex') || lowerImp.includes('2 unit') || lowerImp.includes('two unit')) {
+      structureForm = 'Duplex';
+    } else if (lowerImp.includes('triplex') || lowerImp.includes('3 unit') || lowerImp.includes('three unit')) {
+      structureForm = 'Triplex';
+    } else if (lowerImp.includes('fourplex') || lowerImp.includes('quad') || lowerImp.includes('4 unit') || lowerImp.includes('four unit')) {
+      structureForm = 'Quadplex';
+    } else if (lowerImp.includes('multi') || lowerImp.includes('apartment') || lowerImp.includes('apt')) {
+      // If improvement type indicates multi-family or apartments, default to MultiFamily5Plus unless otherwise specified
+      if (lowerImp.includes('more than 10') || lowerImp.includes('10+')) {
+        structureForm = 'MultiFamilyMoreThan10';
+      } else if (lowerImp.includes('5') || lowerImp.includes('6') || lowerImp.includes('7') || lowerImp.includes('8') || lowerImp.includes('9')) {
+        structureForm = 'MultiFamily5Plus';
+      } else {
+        structureForm = 'ApartmentUnit';
+      }
+    }
+
+    console.log(`DEBUG: Fallback structureForm result = "${structureForm}"`);
+  }
+
+  if (!propertyUsageType) {
+    const residentialForms = new Set([
+      'SingleFamilyDetached',
+      'SingleFamilySemiDetached',
+      'TownhouseRowhouse',
+      'Duplex',
+      'Triplex',
+      'Quadplex',
+      'MultiFamily5Plus',
+      'MultiFamilyMoreThan10',
+      'MultiFamilyLessThan10',
+      'ApartmentUnit',
+      'Loft',
+      'ManufacturedHomeOnLand',
+      'ManufacturedHomeInPark',
+      'Modular'
+    ]);
+
+    if (structureForm && residentialForms.has(structureForm)) {
+      propertyUsageType = 'Residential';
+      console.log('DEBUG: Fallback property_usage_type set to "Residential" based on structure_form');
+    } else if (improvementType) {
+      const normalizedImprovement = improvementType.replace(/^\d+\s*[-–]\s*/, '').trim();
+      const lowerImp = normalizedImprovement.toLowerCase();
+      console.log(`DEBUG: Fallback mapping property_usage_type from improvementType: "${normalizedImprovement}"`);
+
+      if (lowerImp.includes('commercial') || lowerImp.includes('retail') || lowerImp.includes('store') || lowerImp.includes('shop') || lowerImp.includes('office')) {
+        propertyUsageType = 'Commercial';
+      } else if (lowerImp.includes('industrial') || lowerImp.includes('manufacturing') || lowerImp.includes('warehouse') || lowerImp.includes('plant')) {
+        propertyUsageType = 'Industrial';
+      } else if (lowerImp.includes('school')) {
+        propertyUsageType = 'PublicSchool';
+      } else if (lowerImp.includes('hospital')) {
+        propertyUsageType = 'PublicHospital';
+      } else if (lowerImp.includes('church') || lowerImp.includes('temple') || lowerImp.includes('mosque') || lowerImp.includes('synagogue')) {
+        propertyUsageType = 'Church';
+      } else if (lowerImp.includes('mobile home park') || lowerImp.includes('trailer park')) {
+        propertyUsageType = 'MobileHomePark';
+      } else if (lowerImp.includes('golf')) {
+        propertyUsageType = 'GolfCourse';
+      } else if (lowerImp.includes('hotel') || lowerImp.includes('motel') || lowerImp.includes('inn')) {
+        propertyUsageType = 'Hotel';
+      } else if (lowerImp.includes('restaurant') || lowerImp.includes('cafe') || lowerImp.includes('diner')) {
+        propertyUsageType = 'Restaurant';
+      } else if (lowerImp.includes('residential') || lowerImp.includes('single family') || lowerImp.includes('duplex') || lowerImp.includes('triplex') || lowerImp.includes('quadplex') || lowerImp.includes('apartment')) {
+        propertyUsageType = 'Residential';
+      }
+
+      if (propertyUsageType) {
+        console.log(`DEBUG: Fallback property_usage_type result = "${propertyUsageType}"`);
+      }
+    }
+  }
+
+  if (!structureForm) {
+    structureForm = 'MAPPING NOT AVAILABLE';
+  }
+  if (!propertyUsageType) {
+    propertyUsageType = 'MAPPING NOT AVAILABLE';
+  }
+  if (!ownershipEstateType) {
+    ownershipEstateType = 'MAPPING NOT AVAILABLE';
+  }
+
   const property = {
-    area_under_air: gla || null,
-    livable_floor_area: gla || null,
-    number_of_units_type: numberOfUnitsType,
     parcel_identifier: parcelIdentifier || null,
     property_legal_description_text: legal || null,
     property_structure_built_year: yearBuilt || null,
-    property_type: propertyType || 'SingleFamily', // fallback to SingleFamily
+    property_type: mappedPropertyType,
     subdivision: subdivision || null,
+    structure_form: structureForm,
+    property_usage_type: propertyUsageType,
+    build_status: buildStatus,
+    ownership_estate_type: ownershipEstateType,
   };
   return property;
 }
@@ -1196,26 +1963,20 @@ function extractAddress($, unAddr) {
       }
     });
 
+  // Use unnormalized_address format - cannot have both parsed fields and unnormalized_address
+  const unnormalizedAddr = unAddr && unAddr.full_address ? unAddr.full_address : 
+    (line1 && cityStateZip ? `${line1}, ${cityStateZip}` : null);
+  
   const address = {
-    block: block || null,
-    city_name: city_name || null,
-    country_code: null,
+    source_http_request: unAddr && unAddr.source_http_request ? unAddr.source_http_request : null,
+    request_identifier: unAddr && unAddr.request_identifier ? unAddr.request_identifier : null,
     county_name: "Lee",
-    latitude: latitude != null ? latitude : null,
-    longitude: longitude != null ? longitude : null,
+    unnormalized_address: unnormalizedAddr,
+    latitude: null,
+    longitude: null,
+    city_name: null,
+    country_code: null,
     plus_four_postal_code: null,
-    postal_code: postal_code || null,
-    range: range || null,
-    route_number: null,
-    section: section || null,
-    state_code: state_code || null,
-    street_name: street_name || null,
-    street_number: street_number || null,
-    street_post_directional_text: street_post_directional_text || null,
-    street_pre_directional_text: street_pre_directional_text || null,
-    street_suffix_type: street_suffix_type || null,
-    unit_identifier: null,
-    township: township || null,
   };
   return address;
 }
@@ -1280,6 +2041,135 @@ function extractSales($) {
     });
   });
   return out;
+}
+
+function parseCompletionDateFromYear(value) {
+  if (!value) return null;
+  const year = parseInt(String(value).trim(), 10);
+  if (!Number.isNaN(year) && year >= 1800 && year <= 2100) {
+    return `${year.toString().padStart(4, '0')}-01-01`;
+  }
+  return null;
+}
+
+const PROPERTY_IMPROVEMENT_TYPE_PATTERNS = [
+  { type: 'LandscapeIrrigation', patterns: [/irrigation/i, /sprinkler/i, /landscape/i, /lawn/i] },
+  { type: 'PoolSpaInstallation', patterns: [/pool/i, /spa/i, /jacuzzi/i, /hot tub/i] },
+  { type: 'ScreenEnclosure', patterns: [/screen/i, /enclosure/i] },
+  { type: 'ShutterAwning', patterns: [/shutter/i, /awning/i] },
+  { type: 'Fencing', patterns: [/fence/i, /gate/i] },
+  { type: 'DockAndShore', patterns: [/dock/i, /seawall/i, /pier/i, /boathouse/i, /bulkhead/i] },
+  { type: 'Roofing', patterns: [/roof/i] },
+  { type: 'Solar', patterns: [/solar/i, /photovoltaic/i] },
+  { type: 'DrivewayPermit', patterns: [/driveway/i, /sidewalk/i, /paver/i, /paving/i, /culvert/i] },
+  { type: 'ExteriorOpeningsAndFinishes', patterns: [/porch/i, /deck/i, /patio/i, /lanai/i, /balcony/i, /terrace/i, /gazebo/i, /pergola/i] },
+  { type: 'MechanicalHVAC', patterns: [/hvac/i, /mechanical/i] },
+  { type: 'Electrical', patterns: [/electrical/i] },
+  { type: 'Plumbing', patterns: [/plumb/i] },
+  { type: 'GasInstallation', patterns: [/gas/i] },
+  { type: 'BuildingAddition', patterns: [/addition/i, /add-on/i] },
+  { type: 'Demolition', patterns: [/demolition/i, /\bdemo\b/i, /remove/i] },
+];
+
+function mapImprovementTypeFromDescription(description, context) {
+  const text = description.toLowerCase();
+  for (const entry of PROPERTY_IMPROVEMENT_TYPE_PATTERNS) {
+    if (entry.patterns.some((pattern) => pattern.test(text))) {
+      return entry.type;
+    }
+  }
+  if (context && /land/i.test(context)) {
+    return 'LandscapeIrrigation';
+  }
+  return 'GeneralBuilding';
+}
+
+function normalizePermitUrl(url) {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  if (url.startsWith('/')) {
+    return `https://www.leepa.org${url}`;
+  }
+  return `https://www.leepa.org/${url.replace(/^\.\//, '')}`;
+}
+
+function extractPropertyImprovements($) {
+  const improvements = [];
+  const seen = new Set();
+
+  const permitTable = $('#PermitDetails table.detailsTable');
+  if (permitTable.length) {
+    permitTable.find('tr').each((i, row) => {
+      if (i === 0) return;
+
+      const cells = $(row).find('td');
+      if (cells.length < 3) return;
+
+      const permitCell = $(cells[0]);
+      const permitLink = permitCell.find('a');
+      const permitNumber = cleanText(permitCell.text());
+      const permitUrl = permitLink.length ? normalizePermitUrl(permitLink.attr('href')) : null;
+      const permitTypeText = cleanText($(cells[1]).text());
+      const permitDateText = cleanText($(cells[2]).text());
+
+      if (!permitNumber) return;
+      const uniqueKey = `permit:${permitNumber}`;
+      if (seen.has(uniqueKey)) return;
+      seen.add(uniqueKey);
+
+      const improvementType = mapImprovementTypeFromDescription(permitTypeText, 'Permit');
+      const completionDate = parseDateMMDDYYYY(permitDateText);
+
+      improvements.push({
+        improvementType: mapImprovementTypeFromDescription(permitTypeText, 'Permit') || 'MAPPING_NOT_AVAILABLE',
+        completionDate: parseDateMMDDYYYY(permitDateText),
+        permitNumber,
+        sourceUrl: permitUrl,
+        description: permitTypeText,
+      });
+    });
+  }
+
+  if (improvements.length) {
+    return improvements;
+  }
+
+  $('table.appraisalAttributes').each((_, table) => {
+    const $table = $(table);
+    const subheaderCell = $table.find('th.subheader').first();
+    if (!subheaderCell.length) return;
+
+    const subheaderText = cleanText(subheaderCell.text());
+    if (!subheaderText) return;
+    if (!/features/i.test(subheaderText) && !/improvement/i.test(subheaderText)) return;
+
+    $table.find('tr').each((__, row) => {
+      const cells = $(row).find('td');
+      if (cells.length < 2) return;
+
+      const description = cleanText($(cells[0]).text());
+      if (!description || !/[a-zA-Z]/.test(description)) return;
+
+      const key = `${subheaderText}|${description}|${cleanText($(cells[1]).text())}`;
+      if (seen.has(key)) return;
+
+      const yearText = cleanText($(cells[1]).text());
+      const improvementType = mapImprovementTypeFromDescription(description, subheaderText);
+      const completionDate = parseCompletionDateFromYear(yearText);
+
+      improvements.push({
+        description,
+        improvementType: improvementType || 'MAPPING_NOT_AVAILABLE',
+        completionDate,
+        sourceUrl: null,
+      });
+      seen.add(key);
+    });
+  });
+
+  return improvements;
 }
 
 function extractFlood($) {
@@ -1453,10 +2343,559 @@ function extractLot($) {
   };
 }
 
+function normalizeDeedType(value) {
+  if (!value) return 'MAPPING NOT AVAILABLE';
+  
+  const normalized = value.trim();
+  const upper = normalized.toUpperCase();
+
+  if (upper === 'XX' || upper === 'XX.' || upper.startsWith('XX ')) {
+    return 'Miscellaneous';
+  }
+
+  const sanitized = normalized.replace(/\s+/g, ' ').trim();
+  const tokens = sanitized.split(/[^0-9A-Za-z]+/).filter(Boolean);
+
+  const saleQualCodeMap = {
+    '01': 'Warranty Deed',
+    '02': 'Warranty Deed',
+    '03': 'Warranty Deed',
+    '04': 'Warranty Deed',
+    '05': 'Warranty Deed',
+    '06': 'Quitclaim Deed',
+    '07': "Sheriff's Deed",
+    '08': "Trustee's Deed",
+    '09': 'Personal Representative Deed',
+    '10': 'Correction Deed',
+    '11': 'Contract for Deed',
+    '12': 'Quitclaim Deed',
+    '13': 'Warranty Deed',
+    '14': 'Special Warranty Deed',
+    '15': 'Personal Representative Deed',
+    '16': "Trustee's Deed",
+    '17': 'Tax Deed',
+    '18': "Sheriff's Deed",
+    '19': "Administrator's Deed",
+    '20': "Guardian's Deed",
+  };
+
+  const numericTokens = tokens
+    .filter((token) => /^\d{1,2}$/.test(token))
+    .map((token) => token.padStart(2, '0'));
+
+  const codePriority = [
+    '11', // Contract for Deed
+    '14', // Special Warranty Deed
+    '12', // Quitclaim Deed
+    '06', // Quitclaim Deed
+    '07', // Sheriff's Deed
+    '08', // Trustee's Deed
+    '09', // Personal Representative Deed
+    '10', // Correction Deed
+    '15', // Personal Representative Deed
+    '16', // Trustee's Deed
+    '17', // Tax Deed
+    '18', // Sheriff's Deed
+    '19', // Administrator's Deed
+    '20', // Guardian's Deed
+    '13', // Warranty Deed
+    '05', // Warranty Deed
+    '04', // Warranty Deed
+    '03', // Warranty Deed
+    '02', // Warranty Deed
+    '01', // Warranty Deed
+  ];
+
+  for (const code of codePriority) {
+    if (numericTokens.includes(code) && saleQualCodeMap[code]) {
+      return saleQualCodeMap[code];
+    }
+  }
+
+  const fallbackCode = numericTokens.find((code) => saleQualCodeMap[code]);
+  if (fallbackCode) {
+    return saleQualCodeMap[fallbackCode];
+  }
+
+  const leadingCodeMatch = sanitized.match(/^\d+\s*[-–:\/]\s*(.+)$/);
+  const processed = leadingCodeMatch && leadingCodeMatch[1] ? leadingCodeMatch[1].trim() : sanitized;
+
+  if (!/[a-zA-Z]/.test(processed)) {
+    return 'MAPPING NOT AVAILABLE';
+  }
+
+  const lower = processed.toLowerCase();
+
+  if (
+    lower === 'not available' ||
+    lower === 'n/a' ||
+    lower === 'na' ||
+    lower.includes('not available') ||
+    lower.includes('not-applicable') ||
+    lower.includes('unknown') ||
+    lower.includes('unavailable')
+  ) {
+    return 'Miscellaneous';
+  }
+
+  const upperTokens = processed.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+  const tokenSet = new Set(upperTokens);
+  const joinedTokens = upperTokens.join('');
+
+  const hasToken = (...patterns) => patterns.some((pattern) => {
+    const up = pattern.toUpperCase();
+    return tokenSet.has(up) || joinedTokens.includes(up);
+  });
+
+  const hasAllTokens = (...patterns) => patterns.every((pattern) => {
+    const up = pattern.toUpperCase();
+    return tokenSet.has(up) || joinedTokens.includes(up);
+  });
+
+  // Instrument code / abbreviation mapping using sales qualification document codes
+  if (hasAllTokens('SPECIAL', 'WARRANTY') || hasToken('SWD', 'SPWD', 'SPECWARR')) {
+    return 'Special Warranty Deed';
+  }
+  if (hasToken('WD', 'WDEED', 'WARRANTYDEED', 'WARRANTY') || (hasToken('WAR') && hasToken('DEED') && !hasToken('SPECIAL'))) {
+    return 'Warranty Deed';
+  }
+  if (hasToken('QUIT', 'QCD', 'QC', 'FEE SIMPLE', 'FEE-SIMPLE', 'FEE_SIMPLE')) {
+    return 'Quitclaim Deed';
+  }
+  if (hasToken('GRANT', 'GD')) {
+    return 'Grant Deed';
+  }
+  if (hasToken('BARGAIN', 'BSD', 'B&S')) {
+    return 'Bargain and Sale Deed';
+  }
+  if (hasToken('LADY', 'LBD', 'LADYBIRD', 'ENHANCEDLIFEESTATE')) {
+    return 'Lady Bird Deed';
+  }
+  if (hasToken('TRANSFER', 'TOD') || hasAllTokens('TRANSFER', 'DEATH')) {
+    return 'Transfer on Death Deed';
+  }
+  if (hasToken('SHERIFF', 'SHD', 'SHRF', 'SD') && !hasToken('SPECIAL')) {
+    return "Sheriff's Deed";
+  }
+  if (hasToken('TAX', 'TX', 'TAXDEED')) {
+    return 'Tax Deed';
+  }
+  if (hasToken('TRUSTEE', 'TRUSTEES', 'TRUSTEES\'S', 'TRD') || (hasToken('TR') && hasToken('DEED') && !hasToken('TAX'))) {
+    return "Trustee's Deed";
+  }
+  if (hasToken('PERSONAL', 'REPRESENTATIVE', 'PRD', 'PERSREP')) {
+    return 'Personal Representative Deed';
+  }
+  if (hasToken('CORRECTION', 'CORR', 'CD') || hasAllTokens('CORRECTIVE', 'DEED')) {
+    return 'Correction Deed';
+  }
+  if (hasToken('DEEDINLIEU', 'DIL') || hasAllTokens('DEED', 'LIEU')) {
+    return 'Deed in Lieu of Foreclosure';
+  }
+  if (hasAllTokens('LIFE', 'ESTATE') || hasToken('LED', 'LIFEESTATE')) {
+    return 'Life Estate Deed';
+  }
+  if (hasAllTokens('JOINT', 'TENANCY') || hasToken('JTD')) {
+    return 'Joint Tenancy Deed';
+  }
+  if (hasAllTokens('TENANCY', 'COMMON') || hasToken('TICD', 'TIC')) {
+    return 'Tenancy in Common Deed';
+  }
+  if (hasAllTokens('COMMUNITY', 'PROPERTY')) {
+    return 'Community Property Deed';
+  }
+  if (hasToken('GIFT', 'GFD')) {
+    return 'Gift Deed';
+  }
+  if (hasToken('INTERSPOUSAL', 'ITD', 'INTER-SPOUSAL')) {
+    return 'Interspousal Transfer Deed';
+  }
+  if (hasToken('WILD')) {
+    return 'Wild Deed';
+  }
+  if (hasAllTokens('SPECIAL', 'MASTER') || hasToken('SMD', 'SPM')) {
+    return 'Special Master\'s Deed';
+  }
+  if (hasAllTokens('COURT', 'ORDER') || hasToken('COD')) {
+    return 'Court Order Deed';
+  }
+  if (hasToken('CONTRACT', 'CFD', 'AGREEMENTFORDEED', 'LANDCONTRACT')) {
+    return 'Contract for Deed';
+  }
+  if (hasAllTokens('QUIET', 'TITLE') || hasToken('QTD', 'QUIETTITLE')) {
+    return 'Quiet Title Deed';
+  }
+  if (hasToken('ADMINISTRATOR', 'AD', 'ADMIN\'S')) {
+    return 'Administrator\'s Deed';
+  }
+  if (hasToken('GUARDIAN', 'GRDN', 'GDN')) {
+    return 'Guardian\'s Deed';
+  }
+  if (hasToken('RECEIVER', 'RCV', 'REC')) {
+    return 'Receiver\'s Deed';
+  }
+  if (hasAllTokens('RIGHT', 'WAY') || hasToken('ROW', 'R/W')) {
+    return 'Right of Way Deed';
+  }
+  if (hasAllTokens('VACATION', 'PLAT') || hasToken('VOP', 'VAC')) {
+    return 'Vacation of Plat Deed';
+  }
+  if (hasToken('ASSIGNMENT', 'AOC')) {
+    return 'Assignment of Contract';
+  }
+  if (hasToken('RELEASE', 'ROC')) {
+    return 'Release of Contract';
+  }
+
+  // Map common variations to schema enum values
+  const typeMap = {
+    'warranty deed': 'Warranty Deed',
+    'statutory warranty deed': 'Warranty Deed',
+    'general warranty deed': 'Warranty Deed',
+    'special warranty deed': 'Special Warranty Deed',
+    'quitclaim deed': 'Quitclaim Deed',
+    'quit claim deed': 'Quitclaim Deed',
+    'fee simple': 'Quitclaim Deed', // Fee Simple is a form of quit claim
+    'grant deed': 'Grant Deed',
+    'bargain and sale deed': 'Bargain and Sale Deed',
+    'bargain & sale deed': 'Bargain and Sale Deed',
+    'lady bird deed': 'Lady Bird Deed',
+    'transfer on death deed': 'Transfer on Death Deed',
+    'sheriff\'s deed': 'Sheriff\'s Deed',
+    'sheriffs deed': 'Sheriff\'s Deed',
+    'tax deed': 'Tax Deed',
+    'trustee\'s deed': 'Trustee\'s Deed',
+    'trustees deed': 'Trustee\'s Deed',
+    'personal representative deed': 'Personal Representative Deed',
+    'personal representative\'s deed': 'Personal Representative Deed',
+    'personal representatives deed': 'Personal Representative Deed',
+    'correction deed': 'Correction Deed',
+    'deed in lieu of foreclosure': 'Deed in Lieu of Foreclosure',
+    'life estate deed': 'Life Estate Deed',
+    'joint tenancy deed': 'Joint Tenancy Deed',
+    'tenancy in common deed': 'Tenancy in Common Deed',
+    'community property deed': 'Community Property Deed',
+    'gift deed': 'Gift Deed',
+    'interspousal transfer deed': 'Interspousal Transfer Deed',
+    'wild deed': 'Wild Deed',
+    'special master\'s deed': 'Special Master\'s Deed',
+    'special masters deed': 'Special Master\'s Deed',
+    'court order deed': 'Court Order Deed',
+    'contract for deed': 'Contract for Deed',
+    'agreement for deed': 'Contract for Deed',
+    'quiet title deed': 'Quiet Title Deed',
+    'certificate of title': 'Quiet Title Deed', // Certificate of Title is related to quiet title
+    'administrator\'s deed': 'Administrator\'s Deed',
+    'administrators deed': 'Administrator\'s Deed',
+    'guardian\'s deed': 'Guardian\'s Deed',
+    'guardians deed': 'Guardian\'s Deed',
+    'receiver\'s deed': 'Receiver\'s Deed',
+    'receivers deed': 'Receiver\'s Deed',
+    'right of way deed': 'Right of Way Deed',
+    'vacation of plat deed': 'Vacation of Plat Deed',
+    'assignment of contract': 'Assignment of Contract',
+    'release of contract': 'Release of Contract',
+    'notice': 'MAPPING NOT AVAILABLE', // Notice/Development Order
+    'development order': 'MAPPING NOT AVAILABLE',
+    'do': 'MAPPING NOT AVAILABLE',
+    'ldo': 'MAPPING NOT AVAILABLE',
+    'limited development order': 'MAPPING NOT AVAILABLE',
+  };
+  
+  // Check for exact match
+  if (typeMap[lower]) {
+    return typeMap[lower];
+  }
+  
+  // Check for partial matches
+  for (const [key, enumValue] of Object.entries(typeMap)) {
+    if (lower.includes(key) || key.includes(lower)) {
+      return enumValue;
+    }
+  }
+  
+  // Check for keywords that indicate specific deed types
+  if (lower.includes('warranty') && !lower.includes('special')) {
+    return 'Warranty Deed';
+  }
+  if (lower.includes('special') && lower.includes('warranty')) {
+    return 'Special Warranty Deed';
+  }
+  if (lower.includes('quit') || lower.includes('quitclaim') || lower.includes('fee simple')) {
+    return 'Quitclaim Deed';
+  }
+  if (lower.includes('trustee')) {
+    return "Trustee's Deed";
+  }
+  if (lower.includes('personal representative') || lower.includes('representative')) {
+    return 'Personal Representative Deed';
+  }
+  if (lower.includes('contract') || lower.includes('agreement')) {
+    return 'Contract for Deed';
+  }
+  if (lower.includes('tax')) {
+    return 'Tax Deed';
+  }
+  if (lower.includes('correction')) {
+    return 'Correction Deed';
+  }
+  if (lower.includes('gift')) {
+    return 'Gift Deed';
+  }
+  if (lower.includes('administrator')) {
+    return "Administrator's Deed";
+  }
+  if (lower.includes('guardian')) {
+    return "Guardian's Deed";
+  }
+  if (lower.includes('receiver')) {
+    return "Receiver's Deed";
+  }
+  if (lower.includes('quiet') && lower.includes('title')) {
+    return 'Quiet Title Deed';
+  }
+  if (lower.includes('special master')) {
+    return "Special Master's Deed";
+  }
+  if (lower.includes('deed in lieu')) {
+    return 'Deed in Lieu of Foreclosure';
+  }
+
+  // If no match, return "MAPPING NOT AVAILABLE" so validation fails and it can be fixed
+  return 'MAPPING NOT AVAILABLE';
+}
+
+function normalizeDeedUrl(url) {
+  if (!url) return null;
+  let absolute = url;
+  if (url.startsWith('/')) {
+    absolute = `https://or.leeclerk.org${url}`;
+  } else if (url.startsWith('../')) {
+    absolute = `https://www.leepa.org/${url.replace(/^\.\//, '').replace(/^\.\.\//, '')}`;
+  } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    absolute = `https://or.leeclerk.org/${url.replace(/^\.\//, '')}`;
+  }
+
+  try {
+    const urlObj = new URL(absolute);
+    if (!urlObj.search) {
+      return `${urlObj.origin}${urlObj.pathname}`;
+    }
+    const trimmedPath = urlObj.pathname.replace(/\/$/, '');
+    const encodedSearch = encodeURIComponent(urlObj.search);
+    return `${urlObj.origin}${trimmedPath}/${encodedSearch}`;
+  } catch (_err) {
+    return absolute;
+  }
+}
+
+function extractDeeds($, requestIdentifier) {
+  const deeds = [];
+  const deedFileUrls = []; // Store file URLs for each deed
+  const deedSourceRequests = [];
+  
+  // Extract from SalesDetails table
+  // Table structure: Sale Price | Date | Clerk File Number (CFN) | Type | Notes | Vacant/Improved
+  const salesBox = $('#SalesDetails');
+  const salesTable = salesBox.find('table.detailsTable').first();
+  
+  console.log('extractDeeds: SalesDetails box found:', salesBox.length > 0);
+  console.log('extractDeeds: Table found:', salesTable.length > 0);
+  
+  if (salesTable.length) {
+    const rows = salesTable.find('tr');
+    console.log('extractDeeds: Total rows in table:', rows.length);
+
+    let headerIndexes = {
+      price: null,
+      date: null,
+      cfn: null,
+      type: null,
+      notes: null,
+    };
+
+    rows.each((i, tr) => {
+      const $row = $(tr);
+
+      if (i === 0) {
+        const headers = $row
+          .find('th')
+          .map((j, th) => cleanText($(th).text()).toLowerCase())
+          .get();
+        console.log('extractDeeds: Header row:', headers.join(' | '));
+
+        headers.forEach((headerText, idx) => {
+          if (headerText.includes('sale price')) headerIndexes.price = idx;
+          if (headerText === 'date') headerIndexes.date = idx;
+          if (headerText.includes('clerk') || headerText.includes('file')) headerIndexes.cfn = idx;
+          if (headerText === 'type') headerIndexes.type = idx;
+          if (headerText.includes('notes')) headerIndexes.notes = idx;
+        });
+        return;
+      }
+
+      const tds = $row.find('td');
+      if (!tds.length) {
+        console.log(`extractDeeds: Row ${i} has no <td> elements`);
+        return;
+      }
+
+      const cfnIdx = headerIndexes.cfn !== null ? headerIndexes.cfn : 2;
+      const typeIdx = headerIndexes.type !== null ? headerIndexes.type : 3;
+
+      if (tds.length <= cfnIdx) {
+        console.log(`extractDeeds: Row ${i} missing CFN column (index ${cfnIdx})`);
+        return;
+      }
+
+      const cfnCell = $(tds[cfnIdx]);
+      const cfnLink = cfnCell.find('a');
+      const cfnText = cleanText(cfnCell.text()).trim();
+      const cfnUrl = cfnLink.length ? cfnLink.attr('href') : null;
+
+      let deedTypeRaw = null;
+      if (typeIdx !== null && typeIdx < tds.length) {
+        const typeCell = $(tds[typeIdx]);
+        const typeLink = typeCell.find('a');
+        const typeLinkText = typeLink.length ? cleanText(typeLink.text()).trim() : null;
+        const typeText = cleanText(typeCell.text()).trim();
+        deedTypeRaw = typeLinkText || typeText || null;
+        console.log(`extractDeeds: Row ${i} - Type cell text: "${typeText}"`);
+      }
+
+      console.log(`extractDeeds: Row ${i} - CFN text: "${cfnText}", URL: ${cfnUrl}, Type: "${deedTypeRaw}"`);
+
+      if (!cfnText || !cfnText.length) {
+        console.log(`extractDeeds: Row ${i} skipped - missing CFN text`);
+        return;
+      }
+
+      const deedType = normalizeDeedType(deedTypeRaw);
+      console.log(`extractDeeds: Row ${i} - Normalized deed_type: "${deedType}"`);
+
+      const finalDeedType = deedType && deedType !== null ? deedType : 'MAPPING NOT AVAILABLE';
+      const safeDeedType = finalDeedType || 'MAPPING NOT AVAILABLE';
+
+      const deed = {
+        request_identifier: requestIdentifier,
+        deed_type: safeDeedType,
+      };
+
+      // Only add instrument_number if we have a value
+      if (cfnText && cfnText.trim().length > 0) {
+        deed.instrument_number = cfnText.trim();
+      }
+
+      // Try to extract book, page, volume from URL or HTML if available
+      // Check URL parameters first
+      let book = null;
+      let page = null;
+      let volume = null;
+      
+      if (cfnUrl) {
+        // Try to extract from URL parameters (e.g., ?book=123&page=456&volume=789)
+        const urlMatch = cfnUrl.match(/[?&]book=([^&]+)/i);
+        if (urlMatch) book = urlMatch[1].trim();
+        
+        const pageMatch = cfnUrl.match(/[?&]page=([^&]+)/i);
+        if (pageMatch) page = pageMatch[1].trim();
+        
+        const volumeMatch = cfnUrl.match(/[?&]volume=([^&]+)/i);
+        if (volumeMatch) volume = volumeMatch[1].trim();
+      }
+      
+      // Check if we can extract from the CFN cell or surrounding HTML
+      // Some systems encode book/page in the link text or data attributes
+      if (!book && !page && !volume && cfnCell.length) {
+        // Check data attributes
+        const dataBook = cfnCell.attr('data-book') || cfnLink.attr('data-book');
+        const dataPage = cfnCell.attr('data-page') || cfnLink.attr('data-page');
+        const dataVolume = cfnCell.attr('data-volume') || cfnLink.attr('data-volume');
+        
+        if (dataBook) book = cleanText(dataBook).trim();
+        if (dataPage) page = cleanText(dataPage).trim();
+        if (dataVolume) volume = cleanText(dataVolume).trim();
+        
+        // Check if CFN text contains book/page/volume info (e.g., "CFN: 12345 Book: 100 Page: 200")
+        const cfnFullText = cleanText(cfnCell.text()).trim();
+        const bookMatch = cfnFullText.match(/book[:\s]+(\d+)/i);
+        const pageMatch = cfnFullText.match(/page[:\s]+(\d+)/i);
+        const volumeMatch = cfnFullText.match(/volume[:\s]+(\d+)/i);
+        
+        if (bookMatch && !book) book = bookMatch[1].trim();
+        if (pageMatch && !page) page = pageMatch[1].trim();
+        if (volumeMatch && !volume) volume = volumeMatch[1].trim();
+      }
+      
+      // Only add book, page, volume if we found values
+      if (book && book.length > 0) {
+        deed.book = book;
+      }
+      if (page && page.length > 0) {
+        deed.page = page;
+      }
+      if (volume && volume.length > 0) {
+        deed.volume = volume;
+      }
+      
+      // Double-check before pushing
+      if (!deed.deed_type || deed.deed_type === null) {
+        deed.deed_type = 'MAPPING NOT AVAILABLE';
+        console.log(`extractDeeds: Row ${i} - Force set deed_type to "MAPPING NOT AVAILABLE" for safety`);
+      }
+      
+      deeds.push(deed);
+      
+      // Store the file URL if available
+      if (cfnUrl) {
+        // Make URL absolute if it's relative
+        const fullUrl = normalizeDeedUrl(cfnUrl);
+        deedFileUrls.push(fullUrl);
+        deedSourceRequests.push({
+          url: fullUrl,
+          method: 'GET',
+        });
+      } else {
+        deedFileUrls.push(null);
+        deedSourceRequests.push(null);
+      }
+    });
+  }
+  
+  // Remove duplicates based on instrument_number
+  const seen = new Set();
+  const uniqueDeeds = [];
+  const uniqueFileUrls = [];
+  const uniqueSourceRequests = [];
+  
+  deeds.forEach((deed, idx) => {
+    if (deed.instrument_number && !seen.has(deed.instrument_number)) {
+      seen.add(deed.instrument_number);
+      uniqueDeeds.push(deed);
+      uniqueFileUrls.push(deedFileUrls[idx]);
+      uniqueSourceRequests.push(deedSourceRequests[idx]);
+    }
+  });
+  
+  // Return both deeds and file URLs
+  return {
+    deeds: uniqueDeeds,
+    fileUrls: uniqueFileUrls,
+    sourceRequests: uniqueSourceRequests,
+  };
+}
+
 function main() {
   console.log('Script started successfully');
   const dataDir = path.join('data');
   ensureDir(dataDir);
+
+  // Read property_seed.json for request_identifier
+  let seedData = null;
+  const seedPath = 'property_seed.json';
+  if (fs.existsSync(seedPath)) {
+    seedData = readJSON(seedPath);
+  }
 
   const html = fs.readFileSync('input.html', 'utf-8');
   const $ = cheerio.load(html);
@@ -1464,9 +2903,156 @@ function main() {
     ? readJSON('unnormalized_address.json')
     : null;
 
+  // Extract geometry from CSV first, then HTML
+  // Three separate geometries: address (lat/long only), parcel (parcel_polygon), building (building_polygon)
+  let geometries = null;
+  const csvFiles = fs.readdirSync('.').filter(f => f.endsWith('.csv'));
+  console.log(`Found ${csvFiles.length} CSV file(s) in current directory: ${csvFiles.join(', ')}`);
+  for (const csvFile of csvFiles) {
+    const requestId = seedData ? seedData.request_identifier : null;
+    console.log(`Attempting to extract geometry from CSV: ${csvFile}`);
+    geometries = extractGeometryFromCsv(csvFile, requestId);
+    if (geometries) {
+      console.log(`✓ Found geometry data in CSV: ${csvFile}`);
+      if (geometries.parcelGeometry?.polygon) {
+        console.log(`✓ Parcel polygon extracted with ${geometries.parcelGeometry.polygon.length} points`);
+      }
+      if (geometries.buildingGeometry?.polygon) {
+        console.log(`✓ Building polygon extracted with ${geometries.buildingGeometry.polygon.length} points`);
+      }
+      break;
+    }
+  }
+  
+  // If no CSV geometry, try to extract from HTML (latitude/longitude only for address geometry)
+  if (!geometries || !geometries.addressGeometry) {
+    // Extract lat/long from HTML if available
+    let latitude = null;
+    let longitude = null;
+    $('table.appraisalDetailsLocation')
+      .find('tr')
+      .each((i, tr) => {
+        const headers = $(tr).find('th');
+        if (
+          headers.length >= 3 &&
+          /Municipality/i.test(cleanText($(headers[0]).text()))
+        ) {
+          const next = $(tr).next();
+          const cells = next.find('td');
+          if (cells.length >= 3) {
+            latitude = parseNumber($(cells[1]).text());
+            longitude = parseNumber($(cells[2]).text());
+          }
+        }
+      });
+    
+    if (latitude !== null || longitude !== null) {
+      const requestId = seedData ? seedData.request_identifier : null;
+      if (!geometries) {
+        geometries = { addressGeometry: null, parcelGeometry: null, buildingGeometry: null };
+      }
+      geometries.addressGeometry = {
+        request_identifier: requestId,
+        latitude: latitude,
+        longitude: longitude,
+        // No polygon for address geometry
+      };
+    }
+  }
+  
+  // Write three separate geometry files if found
+  if (geometries) {
+    const requestId = seedData ? seedData.request_identifier : null;
+    
+    // Address geometry: lat/long only
+    if (geometries.addressGeometry) {
+      if (seedData && seedData.source_http_request) {
+        geometries.addressGeometry.source_http_request = seedData.source_http_request;
+      }
+      writeJSON(path.join(dataDir, 'geometry_address.json'), geometries.addressGeometry);
+      console.log(`✓ Created geometry_address.json with latitude: ${geometries.addressGeometry.latitude}, longitude: ${geometries.addressGeometry.longitude}`);
+    }
+    
+    // Parcel geometry: parcel_polygon only
+    if (geometries.parcelGeometry) {
+      if (seedData && seedData.source_http_request) {
+        geometries.parcelGeometry.source_http_request = seedData.source_http_request;
+      }
+      writeJSON(path.join(dataDir, 'geometry_parcel.json'), geometries.parcelGeometry);
+      console.log(`✓ Created geometry_parcel.json with polygon: ${geometries.parcelGeometry.polygon.length} points`);
+    }
+    
+    // Building geometry: building_polygon only
+    if (geometries.buildingGeometry) {
+      if (seedData && seedData.source_http_request) {
+        geometries.buildingGeometry.source_http_request = seedData.source_http_request;
+      }
+      writeJSON(path.join(dataDir, 'geometry_building.json'), geometries.buildingGeometry);
+      console.log(`✓ Created geometry_building.json with polygon: ${geometries.buildingGeometry.polygon.length} points`);
+    }
+  }
+
   // Property
   const property = extractProperty($);
   writeJSON(path.join(dataDir, 'property.json'), property);
+
+  const propertyImprovements = extractPropertyImprovements($);
+  if (propertyImprovements.length) {
+    let improvementCount = 0;
+    propertyImprovements.forEach((imp, idx) => {
+      if (!imp.sourceUrl) {
+        return;
+      }
+      const improvementIndex = idx + 1;
+      const improvementFile = path.join(dataDir, `property_improvement_${improvementIndex}.json`);
+
+      const improvementData = {
+        improvement_type: imp.improvementType || 'MAPPING_NOT_AVAILABLE',
+        improvement_action: 'Other',
+        improvement_status: 'Completed',
+      };
+
+      if (imp.completionDate) {
+        improvementData.completion_date = imp.completionDate;
+      }
+
+      if (imp.permitNumber) {
+        improvementData.permit_number = imp.permitNumber;
+      }
+
+      if (seedData && seedData.request_identifier) {
+        improvementData.request_identifier = seedData.request_identifier;
+      }
+
+      improvementData.source_http_request = {
+        url: imp.sourceUrl,
+        method: 'GET',
+      };
+      improvementData.permit_required = true;
+      improvementData.contractor_type = 'Unknown';
+
+      writeJSON(improvementFile, improvementData);
+      writeJSON(path.join(dataDir, `relationship_property_property_improvement_${improvementIndex}.json`), {
+        from: { '/': './property.json' },
+        to: { '/': `./property_improvement_${improvementIndex}.json` },
+      });
+      improvementCount += 1;
+    });
+    if (improvementCount > 0) {
+      console.log(`✓ Extracted ${improvementCount} property improvement record(s)`);
+    }
+  }
+
+  // Parcel - create parcel.json with parcel_identifier from property
+  if (property.parcel_identifier) {
+    const parcel = {
+      source_http_request: seedData && seedData.source_http_request ? seedData.source_http_request : null,
+      request_identifier: seedData ? seedData.request_identifier : null,
+      parcel_identifier: property.parcel_identifier,
+    };
+    writeJSON(path.join(dataDir, 'parcel.json'), parcel);
+    console.log(`✓ Created parcel.json with parcel_identifier: ${property.parcel_identifier}`);
+  }
 
   // Address
   const address = extractAddress($, unAddr);
@@ -1485,55 +3071,158 @@ function main() {
     writeJSON(path.join(dataDir, `sales_${idx + 1}.json`), s);
   });
 
+  // Deeds
+  const requestId = seedData ? seedData.request_identifier : null;
+  const deedResult = extractDeeds($, requestId);
+  const deedsList = deedResult.deeds;
+  const deedFileUrls = deedResult.fileUrls;
+  const deedSourceRequests = deedResult.sourceRequests || [];
+  
+  deedsList.forEach((d, idx) => {
+    // Ensure deed_type is never null - use "MAPPING NOT AVAILABLE" as fallback if unmapped
+    // This is a safety check - normalizeDeedType should already handle this, but ensure it here too
+    if (!d.deed_type || d.deed_type === null || d.deed_type === undefined) {
+      d.deed_type = 'MAPPING NOT AVAILABLE';
+      console.log(`✓ Set deed_type to "MAPPING NOT AVAILABLE" for deed ${idx + 1} (instrument_number: ${d.instrument_number})`);
+    }
+    // Add source_http_request if available from seed data
+    if (deedSourceRequests[idx]) {
+      d.source_http_request = deedSourceRequests[idx];
+    } else if (seedData && seedData.source_http_request) {
+      d.source_http_request = seedData.source_http_request;
+    }
+    writeJSON(path.join(dataDir, `deed_${idx + 1}.json`), d);
+  });
+  if (deedsList.length > 0) {
+    console.log(`✓ Created ${deedsList.length} deed file(s)`);
+  }
+  
+  // Create file entities for deed links
+  deedFileUrls.forEach((url, idx) => {
+    if (url && deedsList[idx]) {
+      const file = {
+        request_identifier: requestId,
+        document_type: 'Title', // Use "Title" per Elephant MCP schema
+        name: `Deed Document ${deedsList[idx].instrument_number || idx + 1}`,
+        original_url: url,
+      };
+      // Only include file_format and ipfs_url if they have values
+      // (not including null values per schema)
+      writeJSON(path.join(dataDir, `file_${idx + 1}.json`), file);
+    }
+  });
+  if (deedFileUrls.filter(url => url).length > 0) {
+    console.log(`✓ Created ${deedFileUrls.filter(url => url).length} file entity/entities for deed links`);
+  }
+
   // Flood
   const flood = extractFlood($);
   writeJSON(path.join(dataDir, 'flood_storm_information.json'), flood);
 
-  // Utilities from owners/utilities_data.json
+  // Utilities from owners/utilities_data.json (now supports multiple buildings)
+  let utilitiesByBuilding = null;
   if (fs.existsSync(path.join('owners', 'utilities_data.json'))) {
     const utilitiesData = readJSON(path.join('owners', 'utilities_data.json'));
-    // Key: property_*
-    let util = null;
     const key = Object.keys(utilitiesData).find((k) => /property_/.test(k));
-    if (key) util = utilitiesData[key];
-    if (util) {
-      writeJSON(path.join(dataDir, 'utility.json'), {
-        cooling_system_type: util.cooling_system_type ?? null,
-        heating_system_type: util.heating_system_type ?? null,
-        public_utility_type: util.public_utility_type ?? null,
-        sewer_type: util.sewer_type ?? null,
-        water_source_type: util.water_source_type ?? null,
-        plumbing_system_type: util.plumbing_system_type ?? null,
-        plumbing_system_type_other_description:
-          util.plumbing_system_type_other_description ?? null,
-        electrical_panel_capacity: util.electrical_panel_capacity ?? null,
-        electrical_wiring_type: util.electrical_wiring_type ?? null,
-        hvac_condensing_unit_present: util.hvac_condensing_unit_present ?? null,
-        electrical_wiring_type_other_description:
-          util.electrical_wiring_type_other_description ?? null,
-        solar_panel_present: !!util.solar_panel_present,
-        solar_panel_type: util.solar_panel_type ?? null,
-        solar_panel_type_other_description:
-          util.solar_panel_type_other_description ?? null,
-        smart_home_features: util.smart_home_features ?? null,
-        smart_home_features_other_description:
-          util.smart_home_features_other_description ?? null,
-        hvac_unit_condition: util.hvac_unit_condition ?? null,
-        solar_inverter_visible: !!util.solar_inverter_visible,
-        hvac_unit_issues: util.hvac_unit_issues ?? null,
-      });
+    if (key && utilitiesData[key]) {
+      // Check if it's the new format (object with building numbers) or old format (single utility)
+      if (typeof utilitiesData[key] === 'object' && !Array.isArray(utilitiesData[key]) && utilitiesData[key].constructor === Object) {
+        // New format: { 1: utility, 2: utility, ... }
+        utilitiesByBuilding = utilitiesData[key];
+      } else {
+        // Old format: single utility object
+        utilitiesByBuilding = { 1: utilitiesData[key] };
+      }
     }
   }
+  
+  // If no utility data from mapping script, create default utility for building 1
+  if (!utilitiesByBuilding) {
+    const hasGarbage = $('#GarbageDetails').length > 0;
+    utilitiesByBuilding = {
+      1: {
+        cooling_system_type: null,
+        heating_system_type: null,
+        public_utility_type: hasGarbage ? "ElectricityAvailable" : null,
+        sewer_type: null,
+        water_source_type: null,
+        plumbing_system_type: null,
+        plumbing_system_type_other_description: null,
+        electrical_panel_capacity: null,
+        electrical_wiring_type: null,
+        hvac_condensing_unit_present: null,
+        electrical_wiring_type_other_description: null,
+        solar_panel_present: false,
+        solar_panel_type: null,
+        solar_panel_type_other_description: null,
+        smart_home_features: null,
+        smart_home_features_other_description: null,
+        hvac_unit_condition: null,
+        solar_inverter_visible: false,
+        hvac_unit_issues: null,
+      }
+    };
+  }
+  
+  // Create utility files per building
+  const utilityBuildingNumbers = Object.keys(utilitiesByBuilding).map(Number).sort((a, b) => a - b);
+  utilityBuildingNumbers.forEach((buildingNum) => {
+    const utility = utilitiesByBuilding[buildingNum];
+    const utilityFile = `utility_${buildingNum}.json`;
+    writeJSON(path.join(dataDir, utilityFile), {
+      cooling_system_type: utility.cooling_system_type ?? null,
+      heating_system_type: utility.heating_system_type ?? null,
+      public_utility_type: utility.public_utility_type ?? null,
+      sewer_type: utility.sewer_type ?? null,
+      water_source_type: utility.water_source_type ?? null,
+      plumbing_system_type: utility.plumbing_system_type ?? null,
+      plumbing_system_type_other_description: utility.plumbing_system_type_other_description ?? null,
+      electrical_panel_capacity: utility.electrical_panel_capacity ?? null,
+      electrical_wiring_type: utility.electrical_wiring_type ?? null,
+      hvac_condensing_unit_present: utility.hvac_condensing_unit_present ?? null,
+      electrical_wiring_type_other_description: utility.electrical_wiring_type_other_description ?? null,
+      solar_panel_present: !!utility.solar_panel_present,
+      solar_panel_type: utility.solar_panel_type ?? null,
+      solar_panel_type_other_description: utility.solar_panel_type_other_description ?? null,
+      smart_home_features: utility.smart_home_features ?? null,
+      smart_home_features_other_description: utility.smart_home_features_other_description ?? null,
+      hvac_unit_condition: utility.hvac_unit_condition ?? null,
+      solar_inverter_visible: !!utility.solar_inverter_visible,
+      hvac_unit_issues: utility.hvac_unit_issues ?? null,
+    });
+    console.log(`✓ Created ${utilityFile} for building ${buildingNum}`);
+  });
 
+  // Check HTML for building references to create building layout
+  let hasBuilding = false;
+  const htmlText = $('body').text().toLowerCase();
+  if (/building|structure|dwelling|residence|house/i.test(htmlText)) {
+    hasBuilding = true;
+  }
+  
   // Layouts from owners/layout_data.json
+  let layoutCount = 0;
   if (fs.existsSync(path.join('owners', 'layout_data.json'))) {
     const layoutData = readJSON(path.join('owners', 'layout_data.json'));
     const key = Object.keys(layoutData).find((k) => /property_/.test(k));
     if (key && layoutData[key] && Array.isArray(layoutData[key].layouts)) {
       layoutData[key].layouts.forEach((lay, idx) => {
+        layoutCount++;
+        // Generate space_type_index: format is "spaceTypeIndex.spaceIndex" or just "spaceIndex"
+        // Pattern must be: ^\d+(\.\d+)?(\.\d+)?$
+        let spaceTypeIndex = null;
+        if (lay.space_index !== null && lay.space_index !== undefined) {
+          // If space_index is provided, use it as the base
+          spaceTypeIndex = String(lay.space_index);
+        } else if (idx !== null && idx !== undefined) {
+          // Fallback to array index + 1
+          spaceTypeIndex = String(idx + 1);
+        }
+        
         const out = {
           space_type: normalizeSpaceType(lay.space_type),
           space_index: lay.space_index ?? null,
+          space_type_index: spaceTypeIndex,
           flooring_material_type: lay.flooring_material_type ?? null,
           size_square_feet: lay.size_square_feet ?? null,
           floor_level: lay.floor_level ?? null,
@@ -1541,7 +3230,7 @@ function main() {
           window_design_type: lay.window_design_type ?? null,
           window_material_type: lay.window_material_type ?? null,
           window_treatment_type: lay.window_treatment_type ?? null,
-          is_finished: lay.is_finished ?? null,
+          is_finished: lay.is_finished !== null && lay.is_finished !== undefined ? Boolean(lay.is_finished) : true,
           furnished: lay.furnished ?? null,
           paint_condition: lay.paint_condition ?? null,
           flooring_wear: lay.flooring_wear ?? null,
@@ -1565,14 +3254,101 @@ function main() {
           pool_surface_type: lay.pool_surface_type ?? null,
           pool_water_quality: lay.pool_water_quality ?? null,
         };
+        // Add building_number if present in layout data
+        if (lay.building_number !== null && lay.building_number !== undefined) {
+          out.building_number = lay.building_number;
+        }
+        // Add area fields if present (for Building space_type layouts)
+        if (lay.total_area_sq_ft !== null && lay.total_area_sq_ft !== undefined) {
+          out.total_area_sq_ft = lay.total_area_sq_ft;
+        }
+        if (lay.area_under_air_sq_ft !== null && lay.area_under_air_sq_ft !== undefined) {
+          out.area_under_air_sq_ft = lay.area_under_air_sq_ft;
+        }
+        if (lay.heated_area_sq_ft !== null && lay.heated_area_sq_ft !== undefined) {
+          out.heated_area_sq_ft = lay.heated_area_sq_ft;
+        }
+        if (lay.livable_area_sq_ft !== null && lay.livable_area_sq_ft !== undefined) {
+          out.livable_area_sq_ft = lay.livable_area_sq_ft;
+        }
+        if (lay.built_year !== null && lay.built_year !== undefined) {
+          out.built_year = lay.built_year;
+        }
         writeJSON(path.join(dataDir, `layout_${idx + 1}.json`), out);
       });
     }
   }
+  
+  // Get layout files list (needed for building layout detection)
+  const dataFiles = fs.readdirSync(dataDir);
+  const layoutFiles = dataFiles.filter((f) => /^layout_\d+\.json$/.test(f)).sort((a, b) => {
+    const numA = parseInt(a.match(/\d+/)[0], 10);
+    const numB = parseInt(b.match(/\d+/)[0], 10);
+    return numA - numB;
+  });
+  
+  // Building layouts are now created by layoutMapping.js with building_number
+  // Check if any Building space_type layouts exist from layout_data.json
+  let buildingLayoutFiles = [];
+  layoutFiles.forEach((layoutFile) => {
+    const layoutPath = path.join(dataDir, layoutFile);
+    if (fs.existsSync(layoutPath)) {
+      const layoutData = JSON.parse(fs.readFileSync(layoutPath, 'utf-8'));
+      if (layoutData.space_type === 'Building') {
+        buildingLayoutFiles.push(layoutFile);
+      }
+    }
+  });
+  
+  // Legacy: Create building layout if building is detected but no building layouts exist
+  // This is for backward compatibility with old HTML that doesn't have building layouts
+  let buildingLayoutFile = null;
+  if (hasBuilding && buildingLayoutFiles.length === 0) {
+    const buildingLayout = {
+      space_type: 'Building',
+      space_index: layoutCount + 1,
+      space_type_index: String(layoutCount + 1),
+      building_number: 1, // Default to building 1
+      flooring_material_type: null,
+      size_square_feet: null,
+      floor_level: null,
+      has_windows: null,
+      window_design_type: null,
+      window_material_type: null,
+      window_treatment_type: null,
+      is_finished: true,
+      furnished: null,
+      paint_condition: null,
+      flooring_wear: null,
+      clutter_level: null,
+      visible_damage: null,
+      countertop_material: null,
+      cabinet_style: null,
+      fixture_finish_quality: null,
+      design_style: null,
+      natural_light_quality: null,
+      decor_elements: null,
+      pool_type: null,
+      pool_equipment: null,
+      spa_type: null,
+      safety_features: null,
+      view_type: null,
+      lighting_features: null,
+      condition_issues: null,
+      is_exterior: false,
+      pool_condition: null,
+      pool_surface_type: null,
+      pool_water_quality: null,
+    };
+    buildingLayoutFile = `layout_${layoutCount + 1}.json`;
+    writeJSON(path.join(dataDir, buildingLayoutFile), buildingLayout);
+    buildingLayoutFiles.push(buildingLayoutFile);
+    console.log('✓ Created building layout (legacy fallback)');
+  }
 
   // Owners from owners/owner_data.json (single type only). Prefer company.
   let salesFiles = [];
-  const dataFiles = fs.readdirSync(dataDir);
+  // Note: dataFiles is already defined earlier
   salesFiles = dataFiles
     .filter((f) => /^sales_\d+\.json$/.test(f))
     .sort((a, b) => {
@@ -1629,13 +3405,330 @@ function main() {
     }
   }
 
-  // Structure
-  const structure = extractStructure($);
-  writeJSON(path.join(dataDir, 'structure.json'), structure);
+  // Structure from owners/structure_data.json (now supports multiple buildings)
+  // If structure_data.json exists, use it (it has structuresByBuilding)
+  // Otherwise, fallback to extractStructure for single building
+  let structuresByBuilding = null;
+  if (fs.existsSync(path.join('owners', 'structure_data.json'))) {
+    const structureData = readJSON(path.join('owners', 'structure_data.json'));
+    const key = Object.keys(structureData).find((k) => /property_/.test(k));
+    if (key && structureData[key]) {
+      // Check if it's the new format (object with building numbers) or old format (single structure)
+      if (typeof structureData[key] === 'object' && !Array.isArray(structureData[key]) && structureData[key].constructor === Object) {
+        // New format: { 1: structure, 2: structure, ... }
+        structuresByBuilding = structureData[key];
+      } else {
+        // Old format: single structure object
+        structuresByBuilding = { 1: structureData[key] };
+      }
+    }
+  }
+  
+  // If no structure data from mapping script, use fallback extractStructure
+  if (!structuresByBuilding) {
+    const structure = extractStructure($);
+    structuresByBuilding = { 1: structure };
+  }
+  
+  // Create structure files per building
+  const buildingNumbers = Object.keys(structuresByBuilding).map(Number).sort((a, b) => a - b);
+  buildingNumbers.forEach((buildingNum) => {
+    const structure = structuresByBuilding[buildingNum];
+    const structureFile = `structure_${buildingNum}.json`;
+    writeJSON(path.join(dataDir, structureFile), structure);
+    console.log(`✓ Created ${structureFile} for building ${buildingNum}`);
+  });
 
   // Lot
   const lot = extractLot($);
   writeJSON(path.join(dataDir, 'lot.json'), lot);
+
+  // Property relationships - County schema requires these
+  const propertyPath = path.join(dataDir, 'property.json');
+  const addressPath = path.join(dataDir, 'address.json');
+  const lotPath = path.join(dataDir, 'lot.json');
+  const floodPath = path.join(dataDir, 'flood_storm_information.json');
+  // structurePath and utilityPath are now per-building, defined later
+  
+  // property_has_address (singleton)
+  if (fs.existsSync(propertyPath) && fs.existsSync(addressPath)) {
+    writeJSON(path.join(dataDir, 'relationship_property_address.json'), {
+      from: { '/': './property.json' },
+      to: { '/': './address.json' },
+    });
+    console.log('✓ Created relationship_property_address.json');
+  }
+  
+  // property_has_lot (singleton)
+  if (fs.existsSync(propertyPath) && fs.existsSync(lotPath)) {
+    writeJSON(path.join(dataDir, 'relationship_property_lot.json'), {
+      from: { '/': './property.json' },
+      to: { '/': './lot.json' },
+    });
+    console.log('✓ Created relationship_property_lot.json');
+  }
+  
+  // property_has_tax (array)
+  const taxFiles = dataFiles.filter((f) => /^tax_\d+\.json$/.test(f)).sort();
+  taxFiles.forEach((taxFile, idx) => {
+    writeJSON(path.join(dataDir, `relationship_property_tax_${idx + 1}.json`), {
+      from: { '/': './property.json' },
+      to: { '/': `./${taxFile}` },
+    });
+  });
+  if (taxFiles.length > 0) {
+    console.log(`✓ Created ${taxFiles.length} property_tax relationship(s)`);
+  }
+  
+  // property_has_sales_history (array)
+  salesFiles.forEach((salesFile, idx) => {
+    writeJSON(path.join(dataDir, `relationship_property_sales_${idx + 1}.json`), {
+      from: { '/': './property.json' },
+      to: { '/': `./${salesFile}` },
+    });
+  });
+  if (salesFiles.length > 0) {
+    console.log(`✓ Created ${salesFiles.length} property_sales relationship(s)`);
+  }
+  
+  // sales_history_has_deed (array) - link sales to deeds
+  const deedFiles = dataFiles.filter((f) => /^deed_\d+\.json$/.test(f)).sort((a, b) => {
+    const ai = parseInt(a.match(/(\d+)/)[1], 10);
+    const bi = parseInt(b.match(/(\d+)/)[1], 10);
+    return ai - bi;
+  });
+  
+  // Link each sale to corresponding deed (1:1 mapping by index)
+  salesFiles.forEach((salesFile, idx) => {
+    const deedFile = deedFiles[idx];
+    if (deedFile) {
+      writeJSON(path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`), {
+        from: { '/': `./${salesFile}` },
+        to: { '/': `./${deedFile}` },
+      });
+    }
+  });
+  if (deedFiles.length > 0 && salesFiles.length > 0) {
+    console.log(`✓ Created ${Math.min(deedFiles.length, salesFiles.length)} sales_deed relationship(s)`);
+  }
+  
+  // deed_has_file (array) - link deeds to files if file references exist
+  const fileFiles = dataFiles.filter((f) => /^file_\d+\.json$/.test(f)).sort((a, b) => {
+    const ai = parseInt(a.match(/(\d+)/)[1], 10);
+    const bi = parseInt(b.match(/(\d+)/)[1], 10);
+    return ai - bi;
+  });
+  
+  // Link each deed to corresponding file (1:1 mapping by index)
+  // Only create relationships for files that were created for deeds (first N files)
+  const deedFileCount = deedFileUrls.filter(url => url).length;
+  deedFiles.forEach((deedFile, idx) => {
+    // Only link if we have a corresponding file (created for this deed)
+    if (idx < deedFileCount) {
+      const fileFile = fileFiles[idx];
+      if (fileFile) {
+        writeJSON(path.join(dataDir, `relationship_deed_file_${idx + 1}.json`), {
+          from: { '/': `./${deedFile}` },
+          to: { '/': `./${fileFile}` },
+        });
+      }
+    }
+  });
+  if (deedFiles.length > 0 && fileFiles.length > 0 && deedFileCount > 0) {
+    console.log(`✓ Created ${Math.min(deedFiles.length, deedFileCount)} deed_file relationship(s)`);
+  }
+  
+  // property_has_layout (array) - include building layout if created
+  // Note: layoutFiles is already defined earlier, just use it here
+  
+  // If building layout was created, ensure it's in the list (it should be, but double-check)
+  if (buildingLayoutFile && !layoutFiles.includes(buildingLayoutFile)) {
+    layoutFiles.push(buildingLayoutFile);
+    layoutFiles.sort((a, b) => {
+      const ai = parseInt(a.match(/(\d+)/)[1], 10);
+      const bi = parseInt(b.match(/(\d+)/)[1], 10);
+      return ai - bi;
+    });
+  }
+  layoutFiles.forEach((layoutFile, idx) => {
+    writeJSON(path.join(dataDir, `relationship_property_layout_${idx + 1}.json`), {
+      from: { '/': './property.json' },
+      to: { '/': `./${layoutFile}` },
+    });
+  });
+  if (layoutFiles.length > 0) {
+    console.log(`✓ Created ${layoutFiles.length} property_layout relationship(s)`);
+  }
+  
+  // property_has_flood_storm_information (singleton)
+  if (fs.existsSync(propertyPath) && fs.existsSync(floodPath)) {
+    writeJSON(path.join(dataDir, 'relationship_property_flood_storm_information.json'), {
+      from: { '/': './property.json' },
+      to: { '/': './flood_storm_information.json' },
+    });
+    console.log('✓ Created relationship_property_flood_storm_information.json');
+  }
+  
+  // property_has_structure - link property to first structure (backward compatibility)
+  // Note: With multiple buildings, structures are linked via layout_has_structure instead
+  const firstStructureFile = buildingNumbers.length > 0 ? `structure_${buildingNumbers[0]}.json` : 'structure.json';
+  const firstStructurePath = path.join(dataDir, firstStructureFile);
+  if (fs.existsSync(propertyPath) && fs.existsSync(firstStructurePath)) {
+    writeJSON(path.join(dataDir, 'relationship_property_structure.json'), {
+      from: { '/': './property.json' },
+      to: { '/': `./${firstStructureFile}` },
+    });
+    console.log('✓ Created relationship_property_structure.json');
+  }
+  
+  // property_has_utility - link property to first utility (backward compatibility)
+  // Note: With multiple buildings, utilities are linked via layout_has_utility instead
+  const firstUtilityFile = utilityBuildingNumbers.length > 0 ? `utility_${utilityBuildingNumbers[0]}.json` : 'utility.json';
+  const firstUtilityPath = path.join(dataDir, firstUtilityFile);
+  if (fs.existsSync(propertyPath) && fs.existsSync(firstUtilityPath)) {
+    writeJSON(path.join(dataDir, 'relationship_property_utility.json'), {
+      from: { '/': './property.json' },
+      to: { '/': `./${firstUtilityFile}` },
+    });
+    console.log('✓ Created relationship_property_utility.json');
+  }
+  
+  // parcel_has_geometry (singleton) - County schema
+  // Links to geometry_parcel.json (parcel_polygon only)
+  const parcelGeometryPath = path.join(dataDir, 'geometry_parcel.json');
+  const parcelPath = path.join(dataDir, 'parcel.json');
+  if (fs.existsSync(parcelGeometryPath) && fs.existsSync(parcelPath)) {
+    writeJSON(path.join(dataDir, 'relationship_parcel_geometry.json'), {
+      from: { '/': './parcel.json' },
+      to: { '/': './geometry_parcel.json' },
+    });
+    console.log('✓ Created relationship_parcel_geometry.json');
+  }
+  
+  // address_has_geometry (singleton) - County schema
+  // Links to geometry_address.json (lat/long only, no polygon)
+  const addressGeometryPath = path.join(dataDir, 'geometry_address.json');
+  if (fs.existsSync(addressGeometryPath) && fs.existsSync(addressPath)) {
+    writeJSON(path.join(dataDir, 'relationship_address_geometry.json'), {
+      from: { '/': './address.json' },
+      to: { '/': './geometry_address.json' },
+    });
+    console.log('✓ Created relationship_address_geometry.json');
+  }
+  
+  // layout_has_geometry (array) - County schema (only for layouts with space_type: 'Building')
+  // Links to geometry_building.json (building_polygon only)
+  const buildingGeometryPath = path.join(dataDir, 'geometry_building.json');
+  let buildingLayoutCount = 0;
+  
+  // Check all layout files for Building space_type
+  const allLayoutFiles = [...layoutFiles];
+  if (buildingLayoutFile && !allLayoutFiles.includes(buildingLayoutFile)) {
+    allLayoutFiles.push(buildingLayoutFile);
+  }
+  
+  allLayoutFiles.forEach((layoutFile) => {
+    const layoutPath = path.join(dataDir, layoutFile);
+    if (fs.existsSync(layoutPath) && fs.existsSync(buildingGeometryPath)) {
+      const layoutData = JSON.parse(fs.readFileSync(layoutPath, 'utf-8'));
+      // Only create geometry relationship for Building space_type
+      if (layoutData.space_type === 'Building') {
+        buildingLayoutCount++;
+        writeJSON(path.join(dataDir, `relationship_layout_geometry_${buildingLayoutCount}.json`), {
+          from: { '/': `./${layoutFile}` },
+          to: { '/': './geometry_building.json' },
+        });
+      }
+    }
+  });
+  
+  if (buildingLayoutCount > 0) {
+    console.log(`✓ Created ${buildingLayoutCount} layout_has_geometry relationship(s) for Building space_type`);
+  }
+  
+  // layout_has_layout - Create relationships from subarea layouts to their building layout
+  // Group layouts by building_number and link them to the corresponding building layout
+  const buildingLayoutsByNumber = {}; // { buildingNumber: layoutFile }
+  const subareaLayoutsByBuilding = {}; // { buildingNumber: [layoutFiles] }
+  
+  layoutFiles.forEach((layoutFile) => {
+    const layoutPath = path.join(dataDir, layoutFile);
+    if (fs.existsSync(layoutPath)) {
+      const layoutData = JSON.parse(fs.readFileSync(layoutPath, 'utf-8'));
+      const buildingNum = layoutData.building_number || 1;
+      
+      if (layoutData.space_type === 'Building') {
+        buildingLayoutsByNumber[buildingNum] = layoutFile;
+      } else {
+        // Subarea layout
+        if (!subareaLayoutsByBuilding[buildingNum]) {
+          subareaLayoutsByBuilding[buildingNum] = [];
+        }
+        subareaLayoutsByBuilding[buildingNum].push(layoutFile);
+      }
+    }
+  });
+  
+  // Create layout_has_layout relationships: subarea layouts -> building layout
+  let layoutLayoutRelCount = 0;
+  Object.keys(subareaLayoutsByBuilding).forEach((buildingNumStr) => {
+    const buildingNum = parseInt(buildingNumStr, 10);
+    const buildingLayoutFile = buildingLayoutsByNumber[buildingNum];
+    const subareaLayouts = subareaLayoutsByBuilding[buildingNum] || [];
+    
+    if (buildingLayoutFile) {
+      subareaLayouts.forEach((subareaLayoutFile) => {
+        layoutLayoutRelCount++;
+        writeJSON(path.join(dataDir, `relationship_layout_layout_${layoutLayoutRelCount}.json`), {
+          from: { '/': `./${subareaLayoutFile}` },
+          to: { '/': `./${buildingLayoutFile}` },
+        });
+      });
+    }
+  });
+  if (layoutLayoutRelCount > 0) {
+    console.log(`✓ Created ${layoutLayoutRelCount} layout_has_layout relationship(s) (subarea -> building)`);
+  }
+  
+  // layout_has_structure - Create relationships from building layouts to their structures
+  let layoutStructureRelCount = 0;
+  Object.keys(buildingLayoutsByNumber).forEach((buildingNumStr) => {
+    const buildingNum = parseInt(buildingNumStr, 10);
+    const buildingLayoutFile = buildingLayoutsByNumber[buildingNum];
+    const structureFile = `structure_${buildingNum}.json`;
+    const structurePath = path.join(dataDir, structureFile);
+    
+    if (buildingLayoutFile && fs.existsSync(structurePath)) {
+      layoutStructureRelCount++;
+      writeJSON(path.join(dataDir, `relationship_layout_structure_${layoutStructureRelCount}.json`), {
+        from: { '/': `./${buildingLayoutFile}` },
+        to: { '/': `./${structureFile}` },
+      });
+    }
+  });
+  if (layoutStructureRelCount > 0) {
+    console.log(`✓ Created ${layoutStructureRelCount} layout_has_structure relationship(s) (building -> structure)`);
+  }
+  
+  // layout_has_utility - Create relationships from building layouts to their utilities
+  let layoutUtilityRelCount = 0;
+  Object.keys(buildingLayoutsByNumber).forEach((buildingNumStr) => {
+    const buildingNum = parseInt(buildingNumStr, 10);
+    const buildingLayoutFile = buildingLayoutsByNumber[buildingNum];
+    const utilityFile = `utility_${buildingNum}.json`;
+    const utilityPath = path.join(dataDir, utilityFile);
+    
+    if (buildingLayoutFile && fs.existsSync(utilityPath)) {
+      layoutUtilityRelCount++;
+      writeJSON(path.join(dataDir, `relationship_layout_utility_${layoutUtilityRelCount}.json`), {
+        from: { '/': `./${buildingLayoutFile}` },
+        to: { '/': `./${utilityFile}` },
+      });
+    }
+  });
+  if (layoutUtilityRelCount > 0) {
+    console.log(`✓ Created ${layoutUtilityRelCount} layout_has_utility relationship(s) (building -> utility)`);
+  }
 }
 
 if (require.main === module) {

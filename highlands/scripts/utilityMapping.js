@@ -30,29 +30,51 @@ function extractPropertyId($) {
   return "unknown_id";
 }
 
-function getElementsMap($) {
-  let table;
-  $("table").each((i, el) => {
-    const ths = $(el).find("thead th");
-    // Check for "Element" in the first header cell
-    if (ths.length && $(ths[0]).text().trim() === "Element") {
-      table = el;
-      return false; // Stop iterating once the table is found
+function findNextTableWithHeader($, startElement, headerText) {
+  let current = $(startElement);
+  while (current.length) {
+    current = current.next();
+    if (!current.length) break;
+    if (current.is("table")) {
+      const firstHeader = current.find("thead th").first();
+      if (firstHeader && firstHeader.text().trim() === headerText) return current;
     }
+    const nested = current
+      .find("table")
+      .filter((__, tbl) => {
+        const firstHeader = $(tbl).find("thead th").first();
+        return firstHeader && firstHeader.text().trim() === headerText;
+      })
+      .first();
+    if (nested.length) return nested;
+  }
+  return $();
+}
+
+function getBuildingElementsMaps($) {
+  const results = [];
+  $("b").each((_, el) => {
+    const label = $(el).text().trim();
+    const match = label.match(/^Building\s+(\d+)/i);
+    if (!match) return;
+    const buildingIndex = String(match[1]);
+    const elementTable = findNextTableWithHeader($, el, "Element");
+    const map = {};
+    if (elementTable && elementTable.length) {
+      $(elementTable)
+        .find("tr")
+        .each((__, tr) => {
+          const tds = $(tr).find("td");
+          if (tds.length >= 3) {
+            const key = $(tds[0]).text().trim();
+            const desc = $(tds[2]).text().trim();
+            if (key) map[key] = desc;
+          }
+        });
+    }
+    results.push({ buildingIndex, elements: map });
   });
-  const map = {};
-  if (!table) return map;
-  $(table)
-    .find("tbody tr")
-    .each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 3) {
-        const key = $(tds[0]).text().trim();
-        const desc = $(tds[2]).text().trim();
-        map[key] = desc;
-      }
-    });
-  return map;
+  return results;
 }
 
 function mapHeating(elements) {
@@ -74,42 +96,71 @@ function mapCooling(elements) {
   return null;
 }
 
-function buildUtility($) {
+function buildUtilities($) {
   const id = extractPropertyId($);
-  const elements = getElementsMap($);
-  const heating = mapHeating(elements);
-  const cooling = mapCooling(elements);
-
-  const utility = {
-    cooling_system_type: cooling || null,
-    electrical_panel_capacity: null,
-    electrical_wiring_type: null,
-    electrical_wiring_type_other_description: null,
-    heating_system_type: heating || null,
-    hvac_condensing_unit_present: "Unknown", // Default to "Unknown" as per schema if not found
-    hvac_unit_condition: null,
-    hvac_unit_issues: null,
-    plumbing_system_type: null,
-    plumbing_system_type_other_description: null,
-    public_utility_type: null,
-    sewer_type: null,
-    smart_home_features: null,
-    smart_home_features_other_description: null,
-    solar_inverter_visible: false,
-    solar_panel_present: false,
-    solar_panel_type: null,
-    solar_panel_type_other_description: null,
-    water_source_type: null,
-  };
-
-  return { id, utility };
+  const buildingElements = getBuildingElementsMaps($);
+  const buildings = buildingElements.map(({ buildingIndex, elements }) => {
+    const heating = mapHeating(elements);
+    const cooling = mapCooling(elements);
+    return {
+      building_index: buildingIndex,
+      utility: {
+        cooling_system_type: cooling || null,
+        electrical_panel_capacity: null,
+        electrical_wiring_type: null,
+        electrical_wiring_type_other_description: null,
+        heating_system_type: heating || null,
+        hvac_condensing_unit_present: "Unknown", // Default to "Unknown" as per schema if not found
+        hvac_unit_condition: null,
+        hvac_unit_issues: null,
+        plumbing_system_type: null,
+        plumbing_system_type_other_description: null,
+        public_utility_type: null,
+        sewer_type: null,
+        smart_home_features: null,
+        smart_home_features_other_description: null,
+        solar_inverter_visible: false,
+        solar_panel_present: false,
+        solar_panel_type: null,
+        solar_panel_type_other_description: null,
+        water_source_type: null,
+      },
+    };
+  });
+  if (!buildings.length) {
+    buildings.push({
+      building_index: "1",
+      utility: {
+        cooling_system_type: null,
+        electrical_panel_capacity: null,
+        electrical_wiring_type: null,
+        electrical_wiring_type_other_description: null,
+        heating_system_type: null,
+        hvac_condensing_unit_present: "Unknown",
+        hvac_unit_condition: null,
+        hvac_unit_issues: null,
+        plumbing_system_type: null,
+        plumbing_system_type_other_description: null,
+        public_utility_type: null,
+        sewer_type: null,
+        smart_home_features: null,
+        smart_home_features_other_description: null,
+        solar_inverter_visible: false,
+        solar_panel_present: false,
+        solar_panel_type: null,
+        solar_panel_type_other_description: null,
+        water_source_type: null,
+      },
+    });
+  }
+  return { id, buildings };
 }
 
 function main() {
   const { $ } = loadHtml();
-  const { id, utility } = buildUtility($);
+  const { id, buildings } = buildUtilities($);
   const out = {};
-  out[`property_${id}`] = utility;
+  out[`property_${id}`] = { buildings };
 
   // Ensure the 'owners' directory exists before writing the file
   const ownersDirPath = path.resolve("owners");

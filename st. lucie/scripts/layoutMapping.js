@@ -22,6 +22,17 @@ function parseNumeric(text) {
   return Number.isFinite(value) ? value : null;
 }
 
+function formatYearToISODate(year) {
+  if (!year) return null;
+  const yearNum = parseInt(year, 10);
+  // Only accept years between 1800 and current year + 10 for property data
+  // This prevents values like 290 (which are measurements, not years) from being treated as dates
+  if (isNaN(yearNum) || yearNum < 1800 || yearNum > new Date().getFullYear() + 10) {
+    return null;
+  }
+  return `${yearNum}-01-01`;
+}
+
 function parseExtraFeatures($) {
   const features = [];
 
@@ -233,9 +244,9 @@ function inferFlooringMaterialFromFeature(feature, flooringEnum, mapEnumFn) {
 function dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) {
   if (layout.decor_elements && layout.decor_elements.length > 0) {
     const uniqueDecor = Array.from(new Set(layout.decor_elements));
-    // Filter to valid enum values and pick the first one, or concatenate if schema allows multiple (but it seems not)
+    // Filter to valid enum values only - exact matches
     const validDecor = uniqueDecor.filter(element =>
-      DECOR_ELEMENTS_ENUM.includes(element) || DECOR_ELEMENTS_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+      DECOR_ELEMENTS_ENUM.includes(element)
     );
     layout.decor_elements = validDecor.length > 0 ? validDecor[0] : null; // Pick first valid or null
   } else {
@@ -244,9 +255,9 @@ function dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) {
 
   if (layout.safety_features && layout.safety_features.length > 0) {
     const uniqueSafety = Array.from(new Set(layout.safety_features));
-    // Filter to valid enum values and pick the first one, or concatenate if schema allows multiple (but it seems not)
+    // Filter to valid enum values only - exact matches
     const validSafety = uniqueSafety.filter(element =>
-      SAFETY_FEATURES_ENUM.includes(element) || SAFETY_FEATURES_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+      SAFETY_FEATURES_ENUM.includes(element)
     );
     layout.safety_features = validSafety.length > 0 ? validSafety[0] : null; // Pick first valid or null
   } else {
@@ -515,8 +526,7 @@ function mapFreeformFeatureToLayout(feature, enums, mapEnumFn) {
   if (hasAny(["FENCE"])) {
     layout.space_type = mapEnumFn("Courtyard", SPACE_TYPE_ENUM);
     if (label) {
-      const fenceLabel = `Fencing`; // Map to "Fencing" enum
-      layout.decor_elements.push(fenceLabel);
+      const fenceLabel = `Fencing`; // Map to "Fencing" enum - only valid for safety_features
       layout.safety_features.push(fenceLabel);
     }
     return layout.space_type ? dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) : null;
@@ -601,8 +611,7 @@ function mapFreeformFeatureToLayout(feature, enums, mapEnumFn) {
   if (hasAll(["GATE", "MECHANICAL"]) || hasAll(["GATE", "AUTO"])) {
     layout.space_type = mapEnumFn("Courtyard", SPACE_TYPE_ENUM);
     if (label) {
-      const gateLabel = `SelfClosingGate`; // Map to "SelfClosingGate" enum
-      layout.decor_elements.push(gateLabel);
+      const gateLabel = `SelfClosingGate`; // Map to "SelfClosingGate" enum - only valid for safety_features
       layout.safety_features.push(gateLabel);
     }
     return layout.space_type ? dedupeLayoutArrays(layout, DECOR_ELEMENTS_ENUM, SAFETY_FEATURES_ENUM) : null;
@@ -636,7 +645,7 @@ function createDefaultLayout(
     space_type_index: spaceTypeIndex,
     flooring_material_type: null,
     size_square_feet: null,
-    floor_level: floorLevel, // Can be integer or string depending on schema
+    floor_level: floorLevel, // Stored as schema-compliant string when available
     has_windows: null,
     window_design_type: null,
     window_material_type: null,
@@ -683,8 +692,6 @@ function createDefaultLayout(
 
 function extractLayouts($, parcelId) {
   const allLayouts = [];
-  // A separate array to hold relationship objects
-  const allRelationships = [];
   const spaceTypeCounters = {}; // Counter for each space_type across the property
   const buildingTypeIndexCounters = {};
   const floorTypeIndexCounters = {};
@@ -749,6 +756,10 @@ function extractLayouts($, parcelId) {
     "Marble", "Vinyl", "Tile", "PouredConcrete", "Metal", "Glass", "Laminate"
   ];
 
+  const FLOOR_LEVEL_ENUM = ["1st Floor", "2nd Floor", "3rd Floor", "4th Floor"];
+
+  const STORY_TYPE_ENUM = ["Full", "Half Story", "Three-Quarter Story"];
+
   const POOL_TYPE_ENUM = [
     "SaltWater", "AboveGround", "Concrete", "Heated", "BuiltIn", "Plunge", "Lap", "Infinity",
     "Fiberglass", "Vinyl", "Natural"
@@ -760,42 +771,27 @@ function extractLayouts($, parcelId) {
 
   const DECOR_ELEMENTS_ENUM = [
     "Vaulted Ceiling", "Coffered Ceiling", "Beamed Ceiling", "Tray Ceiling", "Accent Wall", "Exposed Brick",
-    "Crown Molding", "Wainscoting", "Built-In Shelving", "Wall Paneling", "Chair Railing", "Picture Railing",
-    "Decorative Columns", "Arched Doorways", "Recessed Lighting", "Chandelier", "Pendant Lighting",
-    "Sconce Lighting", "Under-Cabinet Lighting", "Fireplace", "Stove", "Mantle", "Built-In Bar",
-    "Wine Rack", "Window Seat", "Bay Window", "Skylight", "Sun Tunnel", "French Doors", "Sliding Glass Doors",
-    "Barn Doors", "Pocket Doors", "Transom Windows", "Sidelight Windows", "Stained Glass", "Mirror Wall",
-    "Feature Wall", "Art Niche", "Display Shelves", "Open Shelving", "Floating Shelves", "Bookcase",
-    "Media Console", "Entertainment Center", "Desk", "Vanity", "Bench", "Storage Bench", "Coat Rack",
-    "Mudroom Bench", "Shoe Rack", "Key Holder", "Mail Organizer", "Charging Station", "Pet Feeding Station",
-    "Built-In Pet Bed", "Aquarium", "Terrarium", "Indoor Garden", "Plant Wall", "Water Feature",
-    "Statue", "Sculpture", "Mural", "Artwork", "Tapestry", "Area Rug", "Throw Pillows", "Blankets",
-    "Curtains", "Blinds", "Shades", "Shutters", "Valances", "Cornices", "Drapery", "Sheers",
-    "Blackout Curtains", "Smart Home Devices", "Voice Assistant", "Smart Lighting", "Smart Thermostat",
-    "Smart Locks", "Security Camera", "Video Doorbell", "Intercom System", "Sound System",
-    "Home Theater System", "Projector Screen", "Gaming Console", "Arcade Machine", "Pool Table",
-    "Foosball Table", "Air Hockey Table", "Dartboard", "Bar Cart", "Coffee Station", "Tea Station",
-    "Spice Rack", "Knife Block", "Pot Rack", "Utensil Holder", "Dish Drying Rack", "Paper Towel Holder",
-    "Soap Dispenser", "Toothbrush Holder", "Towel Rack", "Robe Hook", "Shower Caddy", "Bath Mat",
-    "Laundry Hamper", "Ironing Board", "Drying Rack", "Storage Bins", "Baskets", "Containers",
-    "Shelving Units", "Cabinets", "Drawers", "Hooks", "Pegboard", "Tool Rack", "Workbench",
-    "Garden Tools", "Hose Reel", "Planters", "Pots", "Bird Feeder", "Bird Bath", "Wind Chimes",
-    "Outdoor Lighting", "String Lights", "Lanterns", "Fire Pit", "Outdoor Fireplace", "Grill",
-    "Smoker", "Pizza Oven", "Outdoor Seating", "Patio Furniture", "Umbrella", "Awning", "Shade Sail",
-    "Hot Tub Cover", "Pool Cover", "Pool Fence", "Safety Net", "Life Buoy", "Warning Signage",
-    "Surveillance Camera", "Lighting", "Self-Closing Gate", "Slip-Resistant Surface",
-    "Emergency Exit Sign", "Fire Extinguisher", "Smoke Detector", "Carbon Monoxide Detector",
-    "Security System", "Alarm System", "Motion Sensor Lights", "Floodlights", "Gate", "Fence",
-    "Wall", "Seawall", "Bridge", "Canopy", "Bleachers", "Driveway", "Walkway", "Paved Surface",
-    "Truck Scale", "Service Pit", "Vault", "Tower", "Silo", "Screen Panels", "Pool Deck",
-    "Pool Enclosure", "Pool Feature", "Commercial Pool", "Barn", "Dock", "Gate (Mechanical)",
-    "Gate (Auto)", "Fencing" // Simplified fence types to just "Fencing" for decor_elements
+    "Crown Molding", "Wainscoting", "Built-In Shelving", "Wall Paneling"
   ];
 
   const SAFETY_FEATURES_ENUM = [
     "Fencing", "PoolCover", "Alarm", "SelfClosingGate", "SlipResistantSurface", "Lifebuoy",
     "WarningSignage", "SurveillanceCamera", "Lighting" // Removed "Screen Enclosure", "Screen Panels"
   ];
+
+  function mapFloorNumberToEnum(floorNumber) {
+    if (typeof floorNumber !== "number" || floorNumber < 1) {
+      return null;
+    }
+    const ordinalMap = {
+      1: "1st Floor",
+      2: "2nd Floor",
+      3: "3rd Floor",
+      4: "4th Floor",
+    };
+    const label = ordinalMap[floorNumber];
+    return label ? mapToSchemaEnum(label, FLOOR_LEVEL_ENUM) : null;
+  }
 
 
   // --- Extract Building Information ---
@@ -832,6 +828,8 @@ function extractLayouts($, parcelId) {
     }
   }
 
+  const fullStoryTypeEnumValue = mapToSchemaEnum("Full", STORY_TYPE_ENUM);
+
   // Determine floor information
   let hasFloorInformation = false;
   let totalStories = 1;
@@ -863,42 +861,27 @@ function extractLayouts($, parcelId) {
     buildingLayout.total_area_sq_ft = grossArea;
     buildingLayout.livable_area_sq_ft = finishedArea;
     buildingLayout.built_year = yearBuilt;
-    buildingLayout.installation_date = yearBuilt ? `${yearBuilt}-01-01` : null;
+    buildingLayout.installation_date = formatYearToISODate(yearBuilt);
     buildingLayout.is_finished = true; // Buildings are generally considered "finished"
     allLayouts.push(buildingLayout);
-
-    // Store space_index for relationships
-    const buildingSpaceIndex = buildingLayout.space_index;
 
     if (hasFloorInformation) {
       for (let floorNum = 1; floorNum <= totalStories; floorNum++) {
         const floorSpaceTypeIndex = `${buildingSpaceTypeIndex}.${floorNum}`;
+        const floorLevelValue = mapFloorNumberToEnum(floorNum);
         const floorLayout = createDefaultLayout(
           parcelId,
           "Floor",
           spaceTypeCounters,
           b,
-          floorNum,
+          floorLevelValue,
           floorSpaceTypeIndex,
         );
-        floorLayout.story_type = `${floorNum} Story`; // Assuming story_type can be descriptive string
+        if (fullStoryTypeEnumValue) {
+          floorLayout.story_type = fullStoryTypeEnumValue;
+        }
         floorLayout.is_finished = true; // Floors are generally considered "finished"
         allLayouts.push(floorLayout);
-
-        // Add relationship: Building has Floor
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: floorLayout.space_index,
-          },
-          type: "layout_has_layout" // Relationship type
-        });
 
         // Add rooms to the current floor
         for (let i = 0; i < bedrooms; i++) {
@@ -908,26 +891,12 @@ function extractLayouts($, parcelId) {
             "Bedroom",
             spaceTypeCounters,
             b,
-            floorNum,
+            floorLevelValue,
             roomSpaceTypeIndex,
           );
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
           allLayouts.push(roomLayout);
-          // Relationship: Floor has Bedroom
-          allRelationships.push({
-            from: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: floorLayout.space_index,
-            },
-            to: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: roomLayout.space_index,
-            },
-            type: "layout_has_layout"
-          });
         }
         for (let i = 0; i < fullBaths; i++) {
           const roomSpaceTypeIndex = nextFloorTypeIndex(b, floorNum, "Full Bathroom");
@@ -936,26 +905,12 @@ function extractLayouts($, parcelId) {
             "Full Bathroom",
             spaceTypeCounters,
             b,
-            floorNum,
+            floorLevelValue,
             roomSpaceTypeIndex,
           );
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
           allLayouts.push(roomLayout);
-          // Relationship: Floor has Full Bathroom
-          allRelationships.push({
-            from: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: floorLayout.space_index,
-            },
-            to: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: roomLayout.space_index,
-            },
-            type: "layout_has_layout"
-          });
         }
         for (let i = 0; i < halfBaths; i++) {
           const roomSpaceTypeIndex = nextFloorTypeIndex(b, floorNum, "Half Bathroom / Powder Room");
@@ -964,26 +919,12 @@ function extractLayouts($, parcelId) {
             "Half Bathroom / Powder Room",
             spaceTypeCounters,
             b,
-            floorNum,
+            floorLevelValue,
             roomSpaceTypeIndex,
           );
           roomLayout.flooring_material_type = interiorFlooring;
           roomLayout.is_finished = true;
           allLayouts.push(roomLayout);
-          // Relationship: Floor has Half Bathroom
-          allRelationships.push({
-            from: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: floorLayout.space_index,
-            },
-            to: {
-              data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-              file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-              space_index: roomLayout.space_index,
-            },
-            type: "layout_has_layout"
-          });
         }
       }
     } else {
@@ -1001,20 +942,6 @@ function extractLayouts($, parcelId) {
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
         allLayouts.push(roomLayout);
-        // Relationship: Building has Bedroom
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: roomLayout.space_index,
-          },
-          type: "layout_has_layout"
-        });
       }
       for (let i = 0; i < fullBaths; i++) {
         const roomSpaceTypeIndex = nextBuildingTypeIndex(b, "Full Bathroom");
@@ -1029,20 +956,6 @@ function extractLayouts($, parcelId) {
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
         allLayouts.push(roomLayout);
-        // Relationship: Building has Full Bathroom
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: roomLayout.space_index,
-          },
-          type: "layout_has_layout"
-        });
       }
       for (let i = 0; i < halfBaths; i++) {
         const roomSpaceTypeIndex = nextBuildingTypeIndex(b, "Half Bathroom / Powder Room");
@@ -1057,20 +970,6 @@ function extractLayouts($, parcelId) {
         roomLayout.flooring_material_type = interiorFlooring;
         roomLayout.is_finished = true;
         allLayouts.push(roomLayout);
-        // Relationship: Building has Half Bathroom
-        allRelationships.push({
-          from: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: buildingSpaceIndex,
-          },
-          to: {
-            data_group_cid: "bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue", // Placeholder CID
-            file_path: `/tmp/elephant-cli-zip-VDBqkS/data/bafkreicg7ab2lewkld6zubmc3amlejwz2y7s7yivu23mbgqfox7ovqvrue.json`, // Placeholder path
-            space_index: roomLayout.space_index,
-          },
-          type: "layout_has_layout"
-        });
       }
     }
   }
@@ -1095,7 +994,7 @@ function extractLayouts($, parcelId) {
       let safetyFeatures = []; // Temporarily an array
       let viewType = null;
       let sizeSquareFeet = null;
-      let installationDate = yearBuiltSFYI ? `${yearBuiltSFYI}-01-01` : null;
+      let installationDate = formatYearToISODate(yearBuiltSFYI);
 
       if (!isNaN(units) && units !== "") {
         sizeSquareFeet = parseInt(units, 10);
@@ -1375,11 +1274,12 @@ function extractLayouts($, parcelId) {
         if (!flooringMaterial && freeformMapped.flooring_material_type) {
           flooringMaterial = freeformMapped.flooring_material_type;
         }
-        if (freeformMapped.decor_elements?.length) {
-          decorElements = decorElements.concat(freeformMapped.decor_elements);
+        // freeformMapped.decor_elements and safety_features are single strings or null after dedupeLayoutArrays
+        if (freeformMapped.decor_elements && typeof freeformMapped.decor_elements === 'string') {
+          decorElements.push(freeformMapped.decor_elements);
         }
-        if (freeformMapped.safety_features?.length) {
-          safetyFeatures = safetyFeatures.concat(freeformMapped.safety_features);
+        if (freeformMapped.safety_features && typeof freeformMapped.safety_features === 'string') {
+          safetyFeatures.push(freeformMapped.safety_features);
         }
         if (!viewType && freeformMapped.view_type) {
           viewType = freeformMapped.view_type;
@@ -1409,13 +1309,13 @@ function extractLayouts($, parcelId) {
           // Process decor_elements and safety_features to be single string or null
           const uniqueDecor = Array.from(new Set(decorElements));
           const validDecor = uniqueDecor.filter(element =>
-            DECOR_ELEMENTS_ENUM.includes(element) || DECOR_ELEMENTS_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+            DECOR_ELEMENTS_ENUM.includes(element)
           );
           sfyiLayout.decor_elements = validDecor.length > 0 ? validDecor[0] : null;
 
           const uniqueSafety = Array.from(new Set(safetyFeatures));
           const validSafety = uniqueSafety.filter(element =>
-            SAFETY_FEATURES_ENUM.includes(element) || SAFETY_FEATURES_ENUM.some(enumVal => enumVal.toLowerCase().includes(element.toLowerCase()))
+            SAFETY_FEATURES_ENUM.includes(element)
           );
           sfyiLayout.safety_features = validSafety.length > 0 ? validSafety[0] : null;
 
@@ -1428,20 +1328,20 @@ function extractLayouts($, parcelId) {
     }
   });
 
-  return { layouts: allLayouts, relationships: allRelationships };
+  return { layouts: allLayouts };
 }
 
 function main() {
   const inputPath = path.join(process.cwd(), "input.html");
   const $ = loadHtml(inputPath);
   const parcelId = getParcelId($);
-  const { layouts, relationships } = extractLayouts($, parcelId); // Get both layouts and relationships
+  const { layouts } = extractLayouts($, parcelId);
 
   const outputDir = path.join(process.cwd(), "owners");
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
   const output = {};
-  output[`property_${parcelId}`] = { layouts, relationships }; // Include relationships in the output
+  output[`property_${parcelId}`] = { layouts };
 
   const outPath = path.join(outputDir, "layout_data.json");
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
