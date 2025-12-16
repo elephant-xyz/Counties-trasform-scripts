@@ -388,15 +388,19 @@ function extractCurrentOwnerCandidates($) {
   const owners = [];
   $(".parcel-info .parcel-detail .ownership > div").each((i, el) => {
     const clone = $(el).clone();
-    clone.find("p").remove();
-    const raw = normalizeSpace(
-      clone
-        .text()
-        .replace(/\s*\n\s*/g, " ")
-        .replace(/\s{2,}/g, " ")
-        .trim(),
-    );
-    if (raw) owners.push(raw);
+    clone.find("p").remove(); // Remove address paragraphs
+    const htmlContent = clone.html() || "";
+
+    // Split by <br> tags to get individual owner lines
+    const ownerLines = htmlContent
+      .split(/<br\s*\/?>/i)
+      .map(line => {
+        // Remove HTML tags and normalize whitespace
+        return normalizeSpace(line.replace(/<[^>]*>/g, '').trim());
+      })
+      .filter(line => line.length > 0);
+
+    owners.push(...ownerLines);
   });
   return owners;
 }
@@ -444,8 +448,9 @@ function buildOwnersByDate($) {
     const cleanedGrantee = normalizeSpace(
       grantee
         .replace(/\.$/, "")
-        .replace(/\s*\([^)]*\)\s*$/, "")
+        .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
         .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
+        .replace(/\s+/g, ' ') // Normalize multiple spaces
     ).trim();
 
     // If the original string is clearly a company (has LLC, INC, etc.), don't split it
@@ -474,8 +479,9 @@ function buildOwnersByDate($) {
       const clean = normalizeSpace(
         raw
           .replace(/\.$/, "")
-          .replace(/\s*\([^)]*\)\s*$/, "")
+          .replace(/\s*\([^)]*\)\s*/g, " ") // Remove ALL parenthetical content like (GUARDIAN), (TRUSTEE), etc.
           .replace(/\b(L\/E|JT\/RS|JTWROS|JT\s+W\/RS|TENANTS?\s+IN\s+COMMON|TIC|ET\s+AL|TTEE|TRUSTEE|AS\s+TRUSTEE|CUSTODIAN)\b.*$/i, "")
+          .replace(/\s+/g, ' ') // Normalize multiple spaces
       ).trim();
 
       if (!clean) continue;
@@ -537,10 +543,12 @@ function buildOwnersByDate($) {
     }
 
     const personLike = cand
+      .replace(/\s*\([^)]*\)\s*/g, " ") // Remove parenthetical content
       .replace(
         /\b(L\/E|TRUSTEE|ET\s+AL|CUSTODIAN|AS\s+TRUSTEE|TTEE|AS\s+TTEE)\b.*$/i,
         "",
       )
+      .replace(/\s+/g, ' ') // Normalize multiple spaces
       .trim();
     if (looksLikePerson(personLike)) {
       const p = parsePerson(personLike, null, 0);

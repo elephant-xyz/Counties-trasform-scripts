@@ -1725,6 +1725,7 @@ function extractOwnerInfo(ownershipHtml) {
       // Remove legal designations that are not part of the person's name
       // L/E = Life Estate, JT/RS = Joint Tenants with Right of Survivorship, etc.
       cleanName = cleanName
+        .replace(/\s*\([^)]*\)\s*/g, ' ') // Remove parenthetical content like (GUARDIAN), (TRUSTEE), (AGENT), etc.
         .replace(/\s+L\/E\s*$/i, '') // Remove Life Estate at end
         .replace(/\s+JT\/RS\s*$/i, '') // Remove Joint Tenants with Right of Survivorship
         .replace(/\s+JTWROS\s*$/i, '') // Remove Joint Tenants with Right of Survivorship
@@ -1735,6 +1736,7 @@ function extractOwnerInfo(ownershipHtml) {
         .replace(/\s+TTEE\s*$/i, '') // Remove Trustee abbreviation
         .replace(/\s+AS\s+TRUSTEE.*$/i, '') // Remove "AS TRUSTEE" and anything after
         .replace(/\s+CUSTODIAN.*$/i, '') // Remove "CUSTODIAN" and anything after
+        .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
         .trim();
 
       // Check if the original cleanName contains company keywords before splitting
