@@ -1968,6 +1968,14 @@ function main() {
       mappedType.property_type,
     );
     if (!normalizedPropertyType) {
+      const tempBuildStatus = mappedType.build_status
+        ? validateEnum(
+            mappedType.build_status,
+            ALLOWED_BUILD_STATUS,
+            "Property",
+            "build_status",
+          )
+        : null;
       return {
         propertyType: "MAPPING NOT AVAILABLE",
         ownershipEstateType: mappedType.ownership_estate_type
@@ -1978,14 +1986,7 @@ function main() {
               "ownership_estate_type",
             )
           : null,
-        buildStatus: mappedType.build_status
-          ? validateEnum(
-              mappedType.build_status,
-              ALLOWED_BUILD_STATUS,
-              "Property",
-              "build_status",
-            )
-          : null,
+        buildStatus: tempBuildStatus === "MAPPING NOT AVAILABLE" ? null : tempBuildStatus,
         structureForm: mappedType.structure_form
           ? validateEnum(
               mappedType.structure_form,
@@ -2005,6 +2006,14 @@ function main() {
       };
     }
 
+    const finalBuildStatus = mappedType.build_status
+      ? validateEnum(
+          mappedType.build_status,
+          ALLOWED_BUILD_STATUS,
+          "Property",
+          "build_status",
+        )
+      : null;
     return {
       propertyType: validateEnum(
         normalizedPropertyType,
@@ -2020,14 +2029,7 @@ function main() {
             "ownership_estate_type",
           )
         : null,
-      buildStatus: mappedType.build_status
-        ? validateEnum(
-            mappedType.build_status,
-            ALLOWED_BUILD_STATUS,
-            "Property",
-            "build_status",
-          )
-        : null,
+      buildStatus: finalBuildStatus === "MAPPING NOT AVAILABLE" ? null : finalBuildStatus,
       structureForm: mappedType.structure_form
         ? validateEnum(
             mappedType.structure_form,
@@ -2098,6 +2100,16 @@ function main() {
     };
   }
 
+  // Validate and convert "MAPPING NOT AVAILABLE" to null for nullable fields
+  const validatedBuildStatus = propertyInfo.buildStatus
+    ? validateEnum(
+        propertyInfo.buildStatus,
+        ALLOWED_BUILD_STATUS,
+        "Property",
+        "build_status",
+      )
+    : null;
+
   propertyInfo = {
     propertyType: validateEnum(
       propertyInfo.propertyType,
@@ -2113,14 +2125,7 @@ function main() {
           "ownership_estate_type",
         )
       : null,
-    buildStatus: propertyInfo.buildStatus
-      ? validateEnum(
-          propertyInfo.buildStatus,
-          ALLOWED_BUILD_STATUS,
-          "Property",
-          "build_status",
-        )
-      : null,
+    buildStatus: validatedBuildStatus === "MAPPING NOT AVAILABLE" ? null : validatedBuildStatus,
     structureForm: propertyInfo.structureForm
       ? validateEnum(
           propertyInfo.structureForm,
