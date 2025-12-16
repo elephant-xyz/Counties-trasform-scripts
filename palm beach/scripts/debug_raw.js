@@ -26736,19 +26736,7 @@ async function main() {
       hasCompleteNormalizedAddress({ ...finalNormalizedSurfaceResolved });
 
     let finalAddressOutput = null;
-    if (finalRawSelection) {
-      finalAddressOutput = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-      finalAddressOutput.unnormalized_address = finalRawSelection;
-      finalAddressOutput.request_identifier =
-        finalResolvedRequestId === undefined ? null : finalResolvedRequestId;
-      finalAddressOutput.source_http_request = finalResolvedSourceHttp
-        ? prepareSourceHttpRequest(finalResolvedSourceHttp)
-        : null;
-      finalAddressOutput.county_name = resolvedCounty || null;
-      if (!finalAddressOutput.postal_code) {
-        finalAddressOutput.plus_four_postal_code = null;
-      }
-    } else if (finalNormalizedCompleteResolved) {
+    if (finalNormalizedCompleteResolved) {
       finalAddressOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
         let value = finalNormalizedSurfaceResolved[field];
@@ -26780,6 +26768,41 @@ async function main() {
         Object.prototype.hasOwnProperty.call(finalAddressOutput, "unnormalized_address")
       ) {
         delete finalAddressOutput.unnormalized_address;
+      }
+    } else if (finalRawSelection) {
+      const rawSeed =
+        sanitizeRawOneOfPayload(
+          { ...finalSnapshot, county_name: resolvedCounty || finalSnapshot.county_name },
+          { unnormalized_address: finalRawSelection },
+        ) || null;
+
+      if (rawSeed) {
+        const hydratedRaw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...rawSeed };
+        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
+          if (!Object.prototype.hasOwnProperty.call(hydratedRaw, field)) {
+            hydratedRaw[field] = null;
+          }
+        });
+        hydratedRaw.request_identifier =
+          finalResolvedRequestId === undefined ? null : finalResolvedRequestId;
+        hydratedRaw.source_http_request = finalResolvedSourceHttp
+          ? prepareSourceHttpRequest(finalResolvedSourceHttp)
+          : null;
+        hydratedRaw.county_name = hydratedRaw.county_name || resolvedCounty || null;
+        if (!hydratedRaw.postal_code) {
+          hydratedRaw.plus_four_postal_code = null;
+        }
+        if ((hydratedRaw.latitude == null) !== (hydratedRaw.longitude == null)) {
+          hydratedRaw.latitude = null;
+          hydratedRaw.longitude = null;
+        }
+        if (
+          hasMeaningfulAddressValue(hydratedRaw.state_code) &&
+          !hasMeaningfulAddressValue(hydratedRaw.country_code)
+        ) {
+          hydratedRaw.country_code = "US";
+        }
+        finalAddressOutput = hydratedRaw;
       }
     } else {
       removeFileIfExists(addressOutputPath);
