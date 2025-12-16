@@ -293,7 +293,7 @@ function parseFloorFinish(value) {
     "17 - Rough Pine": null,
     "20 - Earth": null,
     "08 - Carpeting 2": "Carpet",
-    "01 - Terrazzo Mono": "Terazzo",
+    "01 - Terrazzo Mono": "Terrazzo",
     "18 - Roll Congoleum": null,
   }
   if (value in valueMapping) {
