@@ -1818,28 +1818,6 @@ function main() {
       source_http_request: clone(defaultSourceHttpRequest),
     };
 
-    const cleanedImprovement = {};
-    Object.entries(improvement).forEach(([key, value]) => {
-      if (value === undefined) return;
-      if (value === null) {
-        cleanedImprovement[key] = null;
-        return;
-      }
-      if (typeof value === "string") {
-        const trimmed = value.trim();
-        cleanedImprovement[key] = trimmed || null;
-        return;
-      }
-      cleanedImprovement[key] = value;
-    });
-
-    if (!cleanedImprovement.improvement_type && !cleanedImprovement.permit_number) {
-      return;
-    }
-    if (!cleanedImprovement.improvement_type) {
-      cleanedImprovement.improvement_type = "GeneralBuilding";
-    }
-
     // Ensure improvement_type is always a valid enum value or null
     const validImprovementTypes = [
       "GeneralBuilding", "ResidentialConstruction", "CommercialConstruction",
@@ -1862,18 +1840,49 @@ function main() {
       "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit"
     ];
 
-    // Final validation: ensure improvement_type is valid or null
-    // Convert any invalid value (empty string, undefined, etc.) to null first
-    if (!cleanedImprovement.improvement_type ||
-        typeof cleanedImprovement.improvement_type !== "string" ||
-        cleanedImprovement.improvement_type.trim() === "") {
-      cleanedImprovement.improvement_type = null;
+    // Validate and normalize improvement_type BEFORE creating the cleaned object
+    let normalizedImprovementType = improvement.improvement_type;
+
+    // Convert invalid values to null
+    if (normalizedImprovementType === undefined ||
+        normalizedImprovementType === null ||
+        (typeof normalizedImprovementType === "string" && normalizedImprovementType.trim() === "")) {
+      normalizedImprovementType = null;
     }
 
-    // If not null, must be in valid list
-    if (cleanedImprovement.improvement_type !== null &&
-        !validImprovementTypes.includes(cleanedImprovement.improvement_type)) {
-      cleanedImprovement.improvement_type = "GeneralBuilding";
+    // If not null, ensure it's a valid enum value
+    if (normalizedImprovementType !== null) {
+      // Trim whitespace if it's a string
+      if (typeof normalizedImprovementType === "string") {
+        normalizedImprovementType = normalizedImprovementType.trim();
+      }
+      // If not in valid list, set to null
+      if (!validImprovementTypes.includes(normalizedImprovementType)) {
+        normalizedImprovementType = null;
+      }
+    }
+
+    const cleanedImprovement = {};
+    Object.entries(improvement).forEach(([key, value]) => {
+      if (value === undefined) return;
+      if (value === null) {
+        cleanedImprovement[key] = null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        cleanedImprovement[key] = trimmed || null;
+        return;
+      }
+      cleanedImprovement[key] = value;
+    });
+
+    // Apply the normalized improvement_type
+    cleanedImprovement.improvement_type = normalizedImprovementType;
+
+    // Skip if no valid improvement_type and no permit_number
+    if (cleanedImprovement.improvement_type === null && !cleanedImprovement.permit_number) {
+      return;
     }
 
     const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
