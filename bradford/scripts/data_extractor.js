@@ -2064,6 +2064,8 @@ function main() {
     writeJson(path.join("data", "address.json"), {
       source_http_request: sourceHttpRequest,
       request_identifier: requestIdentifier,
+      county_name: "Bradford",
+      country_code: "US",
       unnormalized_address: fullAddress || null,
       section: section || null,
       township: township || null,
