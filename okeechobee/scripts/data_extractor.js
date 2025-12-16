@@ -3421,8 +3421,8 @@ function main() {
       if (row.bookPageTxt) {
         const bookPageMatch = row.bookPageTxt.match(/(\d+)\s*\/\s*(\d+)/);
         if (bookPageMatch) {
-          book = bookPageMatch[1];
-          page = bookPageMatch[2];
+          book = bookPageMatch[1] ? bookPageMatch[1].trim() : null;
+          page = bookPageMatch[2] ? bookPageMatch[2].trim() : null;
         }
       }
 
@@ -3433,9 +3433,13 @@ function main() {
           ...appendSourceInfo(seed)
         };
 
-        // Only include book and page if they have string values
-        if (book) deed.book = book;
-        if (page) deed.page = page;
+        // Only include book and page if they are valid non-empty strings
+        if (book && typeof book === 'string' && book.length > 0) {
+          deed.book = book;
+        }
+        if (page && typeof page === 'string' && page.length > 0) {
+          deed.page = page;
+        }
 
         if (row.deedCode !== "N/A") {
           const mapped = deedCodeMap[row.deedCode];
