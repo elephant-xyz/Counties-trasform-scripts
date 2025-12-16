@@ -320,6 +320,14 @@ const propertyTypeMapping=[
     "property_type": "Unit"
   },
   {
+    "property_usecode": "0437 CONDO COM APARTMENTS",
+    "ownership_estate_type": "Condominium",
+    "build_status": "Improved",
+    "structure_form": "ApartmentUnit",
+    "property_usage_type": "Residential",
+    "property_type": "Unit"
+  },
+  {
     "property_usecode": "0442 INTERVAL OWNERSHIP (FRACTIONAL OWNERSHIP WITHOUT HOTEL MGMT)",
     "ownership_estate_type": "Timeshare",
     "build_status": "Improved",
