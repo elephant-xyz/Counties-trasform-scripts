@@ -566,19 +566,14 @@ function main() {
 
   // Property JSON
   const property = {
-    livable_floor_area: null,
     parcel_identifier: parcelId,
     property_legal_description_text: legalText,
     property_structure_built_year: null,
     property_type: null,
     property_usage_type: null,
-    area_under_air: null,
     historic_designation: undefined,
     number_of_units: null,
-    number_of_units_type: null,
-    property_effective_built_year: null,
     subdivision: subdivision || null,
-    total_area: null,
     zoning: null,
   };
 
@@ -665,14 +660,6 @@ function main() {
   });
 
   if (yearBuilt) property.property_structure_built_year = yearBuilt;
-  // Only set area if >= 10 sq ft (values < 10 are unrealistic and fail validation)
-  if (hasAnyResidentialBuildings && totalBaseArea >= 10) {
-    property.livable_floor_area = String(totalBaseArea);
-    property.area_under_air = String(totalBaseArea);
-  }
-  if (hasAnyResidentialBuildings && totalAdjArea >= 10) {
-    property.total_area = String(totalAdjArea);
-  }
 
   // Write property.json
   fs.writeFileSync(
@@ -1370,4 +1357,3 @@ try {
   console.error(e.stack || e.message || String(e));
   process.exit(1);
 }
-
