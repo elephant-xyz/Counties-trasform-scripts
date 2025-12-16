@@ -1613,7 +1613,11 @@ function main() {
         message: `Missing property use mapping for label "${propertyUseLabel || "Unknown"}" (code: ${landUseCode || "N/A"}).`,
         path: "property.property_type",
       }));
-      mappedPropertyType = "MAPPING NOT AVAILABLE";
+      mappedPropertyType = "LandParcel";
+      buildStatusValue = null;
+      propertyUsageTypeValue = "Unknown";
+      structureFormValue = null;
+      ownershipEstateTypeValue = null;
     } else {
       mappedPropertyType = propertyUseMapping.property_type;
       buildStatusValue = propertyUseMapping.build_status;
@@ -1628,7 +1632,7 @@ function main() {
           message: `Property use mapping for "${propertyUseCanonicalLabel}" does not include a property_type.`,
           path: "property.property_type",
         }));
-        mappedPropertyType = "MAPPING NOT AVAILABLE";
+        mappedPropertyType = "LandParcel";
       }
     }
     propertyTypeValue = mappedPropertyType;
@@ -1649,7 +1653,7 @@ function main() {
       property_structure_built_year: effYear || null,
       property_effective_built_year: effYear || null,
       property_type: propertyTypeValue,
-      build_status: buildStatusValue ?? null,
+      build_status: buildStatusValue ?? "Improved",
       property_usage_type: propertyUsageTypeValue ?? null,
       structure_form: structureFormValue ?? null,
       ownership_estate_type: ownershipEstateTypeValue ?? null,
@@ -2046,8 +2050,13 @@ function main() {
 
     let fullAddress = null;
     if (typeof unnormalizedAddress?.full_address === "string") {
-      fullAddress = unnormalizedAddress.full_address.trim();
-    } else {
+      const trimmed = unnormalizedAddress.full_address.trim();
+      if (trimmed.length > 0) {
+        fullAddress = trimmed;
+      }
+    }
+
+    if (!fullAddress) {
       const situsHeader = $('td:contains("Situs Address")')
         .filter((i, el) => $(el).text().trim() === "Situs Address")
         .first();
@@ -2061,12 +2070,17 @@ function main() {
       }
     }
 
+    // Ensure unnormalized_address is never null or empty - use parcel_identifier as fallback
+    if (!fullAddress || fullAddress.trim().length === 0) {
+      fullAddress = `Parcel ${hyphenParcel || requestIdentifier || "Unknown"}`;
+    }
+
     writeJson(path.join("data", "address.json"), {
       source_http_request: sourceHttpRequest,
       request_identifier: requestIdentifier,
       county_name: "Bradford",
       country_code: "US",
-      unnormalized_address: fullAddress || null,
+      unnormalized_address: fullAddress,
       section: section || null,
       township: township || null,
       range: range || null,
