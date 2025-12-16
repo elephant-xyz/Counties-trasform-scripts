@@ -2420,7 +2420,10 @@ function main() {
 
       // Only create person if we have valid first and last names
       // Additional check: ensure names are not single letters (likely initials or parsing errors)
-      if (firstName && lastName && firstName.length > 1 && lastName.length > 1) {
+      // CRITICAL: first_name and last_name MUST be non-null strings (schema requires type: "string", not ["string", "null"])
+      if (firstName && lastName &&
+          typeof firstName === 'string' && typeof lastName === 'string' &&
+          firstName.length > 1 && lastName.length > 1) {
         const person = {
           source_http_request: {
             method: "GET",
@@ -2766,7 +2769,10 @@ function main() {
 
         // Only create person if we have valid first and last names
         // Additional check: ensure names are not single letters (likely initials or parsing errors)
-        if (!firstName || !lastName || firstName.length <= 1 || lastName.length <= 1) {
+        // CRITICAL: first_name and last_name MUST be non-null strings (schema requires type: "string", not ["string", "null"])
+        if (!firstName || !lastName ||
+            typeof firstName !== 'string' || typeof lastName !== 'string' ||
+            firstName.length <= 1 || lastName.length <= 1) {
           console.log(`Warning: Cannot create person with invalid name - firstName: ${firstName}, lastName: ${lastName}, firstName.length: ${firstName ? firstName.length : 'N/A'}, lastName.length: ${lastName ? lastName.length : 'N/A'}, originalName: ${owner.first_name || 'N/A'} ${owner.last_name || 'N/A'}`);
           return null;
         }
