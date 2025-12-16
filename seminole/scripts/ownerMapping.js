@@ -198,25 +198,48 @@ function parsePersonName(raw, inferredLastName) {
     const tokens = rest.split(" ").map(normWS).filter(Boolean);
     if (!tokens.length) return null;
     const first = tokens.shift();
-    let middle = tokens.length ? tokens.join(" ") : null;
-    if (middle) {
-      const sufRx = /\b(jr|sr|ii|iii|iv|v)\.?$/i;
-      middle = normWS(middle.replace(sufRx, "").trim()) || null;
+
+    // Extract suffix and clean up extraneous text
+    let suffix = null;
+    let middleTokens = [];
+    for (const token of tokens) {
+      const tokenUpper = token.toUpperCase().replace(/\./g, '');
+      // Check if it's a recognized suffix
+      if (/^(JR|SR|II|III|IV|V|PHD|MD|ESQ|JD|LLM|MBA|RN|DDS|DVM|CFA|CPA|PE|PMP|EMERITUS|RET)$/i.test(tokenUpper)) {
+        suffix = token;
+        break; // Stop processing after finding suffix
+      }
+      // Skip common non-name labels
+      if (/^(ENH|LIFE|EST|ESTATE|TRUST|TR|TRUSTEE|REV|REVOCABLE)$/i.test(tokenUpper)) {
+        break; // Stop processing when we hit these labels
+      }
+      middleTokens.push(token);
     }
-    const middleValid =
-      middle && isValidName(middle) ? normWS(middle) : null;
+
+    let middle = middleTokens.length ? middleTokens.join(" ") : null;
+    const middleValid = middle && isValidName(middle) ? normWS(middle) : null;
 
     // Validate first and last names
     if (!isValidName(first) || !isValidName(lastPart)) {
       return null;
     }
 
-    return {
+    const person = {
       type: "person",
       first_name: first,
       last_name: lastPart,
       middle_name: middleValid,
     };
+
+    // Normalize and add suffix if found
+    if (suffix) {
+      const normalizedSuffix = normalizeSuffix(suffix);
+      if (normalizedSuffix) {
+        person.suffix_name = normalizedSuffix;
+      }
+    }
+
+    return person;
   }
 
   const tokens = s.split(" ").filter(Boolean);
