@@ -302,6 +302,7 @@ function buildStructureRecord($, buildings, parcelId) {
       else if (f.includes("STEEL") && f.includes("PIER")) rec.foundation_material = "Steel Piers";
       else if (f.includes("PRECAST") && f.includes("CONCRETE")) rec.foundation_material = "Precast Concrete";
       else if (f.includes("INSULATED") && f.includes("CONCRETE")) rec.foundation_material = "Insulated Concrete Forms";
+      else if (f.includes("MASONRY")) rec.foundation_material = "Concrete Block";
       else if (f.includes("CONCRETE")) rec.foundation_material = "Poured Concrete";
     }
 

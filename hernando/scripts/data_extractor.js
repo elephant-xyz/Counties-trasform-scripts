@@ -114,7 +114,7 @@ const PROPERTY_TYPE_MAP = Object.freeze({
   "04": "Unit",
   "05": "Unit",
   "06": "Building",
-  "07": "LandParcel",
+  "07": "Building",
   "08": "Building",
   "09": "LandParcel",
   "10": "LandParcel",
@@ -209,21 +209,10 @@ const PROPERTY_TYPE_MAP = Object.freeze({
   "99": "LandParcel",
 });
 
-const BUILD_STATUS_MAP = Object.freeze(
-  (() => {
-    const next = {};
-    for (const [code, propertyType] of Object.entries(PROPERTY_TYPE_MAP)) {
-      next[code] =
-        propertyType === "LandParcel" ? "VacantLand" : "Improved";
-    }
-    return next;
-  })(),
-);
-
 const STRUCTURE_FORM_MAP = Object.freeze({
   "01": "SingleFamilyDetached",
   "02": "MobileHome",
-  "03": "MultiFamilyMoreThan10",
+  "03": "MultiFamily5Plus",
   "04": "ApartmentUnit",
   "05": "ApartmentUnit",
   "06": "MultiFamily5Plus",
@@ -236,6 +225,7 @@ const OWNERSHIP_ESTATE_TYPE_MAP = Object.freeze({
   "05": "Cooperative",
   "09": "Condominium",
   "90": "Leasehold",
+  "93": "SubsurfaceRights",
   "94": "RightOfWay",
 });
 
@@ -246,8 +236,25 @@ const NUMBER_OF_UNITS_TYPE_MAP = Object.freeze({
 });
 
 const DEFAULT_PROPERTY_TYPE = "Building";
-const DEFAULT_BUILD_STATUS = "Improved";
+const DEFAULT_PROPERTY_USAGE_TYPE = "Unknown";
 const DEFAULT_OWNERSHIP_ESTATE_TYPE = "FeeSimple";
+
+const VACANT_LAND_CODES = new Set(["00", "10", "40", "70", "95", "99"]);
+const PROPERTY_CODE_MAP = Object.freeze(
+  Object.fromEntries(
+    Object.keys(PROPERTY_USAGE_MAP).map((code) => [
+      code,
+      {
+        property_type: PROPERTY_TYPE_MAP[code] || DEFAULT_PROPERTY_TYPE,
+        property_usage_type: PROPERTY_USAGE_MAP[code] || DEFAULT_PROPERTY_USAGE_TYPE,
+        build_status: VACANT_LAND_CODES.has(code) ? "VacantLand" : "Improved",
+        ownership_estate_type:
+          OWNERSHIP_ESTATE_TYPE_MAP[code] || DEFAULT_OWNERSHIP_ESTATE_TYPE,
+        structure_form: STRUCTURE_FORM_MAP[code] || null,
+      },
+    ]),
+  ),
+);
 
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
@@ -282,11 +289,14 @@ function parseCurrencyToNumber(txt) {
   if (Number.isNaN(num)) return null;
   return num;
 }
-function toISODate(mdY) {
-  if (!mdY) return null;
-  const m = mdY.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  return `${m[3]}-${m[1]}-${m[2]}`;
+function toISODate(value) {
+  if (!value) return null;
+  const s = value.trim();
+  let m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[1]}-${m[2]}`;
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
 }
 
 // Name normalization helpers to ensure schema compliance for person names
@@ -428,6 +438,478 @@ function normalizePersonFields(p) {
   return result;
 }
 
+const DEED_TYPE_DESCRIPTION_MAP = Object.freeze({
+  WD: "Warranty Deed",
+  SWD: "Special Warranty Deed",
+  SW: "Special Warranty Deed",
+  TD: "Trust Deed",
+  TR: "Trustee Deed",
+  PR: "Personal Representative Deed",
+  CD: "Corrective Deed",
+  CORR: "Corrective Deed",
+  QC: "Quit Claim Deed",
+  QCD: "Quit Claim Deed",
+  LD: "Lien Deed",
+  SL: "Sheriff's Deed",
+  SHD: "Sheriff's Deed",
+  MTG: "Mortgage",
+  DV: "Divorce Deed",
+});
+
+function describeDeedType(code) {
+  if (!code) return null;
+  const norm = code.replace(/[.\s]/g, "").toUpperCase();
+  return DEED_TYPE_DESCRIPTION_MAP[norm] || null;
+}
+
+function parseBookPageParts(input) {
+  const raw = (input || "").trim();
+  if (!raw) return { book: null, page: null, volume: null };
+  const cleaned = raw.replace(/^[A-Za-z]+\s+/g, "");
+  const slash = cleaned.match(/(\d+)\s*\/\s*(\d+)/);
+  if (slash) {
+    return { book: slash[1], page: slash[2], volume: null };
+  }
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
+    return { book: parts[0], page: parts[1], volume: null };
+  }
+  return { book: null, page: null, volume: null };
+}
+
+function inferDocumentFormat(url) {
+  if (!url) return null;
+  const lower = url.toLowerCase();
+  if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return null;
+  if (lower.endsWith(".png")) return "png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "jpeg";
+  if (lower.includes(".pdf")) return null;
+  if (lower.endsWith(".txt")) return "txt";
+  return null;
+}
+
+function parseNumberFromText(text) {
+  if (text == null) return null;
+  const clean = String(text).replace(/[^0-9.-]/g, "");
+  if (!clean) return null;
+  const num = Number(clean);
+  return Number.isFinite(num) ? num : null;
+}
+
+function extractModernBuildingRows($) {
+  const rows = [];
+  $("#bldgTable tbody tr").each((i, tr) => {
+    const tds = $(tr).find("td");
+    if (!tds.length) return;
+    const firstCell = $(tds.get(0)).text().trim();
+    if (/loading/i.test(firstCell)) return;
+    const description = firstCell || null;
+    const yearBuilt =
+      tds.length > 1 ? parseNumberFromText($(tds.get(1)).text()) : null;
+    const areaText = tds.length > 2 ? $(tds.get(2)).text().trim() : "";
+    const bedBathText = tds.length > 3 ? $(tds.get(3)).text().trim() : "";
+
+    let baseSqft = null;
+    let auxSqft = null;
+    if (areaText && areaText.includes("/")) {
+      const parts = areaText.split("/");
+      if (parts.length >= 2) {
+        baseSqft = parseNumberFromText(parts[0]);
+        auxSqft = parseNumberFromText(parts[1]);
+      }
+    }
+
+    let beds = null;
+    let baths = null;
+    if (/\d+\s*\/\s*\d+/.test(bedBathText)) {
+      const parts = bedBathText.split("/");
+      beds = parseNumberFromText(parts[0]);
+      baths = parseNumberFromText(parts[1]);
+    }
+
+    rows.push({
+      description,
+      yearBuilt,
+      baseSqft,
+      auxSqft,
+      beds,
+      baths,
+    });
+  });
+  return rows;
+}
+
+function extractLegacyBuildingRows($) {
+  const rows = [];
+  $("#MainContent_frmParcelDetail_gvBldgs tr").each((i, tr) => {
+    const tds = $(tr).find("td");
+    if (tds.length >= 4) {
+      const description = $(tds.get(0)).text().trim() || null;
+      const yearBuilt = parseNumberFromText($(tds.get(1)).text());
+      const areaText = $(tds.get(3)).text().trim() || "";
+      const bedBathText =
+        tds.length >= 5 ? $(tds.get(4)).text().trim() : "";
+
+      let baseSqft = null;
+      let auxSqft = null;
+      if (areaText && areaText.includes("/")) {
+        const parts = areaText.split("/");
+        if (parts.length >= 2) {
+          baseSqft = parseNumberFromText(parts[0]);
+          auxSqft = parseNumberFromText(parts[1]);
+        }
+      }
+
+      let beds = null;
+      let baths = null;
+      if (/\d+\s*\/\s*\d+/.test(bedBathText)) {
+        const parts = bedBathText.split("/");
+        beds = parseNumberFromText(parts[0]);
+        baths = parseNumberFromText(parts[1]);
+      }
+
+      rows.push({
+        description,
+        yearBuilt,
+        baseSqft,
+        auxSqft,
+        beds,
+        baths,
+      });
+    }
+  });
+  return rows;
+}
+
+function extractBuildingData($) {
+  const modern = extractModernBuildingRows($);
+  if (modern.length) return modern;
+  return extractLegacyBuildingRows($);
+}
+
+function createDefaultUtilityRecord() {
+  return {
+    cooling_system_type: null,
+    electrical_panel_capacity: null,
+    electrical_panel_installation_date: null,
+    electrical_rewire_date: null,
+    electrical_wiring_type: null,
+    electrical_wiring_type_other_description: null,
+    heating_system_type: null,
+    hvac_capacity_kw: null,
+    hvac_capacity_tons: null,
+    hvac_condensing_unit_present: null,
+    hvac_equipment_component: null,
+    hvac_equipment_manufacturer: null,
+    hvac_equipment_model: null,
+    hvac_installation_date: null,
+    hvac_seer_rating: null,
+    hvac_system_configuration: null,
+    hvac_unit_condition: null,
+    hvac_unit_issues: null,
+    plumbing_system_installation_date: null,
+    plumbing_system_type: null,
+    plumbing_system_type_other_description: null,
+    public_utility_type: null,
+    sewer_connection_date: null,
+    sewer_type: null,
+    smart_home_features: null,
+    smart_home_features_other_description: null,
+    solar_installation_date: null,
+    solar_inverter_installation_date: null,
+    solar_inverter_manufacturer: null,
+    solar_inverter_model: null,
+    solar_inverter_visible: false,
+    solar_panel_present: false,
+    solar_panel_type: null,
+    solar_panel_type_other_description: null,
+    water_connection_date: null,
+    water_heater_installation_date: null,
+    water_heater_manufacturer: null,
+    water_heater_model: null,
+    water_source_type: null,
+    well_installation_date: null,
+  };
+}
+
+function createLayoutRecord({
+  spaceType,
+  index,
+  sourceRequest,
+  requestId,
+}) {
+  return {
+    space_type: spaceType,
+    space_type_index: index,
+    flooring_material_type: null,
+    has_windows: false,
+    window_design_type: null,
+    window_material_type: null,
+    window_treatment_type: null,
+    is_finished: false,
+    is_exterior: false,
+    furnished: null,
+    paint_condition: null,
+    flooring_wear: null,
+    clutter_level: null,
+    visible_damage: null,
+    countertop_material: null,
+    cabinet_style: null,
+    fixture_finish_quality: null,
+    design_style: null,
+    natural_light_quality: null,
+    decor_elements: null,
+    pool_type: null,
+    pool_equipment: null,
+    spa_type: null,
+    safety_features: null,
+    view_type: null,
+    lighting_features: null,
+    condition_issues: null,
+    pool_condition: null,
+    pool_surface_type: null,
+    pool_water_quality: null,
+    size_square_feet: null,
+    source_http_request: sourceRequest || null,
+    request_identifier: requestId || null,
+  };
+}
+
+function generateRooms(building, fallbackRooms) {
+  const rooms = [];
+  const addRoom = (type) => {
+    rooms.push({
+      space_type: normalizeLayoutSpaceType(type, "Living Room"),
+    });
+  };
+  if (building && Number.isFinite(building.beds) && building.beds > 0) {
+    for (let i = 0; i < building.beds; i += 1) addRoom("Bedroom");
+  }
+  if (building && Number.isFinite(building.baths) && building.baths > 0) {
+    for (let i = 0; i < building.baths; i += 1) addRoom("Full Bathroom");
+  }
+  if (fallbackRooms && fallbackRooms.length) {
+    fallbackRooms.forEach((room) => {
+      const count = room.count && room.count > 0 ? room.count : 1;
+      for (let i = 0; i < count; i += 1) addRoom(room.space_type);
+    });
+  }
+  if (!rooms.length) addRoom("Living Room");
+  return rooms;
+}
+
+function getStructureFiles(dataDir) {
+  if (!fs.existsSync(dataDir)) return [];
+  return fs
+    .readdirSync(dataDir)
+    .filter((f) => /^structure(_\d+)?\.json$/.test(f))
+    .sort((a, b) => {
+      const ma = a.match(/structure_(\d+)\.json/);
+      const mb = b.match(/structure_(\d+)\.json/);
+      if (ma && mb) return Number(ma[1]) - Number(mb[1]);
+      if (ma) return -1;
+      if (mb) return 1;
+      return 0;
+    });
+}
+
+function getUtilityFiles(dataDir) {
+  if (!fs.existsSync(dataDir)) return [];
+  return fs
+    .readdirSync(dataDir)
+    .filter((f) => /^utility(_\d+)?\.json$/.test(f))
+    .sort((a, b) => {
+      const ma = a.match(/utility_(\d+)\.json/);
+      const mb = b.match(/utility_(\d+)\.json/);
+      if (ma && mb) return Number(ma[1]) - Number(mb[1]);
+      if (ma) return -1;
+      if (mb) return 1;
+      return 0;
+    });
+}
+
+function baseNameFromFile(fileName) {
+  if (!fileName) return "";
+  return fileName.replace(".json", "");
+}
+
+function layoutIdFromFile(fileName) {
+  const match = fileName.match(/layout_(\d+)\.json/);
+  return match ? match[1] : fileName.replace(".json", "");
+}
+
+const DEED_TYPE_MAP = Object.freeze({
+  WD: "Warranty Deed",
+  WARRANTY_DEED: "Warranty Deed",
+  WARRANTY: "Warranty Deed",
+  WARRANTYDEED: "Warranty Deed",
+  QD: "Quitclaim Deed",
+  QUIT_CLAIM_DEED: "Quitclaim Deed",
+  QUITCLAIM_DEED: "Quitclaim Deed",
+  QUITCLAIMDEED: "Quitclaim Deed",
+  SWD: "Special Warranty Deed",
+  SPECIAL_WARRANTY_DEED: "Special Warranty Deed",
+  SPECIALWARRANTYDEED: "Special Warranty Deed",
+  PRD: "Personal Representative Deed",
+  PERSONAL_REPRESENTATIVE_DEED: "Personal Representative Deed",
+  PERSONALREPRESENTATIVEDEED: "Personal Representative Deed",
+  TD: "Trustee's Deed",
+  TRUST_DEED: "Trustee's Deed",
+  TRUSTEES_DEED: "Trustee's Deed",
+  TRUSTDEED: "Trustee's Deed",
+  TRUSTEESDEED: "Trustee's Deed",
+  SHD: "Sheriff's Deed",
+  SHERIFF_DEED: "Sheriff's Deed",
+  SHERIFFS_DEED: "Sheriff's Deed",
+  SHERIFFDEED: "Sheriff's Deed",
+  TAX: "Tax Deed",
+  TAX_DEED: "Tax Deed",
+  TAXDEED: "Tax Deed",
+  GR: "Grant Deed",
+  GRANT_DEED: "Grant Deed",
+  GRANTDEED: "Grant Deed",
+  BSD: "Bargain and Sale Deed",
+  BARGAIN_AND_SALE_DEED: "Bargain and Sale Deed",
+  BARGAINANDSALEDEED: "Bargain and Sale Deed",
+  LADY_BIRD: "Lady Bird Deed",
+  LADYBIRD: "Lady Bird Deed",
+  LBD: "Lady Bird Deed",
+  TOD: "Transfer on Death Deed",
+  TRANSFER_ON_DEATH_DEED: "Transfer on Death Deed",
+  TRANSFERONDEATHDEED: "Transfer on Death Deed",
+  DEED_IN_LIEU: "Deed in Lieu of Foreclosure",
+  DEEDINLIEU: "Deed in Lieu of Foreclosure",
+  DIL: "Deed in Lieu of Foreclosure",
+  LIFE_ESTATE_DEED: "Life Estate Deed",
+  LIFEESTATEDEED: "Life Estate Deed",
+  LED: "Life Estate Deed",
+});
+
+function mapDeedType(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/[\s\-]+/g, "_").replace(/[^\w]/g, "_").toUpperCase();
+  if (DEED_TYPE_MAP[normalized]) return DEED_TYPE_MAP[normalized];
+  const collapsed = raw.replace(/[^\w]/g, "").toUpperCase();
+  if (DEED_TYPE_MAP[collapsed]) return DEED_TYPE_MAP[collapsed];
+  return null;
+}
+
+const ALLOWED_LAYOUT_SPACE_TYPES = new Set([
+  "Building",
+  "Living Room",
+  "Family Room",
+  "Great Room",
+  "Dining Room",
+  "Office Room",
+  "Conference Room",
+  "Class Room",
+  "Plant Floor",
+  "Kitchen",
+  "Breakfast Nook",
+  "Pantry",
+  "Primary Bedroom",
+  "Secondary Bedroom",
+  "Guest Bedroom",
+  "Children’s Bedroom",
+  "Children's Bedroom",
+  "Nursery",
+  "Full Bathroom",
+  "Three-Quarter Bathroom",
+  "Half Bathroom / Powder Room",
+  "En-Suite Bathroom",
+  "Jack-and-Jill Bathroom",
+  "Primary Bathroom",
+  "Laundry Room",
+  "Mudroom",
+  "Closet",
+  "Walk-in Closet",
+  "Mechanical Room",
+  "Storage Room",
+  "Server/IT Closet",
+  "Home Office",
+  "Library",
+  "Den",
+  "Study",
+  "Media Room / Home Theater",
+  "Game Room",
+  "Home Gym",
+  "Music Room",
+  "Craft Room / Hobby Room",
+  "Prayer Room / Meditation Room",
+  "Safe Room / Panic Room",
+  "Wine Cellar",
+  "Bar Area",
+  "Greenhouse",
+  "Attached Garage",
+  "Detached Garage",
+  "Carport",
+  "Workshop",
+  "Storage Loft",
+  "Porch",
+  "Screened Porch",
+  "Sunroom",
+  "Deck",
+  "Patio",
+  "Pergola",
+  "Balcony",
+  "Terrace",
+  "Gazebo",
+  "Pool House",
+  "Outdoor Kitchen",
+  "Lobby / Entry Hall",
+  "Common Room",
+  "Utility Closet",
+  "Elevator Lobby",
+  "Mail Room",
+  "Janitor’s Closet",
+  "Pool Area",
+  "Indoor Pool",
+  "Outdoor Pool",
+  "Hot Tub / Spa Area",
+  "Shed",
+  "Lanai",
+  "Open Porch",
+  "Enclosed Porch",
+  "Attic",
+  "Enclosed Cabana",
+  "Detached Utility Closet",
+  "Jacuzzi",
+  "Courtyard",
+  "Open Courtyard",
+  "Screen Porch (1-Story)",
+  "Screen Enclosure (2-Story)",
+  "Screen Enclosure (3-Story)",
+  "Screen Enclosure (Custom)",
+  "Lower Garage",
+  "Lower Screened Porch",
+  "Stoop",
+  "First Floor",
+  "Second Floor",
+  "Third Floor",
+  "Fourth Floor",
+  "Floor",
+  "Basement",
+  "Sub-Basement",
+  "Living Area",
+"Barn",
+]);
+
+function normalizeLayoutSpaceType(spaceType, fallback = "Living Room") {
+  if (!spaceType) return fallback;
+  if (ALLOWED_LAYOUT_SPACE_TYPES.has(spaceType)) return spaceType;
+  const trimmed = String(spaceType).trim();
+  if (ALLOWED_LAYOUT_SPACE_TYPES.has(trimmed)) return trimmed;
+  const upper = trimmed.toUpperCase();
+  if (upper === "BATHROOM") return "Full Bathroom";
+  if (upper === "BEDROOM") return "Bedroom";
+  if (upper === "LIVING AREA") return "Living Area";
+  if (upper === "LIVING ROOM") return "Living Room";
+  if (upper === "DINING ROOM") return "Dining Room";
+  if (upper === "KITCHEN") return "Kitchen";
+  return fallback;
+}
 function main() {
   const dataDir = path.join(".", "data");
   ensureDir(dataDir);
@@ -439,6 +921,7 @@ function main() {
   const utilsPath = path.join("owners", "utilities_data.json");
   const layoutPath = path.join("owners", "layout_data.json");
   const unnorm = readJson("unnormalized_address.json");
+  const buildingData = extractBuildingData($);
 
   let ownersJson = null,
     utilsJson = null,
@@ -449,16 +932,28 @@ function main() {
   const parcelKey = (
     $("#hidParcelKey").val() ||
     $("#MainContent_frmParcelDetail_PARCEL_KEYLabel").text() ||
+    $("#parcelKey").text() ||
+    $("#parcelNumber").text() ||
     ""
   ).trim();
   const propertyKey = `property_${parcelKey}`;
+  const existingFileIndices = fs
+    .readdirSync(dataDir)
+    .filter((f) => /^file_(\d+)\.json$/.test(f))
+    .map((f) => Number(f.match(/(\d+)/)[1]));
+  let nextFileIndex =
+    existingFileIndices.length > 0
+      ? Math.max(...existingFileIndices) + 1
+      : 1;
 
   // PROPERTY
   const parcelId =
     seed && seed.parcel_id
       ? seed.parcel_id
       : (
-          $("#MainContent_frmParcelDetail_PARCEL_NUMBERLabel").text() || ""
+          $("#MainContent_frmParcelDetail_PARCEL_NUMBERLabel").text() ||
+          $("#parcelNumber").text() ||
+          ""
         ).trim();
   const legalDesc = (function () {
     let txt = "";
@@ -474,10 +969,20 @@ function main() {
           if (/^Description:/i.test(label)) txt = val;
         }
       });
+    if (!txt) {
+      const desc = $("#description").text().trim();
+      if (desc) txt = desc;
+    }
     return txt || null;
   })();
-  const subdivision =
-    $("#MainContent_frmParcelDetail_SUBDIVISIONLabel").text().trim() || null;
+  const subdivision = (function () {
+    const legacy = $("#MainContent_frmParcelDetail_SUBDIVISIONLabel")
+      .text()
+      .trim();
+    if (legacy) return legacy;
+    const modern = $("#subdivision").text().trim();
+    return modern || null;
+  })();
   const dorText = (function () {
     let out = null;
     $("#MainContent_frmParcelDetail")
@@ -492,42 +997,52 @@ function main() {
           if (/^DOR Code:/i.test(label)) out = val;
         }
       });
+    if (!out) {
+      const modern = $("#dorcode").text().trim();
+      if (modern) out = modern;
+    }
     return out;
   })();
-  let property_type = null;
+  let property_type = DEFAULT_PROPERTY_TYPE;
   let property_usage_type = null;
   let number_of_units_type = null;
   let build_status = null;
   let structure_form = null;
   let ownership_estate_type = null;
   if (dorText) {
-    const m = dorText.match(/\((\d{2})\)\s*(.*)/);
-    let code = null,
-      text = null;
-    if (m) {
-      code = m[1];
-      text = (m[2] || "").toUpperCase();
+    const rawDor = dorText.trim();
+    const paren = rawDor.match(/\((\d{2})\)\s*(.*)/);
+    let code = null;
+    let text = null;
+    if (paren) {
+      code = paren[1];
+      text = (paren[2] || "").toUpperCase();
     }
-    if (!code && text) {
-      const textMatch = text.match(/^(\d{2})/);
-      if (textMatch) code = textMatch[1];
+    if (!code) {
+      const leading = rawDor.match(/^(\d{2})/);
+      if (leading) code = leading[1];
     }
+    if (!text) text = rawDor.toUpperCase();
     if (code) {
-      property_usage_type = PROPERTY_USAGE_MAP[code] || null;
-      if (!property_usage_type) {
-        errEnum(dorText, "property", "property_usage_type");
-      }
-      property_type = PROPERTY_TYPE_MAP[code] || DEFAULT_PROPERTY_TYPE;
-      build_status = BUILD_STATUS_MAP[code] || DEFAULT_BUILD_STATUS;
-      structure_form = Object.prototype.hasOwnProperty.call(
-        STRUCTURE_FORM_MAP,
-        code,
-      )
-        ? STRUCTURE_FORM_MAP[code]
-        : null;
-      ownership_estate_type =
-        OWNERSHIP_ESTATE_TYPE_MAP[code] ||
-        DEFAULT_OWNERSHIP_ESTATE_TYPE;
+      const defaultMapping = {
+        property_type: DEFAULT_PROPERTY_TYPE,
+        property_usage_type: DEFAULT_PROPERTY_USAGE_TYPE,
+        build_status: VACANT_LAND_CODES.has(code) ? "VacantLand" : "Improved",
+        structure_form: null,
+        ownership_estate_type: DEFAULT_OWNERSHIP_ESTATE_TYPE,
+      };
+      const mapping = PROPERTY_CODE_MAP[code];
+      const resolvedMapping = mapping
+        ? {
+            ...defaultMapping,
+            ...mapping,
+          }
+        : defaultMapping;
+      property_usage_type = resolvedMapping.property_usage_type || DEFAULT_PROPERTY_USAGE_TYPE;
+      property_type = resolvedMapping.property_type || DEFAULT_PROPERTY_TYPE;
+      build_status = resolvedMapping.build_status;
+      structure_form = resolvedMapping.structure_form;
+      ownership_estate_type = resolvedMapping.ownership_estate_type;
       if (Object.prototype.hasOwnProperty.call(NUMBER_OF_UNITS_TYPE_MAP, code)) {
         number_of_units_type = NUMBER_OF_UNITS_TYPE_MAP[code];
       } else {
@@ -559,9 +1074,8 @@ function main() {
     }
   });
   if (!parcelId) throw new Error("Missing parcel identifier");
-  if (!property_type) throw new Error("Missing or unmapped DOR/property_type");
-  if (!property_usage_type)
-    throw new Error("Missing or unmapped property_usage_type");
+  if (!property_type) property_type = DEFAULT_PROPERTY_TYPE;
+  if (!property_usage_type) property_usage_type = DEFAULT_PROPERTY_USAGE_TYPE;
   writeJson(path.join(dataDir, "property.json"), {
     parcel_identifier: parcelId,
     property_type,
@@ -576,195 +1090,62 @@ function main() {
     subdivision: subdivision || null,
   });
 
-  // ADDRESS
-  const situsRaw = (
-    $("#MainContent_frmParcelDetail_lblSitusAddr").text() || ""
-  ).trim();
-  let street_number = null,
-    street_name = null,
-    street_suffix_type = null,
-    street_pre_directional_text = null,
-    street_post_directional_text = null,
-    unit_identifier = null;
-  if (situsRaw) {
-    // Use only the part before any comma for street line
-    const situs = situsRaw.split(",")[0].trim();
-    // Tokenize and strip punctuation
-    let tokens = situs
-      .split(/\s+/)
-      .map((t) => t.replace(/[.,]/g, ""))
-      .filter(Boolean);
-
-    if (tokens.length >= 1) {
-      // Identify unit designators and split them off
-      const unitMarkers = new Set(["#", "UNIT", "STE", "SUITE", "APT", "BLDG", "BLD"]);
-      let unitIdx = -1;
-      for (let i = 0; i < tokens.length; i++) {
-        const t = tokens[i].toUpperCase();
-        if (t === "#" || unitMarkers.has(t)) {
-          unitIdx = i;
-          break;
-        }
-      }
-      if (unitIdx >= 0) {
-        unit_identifier = tokens.slice(unitIdx).join(" ");
-        tokens = tokens.slice(0, unitIdx);
-      }
-
-      if (tokens.length >= 1) {
-        street_number = tokens[0];
-        let start = 1;
-        let end = tokens.length - 1;
-
-        const directions = new Set(["E", "N", "NE", "NW", "S", "SE", "SW", "W"]);
-        const suffixMap = {
-          ST: "St",
-          STREET: "St",
-          STREE: "St", // occasional malformed
-          AVE: "Ave",
-          AVENUE: "Ave",
-          RD: "Rd",
-          ROAD: "Rd",
-          DR: "Dr",
-          DRIVE: "Dr",
-          COURT: "Ct",
-          CT: "Ct",
-          LN: "Ln",
-          LANE: "Ln",
-          TER: "Ter",
-          TERRACE: "Ter",
-          BLVD: "Blvd",
-          BOULEVARD: "Blvd",
-          HWY: "Hwy",
-          HIGHWAY: "Hwy",
-          CIR: "Cir",
-          CIRCLE: "Cir",
-          WAY: "Way",
-          PKWY: "Pkwy",
-          PARKWAY: "Pkwy",
-          PL: "Pl",
-          PLACE: "Pl",
-          TRL: "Trl",
-          TRAIL: "Trl",
-          SQ: "Sq",
-          SQUARE: "Sq",
-          LOOP: "Loop"
-        };
-
-        // Pre-directional
-        if (start <= end && directions.has((tokens[start] || "").toUpperCase())) {
-          street_pre_directional_text = tokens[start].toUpperCase();
-          start += 1;
-        }
-
-        // Post-directional and suffix at the end
-        // Handle last token as directional
-        if (start <= end && directions.has((tokens[end] || "").toUpperCase())) {
-          street_post_directional_text = tokens[end].toUpperCase();
-          end -= 1;
-        }
-        // Handle suffix
-        if (start <= end) {
-          const last = (tokens[end] || "").toUpperCase().replace(/\.$/, "");
-          if (suffixMap[last]) {
-            street_suffix_type = suffixMap[last];
-            end -= 1;
-          }
-        }
-
-        // Build street name from remaining tokens
-        if (start <= end) {
-          const name = tokens.slice(start, end + 1).join(" ").trim();
-          street_name = name.length > 0 ? name : null;
-        } else {
-          street_name = null;
-        }
-
-        // Ensure street_name does not contain directional abbreviations as standalone words
-        if (street_name) {
-          const nameHasDir = /\b(E|N|NE|NW|S|SE|SW|W)\b/i.test(street_name);
-          if (nameHasDir) {
-            // Attempt to remove standalone direction words from name
-            const cleaned = street_name
-              .split(/\s+/)
-              .filter((w) => !/^(E|N|NE|NW|S|SE|SW|W)$/i.test(w))
-              .join(" ")
-              .trim();
-            street_name = cleaned.length > 0 ? cleaned : null;
-          }
-        }
-      }
+  // ADDRESS & GEOMETRY
+  const situsElement = $("#situsAddress");
+  let situsAddress = null;
+  if (situsElement.length) {
+    const situsHtml = situsElement.html();
+    if (situsHtml) {
+      situsAddress = cheerio
+        .load(`<span>${situsHtml}</span>`)
+        .text()
+        .replace(/\s+/g, " ")
+        .trim();
+    } else {
+      const text = situsElement.text().replace(/\s+/g, " ").trim();
+      situsAddress = text || null;
     }
   }
-  const cityStateZip = (
-    $("#MainContent_frmParcelDetail_Label36").text() || ""
-  ).trim();
-  let city_name = null,
-    state_code = null,
-    postal_code = null,
-    plus_four_postal_code = null;
-  if (cityStateZip) {
-    const m = cityStateZip.match(
-      /^([A-Z\s\-']+)\s+([A-Z]{2})\s+(\d{5})(?:-(\d{4}))?$/,
-    );
-    if (m) {
-      city_name = m[1].trim();
-      state_code = m[2];
-      postal_code = m[3];
-      plus_four_postal_code = m[4] || null;
-    }
-  }
-  let section = null,
-    township = null,
-    range = null;
-  $("#MainContent_frmParcelDetail")
-    .find("table.box-content")
-    .first()
-    .find("tr")
-    .each((i, tr) => {
-      const tds = $(tr).find("td");
-      if (tds.length >= 4) {
-        const label = $(tds.get(2)).text().trim();
-        const val = $(tds.get(3)).text().trim();
-        if (/Sec\/Tnshp\/Rng:/i.test(label) && /\d{2}-\d{2}-\d{2}/.test(val)) {
-          const [sec, twn, rng] = val.split("-");
-          section = sec;
-          township = twn;
-          range = rng;
-        }
-      }
-    });
-  let block = null,
-    lot = null;
-  if (legalDesc) {
-    const mb = legalDesc.match(/BLK\s+(\w+)/i);
-    if (mb) block = mb[1];
-    const ml = legalDesc.match(/LOT\s+(\w+)/i);
-    if (ml) lot = ml[1];
-  }
-  writeJson(path.join(dataDir, "address.json"), {
-    street_number: street_number || null,
-    street_name: street_name || null,
-    street_suffix_type: street_suffix_type || null,
-    street_pre_directional_text: street_pre_directional_text || null,
-    street_post_directional_text: street_post_directional_text || null,
-    unit_identifier: unit_identifier || null,
-    city_name: city_name || null,
-    state_code: state_code || null,
-    postal_code: postal_code || null,
-    plus_four_postal_code: plus_four_postal_code || null,
+  const addressSource =
+    (unnorm && unnorm.source_http_request) ||
+    (seed && seed.source_http_request) ||
+    null;
+  const addressRequestId =
+    (unnorm && unnorm.request_identifier) ||
+    (seed && seed.request_identifier) ||
+    null;
+  const unnormalizedAddress =
+    (unnorm && (unnorm.full_address || unnorm.unnormalized_address)) ||
+    situsAddress ||
+    null;
+  const addressRecord = {
+    source_http_request: addressSource,
+    request_identifier: addressRequestId,
     county_name: "Hernando",
     country_code: "US",
-    latitude: unnorm.latitude ||null,
-    longitude: unnorm. longitude ||null,
-    route_number: null,
-    township: township || null,
-    range: range || null,
-    section: section || null,
-    block: block || null,
-    lot: lot || null,
-    municipality_name: null,
-  });
+    unnormalized_address: unnormalizedAddress,
+  };
+  writeJson(path.join(dataDir, "address.json"), addressRecord);
+
+  function toNumberOrNull(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+  const geometryRecord = {
+    source_http_request: addressSource,
+    request_identifier: addressRequestId,
+    latitude: toNumberOrNull(unnorm && unnorm.latitude),
+    longitude: toNumberOrNull(unnorm && unnorm.longitude),
+  };
+  writeJson(path.join(dataDir, "geometry.json"), geometryRecord);
+  writeJson(
+    path.join(dataDir, "relationship_address_has_geometry.json"),
+    {
+      from: { "/": "./address.json" },
+      to: { "/": "./geometry.json" },
+    },
+  );
 
   // TAX - current year
   const buildingVal = parseCurrencyToNumber(
@@ -849,78 +1230,177 @@ function main() {
 
   // SALES + DEEDS + FILES
   const salesRows = [];
-  $("#MainContent_frmParcelDetail_gvSales tbody tr").each((i, tr) => {
-    const ths = $(tr).find("th");
-    if (ths && ths.length) return;
-    const tds = $(tr).find("td");
-    if (tds.length >= 7) {
-      const dateStr = $(tds.get(0)).text().trim();
-      const priceStr = $(tds.get(5)).text().trim();
-      const deedAbbr = $(tds.get(2)).text().trim();
-      const bookPageText = $(tds.get(1)).text().trim();
-      const docUrl = $(tds.get(1)).find("a").attr("href") || null;
-      const grantee = $(tds.get(6)).text().trim();
-      const iso = toISODate(dateStr);
-      const price = parseCurrencyToNumber(priceStr);
-      if (iso && price != null && price > 0) {
-        salesRows.push({
+  const saleRowKeys = new Set();
+  const candidateSalesTables = [];
+  const modernSalesTable = $("#salesTable");
+  if (modernSalesTable.length) candidateSalesTables.push(modernSalesTable);
+  const legacySalesTable = $("#MainContent_frmParcelDetail_gvSales");
+  if (legacySalesTable.length) candidateSalesTables.push(legacySalesTable);
+  function registerSaleRow(row) {
+    if (!row || !row.date) return;
+    const key = [
+      row.date,
+      row.price != null ? row.price : "",
+      row.book || "",
+      row.page || "",
+      row.deedAbbr || "",
+    ].join("|");
+    if (saleRowKeys.has(key)) return;
+    saleRowKeys.add(key);
+    salesRows.push(row);
+  }
+  candidateSalesTables.forEach((table) => {
+    if (!table || !table.length) return;
+    let headerCells = table.find("thead tr").first().find("th");
+    if (!headerCells.length) headerCells = table.find("tr").first().find("th");
+    const headers = headerCells
+      .map((i, th) => $(th).text().trim().toLowerCase())
+      .get();
+    function headerIndex(regex, fallback) {
+      const idx = headers.findIndex((h) => regex.test(h));
+      return idx >= 0 ? idx : fallback;
+    }
+    let bodyRows = table.find("tbody tr");
+    if (!bodyRows.length) {
+      const allRows = table.find("tr");
+      if (allRows.length > 1) bodyRows = allRows.slice(1);
+    }
+    bodyRows.each((i, tr) => {
+      const tds = $(tr).find("td");
+      if (!tds.length) return;
+      const idxDate = headerIndex(/date/, 0);
+      const idxBook = headerIndex(/book|page/, 1);
+      const idxDeed = headerIndex(/deed/, 2);
+      const idxVacant = headerIndex(/vacant|improved/, 3);
+      const idxQual = headerIndex(/qual/, 4);
+      const idxPrice = headerIndex(/price|amount/, tds.length - 1);
+      const idxInstr = headerIndex(/instrument/, -1);
+      const dateText =
+        idxDate >= 0 && idxDate < tds.length
+          ? $(tds.get(idxDate)).text().trim()
+          : $(tds.get(0)).text().trim();
+      const iso = toISODate(dateText);
+      const priceText =
+        idxPrice >= 0 && idxPrice < tds.length
+          ? $(tds.get(idxPrice)).text().trim()
+          : $(tds.get(tds.length - 1)).text().trim();
+      const price = parseCurrencyToNumber(priceText);
+      if (!iso || price == null) return;
+      const bookCell =
+        idxBook >= 0 && idxBook < tds.length ? $(tds.get(idxBook)) : null;
+      const bookPageText = bookCell ? bookCell.text().trim() : null;
+      const docUrl = bookCell ? bookCell.find("a").attr("href") || null : null;
+      const { book, page, volume } = parseBookPageParts(bookPageText);
+      const deedRaw =
+        idxDeed >= 0 && idxDeed < tds.length
+          ? $(tds.get(idxDeed)).text().trim()
+          : null;
+      const deedType = mapDeedType(deedRaw);
+      const vacImproved =
+        idxVacant >= 0 && idxVacant < tds.length
+          ? $(tds.get(idxVacant)).text().trim() || null
+          : null;
+      const qualification =
+        idxQual >= 0 && idxQual < tds.length
+          ? $(tds.get(idxQual)).text().trim() || null
+          : null;
+      const instrument =
+        idxInstr >= 0 && idxInstr < tds.length
+          ? $(tds.get(idxInstr)).text().trim() || null
+          : null;
+        registerSaleRow({
           date: iso,
           price,
-          deedAbbr,
-          bookPage: bookPageText,
-          docUrl,
-          grantee,
-        });
-      }
-    }
-  });
-  salesRows.forEach((row, idx) => {
-    writeJson(path.join(dataDir, `sales_${idx + 1}.json`), {
-      ownership_transfer_date: row.date,
-      purchase_price_amount: row.price,
+          deedType: deedType,
+          bookPage: bookPageText || null,
+          book: book || null,
+          page: page || null,
+          volume: volume || null,
+        docUrl,
+        qualification,
+        vacantImproved: vacImproved,
+        instrument,
+      });
     });
   });
-  salesRows.forEach((row, idx) => {
-    let deed_type = null;
-    if (row.deedAbbr === "WD") deed_type = "Warranty Deed";
-    if (deed_type) {
-      writeJson(path.join(dataDir, `deed_${idx + 1}.json`), { deed_type });
-      const fileRec = {
-        document_type: "ConveyanceDeedWarrantyDeed",
-        file_format: null,
-        name: row.bookPage ? `OR ${row.bookPage}` : null,
-        original_url: row.docUrl || null,
-        ipfs_url: null,
-      };
-      writeJson(path.join(dataDir, `file_${idx + 1}.json`), fileRec);
-    }
+  salesRows.sort((a, b) => {
+    if (a.date === b.date) return 0;
+    return a.date < b.date ? 1 : -1;
   });
+  const salesHistoryMeta = [];
   salesRows.forEach((row, idx) => {
-    const deedPath = path.join(dataDir, `deed_${idx + 1}.json`);
-    const filePath = path.join(dataDir, `file_${idx + 1}.json`);
-    if (fs.existsSync(deedPath) && fs.existsSync(filePath)) {
-      writeJson(path.join(dataDir, `relationship_deed_file_${idx + 1}.json`), {
-        to: { "/": `./deed_${idx + 1}.json` },
-        from: { "/": `./file_${idx + 1}.json` },
-      });
-      writeJson(path.join(dataDir, `relationship_sales_deed_${idx + 1}.json`), {
-        to: { "/": `./sales_${idx + 1}.json` },
-        from: { "/": `./deed_${idx + 1}.json` },
-      });
+    const saleIdx = idx + 1;
+    const saleFile = `sales_history_${saleIdx}.json`;
+    const saleRecord = {
+      ownership_transfer_date: row.date,
+      purchase_price_amount: row.price,
+    };
+    writeJson(path.join(dataDir, saleFile), saleRecord);
+    let deedFile = null;
+    if (
+      row.book ||
+      row.page ||
+      row.volume ||
+      row.deedType ||
+      row.docUrl ||
+      row.instrument
+    ) {
+      deedFile = `deed_${saleIdx}.json`;
+      const deedRecord = {};
+      if (row.deedType) deedRecord.deed_type = row.deedType;
+      if (row.book) deedRecord.book = String(row.book);
+      if (row.page) deedRecord.page = String(row.page);
+      if (row.volume) deedRecord.volume = String(row.volume);
+      if (row.instrument) deedRecord.instrument_number = String(row.instrument);
+      writeJson(path.join(dataDir, deedFile), deedRecord);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_sales_history_${saleIdx}_has_deed_${saleIdx}.json`,
+        ),
+        {
+          from: { "/": `./${saleFile}` },
+          to: { "/": `./${deedFile}` },
+        },
+      );
+      if (row.docUrl) {
+        const fileIdx = nextFileIndex++;
+        const fileName = `file_${fileIdx}.json`;
+        const fileRecord = {
+          document_type: "Title",
+          name: row.bookPage
+            ? `Deed Document ${row.bookPage}`
+            : `Deed Document ${saleIdx}`,
+          original_url: row.docUrl,
+          ipfs_url: null,
+        };
+        const fileFormat = inferDocumentFormat(row.docUrl);
+        if (fileFormat) fileRecord.file_format = fileFormat;
+        writeJson(path.join(dataDir, fileName), fileRecord);
+        writeJson(
+          path.join(
+            dataDir,
+            `relationship_deed_${saleIdx}_has_file_${fileIdx}.json`,
+          ),
+          {
+            from: { "/": `./${deedFile}` },
+            to: { "/": `./${fileName}` },
+          },
+        );
+      }
     }
+    salesHistoryMeta.push({
+      saleIdx,
+      saleFile,
+      deedFile,
+      row,
+    });
   });
 
   // UTILITIES / LAYOUTS
-  if (utilsJson && utilsJson[propertyKey])
-    writeJson(path.join(dataDir, "utility.json"), utilsJson[propertyKey]);
-  if (
-    layoutJson &&
-    layoutJson[propertyKey] &&
-    Array.isArray(layoutJson[propertyKey].layouts)
-  )
-    layoutJson[propertyKey].layouts.forEach((lay, i) =>
-      writeJson(path.join(dataDir, `layout_${i + 1}.json`), lay),
-    );
+  const utilityRecord =
+    (utilsJson && utilsJson[propertyKey]) || createDefaultUtilityRecord();
+  writeJson(path.join(dataDir, "utility.json"), utilityRecord);
 
   // STRUCTURE
   const structureReq = {
@@ -1016,6 +1496,222 @@ function main() {
     lot_size_acre: lotSqft ? lotSqft / 43560 : null,
   });
 
+  // LAYOUT HIERARCHY (Building, Floors, Rooms)
+  const layoutFallbackRooms =
+    layoutJson &&
+    layoutJson[propertyKey] &&
+    Array.isArray(layoutJson[propertyKey].layouts)
+      ? layoutJson[propertyKey].layouts.map((layout) => ({
+          space_type:
+            layout.space_type ||
+            layout.type ||
+            layout.layout_name ||
+            "Living Room",
+          count: layout.count != null ? Number(layout.count) || 1 : 1,
+        }))
+      : [];
+
+  const isLandProperty =
+    property_type === "LandParcel" || build_status === "VacantLand";
+  const buildingLayoutsGenerated = [];
+  const layoutRelationships = [];
+  let layoutCounter = 0;
+
+  if (!isLandProperty) {
+    const buildings = buildingData.length ? buildingData : [null];
+    buildings.forEach((building, idx) => {
+      const buildingIndex = idx + 1;
+      layoutCounter += 1;
+      const buildingLayoutFile = `layout_${layoutCounter}.json`;
+      const buildingLayout = createLayoutRecord({
+        spaceType: "Building",
+        index: `${buildingIndex}`,
+        sourceRequest: addressSource,
+        requestId: addressRequestId,
+      });
+      writeJson(path.join(dataDir, buildingLayoutFile), buildingLayout);
+      buildingLayoutsGenerated.push({
+        file: buildingLayoutFile,
+        index: buildingIndex,
+        info: building,
+      });
+
+      const rooms = generateRooms(building, layoutFallbackRooms);
+      const typeCounters = new Map();
+      rooms.forEach((room) => {
+        const currentCount = (typeCounters.get(room.space_type) || 0) + 1;
+        typeCounters.set(room.space_type, currentCount);
+        layoutCounter += 1;
+        const roomLayoutFile = `layout_${layoutCounter}.json`;
+        const subIndex = `${buildingIndex}.${currentCount}`;
+        const roomLayout = createLayoutRecord({
+          spaceType: room.space_type,
+          index: subIndex,
+          sourceRequest: addressSource,
+          requestId: addressRequestId,
+        });
+        writeJson(path.join(dataDir, roomLayoutFile), roomLayout);
+        layoutRelationships.push({
+          parent: buildingLayoutFile,
+          child: roomLayoutFile,
+        });
+      });
+    });
+
+    layoutRelationships.forEach((rel) => {
+      const parentId = layoutIdFromFile(rel.parent);
+      const childId = layoutIdFromFile(rel.child);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_layout_${parentId}_has_layout_${childId}.json`,
+        ),
+        {
+          from: { "/": `./${rel.parent}` },
+          to: { "/": `./${rel.child}` },
+        },
+      );
+    });
+
+    const structureFiles = getStructureFiles(dataDir);
+    const utilityFiles = getUtilityFiles(dataDir);
+    const propertyFilePath = "./property.json";
+
+    if (structureFiles.length) {
+      if (buildingLayoutsGenerated.length <= 1) {
+        structureFiles.forEach((structureFile, sIdx) => {
+          const targetLayout = buildingLayoutsGenerated[0];
+          const layoutId = layoutIdFromFile(targetLayout.file);
+          const structureBase = baseNameFromFile(structureFile);
+          writeJson(
+            path.join(
+              dataDir,
+              `relationship_layout_${layoutId}_has_${structureBase}.json`,
+            ),
+            {
+              from: { "/": `./${targetLayout.file}` },
+              to: { "/": `./${structureFile}` },
+            },
+          );
+        });
+      } else if (structureFiles.length === 1) {
+        const structureBase = baseNameFromFile(structureFiles[0]);
+        writeJson(
+          path.join(
+            dataDir,
+            `relationship_property_has_${structureBase}.json`,
+          ),
+          {
+            from: { "/": propertyFilePath },
+            to: { "/": `./${structureFiles[0]}` },
+          },
+        );
+      } else {
+        const minCount = Math.min(
+          buildingLayoutsGenerated.length,
+          structureFiles.length,
+        );
+        for (let i = 0; i < minCount; i += 1) {
+          const layout = buildingLayoutsGenerated[i];
+          const layoutId = layoutIdFromFile(layout.file);
+          const structureBase = baseNameFromFile(structureFiles[i]);
+          writeJson(
+            path.join(
+              dataDir,
+              `relationship_layout_${layoutId}_has_${structureBase}.json`,
+            ),
+            {
+              from: { "/": `./${layout.file}` },
+              to: { "/": `./${structureFiles[i]}` },
+            },
+          );
+        }
+        if (structureFiles.length > buildingLayoutsGenerated.length) {
+          for (let i = buildingLayoutsGenerated.length; i < structureFiles.length; i += 1) {
+            const structureBase = baseNameFromFile(structureFiles[i]);
+            writeJson(
+              path.join(
+                dataDir,
+                `relationship_property_has_${structureBase}.json`,
+              ),
+              {
+                from: { "/": propertyFilePath },
+                to: { "/": `./${structureFiles[i]}` },
+              },
+            );
+          }
+        }
+      }
+    }
+
+    if (utilityFiles.length) {
+      if (buildingLayoutsGenerated.length <= 1) {
+        utilityFiles.forEach((utilityFile) => {
+          const targetLayout = buildingLayoutsGenerated[0];
+          const layoutId = layoutIdFromFile(targetLayout.file);
+          const utilityBase = baseNameFromFile(utilityFile);
+          writeJson(
+            path.join(
+              dataDir,
+              `relationship_layout_${layoutId}_has_${utilityBase}.json`,
+            ),
+            {
+              from: { "/": `./${targetLayout.file}` },
+              to: { "/": `./${utilityFile}` },
+            },
+          );
+        });
+      } else if (utilityFiles.length === 1) {
+        const utilityBase = baseNameFromFile(utilityFiles[0]);
+        writeJson(
+          path.join(
+            dataDir,
+            `relationship_property_has_${utilityBase}.json`,
+          ),
+          {
+            from: { "/": propertyFilePath },
+            to: { "/": `./${utilityFiles[0]}` },
+          },
+        );
+      } else {
+        const minCount = Math.min(
+          buildingLayoutsGenerated.length,
+          utilityFiles.length,
+        );
+        for (let i = 0; i < minCount; i += 1) {
+          const layout = buildingLayoutsGenerated[i];
+          const layoutId = layoutIdFromFile(layout.file);
+          const utilityBase = baseNameFromFile(utilityFiles[i]);
+          writeJson(
+            path.join(
+              dataDir,
+              `relationship_layout_${layoutId}_has_${utilityBase}.json`,
+            ),
+            {
+              from: { "/": `./${layout.file}` },
+              to: { "/": `./${utilityFiles[i]}` },
+            },
+          );
+        }
+        if (utilityFiles.length > buildingLayoutsGenerated.length) {
+          for (let i = buildingLayoutsGenerated.length; i < utilityFiles.length; i += 1) {
+            const utilityBase = baseNameFromFile(utilityFiles[i]);
+            writeJson(
+              path.join(
+                dataDir,
+                `relationship_property_has_${utilityBase}.json`,
+              ),
+              {
+                from: { "/": propertyFilePath },
+                to: { "/": `./${utilityFiles[i]}` },
+              },
+            );
+          }
+        }
+      }
+    }
+  }
+
   // OWNERS/BUYERS + RELS
   const personIndex = new Map();
   const companyIndex = new Map();
@@ -1054,6 +1750,8 @@ function main() {
     companyIndex.set(name, fname);
     return fname;
   }
+  const mailingOwnerRefs = [];
+  const mailingOwnerSet = new Set();
   if (
     ownersJson &&
     ownersJson[propertyKey] &&
@@ -1062,34 +1760,55 @@ function main() {
     const ob = ownersJson[propertyKey].owners_by_date;
     const current = ob.current || [];
     current.forEach((o) => {
-      if (o.type === "person") ensurePerson(o);
-      else if (o.type === "company") ensureCompany(o);
+      if (o.type === "person") {
+        const pFile = ensurePerson(o);
+        if (!mailingOwnerSet.has(`person:${pFile}`)) {
+          mailingOwnerSet.add(`person:${pFile}`);
+          mailingOwnerRefs.push({ type: "person", file: pFile });
+        }
+      } else if (o.type === "company") {
+        const cFile = ensureCompany(o);
+        if (!mailingOwnerSet.has(`company:${cFile}`)) {
+          mailingOwnerSet.add(`company:${cFile}`);
+          mailingOwnerRefs.push({ type: "company", file: cFile });
+        }
+      }
     });
-    salesRows.forEach((row, idx) => {
-      const buyers = ob[row.date] || [];
+    const buyerRelKeys = new Set();
+    salesHistoryMeta.forEach((meta, idx) => {
+      let buyers = ob[meta.row.date] || [];
+      if ((!buyers || !buyers.length) && idx === 0 && current.length) {
+        buyers = current;
+      }
       buyers.forEach((b) => {
         if (b.type === "person") {
           const pFile = ensurePerson(b);
+          const personId = pFile.match(/(\d+)/)
+            ? pFile.match(/(\d+)/)[1]
+            : `${idx + 1}`;
+          const relName = `relationship_sales_history_${meta.saleIdx}_has_person_${personId}.json`;
+          if (buyerRelKeys.has(relName)) return;
+          buyerRelKeys.add(relName);
           writeJson(
-            path.join(
-              dataDir,
-              `relationship_sales_person_${idx + 1}_${pFile.replace(/\D/g, "")}.json`,
-            ),
+            path.join(dataDir, relName),
             {
+              from: { "/": `./${meta.saleFile}` },
               to: { "/": `./${pFile}` },
-              from: { "/": `./sales_${idx + 1}.json` },
             },
           );
         } else if (b.type === "company") {
           const cFile = ensureCompany(b);
+          const companyId = cFile.match(/(\d+)/)
+            ? cFile.match(/(\d+)/)[1]
+            : `${idx + 1}`;
+          const relName = `relationship_sales_history_${meta.saleIdx}_has_company_${companyId}.json`;
+          if (buyerRelKeys.has(relName)) return;
+          buyerRelKeys.add(relName);
           writeJson(
-            path.join(
-              dataDir,
-              `relationship_sales_company_${idx + 1}_${cFile.replace(/\D/g, "")}.json`,
-            ),
+            path.join(dataDir, relName),
             {
+              from: { "/": `./${meta.saleFile}` },
               to: { "/": `./${cFile}` },
-              from: { "/": `./sales_${idx + 1}.json` },
             },
           );
         }
@@ -1097,19 +1816,149 @@ function main() {
     });
   }
 
+  // Mailing address for owners
+  const mailingSpan = $("#mailingAddress");
+  let mailingAddressValue = null;
+  if (mailingSpan.length) {
+    const mailingHtml = mailingSpan.html();
+    if (mailingHtml) {
+      const normalizedHtml = mailingHtml
+        .replace(/<br\s*\/?>/gi, ", ")
+        .replace(/\r?\n/gi, ", ");
+      mailingAddressValue = cheerio
+        .load(`<span>${normalizedHtml}</span>`)
+        .text()
+        .replace(/\s+/g, " ")
+        .replace(/\s*,\s*/g, ", ")
+        .replace(/,\s*,/g, ", ")
+        .trim();
+    } else {
+      mailingAddressValue = mailingSpan.text().replace(/\s+/g, " ").trim();
+    }
+  }
+  if (mailingAddressValue) {
+    writeJson(path.join(dataDir, "mailing_address.json"), {
+      unnormalized_address: mailingAddressValue,
+      latitude: null,
+      longitude: null,
+      source_http_request: addressSource,
+      request_identifier: addressRequestId,
+    });
+    const seenMailingRel = new Set();
+    mailingOwnerRefs.forEach((ref) => {
+      if (!ref || !ref.file) return;
+      const idMatch = ref.file.match(/(\d+)/);
+      if (!idMatch) return;
+      const relName =
+        ref.type === "person"
+          ? `relationship_person_${idMatch[1]}_has_mailing_address.json`
+          : `relationship_company_${idMatch[1]}_has_mailing_address.json`;
+      if (seenMailingRel.has(relName)) return;
+      seenMailingRel.add(relName);
+      writeJson(path.join(dataDir, relName), {
+        from: { "/": `./${ref.file}` },
+        to: { "/": "./mailing_address.json" },
+      });
+    });
+  }
+
+  // PROPERTY IMPROVEMENTS / PERMITS
+  const permitTables = [];
+  const modernPermits = $("#permitsTable");
+  if (modernPermits.length) permitTables.push(modernPermits);
+  const legacyPermits = $("#MainContent_frmParcelDetail_gvPermits");
+  if (legacyPermits.length) permitTables.push(legacyPermits);
+  const propertyImprovements = [];
+  permitTables.forEach((table) => {
+    if (!table || !table.length) return;
+    let headerCells = table.find("thead tr").first().find("th");
+    if (!headerCells.length) headerCells = table.find("tr").first().find("th");
+    const headers = headerCells
+      .map((i, th) => $(th).text().trim().toLowerCase())
+      .get();
+    function permitHeaderIndex(regex, fallback) {
+      const idx = headers.findIndex((h) => regex.test(h));
+      return idx >= 0 ? idx : fallback;
+    }
+    let rows = table.find("tbody tr");
+    if (!rows.length) {
+      const allRows = table.find("tr");
+      if (allRows.length > 1) rows = allRows.slice(1);
+    }
+    rows.each((i, tr) => {
+      const tds = $(tr).find("td");
+      if (!tds.length) return;
+      const idxPermit = permitHeaderIndex(/permit|number/, 0);
+      const idxType = permitHeaderIndex(/type/, 1);
+      const idxDesc = permitHeaderIndex(/description/, 1);
+      const idxStatus = permitHeaderIndex(/status/, 2);
+      const idxValue = permitHeaderIndex(/value|cost|amount/, 3);
+      const idxIssued = permitHeaderIndex(/issued|issue|date/, 4);
+      const idxFinal = permitHeaderIndex(/final|complete/, 5);
+      const permitNumber =
+        idxPermit >= 0 && idxPermit < tds.length
+          ? $(tds.get(idxPermit)).text().trim() || null
+          : null;
+      const typeText =
+        idxType >= 0 && idxType < tds.length
+          ? $(tds.get(idxType)).text().trim() || null
+          : null;
+      const description =
+        idxDesc >= 0 && idxDesc < tds.length
+          ? $(tds.get(idxDesc)).text().trim() || null
+          : null;
+      const status =
+        idxStatus >= 0 && idxStatus < tds.length
+          ? $(tds.get(idxStatus)).text().trim() || null
+          : null;
+      const valueStr =
+        idxValue >= 0 && idxValue < tds.length
+          ? $(tds.get(idxValue)).text().trim()
+          : null;
+      const issuedStr =
+        idxIssued >= 0 && idxIssued < tds.length
+          ? $(tds.get(idxIssued)).text().trim()
+          : null;
+      const finalStr =
+        idxFinal >= 0 && idxFinal < tds.length
+          ? $(tds.get(idxFinal)).text().trim()
+          : null;
+      if (
+        !permitNumber &&
+        !typeText &&
+        !description &&
+        !status &&
+        !valueStr &&
+        !issuedStr &&
+        !finalStr
+      )
+        return;
+      const improvementRecord = {
+        permit_number: permitNumber,
+        type: typeText || description || null,
+        status: status || null,
+        value: valueStr != null ? parseCurrencyToNumber(valueStr) : null,
+        issued_date: issuedStr ? toISODate(issuedStr) || issuedStr : null,
+        completed_date: finalStr ? toISODate(finalStr) || finalStr : null,
+        description: description || null,
+      };
+      propertyImprovements.push(improvementRecord);
+    });
+  });
+  propertyImprovements.forEach((imp, idx) => {
+    writeJson(
+      path.join(dataDir, `property_improvement_${idx + 1}.json`),
+      imp,
+    );
+  });
+
   // Property Image
   const propImg = $("#carousel img#imgPic").attr("src");
   if (propImg) {
     const ext = (propImg.split(".").pop() || "").toLowerCase();
     const fmt = ext === "png" ? "png" : "jpeg";
-    const filesPrev = fs
-      .readdirSync(dataDir)
-      .filter((f) => /^file_\d+\.json$/.test(f));
-    const nextIdx =
-      filesPrev
-        .map((f) => Number(f.match(/(\d+)/)[1]))
-        .reduce((a, b) => Math.max(a, b), 0) + 1 || 1;
-    writeJson(path.join(dataDir, `file_${nextIdx}.json`), {
+    const fileIdx = nextFileIndex++;
+    writeJson(path.join(dataDir, `file_${fileIdx}.json`), {
       document_type: "PropertyImage",
       file_format: fmt,
       name: "Property Image 1",

@@ -91,65 +91,59 @@ function toInt(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function defaultLayout(space_type, idx) {
-  return {
-    space_type,
-    space_index: idx,
-    flooring_material_type: null,
-    size_square_feet: null,
-    floor_level: null,
-    has_windows: null,
-    window_design_type: null,
-    window_material_type: null,
-    window_treatment_type: null,
-    is_finished: true,
-    furnished: null,
-    paint_condition: null,
-    flooring_wear: null,
-    clutter_level: null,
-    visible_damage: null,
-    countertop_material: null,
-    cabinet_style: null,
-    fixture_finish_quality: null,
-    design_style: null,
-    natural_light_quality: null,
-    decor_elements: null,
-    pool_type: null,
-    pool_equipment: null,
-    spa_type: null,
-    safety_features: null,
-    view_type: null,
-    lighting_features: null,
-    condition_issues: null,
-    is_exterior: false,
-    pool_condition: null,
-    pool_surface_type: null,
-    pool_water_quality: null,
-    bathroom_renovation_date: null,
-    kitchen_renovation_date: null,
-    flooring_installation_date: null,
-  };
+function toNumberOrNull(val) {
+  if (val == null) return null;
+  const cleaned = String(val).replace(/[,]/g, "").trim();
+  if (cleaned === "") return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
 }
 
-function buildLayoutsFromBuildings(buildings) {
-  // Sum across all buildings
-  let totalBeds = 0;
-  let totalBaths = 0;
-  buildings.forEach((b) => {
-    // The provided HTML contains "Bathrooms" and "Bedrooms" in the Building Information section
-    totalBeds += toInt(b["Bedrooms"]);
-    totalBaths += toInt(b["Bathrooms"]);
-  });
+function toIntegerOrNull(val) {
+  const num = toNumberOrNull(val);
+  if (num == null) return null;
+  const rounded = Math.round(num);
+  return Number.isFinite(rounded) ? rounded : null;
+}
 
-  const layouts = [];
-  let idx = 1;
-  for (let i = 0; i < totalBeds; i++) {
-    layouts.push(defaultLayout("Bedroom", idx++));
-  }
-  for (let i = 0; i < totalBaths; i++) {
-    layouts.push(defaultLayout("Full Bathroom", idx++));
-  }
-  return layouts;
+function buildBuildingLayoutData(buildings) {
+  return buildings
+    .map((b, idx) => {
+      const totalArea = toNumberOrNull(b["Total Area"]);
+      const heatedArea =
+        toNumberOrNull(b["Heated Area"]) ??
+        toNumberOrNull(b["Heated Sq Ft"]) ??
+        toNumberOrNull(b["Living Area"]) ??
+        toNumberOrNull(b["Livable Area"]);
+      const bedrooms = toInt(b["Bedrooms"]);
+      const bathrooms = toInt(b["Bathrooms"]);
+      const rooms = [];
+      if (bedrooms > 0) {
+        rooms.push({ space_type: "Bedroom", count: bedrooms });
+      }
+      if (bathrooms > 0) {
+        rooms.push({ space_type: "Full Bathroom", count: bathrooms });
+      }
+
+      const hasMeaningfulData =
+        rooms.length > 0 ||
+        totalArea != null ||
+        heatedArea != null ||
+        (b["Type"] && textTrim(b["Type"]));
+
+      if (!hasMeaningfulData) return null;
+
+      return {
+        building_number: idx + 1,
+        building_type: b["Type"] ? textTrim(b["Type"]) || null : null,
+        total_area_sq_ft: totalArea,
+        livable_area_sq_ft: heatedArea,
+        built_year: toIntegerOrNull(b["Actual Year Built"]),
+        number_of_stories: toIntegerOrNull(b["Stories"]),
+        rooms,
+      };
+    })
+    .filter(Boolean);
 }
 
 function main() {
@@ -158,13 +152,13 @@ function main() {
   const parcelId = getParcelId($);
   if (!parcelId) throw new Error("Parcel ID not found");
   const buildings = collectBuildings($);
-  const layouts = buildLayoutsFromBuildings(buildings);
+  const buildingLayouts = buildBuildingLayoutData(buildings);
 
   const outDir = path.resolve("owners");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "layout_data.json");
   const outObj = {};
-  outObj[`property_${parcelId}`] = { layouts };
+  outObj[`property_${parcelId}`] = { buildings: buildingLayouts };
   fs.writeFileSync(outPath, JSON.stringify(outObj, null, 2), "utf8");
   console.log(`Wrote ${outPath}`);
 }
