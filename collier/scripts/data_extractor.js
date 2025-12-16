@@ -813,13 +813,17 @@ function main() {
           companyFiles.push(filename);
           companyIdx++;
         } else if (owner.type === "person") {
+          // Process middle_name and ensure it's null if empty (schema requires minLength: 1)
+          const middleNameRaw = owner.middle_name
+            ? capitalizeProperName(owner.middle_name)
+            : null;
+          const middleName = middleNameRaw && middleNameRaw.trim() ? middleNameRaw : null;
+
           const person = {
             birth_date: owner.birth_date || null,
             first_name: capitalizeProperName(owner.first_name) || "",
             last_name: capitalizeProperName(owner.last_name) || "",
-            middle_name: owner.middle_name
-              ? capitalizeProperName(owner.middle_name)
-              : null,
+            middle_name: middleName,
             prefix_name: owner.prefix_name || null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: owner.us_citizenship_status || null,
