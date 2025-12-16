@@ -2125,10 +2125,16 @@ function main() {
     null;
   const address = {
     unnormalized_address: fallbackUnnormalized,
-    source_http_request: sharedSourceHttpRequest,
-    request_identifier: sharedRequestIdentifier,
+    latitude:
+      addrSeed && typeof addrSeed.latitude === "number"
+        ? addrSeed.latitude
+        : null,
+    longitude:
+      addrSeed && typeof addrSeed.longitude === "number"
+        ? addrSeed.longitude
+        : null,
     county_name: county || null,
-    country_code: sharedCountryCode,
+    request_identifier: sharedRequestIdentifier,
   };
   writeJSON("address.json", address);
 

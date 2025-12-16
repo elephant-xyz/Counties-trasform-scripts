@@ -41,8 +41,29 @@ function toCurrencyNumber(n) {
 
 function properCaseName(s) {
   if (!s) return s;
-  const lower = s.toLowerCase();
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
+
+  // Convert to string and trim whitespace
+  const str = String(s).trim();
+  if (!str) return str;
+
+  // Normalize whitespace (replace multiple spaces with single space)
+  const normalized = str.replace(/\s+/g, ' ');
+
+  // Split on word boundaries (spaces, hyphens, apostrophes) while preserving separators
+  const words = normalized.split(/(\s+|[-',.])/);
+
+  // Capitalize each word segment (non-separator parts)
+  const result = words.map((word, index) => {
+    // If it's a separator or empty, keep as-is
+    if (!word || /^[\s\-',.]$/.test(word)) {
+      return word;
+    }
+
+    // Capitalize first letter, lowercase the rest
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join('');
+
+  return result;
 }
 
 function normalizeLookupString(value) {
@@ -715,6 +736,10 @@ function cleanupLegacyArtifacts() {
     /^relationship_sales_history_\d+_has_deed_\d+\.json$/i, // Specific for sales history to deed
     // New cleanup for the strict naming convention
     /^relationship_.*_has_.*_\d+\.json$/i, // Catch any relationship file with an index
+    /^layout_data\.json$/i,
+    /^utilities_data\.json$/i,
+    /^utility_data\.json$/i,
+    /^structure_data\.json$/i,
   ]);
 }
 
@@ -2863,6 +2888,146 @@ const propertyMappingMap = new Map(
   propertyMapping.map((item) => [item.dor_code, item]),
 );
 
+const PROPERTY_USAGE_ALLOWED_VALUES = new Set([
+  "Residential",
+  "Commercial",
+  "Industrial",
+  "Agricultural",
+  "Recreational",
+  "Conservation",
+  "Retirement",
+  "ResidentialCommonElementsAreas",
+  "DrylandCropland",
+  "HayMeadow",
+  "CroplandClass2",
+  "CroplandClass3",
+  "TimberLand",
+  "GrazingLand",
+  "OrchardGroves",
+  "Poultry",
+  "Ornamentals",
+  "Church",
+  "PrivateSchool",
+  "PrivateHospital",
+  "HomesForAged",
+  "NonProfitCharity",
+  "MortuaryCemetery",
+  "ClubsLodges",
+  "SanitariumConvalescentHome",
+  "CulturalOrganization",
+  "Military",
+  "ForestParkRecreation",
+  "PublicSchool",
+  "PublicHospital",
+  "GovernmentProperty",
+  "RetailStore",
+  "DepartmentStore",
+  "Supermarket",
+  "ShoppingCenterRegional",
+  "ShoppingCenterCommunity",
+  "OfficeBuilding",
+  "MedicalOffice",
+  "TransportationTerminal",
+  "Restaurant",
+  "FinancialInstitution",
+  "ServiceStation",
+  "AutoSalesRepair",
+  "MobileHomePark",
+  "WholesaleOutlet",
+  "Theater",
+  "Entertainment",
+  "Hotel",
+  "RaceTrack",
+  "GolfCourse",
+  "LightManufacturing",
+  "HeavyManufacturing",
+  "LumberYard",
+  "PackingPlant",
+  "Cannery",
+  "MineralProcessing",
+  "Warehouse",
+  "OpenStorage",
+  "Utility",
+  "RiversLakes",
+  "SewageDisposal",
+  "Railroad",
+  "TransitionalProperty",
+  "ReferenceParcel",
+  "NurseryGreenhouse",
+  "AgriculturalPackingFacility",
+  "LivestockFacility",
+  "Aquaculture",
+  "VineyardWinery",
+  "DataCenter",
+  "TelecommunicationsFacility",
+  "SolarFarm",
+  "WindFarm",
+  "NativePasture",
+  "ImprovedPasture",
+  "Rangeland",
+  "PastureWithTimber",
+  "Unknown",
+]);
+
+const PROPERTY_USAGE_FALLBACK_MAP = {
+  ResidentialWaterfront: "Residential",
+  PlannedUnitDevelopment: "Residential",
+  AgriculturalResidential: "Agricultural",
+  ResidentialGolfCourse: "GolfCourse",
+  Office: "OfficeBuilding",
+  MultiFamily: "Residential",
+  ConvenienceStore: "RetailStore",
+  ConvenienceStoreWithGas: "ServiceStation",
+  DiscountStore: "RetailStore",
+  ShoppingCenterPower: "ShoppingCenterCommunity",
+  ShoppingCenterTown: "ShoppingCenterCommunity",
+  MixedUse: "Commercial",
+  FlexSpace: "Commercial",
+  VeterinaryClinic: "MedicalOffice",
+  CommunicationFacility: "TelecommunicationsFacility",
+  FastFoodRestaurant: "Restaurant",
+  RepairServiceShop: "AutoSalesRepair",
+  DryCleanerLaundromat: "Commercial",
+  AutoService: "AutoSalesRepair",
+  CarWash: "AutoSalesRepair",
+  AutoDealership: "AutoSalesRepair",
+  MarineSalesRepair: "AutoSalesRepair",
+  VehicleSales: "AutoSalesRepair",
+  VehicleRental: "AutoSalesRepair",
+  ParkingLot: "Commercial",
+  NightclubBar: "Entertainment",
+  RecreationalFacility: "Recreational",
+  HealthFitnessClub: "Recreational",
+  Camp: "Recreational",
+  Motel: "Hotel",
+  LuxuryHotel: "Hotel",
+  ExtendedStayHotel: "Hotel",
+  BedAndBreakfast: "Hotel",
+  MiniWarehouse: "Warehouse",
+  FoodProcessing: "Industrial",
+  HorseFarm: "LivestockFacility",
+  DairyFarm: "LivestockFacility",
+  Institutional: "GovernmentProperty",
+  DaycarePreschool: "PrivateSchool",
+  GroupHome: "HomesForAged",
+  RehabilitationFacility: "SanitariumConvalescentHome",
+  Cemetery: "MortuaryCemetery",
+  ClubLodge: "ClubsLodges",
+  VolunteerFireDepartment: "GovernmentProperty",
+  PublicCollege: "PublicSchool",
+  Airport: "TransportationTerminal",
+  WasteManagement: "SewageDisposal",
+  CentrallyAssessed: "Unknown",
+};
+
+function sanitizePropertyUsageType(value) {
+  if (!value) return null;
+  if (PROPERTY_USAGE_ALLOWED_VALUES.has(value)) return value;
+  const remapped = PROPERTY_USAGE_FALLBACK_MAP[value];
+  if (remapped && PROPERTY_USAGE_ALLOWED_VALUES.has(remapped)) return remapped;
+  return "Unknown";
+}
+
 // Function to get property mapping based on DOR code
 function getPropertyMapping(dorCode) {
   if (dorCode === null || dorCode === undefined) return null;
@@ -2904,8 +3069,12 @@ function main() {
   cleanupLegacyArtifacts();
 
   const input = readInputHtml();
-  const unaddr = readJSON("unnormalized_address.json");
-  const propSeed = readJSON("property_seed.json");
+  const unaddr = fs.existsSync("unnormalized_address.json")
+    ? readJSON("unnormalized_address.json")
+    : {};
+  const propSeed = fs.existsSync("property_seed.json")
+    ? readJSON("property_seed.json")
+    : {};
 
   const ownersPath = path.join("owners", "owner_data.json");
   const utilitiesPath = path.join("owners", "utilities_data.json");
@@ -2920,7 +3089,7 @@ function main() {
     ? readJSON(structurePath)
     : null;
 
-  const parcelNumber = input.parcelNumber || propSeed.parcel_id;
+  const parcelNumber = propSeed.parcel_id;
   const requestIdentifier =
     (propSeed && propSeed.request_identifier) ||
     (parcelNumber && String(parcelNumber).trim()) ||
@@ -2952,6 +3121,10 @@ function main() {
   const mappedProperty = getPropertyMapping(input.dor);
 
   const propertyFileName = "property.json";
+  const propertyUsageRaw = mappedProperty
+    ? mappedProperty.property_usage_type
+    : null;
+  const propertyUsageType = sanitizePropertyUsageType(propertyUsageRaw);
   const propertyObj = {
     parcel_identifier: parcelNumber,
     property_legal_description_text: legal,
@@ -2970,9 +3143,7 @@ function main() {
       : null,
     build_status: mappedProperty ? mappedProperty.build_status : null,
     structure_form: mappedProperty ? mappedProperty.structure_form : null,
-    property_usage_type: mappedProperty
-      ? mappedProperty.property_usage_type
-      : null,
+    property_usage_type: propertyUsageType,
     zoning: input.zoning || null,
     subdivision: input.subName || input.platName || null,
     number_of_units: 1,
@@ -3035,40 +3206,40 @@ function main() {
     
   });
 
-  const situsAddressRaw = unaddr.full_address || input.situsAddress || "";
-  const situsAddress = parseAddressComponents(
-    situsAddressRaw,
-    input.mailingAddress || "",
-  );
+  const situsAddressCandidate = pickFirstString(input, [
+    "situsAddress",
+    "siteAddress",
+    "siteAddr",
+    "propertyAddress",
+    "physicalAddress",
+    "locationAddress",
+    "address",
+  ]);
+  let unnormalizedSitusAddress =
+    normalizeAddressString(situsAddressCandidate) || null;
+  if (!unnormalizedSitusAddress) {
+    const unaddrFallback = pickFirstString(unaddr || {}, [
+      "full_address",
+      "unnormalized_address",
+      "address",
+      "siteAddress",
+    ]);
+    const fallbackNormalized = normalizeAddressString(unaddrFallback);
+    unnormalizedSitusAddress = fallbackNormalized || null;
+  }
+  const addressSourceRequest =
+    (unaddr && unaddr.source_http_request) ||
+    (propSeed && propSeed.source_http_request) ||
+    (input && input.source_http_request) ||
+    null;
+
   const addressFileName = "address.json";
   const addressObj = {
-    street_number: situsAddress ? situsAddress.streetNumber : null,
-    street_pre_directional_text: situsAddress
-      ? situsAddress.streetPreDirectional
-      : null,
-    street_name: situsAddress ? situsAddress.streetName : null,
-    street_suffix_type: situsAddress ? situsAddress.streetSuffix : null,
-    street_post_directional_text: situsAddress
-      ? situsAddress.streetPostDirectional
-      : null,
-    unit_identifier: null,
-    city_name: situsAddress ? situsAddress.city : null,
-    municipality_name: null,
-    state_code: situsAddress ? situsAddress.state : null,
-    postal_code: situsAddress ? situsAddress.postal_code : null, // Use postal_code from parsed object
-    plus_four_postal_code: situsAddress ? situsAddress.plus4 : null,
+    unnormalized_address: unnormalizedSitusAddress,
+    source_http_request: addressSourceRequest || null,
+    request_identifier: requestIdentifier,
     county_name: "Seminole",
     country_code: "US",
-    latitude: typeof unaddr.latitude === "number" ? unaddr.latitude : null,
-    longitude: typeof unaddr.longitude === "number" ? unaddr.longitude : null,
-    route_number: null,
-    township: null,
-    range: null,
-    section: null,
-    block: null,
-    lot: null,
-    // unnormalized_address: normalizeAddressString(situsAddressRaw) || null,
-    request_identifier: requestIdentifier,
   };
   fs.writeFileSync(
     path.join("data", addressFileName),
@@ -3076,32 +3247,13 @@ function main() {
   );
 
 
+  // Parse mailing address but don't create file yet - will only create if there are owners to link it to
   let mailingAddressFile = null;
   const mailingAddressRaw = input.mailingAddress || "";
   const mailingAddressParsed = parseAddressComponents(
     mailingAddressRaw,
     mailingAddressRaw,
   );
-  if (
-    mailingAddressParsed &&
-    (mailingAddressParsed.streetNumber ||
-      mailingAddressParsed.streetName ||
-      mailingAddressParsed.city ||
-      mailingAddressParsed.state ||
-      mailingAddressParsed.postal_code) // Use postal_code here
-  ) {
-    mailingAddressFile = "mailing_address.json";
-    const mailingAddressObj = {
-      unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
-      request_identifier: requestIdentifier,
-      latitude : null,
-      longitude : null,
-    };
-    fs.writeFileSync(
-      path.join("data", mailingAddressFile),
-      JSON.stringify(mailingAddressObj, null, 2),
-    );
-  }
   const primaryLand =
     Array.isArray(input.landDetails) && input.landDetails.length
       ? input.landDetails[0]
@@ -3284,11 +3436,13 @@ function main() {
         if (owner.type === "person") {
           personIndex += 1;
           const personFileName = `person_${personIndex}.json`;
+          const middleNameRaw = properCaseName(owner.middle_name || null);
+          const middleNameValid = middleNameRaw && isValidName(middleNameRaw) ? middleNameRaw : null;
           const personRecord = {
             birth_date: null,
             first_name: properCaseName(owner.first_name || null),
             last_name: properCaseName(owner.last_name || null),
-            middle_name: owner.middle_name || null,
+            middle_name: middleNameValid,
             prefix_name: null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: null,
@@ -3356,7 +3510,28 @@ function main() {
         });
       }
 
-      if (mailingAddressFile) {
+      // Create mailing address file only if there are owners to link it to
+      if (
+        (personEntries.length > 0 || companyEntries.length > 0) &&
+        mailingAddressParsed &&
+        (mailingAddressParsed.streetNumber ||
+          mailingAddressParsed.streetName ||
+          mailingAddressParsed.city ||
+          mailingAddressParsed.state ||
+          mailingAddressParsed.postal_code)
+      ) {
+        mailingAddressFile = "mailing_address.json";
+        const mailingAddressObj = {
+          unnormalized_address: normalizeAddressString(mailingAddressRaw) || null,
+          request_identifier: requestIdentifier,
+          latitude: null,
+          longitude: null,
+        };
+        fs.writeFileSync(
+          path.join("data", mailingAddressFile),
+          JSON.stringify(mailingAddressObj, null, 2),
+        );
+
         personEntries.forEach((entry) => {
           const rel = {
             from: { "/": `./${entry.file}` },
@@ -3784,7 +3959,40 @@ function main() {
           JSON.stringify(relObj, null, 2),
         );
       });
+
+      // Link any unused utilities directly to property
+      utilityOutputs.forEach((entry, idx) => {
+        if (usedUtilityIndexes.has(idx)) return;
+        const relObj = {
+          from: { "/": "./property.json" },
+          to: { "/": `./${entry.fileName}` },
+        };
+        const relationshipFileName = createRelationshipFileName(
+          "property.json",
+          entry.fileName,
+        );
+        fs.writeFileSync(
+          path.join("data", relationshipFileName),
+          JSON.stringify(relObj, null, 2),
+        );
+      });
     }
+  } else {
+    // No layout data - link all utilities directly to property
+    utilityOutputs.forEach((entry) => {
+      const relObj = {
+        from: { "/": "./property.json" },
+        to: { "/": `./${entry.fileName}` },
+      };
+      const relationshipFileName = createRelationshipFileName(
+        "property.json",
+        entry.fileName,
+      );
+      fs.writeFileSync(
+        path.join("data", relationshipFileName),
+        JSON.stringify(relObj, null, 2),
+      );
+    });
   }
 
   structureOutputs.forEach((entry, idx) => {

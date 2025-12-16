@@ -1762,31 +1762,69 @@ function extract() {
   // relationships: deed-file and sales-deed for all entries
   if (deeds.length > 0 && files.length > 0) {
     const relDF = {
-      to: { "/": "./deed_1.json" },
-      from: { "/": "./file_1.json" },
+      from: { "/": "./deed_1.json" },
+      to: { "/": "./file_1.json" },
     };
     writeJSON(path.join(dataDir, "relationship_deed_file.json"), relDF);
     for (let i = 2; i <= Math.min(deeds.length, files.length); i++) {
       const rel = {
-        to: { "/": `./deed_${i}.json` },
-        from: { "/": `./file_${i}.json` },
+        from: { "/": `./deed_${i}.json` },
+        to: { "/": `./file_${i}.json` },
       };
       writeJSON(path.join(dataDir, `relationship_deed_file_${i}.json`), rel);
     }
   }
   if (sales.length > 0 && deeds.length > 0) {
     const relSD = {
-      to: { "/": "./sales_1.json" },
-      from: { "/": "./deed_1.json" },
+      from: { "/": "./sales_1.json" },
+      to: { "/": "./deed_1.json" },
     };
     writeJSON(path.join(dataDir, "relationship_sales_deed.json"), relSD);
     for (let i = 2; i <= Math.min(sales.length, deeds.length); i++) {
       const rel = {
-        to: { "/": `./sales_${i}.json` },
-        from: { "/": `./deed_${i}.json` },
+        from: { "/": `./sales_${i}.json` },
+        to: { "/": `./deed_${i}.json` },
       };
       writeJSON(path.join(dataDir, `relationship_sales_deed_${i}.json`), rel);
     }
+  }
+
+  // property fallback relationships to structure/utility when layout links are absent
+  const relationshipFiles = fs
+    .readdirSync(dataDir)
+    .filter((name) => name.startsWith("relationship_"));
+  const hasLayoutStructureRel = relationshipFiles.some(
+    (name) => name.includes("layout") && name.includes("structure"),
+  );
+  const hasLayoutUtilityRel = relationshipFiles.some(
+    (name) => name.includes("layout") && name.includes("utility"),
+  );
+  const propertyPath = "./property.json";
+  const structurePath = "./structure.json";
+  const utilityPath = "./utility.json";
+
+  if (!hasLayoutStructureRel && fs.existsSync(path.join(dataDir, "structure.json"))) {
+    removeFilesByPrefix(dataDir, "relationship_property_structure");
+    const relPropertyStructure = {
+      from: { "/": propertyPath },
+      to: { "/": structurePath },
+    };
+    writeJSON(
+      path.join(dataDir, "relationship_property_structure.json"),
+      relPropertyStructure,
+    );
+  }
+
+  if (!hasLayoutUtilityRel && fs.existsSync(path.join(dataDir, "utility.json"))) {
+    removeFilesByPrefix(dataDir, "relationship_property_utility");
+    const relPropertyUtility = {
+      from: { "/": propertyPath },
+      to: { "/": utilityPath },
+    };
+    writeJSON(
+      path.join(dataDir, "relationship_property_utility.json"),
+      relPropertyUtility,
+    );
   }
 }
 
