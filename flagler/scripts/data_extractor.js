@@ -3388,12 +3388,34 @@ function main() {
     }
   }
 
-  // Only create mailing address files if there are owners to reference them
-  const mailingAddressFiles = [];
+  // First, determine which unique addresses will actually be used by owners
+  const usedAddressIndices = new Set();
   if (currentOwners.length > 0) {
-    ownerMailingInfo.uniqueAddresses.forEach((addr, idx) => {
+    currentOwners.forEach((owner, idx) => {
+      if (!owner || !owner.type) return;
+      if (ownerMailingInfo.rawAddresses[idx] != null) {
+        const rawAddr = ownerMailingInfo.rawAddresses[idx];
+        const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
+        if (uniqueIdx >= 0) {
+          usedAddressIndices.add(uniqueIdx);
+        }
+      } else if (ownerMailingInfo.uniqueAddresses.length > 0) {
+        // Fallback: use index or last address
+        const fallbackIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+        usedAddressIndices.add(fallbackIdx);
+      }
+    });
+  }
+
+  // Only create mailing address files for addresses that will be used
+  const mailingAddressFiles = [];
+  const oldToNewIndexMap = new Map();
+  if (currentOwners.length > 0 && usedAddressIndices.size > 0) {
+    const sortedIndices = Array.from(usedAddressIndices).sort((a, b) => a - b);
+    sortedIndices.forEach((oldIdx, newIdx) => {
+      const addr = ownerMailingInfo.uniqueAddresses[oldIdx];
       if (!addr) return;
-      const fileName = `mailing_address_${idx + 1}.json`;
+      const fileName = `mailing_address_${newIdx + 1}.json`;
       const mailingObj = {
         unnormalized_address: addr,
         latitude: null,
@@ -3402,7 +3424,8 @@ function main() {
         request_identifier: requestIdentifier,
       };
       writeJSON(path.join(dataDir, fileName), mailingObj);
-      mailingAddressFiles.push({ path: `./${fileName}` });
+      mailingAddressFiles.push({ path: `./${fileName}`, oldIdx });
+      oldToNewIndexMap.set(oldIdx, newIdx);
     });
   }
 
@@ -3446,10 +3469,17 @@ function main() {
     ) {
       const rawAddr = ownerMailingInfo.rawAddresses[idx];
       const uniqueIdx = ownerMailingInfo.uniqueAddresses.indexOf(rawAddr);
-      if (uniqueIdx >= 0) mailingIdx = uniqueIdx;
+      if (uniqueIdx >= 0 && oldToNewIndexMap.has(uniqueIdx)) {
+        mailingIdx = oldToNewIndexMap.get(uniqueIdx);
+      }
     }
     if (mailingIdx == null && mailingAddressFiles.length) {
-      mailingIdx = Math.min(idx, mailingAddressFiles.length - 1);
+      const fallbackUniqueIdx = Math.min(idx, ownerMailingInfo.uniqueAddresses.length - 1);
+      if (oldToNewIndexMap.has(fallbackUniqueIdx)) {
+        mailingIdx = oldToNewIndexMap.get(fallbackUniqueIdx);
+      } else if (mailingAddressFiles.length > 0) {
+        mailingIdx = 0;
+      }
     }
     const mailingRecord =
       mailingIdx != null && mailingIdx >= 0
