@@ -1644,14 +1644,16 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     });
   }
 
-  // Only create company files for companies that are actually used
-  companies = Array.from(usedCompanyNames).map((n) => ({
-    ...appendSourceInfo(seed),
-    name: n
-  }));
-  companies.forEach((c, idx) => {
-    writeJSON(path.join("data", `company_${idx + 1}.json`), c);
-  });
+  // Only create company files for companies that are actually used AND if there are sales to link them to
+  if (sales.length > 0) {
+    companies = Array.from(usedCompanyNames).map((n) => ({
+      ...appendSourceInfo(seed),
+      name: n
+    }));
+    companies.forEach((c, idx) => {
+      writeJSON(path.join("data", `company_${idx + 1}.json`), c);
+    });
+  }
 
   // Relationships: link sale to owners present on that date (both persons and companies)
   sales.forEach((rec, idx) => {
@@ -1834,6 +1836,42 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
     for (let i = 1; i <= companies.length; i++) {
       if (!linkedCompanyIndices.has(i)) {
         sale1CompanyCounter++;
+        writeJSON(
+          path.join(
+            "data",
+            `relationship_sales_history_1_has_company_${i}.json`,
+          ),
+          {
+            from: { "/": "./sales_history_1.json" },
+            to: { "/": `./company_${i}.json` }
+          },
+        );
+      }
+    }
+
+    // Final verification: Ensure all company files have at least one relationship
+    // Re-scan to catch any companies that might have been missed
+    const finalLinkedCompanies = new Set();
+    try {
+      const dataFiles = fs.readdirSync("data");
+      dataFiles.forEach((fileName) => {
+        if (/^relationship_.*\.json$/.test(fileName)) {
+          const relData = readJSON(path.join("data", fileName));
+          if (relData && relData.to && relData.to["/"]) {
+            const toPath = relData.to["/"];
+            const companyMatch = toPath.match(/^\.\/company_(\d+)\.json$/);
+            if (companyMatch) {
+              finalLinkedCompanies.add(parseInt(companyMatch[1]));
+            }
+          }
+        }
+      });
+    } catch (e) {}
+
+    // Create relationships for any companies that still don't have one
+    for (let i = 1; i <= companies.length; i++) {
+      if (!finalLinkedCompanies.has(i)) {
+        // Use a unique suffix to avoid filename collisions
         writeJSON(
           path.join(
             "data",
