@@ -3390,7 +3390,16 @@ function main() {
     JSON.stringify(lotObj, null, 2),
   );
 
-
+  // Create relationship between property and lot
+  const lotRelationshipFileName = createRelationshipFileName(propertyFileName, lotFileName);
+  const lotRelationship = {
+    from: { "/": `./${propertyFileName}` },
+    to: { "/": `./${lotFileName}` },
+  };
+  fs.writeFileSync(
+    path.join("data", lotRelationshipFileName),
+    JSON.stringify(lotRelationship, null, 2),
+  );
 
   if (Array.isArray(input.parcelValueHistory)) {
     input.parcelValueHistory.forEach((row, idx) => {
