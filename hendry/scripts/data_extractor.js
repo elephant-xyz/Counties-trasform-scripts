@@ -2344,11 +2344,19 @@ function writeUtility(parcelId, buildingLayouts, propertySeed, unnormalized) {
   };
 
   const linkUtilityToLayout = (layoutId, utilityId) => {
-    writeRelationship(`layout_${layoutId}.json`, `utility_${utilityId}.json`);
+    const fileName = `relationship_layout_${layoutId}_has_utility_${utilityId}.json`;
+    writeJSON(path.join("data", fileName), {
+      from: { "/": `./layout_${layoutId}.json` },
+      to: { "/": `./utility_${utilityId}.json` },
+    });
   };
 
   const linkUtilityToProperty = (utilityId) => {
-    writeRelationship("property.json", `utility_${utilityId}.json`);
+    const fileName = `relationship_property_has_utility_${utilityId}.json`;
+    writeJSON(path.join("data", fileName), {
+      from: { "/": "./property.json" },
+      to: { "/": `./utility_${utilityId}.json` },
+    });
   };
 
   buildingEntries.forEach((entry) => {
@@ -2826,11 +2834,19 @@ function writeStructures(parcelId, buildingLayouts, propertySeed, unnormalized) 
   };
 
   const linkStructureToLayout = (layoutId, structureId) => {
-    writeRelationship(`layout_${layoutId}.json`, `structure_${structureId}.json`);
+    const fileName = `relationship_layout_${layoutId}_has_structure_${structureId}.json`;
+    writeJSON(path.join("data", fileName), {
+      from: { "/": `./layout_${layoutId}.json` },
+      to: { "/": `./structure_${structureId}.json` },
+    });
   };
 
   const linkStructureToProperty = (structureId) => {
-    writeRelationship("property.json", `structure_${structureId}.json`);
+    const fileName = `relationship_property_has_structure_${structureId}.json`;
+    writeJSON(path.join("data", fileName), {
+      from: { "/": "./property.json" },
+      to: { "/": `./structure_${structureId}.json` },
+    });
   };
 
   buildingEntries.forEach((entry) => {
