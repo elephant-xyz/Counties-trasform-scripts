@@ -4180,19 +4180,19 @@ function main() {
     if (nm) companyNameToPath.set(nm, `./company_${i + 1}.json`);
   });
 
-  // Check sales history to mark additional persons/companies as used
+  // Check sales history to mark additional persons as used
+  // NOTE: We do NOT mark companies as used from sales history because there is no valid
+  // Elephant relationship class to connect sales_history to company entities.
+  // Only persons can be marked as used from sales, and only current company owners
+  // (which are already marked above) will be written.
   sales.forEach((s, idx) => {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
 
-    // First, check if the full grantee matches a company (handles companies with & in their name)
+    // Skip if this is a company - we don't create relationships for historical company owners
+    // because there's no valid Elephant relationship class for sales_history -> company
     if (companyNameToPath.has(g)) {
-      const companyPath = companyNameToPath.get(g);
-      const companyMatch = companyPath.match(/company_(\d+)\.json/);
-      if (companyMatch) {
-        usedCompanyIndices.add(parseInt(companyMatch[1], 10));
-      }
-      return; // Matched as company, done
+      return; // Skip companies
     }
 
     // Check if grantee contains ampersand (joint ownership)
@@ -4200,33 +4200,29 @@ function main() {
       // Split by ampersand and process each name separately
       const names = g.split('&').map(n => n.trim()).filter(n => n);
       names.forEach(name => {
-        // Try company match first
+        // Skip if this is a company
         if (companyNameToPath.has(name)) {
-          const companyPath = companyNameToPath.get(name);
-          const companyMatch = companyPath.match(/company_(\d+)\.json/);
-          if (companyMatch) {
-            usedCompanyIndices.add(parseInt(companyMatch[1], 10));
-          }
+          return; // Skip companies
+        }
+
+        // Try person match
+        let toPath = null;
+        if (personNameToPath.has(name)) {
+          toPath = personNameToPath.get(name);
         } else {
-          // Try person match
-          let toPath = null;
-          if (personNameToPath.has(name)) {
-            toPath = personNameToPath.get(name);
-          } else {
-            const parts = name.split(/\s+/);
-            if (parts.length >= 2) {
-              const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
-                .toUpperCase()
-                .trim();
-              if (personNameToPath.has(swapped))
-                toPath = personNameToPath.get(swapped);
-            }
+          const parts = name.split(/\s+/);
+          if (parts.length >= 2) {
+            const swapped = `${parts.slice(1).join(" ")} ${parts[0]}`
+              .toUpperCase()
+              .trim();
+            if (personNameToPath.has(swapped))
+              toPath = personNameToPath.get(swapped);
           }
-          if (toPath) {
-            const personMatch = toPath.match(/person_(\d+)\.json/);
-            if (personMatch) {
-              usedPersonIndices.add(parseInt(personMatch[1], 10));
-            }
+        }
+        if (toPath) {
+          const personMatch = toPath.match(/person_(\d+)\.json/);
+          if (personMatch) {
+            usedPersonIndices.add(parseInt(personMatch[1], 10));
           }
         }
       });
