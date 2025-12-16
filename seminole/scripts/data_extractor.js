@@ -971,7 +971,7 @@ const propertyMapping = [
     "build_status": "Improved", // Sign site/Cell Tower implies improvement
     "structure_form": null,
     "property_usage_type": "Residential", // Context implies it's on residential land
-    "property_type": "Other" // Or "Structure" if that's an option
+    "property_type": "Building"
   },
   {
     "dor_code": "0040", // New
@@ -1309,7 +1309,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Commercial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "1012", // New
@@ -1317,7 +1317,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Commercial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "1013", // New
@@ -1999,7 +1999,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Industrial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "4012", // New
@@ -2007,7 +2007,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Industrial",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "4013", // New
@@ -2717,7 +2717,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "87",
@@ -2733,7 +2733,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "88",
@@ -2749,7 +2749,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "89",
@@ -2773,7 +2773,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "GovernmentProperty",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "90",
@@ -2797,7 +2797,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Utility",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "92",
@@ -2855,7 +2855,7 @@ const propertyMapping = [
     "build_status": null, // Can be vacant or improved
     "structure_form": null,
     "property_usage_type": "CentrallyAssessed",
-    "property_type": "Other" // Or "LandParcel", "Building" depending on context
+    "property_type": "Building" // Or "LandParcel", "Building" depending on context
   },
 
   // NON-AGRICULTURAL ACREAGE
@@ -2873,7 +2873,7 @@ const propertyMapping = [
     "build_status": "Improved",
     "structure_form": null,
     "property_usage_type": "Unknown",
-    "property_type": "Other"
+    "property_type": "Building"
   },
   {
     "dor_code": "9950", // New
@@ -4090,7 +4090,14 @@ function main() {
       JSON.stringify(fileObj, null, 2),
     );
 
-
+    const fileRelationship = {
+      from: { "/": `./property.json` },
+      to: { "/": `./${fileFileName}` },
+    };
+    fs.writeFileSync(
+      path.join("data", createRelationshipFileName("property.json", fileFileName)),
+      JSON.stringify(fileRelationship, null, 2),
+    );
   });
 }
 
