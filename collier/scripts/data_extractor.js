@@ -818,7 +818,7 @@ function main() {
             first_name: capitalizeProperName(owner.first_name) || "",
             last_name: capitalizeProperName(owner.last_name) || "",
             middle_name: owner.middle_name
-              ? (capitalizeProperName(owner.middle_name) || null)
+              ? capitalizeProperName(owner.middle_name)
               : null,
             prefix_name: owner.prefix_name || null,
             suffix_name: owner.suffix_name || null,
