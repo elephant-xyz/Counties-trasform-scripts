@@ -26827,7 +26827,19 @@ async function main() {
       normalizedFromBest || normalizedFromSnapshot || null;
 
     let finalAddressOutput = null;
-    if (preferredNormalized) {
+    if (finalRawSelection) {
+      const rawPayload = buildFinalRawAddressOutput(finalRawSelection, {
+        requestIdentifier:
+          finalResolvedRequestId === undefined ? null : finalResolvedRequestId,
+        sourceHttpRequest: finalResolvedSourceHttp,
+        countyName: resolvedCounty || finalSnapshot.county_name,
+        countryCode: finalSnapshot.country_code,
+        seed: finalSnapshot,
+      });
+      if (rawPayload) {
+        finalAddressOutput = rawPayload;
+      }
+    } else if (preferredNormalized) {
       finalAddressOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
         let value = preferredNormalized[field];
@@ -26859,18 +26871,6 @@ async function main() {
         Object.prototype.hasOwnProperty.call(finalAddressOutput, "unnormalized_address")
       ) {
         delete finalAddressOutput.unnormalized_address;
-      }
-    } else if (finalRawSelection) {
-      const rawPayload = buildFinalRawAddressOutput(finalRawSelection, {
-        requestIdentifier:
-          finalResolvedRequestId === undefined ? null : finalResolvedRequestId,
-        sourceHttpRequest: finalResolvedSourceHttp,
-        countyName: resolvedCounty || finalSnapshot.county_name,
-        countryCode: finalSnapshot.country_code,
-        seed: finalSnapshot,
-      });
-      if (rawPayload) {
-        finalAddressOutput = rawPayload;
       }
     } else {
       removeFileIfExists(addressOutputPath);
