@@ -23377,45 +23377,24 @@ async function main() {
       });
       writeJSON(addressOutputPath, normalizedOut);
     } else if (rawValue) {
-      const rawOut = { ...RAW_ADDRESS_SCHEMA_TEMPLATE };
-      RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-        if (field === "unnormalized_address") {
-          rawOut[field] = rawValue;
-          return;
-        }
-        let value =
-          payload[field] !== undefined
-            ? payload[field]
-            : normalizedSurface && normalizedSurface[field];
-        if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-          const numeric = parseCoordinate(value);
-          rawOut[field] = Number.isFinite(numeric) ? numeric : null;
-          return;
-        }
-        if (field === "source_http_request") {
-          rawOut[field] = prepareSourceHttpRequest(value) || null;
-          return;
-        }
-        if (typeof value === "string") {
-          const trimmed = value.trim();
-          rawOut[field] = trimmed.length ? trimmed : null;
-          return;
-        }
-        rawOut[field] = value === undefined ? null : value;
-      });
-      if (!rawOut.postal_code) {
-        rawOut.plus_four_postal_code = null;
-      }
-      if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
-        rawOut.latitude = null;
-        rawOut.longitude = null;
-      }
-      if (
-        hasMeaningfulAddressValue(rawOut.state_code) &&
-        !hasMeaningfulAddressValue(rawOut.country_code)
-      ) {
-        rawOut.country_code = "US";
-      }
+      // When we only have the raw address string, emit the lean raw branch so
+      // the oneOf picks that schema and doesn't demand normalized fields.
+      const requestId = safeNullIfEmpty(
+        payload.request_identifier ??
+          (normalizedSurface && normalizedSurface.request_identifier),
+      );
+      const preparedSource =
+        prepareSourceHttpRequest(
+          payload.source_http_request ??
+            (normalizedSurface && normalizedSurface.source_http_request),
+        ) || null;
+
+      const rawOut = {
+        unnormalized_address: rawValue,
+        request_identifier: requestId ?? null,
+        source_http_request: preparedSource,
+      };
+
       writeJSON(addressOutputPath, rawOut);
     } else {
       removeFileIfExists(addressOutputPath);
