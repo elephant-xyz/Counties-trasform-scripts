@@ -63,7 +63,8 @@ function properCaseName(s) {
     return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
   }).join('');
 
-  return result;
+  // Remove trailing separators (apostrophes, hyphens, commas, periods) and trim
+  return result.replace(/[\s\-',.]+$/, '').trim();
 }
 
 function isValidName(s) {
