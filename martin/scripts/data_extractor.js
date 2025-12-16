@@ -2136,29 +2136,27 @@ function main() {
   if (latestIdx >= 0) {
     const sObj = salesHistoryOut[latestIdx];
     const companiesHere = currentOwners.filter((o) => o.type === "company");
-    if (companiesHere.length) {
-      companiesHere.forEach((c) => {
-        const cFile = companyMap.get(companyKey(c.name));
-        if (cFile) {
-          relSalesCompanies.push({
-            to: { "/": `./${cFile}` },
+    companiesHere.forEach((c) => {
+      const cFile = companyMap.get(companyKey(c.name));
+      if (cFile) {
+        relSalesCompanies.push({
+          to: { "/": `./${cFile}` },
+          from: { "/": `./${sObj.file}` },
+        });
+      }
+    });
+
+    currentOwners
+      .filter((o) => o.type === "person")
+      .forEach((o) => {
+        const file = personMap.get(personKey(o));
+        if (file) {
+          relSalesPersons.push({
+            to: { "/": `./${file}` },
             from: { "/": `./${sObj.file}` },
           });
         }
       });
-    } else {
-      currentOwners
-        .filter((o) => o.type === "person")
-        .forEach((o) => {
-          const file = personMap.get(personKey(o));
-          if (file) {
-            relSalesPersons.push({
-              to: { "/": `./${file}` },
-              from: { "/": `./${sObj.file}` },
-            });
-          }
-        });
-    }
   }
 
   // Chain-based buyers: for each non-latest sale, link to next sale's sellers (owners_by_date at next sale date), but avoid linking when next seller equals current seller (no transfer)
