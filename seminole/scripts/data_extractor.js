@@ -66,6 +66,15 @@ function properCaseName(s) {
   return result;
 }
 
+function isValidName(s) {
+  if (!s) return false;
+  const str = String(s).trim();
+  if (!str) return false;
+  // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return namePattern.test(str);
+}
+
 function normalizeLookupString(value) {
   return String(value || "")
     .trim()
@@ -3290,11 +3299,13 @@ function main() {
         if (owner.type === "person") {
           personIndex += 1;
           const personFileName = `person_${personIndex}.json`;
+          const middleNameRaw = properCaseName(owner.middle_name || null);
+          const middleNameValid = middleNameRaw && isValidName(middleNameRaw) ? middleNameRaw : null;
           const personRecord = {
             birth_date: null,
             first_name: properCaseName(owner.first_name || null),
             last_name: properCaseName(owner.last_name || null),
-            middle_name: owner.middle_name || null,
+            middle_name: middleNameValid,
             prefix_name: null,
             suffix_name: owner.suffix_name || null,
             us_citizenship_status: null,

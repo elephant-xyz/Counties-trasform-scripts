@@ -87,12 +87,21 @@ function toNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function isValidName(s) {
+  if (!s) return false;
+  const str = String(s).trim();
+  if (!str) return false;
+  // Pattern: must start with uppercase letter, followed by letters, spaces, hyphens, apostrophes, commas, or periods
+  const namePattern = /^[A-Z][a-zA-Z\s\-',.]*$/;
+  return namePattern.test(str);
+}
+
 function parsePersonName(raw, inferredLastName) {
   const s = normWS(raw);
   if (!s) return null;
 
   // Helper to validate that a name starts with a letter
-  const isValidName = (name) => {
+  const startsWithLetter = (name) => {
     if (!name) return false;
     const trimmed = normWS(name);
     // Must start with a letter (not number or special char)
@@ -112,21 +121,24 @@ function parsePersonName(raw, inferredLastName) {
     }
 
     // Validate first and last names
-    if (!isValidName(first) || !isValidName(lastPart)) {
+    if (!startsWithLetter(first) || !startsWithLetter(lastPart)) {
       return null;
     }
+
+    // Validate middle name against strict pattern
+    const middleValid = middle && isValidName(middle) ? middle : null;
 
     return {
       type: "person",
       first_name: first,
       last_name: lastPart,
-      middle_name: middle || null,
+      middle_name: middleValid,
     };
   }
 
   const tokens = s.split(" ").filter(Boolean);
   if (tokens.length === 1) {
-    if (inferredLastName && isValidName(tokens[0]) && isValidName(inferredLastName)) {
+    if (inferredLastName && startsWithLetter(tokens[0]) && startsWithLetter(inferredLastName)) {
       return {
         type: "person",
         first_name: tokens[0],
@@ -142,15 +154,18 @@ function parsePersonName(raw, inferredLastName) {
   const middle = middleTokens.length ? middleTokens.join(" ") : null;
 
   // Validate first and last names
-  if (!isValidName(first) || !isValidName(last)) {
+  if (!startsWithLetter(first) || !startsWithLetter(last)) {
     return null;
   }
+
+  // Validate middle name against strict pattern
+  const middleValid = middle && isValidName(middle) ? middle : null;
 
   return {
     type: "person",
     first_name: first,
     last_name: last,
-    middle_name: middle || null,
+    middle_name: middleValid,
   };
 }
 
@@ -226,11 +241,13 @@ function processOwnerObject(obj, options = {}) {
   }
 
   if (first && last) {
+    const middleNormalized = middle ? normWS(middle) : null;
+    const middleValid = middleNormalized && isValidName(middleNormalized) ? middleNormalized : null;
     const person = {
       type: "person",
       first_name: normWS(first),
       last_name: normWS(last),
-      middle_name: middle ? normWS(middle) : null,
+      middle_name: middleValid,
     };
     if (suffix) person.suffix_name = normWS(suffix);
     if (ownershipPercentage !== null)
