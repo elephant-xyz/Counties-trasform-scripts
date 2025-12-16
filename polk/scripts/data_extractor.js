@@ -4207,6 +4207,9 @@ function main() {
   }
 
   // Write sales history relationships
+  // COMMENTED OUT: These relationships don't match valid Elephant relationship classes in the data group
+  // The removeUnusedOwnerFiles() function will clean up any unreferenced person/company files
+  /*
   sales.forEach((s, idx) => {
     const g = normalizeNameForMatch(s.grantee);
     if (!g) return;
@@ -4302,6 +4305,7 @@ function main() {
       }
     }
   });
+  */
   // Layout extraction from owners/layout_data.json
   if (layoutData) {
     const lset =
