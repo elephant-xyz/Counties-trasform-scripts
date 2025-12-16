@@ -9963,45 +9963,35 @@ const COUNTY_NORMALIZED_REQUIRED_FIELDS = [...NORMALIZED_ADDRESS_REQUIRED_STRING
 
 function hasCompleteNormalizedAddress(address) {
   if (!address || typeof address !== "object") return false;
-  const working = { ...address };
+  // Normalize the surface first so we have the full field set present.
+  const working =
+    typeof ensureNormalizedAddressSchemaSurface === "function"
+      ? ensureNormalizedAddressSchemaSurface({ ...address })
+      : { ...address };
+
+  // Require the core normalized strings and coordinates to be present and meaningful;
+  // otherwise prefer the raw branch (unnormalized_address) to satisfy the oneOf.
+  for (const coord of ADDRESS_COORDINATE_FIELDS) {
+    const numeric = parseCoordinate(working[coord]);
+    if (!Number.isFinite(numeric)) return false;
+    working[coord] = numeric;
+  }
+  for (const field of NORMALIZED_STRICT_STRING_FIELDS) {
+    if (!hasMeaningfulAddressValue(working[field])) return false;
+    working[field] =
+      field === "county_name"
+        ? toTitleCase(String(working[field]).trim())
+        : String(working[field]).trim();
+  }
+
+  // Ensure every required field exists; allow nulls for the optional pieces so we
+  // keep property presence aligned with the schema surface.
   for (const field of ADDRESS_ONEOF_NORMALIZED_REQUIRED_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(working, field)) {
       return false;
     }
-
-    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
-      const numeric = parseCoordinate(working[field]);
-      if (!Number.isFinite(numeric)) return false;
-      working[field] = numeric;
-      continue;
-    }
-
-    const value = working[field];
-    if (value === undefined) {
-      return false;
-    }
-
-    if (value === null) {
-      // Schema permits nulls for most normalized address fields; keep presence.
-      continue;
-    }
-
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (!trimmed.length) return false;
-      if (field === "county_name") {
-        const titledCounty = toTitleCase(trimmed);
-        working[field] =
-          titledCounty && titledCounty.trim().length ? titledCounty : null;
-      } else {
-        working[field] = trimmed;
-      }
-      if (!hasMeaningfulAddressValue(working[field])) return false;
-      continue;
-    }
-
-    if (!hasMeaningfulAddressValue(value)) {
-      return false;
+    if (working[field] === undefined) {
+      working[field] = null;
     }
   }
 
