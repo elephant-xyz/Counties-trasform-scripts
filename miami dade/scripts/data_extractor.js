@@ -2491,15 +2491,11 @@ function main() {
   // PERSON/COMPANY (owners)
   // Only create person/company entities if there are sales to link them to
   // Otherwise they become orphaned files with no relationships
-  const ownersKey = `property_${(pInfo.FolioNumber || "").replace(/[^0-9\-]/g, "")}`; // expect 01-4103-033-0491
-  const ownersPkg =
-    owners[ownersKey] ||
-    owners[
-      `property_${(seed.parcel_id || "").replace(/(.{2})(.{4})(.{3})(.{4})/, "$1-$2-$3-$4")}`
-    ] ||
-    null;
 
-  // Check if there are sales files first before creating owner entities
+  // First check if SalesInfos exist in input data
+  const hasSalesInInput = Array.isArray(input.SalesInfos) && input.SalesInfos.length > 0;
+
+  // Check if there are sales files generated
   const salesFiles = fs.existsSync("data")
     ? fs.readdirSync("data")
         .filter((f) => /^sales_\d+\.json$/.test(f))
@@ -2510,7 +2506,18 @@ function main() {
         })
     : [];
 
+  const ownersKey = `property_${(pInfo.FolioNumber || "").replace(/[^0-9\-]/g, "")}`; // expect 01-4103-033-0491
+  const ownersPkg =
+    owners[ownersKey] ||
+    owners[
+      `property_${(seed.parcel_id || "").replace(/(.{2})(.{4})(.{3})(.{4})/, "$1-$2-$3-$4")}`
+    ] ||
+    null;
+
+  // CRITICAL: Only create person/company entities if there are sales to link them to
+  // If there are no sales, DO NOT create person/company entities as they would be orphaned
   if (
+    hasSalesInInput &&
     salesFiles.length > 0 &&
     ownersPkg &&
     ownersPkg.owners_by_date &&
