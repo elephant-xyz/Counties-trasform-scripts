@@ -1313,6 +1313,11 @@ function main() {
   address.township = null;
   address.range = null;
   writeJson(path.join("data", "address.json"), address);
+  writeRelationshipFile(
+    "relationship_property_has_address.json",
+    "./property.json",
+    "./address.json",
+  );
 
   const normalizeCoordinate = (value) => {
     if (value == null) return null;
