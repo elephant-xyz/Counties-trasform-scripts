@@ -18595,9 +18595,34 @@ function enforceMinimalRawAddressBranch(addressPath) {
     return;
   }
 
+  const pickField = (field) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, field)) {
+      return null;
+    }
+    const sanitized = sanitizeAddressFieldValue
+      ? sanitizeAddressFieldValue(field, payload[field])
+      : payload[field];
+    if (sanitized === undefined || sanitized === null) return null;
+    if (typeof sanitized === "string") {
+      const trimmed = sanitized.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    return sanitized;
+  };
+
   const rawOut = {
     unnormalized_address: rawValue,
     county_name: safeNullIfEmpty(payload.county_name) || null,
+    country_code: pickField("country_code"),
+    state_code: pickField("state_code"),
+    city_name: pickField("city_name"),
+    postal_code: pickField("postal_code"),
+    plus_four_postal_code: pickField("plus_four_postal_code"),
+    section: pickField("section"),
+    township: pickField("township"),
+    range: pickField("range"),
+    block: pickField("block"),
+    lot: pickField("lot"),
     request_identifier: Object.prototype.hasOwnProperty.call(
       payload,
       "request_identifier",
@@ -18609,7 +18634,15 @@ function enforceMinimalRawAddressBranch(addressPath) {
     ) || null,
   };
 
-  writeJSON(addressPath, rawOut);
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+
+  try {
+    originalWriteFileSync(addressPath, `${JSON.stringify(rawOut, null, 2)}\n`);
+  } catch {
+    removeFileIfExists(addressPath);
+  }
 }
 
 // Keep the final address payload aligned to a single oneOf branch:
@@ -22611,6 +22644,10 @@ async function main() {
   } else {
     removeFileIfExists(addressOutputPath);
   }
+
+  // Ensure the address sticks to a single oneOf branch: normalized when fully
+  // populated, otherwise the lean raw variant anchored on the unnormalized string.
+  enforceMinimalRawAddressBranch(addressOutputPath);
 
   // Guarantee relationships are left for downstream population (no local URs).
   enforcePropertyRelationshipNulls(propertyFilePath);
