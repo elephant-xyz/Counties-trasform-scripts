@@ -2150,7 +2150,6 @@ function writeSalesDeedsFilesAndRelationships($) {
         file_format: null,
         ipfs_url: null,
         name: book && page ? `Deed ${book}/${page}` : "Deed Document",
-        original_url: s.link,
       };
       writeJSON(path.join("data", `file_${idx}.json`), file);
 
