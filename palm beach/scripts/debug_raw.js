@@ -18610,32 +18610,47 @@ function enforceMinimalRawAddressBranch(addressPath) {
     return sanitized;
   };
 
-  const rawOut = {
-    unnormalized_address: rawValue,
-    county_name: safeNullIfEmpty(payload.county_name) || null,
-    country_code: pickField("country_code"),
-    state_code: pickField("state_code"),
-    city_name: pickField("city_name"),
-    postal_code: pickField("postal_code"),
-    plus_four_postal_code: pickField("plus_four_postal_code"),
-    section: pickField("section"),
-    township: pickField("township"),
-    range: pickField("range"),
-    block: pickField("block"),
-    lot: pickField("lot"),
-    request_identifier: Object.prototype.hasOwnProperty.call(
-      payload,
-      "request_identifier",
-    )
-      ? safeNullIfEmpty(payload.request_identifier) ?? null
-      : null,
-    source_http_request: prepareSourceHttpRequest(
-      payload.source_http_request,
-    ) || null,
-  };
+  const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  rawOut.unnormalized_address = rawValue;
+
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") return;
+    if (field === "source_http_request") {
+      rawOut[field] = prepareSourceHttpRequest(payload.source_http_request) || null;
+      return;
+    }
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(payload[field]);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+    if (field === "request_identifier") {
+      rawOut[field] = Object.prototype.hasOwnProperty.call(payload, field)
+        ? safeNullIfEmpty(payload[field]) ?? null
+        : null;
+      return;
+    }
+    const value =
+      field === "county_name"
+        ? safeNullIfEmpty(payload.county_name) || null
+        : pickField(field);
+    if (value !== undefined) {
+      rawOut[field] = value;
+    }
+  });
 
   if (!rawOut.postal_code) {
     rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
   }
 
   try {
