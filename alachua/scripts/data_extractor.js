@@ -1785,12 +1785,92 @@ function main() {
     writeJSON(path.join(dataDir, filename), data);
   });
 
-  // Property improvements are not supported in this data group (no valid relationship type)
-  // Commenting out property improvement extraction to avoid validation errors
   const propertyImprovementOutputs = [];
-  // const permitEntries = parsePermitTable($);
-  // Note: Permit data is available in the HTML but not extracted as separate property_improvement files
-  // because the Property_Improvement data group does not support property_has_property_improvement relationships
+  const permitEntries = parsePermitTable($);
+  permitEntries.forEach((permit, idx) => {
+    const improvementType = mapPermitImprovementType(permit.type);
+    const improvementStatus = mapPermitImprovementStatus(permit.active);
+    const improvementAction = mapPermitImprovementAction(permit.type);
+    const contractorType = mapPermitContractorType(permit.primary);
+    const permitIssueDate = toISOFromMDY(permit.issueDate);
+    const permitNumber =
+      permit.permitNumber && permit.permitNumber.length
+        ? permit.permitNumber
+        : null;
+    const completionDate =
+      improvementStatus === "Completed" ? permitIssueDate : null;
+
+    const baseRequestId =
+      requestIdentifier || permitNumber || parcelId || propId || "permit";
+    const improvementRequestId = permitNumber
+      ? `${baseRequestId}-${permitNumber}`
+      : `${baseRequestId}-permit-${idx + 1}`;
+
+    const improvement = {
+      improvement_type: improvementType || "GeneralBuilding",
+      improvement_status: improvementStatus || null,
+      improvement_action: improvementAction,
+      permit_number: permitNumber,
+      permit_issue_date: permitIssueDate,
+      completion_date: completionDate,
+      contractor_type: contractorType || "Unknown",
+      permit_required: permitNumber ? true : null,
+      request_identifier: improvementRequestId,
+      source_http_request: clone(defaultSourceHttpRequest),
+    };
+
+    const cleanedImprovement = {};
+    Object.entries(improvement).forEach(([key, value]) => {
+      if (value === undefined) return;
+      if (value === null) {
+        cleanedImprovement[key] = null;
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        cleanedImprovement[key] = trimmed || null;
+        return;
+      }
+      cleanedImprovement[key] = value;
+    });
+
+    if (!cleanedImprovement.improvement_type && !cleanedImprovement.permit_number) {
+      return;
+    }
+    if (!cleanedImprovement.improvement_type) {
+      cleanedImprovement.improvement_type = "GeneralBuilding";
+    }
+
+    // Ensure improvement_type is always a valid enum value or null
+    const validImprovementTypes = [
+      "GeneralBuilding", "ResidentialConstruction", "CommercialConstruction",
+      "BuildingAddition", "StructureMove", "Demolition", "PoolSpaInstallation",
+      "Electrical", "MechanicalHVAC", "GasInstallation", "Roofing", "Fencing",
+      "DockAndShore", "FireProtectionSystem", "Plumbing", "ExteriorOpeningsAndFinishes",
+      "MobileHomeRV", "LandscapeIrrigation", "ScreenEnclosure", "ShutterAwning",
+      "SiteDevelopment", "CodeViolation", "Complaint", "ContractorLicense",
+      "Sponsorship", "StateLicenseRegistration", "AdministrativeApproval",
+      "AdministrativeAppeal", "BlueSheetHearing", "PlannedDevelopment",
+      "DevelopmentOfRegionalImpact", "Rezoning", "SpecialExceptionZoning",
+      "Variance", "ZoningExtension", "ZoningVerificationLetter", "RequestForRelief",
+      "WaiverRequest", "InformalMeeting", "EnvironmentalMonitoring", "Vacation",
+      "VegetationRemoval", "ComprehensivePlanAmendment", "MinimumUseDetermination",
+      "TransferDevelopmentRightsDetermination", "MapBoundaryDetermination",
+      "TransferDevelopmentRightsCertificate", "UniformCommunityDevelopment",
+      "SpecialCertificateOfAppropriateness", "CertificateToDig", "HistoricDesignation",
+      "PlanningAdministrativeAppeal", "WellPermit", "Solar", "TestBoring",
+      "ExistingWellInspection", "NaturalResourcesComplaint", "NaturalResourcesViolation",
+      "LetterWaterSewer", "UtilitiesConnection", "DrivewayPermit", "RightOfWayPermit", null
+    ];
+    if (cleanedImprovement.improvement_type !== null &&
+        !validImprovementTypes.includes(cleanedImprovement.improvement_type)) {
+      cleanedImprovement.improvement_type = "GeneralBuilding";
+    }
+
+    const filename = `property_improvement_${propertyImprovementOutputs.length + 1}.json`;
+    writeJSON(path.join(dataDir, filename), cleanedImprovement);
+    propertyImprovementOutputs.push({ filename, path: `./${filename}` });
+  });
 
   const createLayoutRecord = (spaceType, overrides = {}) => {
     const base = {
@@ -2258,10 +2338,10 @@ function main() {
     });
   }
 
-  // Property improvements are not supported - no relationship created
-  // propertyImprovementOutputs.forEach(({ path }) => {
-  //   writeRelationshipUnique(propertyPath, path);
-  // });
+  // Property to property_improvement relationships
+  propertyImprovementOutputs.forEach(({ path }) => {
+    writeRelationshipUnique(propertyPath, path);
+  });
 
   // Layout hierarchy relationships (building -> rooms)
   buildingLayoutsInfo.forEach((info) => {
