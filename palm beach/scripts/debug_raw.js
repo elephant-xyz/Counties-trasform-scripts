@@ -8681,6 +8681,88 @@ const RAW_ONE_OF_SCHEMA_TEMPLATE = Object.freeze(
   }, {}),
 );
 
+function buildFinalRawAddressOutput(rawValue, options = {}) {
+  const trimmedRaw = safeNullIfEmpty(rawValue);
+  if (!trimmedRaw) return null;
+
+  const seed =
+    options.seed && typeof options.seed === "object" && !Array.isArray(options.seed)
+      ? options.seed
+      : {};
+  const rawOut = { ...RAW_ONE_OF_SCHEMA_TEMPLATE };
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    rawOut[field] = null;
+  });
+  rawOut.unnormalized_address = trimmedRaw;
+
+  const requestId =
+    options.requestIdentifier === undefined
+      ? seed.request_identifier
+      : safeNullIfEmpty(options.requestIdentifier);
+  if (requestId !== undefined) {
+    rawOut.request_identifier = requestId ?? null;
+  }
+
+  const preparedSource = prepareSourceHttpRequest(
+    options.sourceHttpRequest === undefined
+      ? seed.source_http_request
+      : options.sourceHttpRequest,
+  );
+  rawOut.source_http_request = preparedSource || null;
+
+  const countyName =
+    options.countyName === undefined ? seed.county_name : options.countyName;
+  rawOut.county_name = safeNullIfEmpty(countyName);
+
+  const countryCode =
+    options.countryCode === undefined ? seed.country_code : options.countryCode;
+  rawOut.country_code = safeNullIfEmpty(countryCode);
+
+  RAW_ONE_OF_ALLOWED_FIELDS.forEach((field) => {
+    if (field === "unnormalized_address") return;
+    if (rawOut[field] !== null) return;
+    if (!Object.prototype.hasOwnProperty.call(seed, field)) return;
+
+    if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
+      const numeric = parseCoordinate(seed[field]);
+      rawOut[field] = Number.isFinite(numeric) ? numeric : null;
+      return;
+    }
+
+    rawOut[field] = sanitizeAddressFieldValue(field, seed[field]);
+  });
+
+  const latitudeCandidate =
+    options.latitude === undefined ? seed.latitude : options.latitude;
+  const longitudeCandidate =
+    options.longitude === undefined ? seed.longitude : options.longitude;
+  const lat = parseCoordinate(latitudeCandidate);
+  const lon = parseCoordinate(longitudeCandidate);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    rawOut.latitude = lat;
+    rawOut.longitude = lon;
+  } else {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+
+  if (!rawOut.postal_code) {
+    rawOut.plus_four_postal_code = null;
+  }
+  if ((rawOut.latitude == null) !== (rawOut.longitude == null)) {
+    rawOut.latitude = null;
+    rawOut.longitude = null;
+  }
+  if (
+    hasMeaningfulAddressValue(rawOut.state_code) &&
+    !hasMeaningfulAddressValue(rawOut.country_code)
+  ) {
+    rawOut.country_code = "US";
+  }
+
+  return rawOut;
+}
+
 // Final guardrail to keep the address payload on exactly one oneOf branch.
 // Prefer a fully populated normalized surface; otherwise, emit the raw branch
 // anchored on the unnormalized_address while still carrying every schema field
@@ -26731,15 +26813,24 @@ async function main() {
     const finalNormalizedSurfaceResolved =
       ensureNormalizedAddressSchemaSurface &&
       ensureNormalizedAddressSchemaSurface({ ...finalSnapshot });
-    const finalNormalizedCompleteResolved =
+    const normalizedFromSnapshot =
       finalNormalizedSurfaceResolved &&
-      hasCompleteNormalizedAddress({ ...finalNormalizedSurfaceResolved });
+      hasCompleteNormalizedAddress({ ...finalNormalizedSurfaceResolved })
+        ? { ...finalNormalizedSurfaceResolved }
+        : null;
+    const normalizedFromBest =
+      bestNormalizedAddress &&
+      hasCompleteNormalizedAddress({ ...bestNormalizedAddress })
+        ? { ...bestNormalizedAddress }
+        : null;
+    const preferredNormalized =
+      normalizedFromBest || normalizedFromSnapshot || null;
 
     let finalAddressOutput = null;
-    if (finalNormalizedCompleteResolved) {
+    if (preferredNormalized) {
       finalAddressOutput = { ...NORMALIZED_ADDRESS_SCHEMA_TEMPLATE };
       NORMALIZED_ADDRESS_FIELDS.forEach((field) => {
-        let value = finalNormalizedSurfaceResolved[field];
+        let value = preferredNormalized[field];
         if (ADDRESS_COORDINATE_FIELDS.includes(field)) {
           const numeric = parseCoordinate(value);
           value = Number.isFinite(numeric) ? numeric : null;
@@ -26770,39 +26861,16 @@ async function main() {
         delete finalAddressOutput.unnormalized_address;
       }
     } else if (finalRawSelection) {
-      const rawSeed =
-        sanitizeRawOneOfPayload(
-          { ...finalSnapshot, county_name: resolvedCounty || finalSnapshot.county_name },
-          { unnormalized_address: finalRawSelection },
-        ) || null;
-
-      if (rawSeed) {
-        const hydratedRaw = { ...RAW_ADDRESS_SCHEMA_TEMPLATE, ...rawSeed };
-        RAW_ADDRESS_ALLOWED_FIELDS.forEach((field) => {
-          if (!Object.prototype.hasOwnProperty.call(hydratedRaw, field)) {
-            hydratedRaw[field] = null;
-          }
-        });
-        hydratedRaw.request_identifier =
-          finalResolvedRequestId === undefined ? null : finalResolvedRequestId;
-        hydratedRaw.source_http_request = finalResolvedSourceHttp
-          ? prepareSourceHttpRequest(finalResolvedSourceHttp)
-          : null;
-        hydratedRaw.county_name = hydratedRaw.county_name || resolvedCounty || null;
-        if (!hydratedRaw.postal_code) {
-          hydratedRaw.plus_four_postal_code = null;
-        }
-        if ((hydratedRaw.latitude == null) !== (hydratedRaw.longitude == null)) {
-          hydratedRaw.latitude = null;
-          hydratedRaw.longitude = null;
-        }
-        if (
-          hasMeaningfulAddressValue(hydratedRaw.state_code) &&
-          !hasMeaningfulAddressValue(hydratedRaw.country_code)
-        ) {
-          hydratedRaw.country_code = "US";
-        }
-        finalAddressOutput = hydratedRaw;
+      const rawPayload = buildFinalRawAddressOutput(finalRawSelection, {
+        requestIdentifier:
+          finalResolvedRequestId === undefined ? null : finalResolvedRequestId,
+        sourceHttpRequest: finalResolvedSourceHttp,
+        countyName: resolvedCounty || finalSnapshot.county_name,
+        countryCode: finalSnapshot.country_code,
+        seed: finalSnapshot,
+      });
+      if (rawPayload) {
+        finalAddressOutput = rawPayload;
       }
     } else {
       removeFileIfExists(addressOutputPath);
