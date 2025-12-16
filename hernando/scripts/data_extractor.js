@@ -1535,6 +1535,9 @@ function main() {
     property_type === "LandParcel" || build_status === "VacantLand";
   const buildingLayoutsGenerated = [];
   const layoutRelationships = [];
+  const structureFiles = getStructureFiles(dataDir);
+  const utilityFiles = getUtilityFiles(dataDir);
+  const propertyFilePath = "./property.json";
   let layoutCounter = 0;
 
   if (!isLandProperty) {
@@ -1593,13 +1596,9 @@ function main() {
       );
     });
 
-    const structureFiles = getStructureFiles(dataDir);
-    const utilityFiles = getUtilityFiles(dataDir);
-    const propertyFilePath = "./property.json";
-
     if (structureFiles.length) {
       if (buildingLayoutsGenerated.length <= 1) {
-        structureFiles.forEach((structureFile, sIdx) => {
+        structureFiles.forEach((structureFile) => {
           const targetLayout = buildingLayoutsGenerated[0];
           const layoutId = layoutIdFromFile(targetLayout.file);
           const structureBase = baseNameFromFile(structureFile);
@@ -1730,6 +1729,35 @@ function main() {
         }
       }
     }
+  }
+
+  if (!buildingLayoutsGenerated.length) {
+    structureFiles.forEach((structureFile) => {
+      const structureBase = baseNameFromFile(structureFile);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_property_has_${structureBase}.json`,
+        ),
+        {
+          from: { "/": propertyFilePath },
+          to: { "/": `./${structureFile}` },
+        },
+      );
+    });
+    utilityFiles.forEach((utilityFile) => {
+      const utilityBase = baseNameFromFile(utilityFile);
+      writeJson(
+        path.join(
+          dataDir,
+          `relationship_property_has_${utilityBase}.json`,
+        ),
+        {
+          from: { "/": propertyFilePath },
+          to: { "/": `./${utilityFile}` },
+        },
+      );
+    });
   }
 
   // OWNERS/BUYERS + RELS
