@@ -1137,10 +1137,10 @@ function writeProperty($, parcelId) {
 function writeSalesDeedsFilesAndRelationships($) {
   const sales = extractSales($);
   // console.log("SALES",sales);
-  // Remove old deed/file and sales_deed relationships if present to avoid duplicates
+  // Remove old deed/file and sales_history_deed relationships if present to avoid duplicates
   try {
     fs.readdirSync("data").forEach((f) => {
-      if (/^relationship_(deed_file|sales_deed)(?:_\d+)?\.json$/.test(f)) {
+      if (/^relationship_(deed_file|sales_history_deed)(?:_\d+)?\.json$/.test(f)) {
         fs.unlinkSync(path.join("data", f));
       }
     });
@@ -1154,7 +1154,7 @@ function writeSalesDeedsFilesAndRelationships($) {
       purchase_price_amount: parseCurrencyToNumber(s.salePrice),
     };
     // console.log("saleobject",saleObj);
-    writeJSON(path.join("data", `sales_${idx}.json`), saleObj);
+    writeJSON(path.join("data", `sales_history_${idx}.json`), saleObj);
 
     const deedType = mapInstrumentToDeedType(s.instrument);
     // Parse book and page from bookPage (format: "XXXX/YYYY")
@@ -1208,11 +1208,11 @@ function writeSalesDeedsFilesAndRelationships($) {
     }
 
     const relSalesDeed = {
-      from: { "/": `./sales_${idx}.json` },
+      from: { "/": `./sales_history_${idx}.json` },
       to: { "/": `./deed_${idx}.json` },
     };
     writeJSON(
-      path.join("data", `relationship_sales_deed_${idx}.json`),
+      path.join("data", `relationship_sales_history_deed_${idx}.json`),
       relSalesDeed,
     );
   });
@@ -1605,10 +1605,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_person_${relPersonCounter}.json`,
+              `relationship_sales_history_person_${relPersonCounter}.json`,
             ),
             {
-              from: { "/": `./sales_${idx + 1}.json` },
+              from: { "/": `./sales_history_${idx + 1}.json` },
               to: { "/": `./person_${pIdx}.json` }
             },
           );
@@ -1624,10 +1624,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
           writeJSON(
             path.join(
               "data",
-              `relationship_sales_company_${relCompanyCounter}.json`,
+              `relationship_sales_history_company_${relCompanyCounter}.json`,
             ),
             {
-              from: { "/": `./sales_${idx + 1}.json` },
+              from: { "/": `./sales_history_${idx + 1}.json` },
               to: { "/": `./company_${cIdx}.json` }
             },
           );
@@ -1635,14 +1635,14 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
       });
   });
 
-  // Create relationship between current owner and first sale (sales_1) if not already created
+  // Create relationship between current owner and first sale (sales_history_1) if not already created
   if (sales.length > 0) {
     const firstSaleDate = parseDateToISO(sales[0].saleDate);
     const ownersOnFirstSale = ownersByDate[firstSaleDate] || [];
     const currentOwners = ownersByDate["current"] || [];
 
     currentOwners.forEach((owner) => {
-      // Check if this owner already has a relationship with sales_1
+      // Check if this owner already has a relationship with sales_history_1
       const alreadyLinked = ownersOnFirstSale.some(existingOwner => {
         if (owner.type === "person" && existingOwner.type === "person") {
           return owner.first_name === existingOwner.first_name && owner.last_name === existingOwner.last_name;
@@ -1662,10 +1662,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_person_${relPersonCounter}.json`,
+                `relationship_sales_history_person_${relPersonCounter}.json`,
               ),
               {
-                from: { "/": "./sales_1.json" },
+                from: { "/": "./sales_history_1.json" },
                 to: { "/": `./person_${pIdx}.json` }
               },
             );
@@ -1678,10 +1678,10 @@ function writePersonCompaniesSalesRelationships(parcelId, sales) {
             writeJSON(
               path.join(
                 "data",
-                `relationship_sales_company_${relCompanyCounter}.json`,
+                `relationship_sales_history_company_${relCompanyCounter}.json`,
               ),
               {
-                from: { "/": "./sales_1.json" },
+                from: { "/": "./sales_history_1.json" },
                 to: { "/": `./company_${cIdx}.json` }
               },
             );
